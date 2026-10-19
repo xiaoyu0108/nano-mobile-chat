@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<script src="../js/nano-runtime.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>朋友圈</title>
+    <link rel="stylesheet" href="../css/moments.css">
+<script src="../js/appearance.js"></script>
+</head>
+<body>
+<div class="moments-container">
+
+    <!-- 顶部生成中提示（固定顶部下方，不遮挡返回键，跨视图常驻） -->
+    <div class="moments-loading" id="momentsLoading"><span class="ml-spinner"></span><span id="momentsLoadingText">正在加载…</span></div>
+
+    <!-- ===== 1. 朋友圈首页 ===== -->
+    <div class="page-view active" id="viewFeed">
+        <div class="top-nav">
+            <button class="nav-back" id="btnBackToChat" data-back><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg></button>
+            <span class="nav-title">朋友圈</span>
+            <div class="nav-actions">
+                <button class="nav-icon-plain" id="btnRefreshGlobal"><svg viewBox="0 0 24 24"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
+                <button class="nav-icon-plain" id="btnOpenPost"><svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
+            </div>
+        </div>
+        <div class="moments-header">
+            <img src="" class="cover-img" id="coverImg">
+            <div class="user-info-box">
+                <div class="user-text-wrap"><span class="user-name" id="userName">加载中...</span></div>
+                <img src="" class="user-avatar" id="userAvatar">
+            </div>
+        </div>
+        <div class="feed-list" id="feedList"></div>
+    </div>
+
+    <!-- ===== 2. 发布页 ===== -->
+    <div class="page-view" id="viewPost">
+        <div class="top-nav">
+            <button class="nav-back" id="btnCancelPost" data-back>取消</button>
+            <span class="nav-title"></span>
+            <button class="nav-action" id="btnSubmitPost">发表</button>
+        </div>
+        <textarea class="post-input" id="postTextInput" placeholder="这一刻的想法..."></textarea>
+        <div class="upload-grid" id="uploadGrid">
+            <div class="upload-item" id="btnAddPhoto"><span class="upload-add-icon">+</span></div>
+        </div>
+        <div class="post-option-list">
+            <button class="post-option-item" id="btnLocation"><span class="option-left"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg><span id="labelLocation">所在位置</span></span><span class="option-right" id="locationValue">></span></button>
+            <button class="post-option-item" id="btnAt"><span class="option-left"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v8"/><path d="M8 12h8"/></svg><span id="labelAt">提醒谁看</span></span><span class="option-right" id="atValue">></span></button>
+            <button class="post-option-item" id="btnVisibility"><span class="option-left"><svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><span id="labelVisibility">谁可以看</span></span><span class="option-right" id="visibilityValue">公开 ></span></button>
+        </div>
+    </div>
+
+    <!-- ===== 3. 个人主页 ===== -->
+    <div class="page-view" id="viewProfile">
+        <div class="top-nav" style="background:transparent;position:absolute;border:none;z-index:10;width:100%;">
+            <button class="nav-back" id="btnBackFromProfile" style="color:#fff;" data-back><svg viewBox="0 0 24 24" stroke="#fff"><polyline points="15 18 9 12 15 6"/></svg></button>
+            <span class="nav-title" style="color:#fff;text-shadow:0 1px 4px rgba(0,0,0,0.3);">个人主页</span>
+            <div style="width:44px;"></div>
+        </div>
+        <div class="profile-header">
+            <img src="" class="cover-img" id="profileCoverImg">
+            <div class="user-info-box">
+                <div class="user-text-wrap"><span class="user-name" id="profileUserName"></span></div>
+                <img src="" class="user-avatar" id="profileUserAvatar">
+            </div>
+        </div>
+        <div class="profile-timeline" id="profileTimeline"><div style="text-align:center;color:#b2b2b2;padding:20px 0;font-size:14px;">暂无动态</div></div>
+    </div>
+
+    <!-- ===== 4. 详情页 ===== -->
+    <div class="page-view" id="viewDetail">
+        <div class="top-nav" style="position:relative;z-index:20;">
+            <button class="nav-back" id="btnBackFromDetail" data-back><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg></button>
+            <span class="nav-title">详情</span>
+            <button class="nav-right-btn" id="btnDetailMore">•••</button>
+        </div>
+        <div class="detail-more-menu" id="detailMoreMenu">
+            <button id="detailEditBtn">编辑</button>
+            <button id="detailDeleteBtn" class="danger">删除</button>
+        </div>
+        <div class="detail-content" id="detailContent"></div>
+    </div>
+
+    <!-- ===== 弹窗 ===== -->
+    <div class="modal-mask" id="coverModal">
+        <div class="modal-sheet" style="max-width:340px;background:rgba(255,255,255,0.96);">
+            <div class="cover-modal-content">
+                <div class="cover-modal-icon"></div>
+                <h3>更换背景图</h3>
+                <p class="sub-desc">为你的朋友圈封面选择一张新图片</p>
+                <div class="cover-option-grid">
+                    <button class="cover-option-btn" id="btnSelectFromGallery">
+                        <span class="cover-opt-icon"></span>
+                        <span class="cover-opt-label">从相册选择</span>
+                        <span class="cover-opt-hint">本地图片</span>
+                    </button>
+                    <button class="cover-option-btn primary" id="btnInputCoverUrl">
+                        <span class="cover-opt-icon"></span>
+                        <span class="cover-opt-label">输入图片 URL</span>
+                        <span class="cover-opt-hint">网络链接</span>
+                    </button>
+                </div>
+                <div class="cover-modal-divider"></div>
+            </div>
+            <button class="cover-modal-cancel" id="btnCloseCoverModal" data-close>取消</button>
+        </div>
+    </div>
+
+    <div class="modal-mask" id="locationModal">
+        <div class="modal-sheet" style="padding-bottom:20px;">
+            <div class="modal-content-body">
+                <h3>所在位置</h3>
+                <input type="text" class="modal-input" id="inputLocation" placeholder="输入位置...">
+                <button class="modal-btn-confirm" id="btnConfirmLocation">确定</button>
+            </div>
+            <button class="modal-sheet-item cancel" id="btnCloseLocationModal" data-close>取消</button>
+        </div>
+    </div>
+    <div class="modal-mask" id="visibilityModal">
+        <div class="modal-sheet">
+            <div class="modal-content-body">
+                <h3 id="visibilityModalTitle">选择可见角色</h3>
+                <div id="charCheckboxList"></div>
+                <button class="modal-btn-confirm" id="btnConfirmVisibility">完成</button>
+            </div>
+        </div>
+    </div>
+    <div class="modal-mask" id="atModal">
+        <div class="modal-sheet">
+            <div class="modal-content-body">
+                <h3>提醒谁看</h3>
+                <div id="atCheckboxList"></div>
+                <button class="modal-btn-confirm" id="btnConfirmAt">完成</button>
+            </div>
+        </div>
+    </div>
+    <div class="modal-mask" id="deleteConfirmModal">
+        <div class="modal-sheet">
+            <div class="modal-content-body" style="text-align:center;">
+                <h3>确认删除</h3>
+                <p style="color:#8e8e93;font-size:15px;margin-bottom:16px;">确定要删除这条朋友圈吗？</p>
+                <button class="modal-btn-confirm" id="btnConfirmDelete" style="background:#ff3b30;">删除</button>
+            </div>
+            <button class="modal-sheet-item cancel" id="btnCancelDelete" data-close>取消</button>
+        </div>
+    </div>
+    <div class="modal-mask" id="commentModal">
+        <div class="modal-sheet" style="padding-bottom:16px;">
+            <div class="modal-content-body">
+                <h3 id="commentModalTitle">评论</h3>
+                <textarea class="modal-input comment-textarea" id="commentModalInput" placeholder="友善评论，说点什么..." maxlength="200"></textarea>
+                <button class="modal-btn-confirm" id="btnConfirmComment">发送</button>
+            </div>
+            <button class="modal-sheet-item cancel" id="btnCancelComment" data-close>取消</button>
+        </div>
+    </div>
+    <div class="modal-mask" id="deleteCommentModal">
+        <div class="modal-sheet">
+            <div class="modal-content-body" style="text-align:center;">
+                <h3>删除评论</h3>
+                <p style="color:#8e8e93;font-size:15px;margin-bottom:16px;">确定要删除这条评论吗？</p>
+                <button class="modal-btn-confirm" id="btnConfirmDeleteComment" style="background:#ff3b30;">删除</button>
+            </div>
+            <button class="modal-sheet-item cancel" id="btnCancelDeleteComment" data-close>取消</button>
+        </div>
+    </div>
+
+    <!-- 刷新：选择要生成朋友圈的角色 -->
+    <div class="modal-mask" id="refreshCharModal">
+        <div class="modal-sheet">
+            <div class="modal-content-body">
+                <h3>选择要生成朋友圈的角色</h3>
+                <p style="color:#8e8e93;font-size:13px;margin:0 0 12px;">会在这些角色的动态基础上，再补充他们的朋友（NPC）动态</p>
+                <div id="refreshCharList" class="refresh-char-list"></div>
+                <button class="modal-btn-confirm" id="btnConfirmRefreshChars">开始生成</button>
+            </div>
+            <button class="modal-sheet-item cancel" id="btnCancelRefreshChars" data-close>取消</button>
+        </div>
+    </div>
+
+    <!-- API 错误提示弹窗 -->
+    <div class="modal-mask" id="apiErrorModal">
+        <div class="modal-sheet" style="max-width:400px;">
+            <div class="modal-content-body">
+                <h3 style="color:#ff3b30;margin-bottom:14px;">⚠️ API 调用失败</h3>
+                <div id="apiErrorLog"></div>
+                <button class="modal-btn-confirm" id="btnCloseApiError" style="margin-top:14px;" data-close>知道了</button>
+            </div>
+        </div>
+    </div>
+
+    <input type="file" id="coverFileInput" accept="image/*">
+    <input type="file" id="postFileInput" accept="image/*" multiple>
+
+</div>
+<script src="../js/moments.js?v=20261018b"></script>
+<script src="../js/api-float.js"></script>
+<script src="../js/refresh-notify.js"></script>
+<script src="../swipe-back.js"></script>
+</body>
+</html>

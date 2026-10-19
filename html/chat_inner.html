@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<script src="../js/nano-runtime.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>聊天</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" media="print" onload="this.media='all'">
+    <link rel="stylesheet" href="../css/chat-inner.css?v=20261018b">
+    <link rel="stylesheet" href="../css/heart.css?v=20261006a">
+    <link rel="preconnect" href="https://cdn.jsdelivr.net">
+    <link rel="dns-prefetch" href="https://unpkg.com">
+    <script src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
+    <script src="../js/appearance.js?v=20261010a"></script>
+<script src="../js/nano-notify.js?v=20261018b"></script>
+<script src="../js/reroll-reason.js?v=20261018a"></script>
+<script src="../js/cycle-store.js?v=20261018c"></script>
+<script src="../js/nano-badge.js"></script>
+    <script src="../js/keep-alive.js?v=20261006a"></script>
+<script src="../js/group-store.js"></script>
+</head>
+<body class="nano-chat-inner">
+<div class="chat-container" id="app">
+
+    <!-- 背景图专用底层：位于气泡之下，绝不跨层级遮挡气泡 -->
+    <div class="chat-bg" id="chatBg" aria-hidden="true"></div>
+
+    <header class="topbar" id="topbar">
+        <button class="back-btn" id="backBtn" data-back><i class="fas fa-chevron-left"></i></button>
+        <span class="topbar-title" id="chatTitle">聊天</span>
+        <div class="topbar-avatar" id="topbarAvatar">
+            <span id="avatarPlaceholder">L</span>
+            <img id="avatarImage" style="display:none;" alt="头像">
+        </div>
+    </header>
+
+    <div class="multi-select-bar" id="multiSelectBar">
+        <div class="ms-left"><span class="ms-count" id="msCount">已选 0 条</span></div>
+        <div class="ms-right">
+            <button class="ms-cancel" id="msCancel">取消</button>
+            <button class="ms-delete" id="msDelete">删除</button>
+        </div>
+    </div>
+
+    <div class="message-scroll" id="messageScroll">
+        <div class="date-label" id="dateLabel">今天</div>
+        <div id="messageContainer"></div>
+        <div class="typing-indicator" id="typingIndicator">
+            <div class="ti-avatar" id="typingAvatar">C</div>
+            <div class="ti-bubble"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+            <button class="ti-stop" id="typingStop" type="button" aria-label="停止生成"></button>
+        </div>
+    </div>
+
+    <footer class="bottom-bar">
+        <div class="emoji-recommend hidden" id="emojiRecommend"></div>
+        <button class="more-btn" id="moreBtn">
+            <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+        </button>
+        <div class="input-shell">
+            <div class="above-input" id="aboveInput">
+                <div class="quote-bar" id="quoteBar">
+                    <span class="quote-name" id="quoteName"></span>
+                    <span class="quote-text" id="quoteText">引用内容</span>
+                    <button class="quote-cancel" id="quoteCancel">&times;</button>
+                </div>
+            </div>
+            <div class="input-row">
+                <input class="input" id="messageInput" type="text" placeholder="iMessage" autocomplete="off">
+                <div class="emoji-voice-group">
+                    <button class="emoji-btn" id="emojiBtn"><i class="far fa-smile"></i></button>
+                    <button class="voice-btn" id="voiceBtn"><i class="fas fa-microphone"></i></button>
+                </div>
+            </div>
+        </div>
+        <button class="send-btn" id="sendBtn"><i class="fas fa-arrow-up"></i></button>
+    </footer>
+
+    <!-- 更多菜单 - 由 chat-more.js 动态渲染，这里留空 -->
+    <div class="more-overlay" id="moreOverlay"></div>
+
+    <!-- 礼物弹窗 -->
+    <div class="ios-popup-overlay" id="giftPopup">
+        <div class="ios-popup-card">
+            <div class="ios-popup-header">
+                <div class="ios-popup-title">赠送礼物</div>
+                <div class="ios-popup-subtitle">请输入礼物名称和寄语</div>
+            </div>
+            <div class="ios-popup-body">
+                <div class="ios-popup-input-group">
+                    <div class="ios-popup-row">
+                        <span class="ios-popup-label">礼物</span>
+                        <input type="text" class="ios-popup-input" id="giftNameInput" placeholder="请输入礼物名称..." maxlength="20" />
+                    </div>
+                    <div class="ios-popup-row">
+                        <span class="ios-popup-label">金额</span>
+                        <input type="number" step="0.01" class="ios-popup-input" id="giftAmount" placeholder="0.00（选填）" />
+                    </div>
+                    <div class="ios-popup-row">
+                        <span class="ios-popup-label">寄语</span>
+                        <input type="text" class="ios-popup-input" id="giftNoteInput" placeholder="添加赠送寄语..." maxlength="30" />
+                    </div>
+                </div>
+            </div>
+            <div class="ios-popup-actions">
+                <button class="ios-popup-btn ios-popup-btn-cancel" id="giftCancel" data-close>取消</button>
+                <button class="ios-popup-btn ios-popup-btn-confirm" id="giftConfirm">赠送</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 图片弹窗（文字图 / 真实图片 tab） -->
+    <div class="ios-popup-overlay" id="imagePopup">
+        <div class="ios-popup-card">
+            <div class="ios-popup-header">
+                <div class="ios-popup-title">发送图片</div>
+                <div class="ios-popup-subtitle">选择一种图片方式</div>
+            </div>
+            <div class="vs-tabs">
+                <button class="vs-tab active" id="imgTabText">文字图</button>
+                <button class="vs-tab" id="imgTabFile">真实图片</button>
+            </div>
+            <div class="ios-popup-body">
+                <div id="imgPaneText">
+                    <div class="ios-popup-input-group">
+                        <div class="ios-popup-row">
+                            <span class="ios-popup-label">文字</span>
+                            <input type="text" class="ios-popup-input" id="imageTextInput" placeholder="输入文字自动生成图片..." maxlength="50" />
+                        </div>
+                    </div>
+                </div>
+                <div id="imgPaneFile" style="display:none;">
+                    <div class="ios-popup-input-group">
+                        <div class="ios-popup-row">
+                            <span class="ios-popup-label">相册</span>
+                            <div class="ios-photo-picker">
+                                <label for="imageFileInput" class="ios-picker-btn">
+                                    <span>选择照片...</span>
+                                </label>
+                                <input type="file" id="imageFileInput" accept="image/*" multiple style="display:none;" />
+                                <div class="ios-img-preview-box" id="imagePreviewBox">
+                                    <img id="imagePreview" src="" alt="预览">
+                                    <div class="ios-img-thumbs" id="imageThumbs"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="ios-popup-actions">
+                <button class="ios-popup-btn ios-popup-btn-cancel" id="imageCancel" data-close>取消</button>
+                <button class="ios-popup-btn ios-popup-btn-confirm" id="imageConfirm">发送</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 转账弹窗 -->
+    <div class="ios-popup-overlay" id="transferPopup">
+        <div class="ios-popup-card">
+            <div class="ios-popup-header">
+                <div class="ios-popup-title">发起转账</div>
+                <div class="ios-popup-subtitle">请输入金额和备注</div>
+            </div>
+            <div class="ios-popup-body">
+                <div class="ios-popup-input-group">
+                    <div class="ios-popup-row">
+                        <span class="ios-popup-label">金额</span>
+                        <input type="number" step="0.01" class="ios-popup-input" id="transferAmount" placeholder="0.00" />
+                    </div>
+                    <div class="ios-popup-row">
+                        <span class="ios-popup-label">备注</span>
+                        <input type="text" class="ios-popup-input" id="transferNote" placeholder="添加转账备注..." maxlength="30" />
+                    </div>
+                    <div class="ios-popup-row">
+                        <span class="ios-popup-label">支付</span>
+                        <select class="ios-popup-input" id="transferSource">
+                            <option value="bank">我的银行卡</option>
+                            <option value="family">亲密付（对方亲属卡）</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="ios-popup-actions">
+                <button class="ios-popup-btn ios-popup-btn-cancel" id="transferCancel" data-close>取消</button>
+                <button class="ios-popup-btn ios-popup-btn-confirm" id="transferConfirm">转账</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 外卖弹窗 -->
+    <div class="ios-popup-overlay" id="takeoutPopup">
+        <div class="ios-popup-card">
+            <div class="ios-popup-header">
+                <div class="ios-popup-title">点外卖</div>
+                <div class="ios-popup-subtitle">填写外卖信息，发送给对方</div>
+            </div>
+            <div class="ios-popup-body">
+                <div class="ios-popup-input-group">
+                    <div class="ios-popup-row">
+                        <span class="ios-popup-label">食品</span>
+                        <input type="text" class="ios-popup-input" id="takeoutFood" placeholder="例如 麻辣烫、奶茶..." maxlength="30" />
+                    </div>
+                    <div class="ios-popup-row">
+                        <span class="ios-popup-label">店铺</span>
+                        <input type="text" class="ios-popup-input" id="takeoutShop" placeholder="店铺名称..." maxlength="30" />
+                    </div>
+                    <div class="ios-popup-row">
+                        <span class="ios-popup-label">价格</span>
+                        <input type="number" step="0.01" class="ios-popup-input" id="takeoutPrice" placeholder="0.00" />
+                    </div>
+                    <div class="ios-popup-row">
+                        <span class="ios-popup-label">备注</span>
+                        <input type="text" class="ios-popup-input" id="takeoutNote" placeholder="口味 / 留言..." maxlength="40" />
+                    </div>
+                </div>
+            </div>
+            <div class="ios-popup-actions">
+                <button class="ios-popup-btn ios-popup-btn-cancel" id="takeoutCancel" data-close>取消</button>
+                <button class="ios-popup-btn ios-popup-btn-confirm" id="takeoutConfirm">下单</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 定位弹窗（底部弹起 · 虚拟/真实 tab） -->
+    <div class="ios-popup-overlay" id="locationPopup">
+        <div class="ios-popup-card">
+            <div class="ios-popup-header">
+                <div class="ios-popup-title">发送定位</div>
+                <div class="ios-popup-subtitle">选择一个地点，可附带距离</div>
+            </div>
+            <div class="vs-tabs">
+                <button class="vs-tab active" data-loc="virtual">虚拟定位</button>
+                <button class="vs-tab" data-loc="real">真实定位</button>
+            </div>
+            <div class="ios-popup-body">
+                <div class="loc-map">
+                    <div class="loc-map-grid"></div>
+                    <div class="loc-map-road loc-map-road-a"></div>
+                    <div class="loc-map-road loc-map-road-b"></div>
+                    <div class="loc-map-pin">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-5.5 7-11a7 7 0 1 0-14 0c0 5.5 7 11 7 11z"/><circle cx="12" cy="10" r="2.6"/></svg>
+                    </div>
+                    <div class="loc-map-label" id="locMapLabel">未选择地点</div>
+                </div>
+                <div id="locPaneVirtual">
+                    <div class="ios-popup-input-group">
+                        <div class="ios-popup-row">
+                            <span class="ios-popup-label">地点</span>
+                            <input type="text" class="ios-popup-input" id="locationPlace" placeholder="例如 长沙·五一广场" maxlength="40" />
+                        </div>
+                        <div class="ios-popup-row">
+                            <span class="ios-popup-label">距离</span>
+                            <input type="number" class="ios-popup-input" id="locationDistance" placeholder="距你多少米（选填）" />
+                        </div>
+                    </div>
+                </div>
+                <div id="locPaneReal" style="display:none;">
+                    <div class="ios-popup-input-group">
+                        <div class="ios-popup-row">
+                            <span class="ios-popup-label">定位</span>
+                            <div class="loc-get">
+                                <button type="button" class="loc-get-btn" id="locationRealBtn">获取当前位置</button>
+                                <span class="loc-status" id="locationStatus">未定位</span>
+                            </div>
+                        </div>
+                        <div class="ios-popup-row">
+                            <span class="ios-popup-label">距离</span>
+                            <input type="number" class="ios-popup-input" id="locationRealDistance" placeholder="距你多少米（选填）" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="ios-popup-actions">
+                <button class="ios-popup-btn ios-popup-btn-cancel" id="locationCancel" data-close>取消</button>
+                <button class="ios-popup-btn ios-popup-btn-confirm" id="locationConfirm">发送</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 编辑消息弹窗 -->
+    <div class="ios-popup-overlay" id="editPopup">
+        <div class="ios-popup-card edit-card">
+            <div class="ios-popup-header">
+                <div class="ios-popup-title">编辑消息</div>
+                <div class="ios-popup-subtitle">保存后会更新这条消息</div>
+            </div>
+            <div class="edit-body">
+                <textarea class="edit-textarea" id="editTextarea" placeholder="输入消息内容…"></textarea>
+            </div>
+            <div class="ios-popup-actions">
+                <button class="ios-popup-btn ios-popup-btn-cancel" id="editCancel" data-close>取消</button>
+                <button class="ios-popup-btn ios-popup-btn-confirm" id="editConfirm">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="ios-alert-overlay" id="iosAlert">
+        <div class="ios-alert-box">
+            <div class="ios-alert-title" id="alertTitle">提示</div>
+            <div class="ios-alert-message" id="alertMessage">错误信息</div>
+            <button class="ios-alert-button" id="alertButton" data-close>确定</button>
+        </div>
+    </div>
+
+    <div class="longpress-menu" id="longpressMenu">
+        <button class="menu-item" data-action="reply"><span class="mi-icon"><i class="fas fa-reply"></i></span><span>引用</span></button>
+        <button class="menu-item" data-action="copy"><span class="mi-icon"><i class="fas fa-copy"></i></span><span>复制</span></button>
+        <button class="menu-item" data-action="edit"><span class="mi-icon"><i class="fas fa-pen"></i></span><span>编辑</span></button>
+        <button class="menu-item" data-action="recall"><span class="mi-icon"><i class="fas fa-undo-alt"></i></span><span>撤回</span></button>
+        <button class="menu-item danger" data-action="delete"><span class="mi-icon"><i class="fas fa-trash"></i></span><span>删除</span></button>
+        <div class="menu-divider"></div>
+        <button class="menu-item" data-action="multiselect"><span class="mi-icon"><i class="fas fa-check-circle"></i></span><span>多选</span></button>
+        <button class="menu-item" data-action="favorite"><span class="mi-icon"><i class="fas fa-star"></i></span><span>收藏</span></button>
+        <button class="menu-item" data-action="translate"><span class="mi-icon"><i class="fas fa-language"></i></span><span>翻译</span></button>
+        <button class="menu-item" data-action="voice2text"><span class="mi-icon"><i class="fas fa-microphone-alt"></i></span><span>语音转文字</span></button>
+    </div>
+
+    <!-- ===== 通话记录弹窗 ===== -->
+<div class="call-sheet-overlay" id="callSheetOverlay">
+    <div class="call-sheet" id="callSheet">
+        <div class="call-sheet-nav">
+            <button class="call-sheet-back" id="callSheetBack" data-back>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="15 18 9 12 15 6"/>
+                </svg>
+            </button>
+            <span class="call-sheet-title">通话记录</span>
+            <button class="call-sheet-edit" id="callSheetEdit">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 20h9"/>
+                    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                </svg>
+            </button>
+        </div>
+        <div class="call-sheet-body" id="callSheetBody">
+            <!-- 动态渲染 -->
+        </div>
+        <div class="call-sheet-toolbar" id="callSheetToolbar">
+            <span class="call-sheet-count" id="callSheetCount">已选择 0 项</span>
+            <div class="call-sheet-actions">
+                <button class="call-sheet-cancel" id="callSheetCancel">取消</button>
+                <button class="call-sheet-del" id="callSheetDel" disabled>删除</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+    <!-- ===== 图片查看器（放大 + 取消 / 重roll / 保存） ===== -->
+    <div class="image-viewer" id="imageViewer">
+        <img id="ivImg" src="" alt="图片" />
+        <div class="iv-text" id="ivText"></div>
+        <div class="iv-nav" id="ivNav" style="display:none;">
+            <button class="iv-nav-btn" id="ivPrev" type="button" aria-label="上一张">‹</button>
+            <span class="iv-counter" id="ivCounter">1 / 1</span>
+            <button class="iv-nav-btn" id="ivNext" type="button" aria-label="下一张">›</button>
+        </div>
+        <div class="iv-actions" id="ivActions">
+            <div class="iv-act" id="ivClose" data-close>取消</div>
+            <div class="iv-act" id="ivReroll">重roll</div>
+            <div class="iv-act" id="ivDownload">保存</div>
+        </div>
+    </div>
+
+    <!-- ===== 重roll 弹窗（底部半屏，可改提示词后重roll） ===== -->
+    <div class="iv-sheet" id="ivRerollSheet">
+        <div class="iv-sheet-card">
+            <div class="iv-sheet-head">
+                <div class="iv-sheet-title">重新生成图片</div>
+                <button class="iv-sheet-x" id="ivRerollClose" aria-label="关闭">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+            <div class="iv-sheet-desc">可以修改提示词后再重roll，也可以不改直接重roll。</div>
+            <textarea class="iv-sheet-input" id="ivRerollInput" spellcheck="false" placeholder="描述这张图……"></textarea>
+            <div class="iv-sheet-actions">
+                <button class="iv-sheet-btn" id="ivRerollCancel">取消</button>
+                <button class="iv-sheet-btn primary" id="ivRerollGo">重roll</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 保存兜底弹窗（底部半屏，长按保存） ===== -->
+    <div class="iv-sheet" id="ivSaveSheet">
+        <div class="iv-sheet-card">
+            <div class="iv-sheet-head">
+                <div class="iv-sheet-title">保存图片</div>
+                <button class="iv-sheet-x" id="ivSaveClose" aria-label="关闭">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+            <div class="iv-sheet-desc">长按下面这张图片，选择「存储到照片 / 保存图片」即可存进相册。</div>
+            <div class="iv-sheet-imgwrap"><img id="ivSaveImg" src="" alt="图片" /></div>
+            <div class="iv-sheet-actions">
+                <button class="iv-sheet-btn" id="ivSaveCancel">取消</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== 表情包弹窗 ===== -->
+<div class="emoji-panel-overlay" id="emojiPanelOverlay">
+  <div class="emoji-panel" id="emojiPanel">
+    <div class="ep-header">
+      <div class="ep-title">表情包</div>
+      <button class="ep-close" id="emojiPanelClose" title="关闭" data-close>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="ep-groups" id="emojiGroups"></div>
+    <div class="ep-grid" id="emojiGrid"></div>
+    <div class="ep-empty" id="emojiEmpty" style="display:none;">暂无表情包</div>
+  </div>
+</div>
+
+<!-- ===== 发送语音气泡弹窗 ===== -->
+<div class="voice-sheet-overlay" id="voiceSheetOverlay">
+  <div class="voice-sheet" id="voiceSheet">
+    <div class="vs-header">
+      <div class="vs-title">发送语音给 <span id="vsRecipient">对方</span></div>
+      <button class="vs-close" id="vsClose" title="关闭" data-close>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+
+    <div class="vs-tabs">
+      <button class="vs-tab active" id="vsTabText">文字语音</button>
+      <button class="vs-tab" id="vsTabVoice">录音语音</button>
+    </div>
+
+    <div class="vs-body">
+      <div class="vs-status" id="vsStatus">轻点上方切换语音方式</div>
+
+      <div class="vs-strip" id="vsStrip" style="display:none;">
+        <div class="vs-strip-wave"><span class="bar" style="height:6px;"></span><span class="bar" style="height:13px;"></span><span class="bar" style="height:9px;"></span><span class="bar" style="height:16px;"></span><span class="bar" style="height:7px;"></span><span class="bar" style="height:12px;"></span></div>
+        <div class="vs-strip-text" id="vsStripText">正在聆听…</div>
+      </div>
+
+      <div class="vs-input-wrap">
+        <textarea class="vs-input" id="vsInput" placeholder="输入这条语音要表达的内容"></textarea>
+      </div>
+
+      <button class="vs-record" id="vsRecordBtn">
+        <i class="fas fa-microphone" id="vsRecordIcon"></i>
+        <span id="vsRecordText">点击开始录音</span>
+      </button>
+    </div>
+
+    <div class="vs-footer">
+      <button class="vs-btn secondary" id="vsCancel" data-close>取消</button>
+      <button class="vs-btn primary" id="vsSend">发送语音</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 引入拆分后的 JS 文件 ===== -->
+<script src="../js/nano-tts.js"></script>
+<script src="../js/nano-assistant-knowledge.js?v=20260929a"></script>
+<script src="../js/nano-assistant-tools.js?v=20260929a"></script>
+<script src="../js/family-card-store.js?v=20261006a"></script>
+<script src="../js/nano-pay.js?v=20261018b"></script>
+    <script src="../js/mem-link.js?v=20261006a"></script>
+    <script src="../js/nano-holiday.js?v=20261012a"></script>
+<script src="../js/builtin-worldbook.js?v=20261013a"></script>
+<script src="../js/nano-mcp-runtime.js?v=20261016c"></script>
+<script src="../js/nano-mcp-chat.js?v=20261016c"></script>
+<script src="../js/chat-core.js?v=20261018v"></script>
+    <script src="../js/roleplay-prompt.js?v=20261013c"></script>
+<script src="../js/chat-transfer.js?v=20261006a"></script>
+<script src="../js/chat-gift.js"></script>
+    <script src="../js/chat-image.js?v=20261013a"></script>
+    <script src="../js/chat-more.js?v=20261018b"></script>
+<script src="../js/chat-place.js"></script>
+<script src="../js/chat-voice.js"></script>
+    <script src="../js/nano-export.js?v=20261015a"></script>
+    <script src="../js/heart.js?v=20261017a"></script>
+
+
+<!-- ===== 心声弹窗 ===== -->
+<div class="nano-voice-layer" id="nanoVoiceLayer">
+  <div class="nano-voice-modal" id="nanoVoiceModal">
+
+    <!-- DIY 装饰层 · 顶部（可放文字 / <img> 贴图，默认空） -->
+    <div class="iv-deco iv-deco-top" id="ivDecoTop"></div>
+
+    <!-- 头部 -->
+    <div class="iv-header">
+      <div class="iv-sender">
+        <div class="iv-avatar">
+          <img id="ivAvatar" alt="" hidden>
+          <span class="iv-avatar-fallback" id="ivAvatarFallback">C</span>
+        </div>
+        <div class="iv-sender-info">
+          <div class="iv-caption">发送人</div>
+          <div class="iv-name" id="ivSender">Char</div>
+        </div>
+        <div class="iv-unread"></div>
+      </div>
+      <div class="iv-meta">
+        <div class="iv-meta-key">收件人</div>
+        <div class="iv-meta-value user-name" id="ivRecipient">User</div>
+        <div class="iv-meta-key">时间</div>
+        <div class="iv-meta-value" id="ivTime">刚刚</div>
+      </div>
+    </div>
+
+    <!-- 主题（此刻 · 印象） -->
+    <div class="iv-subject">
+      <div class="iv-subject-label">此刻 · 印象</div>
+      <div class="iv-subject-text" id="ivSubject">他/她坐在窗边，白衬衫微敞，指尖轻叩桌面</div>
+    </div>
+
+    <!-- 内容（心声） -->
+    <div class="iv-content">
+      <div class="iv-content-label">心声 · 手记</div>
+      <div class="iv-thought" id="ivThought">我藏在心底所有温柔，尽数予你。</div>
+      <!-- DIY 附加文字（可留空） -->
+      <div class="iv-extra-text" id="ivExtraText"></div>
+    </div>
+
+    <!-- 附加板块（评论区等，AI 生成；默认隐藏，有内容才显示） -->
+    <div class="iv-sections" id="ivSections"></div>
+
+    <!-- DIY 装饰层 · 底部 -->
+    <div class="iv-deco iv-deco-bottom" id="ivDecoBottom"></div>
+
+    <!-- 美化面板 -->
+    <div class="iv-customize" id="ivCustomize">
+      <div class="iv-custom-head">
+        <div class="iv-custom-title">心声 · 样式</div>
+        <div class="iv-head-actions">
+          <button class="iv-icon-btn-sm" id="ivFullPage" aria-label="整页美化" title="打开整页美化（带实时预览）">
+            <svg viewBox="0 0 24 24">
+              <polyline points="15 3 21 3 21 9" />
+              <polyline points="9 21 3 21 3 15" />
+              <line x1="21" y1="3" x2="14" y2="10" />
+              <line x1="3" y1="21" x2="10" y2="14" />
+            </svg>
+          </button>
+          <button class="iv-icon-btn-sm" id="ivCustomizeClose" aria-label="关闭美化">
+            <svg viewBox="0 0 24 24">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="iv-custom-scroll">
+        <!-- 预设切换放在 CSS 输入框上方 -->
+        <div class="iv-template-manager">
+          <span class="iv-setting-title">模板 / 预设</span>
+          <div class="iv-template-row-top">
+            <select id="ivTemplateSelect">
+              <option value="default">默认模板（完整）</option>
+            </select>
+            <button class="iv-template-btn danger" id="ivDeleteTemplate">删除</button>
+          </div>
+          <div class="iv-template-row-bottom">
+            <input type="text" id="ivTemplateName" placeholder="模板名称" maxlength="20">
+            <button class="iv-template-btn primary" id="ivSaveTemplate">保存</button>
+            <button class="iv-template-btn" id="ivRenameTemplate">修改</button>
+          </div>
+        </div>
+
+        <div class="iv-setting">
+          <div class="iv-setting-header">
+            <span class="iv-setting-title">CSS 覆盖</span>
+            <span class="iv-css-actions">
+            <button class="iv-import-btn" id="ivExportBtn" aria-label="导出当前预设" title="导出当前预设">
+              <svg viewBox="0 0 24 24">
+                <circle cx="18" cy="5" r="3" />
+                <circle cx="6" cy="12" r="3" />
+                <circle cx="18" cy="19" r="3" />
+                <line x1="8.6" y1="13.5" x2="15.4" y2="17.5" />
+                <line x1="15.4" y1="6.5" x2="8.6" y2="10.5" />
+              </svg>
+            </button>
+            <button class="iv-import-btn" id="ivImportBtn" aria-label="导入样式文件" title="导入样式文件">
+              <svg viewBox="0 0 24 24">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="17 8 12 3 7 8" />
+                <line x1="12" y1="3" x2="12" y2="15" />
+              </svg>
+            </button>
+            </span>
+          </div>
+          <input type="file" id="ivFileInput" accept=".json,.txt" style="display: none;">
+          <textarea class="iv-css" id="ivCss" spellcheck="false"></textarea>
+        </div>
+
+        <div class="iv-setting">
+          <div class="iv-setting-header">
+            <span class="iv-setting-title">头像框</span>
+          </div>
+          <div class="iv-quick iv-quick-frame">
+            <button class="iv-template-btn primary iv-block-btn" type="button" onclick="window.NanoAvatarFrame&&NanoAvatarFrame.openUI('heart')">设置头像框 / 预设</button>
+          </div>
+        </div>
+
+        <div class="iv-setting">
+          <div class="iv-setting-header">
+            <span class="iv-setting-title">内置提示词</span>
+          </div>
+          <div class="iv-quick">
+            <textarea id="ivBuiltinPrompt" placeholder="AI 生成心声时必读，可留空。例如：必须提及今天的约定"></textarea>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="iv-custom-foot">
+        <button class="iv-btn-action iv-btn-copy" id="ivCopyTemplate">复制初始模板</button>
+        <button class="iv-btn-action iv-btn-clear" id="ivClearBtn">清空</button>
+        <button class="iv-btn-action iv-btn-restore" id="ivRestore">还原</button>
+        <button class="iv-btn-action iv-btn-apply" id="ivApply">应用</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- 心声卡片外部下侧：美化 / 取消 -->
+  <div class="iv-content-actions">
+    <button class="iv-icon-btn" id="ivBeautify" aria-label="美化">
+      <svg viewBox="0 0 24 24">
+        <path d="M12 19l7-7 3 3-7 7-3-3z" />
+        <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" />
+        <path d="M2 2l7.586 7.586" />
+        <circle cx="11" cy="11" r="2" />
+      </svg>
+    </button>
+    <button class="iv-icon-btn" id="ivExit" aria-label="取消">
+      <svg viewBox="0 0 24 24">
+        <line x1="18" y1="6" x2="6" y2="18" />
+        <line x1="6" y1="6" x2="18" y2="18" />
+      </svg>
+    </button>
+  </div>
+</div>
+<style id="nanoVoiceCustomCSS"></style>
+
+<script>
+// 顶栏昵称（#chatTitle）的点击由 js/chat-core.js 绑定：打开心声弹窗，
+// 没有可展示的心声时回退为「返回聊天列表」。这里不再重复绑定，避免冲突。
+</script>
+    <script src="../js/api-float.js?v=20261013a"></script>
+<script src="../js/avatar-frame.js?v=20261010a"></script>
+<script src="../swipe-back.js"></script>
+<script>
+// iOS 键盘：收缩聊天容器，让输入栏位于键盘上方（父页面也会 postMessage 同步）
+(function () {
+  var parentKb = 0, localKb = 0, kbBaseH = 0;
+  var isAndroid = /Android/i.test(navigator.userAgent || '');
+  function apply() {
+    // 安卓部分 WebView 在键盘弹出时会把布局视口一起缩短：此时 100% 已经等于
+    // 键盘上沿，再减一次键盘高度就会出现「底栏和键盘之间一条空白」。
+    // iOS 保持原来的行为，不做改动。
+    try { if (window.visualViewport) localKb = computeLocalKb(window.visualViewport); } catch (e) {}
+    var kb = Math.max(parentKb, localKb);
+    var layoutKb = Math.max(0, Math.round(kbBaseH - (window.innerHeight || 0)));
+    var effectiveKb = isAndroid ? Math.max(0, kb - Math.min(kb, layoutKb)) : kb;
+    document.documentElement.style.setProperty('--nano-kb', kb + 'px');
+    document.documentElement.style.setProperty('--nano-kb-chat', effectiveKb + 'px');
+    document.documentElement.classList.toggle('keyboard-open', kb > 0.5);
+    document.documentElement.classList.toggle('nano-android', isAndroid);
+  }
+  // iOS 弹键盘时 window.innerHeight 会一起变小，必须用「无键盘基准高度」相减，
+  // 否则算出来是 0，输入栏就被键盘压住（安卓 innerHeight 不变所以原本正常）。
+  function computeLocalKb(vv) {
+    kbBaseH = Math.max(kbBaseH, window.innerHeight || 0, vv.height || 0);
+    return Math.max(0, Math.round(kbBaseH - vv.height - vv.offsetTop));
+  }
+  try {
+    if (window.visualViewport) {
+      var vv = window.visualViewport;
+      var upd = function () {
+        localKb = computeLocalKb(vv);
+        apply();
+      };
+      vv.addEventListener('resize', upd);
+      vv.addEventListener('scroll', upd);
+      window.addEventListener('orientationchange', function () { kbBaseH = 0; setTimeout(upd, 350); });
+    }
+  } catch (e) {}
+  window.addEventListener('message', function (e) {
+    var d = e.data;
+    if (d && d.type === 'nanoKeyboard') { parentKb = Math.max(0, Math.round(Number(d.kb) || 0)); apply(); }
+  });
+  // iOS 第二次聚焦输入框可能不再触发 resize：每次聚焦都主动查询父页面并重算
+  function isField(t) { return t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable); }
+  function requery() {
+    try { if (window.parent !== window) window.parent.postMessage({ type: 'nanoKeyboardQuery' }, '*'); } catch (err) {}
+    try { if (window.visualViewport) localKb = computeLocalKb(window.visualViewport); } catch (err) {}
+    apply();
+    // iOS：键盘弹起后把输入框滚进可视区，避免被半透明键盘/底部栏压住看不到字
+    try {
+      var ae = document.activeElement;
+      if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable) && ae.scrollIntoView) {
+        ae.scrollIntoView({ block: 'nearest' });
+      }
+    } catch (err) {}
+  }
+  document.addEventListener('focusin', function (e) {
+    if (!isField(e.target)) return;
+    [60, 160, 320, 520].forEach(function (t) { setTimeout(requery, t); });
+  });
+  document.addEventListener('focusout', function () {
+    setTimeout(requery, 80);
+    setTimeout(requery, 320);
+  });
+})();
+</script>
+<script>
+// 悬浮顶栏/底栏：实时量出栏高，写入 --chat-top-inset / --chat-bottom-inset，
+// 让消息区顶部/底部留出对应空白（气泡滑动时可从栏下方穿过）
+(function () {
+  var app = document.getElementById('app');
+  var sc = document.getElementById('messageScroll');
+  var top = document.getElementById('topbar');
+  var ms = document.getElementById('multiSelectBar');
+  var bot = document.querySelector('.bottom-bar');
+  if (!app || !sc) return;
+  var last = { th: -1, ti: -1, bi: -1 };
+  function measure() {
+    var th = top ? Math.round(top.getBoundingClientRect().height) : 0;
+    var ti = th;
+    if (ms && ms.classList.contains('active')) ti += Math.round(ms.getBoundingClientRect().height) + 6;
+    var bi = bot ? Math.round(bot.getBoundingClientRect().height) : 0;
+    if (bi === 0) bi = last.bi > 0 ? last.bi : 0;      // 弹窗打开时底栏被隐藏，沿用旧值避免内容跳动
+    if (th === last.th && ti === last.ti && bi === last.bi) return;
+    var stick = sc.scrollHeight - sc.scrollTop - sc.clientHeight < 40;   // 原本就在最底部
+    var dTop = last.ti >= 0 ? ti - last.ti : 0;
+    app.style.setProperty('--chat-topbar-h', th + 'px');
+    app.style.setProperty('--chat-top-inset', ti + 'px');
+    app.style.setProperty('--chat-bottom-inset', bi + 'px');
+    last = { th: th, ti: ti, bi: bi };
+    if (stick) sc.scrollTop = sc.scrollHeight;
+    else if (dTop && sc.scrollTop > 0) sc.scrollTop += dTop;
+  }
+  measure();
+  try {
+    var ro = new ResizeObserver(measure);
+    [top, ms, bot].forEach(function (el) { if (el) ro.observe(el); });
+  } catch (e) {}
+  try {
+    if (ms) new MutationObserver(measure).observe(ms, { attributes: true, attributeFilter: ['class'] });
+  } catch (e) {}
+  window.addEventListener('resize', measure);
+  window.addEventListener('load', measure);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(measure);
+})();
+</script>
+</body>
+</html>

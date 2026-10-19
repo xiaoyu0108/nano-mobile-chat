@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<script src="../js/nano-runtime.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>角色库</title>
+    <link rel="stylesheet" href="../css/character.css">
+    <script src="../js/appearance.js"></script>
+</head>
+<body>
+<div class="app-container" id="app">
+
+    <!-- ===== 顶栏：返回 + 标题（编辑模式下切换为取消/删除） ===== -->
+    <div class="nav-bar">
+        <div class="page-header" id="pageHeader">
+            <button class="page-back" id="backBtn" type="button" aria-label="返回" data-back>
+                <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
+            <span class="page-title">character</span>
+        </div>
+        <div class="edit-controls" id="editControls">
+            <button class="edit-btn cancel-btn" id="cancelBtn">取消</button>
+            <button class="edit-btn danger" id="deleteBtn">删除</button>
+        </div>
+    </div>
+
+    <!-- ===== 主内容 ===== -->
+    <div class="content" id="content">
+        <div class="storage-warning" id="storageWarning">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <span>存储空间不足，请删除一些角色释放空间</span>
+        </div>
+
+        <div class="card-grid" id="cardGrid"></div>
+
+        <div class="empty-state" id="emptyState">
+            <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/>
+            </svg>
+            <div class="empty-title">暂无角色</div>
+            <div class="empty-desc">点击底部 ＋ 新增或导入酒馆 PNG</div>
+        </div>
+
+        <!-- ===== 底部三个悬浮圆形按钮 ===== -->
+        <div class="bottom-actions" id="bottomActions">
+            <button class="action-btn edit-btn" id="editModeBtn" title="编辑">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                </svg>
+            </button>
+            <button class="action-btn import-btn" id="importPngBtn" title="导入酒馆PNG">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="17 8 12 3 7 8"/>
+                    <line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+            </button>
+            <button class="action-btn add-btn" id="addBtn" title="新增角色">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19"/>
+                    <line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- ===== 编辑弹窗（整页：顶栏返回 + 标题 + 保存） ===== -->
+    <div class="modal-overlay" id="editModal">
+        <div class="modal-card">
+            <div class="edit-topbar">
+                <button class="edit-topbar-back" id="editCancel" type="button" aria-label="返回">
+                    <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+                </button>
+                <span class="edit-topbar-title" id="editTitle">新增角色</span>
+                <button class="edit-topbar-save" id="editSave" type="button">保存</button>
+            </div>
+
+            <div class="edit-body">
+                <div class="avatar-center">
+                    <div class="avatar-picker" id="avatarPicker">
+                        <span id="avatarPlaceholder">+</span>
+                        <img id="avatarPreview" style="display:none;" alt="头像">
+                    </div>
+                </div>
+
+                <div class="form-group"><label>名字</label><input type="text" id="inputName" placeholder="输入名字"></div>
+                <div class="form-group"><label>性别</label><select id="inputGender"><option value="男">男</option><option value="女">女</option><option value="其他">其他</option></select></div>
+                <div class="form-group"><label>国籍</label><input type="text" id="inputNationality" placeholder="输入国籍" value="中国"></div>
+                <div class="form-group">
+                    <label>
+                        <span>设定</span>
+                        <span class="import-icon" id="importBtn">
+                            <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                            <span>导入文件</span>
+                        </span>
+                    </label>
+                    <textarea id="inputSetting" placeholder="输入角色设定..." rows="3"></textarea>
+                </div>
+                <div class="form-group"><label>绑定 User</label><select class="bind-user-select" id="inputBindUser"><option value="">未绑定</option></select></div>
+                <div class="form-group">
+                    <label>绑定世界书</label>
+                    <div class="worldbook-area">
+                        <div class="worldbook-list" id="worldbookList"></div>
+                        <div class="worldbook-add-row">
+                            <select id="worldbookSelect"><option value="">选择世界书...</option></select>
+                            <button class="btn-add-wb" id="addWorldbookBtn">添加</button>
+                        </div>
+                        <div class="worldbook-group-bind-row">
+                            <select id="worldbookGroupSelect"><option value="">选择分组...</option></select>
+                            <button class="btn-bind-group" id="bindGroupBtn">一键绑定该分组</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 更换头像弹窗（iOS 风格） ===== -->
+    <div class="modal-overlay" id="avatarModal">
+        <div class="modal-card avatar-modal-card">
+            <div class="modal-title">更换头像</div>
+            <div class="avatar-subtitle">选取照片或输入URL更换头像</div>
+            <div class="avatar-inset-card">
+                <div class="avatar-form-row">
+                    <div class="avatar-row-label">相册</div>
+                    <div class="avatar-row-content">
+                        <label class="avatar-action-link" id="avatarGalleryLabel">
+                            选择照片...
+                            <input type="file" class="file-input-hidden" id="avatarFileInput" accept="image/*">
+                        </label>
+                        <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'><rect width='28' height='28' rx='6' fill='%23E5E5EA' /><circle cx='14' cy='11' r='5' fill='%238E8E93' /><path d='M6 24c0-4.4 3.6-8 8-8s8 3.6 8 8' fill='%238E8E93' /></svg>" class="avatar-thumb" id="avatarThumbPreview" alt="预览">
+                    </div>
+                </div>
+                <div class="avatar-form-row">
+                    <div class="avatar-row-label">URL</div>
+                    <div class="avatar-row-content">
+                        <input type="text" class="avatar-url-input" id="avatarUrlInput" placeholder="输入图片链接...">
+                    </div>
+                </div>
+                <div class="avatar-form-row">
+                    <div class="avatar-row-label">还原</div>
+                    <div class="avatar-row-content">
+                        <button class="avatar-reset-btn" id="avatarResetBtn" title="恢复默认头像">
+                            <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="avatar-modal-footer">
+                <button class="avatar-footer-btn cancel" id="avatarCancelBtn" data-close>取消</button>
+                <button class="avatar-footer-btn confirm" id="avatarConfirmBtn">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 提示弹窗 ===== -->
+    <div class="modal-overlay" id="infoModal">
+        <div class="modal-card ios-alert-card">
+            <div class="ios-alert-title" id="infoTitle">提示</div>
+            <div class="ios-alert-message" id="infoBody">内容</div>
+            <div class="ios-alert-footer">
+                <button class="ios-alert-btn confirm" id="infoOk" data-close>知道了</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== iOS 风格删除确认弹窗 ===== -->
+    <div class="modal-overlay" id="deleteConfirmModal">
+        <div class="modal-card ios-alert-card">
+            <div class="ios-alert-title">确认删除</div>
+            <div class="ios-alert-message" id="deleteConfirmMsg">确定要删除选中的角色吗？</div>
+            <div class="ios-alert-footer">
+                <button class="ios-alert-btn cancel" id="deleteConfirmCancel" data-close>取消</button>
+                <button class="ios-alert-btn destructive" id="deleteConfirmOk">删除</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 隐藏 input -->
+    <input type="file" class="file-input-hidden" id="fileInput" accept=".txt,.json,.doc,.docx">
+    <input type="file" class="file-input-hidden" id="importPngFileInput" accept=".png,.json,image/png,application/json">
+</div>
+
+<script src="../js/character.js?v=20261017a"></script>
+
+<script src="../js/api-float.js"></script>
+<script src="../swipe-back.js"></script>
+</body>
+</html>

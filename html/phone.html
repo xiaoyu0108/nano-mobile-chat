@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<script src="../js/nano-runtime.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>查手机</title>
+<link rel="stylesheet" href="../css/phone.css?v=20261018a">
+<script src="../js/appearance.js"></script>
+</head>
+
+<body>
+<div class="phone">
+  <div class="wallpaper" id="wallpaper"></div>
+
+  <!-- ===== Char 选择页 ===== -->
+  <section class="phone-select-page" id="phoneSelectPage">
+    <header class="check-topbar">
+      <button class="check-nav" id="checkBack" aria-label="返回" data-back>
+        <svg viewBox="0 0 24 24"><path d="M14.5 5 7.5 12l7 7"/></svg>
+      </button>
+      <div class="check-topbar-title">查手机</div>
+      <div></div>
+    </header>
+    <div class="check-intro">
+      <div class="check-intro-title">选择 Char</div>
+      <div class="check-intro-sub">选择一个角色查看他的手机</div>
+    </div>
+    <div class="check-char-list" id="checkCharList"></div>
+  </section>
+
+  <!-- ===== 手机内页顶栏 ===== -->
+  <div class="check-inner-topbar" id="checkInnerTopbar" style="display:none">
+    <button class="check-nav" id="checkInnerBack" aria-label="返回" data-back>
+      <svg viewBox="0 0 24 24"><path d="M14.5 5 7.5 12l7 7"/></svg>
+    </button>
+    <div class="check-inner-title" id="checkInnerTitle">手机</div>
+    <button class="check-refresh" id="checkRefresh" aria-label="刷新">
+      <svg viewBox="0 0 24 24">
+        <path d="M20 11a8 8 0 0 0-14.7-4.2L4 9"/>
+        <path d="M4 5v4h4"/>
+        <path d="M4 13a8 8 0 0 0 14.7 4.2L20 15"/>
+        <path d="M20 19v-4h-4"/>
+      </svg>
+    </button>
+  </div>
+
+  <!-- ===== 主屏 ===== -->
+  <main class="home" id="phoneHome">
+    <section class="clock" id="clockWidget">
+      <div class="clock-time" id="clockTime">09:41</div>
+      <div class="clock-date" id="clockDate">星期三 · 8月26日</div>
+      <div class="home-dots" id="homeDots"><span class="active"></span><span></span></div>
+    </section>
+
+    <div class="home-pages" id="homePages">
+    <section class="layout" id="appGrid">
+
+      <!-- 2×2 对话气泡小组件 -->
+      <div class="widget-large pos-chat-widget" data-app="chat_widget">
+        <div class="chat-widget-inner">
+          <div class="chat-message left">
+            <div class="chat-bubble" contenteditable="true" data-chat-key="poem1">愿君多采撷</div>
+            <div class="chat-read">已读</div>
+          </div>
+          <div class="chat-message right">
+            <div class="chat-read">已读</div>
+            <div class="chat-bubble" contenteditable="true" data-chat-key="poem2">此物最相思</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2×2 拍立得 -->
+      <button class="widget-large pos-widget-polaroid" data-app="widget_polaroid">
+        <div class="polaroid-mini">
+          <div class="polaroid-tape polaroid-tape-top"></div>
+          <div class="polaroid-tape polaroid-tape-bottom"></div>
+          <div class="polaroid-photo" id="polaroidPhotoBg">
+            <span class="polaroid-empty">CLICK TO ADD PHOTO</span>
+          </div>
+          <div class="polaroid-title" contenteditable="true" data-key="title">Everyday moments.</div>
+          <div class="polaroid-caption" contenteditable="true" data-key="caption">
+            collect the moments<br>you never want to forget
+          </div>
+          <div class="polaroid-date" contenteditable="true" data-key="date">Nov. 07</div>
+        </div>
+      </button>
+
+      <!-- 桌面 8 个 App -->
+      <button class="app pos-game" data-app="game">
+        <span class="icon-box"><span class="icon"><svg viewBox="0 0 24 24"><path d="M21.58 16.09l-1.09-7.66C20.21 6.46 18.52 5 16.53 5H7.47C5.48 5 3.79 6.46 3.51 8.43l-1.09 7.66C2.2 17.63 3.39 19 4.94 19c.68 0 1.32-.27 1.8-.75L9 16h6l2.25 2.25c.48.48 1.13.75 1.8.75 1.56 0 2.75-1.37 2.53-2.91zM11 11H9v2H8v-2H6v-1h2V8h1v2h2v1zm4-1c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm2 3c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1z"/></svg></span></span>
+        <span class="app-name">游戏</span>
+      </button>
+
+      <button class="app pos-mail" data-app="mail">
+        <span class="icon-box"><span class="icon"><svg viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg></span></span>
+        <span class="app-name">邮箱</span>
+      </button>
+
+      <button class="app pos-wall" data-app="settings">
+        <span class="icon-box"><span class="icon"><svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg></span></span>
+        <span class="app-name">设置</span>
+      </button>
+
+      <button class="app pos-video" data-app="video">
+        <span class="icon-box"><span class="icon"><svg viewBox="0 0 24 24"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg></span></span>
+        <span class="app-name">视频</span>
+      </button>
+
+      <button class="app pos-diary" data-app="diary">
+        <span class="icon-box"><span class="icon"><svg viewBox="0 0 24 24"><path d="M21 5c-1.11-.35-2.33-.5-3.5-.5-1.95 0-4.05.4-5.5 1.5-1.45-1.1-3.55-1.5-5.5-1.5S2.45 4.9 1 6v14.65c0 .25.25.5.5.5.1 0 .15-.05.25-.05C3.1 20.45 5.05 20 6.5 20c1.95 0 4.05.4 5.5 1.5 1.35-.85 3.8-1.5 5.5-1.5 1.65 0 3.35.3 4.75 1.05.1.05.15.05.25.05.25 0 .5-.25.5-.5V6c-.6-.45-1.25-.75-2-1z"/></svg></span></span>
+        <span class="app-name">日记</span>
+      </button>
+
+      <button class="app pos-private" data-app="private">
+        <span class="icon-box"><span class="icon"><svg viewBox="0 0 24 24"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg></span></span>
+        <span class="app-name">私密</span>
+      </button>
+
+      <button class="app pos-health" data-app="health">
+        <span class="icon-box"><span class="icon"><svg viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg></span></span>
+        <span class="app-name">健康</span>
+      </button>
+
+      <button class="app pos-chat-app" data-app="chat">
+        <span class="icon-box"><span class="icon"><svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM7 9h10v2H7V9zm6 5H7v-2h6v2zm4-6H7V6h10v2z"/></svg></span></span>
+        <span class="app-name">聊天</span>
+      </button>
+
+    </section>
+
+    <!-- ===== 第二屏：扩展 App ===== -->
+    <section class="layout layout-2" id="appGrid2">
+      <button class="app pos-doubao" data-app="doubao">
+        <span class="icon-box"><span class="icon"><svg viewBox="0 0 24 24"><path fill-rule="evenodd" d="M20 9V7c0-1.1-.9-2-2-2h-3c0-1.66-1.34-3-3-3S9 3.34 9 5H5C3.9 5 3 5.9 3 7v2c-1.66 0-3 1.34-3 3s1.34 3 3 3v4c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2v-4c1.66 0 3-1.34 3-3s-1.34-3-3-3ZM7.5 11.5C7.5 10.67 8.17 10 9 10s1.5.67 1.5 1.5S9.83 13 9 13s-1.5-.67-1.5-1.5Zm9 0c0 .83-.67 1.5-1.5 1.5s-1.5-.67-1.5-1.5S14.17 10 15 10s1.5.67 1.5 1.5ZM15.5 17h-7c-.55 0-1-.45-1-1v-1h9v1c0 .55-.45 1-1 1Z"/></svg></span></span>
+        <span class="app-name">豆包</span>
+      </button>
+
+      <button class="app pos-taobao" data-app="taobao">
+        <span class="icon-box"><span class="icon"><svg viewBox="0 0 24 24"><path d="M6 8h12l1 12.4a.6.6 0 0 1-.6.6H5.6a.6.6 0 0 1-.6-.6L6 8Z"/><path d="M9 8V6.5a3 3 0 0 1 6 0V8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span></span>
+        <span class="app-name">淘宝</span>
+      </button>
+
+      <button class="app pos-mapcal" data-app="mapcal">
+        <span class="icon-box"><span class="icon"><svg viewBox="0 0 24 24"><path fill-rule="evenodd" d="M12 2.5A6.5 6.5 0 0 0 5.5 9c0 4.8 6.5 12.5 6.5 12.5S18.5 13.8 18.5 9A6.5 6.5 0 0 0 12 2.5Zm0 9.5a2.6 2.6 0 1 1 0-5.2 2.6 2.6 0 0 1 0 5.2Z"/></svg></span></span>
+        <span class="app-name">地图日程</span>
+      </button>
+
+      <button class="app pos-store" data-app="store">
+        <span class="icon-box"><span class="icon"><svg viewBox="0 0 24 24"><path d="M6 8h12l1 12.4a.6.6 0 0 1-.6.6H5.6a.6.6 0 0 1-.6-.6L6 8Z"/><path d="M9 8V6.5a3 3 0 0 1 6 0V8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span></span>
+        <span class="app-name">商城</span>
+      </button>
+    </section>
+    </div>
+
+    <!-- Dock -->
+    <div class="dock-wrap">
+      <nav class="dock" id="dockNav">
+        <button class="dock-slot" data-app="album" aria-label="相册">
+          <span class="icon-box"><span class="icon"><svg viewBox="0 0 24 24"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg></span></span>
+          <span class="app-name">相册</span>
+        </button>
+        <button class="dock-slot" data-app="memo" aria-label="备忘录">
+          <span class="icon-box"><span class="icon"><svg viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg></span></span>
+          <span class="app-name">备忘录</span>
+        </button>
+        <button class="dock-slot" data-app="browser" aria-label="浏览器">
+          <span class="icon-box"><span class="icon"><svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg></span></span>
+          <span class="app-name">浏览器</span>
+        </button>
+      </nav>
+    </div>
+  </main>
+
+  <input id="wallpaperInput" type="file" accept="image/*">
+  <div class="move-hint" id="moveHint">长按后拖动应用</div>
+
+  <!-- ===== 刷新面板 ===== -->
+  <div class="check-refresh-sheet hidden" id="checkRefreshSheet">
+    <div class="check-sheet">
+      <div class="check-sheet-head">
+        <div class="check-sheet-title">刷新手机内容</div>
+        <button class="check-sheet-close" id="checkRefreshClose" data-close>取消</button>
+      </div>
+      <button class="check-all" id="checkSelectAll">取消全部选择</button>
+      <div id="checkAppList"></div>
+      <div class="check-api-status" id="checkApiStatus">正在读取主 API 配置…</div>
+      <button class="check-run" id="checkRunRefresh">开始刷新</button>
+    </div>
+  </div>
+
+  <!-- App 宿主容器 -->
+  <div id="appHost"></div>
+
+  <!-- 非阻塞生成进度 -->
+  <div class="gen-toast hidden" id="genToast">
+    <span class="gen-spinner"></span>
+    <span class="gen-toast-text" id="genToastText">正在生成手机内容…</span>
+  </div>
+
+  <!-- 生成失败弹窗（全局，任何页面都会弹出） -->
+  <div class="gen-fail hidden" id="genFailSheet">
+    <div class="gen-fail-box">
+      <button class="gen-fail-x" id="genFailClose" aria-label="关闭" data-close>✕</button>
+      <div class="gen-fail-icon">!</div>
+      <div class="gen-fail-title">生成失败</div>
+      <div class="gen-fail-msg" id="genFailMsg"></div>
+      <div class="gen-fail-actions">
+        <button class="gen-fail-ghost" id="genFailLog">查看日志</button>
+        <button class="gen-fail-retry" id="genFailRetry">重新生成</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 修改备注 -->
+  <div class="remark-sheet hidden" id="remarkSheet">
+    <div class="remark-box">
+      <div class="remark-title">给 TA 的备注</div>
+      <input class="remark-input" id="remarkInput" maxlength="12" placeholder="输入备注名">
+      <div class="remark-actions">
+        <button class="remark-btn ghost" id="remarkCancel" data-close>取消</button>
+        <button class="remark-btn primary" id="remarkSave">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 生成日志 -->
+  <div class="check-log-sheet hidden" id="checkLogSheet">
+    <div class="check-log-box">
+      <div class="check-log-head">
+        <div class="check-log-title">生成日志</div>
+        <button class="check-log-close" id="checkLogClose" data-close>关闭</button>
+      </div>
+      <div class="check-log-body" id="checkLogBody"></div>
+    </div>
+  </div>
+</div>
+
+<script src="../js/mem-link.js?v=20261006a"></script>
+<script src="../js/phone.js?v=20261018e"></script>
+<script src="../js/api-float.js"></script>
+<script src="../js/refresh-notify.js"></script>
+<script src="../swipe-back.js"></script>
+</body>
+</html>

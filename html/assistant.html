@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<script src="../js/nano-runtime.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>纳米助手</title>
+  <script src="../js/appearance.js"></script>
+  <style>
+    html, body { margin: 0; height: 100%; font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", Arial, sans-serif; background: #f5f5f7; color: #1c1c1e; overflow: hidden; scrollbar-width: none; }
+    ::-webkit-scrollbar { width: 0; height: 0; display: none; }
+    .wrap { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 32px; text-align: center; gap: 14px; }
+    .logo { width: 72px; height: 72px; border-radius: 20px; background: linear-gradient(135deg,#ff9ecb,#ff4d94); display: flex; align-items: center; justify-content: center; font-size: 30px; }
+    .title { font-size: 18px; font-weight: 650; }
+    .desc { font-size: 13.5px; color: #6c6c70; line-height: 1.6; max-width: 300px; }
+    .btn { margin-top: 6px; border: 0; background: #ff4d94; color: #fff; border-radius: 12px; padding: 11px 20px; font-size: 15px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="logo">🤖</div>
+    <div class="title">纳米已搬进聊天</div>
+    <div class="desc">纳米现在是聊天里的普通角色。<br>请到「更多 → 纳米助手」打开开关，<br>然后回到聊天列表点「纳米」。</div>
+    <button class="btn" id="go">去「更多」开启</button>
+  </div>
+  <script>
+    document.getElementById('go').addEventListener('click', function () {
+      try {
+        if (window.parent && window.parent !== window) {
+          window.parent.postMessage({ type: 'openFullscreen', url: 'more.html', title: '更多', source: 'more', showBack: false }, '*');
+        } else {
+          location.href = 'more.html';
+        }
+      } catch (e) { location.href = 'more.html'; }
+    });
+  </script>
+</body>
+</html>

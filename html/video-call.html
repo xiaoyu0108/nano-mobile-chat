@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<script src="../js/nano-runtime.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>视频通话</title>
+    <link rel="stylesheet" href="../css/video-call.css?v=20261017a">
+    <link rel="preconnect" href="https://cdn.jsdelivr.net">
+    <script src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
+    <script src="../js/appearance.js"></script>
+</head>
+<body class="vc-body">
+
+    <!-- 接通中：居中头像 -->
+    <div class="vc-connecting" id="vcConnecting">
+        <div class="vc-conn-avatar" id="connAvatar">
+            <img id="connAvatarImg" alt="" style="display:none;">
+            <svg id="connAvatarSvg" viewBox="0 0 24 24">
+                <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+            </svg>
+        </div>
+        <div class="vc-conn-name" id="connName">AI 助手</div>
+        <div class="vc-conn-status" id="connStatus">正在接通中...</div>
+    </div>
+
+    <!-- 舞台：远端（角色）为主画面，本地摄像头为右上角小窗 -->
+    <div class="vc-stage" id="vcStage">
+        <div class="vc-remote" id="remoteBox">
+            <img class="vc-remote-avatar" id="remoteAvatar" alt="" style="display:none;">
+            <svg class="vc-remote-svg" id="remoteAvatarSvg" viewBox="0 0 24 24">
+                <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+            </svg>
+        </div>
+
+        <!-- 本地小窗（点击放大/还原 = 与远端互换） -->
+        <div class="vc-local-box" id="localBox" title="点击放大/还原">
+            <video class="vc-local-video" id="localVideo" autoplay playsinline muted></video>
+            <div class="vc-local-off" id="localOff" style="display:none;">
+                <img id="localAvatarImg" alt="" style="display:none;">
+                <svg id="localAvatarSvg" viewBox="0 0 24 24">
+                    <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                </svg>
+            </div>
+        </div>
+
+        <!-- 状态 & 计时 -->
+        <div class="vc-status" id="callStatus">连接中...</div>
+        <div class="vc-name" id="contactName">AI 助手</div>
+
+    </div>
+
+    <!-- 缩小（悬浮窗） -->
+    <div class="float-minimize" id="minimizeBtn" title="缩小">
+        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round">
+            <path d="M5 15l4-4-4-4"/>
+            <path d="M19 7l-4 4 4 4"/>
+        </svg>
+    </div>
+
+    <!-- 摄像头开关 -->
+    <button class="vc-top-btn" id="cameraBtn" title="开关摄像头">
+        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M23 7l-7 5 7 5V7z"/>
+            <rect x="1" y="5" width="15" height="14" rx="2"/>
+        </svg>
+    </button>
+
+    <!-- 前后摄像头切换（仅摄像头开启时可见） -->
+    <button class="vc-top-btn vc-top-btn-2" id="flipBtn" title="切换摄像头">
+        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
+            <path d="M21 3v5h-5"/>
+            <path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
+            <path d="M3 21v-5h5"/>
+        </svg>
+    </button>
+
+    <!-- 更换背景 -->
+    <button class="vc-top-btn vc-top-btn-3" id="bgBtn" title="更换背景">
+        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2"/>
+            <circle cx="8.5" cy="8.5" r="1.5"/>
+            <path d="M21 15l-5-5-5 5-3-3-5 5"/>
+        </svg>
+    </button>
+
+    <!-- 背景面板：仅头像 / 黑 / 白 / 图片 -->
+    <div class="vc-bg-panel" id="bgPanel">
+        <div class="vc-bg-title">通话背景</div>
+        <div class="vc-bg-options">
+            <div class="vc-bg-opt vc-bg-avatar active" id="bgOptAvatar" data-bg="avatar" title="头像"><span>头像</span></div>
+            <div class="vc-bg-opt" data-bg="#000000" title="黑"></div>
+            <div class="vc-bg-opt" data-bg="#ffffff" title="白"></div>
+            <label class="vc-bg-upload">
+                <svg viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+                <input type="file" id="bgUpload" accept="image/*" hidden>
+            </label>
+        </div>
+    </div>
+
+    <!-- 字幕消息区 -->
+    <div class="vc-chat" id="chatArea"></div>
+    <div class="vc-typing" id="vcTyping"><span></span><span></span><span></span></div>
+
+    <!-- 输入区 -->
+    <div class="vc-input-area">
+        <div class="input-row">
+            <button class="btn-icon" id="rerollBtn" title="重roll">
+                <svg viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 12a9 9 0 1 1-9-9m0 0v6m0-6h-6"/>
+                </svg>
+            </button>
+            <div class="input-wrapper">
+                <input type="text" id="messageInput" placeholder="说点什么..." autocomplete="off">
+            </div>
+            <button class="btn-icon btn-reply" id="replyBtn" title="发送">
+                <svg viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 19V5"/>
+                    <path d="m6.5 10.5 5.5-5.5 5.5 5.5"/>
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- 底部操作：免提 / 挂断 / 录音 -->
+    <div class="hangup-wrapper" id="hangupWrapper">
+        <div class="call-actions">
+            <button class="call-btn call-btn-speaker" id="speakerBtn" title="免提" aria-label="免提">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M11 5 6 9H3v6h3l5 4V5z"/>
+                    <path d="M15.5 8.5a5 5 0 0 1 0 7"/>
+                    <path d="M18.5 5.5a9 9 0 0 1 0 13"/>
+                </svg>
+            </button>
+            <button class="btn-hangup" id="hangupBtn" title="挂断" aria-label="挂断">
+                <svg viewBox="0 0 24 24" fill="white">
+                    <path d="M20 15.5c-1.2 0-2.4-.2-3.6-.6-.3-.1-.7 0-1 .2l-2.2 2.2c-2.8-1.4-5.1-3.8-6.6-6.6l2.2-2.2c.3-.3.4-.7.2-1-.4-1.2-.6-2.4-.6-3.6 0-.6-.4-1-1-1H4c-.6 0-1 .4-1 1 0 9.4 7.6 17 17 17 .6 0 1-.4 1-1v-3.5c0-.6-.4-1-1-1z"/>
+                </svg>
+            </button>
+            <button class="call-btn call-btn-record" id="recordBtn" title="录音转文字" aria-label="录音转文字">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="9" y="3" width="6" height="11" rx="3"/>
+                    <path d="M5 11a7 7 0 0 0 14 0"/>
+                    <line x1="12" y1="18" x2="12" y2="21"/>
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <div class="vc-toast" id="vcToast"></div>
+
+<script src="../js/nano-tts.js"></script>
+<script src="../js/reroll-reason.js?v=20261018a"></script>
+<script src="../js/video-call.js?v=20261018b"></script>
+    <script src="../swipe-back.js"></script>
+</body>
+</html>

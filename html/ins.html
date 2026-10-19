@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<script src="../js/nano-runtime.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Forum</title>
+<link rel="stylesheet" href="../css/ins.css?v=20261017a">
+<script src="../js/appearance.js"></script>
+</head>
+<body>
+<div class="app" id="appRoot">
+<div class="status"></div>
+<header class="topbar" id="mainTopbar">
+  <div class="brand" id="topBrand" onclick="backToDiscover()">Forum</div>
+  <div class="top-actions" id="topActions">
+    <button onclick="openPublish()"><svg class="icon" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+    <button onclick="openForumRefreshPicker()" title="刷新帖子"><svg class="icon" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v6h-6"/></svg></button>
+    <button onclick="go('search')"><svg class="icon" viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="6.5"/><path d="m16 16 5 5"/></svg></button>
+  </div>
+</header>
+
+<main class="content" id="content">
+<section id="home" class="page active">
+<div class="stories">
+<div class="story my-story"><div class="avatar-ring"><div class="letter-avatar me" id="storyAvatar" style="width:60px;height:60px;font-size:24px">你</div></div><span>你的动态</span><i class="plus">+</i></div>
+</div>
+<div class="feed" id="feed"></div>
+</section>
+
+
+<section id="search" class="page">
+  <div class="search-page">
+    <div class="searchbox">
+      <svg class="icon" style="width:18px;height:18px;stroke:#777" viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="6.5"/><path d="m16 16 5 5"/></svg>
+      <input placeholder="搜索 tag，回车确认" id="searchInput" onkeydown="handleSearchKey(event)">
+      <button class="search-go" onclick="doSearch()">搜索</button>
+    </div>
+
+    <div class="search-section">
+      <div class="search-section-head">
+        <h4>推荐话题</h4>
+        <div class="search-tag-actions">
+          <button class="search-add-tag" id="tagManageBtn" onclick="toggleTagManage()">管理</button>
+          <button class="search-add-tag" onclick="openAddTagModal()">+ 添加</button>
+        </div>
+      </div>
+      <div class="tag-cloud" id="recommendTagCloud"></div>
+    </div>
+
+    <div class="search-section">
+      <h4>推荐用户</h4>
+      <div id="suggestUsers"></div>
+    </div>
+  </div>
+</section>
+
+<section id="tagResult" class="page">
+  <div class="tag-result-head">
+    <button class="back" onclick="go('search')" data-back><svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
+    <div class="tag-result-title" id="tagResultTitle" onclick="go('search')">#tag</div>
+    <button class="refresh-btn" onclick="refreshTagResult()" title="刷新">
+      <svg class="icon" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v6h-6"/></svg>
+    </button>
+  </div>
+  <div class="tag-result-desc" id="tagResultDesc" style="display:none"></div>
+  <div class="tag-result-list" id="tagResultList"></div>
+</section>
+
+<section id="activity" class="page"><div class="activity">
+<div class="empty-state" style="padding:40px 0;color:#8a8a8e;font-size:13px;text-align:center;">暂无动态</div>
+</div></section>
+
+<section id="profile" class="page">
+  <div class="dm-head">
+    <div class="page-title" onclick="goBack()">Profile</div>
+    <button class="profile-more" onclick="openProfileMenu()" title="更多">•••</button>
+  </div>
+  <div class="profile-head">
+    <div class="profile-main">
+      <div id="profileAvatarWrap"><div class="letter-avatar xl me" id="profileAvatarLetter" onclick="triggerAvatarUpload()">你</div></div>
+      <div class="profile-stats">
+        <div class="stat"><b id="statPosts">0</b><span>帖子</span></div>
+        <div class="stat"><b>2.4K</b><span>粉丝</span></div>
+        <div class="stat"><b>326</b><span>关注</span></div>
+      </div>
+    </div>
+    <div class="bio" id="profileBio"><b>你的昵称</b><br>分享生活、灵感和一些值得讨论的事情。</br>#design #life #forum</div>
+    <button class="edit-btn" onclick="openEditProfile()">编辑个人资料</button>
+  </div>
+  <div class="profile-tabs">
+    <button class="profile-tab active" id="tabPosts" onclick="switchProfileTab('posts')"><svg class="icon" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 9h16M9 4v16"/></svg></button>
+    <button class="profile-tab" id="tabSaved" onclick="switchProfileTab('saved')"><svg class="icon" viewBox="0 0 24 24"><path d="M6 4h12v17l-6-3.5L6 21z"/></svg></button>
+  </div>
+  <div class="profile-grid" id="profileGrid"></div>
+</section>
+
+<section id="charProfile" class="page">
+  <div class="dm-head">
+    <button class="back" onclick="charProfileBack()" data-back><svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
+    <div class="page-title" onclick="charProfileBack()">Profile</div>
+    <div></div>
+  </div>
+  <div class="profile-head">
+    <div class="profile-main">
+      <div id="charProfileAvatarWrap"></div>
+      <div class="profile-stats">
+        <div class="stat"><b id="charStatPosts">0</b><span>帖子</span></div>
+        <div class="stat"><b>—</b><span>粉丝</span></div>
+        <div class="stat"><b>—</b><span>关注</span></div>
+      </div>
+    </div>
+    <div class="bio" id="charProfileBio"></div>
+    <div class="char-profile-actions" id="charProfileActions"></div>
+  </div>
+  <div class="profile-tabs">
+    <button class="profile-tab active"><svg class="icon" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 9h16M9 4v16"/></svg></button>
+  </div>
+  <div class="profile-grid" id="charProfileGrid"></div>
+</section>
+
+<section id="dm" class="page">
+  <div class="dm-head">
+    <div class="page-title" onclick="goBack()">Messages</div>
+    <button class="refresh-btn" onclick="openDMRefreshPicker()"><svg class="icon" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v6h-6"/></svg></button>
+  </div>
+  <div class="dm-tabs">
+    <div class="dm-tab active" id="dmTabFriends" onclick="switchDmTab('friends')">好友</div>
+    <div class="dm-tab" id="dmTabStrangers" onclick="switchDmTab('strangers')">其他</div>
+  </div>
+  <div class="dm-list" id="dmList">
+    <div id="dmFriends"></div>
+    <div id="dmStrangers" style="display:none"></div>
+  </div>
+</section>
+
+<section id="detail" class="page">
+  <div class="detail-head">
+    <button class="back" onclick="detailBack()" data-back><svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
+    <div class="detail-title" onclick="detailBack()">Post</div>
+    <div class="placeholder"></div>
+  </div>
+  <div class="comments-list" id="detailContent"></div>
+  <div class="comment-input">
+    <div class="letter-avatar me" id="commentAvatarLetter">你</div>
+    <input id="commentInput" placeholder="添加评论…">
+    <button class="send" onclick="sendComment()" id="commentSendBtn">发送</button>
+  </div>
+</section>
+
+<section id="chat" class="page">
+  <div class="chat-head">
+    <button class="back" onclick="go('dm')" data-back><svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
+    <div class="chat-head-avatar-wrap"><div class="chat-head-avatar" id="chatHeadAvatar">A</div></div>
+    <div class="chat-head-info">
+      <div class="chat-head-name" id="chatHeadName">Username</div>
+      <div class="chat-head-handle" id="chatHeadHandle">@username</div>
+    </div>
+    <div class="chat-head-actions">
+      <button onclick="showToast('语音通话')"><svg class="icon" viewBox="0 0 24 24"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 2 .7 2.9a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.2-1.2a2 2 0 0 1 2.1-.5c.9.3 1.9.6 2.9.7a2 2 0 0 1 1.7 2z"/></svg></button>
+      <button onclick="showToast('视频通话')"><svg class="icon" viewBox="0 0 24 24"><path d="m23 7-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></button>
+    </div>
+  </div>
+  <div class="chat-body" id="chatBody"></div>
+  <div class="chat-input-bar" id="chatInputBar">
+    <button class="mini-btn" onclick="rerollLastReply()" title="重roll这条回复"><svg class="icon" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v6h-6"/></svg></button>
+    <input id="chatInput" placeholder="message" oninput="updateChatBtn()">
+    <button class="mini-btn" onclick="showToast('语音')" title="语音"><svg class="icon" viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/></svg></button>
+    <button class="mini-btn" onclick="showToast('图片')" title="图片"><svg class="icon" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8" cy="9" r="1.5"/><path d="m4 17 5-5 3 3 2-2 6 6"/></svg></button>
+    <button class="mini-btn" onclick="openInsEmojiPanel()" title="表情包"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg></button>
+    <button class="send-btn" id="chatSendBtn" onclick="sendChatMessage()">回复</button>
+  </div>
+</section>
+
+<section id="publish" class="page">
+  <div class="publish-head"><div class="create-title" onclick="goBack()">Create</div></div>
+  <div class="publish-tabs">
+    <div class="publish-tab active" id="tabImagePost" onclick="switchPublishTab('image')">
+      <svg class="icon" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8" cy="9" r="1.5"/><path d="m4 17 5-5 3 3 2-2 6 6"/></svg>
+      图片 Post
+    </div>
+    <div class="publish-tab" id="tabTextPost" onclick="switchPublishTab('text')">
+      <svg class="icon" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+      文字 Post
+    </div>
+  </div>
+  <div class="publish-scroll">
+    <div class="publish">
+      <div class="publish-pane active" id="paneImage">
+        <div class="media-pick" id="mediaPick" onclick="document.getElementById('mediaInput').click()">
+          <svg class="icon" style="width:28px;height:28px" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8" cy="9" r="1.5"/><path d="m4 17 5-5 3 3 2-2 6 6"/></svg>
+          <span>选择图片</span>
+        </div>
+        <input id="mediaInput" type="file" accept="image/*" hidden onchange="previewImage(event)">
+        <img id="preview" class="publish-preview">
+        <button class="text-image-btn" onclick="useTextImagePost()">用标题/正文生成文字图</button>
+        <div class="field"><label>标题</label><input id="postTitle" placeholder="给帖子一个标题"></div>
+        <div class="field"><label>正文</label><textarea id="postText" placeholder="分享你的想法……"></textarea></div>
+        <div class="field">
+          <label>标签</label>
+          <div class="tag-input-wrap" id="tagWrapImage"><input id="tagInputImage" class="tag-input" placeholder="输入后按回车添加" onkeydown="handleTagKey(event,'image')"></div>
+          <div class="tag-hint">按回车添加标签，退格删除</div>
+        </div>
+        <button class="publish-btn" onclick="publishPost('image')">发布</button>
+      </div>
+      <div class="publish-pane" id="paneText">
+        <input id="textTitle" class="text-title-input" placeholder="标题" maxlength="60">
+        <textarea id="textBody" class="text-body-input" placeholder="写下你的想法……"></textarea>
+        <div class="text-divider"></div>
+        <div class="field" style="margin-top:6px">
+          <label>标签</label>
+          <div class="tag-input-wrap" id="tagWrapText"><input id="tagInputText" class="tag-input" placeholder="输入后按回车添加" onkeydown="handleTagKey(event,'text')"></div>
+          <div class="tag-hint">按回车添加标签，退格删除</div>
+        </div>
+        <button class="publish-btn" onclick="publishPost('text')">发布</button>
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+
+<nav class="bottom" id="bottomNav">
+<button class="nav-item active" onclick="go('home',this)"><svg class="icon nav-icon" viewBox="0 0 24 24"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg></button>
+<button class="nav-item" onclick="go('search',this)"><svg class="icon nav-icon" viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="6.5"/><path d="m16 16 5 5"/></svg></button>
+<button class="nav-item" onclick="openPublish()"><span class="compose"><svg class="icon" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="M12 8v8M8 12h8"/></svg></span></button>
+<button class="nav-item" onclick="go('dm',this)"><svg class="icon nav-icon" viewBox="0 0 24 24"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg></button>
+<button class="nav-item" onclick="go('profile',this)"><div class="nav-avatar letter-avatar me" id="navAvatarLetter" style="width:25px;height:25px;font-size:12px">你</div></button>
+</nav>
+
+<!-- 编辑资料弹窗 -->
+<div class="modal" id="editModal">
+  <div class="modal-card">
+    <div class="modal-title">编辑个人资料</div>
+    <div class="avatar-picker">
+      <div class="letter-avatar xl me" id="editAvatarPreview" onclick="triggerAvatarUpload()">
+        你
+        <span class="cam"><svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></span>
+      </div>
+      <div style="flex:1">
+        <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">头像颜色</div>
+        <div class="avatar-colors" id="avatarColors"></div>
+      </div>
+    </div>
+    <div class="modal-field"><label>昵称</label><input id="editName" placeholder="输入昵称" maxlength="20"></div>
+    <div class="modal-field"><label>个性签名</label><textarea id="editBio" placeholder="写一句短短的签名…" maxlength="40"></textarea></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeEditProfile()" data-close>取消</button>
+      <button class="btn-confirm" onclick="saveEditProfile()">保存</button>
+    </div>
+  </div>
+</div>
+
+<input id="avatarUploadInput" type="file" accept="image/*" hidden onchange="onAvatarPicked(event)">
+
+<!-- 帖子操作弹窗（美化） -->
+<div class="modal" id="menuModal" onclick="closeModal('menuModal')">
+  <div class="action-sheet" onclick="event.stopPropagation()">
+    <div class="handle"></div>
+    <button class="action-btn" onclick="sharePost()">
+      <span class="ic"><svg viewBox="0 0 24 24"><path d="m21 3-7.2 18-3.5-7.3L3 10.2z"/><path d="M21 3 10.3 13.7"/></svg></span>
+      分享给好友
+    </button>
+    <button class="action-btn danger" onclick="deletePost()">
+      <span class="ic red"><svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg></span>
+      删除帖子
+    </button>
+    <button class="action-btn cancel" onclick="closeModal('menuModal')" data-close>取消</button>
+  </div>
+</div>
+
+<!-- 分享联系人弹窗-->
+<div class="modal" id="shareModal" onclick="closeModal('shareModal')">
+  <div class="share-sheet" onclick="event.stopPropagation()">
+    <div class="handle"></div>
+    <div class="share-title">分享到私信</div>
+    <div class="share-list" id="shareList"></div>
+  </div>
+</div>
+
+<!-- 添加推荐话题弹窗（美化版）-->
+<div class="modal" id="addTagModal" onclick="closeModal('addTagModal')">
+  <div class="modal-card" onclick="event.stopPropagation()">
+    <div class="modal-title">添加推荐话题</div>
+    <div class="modal-field">
+      <label>话题名称</label>
+      <input id="addTagInput" placeholder="例如：设计灵感（无需输入 #）" maxlength="20">
+    </div>
+    <div class="modal-field">
+      <label>话题描述（可选）</label>
+      <textarea id="addTagDesc" placeholder="不填则随机生成；填了会按描述生成该话题下的帖子"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('addTagModal')" data-close>取消</button>
+      <button class="btn-confirm" onclick="confirmAddTag()">添加</button>
+    </div>
+  </div>
+</div>
+
+<!-- 刷新Forum：选择要生成帖子的角色 -->
+<div class="modal" id="forumRefreshModal" onclick="closeModal('forumRefreshModal')">
+  <div class="modal-card" onclick="event.stopPropagation()">
+    <div class="modal-title">选择要生成帖子的角色</div>
+    <div class="refresh-char-hint">可多选。会生成所选角色的帖子，再加上 3 位陌生网友的帖子，并补充他们的朋友（NPC）与评论互动</div>
+    <div class="refresh-char-list" id="forumRefreshCharList"></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('forumRefreshModal')" data-close>取消</button>
+      <button class="btn-confirm" onclick="confirmForumRefresh()">开始生成</button>
+    </div>
+  </div>
+</div>
+
+<!-- 我的主页 · 更多设置（生图 / 内容）-->
+<div class="modal" id="profileMenuModal" onclick="closeModal('profileMenuModal')">
+  <div class="pm-sheet" onclick="event.stopPropagation()">
+    <div class="pm-head">
+      <div class="pm-head-title">更多设置</div>
+      <button class="pm-head-close" onclick="closeModal('profileMenuModal')" data-close><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <div class="pm-scroll">
+      <div class="pm-section">
+        <div class="pm-section-title">AI 生图</div>
+        <label class="pm-switch-row">
+          <div class="pm-switch-text"><b>开启生图</b><span>刷新帖子时，随机为部分帖子生成真实图片</span></div>
+          <input type="checkbox" id="pmImgEnabled" class="pm-switch">
+        </label>
+        <div class="pm-sub">随机生图的角色</div>
+        <div class="pm-chars" id="pmCharList"></div>
+        <label class="pm-switch-row">
+          <div class="pm-switch-text"><b>NPC（角色身边的朋友）随机生图</b><span>概率较低，偶尔配图</span></div>
+          <input type="checkbox" id="pmNpcImg" class="pm-switch">
+        </label>
+        <label class="pm-switch-row">
+          <div class="pm-switch-text"><b>陌生人（平台网友）随机生图</b><span>和上面不是同一批人，是开放平台上不认识的网友</span></div>
+          <input type="checkbox" id="pmStrangerImg" class="pm-switch">
+        </label>
+      </div>
+      <div class="pm-section">
+        <div class="pm-section-title">内容</div>
+        <button class="pm-danger" id="pmClearBtn" onclick="clearContent()">
+          <svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+          <span id="pmClearLabel">清空内容（帖子）</span>
+        </button>
+        <div class="pm-hint">清空后首页与主页的帖子都会被移除</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 加载中（生成期间常驻，切页也不消失） -->
+<div class="ins-loading" id="insLoading">
+  <div class="ins-loading-box">
+    <div class="ins-spinner"></div>
+    <div class="ins-loading-text" id="insLoadingText">加载中…</div>
+  </div>
+</div>
+
+<!-- 错误提示弹窗 -->
+<div class="modal" id="errorModal" onclick="closeModal('errorModal')">
+  <div class="modal-card" onclick="event.stopPropagation()">
+    <div class="modal-title" id="errorTitle">出错了</div>
+    <pre class="error-detail" id="errorDetail"></pre>
+    <div class="modal-actions">
+      <button class="btn-confirm" onclick="closeModal('errorModal')" data-close>知道了</button>
+    </div>
+  </div>
+</div>
+
+<!-- 表情包面板（底部弹起）-->
+<div class="ins-emoji-overlay" id="insEmojiOverlay" onclick="closeInsEmojiPanel()">
+  <div class="ins-emoji-panel" onclick="event.stopPropagation()">
+    <div class="ins-emoji-head">
+      <span class="ins-emoji-title">表情包</span>
+      <button class="ins-emoji-close" onclick="closeInsEmojiPanel()" data-close><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <div class="ins-emoji-groups" id="insEmojiGroups"></div>
+    <div class="ins-emoji-grid" id="insEmojiGrid"></div>
+    <div class="ins-emoji-empty" id="insEmojiEmpty" style="display:none">暂无表情包，请先在「更多 → 表情包」中添加</div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+</div>
+
+<script src="../js/ins.js?v=20261018b"></script>
+<script src="../js/api-float.js"></script>
+<script src="../js/nano-notify.js?v=20261018b"></script>
+<script src="../js/reroll-reason.js?v=20261018a"></script>
+<script src="../js/cycle-store.js?v=20261018d"></script>
+<script src="../js/refresh-notify.js"></script>
+<script src="../swipe-back.js"></script>
+</body>
+</html>

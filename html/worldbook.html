@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<script src="../js/nano-runtime.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>世界书</title>
+    <link rel="stylesheet" href="../css/worldbook.css?v=20261011a">
+    <script src="../js/appearance.js"></script>
+</head>
+<body>
+
+    <div class="phone" id="app">
+
+        <!-- 主列表 -->
+        <div class="page active" id="mainPage">
+            <div class="navbar">
+                <button class="back" id="backBtn" data-back></button>
+                <span class="title">世界书</span>
+                <div class="right" id="navRight">
+                    <button id="editModeBtn">编辑</button>
+                </div>
+            </div>
+            <div class="search-bar">
+                <div class="search-wrap">
+                    <input type="text" id="searchInput" placeholder="搜索世界书">
+                </div>
+            </div>
+            <div class="content" id="contentArea">
+                <div class="item-grid" id="itemGrid"></div>
+            </div>
+            <!-- 底部悬浮按钮 -->
+            <div class="bottom-actions" id="bottomActions">
+                <button class="fab fab-left" id="importBtn">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                </button>
+                <button class="fab fab-right" id="addBtn">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                </button>
+            </div>
+            <div class="safe-bottom"></div>
+        </div>
+
+        <!-- 编辑页 -->
+        <div class="page slide-in" id="editPage">
+            <div class="navbar">
+                <button class="back" id="editBackBtn" data-back></button>
+                <span class="title" id="editTitle">世界书条目</span>
+                <div class="right">
+                    <button class="add" id="saveBtn">保存</button>
+                </div>
+            </div>
+
+            <!-- 顶部：标题 + 分组 -->
+            <div class="inner-top-form">
+                <div class="form-group">
+                    <label>标题</label>
+                    <input id="wbTitle" placeholder="输入世界书标题">
+                </div>
+                <div class="form-group">
+                    <label>选择分组</label>
+                    <select id="wbGroup">
+                        <option value="">未分组</option>
+                    </select>
+                    <div class="new-group-row" id="newGroupRow">
+                        <input id="newGroupName" placeholder="输入新分组名称">
+                        <button class="confirm" id="confirmNewGroup">确认</button>
+                        <button class="cancel" id="cancelNewGroup" data-close>取消</button>
+                    </div>
+                </div>
+
+                <!-- ⭐ 整本绑定范围（全局/线上/单人） -->
+                <div class="form-group" id="fileScopeGroup">
+                    <label>绑定范围</label>
+                    <div class="segmented segmented-3" id="fileScopeRadios">
+                        <label><input type="radio" name="fileScope" value="global" checked> 全局</label>
+                        <label><input type="radio" name="fileScope" value="online"> 线上</label>
+                        <label><input type="radio" name="fileScope" value="local"> 单人</label>
+                    </div>
+                    <div class="hint-text" id="fileScopeHint">全局：不限角色，线上与线下都会读取</div>
+                    <div id="fileBoundDisplay" style="font-size:13px;color:#007AFF;padding:8px 0 4px 0;"></div>
+                    <div class="char-bind" id="fileCharBind">
+                        <div class="online-pill-row" id="onlinePillRow">
+                            <button type="button" class="online-pill" data-target="all">全选</button>
+                            <button type="button" class="online-pill" data-target="pick">指定角色</button>
+                        </div>
+                        <div class="char-bind-list" id="fileCharBindList"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 搜索 + 新建条目 -->
+            <div class="inner-search-row">
+                <div class="inner-search-wrap">
+                    <input type="text" id="innerSearchInput" placeholder="搜索条目标题、关键词、正文">
+                </div>
+                <button class="inner-new-btn" id="innerAddBtn">+</button>
+            </div>
+
+            <!-- 条目卡片列表 -->
+            <div class="inner-content" id="innerContentArea">
+                <div id="cardContainer"></div>
+            </div>
+            <div class="safe-bottom"></div>
+        </div>
+
+    </div>
+
+    <!-- iOS弹窗 -->
+    <div class="ios-overlay" id="iosOverlay">
+        <div class="ios-alert" id="iosAlert">
+            <button class="close-btn" id="alertClose" data-close>✕</button>
+            <div class="title" id="alertTitle">标题</div>
+            <div class="sub" id="alertSub">副标题</div>
+            <input id="alertInput" placeholder="输入内容" style="display:none;">
+            <select id="alertSelect" style="display:none;"></select>
+            <div class="btn-row" id="alertBtns"></div>
+        </div>
+    </div>
+
+    <input type="file" id="device-file-input" accept=".txt,.doc,.docx,.json">
+
+    <script src="../js/builtin-worldbook.js?v=20261013a"></script>
+    <script src="../js/worldbook.js?v=20261013a"></script> 
+    
+
+<script src="../js/api-float.js"></script>
+<script src="../swipe-back.js"></script>
+</body>
+</html>

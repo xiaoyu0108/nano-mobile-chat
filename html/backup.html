@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<script src="../js/nano-runtime.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>备份与恢复</title>
+    <link rel="stylesheet" href="../css/backup.css">
+    <link rel="stylesheet" href="../css/panel-ui.css?v=20261018o">
+<script src="../js/appearance.js"></script>
+</head>
+<body class="panel-backup">
+
+    <!-- 顶栏：返回 / 备份与恢复 / 刷新 -->
+    <nav class="navbar">
+        <button class="nav-icon-btn" onclick="goBack()" aria-label="返回" data-back>
+            <svg width="12" height="21" viewBox="0 0 12 21" fill="none">
+                <path d="M10.5 1.5L2 10.5L10.5 19.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </button>
+        <div class="nav-title">备份与恢复</div>
+        <button class="nav-icon-btn" onclick="refreshPage(this)" aria-label="刷新">
+            <svg id="refresh-icon" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20 11a8 8 0 1 0-2.34 5.66"/>
+                <polyline points="20 4 20 11 13 11"/>
+            </svg>
+        </button>
+    </nav>
+
+    <main>
+
+        <!-- ================= 导出 ================= -->
+        <section class="list-group">
+            <div class="section-title">导出全站数据</div>
+
+            <button class="list-item" id="btnExportJson" onclick="openAlert('exportJson')">
+                <div class="item-left">
+                    <div class="item-icon icon-blue">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="7 10 12 15 17 10"/>
+                            <line x1="12" y1="15" x2="12" y2="3"/>
+                        </svg>
+                    </div>
+                    <span class="item-title">导出为 JSON</span>
+                </div>
+                <div class="item-right">
+                    <span class="item-sub item-text-status">全站数据</span>
+                    <span class="spinner"></span>
+                    <svg class="chevron" width="8" height="13" viewBox="0 0 8 13"><path d="M1 1.5L6.5 6.5L1 11.5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </div>
+            </button>
+
+            <button class="list-item" id="btnExportZip" onclick="openAlert('exportZip')">
+                <div class="item-left">
+                    <div class="item-icon icon-blue">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="7 10 12 15 17 10"/>
+                            <line x1="12" y1="15" x2="12" y2="3"/>
+                        </svg>
+                    </div>
+                    <span class="item-title">导出为 ZIP</span>
+                </div>
+                <div class="item-right">
+                    <span class="item-sub item-text-status">含二进制</span>
+                    <span class="spinner"></span>
+                    <svg class="chevron" width="8" height="13" viewBox="0 0 8 13"><path d="M1 1.5L6.5 6.5L1 11.5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </div>
+            </button>
+        </section>
+        <div class="section-footer">
+            导出全部数据：IndexedDB、localStorage、sessionStorage。日常备份推荐用 <b>JSON</b>（可读、最稳、不依赖网络）；<b>ZIP</b> 体积更小、含二进制，但需要 JSZip（已内置，联网时也可回退 CDN）。
+        </div>
+
+        <!-- ================= 单个角色 ================= -->
+        <section class="list-group">
+            <div class="section-title">单个角色</div>
+
+            <div class="list-item" style="cursor:default;">
+                <div class="item-left">
+                    <div class="item-icon icon-blue">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+                    </div>
+                    <span class="item-title">选择角色</span>
+                </div>
+                <div class="item-right">
+                    <select id="charSelect" class="char-select"></select>
+                </div>
+            </div>
+
+            <button class="list-item" id="btnCharExport" onclick="exportSelectedChar()">
+                <div class="item-left">
+                    <div class="item-icon icon-blue">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="7 10 12 15 17 10"/>
+                            <line x1="12" y1="15" x2="12" y2="3"/>
+                        </svg>
+                    </div>
+                    <span class="item-title">导出该角色</span>
+                </div>
+                <div class="item-right">
+                    <span class="item-sub item-text-status">聊天记录 / 世界书 / 记忆 / user</span>
+                    <span class="spinner"></span>
+                    <svg class="chevron" width="8" height="13" viewBox="0 0 8 13"><path d="M1 1.5L6.5 6.5L1 11.5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </div>
+            </button>
+
+            <button class="list-item" id="btnCharImport" onclick="triggerCharImport()">
+                <div class="item-left">
+                    <div class="item-icon icon-green">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="17 8 12 3 7 8"/>
+                            <line x1="12" y1="3" x2="12" y2="15"/>
+                        </svg>
+                    </div>
+                    <span class="item-title">导入该角色</span>
+                </div>
+                <div class="item-right">
+                    <span class="item-sub item-text-status">.json</span>
+                    <span class="spinner"></span>
+                    <svg class="chevron" width="8" height="13" viewBox="0 0 8 13"><path d="M1 1.5L6.5 6.5L1 11.5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </div>
+            </button>
+        </section>
+        <div class="section-footer">
+            包含角色设定、记录、设置、记忆、世界书、绑定人设、手机数据、通话记录。导入为合并，不影响其它角色。
+        </div>
+
+        <!-- ================= 导入 ================= -->
+        <section class="list-group">
+            <div class="section-title">导入并覆盖</div>
+
+            <button class="list-item" id="btnImport" onclick="triggerFileInput()">
+                <div class="item-left">
+                    <div class="item-icon icon-green">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="17 8 12 3 7 8"/>
+                            <line x1="12" y1="3" x2="12" y2="15"/>
+                        </svg>
+                    </div>
+                    <span class="item-title">导入备份文件</span>
+                </div>
+                <div class="item-right">
+                    <span class="item-sub item-text-status">.json / .zip</span>
+                    <span class="spinner"></span>
+                    <svg class="chevron" width="8" height="13" viewBox="0 0 8 13"><path d="M1 1.5L6.5 6.5L1 11.5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </div>
+            </button>
+        </section>
+        <div class="section-footer">
+            导入会覆盖全部现有数据，不可撤销，请谨慎操作。
+        </div>
+
+    </main>
+
+    <!-- 隐藏文件选择器 -->
+    <input type="file" id="fileInput" accept=".json,.zip" onchange="handleFileSelect(event)">
+    <input type="file" id="charFileInput" accept=".json" onchange="handleCharImportFile(event)">
+
+    <!-- ================= iOS Alert ================= -->
+    <div class="alert-overlay" id="iosAlert">
+        <div class="alert-box">
+            <div class="alert-header">
+                <div class="alert-title" id="alertTitle">提示</div>
+                <div class="alert-message" id="alertMessage">内容</div>
+            </div>
+            <div class="alert-buttons">
+                <button class="alert-btn alert-btn-cancel" onclick="closeAlert()" data-close>取消</button>
+                <button class="alert-btn alert-btn-confirm" id="alertConfirmBtn" onclick="executeAction()">确认</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= 进度弹层 ================= -->
+    <div class="progress-overlay" id="progressOverlay">
+        <div class="progress-card">
+            <div class="progress-title" id="progressTitle">正在处理…</div>
+            <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+            <div class="progress-text" id="progressText">准备中…</div>
+        </div>
+    </div>
+
+    <script defer src="../js/jszip.min.js"></script>
+    <script src="../js/backup.js?v=20261010d"></script>
+<script src="../js/api-float.js"></script>
+<script src="../swipe-back.js"></script>
+</body>
+</html>

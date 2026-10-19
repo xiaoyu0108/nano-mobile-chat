@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<script src="../js/nano-runtime.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>人设</title>
+    <link rel="stylesheet" href="../css/mask.css?v=20261018b">
+    <script src="../js/appearance.js"></script>
+</head>
+<body>
+<div class="app-container" id="app">
+
+    <!-- ===== 顶栏：返回 + 标题 ===== -->
+    <div class="nav-bar">
+        <button class="nav-back" id="backBtn" type="button" aria-label="返回" data-back>
+            <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <span class="nav-title">mask</span>
+    </div>
+
+    <div class="content" id="content">
+        <div class="mask-list" id="maskList"></div>
+
+        <div class="empty-state" id="emptyState">
+            <span class="empty-icon">◇</span>
+            <div class="empty-title">还没有人设</div>
+            <div class="empty-desc">点击左下角 + 创建</div>
+        </div>
+
+        <div class="bottom-actions">
+            <button class="action-btn add-btn" id="addBtn">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19"/>
+                    <line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+            </button>
+            <div style="display:flex;gap:8px;align-items:center;position:relative;">
+                <button class="cancel-edit-btn" id="cancelEditBtn">取消</button>
+                <button class="action-btn edit-btn" id="editModeBtn">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 编辑弹窗（整页：顶栏返回 + 标题 + 保存） -->
+    <div class="modal-overlay" id="editModal">
+        <div class="modal-card">
+            <div class="edit-topbar">
+                <button class="edit-topbar-back" id="editCancel" type="button" aria-label="返回">
+                    <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+                </button>
+                <span class="edit-topbar-title" id="editTitle">新增人设</span>
+                <button class="edit-topbar-save" id="editSave" type="button">保存</button>
+            </div>
+
+            <div class="edit-body">
+                <div class="avatar-center">
+                    <div class="avatar-picker" id="avatarPicker">
+                        <span id="avatarPlaceholder">+</span>
+                        <img id="avatarPreview" style="display:none;" alt="头像">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>名字</label>
+                    <input type="text" id="inputName" placeholder="输入名字">
+                </div>
+
+                <div class="form-group">
+                    <label>微信号</label>
+                    <input type="text" id="inputWechat" placeholder="输入微信号">
+                </div>
+
+                <div class="form-group">
+                    <label>性别</label>
+                    <select id="inputGender">
+                        <option value="男">男</option>
+                        <option value="女">女</option>
+                        <option value="其他">其他</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>
+                        <span>设定</span>
+                        <span class="import-icon" id="importBtn" title="导入设定文件">
+                            <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                <polyline points="17 8 12 3 7 8"/>
+                                <line x1="12" y1="3" x2="12" y2="15"/>
+                            </svg>
+                        </span>
+                    </label>
+                    <textarea id="inputSetting" placeholder="输入设定..."></textarea>
+                </div>
+
+                <button class="mask-use-main" id="useMaskBtn" type="button" style="display:none;">切换到此 User</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 新版头像弹窗（iOS 风格） ===== -->
+    <div class="modal-overlay" id="avatarModal">
+        <div class="modal-card avatar-modal-card">
+            <div class="modal-title">更换头像</div>
+            <div class="avatar-subtitle">选取照片或输入URL更换头像</div>
+
+            <div class="avatar-inset-card">
+                <!-- 相册 -->
+                <div class="avatar-form-row">
+                    <div class="avatar-row-label">相册</div>
+                    <div class="avatar-row-content">
+                        <label class="avatar-action-link" id="photoPickerLabel">
+                            选择照片...
+                            <input type="file" class="file-input-hidden" id="avatarFileInput" accept="image/*">
+                        </label>
+                        <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'><rect width='28' height='28' rx='6' fill='%23E5E5EA' /><circle cx='14' cy='11' r='5' fill='%238E8E93' /><path d='M6 24c0-4.4 3.6-8 8-8s8 3.6 8 8' fill='%238E8E93' /></svg>" class="avatar-thumb" id="avatarThumbPreview" alt="预览">
+                    </div>
+                </div>
+                <!-- URL -->
+                <div class="avatar-form-row">
+                    <div class="avatar-row-label">URL</div>
+                    <div class="avatar-row-content">
+                        <input type="text" class="avatar-url-input" id="avatarUrlInput" placeholder="输入图片链接...">
+                    </div>
+                </div>
+                <!-- 还原 -->
+                <div class="avatar-form-row">
+                    <div class="avatar-row-label">还原</div>
+                    <div class="avatar-row-content">
+                        <button class="avatar-reset-btn" id="avatarResetBtn" title="恢复默认头像">
+                            <svg viewBox="0 0 24 24">
+                                <polyline points="1 4 1 10 7 10"/>
+                                <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="avatar-modal-footer">
+                <button class="avatar-footer-btn cancel" id="avatarCancelBtn" data-close>取消</button>
+                <button class="avatar-footer-btn confirm" id="avatarConfirmBtn">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 信息弹窗 -->
+    <div class="modal-overlay" id="infoModal">
+        <div class="modal-card">
+            <div class="modal-title" id="infoTitle">提示</div>
+            <div style="text-align:center;color:#8e8e93;padding:8px 0;font-size:15px;line-height:1.6;" id="infoBody">内容</div>
+            <div class="modal-actions">
+                <button class="modal-btn primary" id="infoOk" data-close>知道了</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== iOS 风格删除确认弹窗 ===== -->
+    <div class="modal-overlay" id="deleteConfirmModal">
+        <div class="modal-card ios-alert-card">
+            <div class="ios-alert-title">确认删除</div>
+            <div class="ios-alert-message" id="deleteConfirmMsg">确定要删除选中的人设吗？</div>
+            <div class="ios-alert-footer">
+                <button class="ios-alert-btn cancel" id="deleteConfirmCancel" data-close>取消</button>
+                <button class="ios-alert-btn destructive" id="deleteConfirmOk">删除</button>
+            </div>
+        </div>
+    </div>
+
+    <input type="file" class="file-input-hidden" id="importFileInput" accept=".txt,.json,.doc,.docx">
+</div>
+
+<script src="../js/mask.js?v=20261018b"></script>
+
+<script src="../js/api-float.js"></script>
+<script src="../swipe-back.js"></script>
+</body>
+</html>

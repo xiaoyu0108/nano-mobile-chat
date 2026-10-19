@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<script src="../js/nano-runtime.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#ffffff">
+<title>Store 商城</title>
+<link rel="stylesheet" href="../css/mall.css?v=20261018i">
+<script src="../js/appearance.js"></script>
+</head>
+<body>
+
+<div class="app">
+    <header class="topbar">
+        <button class="icon-btn" id="backBtn" aria-label="返回" data-back>
+            <svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>
+        </button>
+        <div class="top-title">Store</div>
+        <button class="icon-btn" id="topCartBtn" aria-label="购物车">
+            <svg viewBox="0 0 24 24"><path d="M6 8h12l1 12H5L6 8z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg>
+            <span class="badge" id="topCartBadge">0</span>
+        </button>
+    </header>
+
+    <main class="main" id="mainScroll">
+        <!-- 购物 -->
+        <section class="page active" id="page-shop">
+            <h1 class="page-title">今天想买点什么</h1>
+            <div class="search">
+                <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/></svg>
+                <input id="searchInput" placeholder="搜索商品" autocomplete="off">
+            </div>
+            <div class="chips" id="shopChips"></div>
+            <div class="section-head"><h2>商品</h2><span id="shopCount"></span></div>
+            <div class="product-grid" id="productGrid"></div>
+        </section>
+
+        <!-- 外卖 -->
+        <section class="page" id="page-food">
+            <h1 class="page-title">附近外卖</h1>
+            <div class="chips" id="foodChips"></div>
+            <div class="section-head"><h2>餐食</h2><span>约 30 分钟</span></div>
+            <div class="food-list" id="foodList"></div>
+        </section>
+
+        <!-- 购物车 -->
+        <section class="page" id="page-cart">
+            <h1 class="page-title">购物车</h1>
+            <div class="cart-select-row">
+                <label class="check">
+                    <input type="checkbox" id="selectAllCart">
+                    <span class="check-box"><svg viewBox="0 0 24 24"><path d="M5 12l4.5 4.5L19 7"/></svg></span>
+                    全选
+                </label>
+                <span id="cartCount">0 件</span>
+            </div>
+            <div class="cart-list" id="cartList"></div>
+            <div class="cart-empty" id="cartEmpty" style="display:none;">
+                <svg viewBox="0 0 24 24"><path d="M6 8h12l1 12H5L6 8z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg>
+                <span>购物车是空的</span>
+            </div>
+        </section>
+
+        <!-- 订单 -->
+        <section class="page" id="page-orders">
+            <h1 class="page-title">订单</h1>
+            <div id="orderList"></div>
+            <div class="orders-empty" id="ordersEmpty" style="display:none;">
+                <svg viewBox="0 0 24 24"><path d="M5 3h14v18l-3-2-2 2-2-2-2 2-2-2-3 2V3z"/><path d="M8 8h8M8 12h6"/></svg>
+                <span>还没有订单</span>
+            </div>
+        </section>
+
+        <!-- 我的 -->
+        <section class="page" id="page-me">
+            <h1 class="page-title">我的</h1>
+            <div class="profile-row">
+                <div class="profile-avatar" id="profileAvatar">ME</div>
+                <div class="profile-info">
+                    <div class="profile-name" id="profileName">我</div>
+                    <div class="profile-sub">Nano Store</div>
+                </div>
+            </div>
+            <div class="wallet-card">
+                <div class="wallet-label">银行卡余额</div>
+                <div class="wallet-amount" id="walletAmount">¥0.00</div>
+                <div class="wallet-note" id="walletNote">支付密码未设置</div>
+            </div>
+            <div class="menu-list">
+                <button class="menu-row" id="addProductBtn" type="button">
+                    <span class="menu-icon"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span>
+                    <span class="menu-label">添加商品</span>
+                    <svg class="menu-arrow" viewBox="0 0 8 13"><path d="M1 1.5L6.5 6.5L1 11.5"/></svg>
+                </button>
+            </div>
+
+            <div class="section-head" style="margin-top:22px;"><h2>仓库</h2><span id="inventoryCount"></span></div>
+            <div id="inventoryList"></div>
+        </section>
+    </main>
+
+    <div class="checkout-bar" id="checkoutBar" style="display:none;">
+        <div class="checkout-total">已选 <b id="checkoutTotal">¥0.00</b></div>
+        <button class="btn ghost" id="askCharPayBtn" type="button">TA 代付</button>
+        <button class="btn primary" id="checkoutBtn" type="button">去结算</button>
+    </div>
+
+    <nav class="tabbar" id="tabbar">
+        <button class="tab active" data-tab="shop" type="button">
+            <svg viewBox="0 0 24 24"><path d="M6 8h12l1 12H5L6 8z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg>
+            <span>购物</span>
+        </button>
+        <button class="tab" data-tab="food" type="button">
+            <svg viewBox="0 0 24 24"><path d="M4 11h16a8 8 0 0 1-16 0z"/><path d="M9 7c0-1.2 1-1.8 1-3M14 7c0-1.2 1-1.8 1-3"/></svg>
+            <span>外卖</span>
+        </button>
+        <button class="tab" data-tab="cart" type="button">
+            <svg viewBox="0 0 24 24"><circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/><path d="M3 4h2l2.5 11h11L21 7H6"/></svg>
+            <span>购物车</span>
+            <span class="badge" id="tabCartBadge">0</span>
+        </button>
+        <button class="tab" data-tab="orders" type="button">
+            <svg viewBox="0 0 24 24"><path d="M5 3h14v18l-3-2-2 2-2-2-2 2-2-2-3 2V3z"/><path d="M8 8h8M8 12h6"/></svg>
+            <span>订单</span>
+        </button>
+        <button class="tab" data-tab="me" type="button">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+            <span>我的</span>
+        </button>
+    </nav>
+</div>
+
+<div class="overlay" id="overlay"></div>
+<div class="sheet" id="sheet">
+    <div class="sheet-head">
+        <div class="sheet-title" id="sheetTitle"></div>
+        <button class="sheet-close" id="sheetClose" aria-label="关闭" data-close>
+            <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+    </div>
+    <div class="sheet-body" id="sheetBody"></div>
+    <div class="sheet-foot" id="sheetFoot"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="../js/nano-pay.js?v=20261018b"></script>
+<script src="../js/family-card-store.js?v=20261006a"></script>
+<script src="../js/user-scope.js?v=20261018a"></script>
+<script src="../js/mall.js?v=20261018k"></script>
+<script src="../swipe-back.js"></script>
+</body>
+</html>

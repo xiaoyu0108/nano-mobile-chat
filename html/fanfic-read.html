@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<script src="../js/nano-runtime.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Reading</title>
+  <link rel="stylesheet" href="../css/fanfic.css?v=20261018f">
+  <script src="../js/appearance.js"></script>
+</head>
+<body class="ff-page">
+  <header class="ff-top">
+    <button class="ff-icon-btn" id="ffBack" type="button" aria-label="返回">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <div class="ff-top-title">
+      <span id="ffTopTitle">Fanfic</span>
+      <em id="ffTopSub">同人文</em>
+    </div>
+    <button class="ff-text-btn" id="ffShare" type="button">Share</button>
+  </header>
+
+  <main class="ff-reader-main">
+    <div class="ff-chapter-strip" id="ffChapterStrip"></div>
+    <div id="ffArticleWrap"></div>
+    <div id="ffBottom"></div>
+  </main>
+
+  <div class="ff-loading" id="ffLoading">
+    <div class="ff-loading-mark"></div>
+    <div class="ff-loading-text" id="ffLoadingText">正在写下一章</div>
+    <div class="ff-loading-bar"><span id="ffLoadingProgress"></span></div>
+    <div class="ff-loading-sub" id="ffLoadingSub">正文优先，写完后补段评和章评</div>
+  </div>
+
+  <div class="ff-toast" id="ffToast"></div>
+
+  <script src="../js/user-scope.js?v=20261018a"></script>
+  <script src="../js/fanfic-common.js?v=20261018f"></script>
+  <script src="../js/fanfic-read.js?v=20261018i"></script>
+  <script src="../swipe-back.js"></script>
+</body>
+</html>

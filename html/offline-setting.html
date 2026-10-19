@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<script src="../js/nano-runtime.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#f5f0f0">
+  <title>设置</title>
+  <link rel="stylesheet" href="../css/offline-setting.css?v=20261006a">
+    <script src="../js/appearance.js"></script>
+</head>
+<body>
+<div class="app">
+<header class="topbar">
+<button class="top-btn" id="backBtn" aria-label="返回" data-back>
+<svg class="back-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M15.5 4.5 8 12l7.5 7.5"/></svg>
+</button>
+<div class="top-title">设置</div>
+<button class="top-btn save-btn" id="saveBtn">保存</button>
+</header>
+
+<main class="content">
+<div class="list">
+<!-- 规则入口 -->
+<section class="section">
+<div class="group">
+<button class="row" id="rulesOpen">
+<div class="row-label">规则<span class="row-desc">管理规则组与子规则</span></div>
+<div class="row-value" id="rulesValue">未设置</div><span class="chevron">›</span>
+</button>
+</div>
+</section>
+
+<!-- 文风 -->
+<section class="section">
+<div class="group">
+<button class="row" id="styleOpen">
+<div class="row-label">文风<span class="row-desc">输入文字，或导入 TXT / DOCX 作为文风参考</span></div>
+<div class="row-value" id="styleValue">未设置</div><span class="chevron">›</span>
+</button>
+</div>
+</section>
+
+<!-- 思维链预设（COT） -->
+<section class="section">
+<div class="group">
+<button class="row" id="cotOpen">
+<div class="row-label">思维链预设<span class="row-desc">AI 回复前先按预设思考，思考按预设展示</span></div>
+<div class="row-value" id="cotValue">未设置</div><span class="chevron">›</span>
+</button>
+</div>
+</section>
+
+<!-- 字数 & 人称 -->
+<section class="section">
+<div class="group">
+<div class="row">
+<div class="row-label">字数<span class="row-desc">生成内容至少达到该字数</span></div>
+<div style="width:45%"><input class="search-input" id="wordCount" type="number" min="0" placeholder="最低字数" style="text-align:right"></div>
+</div>
+<div class="row">
+<div class="row-label">人称要求<span class="row-desc">控制后续文字使用的人称</span></div>
+<select class="search-input" id="person" style="width:45%;text-align:right">
+<option value="auto">自动</option><option value="first">第一人称</option><option value="second">第二人称</option><option value="third">第三人称</option>
+</select>
+</div>
+<div class="row">
+<div class="row-label">输出上限<span class="row-desc">线下单次最多生成的 token，越大越不容易被截断；留空则按字数自动估算</span></div>
+<div style="width:45%"><input class="search-input" id="maxTokens" type="number" min="1024" max="32768" step="512" placeholder="自动" style="text-align:right"></div>
+</div>
+<div class="row">
+<div class="row-label">用户行动预测<span class="row-desc">是否允许描写用户的行动：禁止＝只写 char；中度＝可少量带出 user 的言行以推进剧情；高度＝可像写小说一样同时描写 char 与 user</span></div>
+<select class="search-input" id="predictUser" style="width:45%;text-align:right">
+<option value="forbid">禁止</option><option value="medium">中度</option><option value="high">高度</option>
+</select>
+</div>
+</div>
+</section>
+
+<!-- 成人向尺度 -->
+<section class="section">
+<div class="group">
+<div class="row">
+            <div class="row-label">NSFW<span class="row-desc">开启后按剧情与氛围自然允许亲密 / 成人向描写，通用「禁止露骨」限制放宽、输出不截断；具体以人设、世界书与规则为准</span></div>
+<div class="switch" id="nsfwSwitch"><i></i></div>
+</div>
+</div>
+</section>
+
+<!-- 时间感知 -->
+<section class="section">
+<div class="group">
+<div class="row">
+<div class="row-label">时间感知<span class="row-desc">让角色知道现在几点、过了多久没联系，以及今天是不是工作日 / 周末 / 法定节假日</span></div>
+<div class="switch" id="timeAwareSwitch"><i></i></div>
+</div>
+</div>
+</section>
+
+<!-- 美化 -->
+<section class="section">
+<div class="group">
+<button class="row" id="beautifyOpen">
+<div class="row-label">美化<span class="row-desc">美化预设、头像框、还原</span></div>
+<div class="row-value" id="cssValue">默认</div><span class="chevron">›</span>
+</button>
+</div>
+</section>
+<!-- 状态栏 -->
+<section class="section">
+<div class="group">
+<button class="row" id="statusBarsOpen">
+<div class="row-label">状态栏<span class="row-desc">自定义可折叠状态栏（着装 / 位置…），每轮跟随正文更新</span></div>
+<div class="row-value" id="statusBarsValue">未设置</div><span class="chevron">›</span>
+</button>
+</div>
+</section>
+<!-- 记忆总结 -->
+<section class="section">
+<div class="group">
+<button class="row" id="memorySummaryOpen">
+<div class="row-label">记忆总结<span class="row-desc">线下对话也自动总结进记忆库，与线上互通</span></div>
+<span class="chevron">›</span>
+</button>
+</div>
+</section>
+
+<!-- 头像菜单插件 -->
+<section class="section">
+<div class="group">
+<button class="row" id="menuPluginOpen">
+<div class="row-label">头像菜单插件<span class="row-desc">给线下输入框头像菜单添加自定义按钮（JS 插件）</span></div>
+<span class="chevron">›</span>
+</button>
+</div>
+</section>
+
+<!-- 记录 -->
+<section class="section">
+<div class="group">
+<button class="row" id="findRecords">
+<div class="row-label">查找记录<span class="row-desc">按关键词搜索当前聊天内容</span></div><span class="chevron">›</span>
+</button>
+<div class="search-box" id="recordSearchBox">
+<input class="search-input" id="recordSearch" placeholder="搜索消息内容……">
+</div>
+<div class="search-results" id="recordResults"></div>
+<button class="row danger" id="clearRecords">
+<div class="row-label">清空记录<span class="row-desc">删除当前全部聊天内容</span></div><span class="chevron">›</span>
+</button>
+</div>
+</section>
+</div>
+</main>
+</div>
+
+<!-- ===== 规则 Sheet ===== -->
+<div class="sheet-backdrop" id="rulesSheet">
+<div class="sheet">
+<div class="sheet-head"><div class="sheet-title">规则管理</div><button class="sheet-close" data-close="rulesSheet">完成</button></div>
+<div class="sheet-body">
+<div class="top-toolbar">
+  <button class="sheet-btn primary" id="addGroupBtn">+ 添加规则组</button>
+  <label class="import-label sheet-btn">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 15V4"/><path d="m7.5 8.5 4.5-4.5 4.5 4.5"/><path d="M5 14.5v4A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5v-4"/></svg>
+    导入<input id="importFile" type="file" accept=".json,.txt,.docx">
+  </label>
+  <button class="sheet-btn" id="exportBtn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 4v12"/><path d="m8 12 4 4 4-4"/><path d="M5 18v2a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2"/></svg> 导出</button>
+  <button class="sheet-btn" id="expandAllBtn">全部展开</button>
+  <button class="sheet-btn" id="enableAllBtn">全部启用</button>
+  <button class="sheet-btn danger" id="deleteAllBtn" style="color:var(--danger)">清空</button>
+</div>
+<div id="ruleContainer"></div>
+</div>
+</div>
+</div>
+
+<!-- ===== 文风 Sheet ===== -->
+<div class="sheet-backdrop" id="styleSheet">
+<div class="sheet">
+<div class="sheet-head"><div class="sheet-title">文风</div><button class="sheet-close" data-close="styleSheet">完成</button></div>
+<div class="sheet-body">
+<div class="sheet-section">
+<div class="beautify-preset-row">
+  <select id="stylePresetSelect" style="flex:1;height:36px;border-radius:12px;border:1px solid var(--line2);padding:0 10px;background:#fff;font-size:12px;"></select>
+  <button class="sheet-btn" id="stylePresetDelete" style="color:var(--danger)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6v13a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg></button>
+</div>
+<div class="preset-name-row">
+  <input class="search-input" id="stylePresetName" placeholder="预设名称" style="height:34px;">
+  <button class="sheet-btn primary" id="stylePresetSave"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg></button>
+  <button class="sheet-btn" id="stylePresetUpdate"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 14.66V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5.34"/><polygon points="18 2 22 6 12 16 8 16 8 12 18 2"/></svg></button>
+</div>
+<div class="file-import">
+<label class="import-label">
+<svg class="svg-mini" viewBox="0 0 24 24"><path d="M12 15V4"/><path d="m7.5 8.5 4.5-4.5 4.5 4.5"/><path d="M5 14.5v4A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5v-4"/></svg>
+导入 TXT / DOCX<input id="styleFile" type="file" accept=".txt,.docx,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+</label>
+<span id="styleFileName" style="font-size:10px;color:var(--sub)"></span>
+</div>
+<textarea class="textarea" id="styleText" placeholder="例如：文字细腻克制，节奏舒缓，注重环境与心理描写……"></textarea>
+</div>
+</div>
+</div>
+</div>
+
+<!-- ===== 思维链 Sheet ===== -->
+<div class="sheet-backdrop" id="cotSheet">
+<div class="sheet">
+<div class="sheet-head"><div class="sheet-title">思维链预设（COT）</div><button class="sheet-close" data-close="cotSheet">完成</button></div>
+<div class="sheet-body">
+<div class="sheet-section">
+<div class="beautify-preset-row">
+  <select id="cotPresetSelect" style="flex:1;height:36px;border-radius:12px;border:1px solid var(--line2);padding:0 10px;background:#fff;font-size:12px;"></select>
+  <button class="sheet-btn" id="cotPresetDelete" style="color:var(--danger)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6v13a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg></button>
+</div>
+<div class="preset-name-row">
+  <input class="search-input" id="cotPresetName" placeholder="预设名称" style="height:34px;">
+  <button class="sheet-btn primary" id="cotPresetSave"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg></button>
+  <button class="sheet-btn" id="cotPresetUpdate"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 14.66V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5.34"/><polygon points="18 2 22 6 12 16 8 16 8 12 18 2"/></svg></button>
+</div>
+<div class="file-import">
+<label class="import-label">
+<svg class="svg-mini" viewBox="0 0 24 24"><path d="M12 15V4"/><path d="m7.5 8.5 4.5-4.5 4.5 4.5"/><path d="M5 14.5v4A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5v-4"/></svg>
+导入 TXT / DOCX<input id="cotFile" type="file" accept=".txt,.docx,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+</label>
+<span id="cotFileName" style="font-size:10px;color:var(--sub)"></span>
+</div>
+<textarea class="textarea" id="cotText" style="min-height:140px;" placeholder="例如：先判断对方此刻的情绪 → 回忆与对方相关的设定/过往 → 想清楚我真实的态度与目的 → 决定用什么语气和内容回应（可要求逐步、简短或详细）"></textarea>
+<div style="font-size:11px;color:var(--sub);margin-top:8px;line-height:1.5">AI 会先按此预设思考，再把思考过程放在消息里、按此预设展示出来，然后才输出正文。</div>
+</div>
+</div>
+</div>
+</div>
+
+<!-- ===== 美化 Sheet ===== -->
+<div class="sheet-backdrop" id="beautifySheet">
+<div class="sheet">
+<div class="sheet-head"><div class="sheet-title">美化</div><button class="sheet-close" data-close="beautifySheet">完成</button></div>
+<div class="sheet-body">
+<div class="sheet-section">
+<div class="beautify-preset-row">
+  <select class="search-input" id="cssPreset" style="flex:1;text-align:left">
+    <option value="initial">初始 CSS</option><option value="soft">Soft Pink</option><option value="minimal">Minimal Gray</option><option value="textbook">语文书 · 简约</option><option value="custom">当前 CSS</option>
+  </select>
+  <button class="sheet-btn danger" id="cssPresetDelete"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6v13a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg></button>
+</div>
+<div class="preset-name-row">
+  <input class="search-input" id="cssPresetName" placeholder="预设名称" style="height:34px;">
+  <button class="sheet-btn primary" id="cssPresetSave"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg></button>
+  <button class="sheet-btn" id="cssPresetUpdate"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 14.66V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5.34"/><polygon points="18 2 22 6 12 16 8 16 8 12 18 2"/></svg></button>
+</div>
+<div class="file-import">
+<label class="import-label">
+<svg class="svg-mini" viewBox="0 0 24 24"><path d="M12 15V4"/><path d="m7.5 8.5 4.5-4.5 4.5 4.5"/><path d="M5 14.5v4A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5v-4"/></svg>
+导入 TXT / DOCX<input id="cssFile" type="file" accept=".txt,.docx,.json,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+</label>
+<button class="icon-export" id="cssExport" type="button" aria-label="导出当前预设" title="导出当前预设">
+<svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.6" y1="13.5" x2="15.4" y2="17.5"/><line x1="15.4" y1="6.5" x2="8.6" y2="10.5"/></svg>
+</button>
+<span id="cssFileName" style="font-size:10px;color:var(--sub)"></span>
+</div>
+<textarea class="textarea" id="cssText" spellcheck="false" placeholder="在这里输入 CSS……"></textarea>
+<div class="toolbar-grid">
+<button class="sheet-btn" id="copyTemplate"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> 复制模板</button>
+<button class="sheet-btn" id="restoreCss"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg> 恢复默认</button>
+ <button class="sheet-btn primary" id="applyCss"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 14.66V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5.34"/><polygon points="18 2 22 6 12 16 8 16 8 12 18 2"/></svg> 应用</button>
+ <button class="sheet-btn danger" id="clearCssBtn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6v13a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg> 清空</button>
+ </div>
+ <div class="bg-actions">
+ <button class="sheet-btn" id="offlineAvatarFrameBtn" type="button" onclick="window.NanoAvatarFrame&&NanoAvatarFrame.openUI('offline')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/></svg> 头像框</button>
+ <button class="sheet-btn" id="bgPickBtn" type="button"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="m21 16-5-5L5 20"/></svg> 背景图</button>
+ <button class="sheet-btn" id="bgClearBtn" type="button">清空背景图</button>
+ </div>
+ <span id="bgFileName" style="font-size:10px;color:var(--sub);display:block;margin-top:6px"></span>
+<input type="file" id="bgFileInput" accept="image/*" hidden>
+<div style="font-size:11px;color:var(--sub);margin-top:6px;line-height:1.5">背景只铺在页面底色上，不会改变卡片本身的 UI。</div>
+<details class="css-preview-wrap" open>
+<summary class="css-preview-title">预览（实时套用当前 CSS）</summary>
+<iframe class="css-preview-frame" id="cssPreviewFrame" title="预览"></iframe>
+</details>
+</div>
+</div>
+</div>
+</div>
+
+<!-- 记忆总结 -->
+<div class="sheet-backdrop" id="memorySheet">
+<div class="sheet">
+  <div class="sheet-head"><div class="sheet-title">记忆总结</div><button class="sheet-close" data-close="memorySheet">完成</button></div>
+  <div class="sheet-body">
+    <div class="sheet-section">
+      <div class="sheet-label">自动总结</div>
+      <div class="row" style="margin-bottom:6px">
+        <div class="row-label" style="flex:1">自动总结到记忆库<span class="row-desc">达到下方阈值后自动把线下对话总结进记忆（与线上/记忆 App 同一个库）</span></div>
+        <div class="switch" id="autoSummarySwitch"><i></i></div>
+      </div>
+      <div class="beautify-preset-row">
+        <input class="search-input" id="memThresholdInput" type="number" min="1" max="50" value="5" style="flex:1;height:36px;">
+        <button class="sheet-btn" id="memThresholdSave">保存阈值</button>
+      </div>
+    </div>
+    <div class="sheet-section">
+      <div class="sheet-label">手动总结（不管多少条，立即总结一次当前线下对话）</div>
+      <button class="sheet-btn primary" id="summarizeOfflineMemoryBtn" style="width:100%;height:42px;font-size:13px">立即总结线下记忆</button>
+      <div style="font-size:11px;color:var(--sub);margin-top:8px;line-height:1.5">总结结果写入记忆库 memlist，AI 每次回复都会把最近记忆注入提示词，线上/线下都能读到。</div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- 状态栏 Sheet -->
+<div class="sheet-backdrop" id="statusBarsSheet">
+<div class="sheet">
+<div class="sheet-head"><div class="sheet-title">状态栏</div><button class="sheet-close" data-close="statusBarsSheet">完成</button></div>
+<div class="sheet-body">
+  <div class="sheet-section">
+    <div class="row" style="margin-bottom:10px">
+      <div class="row-label">内置 · 身体状态栏<span class="row-desc">心跳(频率) / 好感度 / 生理状态，每轮跟随正文更新（白底波点 · 报纸标题风）</span></div>
+      <div class="switch" id="builtinBodySwitch"><i></i></div>
+    </div>
+    <details id="builtinBodyDetails" style="margin:0 0 12px">
+      <summary style="font-size:12px;color:var(--sub);cursor:pointer;line-height:1.7">点击展开内置「身体状态」的代码（HTML / CSS）—— 可照着做新的状态栏</summary>
+      <div class="sheet-label" style="margin-top:10px">HTML 结构（{{content}} = 每轮内容位置）</div>
+      <textarea class="textarea" id="builtinBodyHtml" readonly style="min-height:130px;font-family:ui-monospace,Menlo,monospace;font-size:11px;line-height:1.5"></textarea>
+      <div class="sheet-label" style="margin-top:10px">CSS（只作用于本条状态栏）</div>
+      <textarea class="textarea" id="builtinBodyCss" readonly style="min-height:210px;font-family:ui-monospace,Menlo,monospace;font-size:11px;line-height:1.5"></textarea>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button class="sheet-btn" id="builtinBodyCopyHtml" type="button" style="flex:1">复制 HTML</button>
+        <button class="sheet-btn" id="builtinBodyCopyCss" type="button" style="flex:1">复制 CSS</button>
+      </div>
+      <button class="sheet-btn primary" id="builtinBodyClone" type="button" style="width:100%;margin-top:8px">以此新建一条自定义状态栏</button>
+      <div style="font-size:11px;color:var(--sub);margin-top:6px;line-height:1.5">新建后出现在下方列表，可改名字与生成要求；CSS 会随 HTML 一起放进这条状态栏，只作用它自己。</div>
+    </details>
+    <div style="display:flex;gap:8px">
+      <button class="sheet-btn primary" id="statusBarAddBtn" type="button" style="flex:1">+ 新增状态栏</button>
+      <button class="sheet-btn" id="statusBarExport" type="button">导出</button>
+      <button class="sheet-btn" id="statusBarImport" type="button">导入</button>
+    </div>
+    <input type="file" id="statusBarFile" accept=".json,.txt" style="display:none">
+    <div id="statusBarList" style="display:flex;flex-direction:column;gap:8px;margin-top:12px"></div>
+  </div>
+  <div class="sheet-section">
+    <div class="sheet-label">HTML 模板（用 {{content}} 标记每轮内容位置）</div>
+    <textarea class="textarea" id="statusBarTemplate" readonly style="min-height:130px;font-family:ui-monospace,Menlo,monospace;font-size:11px;line-height:1.5"></textarea>
+    <button class="sheet-btn" id="statusBarTemplateCopy" type="button" style="margin-top:8px">复制模板</button>
+  </div>
+</div>
+</div>
+</div>
+
+<!-- 头像菜单插件 Sheet -->
+<div class="sheet-backdrop" id="menuPluginSheet">
+<div class="sheet">
+  <div class="sheet-head"><div class="sheet-title">头像菜单插件</div><button class="sheet-close" data-close="menuPluginSheet">完成</button></div>
+  <div class="sheet-body">
+    <div class="sheet-section">
+      <div class="sheet-label" id="menuPluginEditLabel">新建插件</div>
+      <textarea class="textarea" id="menuPluginText" spellcheck="false" style="min-height:140px;font-family:ui-monospace,Menlo,monospace;font-size:12px" placeholder="// 在这里写插件 JS，或点「插入模板」"></textarea>
+      <div class="toolbar-grid" style="margin-top:8px">
+        <button class="sheet-btn" id="menuPluginTemplate" type="button">插入模板</button>
+        <button class="sheet-btn" id="menuPluginImport" type="button">导入 JSON</button>
+        <button class="sheet-btn primary" id="menuPluginSave" type="button">保存插件</button>
+        <button class="sheet-btn" id="menuPluginNew" type="button">清空新建</button>
+      </div>
+      <input type="file" id="menuPluginFile" accept=".json,application/json" hidden>
+    </div>
+    <div class="sheet-section">
+      <div class="sheet-label">已添加插件（点击可编辑）</div>
+      <div id="menuPluginList" style="display:flex;flex-direction:column;gap:6px"></div>
+    </div>
+    <div class="sheet-section">
+      <div style="font-size:11px;color:var(--sub);line-height:1.5">插件在「线下」头像菜单打开时执行，可调用 api.addItem({label,icon,run}) / api.toast() / api.getMessages() / api.scrollToFloor(i)。导入 JSON 支持 {&quot;name&quot;:&quot;x&quot;,&quot;js&quot;:&quot;...&quot;} 或这类对象的数组。</div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- 删除确认 -->
+<div class="modal-bg" id="modalBg">
+<div class="modal"><div class="modal-body"><div class="modal-title">清空全部记录？</div><div class="modal-text">当前 offline 的所有聊天卡片都会被删除，此操作无法恢复。</div></div>
+<div class="modal-buttons"><button id="modalCancel" data-close>取消</button><button id="modalConfirm" class="modal-delete">清空</button></div></div>
+</div>
+<div class="toast" id="toast"></div>
+
+    <script src="../js/offline-themes.js?v=20261013b"></script>
+    <script src="../js/nano-export.js?v=20261015a"></script>
+    <script src="../js/nano-status-bar.js?v=20261015a"></script>
+    <script src="../js/offline-setting.js?v=20261016f"></script>
+<script src="../js/avatar-frame.js?v=20261010a"></script>
+<script src="../js/api-float.js"></script>
+<script src="../swipe-back.js"></script>
+</body>
+</html>

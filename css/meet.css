@@ -1,0 +1,154 @@
+/* css/meet.css — Meet 好友申请中心（灰粉黑白 · 纯色韩系） */
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body {
+  margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
+  color: #1f1f1f;
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Apple SD Gothic Neo", "Helvetica Neue", Arial, sans-serif;
+  background: #ffffff;
+}
+::-webkit-scrollbar { width: 0; height: 0; display: none; }
+
+.kt-app {
+  position: relative;
+  width: 100%; height: 100%; max-width: 430px; margin: 0 auto;
+  display: flex; flex-direction: column;
+  background: #ffffff;
+}
+
+.kt-top {
+  flex: none; display: flex; align-items: center; justify-content: space-between;
+  min-height: 44px;
+  padding: calc(var(--safe-top, 0px) + 10px) 12px 10px;
+}
+.kt-back { width: 40px; height: 40px; border: 0; background: transparent; color: #1f1f1f; display: flex; align-items: center; justify-content: center; padding: 0; }
+.kt-back svg { width: 22px; height: 22px; }
+.kt-title { font-size: 17px; font-weight: 600; letter-spacing: 0.14em; color: #1f1f1f; }
+.kt-refresh {
+  width: 40px; height: 40px; border: 0; background: transparent; color: #1f1f1f;
+  display: flex; align-items: center; justify-content: center; padding: 0; cursor: pointer;
+}
+.kt-refresh svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.kt-refresh.spin svg { animation: ktSpin 0.8s linear infinite; }
+@keyframes ktSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+.kt-scroll { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 6px 18px 0; }
+
+/* 搜索找回好友 */
+.kt-search-wrap { margin-bottom: 14px; }
+.kt-search {
+  width: 100%; height: 42px; border: 1px solid #ececec; border-radius: 14px;
+  padding: 0 14px; font-size: 14px; color: #1f1f1f; background: #fafafa; outline: none;
+  font-family: inherit;
+}
+.kt-search:focus { background: #fff; border-color: #d8b4b8; }
+.kt-search-results { margin: -4px 0 14px; display: flex; flex-direction: column; gap: 10px; }
+.kt-search-item {
+  display: flex; align-items: center; gap: 12px; padding: 12px 14px;
+  background: #fff; border-radius: 16px; border: 1px solid #ececec;
+}
+.kt-search-item .kt-req-avatar { width: 44px; height: 44px; border-radius: 14px; }
+.kt-search-item .kt-si-main { flex: 1; min-width: 0; }
+.kt-search-item .kt-si-name { font-size: 14.5px; font-weight: 650; color: #1f1f1f; }
+.kt-search-item .kt-si-wx { font-size: 11.5px; color: #a6a6a6; margin-top: 3px; }
+
+/* 弹窗 */
+.kt-modal {
+  position: fixed; inset: 0; z-index: 60; display: none; align-items: center; justify-content: center;
+  background: rgba(30,20,24,.4); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); padding: 24px;
+}
+.kt-modal.open { display: flex; }
+.kt-modal-card {
+  width: 100%; max-width: 330px; background: #fff; border-radius: 20px; padding: 20px 18px 16px;
+  box-shadow: 0 20px 55px rgba(0,0,0,.22);
+}
+.kt-modal-title { font-size: 16px; font-weight: 700; color: #1f1f1f; text-align: center; }
+.kt-modal-sub { font-size: 13px; color: #8f8f8f; margin-top: 8px; line-height: 1.6; text-align: center; white-space: pre-wrap; }
+.kt-modal-input {
+  width: 100%; height: 42px; margin-top: 14px; border: 1px solid #ececec; border-radius: 12px;
+  padding: 0 12px; font-size: 14px; color: #1f1f1f; background: #fafafa; outline: none; font-family: inherit;
+}
+.kt-modal-input:focus { background: #fff; border-color: #d8b4b8; }
+.kt-modal-actions { display: flex; gap: 10px; margin-top: 16px; }
+.kt-modal-actions .kt-accept, .kt-modal-actions .kt-reject { flex: 1; padding: 11px 0; }
+
+/* 招呼栏对话 */
+.kt-chat-list {
+  margin-top: 12px; max-height: 240px; overflow-y: auto; display: none;
+  flex-direction: column; gap: 8px; padding: 2px;
+}
+.kt-chat-list.show { display: flex; }
+.kt-chat-msg { max-width: 82%; padding: 8px 12px; border-radius: 14px; font-size: 13.5px; line-height: 1.5; word-break: break-word; white-space: pre-wrap; }
+.kt-chat-msg.me { align-self: flex-end; background: #1f1f1f; color: #fff; border-bottom-right-radius: 4px; }
+.kt-chat-msg.ta { align-self: flex-start; background: #f2f2f4; color: #1f1f1f; border-bottom-left-radius: 4px; }
+.kt-chat-msg.sys { align-self: center; background: transparent; color: #b3b3b3; font-size: 11.5px; padding: 2px 0; }
+
+/* Hero：我的微信号 */
+.kt-hero {
+  background: #ffffff;
+  border-radius: 22px;
+  padding: 22px 22px 20px;
+  text-align: center;
+  border: 1px solid #ececec;
+}
+.kt-hero-label { font-size: 10.5px; letter-spacing: 0.28em; color: #b3b3b3; font-weight: 600; }
+.kt-wechat {
+  margin-top: 12px; font-size: 26px; font-weight: 600; letter-spacing: 0.02em;
+  color: #1f1f1f; word-break: break-all;
+}
+.kt-wechat.empty { color: #c4c4c4; font-size: 18px; font-weight: 500; }
+.kt-edit {
+  margin-top: 14px; display: inline-block; border: 1px solid #e4dcde; cursor: pointer;
+  background: #ffffff; color: #1f1f1f; font-size: 12.5px; font-weight: 600;
+  padding: 8px 16px; border-radius: 999px;
+}
+.kt-edit:active { background: #f3eef0; }
+.kt-hero-hint { margin: 14px 4px 0; font-size: 11.5px; line-height: 1.6; color: #a6a6a6; }
+
+/* 申请列表 */
+.kt-section { margin-top: 24px; }
+.kt-sec-head { display: flex; align-items: center; gap: 8px; padding: 0 6px 12px; }
+.kt-sec-title { font-size: 14px; font-weight: 700; color: #1f1f1f; letter-spacing: 0.03em; }
+.kt-count {
+  min-width: 20px; height: 20px; padding: 0 7px; border-radius: 999px;
+  background: #d8b4b8; color: #ffffff; font-size: 11.5px; font-weight: 700;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.kt-list { display: flex; flex-direction: column; gap: 12px; }
+.kt-empty { font-size: 13px; color: #b3b3b3; text-align: center; padding: 30px 0; letter-spacing: 0.02em; }
+
+.kt-req {
+  display: flex; align-items: center; gap: 13px; padding: 15px;
+  background: #ffffff; border-radius: 18px; border: 1px solid #ececec;
+}
+.kt-req-avatar {
+  width: 50px; height: 50px; border-radius: 16px; flex: none; overflow: hidden;
+  background: #ececec; color: #8f8f8f;
+  display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 600;
+}
+.kt-req-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.kt-req-main { flex: 1; min-width: 0; }
+.kt-req-name { font-size: 15px; font-weight: 650; color: #1f1f1f; }
+.kt-req-src { font-size: 11px; color: #a6a6a6; margin-top: 3px; }
+.kt-req-note {
+  font-size: 12px; color: #6f6f6f; margin-top: 5px; line-height: 1.55;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.kt-req-actions { display: flex; flex-direction: row; align-items: center; gap: 7px; flex: none; }
+.kt-accept {
+  border: 0; border-radius: 999px; cursor: pointer;
+  background: #1f1f1f; color: #ffffff; font-size: 12.5px; font-weight: 650;
+  padding: 8px 15px; letter-spacing: 0.04em;
+}
+.kt-reject {
+  border: 1px solid #e0e0e0; border-radius: 999px; cursor: pointer;
+  background: #ffffff; color: #8f8f8f; font-size: 12.5px; font-weight: 500;
+  padding: 7px 15px;
+}
+.kt-accept:active, .kt-reject:active { transform: scale(0.95); }
+
+.kt-toast {
+  position: fixed; left: 50%; bottom: 44px; transform: translateX(-50%) translateY(10px);
+  background: #1f1f1f; color: #fff; padding: 9px 16px; border-radius: 999px;
+  font-size: 12.5px; letter-spacing: 0.02em; opacity: 0; transition: all .2s; pointer-events: none; z-index: 50;
+}
+.kt-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }

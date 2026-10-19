@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<script src="../js/nano-runtime.js"></script>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>API · 配置</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" media="print" onload="this.media='all'" />
+    <link rel="stylesheet" href="../css/api.css" />
+    <script src="../js/appearance.js"></script>
+</head>
+<body class="nano-api">
+    <div class="app-container">
+        <div class="top-title-wrap">
+            <span class="top-title">API</span>
+        </div>
+
+        <!-- ===== Tab 栏 ===== -->
+        <div class="tab-bar" id="tabBar">
+            <button class="tab-item active" data-tab="chat">Chat</button>
+            <button class="tab-item" data-tab="image">Image</button>
+            <button class="tab-item" data-tab="tts">TTS</button>
+            <span class="tab-indicator" id="tabIndicator"></span>
+        </div>
+
+        <div class="app-content">
+            <div class="scroll-area">
+
+                <!-- ============ Tab: Chat ============ -->
+                <div class="tab-panel active" id="panel-chat">
+
+                    <!-- 主 API -->
+                    <div class="api-card">
+                        <div class="api-card-header">
+                            <span class="api-card-title">主 API</span>
+                            <button class="api-card-toggle" data-target="mainBody">
+                                <i class="fas fa-chevron-up"></i>
+                            </button>
+                        </div>
+                        <div class="api-card-body" id="mainBody">
+                            <div class="form-group">
+                                <label class="form-label">预设</label>
+                                <div class="preset-row">
+                                    <select class="form-control" id="mainPreset"></select>
+                                    <button class="btn btn-xs btn-danger" id="mainDeletePreset">删除</button>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">中转地址 <span class="hint">(以 /v1 结尾)</span></label>
+                                <input class="form-control" id="mainUrl" placeholder="https://api.example.com/v1" />
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">API Key</label>
+                                <div class="key-input-wrap">
+                                    <input class="form-control" id="mainKey" placeholder="sk-..." type="text" data-masked-key="1" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
+                                    <button class="eye-btn" data-target="mainKey" type="button"><i class="fas fa-eye"></i></button>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group" style="flex:2;">
+                                    <label class="form-label">预设名称</label>
+                                    <input class="form-control" id="mainPresetName" placeholder="输入预设名称..." />
+                                </div>
+                                <div class="form-group" style="flex:1;max-width:56px;">
+                                    <label class="form-label" style="opacity:0;">&nbsp;</label>
+                                    <button class="btn btn-sm btn-success" id="mainSavePreset">保存</button>
+                                </div>
+                                <div class="form-group" style="flex:1;max-width:56px;">
+                                    <label class="form-label" style="opacity:0;">&nbsp;</label>
+                                    <button class="btn btn-sm btn-primary" id="mainEditPreset">修改</button>
+                                </div>
+                            </div>
+                            <div class="btn-group">
+                                <button class="btn btn-primary" id="mainFetch"><i class="fas fa-cloud-download-alt"></i> 拉取</button>
+                                <button class="btn" id="mainSave"><i class="fas fa-save"></i> 保存配置</button>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">温度 <span id="mainTempVal" class="temp-val">0.7</span></label>
+                                <input type="range" class="temp-range" id="mainTemp" min="0" max="2" step="0.1" value="0.7" />
+                                <div class="temp-hint"><span>0 · 严格人设</span><span>2 · 自由发挥</span></div>
+                            </div>
+                            <div class="model-select-wrap" id="mainModelWrap">
+                                <label class="form-label">选择模型</label>
+                                <div class="model-search-row">
+                                    <input class="form-control" id="mainModelSearch" placeholder="搜索模型..." />
+                                    <button class="btn btn-xs" id="mainModelSearchBtn">搜索</button>
+                                    <button class="btn btn-xs" id="mainModelClearBtn">清除</button>
+                                </div>
+                                <select class="form-control model-select" id="mainModelSelect"><option value="">请先拉取...</option></select>
+                            </div>
+                            <div class="connection-status" id="mainStatus"></div>
+                        </div>
+                    </div>
+
+                    <!-- 副 API -->
+                    <div class="api-card">
+                        <div class="api-card-header" style="margin-bottom:4px;">
+                            <span class="api-card-title">副 API</span>
+                            <button class="toggle-switch" id="subToggle"></button>
+                        </div>
+                        <div id="subApiContent" style="display:none;padding-top:6px;">
+                            <div class="form-group">
+                                <label class="form-label">预设</label>
+                                <div class="preset-row">
+                                    <select class="form-control" id="subPreset"></select>
+                                    <button class="btn btn-xs btn-danger" id="subDeletePreset">删除</button>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">中转地址 <span class="hint">(以 /v1 结尾)</span></label>
+                                <input class="form-control" id="subUrl" placeholder="https://api.example.com/v1" />
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">API Key</label>
+                                <div class="key-input-wrap">
+                                    <input class="form-control" id="subKey" placeholder="sk-..." type="text" data-masked-key="1" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
+                                    <button class="eye-btn" data-target="subKey" type="button"><i class="fas fa-eye"></i></button>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group" style="flex:2;">
+                                    <label class="form-label">预设名称</label>
+                                    <input class="form-control" id="subPresetName" placeholder="输入预设名称..." />
+                                </div>
+                                <div class="form-group" style="flex:1;max-width:56px;">
+                                    <label class="form-label" style="opacity:0;">&nbsp;</label>
+                                    <button class="btn btn-sm btn-success" id="subSavePreset">保存</button>
+                                </div>
+                                <div class="form-group" style="flex:1;max-width:56px;">
+                                    <label class="form-label" style="opacity:0;">&nbsp;</label>
+                                    <button class="btn btn-sm btn-primary" id="subEditPreset">修改</button>
+                                </div>
+                            </div>
+                            <div class="btn-group">
+                                <button class="btn btn-primary" id="subFetch"><i class="fas fa-cloud-download-alt"></i> 拉取</button>
+                                <button class="btn" id="subSave"><i class="fas fa-save"></i> 保存配置</button>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">温度 <span id="subTempVal" class="temp-val">0.7</span></label>
+                                <input type="range" class="temp-range" id="subTemp" min="0" max="2" step="0.1" value="0.7" />
+                                <div class="temp-hint"><span>0 · 严格人设</span><span>2 · 自由发挥</span></div>
+                            </div>
+                            <div class="model-select-wrap" id="subModelWrap">
+                                <label class="form-label">选择模型</label>
+                                <div class="model-search-row">
+                                    <input class="form-control" id="subModelSearch" placeholder="搜索模型..." />
+                                    <button class="btn btn-xs" id="subModelSearchBtn">搜索</button>
+                                    <button class="btn btn-xs" id="subModelClearBtn">清除</button>
+                                </div>
+                                <select class="form-control model-select" id="subModelSelect"><option value="">请先拉取...</option></select>
+                            </div>
+                            <div class="connection-status" id="subStatus"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ============ Tab: Image ============ -->
+                <div class="tab-panel" id="panel-image">
+                    <div class="api-card">
+                        <div class="api-card-header">
+                            <span class="api-card-title">生图 API</span>
+                            <button class="api-card-toggle" data-target="imgBody">
+                                <i class="fas fa-chevron-up"></i>
+                            </button>
+                        </div>
+                        <div class="api-card-body" id="imgBody">
+                            <div class="form-group">
+                                <label class="form-label">预设</label>
+                                <div class="preset-row">
+                                    <select class="form-control" id="imgPreset"></select>
+                                    <button class="btn btn-xs btn-danger" id="imgDeletePreset">删除</button>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">中转地址 <span class="hint">(以 /v1 结尾)</span></label>
+                                <input class="form-control" id="imgUrl" placeholder="https://api.example.com/v1" />
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">API Key</label>
+                                <div class="key-input-wrap">
+                                    <input class="form-control" id="imgKey" placeholder="sk-..." type="text" data-masked-key="1" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
+                                    <button class="eye-btn" data-target="imgKey" type="button"><i class="fas fa-eye"></i></button>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group" style="flex:2;">
+                                    <label class="form-label">预设名称</label>
+                                    <input class="form-control" id="imgPresetName" placeholder="输入预设名称..." />
+                                </div>
+                                <div class="form-group" style="flex:1;max-width:56px;">
+                                    <label class="form-label" style="opacity:0;">&nbsp;</label>
+                                    <button class="btn btn-sm btn-success" id="imgSavePreset">保存</button>
+                                </div>
+                                <div class="form-group" style="flex:1;max-width:56px;">
+                                    <label class="form-label" style="opacity:0;">&nbsp;</label>
+                                    <button class="btn btn-sm btn-primary" id="imgEditPreset">修改</button>
+                                </div>
+                            </div>
+                            <div class="btn-group">
+                                <button class="btn btn-primary" id="imgFetch"><i class="fas fa-cloud-download-alt"></i> 拉取</button>
+                                <button class="btn" id="imgSave"><i class="fas fa-save"></i> 保存配置</button>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">温度 <span id="imgTempVal" class="temp-val">0.7</span></label>
+                                <input type="range" class="temp-range" id="imgTemp" min="0" max="2" step="0.1" value="0.7" />
+                                <div class="temp-hint"><span>0 · 严格人设</span><span>2 · 自由发挥</span></div>
+                            </div>
+                            <div class="model-select-wrap" id="imgModelWrap">
+                                <label class="form-label">选择模型</label>
+                                <div class="model-search-row">
+                                    <input class="form-control" id="imgModelSearch" placeholder="搜索模型..." />
+                                    <button class="btn btn-xs" id="imgModelSearchBtn">搜索</button>
+                                    <button class="btn btn-xs" id="imgModelClearBtn">清除</button>
+                                </div>
+                                <select class="form-control model-select" id="imgModelSelect"><option value="">请先拉取...</option></select>
+                            </div>
+                            <div class="connection-status" id="imgStatus"></div>
+
+                            <div class="prompt-section">
+                                <button class="prompt-toggle-btn" id="promptToggle">
+                                    <i class="fas fa-chevron-right" id="promptArrow"></i> 提示词
+                                </button>
+                                <div class="prompt-content" id="promptContent">
+                                    <div class="form-group">
+                                        <label class="form-label">提示词预设</label>
+                                        <div class="preset-row">
+                                            <select class="form-control" id="promptPresetSelect"></select>
+                                            <button class="btn btn-xs" id="promptDeletePreset" type="button" title="删除预设" aria-label="删除预设" style="display:inline-flex;align-items:center;justify-content:center;padding:0;width:32px;height:26px">
+                                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="m7 7 1 13h8l1-13"/><path d="M10 11v5M14 11v5"/></svg>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label">正面提示词</label>
+                                        <div class="prompt-row">
+                                            <input class="form-control" id="positivePrompt" placeholder="输入正面提示词..." />
+                                            <button class="btn btn-xs" id="addPositive">添加</button>
+                                        </div>
+                                        <div class="prompt-box-wrap">
+                                            <div class="prompt-box" id="positiveBox"><span class="empty-hint">暂无正面提示词</span></div>
+                                            <button class="prompt-clear-btn" id="clearPositive" title="清空"><i class="fas fa-times"></i></button>
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label">反面提示词</label>
+                                        <div class="prompt-row">
+                                            <input class="form-control" id="negativePrompt" placeholder="输入反面提示词..." />
+                                            <button class="btn btn-xs" id="addNegative">添加</button>
+                                        </div>
+                                        <div class="prompt-box-wrap">
+                                            <div class="prompt-box" id="negativeBox"><span class="empty-hint">暂无反面提示词</span></div>
+                                            <button class="prompt-clear-btn" id="clearNegative" title="清空"><i class="fas fa-times"></i></button>
+                                        </div>
+                                    </div>
+                                    <div class="form-row">
+                                        <div class="form-group" style="flex:2;">
+                                            <label class="form-label">预设名称</label>
+                                            <input class="form-control" id="promptPresetName" placeholder="输入预设名称..." />
+                                        </div>
+                                        <div class="form-group" style="flex:1;max-width:56px;">
+                                            <label class="form-label" style="opacity:0;">&nbsp;</label>
+                                            <button class="btn btn-sm btn-success" id="savePromptPreset" type="button" title="另存为新预设">保存</button>
+                                        </div>
+                                        <div class="form-group" style="flex:1;max-width:56px;">
+                                            <label class="form-label" style="opacity:0;">&nbsp;</label>
+                                            <button class="btn btn-sm btn-primary" id="editPromptPreset" type="button" title="修改选中预设">修改</button>
+                                        </div>
+                                    </div>
+                                    <div class="btn-group">
+                                        <button class="btn btn-xs" id="savePrompts"><i class="fas fa-save"></i> 保存提示词</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ============ Tab: TTS ============ -->
+                <div class="tab-panel" id="panel-tts">
+                    <div class="api-card">
+                        <div class="api-card-header">
+                            <span class="api-card-title">语音 API (TTS)</span>
+                            <button class="api-card-toggle" data-target="ttsBody">
+                                <i class="fas fa-chevron-up"></i>
+                            </button>
+                        </div>
+                        <div class="api-card-body" id="ttsBody">
+                            <div class="form-group">
+                                <label class="form-label">预设</label>
+                                <div class="preset-row">
+                                    <select class="form-control" id="ttsPreset"></select>
+                                    <button class="btn btn-xs btn-danger" id="ttsDeletePreset">删除</button>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">接口类型</label>
+                                <select class="form-control" id="ttsType">
+                                    <option value="openai">OpenAI 兼容 (/v1/audio/speech)</option>
+                                    <option value="minimax">MiniMax (/v1/t2a_v2)</option>
+                                    <option value="fishaudio">Fish Audio (/v1/tts)</option>
+                                    <option value="custom">自定义</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">中转地址 <span class="hint">(以 /v1 结尾)</span></label>
+                                <input class="form-control" id="ttsUrl" placeholder="https://api.example.com/v1" />
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">API Key</label>
+                                <div class="key-input-wrap">
+                                    <input class="form-control" id="ttsKey" placeholder="sk-..." type="text" data-masked-key="1" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
+                                    <button class="eye-btn" data-target="ttsKey" type="button"><i class="fas fa-eye"></i></button>
+                                </div>
+                            </div>
+                            <div class="form-group" id="ttsGroupWrap" style="display:none">
+                                <label class="form-label">GroupId <span class="hint">(仅 MiniMax 需要)</span></label>
+                                <input class="form-control" id="ttsGroupId" placeholder="MiniMax GroupId..." />
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">声音 ID <span class="hint">(可选。Fish Audio 可直接填公开模型的 id 作为 reference_id；留空则用上面选择的音色)</span></label>
+                                <input class="form-control" id="ttsVoice" placeholder="例如 Fish Audio 公开模型 id / voice_id" />
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group" style="flex:2;">
+                                    <label class="form-label">预设名称</label>
+                                    <input class="form-control" id="ttsPresetName" placeholder="输入预设名称..." />
+                                </div>
+                                <div class="form-group" style="flex:1;max-width:56px;">
+                                    <label class="form-label" style="opacity:0;">&nbsp;</label>
+                                    <button class="btn btn-sm btn-success" id="ttsSavePreset">保存</button>
+                                </div>
+                                <div class="form-group" style="flex:1;max-width:56px;">
+                                    <label class="form-label" style="opacity:0;">&nbsp;</label>
+                                    <button class="btn btn-sm btn-primary" id="ttsEditPreset">修改</button>
+                                </div>
+                            </div>
+                            <div class="btn-group">
+                                <button class="btn btn-primary" id="ttsFetch"><i class="fas fa-cloud-download-alt"></i> 拉取音色</button>
+                                <button class="btn" id="ttsSave"><i class="fas fa-save"></i> 保存配置</button>
+                            </div>
+                            <div class="model-select-wrap" id="ttsModelWrap">
+                                <label class="form-label">选择音色 / 模型</label>
+                                <div class="model-search-row">
+                                    <input class="form-control" id="ttsModelSearch" placeholder="搜索..." />
+                                    <button class="btn btn-xs" id="ttsModelSearchBtn">搜索</button>
+                                    <button class="btn btn-xs" id="ttsModelClearBtn">清除</button>
+                                </div>
+                                <select class="form-control model-select" id="ttsModelSelect"><option value="">请先拉取...</option></select>
+                            </div>
+                            <div class="connection-status" id="ttsStatus"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="height:4px;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== iOS 风格弹窗 ===== -->
+    <div class="ios-modal" id="apiModal">
+        <div class="ios-modal-card">
+            <div class="ios-modal-title" id="modalTitle">操作</div>
+            <div class="ios-modal-message" id="modalMessage" style="display:none;"></div>
+            <div class="ios-modal-actions">
+                <button class="ios-modal-btn cancel-btn" id="modalCancel" data-close>取消</button>
+                <button class="ios-modal-btn confirm-btn" id="modalConfirm">确认</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="../js/nano-tts.js"></script>
+<script src="../js/api.js?v=20261018c"></script>
+<script src="../js/api-float.js"></script>
+<script src="../js/nano-own-back.js"></script>
+<script src="../swipe-back.js"></script>
+</body>
+</html>

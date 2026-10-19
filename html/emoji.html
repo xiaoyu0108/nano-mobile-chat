@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<script src="../js/nano-runtime.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>表情包</title>
+    <link rel="stylesheet" href="../css/emoji.css?v=20261018c">
+    <script src="../js/appearance.js"></script>
+</head>
+<body>
+<div class="phone" id="app">
+
+    <header class="nav-bar">
+        <button class="nav-back" id="backBtn" data-back>
+            <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="15 18 9 12 15 6"/>
+            </svg>
+        </button>
+        <span class="nav-title" id="pageTitle">表情包</span>
+        <div id="actionContainer" style="display:flex;gap:6px;align-items:center;">
+            <button class="nav-action" id="actionBtn">+</button>
+        </div>
+    </header>
+
+    <div class="edit-actions-bar" id="editActionsBar"></div>
+
+    <div class="main-content" id="mainContent">
+        <div id="homeView">
+            <div class="group-scroll" id="groupScroll"></div>
+        </div>
+        <div id="detailView" style="display:none;">
+            <div class="detail-grid" id="detailGrid"></div>
+        </div>
+    </div>
+
+    <!-- ===== 新增弹窗 ===== -->
+    <div class="modal-overlay" id="addModal">
+        <div class="modal-card">
+            <div class="modal-title">新增表情包</div>
+            <div class="form-group">
+                <label>目标分组</label>
+                <select id="targetGroupSelect"></select>
+            </div>
+            <div class="form-group">
+                <label>新分组名称（可选）</label>
+                <input type="text" id="newGroupName" placeholder="留空则使用上方选择的分组">
+            </div>
+            <div class="form-group">
+                <label>
+                    <span>文件导入</span>
+                    <span style="display:flex;align-items:center;gap:6px;">
+                        <span class="import-icon" id="fileImportIcon" title="导入文件">
+                            <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                <polyline points="17 8 12 3 7 8"/>
+                                <line x1="12" y1="3" x2="12" y2="15"/>
+                            </svg>
+                        </span>
+                    </span>
+                </label>
+                <div class="form-row-buttons">
+                    <button class="btn primary" id="fileImportBtn">选择文件</button>
+                    <button class="btn ai-btn" id="fileAiBtn">AI 识别</button>
+                </div>
+                <div style="font-size:11px;color:rgba(0,0,0,0.25);margin-top:4px;">格式：描述: 图片链接</div>
+                <div id="fileStatus" style="font-size:13px;color:#34c759;margin-top:4px;min-height:18px;"></div>
+            </div>
+            <div class="form-group">
+                <label>批量粘贴</label>
+                <textarea id="batchInput" placeholder="描述: 图片链接&#10;描述: 图片链接"></textarea>
+                <button class="btn primary" id="batchRecognizeBtn" style="width:100%;padding:10px;margin-top:6px;">识别</button>
+                <div class="batch-result" id="batchResult"></div>
+            </div>
+            <div class="form-group">
+                <label>单张添加</label>
+                <div style="display:flex;gap:8px;">
+                    <button class="btn" id="singleUploadBtn" style="flex:0 0 auto;padding:8px 14px;">选择图片</button>
+                    <input type="text" id="singleUrlInput" placeholder="或输入图片 URL" style="flex:1;padding:8px 12px;border-radius:10px;border:1px solid rgba(0,0,0,0.05);font-size:13px;background:rgba(255,255,255,0.4);outline:none;">
+                </div>
+                <div style="display:flex;gap:8px;margin-top:6px;">
+                    <input type="text" id="singleNameInput" placeholder="表情名称" style="flex:1;padding:8px 12px;border-radius:10px;border:1px solid rgba(0,0,0,0.05);font-size:13px;background:rgba(255,255,255,0.4);outline:none;">
+                    <button class="btn primary" id="singleAddBtn" style="flex:0 0 auto;padding:8px 18px;">添加</button>
+                </div>
+                <div class="single-preview" id="singlePreview" style="display:none;">
+                    <div class="preview-img"><img id="singlePreviewImg" src="" alt="预览"></div>
+                    <div class="preview-info">
+                        <div class="p-name" id="singlePreviewName">未命名</div>
+                        <div class="p-hint">点击「添加」保存</div>
+                    </div>
+                    <button class="preview-remove" id="singlePreviewRemove">✕</button>
+                </div>
+            </div>
+            <div class="form-actions">
+                <button class="form-btn secondary" id="addModalCancel" data-close>取消</button>
+                <button class="form-btn primary" id="addModalConfirm">添加</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 移动弹窗 ===== -->
+    <div class="modal-overlay" id="moveModal">
+        <div class="modal-card">
+            <div class="modal-title">移动到分组</div>
+            <div class="form-group">
+                <label>选择目标分组</label>
+                <select id="moveTargetSelect"></select>
+            </div>
+            <div class="form-group" id="moveNewGroupWrap" style="display:none;">
+                <label>新分组名称</label>
+                <input type="text" id="moveNewGroupName" placeholder="输入新分组名称">
+            </div>
+            <div class="form-actions">
+                <button class="form-btn secondary" id="moveCancel" data-close>取消</button>
+                <button class="form-btn primary" id="moveConfirm">移动</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 修改表情含义弹窗 ===== -->
+    <div class="modal-overlay" id="editEmojiModal">
+        <div class="modal-card">
+            <div class="modal-title">修改表情含义</div>
+            <div class="form-group">
+                <input type="text" class="rename-input" id="editEmojiInput" placeholder="输入这个表情的含义">
+            </div>
+            <div class="form-actions">
+                <button class="form-btn secondary" id="editEmojiCancel" data-close>取消</button>
+                <button class="form-btn primary" id="editEmojiConfirm">确认</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 重命名弹窗 ===== -->
+    <div class="modal-overlay" id="renameModal">
+        <div class="modal-card">
+            <div class="modal-title">重命名分组</div>
+            <div class="form-group">
+                <input type="text" class="rename-input" id="renameInput" placeholder="输入新名称">
+            </div>
+            <div class="form-actions">
+                <button class="form-btn secondary" id="renameCancel" data-close>取消</button>
+                <button class="form-btn primary" id="renameConfirm">确认</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 信息 / 确认弹窗 ===== -->
+    <div class="modal-overlay" id="infoModal">
+        <div class="modal-card">
+            <div class="modal-title" id="infoTitle">提示</div>
+            <div class="modal-body" id="infoBody" style="font-size:15px;color:#3a3a3c;text-align:center;padding:6px 0;line-height:1.6;">内容</div>
+            <div class="form-actions" id="infoActions">
+                <button class="form-btn primary" id="infoOk" data-close>知道了</button>
+            </div>
+            <div class="form-actions" id="confirmActions" style="display:none">
+                <button class="form-btn" id="confirmCancelBtn">取消</button>
+                <button class="form-btn danger" id="confirmOkBtn">确定</button>
+            </div>
+        </div>
+    </div>
+
+    <input type="file" class="hidden-input" id="fileInput" accept=".txt,.json,.docx,.doc">
+    <input type="file" class="hidden-input" id="imageFileInput" accept="image/*">
+
+</div>
+
+<script src="../js/emoji.js?v=20261018c"></script>
+
+<script src="../js/api-float.js"></script>
+<script src="../swipe-back.js"></script>
+</body>
+</html>

@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<script src="../js/nano-runtime.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Fanfic</title>
+  <link rel="stylesheet" href="../css/fanfic.css?v=20261018f">
+  <script src="../js/appearance.js"></script>
+</head>
+<body class="ff-page ff-home">
+  <header class="ff-top">
+    <button class="ff-icon-btn" id="ffBack" type="button" aria-label="返回">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <div class="ff-top-title">
+      <span>Fanfic</span>
+      <em>同人文</em>
+    </div>
+    <button class="ff-text-btn" id="ffNew" type="button">New</button>
+  </header>
+
+  <main class="ff-main">
+    <section class="ff-intro">
+      <div class="ff-kicker">YOUR STORIES</div>
+      <h1>把你们写进故事里</h1>
+      <p>选择一个角色，挑几种题材，写一章，再写下一章。</p>
+    </section>
+
+    <section class="ff-shelf-head">
+      <span id="ffCount">0 works</span>
+      <div class="ff-head-links">
+        <button class="ff-link" id="ffCustom" type="button">自定义题材 / 文风</button>
+        <button class="ff-link" id="ffNew2" type="button">开始新故事</button>
+      </div>
+    </section>
+
+    <section class="ff-shelf" id="ffShelf"></section>
+
+    <div class="ff-empty" id="ffEmpty">
+      <div class="ff-empty-mark">Aa</div>
+      <h2>还没有故事</h2>
+      <p>从一次选择开始。你与角色的第一篇小说会出现在这里。</p>
+      <button class="ff-dark-btn" id="ffNewEmpty" type="button">开始写</button>
+    </div>
+  </main>
+
+  <div class="ff-modal" id="ffCustomModal">
+    <div class="ff-modal-card">
+      <div class="ff-modal-head">
+        <div>
+          <div class="ff-kicker">CUSTOM LIBRARY</div>
+          <h3>自定义题材与文风</h3>
+        </div>
+        <button class="ff-modal-x" id="ffCustomClose" type="button" aria-label="关闭">&times;</button>
+      </div>
+      <div class="ff-modal-tabs">
+        <button class="on" data-custom-tab="genres" type="button">题材</button>
+        <button data-custom-tab="styles" type="button">文风</button>
+      </div>
+      <div class="ff-custom-list" id="ffCustomList"></div>
+      <div class="ff-custom-form">
+        <input id="ffCustomTitle" maxlength="24" placeholder="标题，例如：民国探案">
+        <textarea id="ffCustomDesc" maxlength="300" placeholder="解释：这个题材 / 文风具体是什么感觉，想看什么桥段。"></textarea>
+        <button id="ffCustomAdd" type="button">添加</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="ff-toast" id="ffToast"></div>
+
+  <script src="../js/user-scope.js?v=20261018a"></script>
+  <script src="../js/fanfic-common.js?v=20261018f"></script>
+  <script src="../js/fanfic-home.js?v=20261018f"></script>
+  <script src="../swipe-back.js"></script>
+</body>
+</html>

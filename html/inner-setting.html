@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<script src="../js/nano-runtime.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>聊天设置</title>
+    <link rel="stylesheet" href="../css/inner-setting.css">
+    <link rel="preconnect" href="https://cdn.jsdelivr.net">
+    <link rel="dns-prefetch" href="https://unpkg.com">
+    <script src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
+    <script src="../js/appearance.js"></script>
+</head>
+<body>
+
+    <!-- ===== 自己的顶栏：返回 + 标题（返回聊天详情页） ===== -->
+    <div class="page-nav" id="pageNav">
+        <button class="nav-back" id="navBack" data-back aria-label="返回">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
+        </button>
+        <div class="nav-title">设置</div>
+        <div class="nav-spacer"></div>
+    </div>
+
+    <div class="container">
+
+        <!-- ===== 顶部信息卡片 ===== -->
+        <div class="profile-card">
+            <div class="avatar" id="profileAvatar">
+                <span id="avatarPlaceholder">?</span>
+                <img id="avatarImage" style="display:none;" alt="头像">
+            </div>
+            <div class="nickname" id="displayNickname">加载中...</div>
+            <div class="user-id" id="displayUserId">ID: --</div>
+        </div>
+
+        <!-- ===== 第一分区：聊天设置 ===== -->
+        <div class="list-group">
+            <div class="list-item" id="remarkItem">
+                <div class="item-left">
+                    <div class="item-icon" style="color: var(--ios-blue);">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
+                    </div>
+                    <div class="item-text">备注</div>
+                </div>
+                <div class="item-right">
+                    <span id="remarkPreview">未设置</span>
+                    <svg class="chevron-right" viewBox="0 0 8 13" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M1.5 1.5L6.5 6.5L1.5 11.5" stroke="#C6C6C8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </div>
+            </div>
+            <div class="list-item" id="cotToggleItem">
+                <div class="item-left">
+                    <div class="item-icon" style="color: var(--ios-blue);">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
+                    </div>
+                    <div class="item-text">思维链</div>
+                </div>
+                <div class="item-right">
+                    <span id="cotToggleStatus" style="margin-right: 4px;">关闭</span>
+                    <input type="checkbox" class="ios-switch" id="cotToggle">
+                </div>
+            </div>
+            <div class="list-item" id="cotItem">
+                <div class="item-left">
+                    <div class="item-icon" style="color: var(--ios-blue);">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a7 7 0 0 0-4 12.7V17a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2.3A7 7 0 0 0 12 2z"></path><line x1="9" y1="21" x2="15" y2="21"></line></svg>
+                    </div>
+                    <div class="item-text">思维链预设</div>
+                </div>
+                <div class="item-right">
+                    <span id="cotPreview">未设置</span>
+                    <svg class="chevron-right" viewBox="0 0 8 13" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M1.5 1.5L6.5 6.5L1.5 11.5" stroke="#C6C6C8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </div>
+            </div>
+            <div class="list-item" id="bgItem">
+                <div class="item-left">
+                    <div class="item-icon" style="color: var(--ios-blue);">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+                    </div>
+                    <div class="item-text">聊天背景</div>
+                </div>
+                <div class="item-right">
+                    <span id="bgDisplay">默认</span>
+                    <svg class="chevron-right" viewBox="0 0 8 13" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M1.5 1.5L6.5 6.5L1.5 11.5" stroke="#C6C6C8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </div>
+            </div>
+            <div class="list-item" id="timeAwareItem">
+                <div class="item-left">
+                    <div class="item-icon" style="color: var(--ios-blue);">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                    </div>
+                    <div class="item-text">时间感知</div>
+                </div>
+                <div class="item-right">
+                    <span id="timeStatus" style="margin-right: 4px;">开启</span>
+                    <input type="checkbox" class="ios-switch" id="timeToggle" checked>
+                </div>
+            </div>
+            <div class="list-item" id="voiceItem">
+                <div class="item-left">
+                    <div class="item-icon" style="color: var(--ios-blue);">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"></path><path d="M19 10v1a7 7 0 0 1-14 0v-1"></path><line x1="12" y1="18" x2="12" y2="22"></line></svg>
+                    </div>
+                    <div class="item-text">语音音色</div>
+                </div>
+                <div class="item-right">
+                    <span id="voicePreview">跟随全局</span>
+                    <svg class="chevron-right" viewBox="0 0 8 13" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M1.5 1.5L6.5 6.5L1.5 11.5" stroke="#C6C6C8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </div>
+            </div>
+            <div class="list-item" id="transItem">
+                <div class="item-left">
+                    <div class="item-icon" style="color: var(--ios-blue);">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 5h12"/><path d="M7 2h1"/><path d="m4 14 6-6 2-3"/><path d="M5 8l6 6"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/></svg>
+                    </div>
+                    <div class="item-text">译文独立气泡</div>
+                </div>
+                <div class="item-right">
+                    <span id="transStatus" style="margin-right: 4px;">分开</span>
+                    <input type="checkbox" class="ios-switch" id="transSeparateToggle" checked>
+                </div>
+            </div>
+            <div class="list-item" id="autoMsgItem">
+                <div class="item-left">
+                    <div class="item-icon" style="color: var(--ios-blue);">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                    </div>
+                    <div class="item-text">主动发消息</div>
+                </div>
+                <div class="item-right">
+                    <span id="autoMsgStatus" style="margin-right: 4px;">关闭</span>
+                    <input type="checkbox" class="ios-switch" id="autoMsgToggle">
+                </div>
+            </div>
+            <div class="list-item" id="autoMsgIntervalItem" style="display:none;">
+                <div class="item-left">
+                    <div class="item-icon" style="color: var(--ios-blue);">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                    </div>
+                    <div class="item-text">发送间隔</div>
+                </div>
+                <div class="item-right">
+                    <select id="autoMsgInterval" style="border:none;background:transparent;font-size:13px;color:var(--text-secondary);outline:none;">
+                        <option value="1">1小时</option>
+                        <option value="2">2小时</option>
+                        <option value="4">4小时</option>
+                        <option value="6">6小时</option>
+                        <option value="8" selected>8小时</option>
+                        <option value="12">12小时</option>
+                        <option value="24">24小时</option>
+                    </select>
+                </div>
+            </div>
+            <div class="list-item" id="autoMomentItem">
+                <div class="item-left">
+                    <div class="item-icon" style="color: var(--ios-blue);">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+                    </div>
+                    <div class="item-text">主动发朋友圈</div>
+                </div>
+                <div class="item-right">
+                    <span id="autoMomentStatus" style="margin-right: 4px;">关闭</span>
+                    <input type="checkbox" class="ios-switch" id="autoMomentToggle">
+                </div>
+            </div>
+            <div class="list-item" id="autoMomentIntervalItem" style="display:none;">
+                <div class="item-left">
+                    <div class="item-icon" style="color: var(--ios-blue);">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                    </div>
+                    <div class="item-text">朋友圈间隔</div>
+                </div>
+                <div class="item-right">
+                    <select id="autoMomentInterval" style="border:none;background:transparent;font-size:13px;color:var(--text-secondary);outline:none;">
+                        <option value="2">2小时</option>
+                        <option value="4">4小时</option>
+                        <option value="6">6小时</option>
+                        <option value="8">8小时</option>
+                        <option value="12">12小时</option>
+                        <option value="24" selected>24小时（约1天）</option>
+                        <option value="48">48小时</option>
+                    </select>
+                </div>
+            </div>
+            <div class="list-item" id="autoSocialItem">
+                <div class="item-left">
+                    <div class="item-icon" style="color: #32ade6;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 3a10.9 10.9 0 0 1-3.14 1.53 4.48 4.48 0 0 0-7.86 3v1A10.66 10.66 0 0 1 3 4s-4 9 5 13a11.64 11.64 0 0 1-7 2c9 5 20 0 20-11.5a4.5 4.5 0 0 0-.08-.83A7.72 7.72 0 0 0 23 3z"></path></svg>
+                    </div>
+                    <div class="item-text">社交活跃度</div>
+                </div>
+                <div class="item-right">
+                    <span id="autoSocialStatus" style="margin-right: 4px;">关闭</span>
+                    <input type="checkbox" class="ios-switch" id="autoSocialToggle">
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== 第二分区：生图设置 ===== -->
+        <div class="list-group" style="margin-top:14px;">
+            <div class="list-item" id="allowImageItem">
+                <div class="item-left">
+                    <div class="item-icon" style="color: var(--ios-blue);">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+                    </div>
+                    <div class="item-text">允许生图</div>
+                </div>
+                <div class="item-right">
+                    <span id="allowImageStatus" style="margin-right: 4px;">关闭</span>
+                    <input type="checkbox" class="ios-switch" id="allowImageToggle">
+                </div>
+            </div>
+            <div class="list-item" id="allowMomentImageItem">
+                <div class="item-left">
+                    <div class="item-icon" style="color: var(--ios-blue);">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 19V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2z"></path><circle cx="8.5" cy="8.5" r="1.5"></circle><path d="M21 15l-5-5L5 21"></path></svg>
+                    </div>
+                    <div class="item-text">允许朋友圈生图</div>
+                </div>
+                <div class="item-right">
+                    <span id="allowMomentImageStatus" style="margin-right: 4px;">关闭</span>
+                    <input type="checkbox" class="ios-switch" id="allowMomentImageToggle">
+                </div>
+            </div>
+            <div class="list-item" id="momentImageFreqItem" style="display:none;">
+                <div class="item-left">
+                    <div class="item-icon" style="color: var(--ios-blue);">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4v6h6"></path><path d="M20 20v-6h-6"></path><path d="M4 10a8 8 0 0 1 14-4"></path><path d="M20 14a8 8 0 0 1-14 4"></path></svg>
+                    </div>
+                    <div class="item-text">生图频率</div>
+                </div>
+                <div class="item-right">
+                    <select id="momentImageFreq" style="border:none;background:transparent;font-size:13px;color:var(--text-secondary);outline:none;">
+                        <option value="high">高 · 每条都生成</option>
+                        <option value="medium" selected>中 · 2~3 条一次</option>
+                        <option value="low">低 · 6~8 条一次</option>
+                    </select>
+                </div>
+            </div>
+            <div class="list-item" id="voiceFreqItem">
+                <div class="item-left">
+                    <div class="item-icon" style="color: #34c759;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line></svg>
+                    </div>
+                    <div class="item-text">语音气泡频率</div>
+                </div>
+                <div class="item-right">
+                    <select id="voiceFreq" style="border:none;background:transparent;font-size:13px;color:var(--text-secondary);outline:none;">
+                        <option value="high">高 · 每轮 2 条以上</option>
+                        <option value="medium" selected>中 · 每轮 1 条</option>
+                        <option value="low">低 · 2 轮 1 条</option>
+                    </select>
+                </div>
+            </div>
+            <div class="list-item" id="actionNarrationItem">
+                <div class="item-left">
+                    <div class="item-icon" style="color: #ff9500;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"></path></svg>
+                    </div>
+                    <div class="item-text">线上动描</div>
+                </div>
+                <div class="item-right">
+                    <span id="actionNarrationStatus" style="margin-right: 4px;">关闭</span>
+                    <input type="checkbox" class="ios-switch" id="actionNarrationToggle">
+                </div>
+            </div>
+            <div class="list-item" id="altProbeItem">
+                <div class="item-left">
+                    <div class="item-icon" style="color: #af52de;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><line x1="19" y1="8" x2="19" y2="14"></line><line x1="22" y1="11" x2="16" y2="11"></line></svg>
+                    </div>
+                    <div class="item-text">小号试探</div>
+                </div>
+                <div class="item-right">
+                    <span id="altProbeStatus" style="margin-right: 4px;">关闭</span>
+                    <input type="checkbox" class="ios-switch" id="altProbeToggle">
+                </div>
+            </div>
+            <div class="list-item" id="promptItem">
+                <div class="item-left">
+                    <div class="item-icon" style="color: var(--ios-blue);">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 0 0-10 10c0 5.5 4.5 10 10 10s10-4.5 10-10S17.5 2 12 2z"></path><path d="M12 12m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"></path><path d="M12 4v4"></path><path d="M12 16v4"></path><path d="M4 12h4"></path><path d="M16 12h4"></path></svg>
+                    </div>
+                    <div class="item-text">生图提示词</div>
+                </div>
+                <div class="item-right">
+                    <span id="promptStatus">未设置</span>
+                    <svg class="chevron-right" viewBox="0 0 8 13" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M1.5 1.5L6.5 6.5L1.5 11.5" stroke="#C6C6C8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </div>
+            </div>
+            <div class="list-item" id="faceItem">
+                <div class="item-left">
+                    <div class="item-icon" style="color: var(--ios-blue);">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                    </div>
+                    <div class="item-text">锁脸参考</div>
+                </div>
+                <div class="item-right">
+                    <span id="faceStatus">未设置</span>
+                    <svg class="chevron-right" viewBox="0 0 8 13" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M1.5 1.5L6.5 6.5L1.5 11.5" stroke="#C6C6C8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </div>
+            </div>
+            <div class="list-item" style="cursor:default;">
+                <div class="item-left">
+                    <div class="item-icon" style="color: var(--ios-blue);">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>
+                    </div>
+                    <div class="item-text">回复字数上限</div>
+                </div>
+                <div class="item-right">
+                    <input id="replyMaxTokens" type="number" min="0" step="500" placeholder="默认 3000"
+                        style="width:96px;text-align:right;border:none;background:transparent;font-size:13px;color:var(--text-secondary);outline:none;">
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== 第三分区：聊天记录 ===== -->
+        <div class="list-group" style="margin-top:14px;">
+            <div class="list-item" style="cursor:default;">
+                <div class="item-left">
+                    <div class="item-icon" style="color: var(--ios-blue);">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 6-9 6-9-6 9-6z"/><path d="M3 15l9 6 9-6"/></svg>
+                    </div>
+                    <div class="item-text">当前楼层</div>
+                </div>
+                <div class="item-right">
+                    <span class="floor-count" id="floorCountText">线上 0 · 线下 0</span>
+                </div>
+            </div>
+            <div class="list-item" id="tokenItem" style="cursor:pointer;">
+                <div class="item-left">
+                    <div class="item-icon" style="color: var(--ios-blue);">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>
+                    </div>
+                    <div class="item-text">Token 占用</div>
+                </div>
+                <div class="item-right">
+                    <span id="tokenTotal" style="font-size:13px;color:#8e8e93;">统计中…</span>
+                    <svg class="chevron-right" id="tokenChevron" viewBox="0 0 8 13" fill="none" xmlns="http://www.w3.org/2000/svg" style="transition:transform .2s;">
+                        <path d="M1.5 1.5L6.5 6.5L1.5 11.5" stroke="#C6C6C8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </div>
+            </div>
+            <div id="tokenDetails" style="display:none;padding:2px 16px 14px;">
+                <div style="display:flex;gap:14px;align-items:center;">
+                    <svg id="tokenRing" viewBox="0 0 100 100" width="108" height="108" style="flex:none;"></svg>
+                    <div id="tokenLegend" style="flex:1;min-width:0;font-size:12px;line-height:1.5;color:#3c3c43;"></div>
+                </div>
+                <div style="font-size:11px;color:#aeaeb2;margin-top:6px;">按字符估算，仅供参考</div>
+            </div>
+            <div class="list-item" id="searchItem">
+                <div class="item-left">
+                    <div class="item-icon" style="color: var(--ios-blue);">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                    </div>
+                    <div class="item-text">查找聊天记录</div>
+                </div>
+                <div class="item-right">
+                    <svg class="chevron-right" viewBox="0 0 8 13" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M1.5 1.5L6.5 6.5L1.5 11.5" stroke="#C6C6C8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </div>
+            </div>
+            <div class="list-item item-destructive" id="clearItem">
+                <div class="item-left">
+                    <div class="item-icon" style="color: var(--ios-red);">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                    </div>
+                    <div class="item-text">清空聊天记录</div>
+                </div>
+                <div class="item-right">
+                    <svg class="chevron-right" viewBox="0 0 8 13" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M1.5 1.5L6.5 6.5L1.5 11.5" stroke="#C6C6C8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== 第四分区（最底）：拉黑 ===== -->
+        <div class="list-group" style="margin-top:14px;">
+            <div class="list-item item-destructive" id="blockItem">
+                <div class="item-left">
+                    <div class="item-icon" style="color: var(--ios-red);">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M5.6 5.6l12.8 12.8"></path></svg>
+                    </div>
+                    <div class="item-text">拉黑 TA</div>
+                </div>
+                <div class="item-right">
+                    <span id="blockStatus" style="font-size:13px;color:var(--text-secondary);">未拉黑</span>
+                    <svg class="chevron-right" viewBox="0 0 8 13" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M1.5 1.5L6.5 6.5L1.5 11.5" stroke="#C6C6C8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </div>
+            </div>
+            <div class="list-item" id="unblockItem">
+                <div class="item-left">
+                    <div class="item-icon" style="color: #34c759;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg>
+                    </div>
+                    <div class="item-text">取消拉黑</div>
+                </div>
+                <div class="item-right">
+                    <span id="unblockStatus" style="font-size:13px;color:var(--text-secondary);"></span>
+                    <svg class="chevron-right" viewBox="0 0 8 13" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M1.5 1.5L6.5 6.5L1.5 11.5" stroke="#C6C6C8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </div>
+            </div>
+            <div class="list-item" id="charBlockItem" style="display:none;cursor:default;">
+                <div class="item-left">
+                    <div class="item-icon" style="color: #ff3b30;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.7 21a2 2 0 0 1-3.4 0"></path></svg>
+                    </div>
+                    <div class="item-text">TA 拉黑了你的线上聊天</div>
+                </div>
+                <div class="item-right">
+                    <span id="charBlockStatus" style="font-size:12px;color:var(--text-secondary);text-align:right;max-width:160px;">可去 iMessage 联系 TA 请求加回</span>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ===== 弹窗 1：修改备注 ===== -->
+    <div class="modal-overlay" id="remarkModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">修改备注</div>
+            </div>
+            <div class="modal-body">
+                <input type="text" class="ios-input" id="remarkInput" placeholder="输入新的备注名">
+            </div>
+            <div class="modal-footer">
+                <button class="modal-btn cancel" id="remarkCancel" data-close>取消</button>
+                <button class="modal-btn bold" id="remarkConfirm">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 弹窗 2：聊天背景 ===== -->
+    <div class="modal-overlay" id="bgModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">聊天背景</div>
+            </div>
+            <div class="modal-body">
+                <div class="preview-box" id="bgPreviewBox">无预览</div>
+                <label class="custom-file-upload">
+                    <input type="file" id="bgUpload" accept="image/*">
+                    选择相册图片
+                </label>
+                <button class="btn-reset" id="bgReset">恢复默认背景</button>
+            </div>
+            <div class="modal-footer">
+                <button class="modal-btn cancel" id="bgCancel" data-close>取消</button>
+                <button class="modal-btn bold" id="bgConfirm">应用</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 弹窗 3：查找聊天记录 ===== -->
+    <div class="modal-overlay" id="searchModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">查找聊天记录</div>
+            </div>
+            <div class="modal-body">
+                <input type="text" class="ios-input" id="searchInput" placeholder="搜索关键词...">
+                <div class="search-results" id="searchResults">
+                    输入关键词以搜索
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="modal-btn cancel" id="searchClose" data-close>关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 弹窗 4：清空聊天记录 ===== -->
+    <div class="modal-overlay" id="clearModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">清空聊天记录</div>
+                <div style="font-size: 13px; color: var(--text-secondary); margin-top: 5px;">此操作将永久删除与该联系人的所有消息，且无法恢复。</div>
+            </div>
+            <div class="modal-footer">
+                <button class="modal-btn cancel" id="clearCancel" data-close>取消</button>
+                <button class="modal-btn destructive" id="clearConfirm">清空</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 弹窗 5：生图提示词 ===== -->
+    <div class="modal-overlay" id="promptModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">外形描述提示词</div>
+            </div>
+            <div class="modal-body">
+                <textarea class="ios-textarea" id="promptInput" placeholder="输入生图提示词..."></textarea>
+            </div>
+            <div class="modal-footer">
+                <button class="modal-btn cancel" id="promptCancel" data-close>取消</button>
+                <button class="modal-btn bold" id="promptConfirm">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 弹窗 6：锁脸参考图 ===== -->
+    <div class="modal-overlay" id="faceModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">上传锁脸参考</div>
+            </div>
+            <div class="modal-body">
+                <div class="preview-box" id="facePreviewBox" style="height: 120px;">未上传参考图</div>
+                <label class="custom-file-upload">
+                    <input type="file" id="faceUpload" accept="image/*">
+                    选择照片
+                </label>
+            </div>
+            <div class="modal-footer">
+                <button class="modal-btn cancel" id="faceCancel" data-close>取消</button>
+                <button class="modal-btn bold" id="faceConfirm">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 弹窗 7：思维链预设 ===== -->
+    <div class="modal-overlay" id="cotModal">
+        <div class="modal-content cot-modal">
+            <div class="modal-header">
+                <div class="modal-title">思维链预设</div>
+                <div style="font-size: 13px; color: var(--text-secondary); margin-top: 5px;">AI 每次回复前会先按此预设思考，再输出对话；思考会以小折叠块显示在气泡上方。</div>
+            </div>
+            <div class="modal-body">
+                <div class="cot-row">
+                    <select class="ios-input" id="cotPresetSelect"></select>
+                    <button class="modal-btn cot-icon-btn danger" id="cotPresetDelete" title="删除预设">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+                    </button>
+                </div>
+                <div class="cot-row">
+                    <input class="ios-input" id="cotPresetName" placeholder="预设名称">
+                    <button class="modal-btn cot-icon-btn" id="cotPresetSave" title="另存预设">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>
+                    </button>
+                    <button class="modal-btn cot-icon-btn primary" id="cotPresetUpdate" title="更新预设">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+                    </button>
+                </div>
+                <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;color:#007aff;font-size:12px;margin-bottom:6px;" title="导入 TXT / DOCX / JSON">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4"/><path d="m7.5 8.5 4.5-4.5 4.5 4.5"/><path d="M5 14.5v4A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5v-4"/></svg>
+                    导入 TXT / DOCX / JSON
+                    <input type="file" id="cotImportFile" accept=".txt,.docx,.json,text/plain,application/json,application/vnd.openxmlformats-officedocument.wordprocessingml.document" style="display:none;">
+                </label>
+                <span id="cotImportName" style="font-size:11px;color:#8e8e93;margin-left:6px;"></span>
+                <textarea class="ios-textarea" id="cotInput" placeholder="例如：先判断对方情绪→回忆相关设定→想清楚我此刻的态度→用符合人设的语气回应" style="min-height:140px;"></textarea>
+            </div>
+            <div class="modal-footer">
+                <button class="modal-btn cancel" id="cotCancel" data-close>取消</button>
+                <button class="modal-btn bold" id="cotConfirm">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 弹窗 8：语音音色（TTS 预设绑定） ===== -->
+    <div class="modal-overlay" id="voiceModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">语音音色</div>
+                <div style="font-size: 13px; color: var(--text-secondary); margin-top: 5px;">给这个角色绑定一个 TTS 预设作为音色：角色发语音时会用这套音色合成。预设来自「API → TTS」里保存的配置。</div>
+            </div>
+            <div class="modal-body">
+                <select class="ios-input" id="voicePresetSelect"></select>
+                <div style="font-size:11px;color:#8e8e93;margin-top:8px;line-height:1.5;">选「跟随全局」则用「API → TTS」当前配置。</div>
+            </div>
+            <div class="modal-footer">
+                <button class="modal-btn cancel" id="voiceCancel" data-close>取消</button>
+                <button class="modal-btn bold" id="voiceConfirm">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="../js/nano-tts.js"></script>
+    <script src="../js/inner-setting.js?v=20261018b"></script>
+
+<script src="../js/api-float.js"></script>
+<script src="../swipe-back.js"></script>
+</body>
+</html>

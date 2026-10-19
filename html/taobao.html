@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<script src="../js/nano-runtime.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>购物 · 外卖</title>
+<script src="../js/appearance.js"></script>
+<style>
+:root{
+  --bg:#f5f5f5;--card:#fff;--text:#171717;--sub:#8c8c8c;--line:#ededed;
+  --orange:#ff5b18;--orange2:#ff7a00;--red:#ff3b30;--dark:#222;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:var(--bg);
+font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","PingFang SC","Helvetica Neue",Arial,sans-serif;color:var(--text)}
+button{font:inherit;border:0;background:none;color:inherit}
+.app{height:100dvh;width:100%;display:flex;flex-direction:column;overflow:hidden;background:#f5f5f5}
+.top{
+  min-height:44px;
+  flex:none;
+  background:#fff;display:flex;align-items:center;
+  padding:calc(10px + max(8px, var(--safe-top, 0px), env(safe-area-inset-top, 0px))) 12px 10px;gap:10px;position:relative;z-index:5
+}
+.back{width:40px;height:40px;display:grid;place-items:center;flex:0 0 40px}
+.back svg,.top-action svg{width:24px;height:24px;fill:none;stroke:#111;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.search{
+  height:43px;flex:1;background:#f3f3f3;border-radius:22px;display:flex;align-items:center;
+  padding:0 14px;gap:9px;color:#999;min-width:0
+}
+.search svg{width:20px;height:20px;stroke:#777;fill:none;stroke-width:2;stroke-linecap:round}
+.search span{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.top-action{width:40px;height:40px;display:grid;place-items:center;flex:0 0 40px}
+.top-action:active,.back:active{background:#f0f0f0;border-radius:12px}
+
+.switch{
+  background:#fff;padding:0 15px 11px;display:flex;align-items:center;gap:26px;
+  flex:0 0 53px;border-bottom:1px solid #f1f1f1
+}
+.switch button{font-size:17px;font-weight:500;position:relative;padding:5px 0}
+.switch button.active{font-weight:700}
+.switch button.active:after{
+  content:"";position:absolute;left:50%;bottom:-8px;transform:translateX(-50%);
+  width:27px;height:3px;border-radius:3px;background:var(--orange)
+}
+
+.main{flex:1;min-height:0;overflow-y:auto;padding-bottom:90px;scrollbar-width:none}
+.main::-webkit-scrollbar{display:none}
+.page{display:none}.page.active{display:block}
+.hero{
+  margin:10px 10px 8px;background:linear-gradient(120deg,#fff2e9,#fff);
+  border-radius:15px;padding:14px 15px;display:flex;align-items:center;justify-content:space-between;
+  border:1px solid #f2e9e4
+}
+.hero-title{font-size:18px;font-weight:700}.hero-sub{font-size:12px;color:#999;margin-top:4px}
+.hero-btn{background:#171717;color:#fff;padding:8px 13px;border-radius:18px;font-size:12px}
+
+.chips{
+  display:flex;overflow-x:auto;gap:9px;padding:4px 10px 11px;scrollbar-width:none
+}
+.chips::-webkit-scrollbar{display:none}
+.chip{background:#fff;border-radius:18px;padding:8px 14px;white-space:nowrap;font-size:13px}
+.chip.active{background:#fff0e9;color:var(--orange);font-weight:600}
+
+.section-head{display:flex;justify-content:space-between;align-items:center;padding:11px 13px 9px}
+.section-head h2{font-size:18px;margin:0;font-weight:700}
+.section-head button{font-size:12px;color:#999}
+
+.product-list{display:grid;grid-template-columns:1fr 1fr;gap:9px;padding:0 9px}
+.product{
+  background:#fff;border-radius:12px;overflow:hidden;position:relative
+}
+.product-img{
+  height:145px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;
+  position:relative;overflow:hidden
+}
+.product-img .shape{width:92px;height:92px;border-radius:16px;background:#ddd;box-shadow:0 9px 20px rgba(0,0,0,.09)}
+.product:nth-child(2n) .shape{border-radius:50%;width:95px;height:95px;background:#e5e5e5}
+.product:nth-child(3n) .shape{width:105px;height:78px;border-radius:9px;background:#d9d9d9}
+.badge{
+  position:absolute;left:7px;top:7px;background:#ffebe3;color:#ff4d17;padding:4px 6px;
+  border-radius:5px;font-size:10px;font-weight:600
+}
+.product-info{padding:10px 10px 11px}
+.product-title{font-size:14px;line-height:1.45;height:41px;overflow:hidden}
+.product-meta{color:#999;font-size:11px;margin-top:5px}
+.price-row{display:flex;align-items:baseline;gap:2px;margin-top:8px}
+.price{font-size:19px;color:#111;font-weight:700}.price:before{content:"¥";font-size:12px}
+.sold{font-size:10px;color:#999;margin-left:auto}
+.shop-label{font-size:10px;color:#999;margin-top:4px}
+
+.order{
+  background:#fff;margin:0 10px 9px;border-radius:13px;padding:13px 12px
+}
+.order-top{display:flex;justify-content:space-between;align-items:center;font-size:12px}
+.order-shop{font-weight:600;font-size:14px}
+.status{color:var(--orange)}
+.order-body{display:flex;gap:11px;margin-top:12px}
+.thumb{width:72px;height:72px;flex:0 0 72px;border-radius:8px;background:#e8e8e8;display:grid;place-items:center}
+.thumb:after{content:"";width:43px;height:43px;background:#d4d4d4;border-radius:7px}
+.order-info{min-width:0;flex:1}
+.order-name{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.order-desc{font-size:11px;color:#999;margin-top:6px}
+.order-bottom{display:flex;justify-content:space-between;align-items:center;margin-top:12px}
+.order-price{font-size:15px;font-weight:700}.order-price small{font-size:11px;font-weight:400}
+.actions{display:flex;gap:7px}
+.action{border:1px solid #ddd;border-radius:16px;padding:6px 12px;font-size:11px;background:#fff}
+.action.primary{background:#111;color:#fff;border-color:#111}
+
+.food-banner{
+  margin:10px;background:linear-gradient(115deg,#fff4e9,#fff);
+  border-radius:15px;padding:16px 15px;display:flex;justify-content:space-between;align-items:center
+}
+.food-title{font-size:20px;font-weight:750}.food-sub{font-size:12px;color:#999;margin-top:4px}
+.food-time{font-size:25px;font-weight:750}.food-time small{font-size:11px;font-weight:400;color:#888}
+.food-cats{display:grid;grid-template-columns:repeat(5,1fr);gap:7px;padding:0 10px 4px}
+.food-cat{background:#fff;border-radius:12px;text-align:center;padding:11px 4px;font-size:12px}
+.food-cat .circle{width:38px;height:38px;border-radius:50%;background:#eee;margin:0 auto 6px}
+.restaurant{
+  background:#fff;margin:0 10px 9px;border-radius:13px;padding:13px
+}
+.rtop{display:flex;justify-content:space-between;align-items:center}
+.rname{font-size:16px;font-weight:700}.distance{font-size:11px;color:#999}
+.rmeta{font-size:11px;color:#999;margin-top:5px}
+.food-items{display:flex;gap:8px;margin-top:11px}
+.food-item{flex:1;min-width:0}
+.food-img{height:92px;border-radius:8px;background:#e4e4e4;display:grid;place-items:center}
+.food-img:after{content:"";width:53px;height:43px;border-radius:50%;background:#cfcfcf}
+.food-name{font-size:12px;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.food-price{font-size:13px;font-weight:700;margin-top:3px}.food-price:before{content:"¥";font-size:10px}
+.rbottom{display:flex;justify-content:space-between;margin-top:10px;font-size:11px;color:#999}
+.takeout-order{
+  background:#fff;margin:0 10px 9px;border-radius:13px;padding:13px
+}
+.to-head{display:flex;justify-content:space-between}.to-head strong{font-size:15px}.to-status{color:var(--orange);font-size:12px}
+.to-row{display:flex;gap:10px;margin-top:11px}
+.to-thumb{width:65px;height:65px;border-radius:8px;background:#e2e2e2;flex:0 0 65px}
+.to-detail{flex:1}.to-name{font-size:13px}.to-sub{font-size:11px;color:#999;margin-top:5px}.to-total{font-size:13px;font-weight:700;margin-top:7px}
+.to-foot{display:flex;justify-content:space-between;align-items:center;margin-top:10px}
+.delivery-line{font-size:11px;color:#999}.delivery-line b{color:#333}
+.empty-tip{color:#999;font-size:13px;padding:14px 13px;text-align:center}
+.cart{
+  position:fixed;left:10px;right:10px;bottom:69px;height:57px;border-radius:29px;
+  background:#171717;color:#fff;display:flex;align-items:center;padding:0 8px 0 17px;
+  z-index:15;box-shadow:0 7px 24px rgba(0,0,0,.18)
+}
+.cart-icon{width:37px;height:37px;display:grid;place-items:center}
+.cart-icon svg{width:25px;height:25px;fill:none;stroke:#fff;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.cart-text{flex:1;margin-left:8px}.cart-text b{font-size:14px}.cart-text span{font-size:11px;color:#aaa;margin-left:7px}
+.cart-btn{background:#fff;color:#111;border-radius:21px;padding:10px 17px;font-size:12px;font-weight:600}
+
+.bottom{
+  position:fixed;left:0;right:0;bottom:0;height:69px;background:#fff;border-top:1px solid #e9e9e9;
+  display:flex;z-index:20;padding-bottom:env(safe-area-inset-bottom)
+}
+.nav{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:10px;color:#888}
+.nav.active{color:#111;font-weight:600}.nav svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+
+@media(min-width:700px){
+ .app{max-width:520px;margin:auto;box-shadow:0 0 30px rgba(0,0,0,.08)}
+ .cart,.bottom{max-width:520px;left:50%;right:auto;transform:translateX(-50%);width:100%}
+ .cart{width:calc(100% - 20px)}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <button class="back" onclick="phoneBack()" aria-label="返回">
+      <svg viewBox="0 0 24 24"><path d="M15 5 8 12l7 7"/></svg>
+    </button>
+    <div class="search">
+      <svg viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 5 5"/></svg>
+      <span id="searchText">搜索商品、店铺、外卖</span>
+    </div>
+    <button class="top-action" onclick="phoneRefresh()" aria-label="刷新">
+      <svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.8-4L4 9"/><path d="M4 5v4h4"/><path d="M4 13a8 8 0 0 0 14.8 4L20 15"/><path d="M20 19v-4h-4"/></svg>
+    </button>
+  </header>
+
+  <div class="switch">
+    <button class="active" data-page="shop" onclick="switchPage('shop',this)">购物</button>
+    <button data-page="food" onclick="switchPage('food',this)">外卖</button>
+    <button data-page="orders" onclick="switchPage('orders',this)">订单</button>
+  </div>
+
+  <main class="main" id="main">
+    <section class="page active" id="shop">
+      <div class="hero">
+        <div><div class="hero-title">Char 最近在买</div><div class="hero-sub">查看他最近浏览、下单和加入购物车的商品</div></div>
+        <button class="hero-btn">查看记录</button>
+      </div>
+
+      <div class="chips">
+        <button class="chip active">全部</button><button class="chip">最近购买</button>
+        <button class="chip">购物车</button><button class="chip">收藏</button><button class="chip">浏览记录</button>
+      </div>
+
+      <div class="section-head"><h2>Char 购物车</h2><button>查看全部</button></div>
+      <div class="product-list" id="cartList"></div>
+
+      <div class="section-head"><h2>最近购买</h2><button onclick="switchPage('orders',document.querySelector('[data-page=orders]'))">全部订单</button></div>
+      <div id="shopOrders"></div>
+    </section>
+
+    <section class="page" id="food">
+      <div class="food-banner">
+        <div><div class="food-title">淘宝闪购</div><div class="food-sub">看看 Char 今天吃了什么</div></div>
+        <div class="food-time">28 <small>分钟送达</small></div>
+      </div>
+
+      <div class="food-cats">
+        <button class="food-cat"><div class="circle"></div>附近美食</button>
+        <button class="food-cat"><div class="circle"></div>下午茶</button>
+        <button class="food-cat"><div class="circle"></div>奶茶咖啡</button>
+        <button class="food-cat"><div class="circle"></div>快餐简餐</button>
+        <button class="food-cat"><div class="circle"></div>夜宵</button>
+      </div>
+
+      <div class="section-head"><h2>Char 最近吃过</h2><button>全部记录</button></div>
+      <div id="foodList"></div>
+    </section>
+
+    <section class="page" id="orders">
+      <div class="section-head"><h2>Char 的全部订单</h2><button>筛选</button></div>
+      <div class="chips">
+        <button class="chip active">全部</button><button class="chip">待付款</button><button class="chip">待收货</button><button class="chip">已完成</button><button class="chip">外卖</button>
+      </div>
+      <div id="allOrders"></div>
+    </section>
+  </main>
+
+  <div class="cart" id="cart">
+    <div class="cart-icon">
+      <svg viewBox="0 0 24 24"><path d="M4 5h2l2 11h10l2-8H7"/><circle cx="10" cy="20" r="1.2"/><circle cx="18" cy="20" r="1.2"/></svg>
+    </div>
+    <div class="cart-text"><b>购物车 0 件</b><span>¥0</span></div>
+    <button class="cart-btn">查看购物车</button>
+  </div>
+
+  <nav class="bottom">
+    <button class="nav active" onclick="switchPage('shop',document.querySelector('[data-page=shop]'))">
+      <svg viewBox="0 0 24 24"><path d="M4 10h16v10H4z"/><path d="m3 10 2-5h14l2 5M9 10v3h6v-3"/></svg>首页
+    </button>
+    <button class="nav" onclick="switchPage('food',document.querySelector('[data-page=food]'))">
+      <svg viewBox="0 0 24 24"><path d="M5 7h14v13H5z"/><path d="M8 7a4 4 0 0 1 8 0M9 11h6M9 15h6"/></svg>闪购
+    </button>
+    <button class="nav" onclick="switchPage('orders',document.querySelector('[data-page=orders]'))">
+      <svg viewBox="0 0 24 24"><path d="M6 4h12v16H6z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>订单
+    </button>
+    <button class="nav">
+      <svg viewBox="0 0 24 24"><path d="M6 4h12v16l-6-3-6 3z"/></svg>收藏
+    </button>
+    <button class="nav">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>我的
+    </button>
+  </nav>
+</div>
+
+<script>
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m];}); }
+function num(v){ var s=String(v==null?'':v).replace(/[^\d.]/g,''); return s || esc(v||''); }
+
+function phoneBack(){
+  try{ if(window.parent && window.parent!==window){ window.parent.postMessage({ type:"phoneAppClose" },"*"); return; } }catch(e){}
+  history.back();
+}
+function phoneRefresh(){
+  try{ if(window.__phoneRefresh){ window.__phoneRefresh(); return; } }catch(e){}
+}
+
+function switchPage(id,btn){
+  document.querySelectorAll('.page').forEach(function(p){ p.classList.remove('active'); });
+  document.getElementById(id).classList.add('active');
+  document.querySelectorAll('.switch button').forEach(function(b){ b.classList.remove('active'); });
+  if(btn) btn.classList.add('active');
+
+  var navMap={shop:0,food:1,orders:2};
+  document.querySelectorAll('.nav').forEach(function(n){ n.classList.remove('active'); });
+  var navs=document.querySelectorAll('.nav');
+  if(navs[navMap[id]]) navs[navMap[id]].classList.add('active');
+
+  document.getElementById('main').scrollTop=0;
+  document.getElementById('cart').style.display=id==='shop'?'flex':'none';
+}
+
+function productCard(it){
+  return '<article class="product">'
+    +'<div class="product-img"><span class="badge">正在购物车</span><div class="shape"></div></div>'
+    +'<div class="product-info">'
+    +'<div class="product-title">'+esc(it.name||'商品')+'</div>'
+    +'<div class="product-meta">'+esc([it.shop,it.spec].filter(Boolean).join(' · '))+'</div>'
+    +'<div class="price-row"><span class="price">'+num(it.price)+'</span><span class="sold">已加购</span></div>'
+    +'</div></article>';
+}
+function orderCard(it){
+  return '<div class="order">'
+    +'<div class="order-top"><span class="order-shop">'+esc(it.shop||'店铺')+'</span><span class="status">'+esc(it.status||'')+'</span></div>'
+    +'<div class="order-body"><div class="thumb"></div><div class="order-info">'
+    +'<div class="order-name">'+esc(it.name||'商品')+'</div>'
+    +'<div class="order-desc">'+esc(it.spec||'')+(it.time?(' · '+esc(it.time)):'')+'</div>'
+    +'<div class="order-bottom"><span class="order-price">¥'+num(it.price)+'</span>'
+    +'<div class="actions"><button class="action">查看物流</button><button class="action primary">再买一件</button></div>'
+    +'</div></div></div></div>';
+}
+function foodCard(it){
+  return '<article class="restaurant">'
+    +'<div class="rtop"><div class="rname">'+esc(it.restaurant||'外卖')+'</div><div class="distance">'+esc(it.time||'')+'</div></div>'
+    +'<div class="rmeta">'+esc(it.status||'')+'</div>'
+    +'<div class="food-items"><div class="food-item"><div class="food-img"></div>'
+    +'<div class="food-name">'+esc(it.dish||'')+'</div><div class="food-price">'+num(it.price)+'</div></div></div>'
+    +'</article>';
+}
+function takeoutCard(it){
+  return '<div class="takeout-order">'
+    +'<div class="to-head"><strong>'+esc(it.restaurant||'外卖')+'</strong><span class="to-status">'+esc(it.status||'')+'</span></div>'
+    +'<div class="to-row"><div class="to-thumb"></div><div class="to-detail">'
+    +'<div class="to-name">'+esc(it.dish||'')+'</div>'
+    +'<div class="to-sub">'+esc(it.time||'')+'</div>'
+    +'<div class="to-total">¥'+num(it.price)+'</div></div></div></div>';
+}
+function emptyTip(text){ return '<div class="empty-tip">'+esc(text)+'</div>'; }
+
+// 由宿主（查手机）注入数据：{cart:[],orders:[],food:[]}
+window.renderCharShopping=function(data){
+  data=data||{};
+  var cart=Array.isArray(data.cart)?data.cart:[];
+  var orders=Array.isArray(data.orders)?data.orders:[];
+  var food=Array.isArray(data.food)?data.food:[];
+
+  var cartList=document.getElementById('cartList');
+  if(cartList) cartList.innerHTML = cart.length ? cart.map(productCard).join('') : emptyTip('购物车是空的');
+
+  var shopOrders=document.getElementById('shopOrders');
+  if(shopOrders) shopOrders.innerHTML = orders.length ? orders.slice(0,2).map(orderCard).join('') : emptyTip('暂无购物记录');
+
+  var foodList=document.getElementById('foodList');
+  if(foodList) foodList.innerHTML = food.length ? food.map(foodCard).join('') : emptyTip('暂无点餐记录');
+
+  var allOrders=document.getElementById('allOrders');
+  if(allOrders){
+    var html='';
+    if(orders.length) html += orders.map(orderCard).join('');
+    if(food.length) html += food.map(takeoutCard).join('');
+    allOrders.innerHTML = html || emptyTip('暂无订单');
+  }
+
+  var total=0;
+  cart.forEach(function(it){ var n=parseFloat(String(it.price).replace(/[^\d.]/g,'')); if(!isNaN(n)) total+=n; });
+  var ct=document.querySelector('.cart-text');
+  if(ct) ct.innerHTML='<b>购物车 '+cart.length+' 件</b><span>¥'+(total?total.toFixed(0):0)+'</span>';
+};
+
+switchPage('shop',document.querySelector('[data-page=shop]'));
+</script>
+</body>
+</html>

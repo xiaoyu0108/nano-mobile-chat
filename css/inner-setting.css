@@ -1,0 +1,511 @@
+:root {
+    --ios-blue: #007AFF;
+    --ios-red: #FF3B30;
+    --ios-green: #34C759;
+    --bg-white: #FFFFFF;
+    --separator: #E5E5EA;
+    --text-main: #000000;
+    --text-secondary: #8E8E93;
+    --section-title: #6E6E73;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+}
+
+body {
+    background-color: #FFFFFF;
+    color: var(--text-main);
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+body::-webkit-scrollbar {
+    display: none;
+}
+
+/* ===== 自己的顶栏（返回 + 标题）===== */
+.page-nav {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    min-height: 44px;
+    padding: calc(10px + var(--safe-top, env(safe-area-inset-top, 0px))) 12px 10px;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    background: #FFFFFF;
+    border-bottom: 0.5px solid var(--separator);
+    z-index: 100;
+}
+.nav-back {
+    width: 40px;
+    height: 40px;
+    border: none;
+    background: transparent;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ios-blue);
+    flex-shrink: 0;
+    cursor: pointer;
+}
+.nav-back svg {
+    width: 22px;
+    height: 22px;
+}
+.nav-back:active {
+    opacity: 0.5;
+}
+.nav-title {
+    flex: 1;
+    text-align: center;
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--text-main);
+}
+.nav-spacer {
+    width: 38px;
+    flex-shrink: 0;
+}
+
+/* 当前楼层 分段控件 */
+.floor-seg {
+    display: flex;
+    gap: 2px;
+    padding: 2px;
+    border-radius: 9px;
+    background: rgba(120, 120, 128, 0.12);
+}
+.floor-btn {
+    border: none;
+    background: transparent;
+    color: var(--text-main);
+    font-size: 13px;
+    line-height: 1;
+    padding: 6px 14px;
+    border-radius: 7px;
+    cursor: pointer;
+}
+.floor-btn.active {
+    background: #FFFFFF;
+    font-weight: 600;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.container {
+    padding: calc(60px + var(--safe-top, env(safe-area-inset-top, 0px))) 14px calc(40px + 0px) 14px;
+    height: 100%;
+    overflow-y: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+.container::-webkit-scrollbar {
+    display: none;
+}
+
+/* ===== 顶部信息卡片 ===== */
+.profile-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 16px 16px 14px 16px;
+    background-color: #FFFFFF;
+    border-radius: 12px;
+    margin-bottom: 18px;
+}
+
+.avatar {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background-color: #E5E5EA;
+    margin-bottom: 8px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    font-weight: 500;
+    color: #8E8E93;
+    flex-shrink: 0;
+}
+.avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.nickname {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 1px;
+}
+
+.user-id {
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+/* ===== 列表分组标题 ===== */
+.section-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--section-title);
+    margin-left: 14px;
+    margin-bottom: 5px;
+    margin-top: 18px;
+    letter-spacing: 0.2px;
+}
+
+/* ===== iOS风格列表�?===== */
+.list-group {
+    background-color: #FFFFFF;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 0.5px solid rgba(0,0,0,0.04);
+}
+
+.list-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    background-color: #FFFFFF;
+    position: relative;
+    cursor: pointer;
+    min-height: 42px;
+}
+
+.list-item:active {
+    background-color: #F2F2F7;
+}
+
+.list-item:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 44px;
+    right: 0;
+    height: 0.5px;
+    background-color: var(--separator);
+}
+
+.item-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 14px;
+}
+
+.item-icon {
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.item-icon svg {
+    width: 100%;
+    height: 100%;
+}
+
+.item-destructive .item-text {
+    color: var(--ios-red);
+}
+
+.item-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-secondary);
+    font-size: 13px;
+}
+
+.chevron-right {
+    width: 6px;
+    height: 10px;
+}
+
+/* ===== iOS 开�?===== */
+.ios-switch {
+    appearance: none;
+    width: 44px;
+    height: 27px;
+    border-radius: 13.5px;
+    background-color: #D1D1D6;
+    position: relative;
+    outline: none;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+    flex-shrink: 0;
+}
+
+.ios-switch::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 23px;
+    height: 23px;
+    border-radius: 50%;
+    background-color: #FFFFFF;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.05), 0 1px 1px rgba(0,0,0,0.10);
+    transition: transform 0.3s cubic-bezier(0.3, 1.05, 0.4, 1.05);
+}
+
+.ios-switch:checked {
+    background-color: var(--ios-green);
+}
+
+.ios-switch:checked::after {
+    transform: translateX(17px);
+}
+
+/* ===== 毛玻璃模态框 ===== */
+.modal-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-color: rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.modal-overlay.active {
+    display: flex;
+    opacity: 1;
+}
+
+.modal-content {
+    background-color: #FFFFFF;
+    width: 300px;
+    max-width: calc(100vw - 32px);
+    border-radius: 14px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.18);
+    transform: scale(0.95);
+    transition: transform 0.2s ease;
+}
+
+.modal-overlay.active .modal-content {
+    transform: scale(1);
+}
+
+.modal-header {
+    padding: 16px 14px 8px 14px;
+    text-align: center;
+}
+
+.modal-title {
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.modal-body {
+    padding: 8px 14px 16px 14px;
+}
+
+.ios-input {
+    width: 100%;
+    border: 0.5px solid #C6C6C8;
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 14px;
+    outline: none;
+    background-color: #FFFFFF;
+    margin-bottom: 8px;
+}
+
+.ios-textarea {
+    width: 100%;
+    height: 70px;
+    border: 0.5px solid #C6C6C8;
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 14px;
+    resize: none;
+    outline: none;
+    background-color: #FFFFFF;
+    margin-bottom: 8px;
+}
+
+.preview-box {
+    width: 100%;
+    height: 120px;
+    background-color: #E5E5EA;
+    border-radius: 6px;
+    margin-bottom: 8px;
+    background-size: cover;
+    background-position: center;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: var(--text-secondary);
+    font-size: 13px;
+    overflow: hidden;
+}
+
+.custom-file-upload {
+    display: block;
+    width: 100%;
+    padding: 8px;
+    text-align: center;
+    background-color: #FFFFFF;
+    border-radius: 6px;
+    color: var(--ios-blue);
+    font-size: 14px;
+    cursor: pointer;
+    border: 0.5px solid #C6C6C8;
+}
+
+input[type="file"] {
+    display: none;
+}
+
+.modal-footer {
+    display: flex;
+    border-top: 0.5px solid #D1D1D6;
+    background: #F9F9FB;
+}
+
+.modal-btn {
+    flex: 1;
+    min-height: 46px;
+    padding: 12px 10px;
+    text-align: center;
+    font-size: 16px;
+    font-weight: 400;
+    background: none;
+    border: none;
+    color: var(--ios-blue);
+    cursor: pointer;
+    line-height: 1.2;
+}
+
+.modal-btn:active {
+    background-color: #E5E5EA;
+}
+
+.modal-btn.bold {
+    font-weight: 600;
+}
+
+.modal-btn.cancel {
+    color: var(--text-main);
+    border-right: 0.5px solid #D1D1D6;
+}
+
+.modal-btn.destructive {
+    color: var(--ios-red);
+    font-weight: 600;
+}
+
+.search-results {
+    max-height: 130px;
+    overflow-y: auto;
+    font-size: 13px;
+    color: var(--text-secondary);
+    text-align: center;
+    padding: 8px 0;
+}
+
+/* ===== 下拉选择�?===== */
+.item-right select {
+    font-size: 13px;
+    color: var(--text-secondary);
+    background: transparent;
+    border: none;
+    outline: none;
+    padding: 2px 4px;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    text-align: right;
+}
+
+.item-right select option {
+    color: #000;
+}
+
+/* ===== 恢复按钮 ===== */
+.btn-reset {
+    display: block;
+    width: 100%;
+    padding: 8px;
+    text-align: center;
+    background-color: #FFFFFF;
+    border-radius: 6px;
+    color: var(--ios-red);
+    font-size: 14px;
+    cursor: pointer;
+    border: 0.5px solid #C6C6C8;
+    margin-top: 6px;
+    transition: background 0.15s;
+}
+
+.btn-reset:active {
+    background-color: #F2F2F7;
+}
+
+/* ===== 思维链预设弹窗：下拉/输入更大，操作按钮更�?===== */
+.cot-modal { width: 342px; }
+.cot-modal .modal-body { padding: 10px 16px 16px 16px; }
+.cot-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 10px;
+    align-items: stretch;
+}
+.cot-modal .ios-input {
+    flex: 1;
+    min-width: 0;
+    height: 44px;
+    padding: 10px 12px;
+    font-size: 15px;
+    border-radius: 10px;
+    margin-bottom: 0;
+    box-sizing: border-box;
+}
+.cot-modal .ios-textarea {
+    height: auto;
+    min-height: 150px;
+    font-size: 14px;
+    border-radius: 10px;
+    line-height: 1.5;
+}
+.cot-modal .cot-icon-btn {
+    flex: 0 0 auto;
+    width: 44px;
+    min-height: 44px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    background: #F2F2F7;
+    color: var(--ios-blue);
+}
+.cot-modal .cot-icon-btn:active { background: #E5E5EA; }
+.cot-modal .cot-icon-btn.danger { color: var(--ios-red); }
+.cot-modal .cot-icon-btn svg { width: 17px; height: 17px; }

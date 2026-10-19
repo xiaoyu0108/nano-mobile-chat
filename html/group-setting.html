@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<script src="../js/nano-runtime.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>群设置</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" media="print" onload="this.media='all'">
+<link rel="stylesheet" href="../css/group-setting.css">
+<script src="../js/group-store.js"></script>
+<script src="../js/appearance.js"></script>
+</head>
+<body>
+
+<div class="container">
+
+    <!-- 顶栏 -->
+    <div class="nav-bar">
+        <button class="nav-btn" id="navBack" data-back><i class="fas fa-chevron-left"></i></button>
+        <span class="nav-title">群设置</span>
+        <button class="nav-btn bold" id="navSave">保存</button>
+    </div>
+
+    <!-- 群资料卡：头像 + 群名 -->
+    <div class="group-profile">
+        <div class="gp-avatar" id="gpAvatar">群</div>
+        <div class="gp-name" id="gpName"></div>
+        <div class="gp-meta" id="gpMeta"></div>
+    </div>
+
+    <!-- 群资料编辑 -->
+    <div class="section-title">群资料</div>
+    <div class="list-group">
+        <div class="list-item" id="editNameItem">
+            <div class="li-left"><i class="fas fa-signature li-icon" style="color:#007aff;"></i>群名称</div>
+            <div class="li-right"><span id="editNamePreview">未设置</span><i class="fas fa-chevron-right chev"></i></div>
+        </div>
+        <div class="list-item" id="editNoticeItem">
+            <div class="li-left"><i class="fas fa-bullhorn li-icon" style="color:#007aff;"></i>群公告</div>
+            <div class="li-right"><span id="editNoticePreview">未设置</span><i class="fas fa-chevron-right chev"></i></div>
+        </div>
+        <div class="list-item" id="editAvatarItem">
+            <div class="li-left"><i class="fas fa-image li-icon" style="color:#007aff;"></i>群头像</div>
+            <div class="li-right"><span id="editAvatarPreview">未设置</span><i class="fas fa-chevron-right chev"></i></div>
+        </div>
+    </div>
+
+    <!-- 群成员 -->
+    <div class="section-title">
+        <span>群成员</span>
+        <span class="member-count" id="memberCount">0</span>
+    </div>
+    <div class="list-group" id="memberList"></div>
+    <button class="add-member-btn" id="addMemberBtn">
+        <i class="fas fa-user-plus"></i>
+        <span>邀请成员</span>
+    </button>
+    <button class="add-member-btn" id="genMemberBtn" style="margin-top:8px;">
+        <i class="fas fa-magic"></i>
+        <span>生成群成员</span>
+    </button>
+    <div class="footer-tip" style="margin-top:6px;">根据群内角色人设与世界书，用主 API 生成可能出现在群里的 NPC（含人设）</div>
+
+    <!-- 聊天设置 -->
+    <div class="section-title">聊天设置</div>
+    <div class="list-group">
+        <div class="list-item" id="bgItem">
+            <div class="li-left"><i class="fas fa-image li-icon" style="color:#007aff;"></i>聊天背景</div>
+            <div class="li-right"><span id="bgStatus">默认</span><i class="fas fa-chevron-right chev"></i></div>
+        </div>
+        <div class="list-item">
+            <div class="li-left"><i class="fas fa-clock li-icon" style="color:#007aff;"></i>时间感知</div>
+            <div class="li-right"><input type="checkbox" class="ios-switch" id="timeSwitch"></div>
+        </div>
+        <div class="list-item">
+            <div class="li-left"><i class="fas fa-magic li-icon" style="color:#007aff;"></i>允许生图</div>
+            <div class="li-right"><input type="checkbox" class="ios-switch" id="imageSwitch"></div>
+        </div>
+    </div>
+
+    <!-- 聊天记录 -->
+    <div class="section-title">聊天记录</div>
+    <div class="list-group">
+        <div class="list-item" id="searchItem">
+            <div class="li-left"><i class="fas fa-search li-icon" style="color:#007aff;"></i>查找聊天记录</div>
+            <div class="li-right"><i class="fas fa-chevron-right chev"></i></div>
+        </div>
+        <div class="list-item" id="clearItem">
+            <div class="li-left"><i class="fas fa-trash li-icon" style="color:#ff3b30;"></i><span class="danger">清空聊天记录</span></div>
+            <div class="li-right"><i class="fas fa-chevron-right chev"></i></div>
+        </div>
+    </div>
+
+    <!-- 群管理 -->
+    <div class="section-title">群管理</div>
+    <div class="list-group">
+        <div class="list-item" id="transferItem">
+            <div class="li-left"><i class="fas fa-exchange-alt li-icon" style="color:#007aff;"></i><span class="danger-warn">转让群主</span></div>
+            <div class="li-right"><i class="fas fa-chevron-right chev"></i></div>
+        </div>
+    </div>
+
+    <!-- 危险操作 -->
+    <div class="section-title">危险操作</div>
+    <div class="list-group">
+        <div class="list-item center danger" id="quitItem">
+            <div class="li-center"><i class="fas fa-sign-out-alt li-icon" style="color:#ff3b30;"></i>退出群聊</div>
+        </div>
+        <div class="list-item center danger" id="dissolveItem">
+            <div class="li-center"><i class="fas fa-trash-alt li-icon" style="color:#ff3b30;"></i>解散群聊</div>
+        </div>
+    </div>
+
+    <div class="footer-tip">群聊由你创建，解散后所有成员将被移出</div>
+
+</div>
+
+<!-- 编辑弹窗 -->
+<div class="modal-overlay" id="editModal">
+    <div class="modal-card">
+        <div class="modal-header">
+            <div class="modal-title" id="editTitle">编辑</div>
+            <div class="modal-sub" id="editSub"></div>
+        </div>
+        <div class="modal-body">
+            <input type="text" id="editInput" maxlength="60">
+        </div>
+        <div class="modal-actions">
+            <button class="modal-btn cancel" id="editCancel" data-close>取消</button>
+            <button class="modal-btn confirm" id="editConfirm">保存</button>
+        </div>
+    </div>
+</div>
+
+<!-- 群头像 -->
+<div class="modal-overlay" id="avatarModal">
+    <div class="modal-card">
+        <div class="modal-header">
+            <div class="modal-title">群头像</div>
+            <div class="modal-sub">选择相册图片或恢复默认</div>
+        </div>
+        <div class="modal-body center">
+            <div class="avatar-preview" id="avatarPreview">群</div>
+            <label for="avatarFileInput" class="pick-btn">选择相册图片</label>
+            <input type="file" id="avatarFileInput" accept="image/*">
+            <button class="reset-btn" id="avatarResetBtn">恢复默认</button>
+        </div>
+        <div class="modal-actions">
+            <button class="modal-btn cancel" id="avatarCancel" data-close>取消</button>
+            <button class="modal-btn confirm" id="avatarConfirm">保存</button>
+        </div>
+    </div>
+</div>
+
+<!-- 聊天背景 -->
+<div class="modal-overlay" id="bgModal">
+    <div class="modal-card">
+        <div class="modal-header">
+            <div class="modal-title">聊天背景</div>
+            <div class="modal-sub">选择相册图片或恢复默认</div>
+        </div>
+        <div class="modal-body center">
+            <div class="bg-preview" id="bgPreview">默认背景</div>
+            <label for="bgFileInput" class="pick-btn">选择相册图片</label>
+            <input type="file" id="bgFileInput" accept="image/*">
+            <button class="reset-btn" id="bgResetBtn">恢复默认背景</button>
+        </div>
+        <div class="modal-actions">
+            <button class="modal-btn cancel" id="bgCancel" data-close>取消</button>
+            <button class="modal-btn confirm" id="bgConfirm">保存</button>
+        </div>
+    </div>
+</div>
+
+<!-- 邀请成员 -->
+<div class="modal-overlay" id="inviteModal">
+    <div class="modal-card">
+        <div class="modal-header">
+            <div class="modal-title">邀请成员</div>
+            <div class="modal-sub">选择要加入群聊的角色</div>
+        </div>
+        <div class="modal-body">
+            <div class="invite-list" id="inviteList"></div>
+        </div>
+        <div class="modal-actions">
+            <button class="modal-btn cancel" id="inviteCancel" data-close>取消</button>
+            <button class="modal-btn confirm" id="inviteConfirm">邀请</button>
+        </div>
+    </div>
+</div>
+
+<!-- 头衔 -->
+<div class="modal-overlay" id="titleModal">
+    <div class="modal-card">
+        <div class="modal-header">
+            <div class="modal-title">设置头衔</div>
+            <div class="modal-sub" id="titleSubName"></div>
+        </div>
+        <div class="modal-body">
+            <input type="text" id="titleInput" maxlength="10" placeholder="输入头衔（最多10字）">
+        </div>
+        <div class="modal-actions">
+            <button class="modal-btn cancel" id="titleCancel" data-close>取消</button>
+            <button class="modal-btn confirm" id="titleConfirm">保存</button>
+        </div>
+    </div>
+</div>
+
+<!-- 查找聊天记录 -->
+<div class="search-overlay" id="searchOverlay">
+    <div class="search-box">
+        <div class="search-header">
+            <i class="fas fa-search search-icon"></i>
+            <input id="searchInput" placeholder="搜索聊天记录...">
+            <button id="searchClose" data-close>关闭</button>
+        </div>
+        <div class="search-results" id="searchResults"></div>
+    </div>
+</div>
+
+<!-- 清空确认 -->
+<div class="modal-overlay" id="clearModal">
+    <div class="modal-card">
+        <div class="modal-header">
+            <div class="modal-title">清空聊天记录</div>
+            <div class="modal-sub">此操作将永久删除所有消息，无法恢复。</div>
+        </div>
+        <div class="modal-actions">
+            <button class="modal-btn cancel" id="clearCancel" data-close>取消</button>
+            <button class="modal-btn destructive" id="clearConfirm">清空</button>
+        </div>
+    </div>
+</div>
+
+<!-- 转让群主 -->
+<div class="modal-overlay" id="transferModal">
+    <div class="modal-card">
+        <div class="modal-header">
+            <div class="modal-icon transfer">
+                <i class="fas fa-exchange-alt"></i>
+            </div>
+            <div class="modal-title">转让群主</div>
+            <div class="modal-sub">选择一位群成员成为新群主，你将变为普通成员。</div>
+        </div>
+        <div class="modal-body">
+            <div class="transfer-list" id="transferList"></div>
+        </div>
+        <div class="modal-actions">
+            <button class="modal-btn cancel" id="transferCancel" data-close>取消</button>
+            <button class="modal-btn confirm" id="transferConfirm" disabled>转让</button>
+        </div>
+    </div>
+</div>
+
+<!-- 退出群聊确认 -->
+<div class="modal-overlay" id="quitModal">
+    <div class="modal-card">
+        <div class="modal-header">
+            <div class="modal-icon danger">
+                <i class="fas fa-sign-out-alt"></i>
+            </div>
+            <div class="modal-title">退出群聊</div>
+            <div class="modal-sub">退出后将不再接收该群消息，聊天记录会保留在你的设备上。</div>
+        </div>
+        <div class="modal-actions">
+            <button class="modal-btn cancel" id="quitCancel" data-close>取消</button>
+            <button class="modal-btn destructive" id="quitConfirm">退出</button>
+        </div>
+    </div>
+</div>
+
+<!-- 解散群聊确认 -->
+<div class="modal-overlay" id="dissolveModal">
+    <div class="modal-card">
+        <div class="modal-header">
+            <div class="modal-icon danger big">
+                <i class="fas fa-trash-alt"></i>
+            </div>
+            <div class="modal-title">解散群聊</div>
+            <div class="modal-sub">解散后所有成员将被移出，聊天记录将被清空，且无法恢复。</div>
+        </div>
+        <div class="modal-actions">
+            <button class="modal-btn cancel" id="dissolveCancel" data-close>取消</button>
+            <button class="modal-btn destructive" id="dissolveConfirm">解散</button>
+        </div>
+    </div>
+</div>
+
+<!-- 提示 -->
+<div class="ios-alert-overlay" id="iosAlert">
+    <div class="ios-alert-box">
+        <div class="ios-alert-title" id="alertTitle">提示</div>
+        <div class="ios-alert-message" id="alertMessage"></div>
+        <button class="ios-alert-button" id="alertButton" data-close>确定</button>
+    </div>
+</div>
+
+<script src="../js/group-setting.js"></script>
+<script src="../js/api-float.js"></script>
+<script src="../swipe-back.js"></script>
+</body>
+</html>

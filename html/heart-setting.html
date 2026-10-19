@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<script src="../js/nano-runtime.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>心声美化</title>
+<link rel="stylesheet" href="../css/heart.css">
+<style>
+  :root{
+    --hs-pink:#c5879c;        /* 重点色：淡粉 */
+    --hs-pink-deep:#b06f86;
+    --hs-pink-soft:#fbebf0;   /* 极淡粉 */
+    --hs-pink-soft2:#f7dfe7;
+    --hs-ink:#3a3335;
+    --hs-sub:#b0a4a7;
+    --hs-line:#f3eef0;
+  }
+  html,body{height:100%;max-width:100%;overflow-x:hidden;background:#fff;}
+  html,body,*{scrollbar-width:none;-ms-overflow-style:none;}
+  *::-webkit-scrollbar{width:0!important;height:0!important;display:none!important;}
+  body{margin:0;background:#fff;color:var(--hs-ink);
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased;}
+
+  /* ===== 唯一顶栏 ===== */
+  .hs-nav{position:sticky;top:0;z-index:60;display:flex;align-items:center;
+    padding:calc(12px + env(safe-area-inset-top,0px)) 16px 12px;background:rgba(255,255,255,.95);
+    backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border-bottom:1px solid var(--hs-line);}
+  .hs-nav .hs-title{flex:1;text-align:center;font-size:16px;font-weight:600;color:var(--hs-ink);}
+  .hs-nav .hs-back{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;
+    border:0;background:none;color:var(--hs-pink-deep);cursor:pointer}
+  .hs-nav .hs-back svg{width:20px;height:20px}
+  .hs-nav .hs-keep{background:none;border:0;padding:4px 2px;font:inherit;font-size:15px;font-weight:600;
+    color:var(--hs-pink-deep);cursor:pointer}
+  .hs-nav .hs-keep:active,.hs-nav .hs-back:active{opacity:.45}
+
+  .hs-main{width:100%;max-width:720px;margin:0 auto;min-width:0;overflow-x:hidden;
+    padding:16px 16px calc(40px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:20px;background:#fff;}
+  .hs-main > *{min-width:0;max-width:100%;box-sizing:border-box}
+
+  .hs-cap{font-size:12px;color:var(--hs-sub);letter-spacing:.4px}
+  .hs-row{display:flex;align-items:center;gap:10px;min-width:0}
+  .hs-row > .hs-grow{flex:1;min-width:0}
+  .hs-between{display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0}
+
+  select.hs-field,input.hs-field,textarea.hs-field{
+    width:100%;min-width:0;max-width:100%;box-sizing:border-box;border:0;border-radius:12px;
+    background:#faf6f7;color:var(--hs-ink);padding:11px 13px;font-size:13.5px;font-family:inherit;}
+  select.hs-field{-webkit-appearance:none;appearance:none;flex:1;min-width:0}
+  textarea.hs-css{min-height:250px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;line-height:1.55;white-space:pre;overflow:auto}
+  textarea.hs-prompt{min-height:88px;line-height:1.6;resize:vertical}
+
+  /* ===== 精致按钮（带外壳）===== */
+  .hs-pill{
+    border:0;border-radius:999px;padding:10px 16px;font:inherit;font-size:13.5px;font-weight:600;
+    background:var(--hs-pink-soft);color:var(--hs-pink-deep);cursor:pointer;white-space:nowrap;
+    display:inline-flex;align-items:center;justify-content:center;gap:6px;
+    box-shadow:0 1px 2px rgba(176,111,134,.06);
+  }
+  .hs-pill:active{opacity:.7}
+  .hs-pill svg{width:16px;height:16px;flex:none}
+  .hs-pill.icon{padding:9px;width:38px;height:38px}
+  .hs-pill.outline{background:#fff;border:1px solid var(--hs-pink-soft2);box-shadow:none}
+  .hs-pill.muted{background:#f6f2f3;color:var(--hs-sub)}
+  .hs-pill.danger{background:#fbebee;color:#c96b7f}
+
+  /* ===== 底部 4 个等比例按钮 ===== */
+  .hs-bar{display:flex;align-items:stretch;gap:8px}
+  .hs-bar .hs-pill{flex:1;padding:12px 0}
+  #hsSaveAsBtn{font-size:12px}
+  @media(max-width:380px){#hsSaveAsBtn{font-size:11px;letter-spacing:-.3px}}
+
+  /* ===== 预览 ===== */
+  .hs-preview-head{display:flex;align-items:center;justify-content:space-between}
+  .hs-stage{margin-top:10px;border-radius:20px;padding:16px 12px;
+    background:linear-gradient(135deg,var(--hs-pink-soft),#fdf6f8);display:flex;justify-content:center}
+  .hs-preview-body.collapsed{display:none}
+  .hs-card{margin:0 auto;width:100%!important;max-width:100%!important;max-height:none!important;}
+  .hs-toggle{background:var(--hs-pink-soft);border:0;font:inherit;font-size:12px;color:var(--hs-pink-deep);
+    cursor:pointer;padding:6px 12px;border-radius:999px}
+</style>
+</head>
+<body>
+  <header class="hs-nav">
+    <button class="hs-back" id="hsBack" type="button" aria-label="返回">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 5 8 12 15 19"/></svg>
+    </button>
+    <div class="hs-title">心声美化</div>
+    <button class="hs-keep" id="hsKeepTop" type="button">保存</button>
+  </header>
+
+  <main class="hs-main">
+    <!-- 1) 模板 -->
+    <section>
+      <div class="hs-cap">模板</div>
+      <div class="hs-row" style="margin-top:8px">
+        <select class="hs-field hs-grow" id="hsTemplateSelect"><option value="">— 选择预设 —</option></select>
+        <button class="hs-pill icon danger" id="hsDeleteTemplate" type="button" aria-label="删除预设">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M9 7V5h6v2"/><path d="M6 7l1 13h10l1-13"/></svg>
+        </button>
+      </div>
+      <div class="hs-row" style="margin-top:8px">
+        <input class="hs-field hs-grow" id="hsTemplateName" type="text" placeholder="另存为新预设的名称" maxlength="20">
+        <button class="hs-pill" id="hsSaveTemplate" type="button">保存</button>
+        <button class="hs-pill muted" id="hsRenameTemplate" type="button">改名</button>
+      </div>
+    </section>
+
+    <!-- 2) 头像框 -->
+    <section>
+      <div class="hs-cap">头像框</div>
+      <div class="hs-row" style="margin-top:8px">
+        <button class="hs-pill" id="hsAvatarFrame" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.6"/></svg>
+          设置头像框 / 预设
+        </button>
+      </div>
+    </section>
+
+    <!-- 3) CSS / 脚本 -->
+    <section>
+      <div class="hs-between">
+        <span class="hs-cap">CSS / 脚本</span>
+        <span class="hs-row" style="gap:8px">
+          <button class="hs-pill icon" id="hsExportBtn" type="button" aria-label="导出">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><polyline points="7 10 12 15 17 10"/><path d="M5 20h14"/></svg>
+          </button>
+          <button class="hs-pill icon" id="hsImportBtn" type="button" aria-label="导入">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><polyline points="7 8 12 3 17 8"/><path d="M5 20h14"/></svg>
+          </button>
+        </span>
+      </div>
+      <textarea class="hs-field hs-css" id="hsCss" spellcheck="false" style="margin-top:8px" placeholder="写心声卡片的 CSS。也可写 /* @js ... */ 脚本块造 HTML / 改 DOM。"></textarea>
+      <input type="file" id="hsFileInput" accept=".json,.txt" style="display:none">
+      <div class="hs-bar" style="margin-top:10px">
+        <button class="hs-pill muted" id="hsClearBtn" type="button">清空</button>
+        <button class="hs-pill outline" id="hsRestoreBtn" type="button">还原</button>
+        <button class="hs-pill" id="hsApplyBtn" type="button">应用</button>
+        <button class="hs-pill" id="hsSaveAsBtn" type="button">复制初始模板</button>
+      </div>
+    </section>
+
+    <!-- 4) 实时预览 -->
+    <section>
+      <div class="hs-preview-head">
+        <span class="hs-cap">实时预览</span>
+        <button class="hs-toggle" id="hsCollapse" type="button">展开 / 收起</button>
+      </div>
+      <div class="hs-preview-body" id="hsPreviewBody">
+        <div class="hs-stage">
+          <div class="nano-voice-modal hs-card" id="hsCard">
+            <div class="iv-deco iv-deco-top" id="hsDecoTop"></div>
+            <div class="iv-header">
+              <div class="iv-sender">
+                <div class="iv-avatar">
+                  <img id="hsAvatar" alt="" hidden>
+                  <span class="iv-avatar-fallback" id="hsAvatarFallback">C</span>
+                </div>
+                <div class="iv-sender-info">
+                  <div class="iv-caption">发送人</div>
+                  <div class="iv-name" id="hsSender">角色</div>
+                </div>
+                <div class="iv-unread"></div>
+              </div>
+              <div class="iv-meta">
+                <div class="iv-meta-key">收件人</div>
+                <div class="iv-meta-value user-name" id="hsRecipient">你</div>
+                <div class="iv-meta-key">时间</div>
+                <div class="iv-meta-value" id="hsTime"></div>
+              </div>
+            </div>
+            <div class="iv-subject">
+              <div class="iv-subject-label">此刻 · 印象</div>
+              <div class="iv-subject-text" id="hsSubject"></div>
+            </div>
+            <div class="iv-content">
+              <div class="iv-content-label">心声 · 手记</div>
+              <div class="iv-thought" id="hsThought"></div>
+              <div class="iv-extra-text" id="hsExtraText"></div>
+            </div>
+            <div class="iv-sections" id="hsSections"></div>
+            <div class="iv-deco iv-deco-bottom" id="hsDecoBottom"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5) 内置提示词 -->
+    <section>
+      <div class="hs-cap">内置提示词</div>
+      <textarea class="hs-field hs-prompt" id="hsBuiltinPrompt" style="margin-top:8px" placeholder="AI 生成心声时必读，可留空。例如：必须提及今天的约定"></textarea>
+    </section>
+  </main>
+
+  <style id="nanoVoiceCustomCSS"></style>
+  <script src="../js/nano-beautify-runtime.js"></script>
+  <script src="../js/avatar-frame.js?v=20261010a"></script>
+  <script src="../js/appearance.js?v=20261018a"></script>
+  <script src="../js/heart-setting.js?v=20261018a"></script>
+  <script async src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
+</body>
+</html>

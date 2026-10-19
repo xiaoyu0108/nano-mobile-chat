@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<script src="../js/nano-runtime.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>地图与日程</title>
+<script src="../js/appearance.js"></script>
+<style>
+:root{
+  --bg:#f2f2f7;--white:#fff;--text:#111;--sub:#8e8e93;--line:#e5e5ea;
+  --blue:#007aff;--green:#34c759;--orange:#ff9500;--red:#ff3b30;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#f2f2f7;
+font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","PingFang SC","Helvetica Neue",Arial,sans-serif;color:var(--text)}
+button,input{font:inherit;border:0;background:none;color:inherit}
+.app{height:100dvh;width:100%;display:flex;flex-direction:column;overflow:hidden;background:var(--bg)}
+.top{
+  min-height:44px;
+  flex:none;
+  background:rgba(255,255,255,.94);
+  display:flex;align-items:center;padding:calc(10px + max(0px, var(--safe-top, 0px), env(safe-area-inset-top, 0px))) 12px 10px;position:relative;z-index:20;
+  border-bottom:1px solid rgba(0,0,0,.07)
+}
+.back,.refresh{width:40px;height:40px;display:grid;place-items:center;border-radius:12px}
+.back:active,.refresh:active{background:#eee}
+.back svg,.refresh svg{width:24px;height:24px;fill:none;stroke:#111;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.title{position:absolute;left:50%;transform:translateX(-50%);font-size:17px;font-weight:600}
+.content{flex:1;min-height:0;position:relative;overflow:hidden}
+.page{display:none;height:100%;overflow:hidden}.page.active{display:block}
+
+/* 地图 */
+.map-page{position:relative;background:#d9d9d5}
+.map{
+  position:absolute;inset:0;
+  background:
+    linear-gradient(26deg,transparent 0 17%,rgba(255,255,255,.78) 17.3% 19%,transparent 19.3% 48%,rgba(255,255,255,.75) 48.3% 50%,transparent 50.3%),
+    linear-gradient(112deg,transparent 0 29%,rgba(255,255,255,.8) 29.2% 31%,transparent 31.2% 67%,rgba(255,255,255,.75) 67.2% 69%,transparent 69.2%),
+    linear-gradient(155deg,transparent 0 12%,#cbd6c1 12.2% 23%,transparent 23.2% 75%,#d2dac8 75.2% 86%,transparent 86.2%),
+    #e6e4dd;
+}
+.map:before{
+ content:"";position:absolute;inset:0;opacity:.75;
+ background:
+ repeating-linear-gradient(24deg,transparent 0 82px,rgba(184,181,173,.5) 83px 85px,transparent 86px 130px),
+ repeating-linear-gradient(112deg,transparent 0 125px,rgba(184,181,173,.4) 126px 128px,transparent 129px 180px);
+}
+.road{position:absolute;background:#fff;border:1px solid #d3d0c8;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.r1{width:130%;height:31px;left:-15%;top:39%;transform:rotate(-17deg)}
+.r2{width:125%;height:25px;left:-10%;top:68%;transform:rotate(18deg)}
+.r3{width:110%;height:20px;left:-5%;top:21%;transform:rotate(39deg)}
+.water{position:absolute;width:47%;height:36%;right:-9%;top:10%;border-radius:45% 0 0 55%;background:#bcd9e5;opacity:.8}
+.map-label{position:absolute;font-size:11px;color:#777;font-weight:500}
+.pin{
+ position:absolute;left:53%;top:52%;width:22px;height:22px;border-radius:50% 50% 50% 0;
+ background:var(--red);transform:rotate(-45deg);box-shadow:0 2px 5px rgba(0,0,0,.2)
+}
+.pin:after{content:"";position:absolute;width:8px;height:8px;border-radius:50%;background:#fff;left:7px;top:7px}
+.map-search{
+ position:absolute;top:15px;left:14px;right:14px;height:46px;background:rgba(255,255,255,.95);
+ border-radius:14px;box-shadow:0 3px 14px rgba(0,0,0,.12);display:flex;align-items:center;padding:0 14px;gap:9px
+}
+.map-search svg{width:20px;height:20px;fill:none;stroke:#777;stroke-width:2;stroke-linecap:round}
+.map-search span{color:#8e8e93;font-size:15px}
+.map-controls{position:absolute;right:14px;bottom:124px;display:flex;flex-direction:column;gap:9px}
+.map-control{
+ width:43px;height:43px;background:rgba(255,255,255,.96);border-radius:13px;display:grid;place-items:center;
+ box-shadow:0 2px 10px rgba(0,0,0,.12)
+}
+.map-control svg{width:22px;height:22px;fill:none;stroke:#333;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.place-card{
+ position:absolute;left:12px;right:12px;bottom:13px;background:rgba(255,255,255,.97);border-radius:17px;
+ padding:14px;box-shadow:0 4px 20px rgba(0,0,0,.13)
+}
+.place-top{display:flex;justify-content:space-between;align-items:start}
+.place-name{font-size:17px;font-weight:650}.place-distance{font-size:12px;color:var(--sub)}
+.place-meta{font-size:12px;color:var(--sub);margin-top:5px}
+.place-note{font-size:13px;margin-top:10px;line-height:1.45}
+.place-actions{display:flex;gap:8px;margin-top:12px}
+.place-actions button{flex:1;height:34px;border-radius:17px;background:#f2f2f7;font-size:12px}
+.place-actions button.primary{background:#111;color:#fff}
+
+/* 日程 */
+.calendar-page{overflow-y:auto;background:var(--bg);scrollbar-width:none}
+.calendar-page::-webkit-scrollbar{display:none}
+.month-head{padding:17px 17px 9px;background:#fff}
+.month-row{display:flex;align-items:center;justify-content:space-between}
+.month{font-size:27px;font-weight:700;letter-spacing:-.6px}
+.month small{font-size:15px;font-weight:500;color:var(--sub);margin-left:4px}
+.month-actions{display:flex;gap:5px}
+.month-actions button{width:34px;height:34px;border-radius:10px;background:#f2f2f7;display:grid;place-items:center}
+.month-actions svg{width:17px;height:17px;fill:none;stroke:#111;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.week{display:grid;grid-template-columns:repeat(7,1fr);margin-top:13px}
+.week span{text-align:center;font-size:11px;color:var(--sub)}
+.days{display:grid;grid-template-columns:repeat(7,1fr);margin-top:7px;row-gap:3px}
+.day{height:40px;display:flex;align-items:center;justify-content:center;position:relative;font-size:15px}
+.day.muted{color:#c7c7cc}.day.today span{background:#111;color:#fff;width:29px;height:29px;border-radius:50%;display:grid;place-items:center}
+.day.has:after{content:"";position:absolute;bottom:2px;width:4px;height:4px;border-radius:50%;background:var(--blue)}
+.day.today.has:after{background:var(--blue)}
+.section{margin-top:9px;background:#fff}
+.section-title{padding:14px 17px 8px;font-size:17px;font-weight:650}
+.timeline{padding:0 14px 10px}
+.event{
+ display:flex;gap:11px;padding:11px 3px;border-bottom:1px solid var(--line)
+}
+.event:last-child{border-bottom:0}
+.time{width:53px;flex:0 0 53px;color:var(--sub);font-size:12px;padding-top:2px}
+.event-line{width:3px;border-radius:3px;background:var(--blue);flex:0 0 3px}
+.event:nth-child(2) .event-line{background:var(--orange)}
+.event:nth-child(3) .event-line{background:var(--green)}
+.event-body{flex:1;min-width:0}
+.event-title{font-size:15px;font-weight:600}
+.event-info{font-size:12px;color:var(--sub);margin-top:4px;line-height:1.45}
+.event-tag{display:inline-block;margin-top:6px;padding:3px 7px;border-radius:6px;background:#f2f2f7;font-size:10px;color:#666}
+.reminder{
+ margin:9px 12px;background:#fff;border-radius:14px;padding:13px 14px;display:flex;align-items:center;gap:11px
+}
+.reminder-dot{width:9px;height:9px;border-radius:50%;background:var(--red);flex:0 0 9px}
+.reminder-main{flex:1}.reminder-title{font-size:14px}.reminder-sub{font-size:11px;color:var(--sub);margin-top:3px}
+.add{
+ position:fixed;right:18px;bottom:82px;width:54px;height:54px;border-radius:50%;background:#111;color:#fff;
+ display:grid;place-items:center;box-shadow:0 5px 17px rgba(0,0,0,.2);z-index:30
+}
+.add svg{width:25px;height:25px;fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round}
+.bottom{
+ height:66px;flex:0 0 66px;background:rgba(255,255,255,.96);border-top:1px solid rgba(0,0,0,.07);
+ display:flex;padding-bottom:env(safe-area-inset-bottom);z-index:30
+}
+.nav{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:10px;color:#8e8e93}
+.nav.active{color:#111;font-weight:600}.nav svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.empty-tip{color:#8e8e93;font-size:12px;padding:8px 3px}
+@media(min-width:700px){
+ .app{max-width:520px;margin:auto;box-shadow:0 0 35px rgba(0,0,0,.08)}
+ .top,.bottom{max-width:520px}
+ .add{right:calc(50% - 242px)}
+}
+</style>
+</head>
+<body>
+<div class="app">
+<header class="top">
+  <button class="back" onclick="phoneBack()" aria-label="返回"><svg viewBox="0 0 24 24"><path d="m15 5-7 7 7 7"/></svg></button>
+  <div class="title">地图与日程</div>
+  <button class="refresh" onclick="phoneRefresh()" aria-label="刷新"><svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.8-4L4 9"/><path d="M4 5v4h4"/><path d="M4 13a8 8 0 0 0 14.8 4L20 15"/><path d="M20 19v-4h-4"/></svg></button>
+</header>
+
+<div class="content">
+  <section class="page active map-page" id="mapPage">
+    <div class="map" id="mapBox">
+      <div class="water"></div><div class="road r1"></div><div class="road r2"></div><div class="road r3"></div>
+      <div class="pin" id="mainPin"></div>
+    </div>
+    <div class="map-search">
+      <svg viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 5 5"/></svg>
+      <span>搜索地点、路线</span>
+    </div>
+    <div class="map-controls">
+      <button class="map-control"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3"/></svg></button>
+      <button class="map-control"><svg viewBox="0 0 24 24"><path d="m12 3 8 4-8 4-8-4 8-4Z"/><path d="m4 12 8 4 8-4M4 16l8 5 8-5"/></svg></button>
+    </div>
+    <div class="place-card">
+      <div class="place-top"><div><div class="place-name" id="placeName">Char 当前地点</div><div class="place-meta" id="placeMeta">最近更新</div></div><div class="place-distance" id="placeCount"></div></div>
+      <div class="place-note" id="placeNote">可以查看 Char 最近搜索过的地点、导航目的地以及行程关联位置。</div>
+      <div class="place-actions"><button>地点详情</button><button class="primary">最近路线</button></div>
+    </div>
+  </section>
+
+  <section class="page calendar-page" id="calendarPage">
+    <div class="month-head">
+      <div class="month-row">
+        <div class="month" id="monthLabel">10月 <small>2026</small></div>
+        <div class="month-actions">
+          <button><svg viewBox="0 0 24 24"><path d="m14 6-6 6 6 6"/></svg></button>
+          <button><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4m8-4v4M4 9h16"/></svg></button>
+          <button><svg viewBox="0 0 24 24"><path d="m10 6 6 6-6 6"/></svg></button>
+        </div>
+      </div>
+      <div class="week"><span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span></div>
+      <div class="days" id="daysGrid"></div>
+    </div>
+
+    <div class="reminder">
+      <div class="reminder-dot"></div><div class="reminder-main"><div class="reminder-title" id="remindTitle">今天暂无安排</div><div class="reminder-sub" id="remindSub">Char 的日程</div></div>
+      <button style="font-size:12px;color:#8e8e93">查看</button>
+    </div>
+
+    <div class="section">
+      <div class="section-title" id="todayTitle">接下来的安排</div>
+      <div class="timeline" id="timelineA"></div>
+    </div>
+
+    <div class="section" style="margin-bottom:18px">
+      <div class="section-title">之后</div>
+      <div class="timeline" id="timelineB"></div>
+    </div>
+  </section>
+</div>
+
+<button class="add" aria-label="新增日程">
+  <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+</button>
+
+<nav class="bottom">
+  <button class="nav active" id="mapNav" onclick="showPage('map')">
+    <svg viewBox="0 0 24 24"><path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3V6Z"/><path d="M9 3v15m6-12v15"/></svg>地图
+  </button>
+  <button class="nav" id="calendarNav" onclick="showPage('calendar')">
+    <svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4m8-4v4M4 9h16M8 13h2m2 0h2m-6 3h2"/></svg>日程
+  </button>
+</nav>
+</div>
+
+<script>
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m];}); }
+
+function phoneBack(){
+  try{ if(window.parent && window.parent!==window){ window.parent.postMessage({ type:"phoneAppClose" },"*"); return; } }catch(e){}
+  history.back();
+}
+function phoneRefresh(){
+  try{ if(window.__phoneRefresh){ window.__phoneRefresh(); return; } }catch(e){}
+}
+
+function showPage(type){
+  var map=type==='map';
+  document.getElementById('mapPage').classList.toggle('active',map);
+  document.getElementById('calendarPage').classList.toggle('active',!map);
+  document.getElementById('mapNav').classList.toggle('active',map);
+  document.getElementById('calendarNav').classList.toggle('active',!map);
+  document.querySelector('.add').style.display=map?'none':'grid';
+}
+
+function eventHTML(ev){
+  return '<article class="event"><div class="time">'+esc(ev.time||ev.date||'')+'</div><div class="event-line"></div>'
+    +'<div class="event-body"><div class="event-title">'+esc(ev.title||'安排')+'</div>'
+    +'<div class="event-info">'+esc([ev.date,ev.day,ev.info].filter(Boolean).join(' · '))+'</div>'
+    +(ev.tag?('<span class="event-tag">'+esc(ev.tag)+'</span>'):'')+'</div></article>';
+}
+
+// 由宿主（查手机）注入数据：{places:[],events:[]}
+window.renderCharMapCalendar=function(data){
+  data=data||{};
+  var places=Array.isArray(data.places)?data.places:[];
+  var events=Array.isArray(data.events)?data.events:[];
+
+  // 地图钉子
+  var mapBox=document.getElementById('mapBox');
+  if(mapBox){
+    mapBox.querySelectorAll('.pin,.map-label').forEach(function(e){ e.remove(); });
+    var pos=[[53,52],[28,36],[70,40],[42,70]];
+    var list=places.length?places:[{name:'中央公园'},{name:'商业街'},{name:'住宅区'},{name:'河岸'}];
+    list.slice(0,4).forEach(function(p,i){
+      var xy=pos[i]||pos[0];
+      var pin=document.createElement('div'); pin.className='pin'; pin.style.left=xy[0]+'%'; pin.style.top=xy[1]+'%'; mapBox.appendChild(pin);
+      var lb=document.createElement('div'); lb.className='map-label'; lb.style.left=xy[0]+'%'; lb.style.top=xy[1]+'%';
+      lb.style.transform='translate(-50%,-150%)'; lb.textContent=p.name||''; mapBox.appendChild(lb);
+    });
+  }
+  var pName=document.getElementById('placeName'), pMeta=document.getElementById('placeMeta'),
+      pNote=document.getElementById('placeNote'), pCount=document.getElementById('placeCount');
+  if(places.length){
+    if(pName) pName.textContent=places[0].name||'地点';
+    if(pMeta) pMeta.textContent=[places[0].address,places[0].time].filter(Boolean).join(' · ')||'最近更新';
+    if(pNote) pNote.textContent=places.map(function(p){return p.name;}).filter(Boolean).join(' · ');
+    if(pCount) pCount.textContent='共 '+places.length+' 个';
+  }else{
+    if(pName) pName.textContent='Char 当前地点';
+    if(pMeta) pMeta.textContent='暂无地点记录';
+    if(pNote) pNote.textContent='返回刷新即可生成 Char 查过的地点。';
+    if(pCount) pCount.textContent='';
+  }
+
+  // 日历
+  var now=new Date(), y=now.getFullYear(), m=now.getMonth();
+  var ml=document.getElementById('monthLabel');
+  if(ml) ml.innerHTML=(m+1)+'月 <small>'+y+'</small>';
+  var daysGrid=document.getElementById('daysGrid');
+  if(daysGrid){
+    var first=new Date(y,m,1).getDay(), total=new Date(y,m+1,0).getDate();
+    var mark={};
+    events.forEach(function(ev){
+      var mm=/(\d{1,2})月(\d{1,2})日/.exec(String(ev.date||''));
+      if(mm && Number(mm[1])===m+1) mark[Number(mm[2])]=1;
+    });
+    var html='';
+    for(var i=0;i<first;i++) html+='<div class="day muted"></div>';
+    for(var d=1;d<=total;d++){
+      var cls='day'+(d===now.getDate()?' today':'')+(mark[d]?' has':'');
+      html+='<div class="'+cls+'"><span>'+d+'</span></div>';
+    }
+    daysGrid.innerHTML=html;
+  }
+
+  var tA=document.getElementById('timelineA'), tB=document.getElementById('timelineB');
+  if(tA) tA.innerHTML = events.length?events.slice(0,3).map(eventHTML).join(''):'<div class="empty-tip">暂无日程</div>';
+  if(tB) tB.innerHTML = events.length>3?events.slice(3).map(eventHTML).join(''):'<div class="empty-tip">暂无更多安排</div>';
+  var rt=document.getElementById('remindTitle'), rs=document.getElementById('remindSub');
+  if(rt) rt.textContent = events.length?('接下来有 '+events.length+' 个安排'):'今天暂无安排';
+  if(rs) rs.textContent = events[0]?([events[0].date,events[0].time].filter(Boolean).join(' · ')):'Char 的日程';
+};
+
+showPage('map');
+</script>
+</body>
+</html>

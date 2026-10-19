@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<script src="../js/nano-runtime.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>我的应用</title>
+<script src="../js/appearance.js"></script>
+<!--
+  ============================================================
+  Nano 应用模板（DIY）
+  ------------------------------------------------------------
+  1. 把本文件另存为 .html，改上面的 id / name / icon 后，在「App Store」里导入即可。
+  2. 应用运行时能通过 window.Nano 调用 Nano 的能力：
+     Nano.currentUser() / Nano.user() / Nano.avatar()   // 用户资料（含头像）
+     Nano.characters() / Nano.persona(id) / Nano.worldbook(id) / Nano.memory(id)
+     Nano.apiConfig() / Nano.chat({ charIds, messages, useCharPersona, useUserPersona, useWorldbook, useMemory })
+     Nano.store.get/set/remove(key)
+     Nano.apps() / Nano.openApp(id)                      // 已安装应用列表 / 打开其他应用
+     Nano.manifest() / Nano.setManifest({name,icon,color,desc}) / Nano.setIcon(...)  // 设计自己的图标
+     Nano.notify(title, body) / Nano.toast(text) / Nano.openUrl(url, title)
+     Nano.close()                                        // 关闭并回到 AppStore
+     Nano.onBack(fn)                                     // 自定义手势/返回逻辑；不注册则默认回 AppStore
+  3. 首次进入会让你配置：图标、名称、单人/多人、邀请方式、是否读取人设/世界书/记忆。
+  4. 想改默认值，直接改下面的 DEFAULT_CONFIG。
+  ============================================================
+-->
+<script type="application/json" id="nano-manifest">{
+  "id": "my-nano-app",
+  "name": "我的应用",
+  "icon": "A",
+  "color": "#5B8DEF",
+  "desc": "用 Nano 模板搭建的专属应用",
+  "version": "1.0.0",
+  "permissions": ["persona", "characters", "worldbook", "memory", "api"]
+}</script>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  html,body{width:100%;height:100%;overflow:hidden;background:#fff;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",Arial,sans-serif;position:fixed;top:0;left:0}
+  .app{position:absolute;inset:0;display:flex;flex-direction:column;background:#fff}
+  .top{flex:none;display:flex;align-items:center;gap:10px;padding:calc(var(--safe-top, env(safe-area-inset-top,0px)) + 10px) 12px 10px;border-bottom:.5px solid rgba(60,60,67,.14);background:rgba(255,255,255,.9);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);position:relative;z-index:5}
+  .ico{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:16px;overflow:hidden;flex:none;background-size:cover;background-position:center}
+  .ico img{width:100%;height:100%;object-fit:cover}
+  .tt{flex:1;min-width:0}
+  .tt .n{font-size:16px;font-weight:700;color:#1c1c1e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .tt .s{font-size:11.5px;color:#8e8e93}
+  .gbtn{width:34px;height:34px;border-radius:50%;border:0;background:rgba(120,120,128,.1);color:#3c3c43;display:flex;align-items:center;justify-content:center;cursor:pointer;flex:none}
+  .gbtn svg{width:19px;height:19px}
+  /* 去掉应用顶栏：应用完全由用户 DIY（标题/返回自己设计）；设置改为悬浮按钮 */
+  .top{display:none !important}
+  #btnGear{position:fixed;top:calc(var(--safe-top, env(safe-area-inset-top,0px)) + 10px);right:12px;z-index:20;
+    background:rgba(120,120,128,.18);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+  #btnInvite{position:fixed;top:calc(var(--safe-top, env(safe-area-inset-top,0px)) + 10px);right:56px;z-index:20}
+  .list{flex:1;overflow-y:auto;padding:14px 14px 6px;display:flex;flex-direction:column;gap:10px}
+  .row{display:flex;gap:8px;align-items:flex-end;max-width:100%}
+  .row.me{flex-direction:row-reverse}
+  .ava{width:30px;height:30px;border-radius:50%;flex:none;background:#e5e5ea center/cover no-repeat;display:flex;align-items:center;justify-content:center;font-size:12px;color:#8e8e93;overflow:hidden}
+  .ava img{width:100%;height:100%;object-fit:cover}
+  .col{min-width:0;display:flex;flex-direction:column;gap:3px;max-width:74%}
+  .row.me .col{align-items:flex-end}
+  .nm{font-size:11px;color:#8e8e93;padding:0 4px}
+  .bub{padding:9px 13px;border-radius:17px;font-size:15px;line-height:1.5;word-break:break-word;white-space:pre-wrap;background:#f0f0f4;color:#1c1c1e;border-bottom-left-radius:5px}
+  .row.me .bub{background:var(--theme);color:#fff;border-bottom-left-radius:17px;border-bottom-right-radius:5px}
+  .sys{text-align:center;font-size:11.5px;color:#aeaeb2;padding:4px 20px}
+  .invite{border:1px solid rgba(60,60,67,.14);border-radius:14px;padding:12px;background:#fff;display:flex;flex-direction:column;gap:8px}
+  .invite .it{font-size:13px;font-weight:650;color:#1c1c1e}
+  .invite .id{font-size:12px;color:#8e8e93}
+  .invite .ib{display:flex;gap:8px}
+  .btn{border:0;border-radius:10px;padding:8px 14px;font-size:13.5px;cursor:pointer;background:var(--theme);color:#fff}
+  .btn.ghost{background:rgba(120,120,128,.12);color:#3c3c43}
+  .composer{flex:none;display:flex;gap:8px;align-items:flex-end;padding:8px 12px calc(8px + env(safe-area-inset-bottom,0px));border-top:.5px solid rgba(60,60,67,.1);background:#fff}
+  .composer textarea{flex:1;min-height:40px;max-height:120px;resize:none;border:1px solid rgba(60,60,67,.14);border-radius:20px;padding:10px 14px;font-size:15px;line-height:1.4;outline:none;font-family:inherit;background:#f7f7fa}
+  .send{width:40px;height:40px;border-radius:50%;border:0;background:var(--theme);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;flex:none}
+  .send svg{width:19px;height:19px}
+  .send:disabled{opacity:.4}
+  /* 配置页 */
+  .setup{position:absolute;inset:0;background:#f7f7fa;overflow-y:auto;padding:calc(var(--safe-top, env(safe-area-inset-top,0px)) + 16px) 16px calc(24px + env(safe-area-inset-bottom,0px))}
+  .setup h1{font-size:22px;font-weight:800;color:#1c1c1e;margin-bottom:4px}
+  .setup .lead{font-size:13px;color:#8e8e93;margin-bottom:16px}
+  .card{background:#fff;border-radius:16px;padding:14px 16px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+  .card .ct{font-size:12.5px;font-weight:700;color:#3c3c43;margin-bottom:10px}
+  .fld{margin-bottom:10px}
+  .fld label{display:block;font-size:12px;color:#8e8e93;margin-bottom:4px}
+  .fld input[type=text],.fld input[type=url],.fld textarea{width:100%;border:1px solid rgba(60,60,67,.14);border-radius:10px;padding:9px 11px;font-size:14px;outline:none;font-family:inherit;background:#fff}
+  .fld input[type=color]{width:44px;height:38px;border:1px solid rgba(60,60,67,.14);border-radius:10px;background:#fff;padding:2px}
+  .seg{display:flex;gap:8px}
+  .seg button{flex:1;border:1px solid rgba(60,60,67,.14);background:#fff;border-radius:10px;padding:9px;font-size:13.5px;color:#3c3c43;cursor:pointer}
+  .seg button.on{background:var(--theme);border-color:var(--theme);color:#fff;font-weight:600}
+  .chips{display:flex;flex-wrap:wrap;gap:8px}
+  .chip{display:flex;align-items:center;gap:6px;border:1px solid rgba(60,60,67,.14);border-radius:20px;padding:6px 12px 6px 6px;font-size:13px;color:#3c3c43;cursor:pointer;background:#fff}
+  .chip.on{border-color:var(--theme);background:color-mix(in srgb,var(--theme) 12%,#fff)}
+  .chip .ca{width:24px;height:24px;border-radius:50%;background:#e5e5ea center/cover no-repeat;display:flex;align-items:center;justify-content:center;font-size:11px;color:#8e8e93;overflow:hidden}
+  .chip .ca img{width:100%;height:100%;object-fit:cover}
+  .tog{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:.5px solid rgba(60,60,67,.08)}
+  .tog:last-child{border-bottom:0}
+  .tog .tl{font-size:14px;color:#1c1c1e}
+  .sw{width:46px;height:28px;border-radius:16px;background:#e5e5ea;position:relative;transition:.18s;flex:none;border:0;cursor:pointer}
+  .sw::after{content:"";position:absolute;top:2px;left:2px;width:24px;height:24px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:.18s}
+  .sw.on{background:var(--theme)}
+  .sw.on::after{left:20px}
+  .bigbtn{width:100%;border:0;border-radius:14px;padding:14px;font-size:16px;font-weight:650;background:var(--theme);color:#fff;cursor:pointer}
+  .warn{font-size:12px;color:#ff3b30;margin-top:8px}
+  .iconrow{display:flex;align-items:center;gap:12px}
+  .iconrow .prev{width:56px;height:56px;border-radius:15px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:24px;background-size:cover;background-position:center;flex:none;overflow:hidden}
+  .muted{font-size:11.5px;color:#aeaeb2;margin-top:8px;line-height:1.6}
+</style>
+</head>
+<body>
+<!-- 默认返回：回 AppStore。你也可以用 Nano.onBack(fn) 改成自己的返回逻辑 -->
+<button class="gbtn" id="btnBack" title="返回" style="position:fixed;left:12px;top:calc(var(--safe-top, env(safe-area-inset-top,0px)) + 10px);z-index:21;background:rgba(120,120,128,.18);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
+</button>
+<input type="file" id="sIconFile" accept="image/*" style="display:none">
+<div class="app" id="app" style="--theme:#5B8DEF">
+  <div class="top">
+    <div class="ico" id="hIco">A</div>
+    <div class="tt">
+      <div class="n" id="hName">我的应用</div>
+      <div class="s" id="hSub">Nano 应用</div>
+    </div>
+    <button class="gbtn" id="btnInvite" title="邀请角色" style="display:none">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+    </button>
+    <button class="gbtn" id="btnGear" title="设置">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 8.9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 8.96 4.6 1.7 1.7 0 0 0 10 3.09V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 8.96a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"/></svg>
+    </button>
+  </div>
+  <div class="list" id="list"></div>
+  <div class="composer">
+    <textarea id="input" rows="1" placeholder="输入消息…"></textarea>
+    <button class="send" id="btnSend">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>
+    </button>
+  </div>
+</div>
+
+<div class="setup" id="setup" style="--theme:#5B8DEF"></div>
+
+<script src="../js/nano-app-bridge.js?v=20261002a"></script>
+<script>
+(function () {
+  'use strict';
+
+  var DEFAULT_CONFIG = {
+    name: '我的应用',
+    icon: { letter: 'A', color: '#5B8DEF', image: '' },
+    mode: 'single',            // 'single' | 'multi'
+    charIds: [],               // 参与的角色 id
+    invite: 'auto',            // 'auto' | 'manual' | 'none'
+    welcome: '你好，很高兴见到你。',
+    useCharPersona: true,
+    useUserPersona: true,
+    useWorldbook: true,
+    useMemory: true
+  };
+
+  var state = { config: null, history: [], joined: [] };
+  var allChars = [];
+  var apiConnected = false;
+  var busy = false;
+
+  var $ = function (id) { return document.getElementById(id); };
+  function esc(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function save() { var c = Object.assign({}, state); delete c._user; return Nano.store.set('state', c); }
+  function cfg() { return state.config || DEFAULT_CONFIG; }
+  function byId(id) { return allChars.filter(function (c) { return c.id === id; })[0] || null; }
+
+  function applyTheme() {
+    var c = cfg();
+    var color = (c.icon && c.icon.color) || '#5B8DEF';
+    document.getElementById('app').style.setProperty('--theme', color);
+    document.getElementById('setup').style.setProperty('--theme', color);
+    $('hName').textContent = c.name || '我的应用';
+    $('hSub').textContent = (c.mode === 'multi' ? '多人应用' : '单人应用') + (apiConnected ? '' : ' · 未连接 API');
+    var ico = $('hIco');
+    if (c.icon && c.icon.image) { ico.innerHTML = '<img src="' + esc(c.icon.image) + '" alt="">'; ico.style.background = '#e5e5ea'; }
+    else { ico.innerHTML = ''; ico.textContent = (c.icon && c.icon.letter) || 'A'; ico.style.background = color; }
+    $('btnInvite').style.display = (c.mode === 'multi') ? 'flex' : 'none';
+  }
+
+  /* ---------------- 消息渲染 ---------------- */
+  function avatarEl(charId, me) {
+    var wrap = document.createElement('div'); wrap.className = 'ava';
+    if (me) {
+      var u = state._user || {};
+      if (u.avatar) wrap.innerHTML = '<img src="' + esc(u.avatar) + '" alt="">';
+      else wrap.textContent = (u.name || '我').charAt(0);
+    } else {
+      var c = byId(charId);
+      if (c && c.avatar) wrap.innerHTML = '<img src="' + esc(c.avatar) + '" alt="">';
+      else wrap.textContent = (c ? c.name : '?').charAt(0);
+    }
+    return wrap;
+  }
+  function pushMsg(m) { state.history.push(m); render(); save(); }
+  function render() {
+    var list = $('list'); list.innerHTML = '';
+    var c = cfg();
+    state.history.forEach(function (m) {
+      if (m.role === 'system') { var s = document.createElement('div'); s.className = 'sys'; s.textContent = m.content; list.appendChild(s); return; }
+      if (m.role === 'invite') {
+        var inv = document.createElement('div'); inv.className = 'invite';
+        var ch = byId(m.charId) || { name: m.name || '角色' };
+        inv.innerHTML = '<div class="it">邀请 ' + esc(ch.name) + ' 加入</div><div class="id">是否把 TA 拉进这个应用？</div>' +
+          '<div class="ib"><button class="btn ghost" data-act="reject">拒绝</button><button class="btn" data-act="accept">同意</button></div>';
+        inv.querySelector('[data-act=accept]').onclick = function () { acceptInvite(m.charId); };
+        inv.querySelector('[data-act=reject]').onclick = function () {
+          state.history = state.history.filter(function (x) { return x !== m; }); render(); save();
+        };
+        list.appendChild(inv); return;
+      }
+      var row = document.createElement('div'); row.className = 'row' + (m.role === 'user' ? ' me' : '');
+      row.appendChild(avatarEl(m.charId, m.role === 'user'));
+      var col = document.createElement('div'); col.className = 'col';
+      if (m.role !== 'user' && c.mode === 'multi') {
+        var nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = (byId(m.charId) || {}).name || ''; col.appendChild(nm);
+      }
+      var b = document.createElement('div'); b.className = 'bub'; b.textContent = m.content; col.appendChild(b);
+      row.appendChild(col); list.appendChild(row);
+    });
+    list.scrollTop = list.scrollHeight;
+  }
+  function acceptInvite(charId) {
+    if (state.joined.indexOf(charId) === -1) state.joined.push(charId);
+    if (cfg().charIds.indexOf(charId) === -1) { state.config.charIds.push(charId); }
+    state.history = state.history.filter(function (x) { return !(x.role === 'invite' && x.charId === charId); });
+    pushMsg({ role: 'system', content: '你邀请 ' + ((byId(charId) || {}).name || '角色') + ' 加入了会话' });
+    sendAutoWelcome(charId);
+  }
+
+  /* ---------------- 开场 / 邀请 ---------------- */
+  function ensureOpening() {
+    var c = cfg();
+    if (!c.charIds.length) { pushMsg({ role: 'system', content: '还没有选择角色：点右下角设置，选择参与的角色。' }); return; }
+    if (state.history.length) return;
+    if (c.invite === 'manual') {
+      c.charIds.forEach(function (id) {
+        if (state.joined.indexOf(id) === -1) pushMsg({ role: 'invite', charId: id, name: (byId(id) || {}).name });
+      });
+      return;
+    }
+    if (c.invite === 'auto') {
+      c.charIds.forEach(function (id) {
+        state.joined.push(id);
+        pushMsg({ role: 'system', content: '你邀请 ' + ((byId(id) || {}).name || '角色') + ' 加入了会话' });
+      });
+    }
+    if (c.welcome && c.welcome.trim()) {
+      c.charIds.forEach(function (id) { pushMsg({ role: 'assistant', charId: id, content: c.welcome }); });
+    }
+  }
+  function sendAutoWelcome(charId) {
+    var c = cfg();
+    if (c.welcome && c.welcome.trim()) pushMsg({ role: 'assistant', charId: charId, content: c.welcome });
+  }
+
+  /* ---------------- 发送 ---------------- */
+  function buildHistory() {
+    return state.history.filter(function (m) { return m.role === 'user' || m.role === 'assistant'; })
+      .map(function (m) { return { role: m.role, content: m.content }; });
+  }
+  function splitMulti(text, ids) {
+    var lines = String(text || '').split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
+    var out = [], cur = null, names = {};
+    ids.concat(state.joined).forEach(function (id) { var c = byId(id); if (c) names[c.name] = c.id; });
+    lines.forEach(function (line) {
+      var m = line.match(/^([^：:\n]{1,12})[：:]\s*(.+)$/);
+      if (m && names[m[1]]) { cur = { name: m[1], id: names[m[1]], text: m[2] }; out.push(cur); }
+      else if (out.length) { out[out.length - 1].text += '\n' + line; }
+      else { out.push({ name: '', id: ids[0] || '', text: line }); }
+    });
+    return out.length ? out : [{ name: '', id: ids[0] || '', text: String(text || '') }];
+  }
+  async function send() {
+    var input = $('input'); var text = input.value.trim();
+    if (!text || busy) return;
+    input.value = ''; input.style.height = 'auto';
+    pushMsg({ role: 'user', content: text });
+    if (!apiConnected) { pushMsg({ role: 'system', content: '未连接主 API：请先到 API 页配置。' }); return; }
+    busy = true; $('btnSend').disabled = true;
+    var typing = document.createElement('div'); typing.className = 'sys'; typing.textContent = '正在输入…';
+    $('list').appendChild(typing); $('list').scrollTop = $('list').scrollHeight;
+    try {
+      var c = cfg();
+      var activeIds = state.joined.length ? state.joined : (c.invite === 'manual' ? [] : c.charIds);
+      var reply = await Nano.chat({
+        charIds: activeIds,
+        messages: buildHistory(),
+        useCharPersona: c.useCharPersona,
+        useUserPersona: c.useUserPersona,
+        useWorldbook: c.useWorldbook,
+        useMemory: c.useMemory
+      });
+      typing.remove();
+      if (c.mode === 'multi') {
+        splitMulti(reply, c.charIds).forEach(function (p) { pushMsg({ role: 'assistant', charId: p.id, content: p.text }); });
+      } else {
+        pushMsg({ role: 'assistant', charId: (state.joined[0] || c.charIds[0] || ''), content: reply });
+      }
+    } catch (e) {
+      typing.remove();
+      pushMsg({ role: 'system', content: '出错了：' + ((e && e.message) || e) });
+    } finally {
+      busy = false; $('btnSend').disabled = false;
+    }
+  }
+
+  /* ---------------- 设置页 ---------------- */
+  function charChip(c) {
+    var on = cfg().charIds.indexOf(c.id) > -1;
+    var el = document.createElement('div'); el.className = 'chip' + (on ? ' on' : '');
+    var a = document.createElement('div'); a.className = 'ca';
+    if (c.avatar) a.innerHTML = '<img src="' + esc(c.avatar) + '" alt="">'; else a.textContent = (c.name || '?').charAt(0);
+    el.appendChild(a);
+    var t = document.createElement('span'); t.textContent = c.name; el.appendChild(t);
+    el.onclick = function () {
+      var arr = cfg().charIds, i = arr.indexOf(c.id);
+      if (i > -1) arr.splice(i, 1); else arr.push(c.id);
+      openSetup();
+    };
+    return el;
+  }
+  function openSetup(firstRun) {
+    var c = cfg();
+    var box = $('setup');
+    box.style.display = 'block';
+    box.innerHTML =
+      '<h1>' + (firstRun ? '设计你的应用' : '应用设置') + '</h1>' +
+      '<div class="lead">这些设置随时可以修改。</div>' +
+      '<div class="card"><div class="ct">图标与名称</div>' +
+        '<div class="iconrow"><div class="prev" id="sPrev"></div>' +
+        '<div style="flex:1"><div class="fld"><label>名称</label><input type="text" id="sName" maxlength="16" value="' + esc(c.name) + '"></div></div></div>' +
+        '<div class="fld" style="margin-top:10px"><label>图标字母 / Emoji</label><input type="text" id="sLetter" maxlength="4" value="' + esc(c.icon.letter) + '"></div>' +
+        '<div class="fld"><label>图标颜色</label><input type="color" id="sColor" value="' + esc(c.icon.color) + '"></div>' +
+        '<div class="fld"><label>或使用图片（地址 / 上传 / 我的头像）</label><input type="url" id="sImage" placeholder="https://…" value="' + esc(c.icon.image) + '"></div>' +
+        '<div style="display:flex;gap:8px;margin-top:2px"><button class="btn ghost" id="sUseAvatar" type="button" style="flex:1">用我的头像</button><button class="btn ghost" id="sUploadIcon" type="button" style="flex:1">上传图片</button></div>' +
+      '</div>' +
+      '<div class="card"><div class="ct">聊天方式</div>' +
+        '<div class="seg"><button data-mode="single" class="' + (c.mode === 'single' ? 'on' : '') + '">单人</button>' +
+        '<button data-mode="multi" class="' + (c.mode === 'multi' ? 'on' : '') + '">多人 / 群聊</button></div>' +
+      '</div>' +
+      '<div class="card"><div class="ct">参与角色（可多选）</div><div class="chips" id="sChars"></div>' +
+        '<div class="muted">没有角色？先去 App 里创建角色，再回到这里刷新。</div></div>' +
+      '<div class="card"><div class="ct">邀请方式</div>' +
+        '<div class="seg"><button data-invite="auto" class="' + (c.invite === 'auto' ? 'on' : '') + '">自动加入</button>' +
+        '<button data-invite="manual" class="' + (c.invite === 'manual' ? 'on' : '') + '">发邀请卡</button>' +
+        '<button data-invite="none" class="' + (c.invite === 'none' ? 'on' : '') + '">不邀请</button></div>' +
+        '<div class="muted">“发邀请卡”会生成一张卡片，由你在聊天里点“同意”才加入。</div>' +
+      '</div>' +
+      '<div class="card"><div class="ct">读取内容</div>' +
+        '<div class="tog"><span class="tl">读取角色人设</span><button class="sw ' + (c.useCharPersona ? 'on' : '') + '" data-tog="useCharPersona"></button></div>' +
+        '<div class="tog"><span class="tl">读取我的人设</span><button class="sw ' + (c.useUserPersona ? 'on' : '') + '" data-tog="useUserPersona"></button></div>' +
+        '<div class="tog"><span class="tl">读取世界书</span><button class="sw ' + (c.useWorldbook ? 'on' : '') + '" data-tog="useWorldbook"></button></div>' +
+        '<div class="tog"><span class="tl">读取长期记忆</span><button class="sw ' + (c.useMemory ? 'on' : '') + '" data-tog="useMemory"></button></div>' +
+      '</div>' +
+      '<div class="card"><div class="ct">开场白</div><textarea id="sWelcome" rows="3">' + esc(c.welcome) + '</textarea></div>' +
+      '<button class="bigbtn" id="sSave">' + (firstRun ? '开始使用' : '保存') + '</button>' +
+      (apiConnected ? '' : '<div class="warn">提示：还没有配置主 API，聊天会失败。请到 API 页配置。</div>') +
+      '<div style="height:20px"></div>';
+
+    var chips = $('sChars');
+    if (!allChars.length) chips.innerHTML = '<div class="muted">暂无角色</div>';
+    allChars.forEach(function (ch) { chips.appendChild(charChip(ch)); });
+
+    function paintPrev() {
+      var letter = $('sLetter').value || 'A';
+      var color = $('sColor').value || '#5B8DEF';
+      var image = $('sImage').value.trim();
+      var p = $('sPrev');
+      if (image) { p.textContent = ''; p.style.background = '#e5e5ea'; p.innerHTML = '<img src="' + esc(image) + '" style="width:100%;height:100%;object-fit:cover">'; }
+      else { p.innerHTML = ''; p.textContent = letter; p.style.background = color; }
+      box.style.setProperty('--theme', color);
+    }
+    paintPrev();
+    ['sLetter','sColor','sImage'].forEach(function (id) { var el = $(id); if (el) el.oninput = paintPrev; });
+
+    var useAvatar = $('sUseAvatar');
+    if (useAvatar) useAvatar.onclick = function () {
+      var av = (state._user && state._user.avatar) || '';
+      if (!av) { alert('还没有设置头像'); return; }
+      $('sImage').value = av; paintPrev();
+    };
+    var upIcon = $('sUploadIcon');
+    if (upIcon) upIcon.onclick = function () { $('sIconFile').click(); };
+    var iconFile = $('sIconFile');
+    if (iconFile) iconFile.onchange = function () {
+      var f = this.files && this.files[0]; this.value = '';
+      if (!f) return;
+      var r = new FileReader();
+      r.onload = function (ev) { $('sImage').value = String(ev.target.result || ''); paintPrev(); };
+      r.readAsDataURL(f);
+    };
+
+    box.querySelectorAll('[data-mode]').forEach(function (b) { b.onclick = function () { cfg().mode = b.getAttribute('data-mode'); openSetup(firstRun); }; });
+    box.querySelectorAll('[data-invite]').forEach(function (b) { b.onclick = function () { cfg().invite = b.getAttribute('data-invite'); openSetup(firstRun); }; });
+    box.querySelectorAll('[data-tog]').forEach(function (b) { b.onclick = function () { var k = b.getAttribute('data-tog'); cfg()[k] = !cfg()[k]; openSetup(firstRun); }; });
+
+    $('sSave').onclick = async function () {
+      cfg().name = $('sName').value.trim() || '我的应用';
+      cfg().icon = { letter: $('sLetter').value.trim() || 'A', color: $('sColor').value || '#5B8DEF', image: $('sImage').value.trim() };
+      cfg().welcome = $('sWelcome').value;
+      await save();
+      // 把设计好的图标 / 名称写回 AppStore 的已安装区
+      try {
+        await Nano.setManifest({
+          name: cfg().name,
+          icon: (cfg().icon.image || cfg().icon.letter || 'A'),
+          color: cfg().icon.color
+        });
+      } catch (e) {}
+      box.style.display = 'none';
+      applyTheme(); render();
+      if (firstRun || !state.history.length) ensureOpening();
+      $('hSub').textContent = (cfg().mode === 'multi' ? '多人应用' : '单人应用') + (apiConnected ? '' : ' · 未连接 API');
+    };
+  }
+
+  /* ---------------- 邀请按钮 ---------------- */
+  $('btnInvite').onclick = function () {
+    var notJoined = cfg().charIds.filter(function (id) { return state.joined.indexOf(id) === -1; });
+    if (!notJoined.length) { pushMsg({ role: 'system', content: '所有角色都已加入。' }); return; }
+    notJoined.forEach(function (id) { pushMsg({ role: 'invite', charId: id, name: (byId(id) || {}).name }); });
+  };
+  $('btnGear').onclick = function () { openSetup(false); };
+
+  /* ---------------- 返回：默认回 AppStore，可自定义 ---------------- */
+  var btnBack = $('btnBack');
+  if (btnBack) btnBack.onclick = function () { if (Nano.close) Nano.close(); else history.back(); };
+  if (Nano.onBack) Nano.onBack(function () {
+    var s = $('setup');
+    if (s && s.style.display !== 'none') { s.style.display = 'none'; applyTheme(); render(); return true; }
+    return false; // 交回系统 → 默认回到 AppStore
+  });
+
+  /* ---------------- 输入框 ---------------- */
+  var input = $('input');
+  input.addEventListener('input', function () { this.style.height = 'auto'; this.style.height = Math.min(120, this.scrollHeight) + 'px'; });
+  input.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
+  $('btnSend').onclick = send;
+
+  /* ---------------- 启动 ---------------- */
+  (async function () {
+    try {
+      await Nano.ready();
+      var r = await Promise.all([Nano.store.get('state'), Nano.characters(), Nano.currentUser(), Nano.apiConfig()]);
+      allChars = r[1] || [];
+      state._user = r[2] || {};
+      apiConnected = !!(r[3] && r[3].connected);
+      if (r[0] && r[0].config) {
+        state.config = Object.assign({}, DEFAULT_CONFIG, r[0].config, { icon: Object.assign({}, DEFAULT_CONFIG.icon, (r[0].config || {}).icon || {}) });
+        state.history = r[0].history || [];
+        state.joined = r[0].joined || [];
+        $('setup').style.display = 'none';
+        applyTheme(); render();
+        if (!state.config.charIds.length) openSetup(false);
+      } else {
+        state.config = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
+        openSetup(true);
+      }
+      applyTheme();
+    } catch (e) {
+      $('setup').style.display = 'block';
+      $('setup').innerHTML = '<h1>无法启动</h1><div class="lead">' + esc((e && e.message) || e) + '</div>';
+    }
+  })();
+})();
+</script>
+</body>
+</html>

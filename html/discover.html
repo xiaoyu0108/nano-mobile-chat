@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<script src="../js/nano-runtime.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>发现</title>
+  <link rel="stylesheet" href="../css/discover.css?v=20261018b">
+  <script src="../js/appearance.js"></script>
+</head>
+<body class="nano-discover">
+
+  <!-- ===== 顶栏：只有一个居中标题 ===== -->
+  <div class="top-bar">
+    <span class="top-bar-title">Discover</span>
+  </div>
+
+  <div class="container" id="mainContainer">
+
+    <!-- ===== 照片墙（三张） ===== -->
+    <section class="carousel-section">
+      <div class="carousel" id="carousel">
+        <div class="card left" data-index="2">
+          <img alt="">
+        </div>
+        <div class="card center" data-index="0">
+          <img id="photo0" alt="">
+        </div>
+        <div class="card right" data-index="1">
+          <img alt="">
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 应用入口 ===== -->
+    <nav class="entries">
+      <button class="entry" data-app="moments">
+        <span class="entry-icon" style="background:#FF2D55;">
+          <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+        </span>
+        <span class="entry-text">
+          <span class="entry-title">Moments <span class="entry-cn">朋友圈</span></span>
+          <span class="entry-desc">little pieces of ordinary days</span>
+        </span>
+        <svg class="entry-arrow" viewBox="0 0 8 14"><path d="M1 1l6 6-6 6" stroke="#C7C7CC" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+
+      <button class="entry" data-app="ins">
+        <span class="entry-icon" style="background:#AF52DE;">
+          <svg viewBox="0 0 24 24"><path d="M9 2 7.17 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-3.17L15 2H9zm3 15a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-2a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/></svg>
+        </span>
+        <span class="entry-text">
+          <span class="entry-title">Instagram <span class="entry-cn">社交动态</span></span>
+          <span class="entry-desc">things we save, share &amp; remember</span>
+        </span>
+        <svg class="entry-arrow" viewBox="0 0 8 14"><path d="M1 1l6 6-6 6" stroke="#C7C7CC" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+
+      <button class="entry" data-app="couple">
+        <span class="entry-icon" style="background:#FF6B8A;">
+          <svg viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+        </span>
+        <span class="entry-text">
+          <span class="entry-title">Couple Spaces <span class="entry-cn">情侣空间</span></span>
+          <span class="entry-desc">a private little place for two</span>
+        </span>
+        <svg class="entry-arrow" viewBox="0 0 8 14"><path d="M1 1l6 6-6 6" stroke="#C7C7CC" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+
+      <button class="entry" data-app="halo">
+        <span class="entry-icon" style="background:#FF3B30;">
+          <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l7 4.5-7 4.5z"/></svg>
+        </span>
+        <span class="entry-text">
+          <span class="entry-title">Halo <span class="entry-cn">直播</span></span>
+          <span class="entry-desc">live rooms &amp; fan love</span>
+        </span>
+        <svg class="entry-arrow" viewBox="0 0 8 14"><path d="M1 1l6 6-6 6" stroke="#C7C7CC" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+
+      <button class="entry" data-app="books">
+        <span class="entry-icon" style="background:#5856D6;">
+          <svg viewBox="0 0 24 24"><path d="M18 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zm-6 15H8v-2h4v2zm3-4H8v-2h7v2zm0-4H8V7h7v2z"/></svg>
+        </span>
+        <span class="entry-text">
+          <span class="entry-title">Books <span class="entry-cn">一起看书</span></span>
+          <span class="entry-desc">stories worth reading slowly</span>
+        </span>
+        <svg class="entry-arrow" viewBox="0 0 8 14"><path d="M1 1l6 6-6 6" stroke="#C7C7CC" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+
+      <button class="entry" data-app="music">
+        <span class="entry-icon" style="background:#FA2D48;">
+          <svg viewBox="0 0 24 24"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+        </span>
+        <span class="entry-text">
+          <span class="entry-title">Music <span class="entry-cn">一起听歌</span></span>
+          <span class="entry-desc">songs to listen to together</span>
+        </span>
+        <svg class="entry-arrow" viewBox="0 0 8 14"><path d="M1 1l6 6-6 6" stroke="#C7C7CC" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+
+      <button class="entry" data-app="memorypalace">
+        <span class="entry-icon" style="background:linear-gradient(145deg,#b9a7f5,#7d6ae0);">
+          <svg viewBox="0 0 24 24" fill="none">
+            <path d="M12 20.5s-6.6-4.3-8.8-7.8C1.5 9.9 3 6.6 6.2 6.3c1.9-.2 3.3.9 3.9 1.9.6-1 2-2.1 3.9-1.9 3.2.3 4.7 3.6 3 6.4-2.2 3.5-8.8 7.8-8.8 7.8z" fill="#fff"/>
+            <path d="M18.6 3.2l.6 1.6 1.6.6-1.6.6-.6 1.6-.6-1.6-1.6-.6 1.6-.6.6-1.6z" fill="#fff" opacity=".85"/>
+          </svg>
+        </span>
+        <span class="entry-text">
+          <span class="entry-title">Memory Palace <span class="entry-cn">记忆宫殿</span></span>
+          <span class="entry-desc">the memories TA keeps about you</span>
+        </span>
+        <svg class="entry-arrow" viewBox="0 0 8 14"><path d="M1 1l6 6-6 6" stroke="#C7C7CC" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+
+      <button class="entry" data-app="imessage">
+        <span class="entry-icon" style="background:#34C759;">
+          <svg viewBox="0 0 24 24"><path d="M12 3C6.9 3 3 6.4 3 10.5c0 2.3 1.2 4.4 3.2 5.7-.2 1-.7 2.1-1.4 3 1.4-.2 2.8-.8 3.9-1.6.4.1 1.5.4 3.3.4 5.1 0 9-3.4 9-7.5S17.1 3 12 3z"/></svg>
+        </span>
+        <span class="entry-text">
+          <span class="entry-title">iMessage <span class="entry-cn">短信</span></span>
+          <span class="entry-desc">messages beyond the app</span>
+        </span>
+        <svg class="entry-arrow" viewBox="0 0 8 14"><path d="M1 1l6 6-6 6" stroke="#C7C7CC" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+
+      <button class="entry" data-app="screenpeek">
+        <span class="entry-icon" style="background:linear-gradient(145deg,#ffb3cf,#ee8fba);">
+          <svg viewBox="0 0 24 24"><path d="M12 5c-5 0-9 4.5-10 7 1 2.5 5 7 10 7s9-4.5 10-7c-1-2.5-5-7-10-7zm0 11a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm0-2a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"/></svg>
+        </span>
+        <span class="entry-text">
+          <span class="entry-title">Screen Peek <span class="entry-cn">窥屏</span></span>
+          <span class="entry-desc">let TA see what's on your screen</span>
+        </span>
+        <svg class="entry-arrow" viewBox="0 0 8 14"><path d="M1 1l6 6-6 6" stroke="#C7C7CC" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+
+      <button class="entry" data-app="market">
+        <span class="entry-icon" style="background:linear-gradient(145deg,#ffdca8,#ffc169);">
+          <svg viewBox="0 0 24 24"><path d="M3 7.2A2.7 2.7 0 0 1 5.7 4.5h3.6c.7 0 1.4.3 1.9.8l1.1 1.1h6A2.7 2.7 0 0 1 21 9.1v8.2a2.7 2.7 0 0 1-2.7 2.7H5.7A2.7 2.7 0 0 1 3 17.3V7.2zm2.7-.9a.9.9 0 0 0-.9.9v.4h4.3l-1.4-1.3a.9.9 0 0 0-.6-.2H5.7z"/></svg>
+        </span>
+        <span class="entry-text">
+          <span class="entry-title">Market <span class="entry-cn">共享集市</span></span>
+          <span class="entry-desc">upload &amp; share resources with everyone</span>
+        </span>
+        <svg class="entry-arrow" viewBox="0 0 8 14"><path d="M1 1l6 6-6 6" stroke="#C7C7CC" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+
+      <button class="entry" data-app="mcp">
+        <span class="entry-icon" style="background:linear-gradient(145deg,#8fd3ff,#4aa8ff);">
+          <svg viewBox="0 0 24 24"><rect x="8.2" y="3" width="2.4" height="5" rx="1.2" fill="#fff"/><rect x="13.4" y="3" width="2.4" height="5" rx="1.2" fill="#fff"/><rect x="6" y="8" width="12" height="8" rx="3" fill="#fff"/><rect x="11" y="15.6" width="2" height="5.4" rx="1" fill="#fff"/></svg>
+        </span>
+        <span class="entry-text">
+          <span class="entry-title">MCP <span class="entry-cn">模型工具</span></span>
+          <span class="entry-desc">connect model context protocol tools</span>
+        </span>
+        <svg class="entry-arrow" viewBox="0 0 8 14"><path d="M1 1l6 6-6 6" stroke="#C7C7CC" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+
+      <button class="entry" data-app="cycle">
+        <span class="entry-icon" style="background:#fbe9ef;">
+          <svg viewBox="0 0 24 24"><path d="M14.6 3.2a9 9 0 1 0 6.2 15.3 7.2 7.2 0 0 1-6.2-15.3z" fill="#c391a1" opacity=".92"/><circle cx="18.4" cy="5.6" r=".9" fill="#c391a1"/><circle cx="20.6" cy="9.2" r=".55" fill="#c391a1" opacity=".8"/></svg>
+        </span>
+        <span class="entry-text">
+          <span class="entry-title">Moon Tide <span class="entry-cn">月潮</span></span>
+          <span class="entry-desc">cycle, tides &amp; tender reminders</span>
+        </span>
+        <svg class="entry-arrow" viewBox="0 0 8 14"><path d="M1 1l6 6-6 6" stroke="#C7C7CC" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+
+      <button class="entry" data-app="fanfic">
+        <span class="entry-icon" style="background:#6a4bc4;">
+          <svg viewBox="0 0 24 24" style="fill:none"><path d="M5 4.2A2.2 2.2 0 0 1 7.2 2H20v20H7.2A2.2 2.2 0 0 1 5 19.8V4.2z" fill="#fff"/><path d="M8.5 7h7.5M8.5 10.5h5.5M8.5 14h7.5" stroke="#cdbdec" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </span>
+        <span class="entry-text">
+          <span class="entry-title">Fanfic <span class="entry-cn">同人文</span></span>
+          <span class="entry-desc">write a story with your character</span>
+        </span>
+        <svg class="entry-arrow" viewBox="0 0 8 14"><path d="M1 1l6 6-6 6" stroke="#C7C7CC" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+
+      <button class="entry" data-app="mall">
+        <span class="entry-icon" style="background:#111111;">
+          <svg viewBox="0 0 24 24" style="fill:none"><path d="M5 8h14l1 12H4L5 8z" stroke="#fff" stroke-width="2" stroke-linejoin="round"/><path d="M9 8V6a3 3 0 0 1 6 0v2" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>
+        </span>
+        <span class="entry-text">
+          <span class="entry-title">Store <span class="entry-cn">商城</span></span>
+          <span class="entry-desc">shopping &amp; food, one checkout</span>
+        </span>
+        <svg class="entry-arrow" viewBox="0 0 8 14"><path d="M1 1l6 6-6 6" stroke="#C7C7CC" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+
+      <button class="entry" data-app="appstore">
+        <span class="entry-icon" style="background:#0a84ff;">
+          <svg viewBox="0 0 24 24" style="fill:none;width:27px;height:27px"><path d="M7.2 18.4 12.1 7.6a.55.55 0 0 1 1 0l4.9 10.8" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/><path d="M9.3 14.2h5.6" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/></svg>
+        </span>
+        <span class="entry-text">
+          <span class="entry-title">App Store <span class="entry-cn">应用商店</span></span>
+          <span class="entry-desc">build your own app with Nano</span>
+        </span>
+        <svg class="entry-arrow" viewBox="0 0 8 14"><path d="M1 1l6 6-6 6" stroke="#C7C7CC" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </nav>
+
+  </div>
+
+  <!-- 点击照片直接打开相册（不再弹窗） -->
+  <input type="file" id="fileInput" accept="image/*">
+
+  <div class="toast" id="toast"></div>
+
+  <script src="../js/discover.js?v=20261018d"></script>
+<script src="../js/api-float.js"></script>
+<script src="../swipe-back.js"></script>
+</body>
+</html>

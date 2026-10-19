@@ -1,0 +1,23 @@
+# Netlify 缓存策略（放在站点根目录，Netlify 会自动读取）
+# 目标：HTML/JS/CSS 永远拿到最新，图片图标长缓存 → 配合 sw.js 让第二次打开秒开
+
+/*.html
+  Cache-Control: no-cache
+
+/sw.js
+  Cache-Control: no-cache
+
+/js/*
+  Cache-Control: no-cache
+
+/css/*
+  Cache-Control: no-cache
+
+/icons/*
+  Cache-Control: public, max-age=86400
+
+/images/*
+  Cache-Control: public, max-age=604800
+
+/manifest.json
+  Cache-Control: public, max-age=3600

@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<script src="../js/nano-runtime.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>收藏</title>
+    <link rel="stylesheet" href="../css/favorite.css?v=20261018b">
+    <link rel="stylesheet" href="../css/panel-ui.css?v=20261018o">
+    <script src="../js/appearance.js"></script>
+</head>
+<body class="panel-favorite">
+<div class="phone" id="app">
+
+    <header class="nav-bar">
+        <button class="nav-back" id="backBtn" data-back>
+            <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="15 18 9 12 15 6"/>
+            </svg>
+        </button>
+        <span class="nav-title">收藏</span>
+    </header>
+
+    <div class="main-content" id="mainContent">
+        <div class="favorites-list" id="favoritesList"></div>
+    </div>
+
+    <!-- ===== 确认删除弹窗 ===== -->
+    <div class="modal-overlay" id="confirmModal">
+        <div class="modal-card">
+            <div class="modal-title" id="confirmTitle">确认</div>
+            <div class="modal-body" id="confirmBody">确定要删除这条收藏吗？</div>
+            <div class="modal-actions">
+                <button class="modal-btn" id="confirmCancel" data-close>取消</button>
+                <button class="modal-btn danger" id="confirmOk">删除</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 信息弹窗 ===== -->
+    <div class="modal-overlay" id="infoModal">
+        <div class="modal-card">
+            <div class="modal-title" id="infoTitle">提示</div>
+            <div class="modal-body" id="infoBody">内容</div>
+            <div class="modal-actions">
+                <button class="modal-btn primary" id="infoOk" data-close>知道了</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 收藏全文 ===== -->
+    <div class="modal-overlay" id="detailModal">
+        <div class="modal-card detail-card">
+            <div class="detail-meta">
+                <span class="detail-sender" id="detailSender"></span>
+                <span class="detail-time" id="detailTime"></span>
+            </div>
+            <div class="detail-content" id="detailContent"></div>
+            <div class="modal-actions">
+                <button class="modal-btn primary" id="detailClose">关闭</button>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script src="../js/favorite.js?v=20261018b"></script>
+
+<script src="../js/api-float.js"></script>
+<script src="../swipe-back.js"></script>
+</body>
+</html>

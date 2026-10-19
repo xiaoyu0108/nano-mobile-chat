@@ -1,0 +1,109 @@
+:root{
+  --sk-bg:#ffffff;
+  --sk-bg-soft:#fff8fb;
+  --sk-ink:#40333a;
+  --sk-muted:#bda0b0;
+  --sk-line:rgba(232,205,220,.45);
+  --sk-pink:#ffb0cd;
+  --sk-pink-deep:#e07aa6;
+  --sk-pink-soft:rgba(255,186,212,.12);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0;color:var(--sk-ink);
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",Arial,sans-serif;
+  background:var(--sk-bg);min-height:100%}
+body.sk{padding-top:calc(50px + env(safe-area-inset-top));
+  background:linear-gradient(180deg,#ffffff 0%,#ffffff 42%,var(--sk-bg-soft) 100%);
+  background-attachment:fixed}
+
+/* ---------- 顶栏（唯一，单层，白底 + 粉色返回键） ---------- */
+.sk-top{position:fixed;top:0;left:0;right:0;z-index:20;height:calc(50px + env(safe-area-inset-top));
+  padding:env(safe-area-inset-top) 10px 0;display:flex;align-items:center;
+  background:rgba(255,255,255,.9);
+  -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
+.sk-back{width:38px;height:38px;border:0;background:transparent;color:var(--sk-pink-deep);
+  display:grid;place-items:center;padding:0;cursor:pointer}
+.sk-back svg{width:23px;height:23px}
+.sk-title{flex:1;text-align:center;font-size:16px;font-weight:700;letter-spacing:.5px;color:var(--sk-ink)}
+.sk-top-spacer{width:38px}
+
+/* ---------- 内容 ---------- */
+.sk-wrap{padding:6px 22px calc(30px + env(safe-area-inset-bottom));max-width:560px;margin:0 auto}
+
+.sk-hero{padding:20px 2px 22px}
+.sk-hero-kicker{font-size:11.5px;font-weight:700;letter-spacing:2px;color:var(--sk-pink-deep);opacity:.75}
+.sk-hero-title{font-size:25px;font-weight:800;line-height:1.28;margin-top:7px;
+  background:linear-gradient(120deg,#e88cb0,#ffb0cd 62%,#eeb6cd);-webkit-background-clip:text;background-clip:text;color:transparent}
+.sk-hero-sub{font-size:13px;line-height:1.75;color:var(--sk-muted);margin-top:9px;max-width:22em}
+
+.sk-missing{margin:0 0 14px;font-size:12.5px;line-height:1.7;color:#b05577;
+  background:var(--sk-pink-soft);border-radius:14px;padding:11px 14px}
+.sk-missing b{color:#cf648e}
+
+/* 选择角色 */
+.sk-choose{display:flex;align-items:center;gap:12px;margin:2px 0 20px}
+.sk-choose-label{font-size:13px;color:var(--sk-muted);flex:none}
+.sk-choose-pill{flex:1;position:relative;display:flex;align-items:center;
+  background:#fff;border-radius:16px;border:1px solid var(--sk-line);
+  box-shadow:0 6px 18px rgba(228,170,198,.12)}
+.sk-select{flex:1;appearance:none;-webkit-appearance:none;background:transparent;border:0;
+  font-size:15px;font-weight:600;color:var(--sk-ink);padding:13px 38px 13px 16px;
+  font-family:inherit;width:100%;outline:none}
+.sk-chev{position:absolute;right:13px;width:17px;height:17px;color:var(--sk-pink-deep);pointer-events:none}
+
+.sk-lead{display:flex;gap:9px;align-items:flex-start;font-size:12.5px;line-height:1.7;
+  color:var(--sk-muted);margin:0 2px 12px}
+.sk-lead b{color:var(--sk-pink-deep)}
+.sk-lead-dot{width:6px;height:6px;border-radius:50%;background:var(--sk-pink);margin-top:7px;flex:none;
+  box-shadow:0 0 0 4px rgba(255,176,205,.16)}
+
+/* 方式 A（白底 + 淡粉晕染，柔和） */
+.sk-primary{background:linear-gradient(155deg,#fff5f9,#ffffff 70%);
+  border:1px solid var(--sk-line);
+  border-radius:22px;padding:18px 18px 16px;box-shadow:0 10px 28px rgba(228,170,198,.12);margin-bottom:8px}
+.sk-line{display:flex;align-items:center;justify-content:space-between;margin:2px 0 8px}
+.sk-line-label{font-size:12px;font-weight:600;color:var(--sk-pink-deep);letter-spacing:.2px}
+
+.sk-copy{position:relative;background:#fff;border:1px solid var(--sk-line);border-radius:15px;padding:12px 14px;
+  display:flex;flex-direction:column;gap:9px}
+.sk-copy code,.sk-copy pre{margin:0;font-family:ui-monospace,Menlo,SFMono-Regular,monospace;
+  font-size:12px;line-height:1.65;color:#5f4652;word-break:break-all;white-space:pre-wrap;
+  max-height:230px;overflow:auto}
+.sk-copy-btn{align-self:flex-end;border:0;border-radius:999px;padding:8px 18px;font-size:12.5px;font-weight:700;
+  color:#fff;font-family:inherit;cursor:pointer;background:linear-gradient(120deg,#ffb0cd,#ef8fb8);
+  box-shadow:0 6px 16px rgba(239,143,184,.28)}
+.sk-copy-btn:active{transform:scale(.96)}
+.sk-note{font-size:11.5px;line-height:1.7;color:var(--sk-muted);margin-top:10px}
+.sk-note b{color:var(--sk-pink-deep)}
+
+/* 折叠项（弱分区：只用一条淡淡的线） */
+.sk-fold{border-top:1px solid var(--sk-line);margin-top:18px}
+.sk-fold:first-of-type{margin-top:22px}
+.sk-fold>summary{list-style:none;display:flex;align-items:center;justify-content:space-between;
+  cursor:pointer;padding:16px 2px;font-size:14px;font-weight:700;color:var(--sk-ink)}
+.sk-fold>summary::-webkit-details-marker{display:none}
+.sk-fold-chev{width:18px;height:18px;color:var(--sk-pink-deep);transition:transform .22s;flex:none}
+.sk-fold[open] .sk-fold-chev{transform:rotate(180deg)}
+.sk-fold-body{padding:2px 0 20px}
+.sk-textarea{width:100%;font-size:13px;line-height:1.65;padding:13px 14px;border-radius:15px;
+  border:1px solid var(--sk-line);background:#fff;color:var(--sk-ink);font-family:inherit;resize:vertical;outline:none;
+  box-shadow:0 4px 14px rgba(228,170,198,.08)}
+
+.sk-guide{font-size:12.5px;line-height:1.85;color:#5f4652}
+.sk-guide h4{margin:14px 0 6px;font-size:13px;color:var(--sk-pink-deep)}
+.sk-guide h4:first-child{margin-top:0}
+.sk-guide ol{margin:0;padding-left:19px}
+.sk-guide li{margin-bottom:5px}
+.sk-guide code{background:rgba(255,176,205,.16);border-radius:6px;padding:1px 6px;
+  font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:#b05577}
+.sk-guide .warn{color:#c05a80;margin-top:10px}
+
+.sk-foot{margin-top:22px;text-align:center;font-size:11px;color:#e2c3d1;letter-spacing:.3px}
+.sk-foot b{color:var(--sk-muted)}
+
+.sk-spacer{height:16px}
+
+.sk-toast{position:fixed;left:50%;bottom:calc(40px + env(safe-area-inset-bottom));
+  transform:translateX(-50%) translateY(10px);background:rgba(150,80,110,.92);color:#fff;
+  font-size:13px;padding:9px 18px;border-radius:999px;opacity:0;transition:all .2s;pointer-events:none;z-index:50}
+.sk-toast.show{opacity:1;transform:translateX(-50%) translateY(0)}

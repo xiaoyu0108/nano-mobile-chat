@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<script src="../js/nano-runtime.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>图书</title>
+<script defer src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<link rel="stylesheet" href="../css/books.css">
+<script src="../js/appearance.js"></script>
+</head>
+<body>
+<div class="app" id="app">
+
+<!-- 书库 -->
+<section id="libraryPage" class="page active">
+  <header class="topbar">
+    <h1 class="clickable" onclick="backToDiscover()" title="返回发现" data-back>书库</h1>
+    <div class="actions">
+      <button class="iconbtn" onclick="document.getElementById('fileInput').click()" aria-label="导入">
+        <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+    </div>
+  </header>
+  <main class="content home-content">
+    <div id="bookGrid" class="book-grid"></div>
+    <div class="import-card" onclick="document.getElementById('fileInput').click()">
+      <div class="bookmark-icon"></div>
+      <div>
+        <div class="import-title">导入 EPUB / TXT</div>
+        <div class="import-sub">自动解析封面 · 章节 · 保存到本机</div>
+      </div>
+    </div>
+    <input id="fileInput" type="file" accept=".epub,.txt" multiple hidden>
+  </main>
+  <nav class="bottomnav">
+    <button class="navitem active" onclick="showPage('libraryPage')">
+      <svg viewBox="0 0 24 24"><path d="M4 4h12a2 2 0 012 2v14H6a2 2 0 01-2-2z"/><path d="M8 4v16"/></svg>书库
+    </button>
+    <button class="navitem" onclick="showPage('profilePage')">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/></svg>我的
+    </button>
+  </nav>
+</section>
+
+<!-- 阅读页 -->
+<section id="readerPage" class="page reader bg-white">
+  <header class="topbar reader-topbar" id="readerTopbar">
+    <button class="iconbtn" onclick="backFromReader()" data-back>
+      <svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>
+    </button>
+    <h1 id="readerTitle">图书</h1>
+    <button class="iconbtn" id="togetherBtn" onclick="toggleTogether()" aria-label="一起看">
+      <svg id="iconTogether" viewBox="0 0 24 24"><circle cx="9" cy="9" r="3"/><circle cx="17" cy="11" r="2.5"/><path d="M3 19c.7-3 2.7-4.5 6-4.5S14.3 16 15 19M14 17c.6-1.7 1.8-2.5 3.5-2.5 1.7 0 2.8.8 3.5 2.5"/></svg>
+      <svg id="iconSolo" viewBox="0 0 24 24" style="display:none"><circle cx="12" cy="8" r="4"/><path d="M5 20c1-3.5 3.5-5 7-5s6 1.5 7 5"/></svg>
+    </button>
+  </header>
+
+  <div class="reader-time-bar" id="readerTimeBar">
+    <span id="timeBarBook">本书 0分</span>
+    <span id="timeBarToday">今日 0分</span>
+  </div>
+
+  <article id="readerBody" class="reader-body" onclick="onReaderTap(event)">
+    <div class="brightness-overlay" id="brightnessOverlay"></div>
+  </article>
+
+  <div class="page-indicator" id="pageIndicator"></div>
+
+  <div class="reader-dock" id="readerDock">
+    <button class="dock-btn" onclick="openSettings()">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>设置
+    </button>
+    <button class="dock-btn" onclick="changeChapter(-1)">
+      <svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg>上一章
+    </button>
+    <button class="dock-btn" onclick="openDrawer()">
+      <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>目录
+    </button>
+    <button class="dock-btn" onclick="changeChapter(1)">
+      <svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>下一章
+    </button>
+  </div>
+
+  <div id="settingsModal" class="reader-modal" onclick="if(event.target===this)closeSettings()" data-close>
+    <div class="sheet">
+      <h3>阅读设置</h3>
+      <div class="setting-line">
+        <span>背景</span>
+        <div class="swatches">
+          <button class="swatch white selected" onclick="setTheme('white')"></button>
+          <button class="swatch gray" onclick="setTheme('gray')"></button>
+          <button class="swatch black" onclick="setTheme('black')"></button>
+          <button class="swatch pinkgreen" onclick="setTheme('pinkgreen')"></button>
+          <button class="swatch warm" onclick="setTheme('warm')"></button>
+          <button class="swatch bluepurple" onclick="setTheme('bluepurple')"></button>
+        </div>
+      </div>
+      <div class="setting-line">
+        <span>亮度</span>
+        <input id="brightness" class="range" type="range" min="30" max="100" value="100" oninput="applyBrightness(this.value)">
+      </div>
+      <div class="setting-line">
+        <span>字体大小</span>
+        <input id="fontSize" class="range" type="range" min="14" max="24" value="17" oninput="applyReaderStyle()">
+      </div>
+      <div class="setting-line">
+        <span>段落间距</span>
+        <input id="lineHeight" class="range" type="range" min="1.5" max="2.4" step=".1" value="1.9" oninput="applyReaderStyle()">
+      </div>
+      <div class="setting-line">
+        <span>翻页模式</span>
+        <div class="pager-toggle" id="pagerToggle">
+          <button data-mode="scroll" onclick="setPagerMode('scroll')">上下滚动</button>
+          <button class="active" data-mode="page" onclick="setPagerMode('page')">左右翻页</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="drawer-mask" id="drawerMask" onclick="closeDrawer()" data-close></div>
+  <div class="drawer" id="drawer">
+    <h3>章节目录</h3>
+    <div class="drawer-list" id="drawerList"></div>
+  </div>
+
+  <div class="mark-toolbar" id="markToolbar">
+    <button onclick="clearMark()">清除</button>
+    <button class="primary" onclick="shareMark()">分享给 Char</button>
+  </div>
+</section>
+
+<!-- 我的 -->
+<section id="profilePage" class="page">
+  <header class="topbar">
+    <h1>我的</h1>
+    <div class="actions"><span class="placeholder"></span></div>
+  </header>
+  <main class="content" style="padding-bottom:110px">
+    <div class="profile-header">
+      <div class="big">阅读时光</div>
+      <div class="sub" id="profileSub">已经陪伴你走过许多故事</div>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-icon" style="background:#e8eef8;color:#5a7fb8">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+        </div>
+        <div class="stat-label">总阅读时长</div>
+        <div class="stat-value" id="statTotal">0<small>分</small></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon" style="background:#eef8f0;color:#5aa87a">
+          <svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z"/><path d="M8 9h8M8 13h5"/></svg>
+        </div>
+        <div class="stat-label">已读书籍</div>
+        <div class="stat-value" id="statBooks">0<small>本</small></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon" style="background:#f8f0e8;color:#b88a5a">
+          <svg viewBox="0 0 24 24"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></svg>
+        </div>
+        <div class="stat-label">今日阅读</div>
+        <div class="stat-value" id="statToday">0<small>分</small></div>
+      </div>
+    </div>
+
+    <div class="section-mini-title">最近阅读</div>
+    <div class="recent-scroll" id="recentScroll"></div>
+
+    <div class="section-mini-title">陪伴排行榜</div>
+    <div class="rank-list" id="rankList"></div>
+  </main>
+  <nav class="bottomnav">
+    <button class="navitem" onclick="showPage('libraryPage')">
+      <svg viewBox="0 0 24 24"><path d="M4 4h12a2 2 0 012 2v14H6a2 2 0 01-2-2z"/><path d="M8 4v16"/></svg>书库
+    </button>
+    <button class="navitem active" onclick="showPage('profilePage')">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/></svg>我的
+    </button>
+  </nav>
+</section>
+
+<!-- 一起看：悬浮球 + 聊天窗（放在 app 层，书库/我的/阅读页都能用，退出图书功能即消失） -->
+<div class="float-ball" id="floatBall" onmousedown="startDrag(event)" ontouchstart="startDrag(event)">阅</div>
+
+<div class="chat-window" id="chatWindow">
+  <div class="chat-window-head">
+    <div class="cw-avatar" id="cwAvatar">阅</div>
+    <div class="cw-info">
+      <div class="cw-name" id="cwName">一起看</div>
+      <div class="cw-sub" id="cwSub">正在阅读</div>
+    </div>
+    <button class="cw-close" onclick="closeChatWindow()" data-close>
+      <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+  <div class="chat-window-body" id="chatWindowBody"></div>
+  <div class="chat-window-foot">
+    <div class="quote-preview" id="quotePreview">
+      <div class="qp-text" id="quotePreviewText"></div>
+      <button class="qp-close" onclick="cancelQuote()" aria-label="取消引用">
+        <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <div class="chat-input-row">
+      <button class="retry" onclick="retryRound()" aria-label="重roll">
+        <svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 10-2.3 5.7"/><path d="M20 5v6h-6"/></svg>
+      </button>
+      <textarea id="chatInput" class="chat-input" rows="1" placeholder="说点什么…"></textarea>
+      <button id="chatAction" class="sendbtn" onclick="sendOrReply()">回复</button>
+    </div>
+  </div>
+</div>
+
+<!-- 编辑弹窗 -->
+<div class="edit-modal" id="editModal" onclick="if(event.target===this)closeEdit()" data-close>
+  <div class="edit-dialog">
+    <h3>编辑书籍信息</h3>
+    <div class="edit-field">
+      <label>书名</label>
+      <input id="editTitle" type="text" placeholder="输入书名">
+    </div>
+    <div class="edit-field">
+      <label>作者</label>
+      <input id="editAuthor" type="text" placeholder="输入作者">
+    </div>
+    <div class="edit-field">
+      <label>封面</label>
+      <div class="edit-cover-row">
+        <div class="edit-cover-preview" id="editCoverPreview"></div>
+        <button class="edit-cover-btn" onclick="document.getElementById('coverInput').click()">选择图片</button>
+      </div>
+      <input id="coverInput" type="file" accept="image/*" hidden>
+    </div>
+    <div class="edit-actions">
+      <button class="delete" onclick="deleteBook()">删除</button>
+      <button class="cancel" onclick="closeEdit()" data-close>取消</button>
+      <button class="save" onclick="saveEdit()">保存</button>
+    </div>
+  </div>
+</div>
+
+<div id="bubbleMenu" class="bubble-menu">
+  <button onclick="quoteMessage()">引用</button>
+  <button onclick="editMessage()">编辑</button>
+  <button onclick="deleteMessage()" class="danger">删除</button>
+</div>
+
+<div id="toast" class="toast"></div>
+
+</div>
+
+<script src="../js/mem-link.js?v=20261006a"></script>
+<script src="../js/aux-memory.js"></script>
+<script src="../js/reroll-reason.js?v=20261018a"></script>
+<script src="../js/books.js?v=20261018b"></script>
+<script src="../js/nano-notify.js?v=20261018b"></script>
+<script src="../swipe-back.js"></script>
+</body>
+</html>

@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<script src="../js/nano-runtime.js"></script>
+<script src="../js/nano-idb.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
+<title>日程</title>
+<style>
+:root{
+  --bg:#fff;--ink:#000;--ink2:#4a4a4a;--mute:#8c8c8c;--faint:#b9b9b9;
+  --line:#e4e4e4;--soft:#f3f3f3;--soft2:#e9e9e9;
+  --serif:"Songti SC","Noto Serif SC","Source Han Serif SC","STSong","Times New Roman",serif;
+  --sans:-apple-system,BlinkMacSystemFont,"PingFang SC","Noto Sans SC","Microsoft YaHei",sans-serif;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);-webkit-text-size-adjust:100%}
+body{max-width:520px;margin:0 auto;min-height:100vh;touch-action:manipulation}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;flex:none}
+
+/* ---------- 顶栏 ---------- */
+.top{display:flex;justify-content:space-between;align-items:center;padding:calc(var(--safe-top, env(safe-area-inset-top, 0px)) + 14px) 20px 4px}
+.who{font-size:13px;color:var(--mute);letter-spacing:.04em}
+.who b{color:var(--ink);font-weight:600}
+.top .ibtn{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;border:1px solid var(--line)}
+.top .ibtn:active{background:var(--soft)}
+
+/* ---------- 三日标签 ---------- */
+.tabs{display:grid;grid-template-columns:repeat(3,1fr);padding:6px 12px 0}
+.tab{padding:8px 4px 10px;display:flex;flex-direction:column;align-items:center;gap:0;position:relative;color:var(--faint);transition:color .2s}
+.tab .lb{font-size:12px}
+.tab .nu{font-family:var(--serif);font-size:40px;line-height:1.1;font-weight:700;font-variant-numeric:tabular-nums}
+.tab .pg{font-size:11px;margin-top:2px;font-variant-numeric:tabular-nums}
+.tab::after{content:"";position:absolute;left:30%;right:30%;bottom:0;height:2px;background:var(--ink);transform:scaleX(0);transition:transform .25s}
+.tab.on{color:var(--ink)}
+.tab.on::after{transform:scaleX(1)}
+
+/* ---------- 当天概览 ---------- */
+.dayhead{padding:16px 20px 6px;border-top:1px solid var(--line);margin-top:0}
+.dayhead h1{margin:0;font-size:17px;font-weight:600;display:flex;align-items:baseline;gap:8px}
+.dayhead h1 span{font-size:13px;color:var(--mute);font-weight:400}
+.dayhead p{margin:4px 0 10px;font-size:12px;color:var(--mute)}
+.seg{display:flex;gap:3px;height:4px}
+.seg i{flex:1;border-radius:2px;background:var(--soft2)}
+.seg i.done{background:#000}
+.seg i.cancelled{background:repeating-linear-gradient(135deg,#aaa 0 2px,#fff 2px 4px)}
+.seg i.live{background:#000;animation:blink 1.4s infinite}
+@keyframes blink{50%{opacity:.25}}
+
+/* ---------- 时间线 ---------- */
+.list{padding:14px 16px 130px;min-height:50vh}
+.row{display:grid;grid-template-columns:44px 18px 1fr;padding-bottom:12px;position:relative}
+.tm{text-align:right;padding-top:11px;padding-right:2px}
+.tm b{display:block;font-family:var(--serif);font-size:15px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.2}
+.tm i{display:block;font-style:normal;font-family:var(--serif);font-size:11px;color:var(--mute);font-variant-numeric:tabular-nums;margin-top:1px}
+.rail{position:relative}
+.rail::before{content:"";position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--line);transform:translateX(-.5px)}
+.row.first .rail::before{top:19px}
+.row.last .rail::before{bottom:auto;height:19px}
+.row.first.last .rail::before{display:none}
+.dot{position:absolute;left:50%;top:15px;width:9px;height:9px;margin-left:-4.5px;border-radius:50%;background:#fff;border:1.5px solid #000;transition:all .3s}
+.st-done .dot{background:#000}
+.st-cancelled .dot{border-color:var(--faint);background:#fff}
+.live .dot{background:#000;box-shadow:0 0 0 4px rgba(0,0,0,.12)}
+
+.card{margin-left:4px;border:1px solid #000;border-radius:10px;padding:10px 12px;background:#fff;display:flex;gap:10px;align-items:flex-start;text-align:left;width:calc(100% - 4px);transition:background .35s,color .35s,border-color .35s,transform .15s;position:relative}
+.card:active{transform:scale(.99)}
+.cmain{flex:1;min-width:0}
+.ctop{display:flex;align-items:center;gap:7px}
+.ctop .ic svg.i{width:15px;height:15px}
+.t{font-size:15px;font-weight:600;line-height:1.35;background:linear-gradient(currentColor,currentColor) no-repeat 0 56%/0 1.5px;transition:background-size .55s ease;-webkit-box-decoration-break:clone;box-decoration-break:clone}
+.cm{display:flex;flex-wrap:wrap;gap:2px 12px;margin-top:5px;font-size:12px;color:var(--mute)}
+.cm span{display:inline-flex;align-items:center;gap:4px}
+.cm svg.i{width:12px;height:12px}
+.badge{display:inline-block;margin-top:7px;font-size:11px;padding:1px 8px;border-radius:999px;border:1px solid currentColor}
+.rs{margin-top:6px;font-size:12px;color:var(--mute)}
+.chk{width:24px;height:24px;border-radius:50%;border:1.5px solid #000;display:grid;place-items:center;flex:none;margin-top:-1px;transition:all .2s}
+.chk svg.i{width:14px;height:14px;stroke-width:2.2;opacity:0}
+.thumb{width:42px;height:42px;border-radius:6px;object-fit:cover;flex:none;background:var(--soft);margin-top:2px}
+.thumb.busy,.pic.busy{background:linear-gradient(100deg,#eee 30%,#fafafa 50%,#eee 70%) 0 0/300% 100%;animation:sh 1.2s linear infinite}
+@keyframes sh{to{background-position:-300% 0}}
+
+.st-done .card{background:var(--soft);border-color:var(--soft2);color:var(--ink2)}
+.st-done .chk{background:#000;border-color:#000;color:#fff}
+.st-done .chk svg.i{opacity:1}
+.st-done .t{color:var(--mute)}
+.st-cancelled .card{border:1px dashed var(--faint);color:var(--faint);background:#fff}
+.st-cancelled .t{background-size:100% 1.5px;color:var(--faint)}
+.st-cancelled .chk{border-color:var(--faint);pointer-events:none}
+.st-cancelled .cm,.st-cancelled .rs{color:var(--faint)}
+.st-cancelled .tm b{color:var(--faint);font-weight:400}
+.row.live .card{background:#000;color:#fff}
+.row.live .cm{color:#bbb}
+.row.live .chk{border-color:#fff}
+.row.live .tm i{color:var(--mute)}
+.row.past.st-todo .card{border-color:var(--faint)}
+.row.pick .card{outline:2px solid #000;outline-offset:3px}
+
+.gap{display:grid;grid-template-columns:44px 18px 1fr;padding-bottom:12px}
+.gap .rail::before{background:repeating-linear-gradient(#cfcfcf 0 3px,transparent 3px 7px);width:1px}
+.gapbtn{margin-left:4px;font-size:11px;color:var(--mute);display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border:1px dashed var(--faint);border-radius:999px;justify-self:start;align-self:center}
+.gapbtn svg.i{width:12px;height:12px}
+.gapbtn:active{background:var(--soft)}
+
+.nowrow{display:grid;grid-template-columns:44px 18px 1fr;align-items:center;padding-bottom:12px}
+.nowrow .rail{height:14px}
+.nowrow .rail::before{display:none}
+.nowrow .rail b{position:absolute;left:50%;top:50%;width:11px;height:11px;margin:-5.5px 0 0 -5.5px;background:#000;border-radius:50%}
+.nowrow .ln{height:1px;background:#000;margin-left:4px;position:relative}
+.nowrow .tm{padding:0}
+.nowrow .tm b{font-size:12px}
+.empty{text-align:center;padding:60px 20px;color:var(--mute);font-size:14px}
+.empty .btn{margin:18px auto 0;max-width:200px}
+
+/* ---------- 底部操作 ---------- */
+.dock{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--safe-bottom, env(safe-area-inset-bottom, 0px)) + 14px);background:#000;color:#fff;border-radius:999px;padding:6px;display:flex;gap:2px;z-index:20}
+.dock button{display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 15px 7px;border-radius:999px;font-size:10px;letter-spacing:.06em;transition:background .15s}
+.dock button:active{background:#333}
+.dock svg.i{width:19px;height:19px}
+
+/* ---------- 抽屉 ---------- */
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.38);opacity:0;pointer-events:none;transition:opacity .25s;z-index:40}
+.scrim.on{opacity:1;pointer-events:auto}
+.sheet{position:fixed;left:0;right:0;bottom:0;margin:0 auto;width:100%;max-width:520px;max-height:90vh;overflow-y:auto;background:#fff;border-radius:22px 22px 0 0;transform:translateY(105%);transition:transform .34s cubic-bezier(.2,.8,.2,1);z-index:41;padding:8px 20px calc(var(--safe-bottom, env(safe-area-inset-bottom, 0px)) + 24px);-webkit-overflow-scrolling:touch}
+.sheet.on{transform:none}
+.grab{width:38px;height:4px;border-radius:2px;background:var(--soft2);margin:4px auto 14px}
+.dhead{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--mute)}
+.tagp{display:inline-flex;align-items:center;gap:6px}
+.tagp svg.i{width:15px;height:15px}
+.stat{border:1px solid currentColor;border-radius:999px;padding:1px 9px;font-size:11px;color:var(--ink)}
+.dt{font-size:24px;line-height:1.3;margin:12px 0 6px;font-weight:700;background:linear-gradient(currentColor,currentColor) no-repeat 0 58%/0 2px;display:inline;-webkit-box-decoration-break:clone;box-decoration-break:clone}
+.dt.strike{background-size:100% 2px;color:var(--mute)}
+.dtime{font-family:var(--serif);font-size:18px;margin-top:10px;display:flex;align-items:baseline;gap:8px;font-variant-numeric:tabular-nums}
+.dtime span{font-family:var(--sans);font-size:12px;color:var(--mute)}
+.dtime em{font-style:normal;font-family:var(--sans);font-size:12px;color:var(--mute);margin-left:auto}
+.meta{display:flex;flex-wrap:wrap;gap:6px 16px;margin:12px 0 0;font-size:13px;color:var(--ink2)}
+.meta div{display:inline-flex;align-items:center;gap:6px}
+.meta svg.i{width:14px;height:14px}
+.note{margin:16px 0 0;font-size:14px;line-height:1.75;color:var(--ink2)}
+.mood{margin:14px 0 0;padding-left:12px;border-left:2px solid #000;font-size:14px;line-height:1.7;font-family:var(--serif)}
+.why{margin:14px 0 0;font-size:13px;color:var(--mute)}
+.pic{position:relative;margin-top:18px;aspect-ratio:16/10;border-radius:12px;overflow:hidden;background:var(--soft);display:grid;place-items:center}
+.pic img{width:100%;height:100%;object-fit:cover;display:block}
+.pic .rg{position:absolute;right:10px;bottom:10px;background:#000;color:#fff;font-size:11px;padding:6px 12px;border-radius:999px;display:flex;gap:6px;align-items:center}
+.pic .rg svg.i{width:13px;height:13px}
+.pic.empty{border:1px dashed var(--faint);background:#fff}
+.pic.empty button{display:flex;flex-direction:column;align-items:center;gap:6px;color:var(--mute);font-size:12px;padding:30px}
+.hist{margin:18px 0 0;padding:0;list-style:none;font-size:12px;color:var(--mute)}
+.hist li{display:flex;gap:10px;padding:4px 0}
+.hist b{font-family:var(--serif);font-weight:400;color:var(--ink2);font-variant-numeric:tabular-nums}
+.acts{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:20px}
+.act{display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 4px;border:1px solid var(--line);border-radius:12px;font-size:12px}
+.act:active{background:var(--soft)}
+.act.dark{background:#000;color:#fff;border-color:#000}
+.act.dark:active{background:#222}
+.sh2{font-size:18px;font-weight:700;margin:2px 0 4px}
+.sub{font-size:12px;color:var(--mute);margin:0 0 6px;line-height:1.6}
+label.l{display:block;font-size:12px;color:var(--mute);margin:16px 0 6px}
+input,textarea,select{width:100%;font:inherit;font-size:16px;border:1px solid #d4d4d4;border-radius:10px;padding:10px 12px;background:#fff;color:#000;outline:none;-webkit-appearance:none;appearance:none}
+input:focus,textarea:focus,select:focus{border-color:#000}
+textarea{resize:vertical;line-height:1.6}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{border:1px solid #d0d0d0;border-radius:999px;padding:6px 12px;font-size:13px;display:inline-flex;align-items:center;gap:6px}
+.chip svg.i{width:14px;height:14px}
+.chip.on{background:#000;color:#fff;border-color:#000}
+.btn{display:block;width:100%;padding:14px;border-radius:12px;background:#000;color:#fff;font-size:15px;font-weight:600;text-align:center;margin-top:20px}
+.btn:active{background:#222}
+.btn.ghost{background:#fff;color:#000;border:1px solid #000;margin-top:10px}
+.btn.soft{background:var(--soft);color:#000;margin-top:10px}
+.btn[disabled]{opacity:.4;pointer-events:none}
+.sw{display:flex;justify-content:space-between;align-items:center;margin-top:16px;font-size:14px}
+.tg{width:44px;height:26px;border-radius:13px;background:var(--soft2);position:relative;transition:background .2s}
+.tg::after{content:"";position:absolute;left:3px;top:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .2s}
+.tg.on{background:#000}.tg.on::after{transform:translateX(18px)}
+.hr{height:1px;background:var(--line);margin:22px 0 4px}
+.toast{position:fixed;left:50%;top:calc(var(--safe-top, env(safe-area-inset-top, 0px)) + 12px);transform:translate(-50%,-20px);background:#000;color:#fff;font-size:13px;padding:10px 16px;border-radius:999px;max-width:88%;text-align:center;opacity:0;pointer-events:none;transition:all .3s;z-index:60;line-height:1.5}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+.viewer{position:fixed;inset:0;background:rgba(0,0,0,.94);display:none;place-items:center;z-index:70;padding:20px}
+.viewer.on{display:grid}
+.viewer img{max-width:100%;max-height:86vh;border-radius:6px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="who" id="who"></div>
+  <button class="ibtn" id="btnSet" aria-label="设置"></button>
+</header>
+<nav class="tabs" id="tabs"></nav>
+<section class="dayhead" id="dayhead"></section>
+<main class="list" id="list"></main>
+
+<nav class="dock" id="dock">
+  <button data-d="refresh"></button>
+  <button data-d="change"></button>
+  <button data-d="rimg"></button>
+  <button data-d="add"></button>
+</nav>
+
+<div class="scrim" id="scrim"></div>
+<div class="sheet" id="sheet" role="dialog"></div>
+<div class="toast" id="toast"></div>
+<div class="viewer" id="viewer"><img alt=""></div>
+
+<script>
+/* =========================================================
+   接入说明（可选）
+   window.CharSchedule.hooks.generateSchedule = async ({name, persona, dates, note}) => [ {date,start,end,title,place,who,note,mood,tag}, ... ]
+   window.CharSchedule.hooks.generateImage    = async ({prompt, event}) => "图片URL 或 dataURL"
+   不设置 hooks 时：优先走设置里的接口；没填接口则用本地生成 + 黑白示意图。
+   ========================================================= */
+(()=>{
+'use strict';
+const $=(s,r=document)=>r.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pad=n=>String(n).padStart(2,'0');
+const dstr=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const parseD=s=>{const [y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d)};
+const addD=(s,n)=>{const d=parseD(s);d.setDate(d.getDate()+n);return dstr(d)};
+const toMin=t=>{const [h,m]=t.split(':').map(Number);return h*60+m};
+const toT=m=>`${pad(Math.floor(m/60))}:${pad(m%60)}`;
+const WK=['日','一','二','三','四','五','六'];
+const uid=()=>Math.random().toString(36).slice(2,9);
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const pick=a=>a[Math.floor(Math.random()*a.length)];
+const rnd=(a,b)=>a+Math.floor(Math.random()*(b-a+1));
+const today=()=>dstr(new Date());
+const nowMin=()=>{const d=new Date();return d.getHours()*60+d.getMinutes()};
+const nowT=()=>toT(nowMin());
+
+/* ---------- 图标（SVG，无 emoji） ---------- */
+const P={
+ sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+ brief:'<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M3 13h18"/>',
+ cup:'<path d="M4 8h13v6a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5V8z"/><path d="M17 10h2a2 2 0 0 1 0 4h-2M8 3v2M12 3v2"/>',
+ users:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.5-3.5 3-5.5 6.5-5.5s6 2 6.5 5.5"/><circle cx="17.5" cy="9" r="2.5"/><path d="M17 14.5c2.5 0 4 1.5 4.5 4.5"/>',
+ moon:'<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>',
+ pin:'<path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>',
+ book:'<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2V5z"/><path d="M4 19a2 2 0 0 1 2-2h13"/>',
+ check:'<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+ x:'<path d="M6 6l12 12M18 6L6 18"/>',
+ refresh:'<path d="M20 11a8 8 0 0 0-14-4L4 9M4 4v5h5M4 13a8 8 0 0 0 14 4l2-2M20 20v-5h-5"/>',
+ shuffle:'<path d="M3 7h3.5c5 0 6 10 11 10H21M3 17h3.5c1.8 0 3-1 4-2.3M14 8.3C15 7.4 16 7 17.5 7H21M18 4l3 3-3 3M18 14l3 3-3 3"/>',
+ plus:'<path d="M12 5v14M5 12h14"/>',
+ sliders:'<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>',
+ edit:'<path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/>',
+ clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+ image:'<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="M21 16l-5-5-8 8"/>',
+ trash:'<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
+ undo:'<path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/>',
+ swap:'<path d="M7 4L3 8l4 4M3 8h14M17 20l4-4-4-4M21 16H7"/>'
+};
+const I=n=>`<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${P[n]||''}</svg>`;
+const TAGS={life:{n:'起居',i:'sun'},work:{n:'工作',i:'brief'},meal:{n:'用餐',i:'cup'},social:{n:'社交',i:'users'},rest:{n:'休息',i:'moon'},out:{n:'外出',i:'pin'},study:{n:'学习',i:'book'}};
+
+/* ---------- 数据 ---------- */
+const KEY='charSchedule.v1';
+const IDB_KEY='nano_schedule_v1';
+const DEF={settings:{name:'char',persona:'',style:'黑白胶片摄影，柔和自然光，留白构图',textUrl:'',textKey:'',textModel:'',imgUrl:'',imgKey:'',imgModel:'',imgSize:'1024x1024'},events:[],gen:{}};
+function loadLocal(){
+  try{const r=localStorage.getItem(KEY);if(r){const o=JSON.parse(r);return {...DEF,...o,settings:{...DEF.settings,...(o.settings||{})}}}}catch(e){}
+  return JSON.parse(JSON.stringify(DEF));
+}
+let S=loadLocal();
+async function load(){
+  let o=null;
+  try{ o=await NanoIDB.get(IDB_KEY); }catch(e){}
+  if(!o){
+    try{const r=localStorage.getItem(KEY);if(r)o=JSON.parse(r)}catch(e){}
+    if(o){ try{ NanoIDB.set(IDB_KEY,o); }catch(e){} }
+  }
+  if(!o) return JSON.parse(JSON.stringify(DEF));
+  return {...DEF,...o,settings:{...DEF.settings,...(o.settings||{})}};
+}
+let warned=false;
+function save(){
+  try{
+    const data=JSON.parse(JSON.stringify(S,(k,v)=>k[0]==='_'?undefined:v));
+    if(window.NanoIDB) NanoIDB.set(IDB_KEY,data);
+  }catch(e){if(!warned){warned=true;toast('本机存储不可用或已满，改动仅在本次打开期间有效')}}
+}
+
+/* ---------- 本地日程生成 ---------- */
+const POOL={
+wake:[
+['起床，洗漱','卧室','','拉开窗帘，先喝一杯温水，再慢慢洗漱换衣服。','再躺五分钟……好，起。','life'],
+['晨跑','河边步道','','沿着河边慢跑三十分钟，回来冲个澡。','风有点凉，跑起来就不觉得了。','out'],
+['赖床后起身','卧室','','闹钟响了两次才起来，随手把昨晚没收拾的东西归位。','今天的第一件事：原谅自己。','life'],
+['手冲咖啡','厨房','','磨豆、手冲，站在窗边慢慢喝完一杯。','香味比咖啡本身更让人清醒。','life']],
+breakfast:[
+['早餐','楼下早餐店','','一份熟悉的搭配，边吃边翻看昨晚没回的消息。','老板还记得我的口味。','meal'],
+['在家做早餐','厨房','','煎蛋、烤吐司，再切一点水果。','认真做一顿饭，心情会好一点。','meal'],
+['便利店随便吃点','便利店','','挑了饭团和热牛奶，站着吃完。','赶时间的早晨，凑合也行。','meal']],
+workAm:[
+['处理消息与待办','书桌','','先把积压的消息清一遍，再列出今天必须完成的三件事。','先做最难的那件。','work'],
+['例会','会议室','同事们','对一轮进度，预计一小时，散会后还有零碎的跟进。','希望能准点结束。','work'],
+['整理资料','书桌','','把散落的文件归档，顺手补全上周没写完的记录。','整齐的桌面让脑子也清爽。','work'],
+['读书与笔记','书房','','读完上次没读完的章节，摘抄几句想留下的话。','有些句子读第二遍才懂。','study'],
+['外出办事','市区','','带着证件去办一件拖了很久的事，顺路买点东西。','办完就能放下心了。','out']],
+lunch:[
+['午餐','公司附近的小店','','点一份固定的套餐，吃完在附近走一圈。','吃饱了，下午才有力气。','meal'],
+['和朋友吃午饭','商场餐厅','朋友','约好的午饭，顺便交换最近发生的事。','好久没这样慢慢聊了。','social'],
+['简单的午饭','家里','','冰箱里有什么就做什么，吃完洗碗。','今天不想出门。','meal']],
+workPm:[
+['专注工作','书桌','','关掉通知，连续做两个番茄钟，中间只起身倒水。','别分心，别分心。','work'],
+['咖啡馆办公','街角咖啡馆','','带电脑去咖啡馆，换个环境推进手头的事。','邻座的人在聊天，背景音刚刚好。','work'],
+['采买','超市','','补一周的食材和日用品，顺手看看有没有新出的零食。','购物清单别忘带。','out'],
+['见面聊聊','约定的地点','重要的人','和很久没见的人见面，聊近况，也聊没说出口的事。','希望今天说得清楚。','social'],
+['午后小憩','沙发','','躺一会儿，放一张安静的专辑。','只睡二十分钟。','rest']],
+leisureAm:[
+['逛展','美术馆','','提前预约了一个展，慢慢看，中途坐下来歇一会儿。','有一幅画值得站很久。','out'],
+['打扫房间','家里','','把窗户全打开，擦桌子、拖地、换床单。','收拾完整个人都轻了。','life'],
+['补觉','卧室','','不设闹钟，睡到自然醒。','周末的奢侈。','rest'],
+['公园散步','附近的公园','','带上耳机，沿着湖走一圈，在长椅上坐一会儿。','树叶开始变颜色了。','out'],
+['烘焙','厨房','','试一个新食谱，面团发酵的时候就在旁边看书。','成功的话就分一点给别人。','life']],
+leisurePm:[
+['看电影','影院','','挑一场不太热门的场次，买了爆米花。','希望故事不要太悲伤。','out'],
+['约朋友逛街','商圈','朋友','随便逛逛，累了就找地方喝东西。','没有目的的逛街最有趣。','social'],
+['在家看书','书房','','泡一壶茶，把一本书读完。','今天不想被打扰。','study'],
+['整理照片','书桌','','把这个月的照片挑一挑，删掉重复的，留下喜欢的。','每一张都有它的天气。','life'],
+['去花市','花市','','挑几枝合适的花带回家，顺便看看多肉。','花瓶还空着。','out']],
+extra:[
+['喝杯东西','楼下茶饮店','','买一杯喜欢的饮料，在门口站着喝完。','小小的奖励。','meal'],
+['回消息','书桌','','把一直拖着的几条消息认真回掉。','不能再拖了。','life'],
+['绕路散步','小区周边','','提前一站下车，慢慢走回去。','路上的晚霞很好看。','out']],
+dinner:[
+['在家做饭','厨房','','做两个菜加一碗汤，吃完收拾厨房。','做饭是一天里最安静的时刻。','meal'],
+['晚餐','常去的餐馆','','点熟悉的那几样，安静地吃完。','熟悉的味道让人安心。','meal'],
+['和朋友聚餐','餐厅','朋友','一桌人边吃边聊，到结束时间还不太想散。','今天会晚一点回去。','social'],
+['外卖晚餐','家里','','点了份外卖，边吃边看节目。','今天就这样吧。','meal']],
+night:[
+['看剧','沙发','','接着上次的进度，看两集就睡。','再来一集……只一集。','rest'],
+['写日记','书桌','','写几行今天的事，把明天要做的排一排。','写下来，就放下了。','life'],
+['泡澡','浴室','','放一缸热水，加点喜欢的香味，泡到手指发皱。','热气让人什么都不想。','rest'],
+['听歌放空','阳台','','靠着阳台栏杆听几首歌，看楼下的灯一盏一盏灭掉。','夜风正好。','rest'],
+['收拾明天要带的东西','玄关','','把明天用得上的东西放在一起，免得早上手忙脚乱。','提前一步，明天就从容一点。','life']],
+sleep:[
+['准备睡觉','卧室','','手机放远一点，关灯前再看一眼明天的安排。','晚安。','rest']]
+};
+function mockDay(date){
+  const wd=parseD(date).getDay(),wk=wd===0||wd===6;
+  const slots=[
+    {p:'wake',r:[420,510],d:[30,45]},{p:'breakfast',r:[480,570],d:[30,40]},
+    {p:wk?'leisureAm':'workAm',r:[570,660],d:[75,150]},{p:'lunch',r:[720,780],d:[50,70]},
+    {p:wk?'leisurePm':'workPm',r:[840,960],d:[90,150]},{p:'extra',r:[1000,1050],d:[30,50],prob:.5},
+    {p:'dinner',r:[1080,1140],d:[60,90]},{p:'night',r:[1200,1260],d:[60,100]},{p:'sleep',r:[1350,1400],d:[20,30]}
+  ];
+  let cur=0;const out=[];
+  for(const s of slots){
+    if(s.prob&&Math.random()>s.prob)continue;
+    const it=pick(POOL[s.p]);
+    const start=Math.max(rnd(...s.r),cur+10);
+    if(start>=1420)continue;
+    const end=Math.min(start+rnd(...s.d),1435);
+    out.push(mk({date,start:toT(start),end:toT(end),title:it[0],place:it[1],who:it[2],note:it[3],mood:it[4],tag:it[5]}));
+    cur=end;
+  }
+  return out;
+}
+const mockGen=ds=>ds.flatMap(mockDay);
+function mk(o){return {id:uid(),status:'todo',log:[],title:'',place:'',who:'',note:'',mood:'',tag:'life',...o}}
+function norm(e,ds){
+  const tm=t=>{const m=/^(\d{1,2}):(\d{2})$/.exec(String(t||'').trim());return m?`${pad(+m[1])}:${m[2]}`:null};
+  const s=tm(e.start),en=tm(e.end);
+  if(!e||!ds.includes(e.date)||!s||!en||toMin(en)<=toMin(s)||!e.title)return null;
+  return mk({date:e.date,start:s,end:en,title:String(e.title),place:String(e.place||''),who:String(e.who||e.with||''),note:String(e.note||''),mood:String(e.mood||''),tag:TAGS[e.tag]?e.tag:'life'});
+}
+
+/* ---------- 文本 / 生图接口 ---------- */
+const hooks={generateSchedule:null,generateImage:null};
+const ep=(u,suf)=>{u=u.trim().replace(/\/+$/,'');return u.endsWith(suf)?u:u+suf};
+async function llmGen(ds,extra){
+  const st=S.settings;
+  if(hooks.generateSchedule){const r=await hooks.generateSchedule({name:st.name,persona:st.persona,dates:ds,note:extra});return r.map(e=>norm(e,ds)).filter(Boolean)}
+  const sys=`你是角色日程生成器。为角色「${st.name}」生成日程。${st.persona?'角色设定：'+st.persona+'。':''}只输出 JSON，不要任何解释。格式：{"events":[{"date":"YYYY-MM-DD","start":"HH:MM","end":"HH:MM","title":"","place":"","who":"同行的人，没有则留空","note":"具体安排，1-2句","mood":"角色此刻的一句心声","tag":"life|work|meal|social|rest|out|study"}]}。要求：每天6-9项，按时间排序、互不重叠，时间在00:00-23:59内，符合角色性格，注意周末与工作日的区别。`;
+  const usr=`日期：${ds.join('、')}。${extra?'补充说明：'+extra:''}`;
+  const r=await fetch(ep(st.textUrl,'/chat/completions'),{method:'POST',headers:{'Content-Type':'application/json',...(st.textKey?{Authorization:'Bearer '+st.textKey}:{})},body:JSON.stringify({model:st.textModel||'gpt-4o-mini',temperature:.9,messages:[{role:'system',content:sys},{role:'user',content:usr}]})});
+  if(!r.ok)throw new Error('HTTP '+r.status);
+  const j=await r.json();
+  let txt=(j.choices?.[0]?.message?.content||'').replace(/```json|```/g,'');
+  const a=txt.indexOf('{'),b=txt.lastIndexOf('}');
+  const data=JSON.parse(txt.slice(a,b+1));
+  const list=(data.events||[]).map(e=>norm(e,ds)).filter(Boolean);
+  if(!list.length)throw new Error('返回内容无法解析');
+  return list;
+}
+function buildPrompt(ev){
+  const st=S.settings;
+  return `${st.style}。主角：${st.name}${st.persona?'（'+st.persona+'）':''}。场景：${ev.place||'室内'}，${ev.title}${ev.who?'，与'+ev.who+'在一起':''}。${ev.note||''}时间约 ${ev.start}。`;
+}
+function hash(s){let h=1779033703^s.length;for(let i=0;i<s.length;i++){h=Math.imul(h^s.charCodeAt(i),3432918353);h=h<<13|h>>>19}return h>>>0}
+function rng(a){return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function artSVG(seed){
+  const r=rng(hash(seed)),W=640,H=400,g=l=>`hsl(0,0%,${l.toFixed(1)}%)`;
+  let s=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${g(93+r()*5)}"/><stop offset="1" stop-color="${g(68+r()*16)}"/></linearGradient></defs><rect width="${W}" height="${H}" fill="url(#g)"/>`;
+  s+=`<circle cx="${(120+r()*400).toFixed(0)}" cy="${(60+r()*110).toFixed(0)}" r="${(26+r()*42).toFixed(0)}" fill="${r()<.5?'#111':'#fff'}" opacity=".92"/>`;
+  for(let i=0;i<4;i++){
+    const y=185+i*48+r()*22;let d=`M0 ${H} L0 ${y.toFixed(0)}`;
+    for(let x=80;x<=W+80;x+=80)d+=` Q${x-40} ${(y+(r()-.5)*74).toFixed(0)} ${x} ${(y+(r()-.5)*30).toFixed(0)}`;
+    s+=`<path d="${d} L${W} ${H}Z" fill="${g(60-i*15)}" opacity=".93"/>`;
+  }
+  for(let i=0;i<5;i++){const x=r()*W;s+=`<line x1="${x.toFixed(0)}" y1="0" x2="${x.toFixed(0)}" y2="${H}" stroke="#000" stroke-opacity=".05"/>`}
+  return 'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(s+'</svg>');
+}
+async function genImage(ev,custom){
+  const st=S.settings,prompt=(custom||'').trim()||buildPrompt(ev);
+  try{
+    if(hooks.generateImage){const src=await hooks.generateImage({prompt,event:ev});return {src,kind:'api',prompt}}
+    if(st.imgUrl){
+      const r=await fetch(ep(st.imgUrl,'/images/generations'),{method:'POST',headers:{'Content-Type':'application/json',...(st.imgKey?{Authorization:'Bearer '+st.imgKey}:{})},body:JSON.stringify({model:st.imgModel||undefined,prompt,n:1,size:st.imgSize||'1024x1024'})});
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      const j=await r.json(),d=j.data?.[0];
+      const src=d?.url||(d?.b64_json?'data:image/png;base64,'+d.b64_json:'');
+      if(!src)throw new Error('接口没有返回图片');
+      return {src,kind:'api',prompt};
+    }
+  }catch(err){toast('生图接口出错，已改用示意图：'+err.message)}
+  await sleep(650);
+  return {src:artSVG(ev.id+Math.random()),kind:'art',prompt};
+}
+
+/* ---------- 工具 ---------- */
+const dates=()=>{const t=today();return [t,addD(t,1),addD(t,2)]};
+let sel=0,cur=null,mode='view';
+const evsOf=d=>S.events.filter(e=>e.date===d).sort((a,b)=>toMin(a.start)-toMin(b.start));
+const byId=id=>S.events.find(e=>e.id===id);
+const overlap=(a,b)=>toMin(a.start)<toMin(b.end)&&toMin(b.start)<toMin(a.end);
+const isLive=e=>e.date===today()&&e.status==='todo'&&toMin(e.start)<=nowMin()&&nowMin()<toMin(e.end);
+const isPast=e=>e.date===today()&&toMin(e.end)<=nowMin();
+const logEv=(e,m)=>{e.log=e.log||[];e.log.push({t:nowT(),m})};
+const dateLabel=d=>{const x=parseD(d);return `${x.getMonth()+1}月${x.getDate()}日 周${WK[x.getDay()]}`};
+function statusText(e){
+  if(e.status==='cancelled')return '已划掉';
+  if(e.status==='done')return '已完成';
+  if(isLive(e))return '进行中';
+  if(e.movedFrom)return '已改期';
+  if(isPast(e))return '待确认';
+  return '待进行';
+}
+let tt;
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('on'),2600)}
+function copy(txt){
+  const done=()=>toast('已复制');
+  if(navigator.clipboard?.writeText){navigator.clipboard.writeText(txt).then(done,fb)}else fb();
+  function fb(){const a=document.createElement('textarea');a.value=txt;document.body.appendChild(a);a.select();try{document.execCommand('copy');done()}catch(e){toast('复制失败，请手动复制')}a.remove()}
+}
+
+/* ---------- 渲染 ---------- */
+function render(){renderTop();renderTabs();renderHead();renderList()}
+function renderTop(){
+  $('#who').innerHTML=`<b>${esc(S.settings.name)}</b> 的日程`;
+  $('#btnSet').innerHTML=I('sliders');
+  const D=[['refresh','刷新'],['swap','临时变动'],['shuffle','随机生图'],['plus','新增']],keys=['refresh','change','rimg','add'];
+  $('#dock').querySelectorAll('button').forEach((b,i)=>{b.innerHTML=I(D[i][0])+`<span>${D[i][1]}</span>`;b.dataset.d=keys[i]});
+}
+function renderTabs(){
+  const ds=dates(),lb=['今天','明天','后天'];
+  $('#tabs').innerHTML=ds.map((d,i)=>{
+    const es=evsOf(d),dn=es.filter(e=>e.status==='done').length;
+    return `<button class="tab ${i===sel?'on':''}" data-i="${i}"><span class="lb">${lb[i]}</span><span class="nu">${parseD(d).getDate()}</span><span class="pg">${es.length?dn+' / '+es.length:'空'}</span></button>`;
+  }).join('');
+}
+function renderHead(){
+  const d=dates()[sel],es=evsOf(d);
+  const dn=es.filter(e=>e.status==='done').length,cn=es.filter(e=>e.status==='cancelled').length,left=es.length-dn-cn;
+  const x=parseD(d);
+  $('#dayhead').innerHTML=`<h1>${x.getMonth()+1}月${x.getDate()}日<span>星期${WK[x.getDay()]}</span></h1>
+  <p>${es.length?`共 ${es.length} 项，完成 ${dn}，划掉 ${cn}，还剩 ${left}`:'这一天还没有安排'}</p>
+  <div class="seg">${es.map(e=>`<i class="${isLive(e)?'live':e.status}"></i>`).join('')}</div>`;
+}
+function renderList(){
+  const d=dates()[sel],es=evsOf(d),el=$('#list');
+  if(!es.length){el.innerHTML=`<div class="empty">${esc(S.settings.name)} 在这一天还没有安排<button class="btn" data-a="genday">生成这一天</button></div>`;return}
+  const isT=d===today(),nm=nowMin();let h='',markDone=!isT;
+  const nowRow=()=>`<div class="nowrow"><div class="tm"><b>${nowT()}</b></div><div class="rail"><b></b></div><div class="ln"></div></div>`;
+  es.forEach((e,i)=>{
+    if(!markDone&&toMin(e.start)>nm){h+=nowRow();markDone=true}
+    if(i>0){
+      const pe=toMin(es[i-1].end),gp=toMin(e.start)-pe;
+      if(gp>=40)h+=`<div class="gap"><div></div><div class="rail"></div><button class="gapbtn" data-a="gap" data-s="${toT(pe)}" data-e="${toT(Math.min(pe+60,toMin(e.start)))}">${I('plus')}空档 ${gp>=60?Math.floor(gp/60)+' 小时'+(gp%60?' '+gp%60+' 分':''):gp+' 分钟'}，安排点什么</button></div>`;
+    }
+    h+=card(e,i===0,i===es.length-1);
+  });
+  if(!markDone)h+=nowRow();
+  el.innerHTML=h;
+}
+function card(e,first,last){
+  const live=isLive(e),tg=TAGS[e.tag]||TAGS.life;
+  let badge='';
+  if(live)badge='进行中';else if(e.status==='cancelled')badge='已划掉';else if(e.status==='done')badge='已完成';else if(e.movedFrom)badge='改期自 '+e.movedFrom;
+  const th=e._busy?'<div class="thumb busy"></div>':(e.img?`<img class="thumb" src="${esc(e.img.src)}" alt="">`:'');
+  return `<div class="row st-${e.status} ${live?'live':''} ${isPast(e)?'past':''} ${first?'first':''} ${last?'last':''}" data-id="${e.id}">
+    <div class="tm"><b>${e.start}</b><i>${e.end}</i></div>
+    <div class="rail"><span class="dot"></span></div>
+    <div class="card" data-a="open" role="button" tabindex="0">
+      <div class="cmain">
+        <div class="ctop"><span class="ic">${I(tg.i)}</span><span class="t">${esc(e.title)}</span></div>
+        <div class="cm">${e.place?`<span>${I('pin')}${esc(e.place)}</span>`:''}${e.who?`<span>${I('users')}${esc(e.who)}</span>`:''}</div>
+        ${badge?`<span class="badge">${esc(badge)}</span>`:''}
+        ${e.status==='cancelled'&&e.reason?`<div class="rs">${esc(e.reason)}</div>`:''}
+      </div>
+      ${th}
+      <button class="chk" data-a="chk" aria-label="标记完成">${I('check')}</button>
+    </div></div>`;
+}
+
+/* ---------- 抽屉 ---------- */
+const sheet=$('#sheet'),scrim=$('#scrim');
+function openSheet(html,keep){const y=sheet.scrollTop;sheet.innerHTML='<div class="grab"></div>'+html;sheet.scrollTop=keep?y:0;scrim.classList.add('on');sheet.classList.add('on')}
+function closeSheet(){scrim.classList.remove('on');sheet.classList.remove('on')}
+scrim.addEventListener('click',closeSheet);
+const sheetOpen=()=>sheet.classList.contains('on');
+
+const CANCEL_R=['临时有急事要处理','突然下雨，不想出门','对方临时改了时间','身体有点不舒服，想歇着','睡过头了，来不及了','事情提前做完了，不用去了','心情不太好，想一个人待着','被别的事情绊住了'];
+const MOVE_R=['前一件事拖延了','对方说晚一点更方便','想多休息一会儿','路上堵车','临时插进来一件事'];
+
+function picBlock(e){
+  if(e._busy)return `<div class="pic busy"></div>`;
+  if(e.img)return `<div class="pic"><img src="${esc(e.img.src)}" alt="" data-a="view"><button class="rg" data-a="regen">${I('refresh')}重新生成</button></div>`;
+  return `<div class="pic empty"><button data-a="imgmode">${I('image')}还没有画面，点此生成</button></div>`;
+}
+function detail(id,m='view',keep){
+  const e=byId(id);if(!e)return closeSheet();
+  cur=id;mode=m;
+  const tg=TAGS[e.tag]||TAGS.life;
+  let h=`<div class="dhead"><span class="tagp">${I(tg.i)}${tg.n}</span><span class="stat">${statusText(e)}</span></div>
+  <h2 class="dt ${e.status==='cancelled'?'strike':''}">${esc(e.title)}</h2>
+  <div class="dtime">${e.start}<span>至</span>${e.end}<em>${dateLabel(e.date)}${e.movedFrom?'，原定 '+e.movedFrom:''}</em></div>
+  <div class="meta">${e.place?`<div>${I('pin')}${esc(e.place)}</div>`:''}${e.who?`<div>${I('users')}${esc(e.who)}</div>`:''}</div>
+  ${e.note?`<p class="note">${esc(e.note)}</p>`:''}
+  ${e.mood?`<p class="mood">${esc(e.mood)}</p>`:''}
+  ${e.status==='cancelled'&&e.reason?`<p class="why">划掉的原因：${esc(e.reason)}</p>`:''}
+  ${picBlock(e)}`;
+  if(m==='view'){
+    h+=`<div class="acts">
+      <button class="act dark" data-a="done">${I(e.status==='done'?'undo':'check')}${e.status==='done'?'撤回完成':'完成'}</button>
+      ${e.status==='cancelled'?`<button class="act" data-a="restore">${I('undo')}恢复</button>`:`<button class="act" data-a="cancelmode">${I('x')}划掉</button>`}
+      <button class="act" data-a="movemode">${I('clock')}改期</button>
+      <button class="act" data-a="edit">${I('edit')}编辑</button>
+      <button class="act" data-a="imgmode">${I('image')}生图</button>
+      <button class="act" data-a="del">${I('trash')}删除</button></div>`;
+    if(e.log?.length)h+=`<ul class="hist">${e.log.slice().reverse().map(l=>`<li><b>${l.t}</b><span>${esc(l.m)}</span></li>`).join('')}</ul>`;
+  }
+  if(m==='cancel'){
+    h+=`<div class="hr"></div><label class="l">划掉的原因</label>
+    <div class="chips">${CANCEL_R.map(r=>`<button class="chip" data-v="${esc(r)}" data-to="#rs">${esc(r)}</button>`).join('')}</div>
+    <input id="rs" placeholder="也可以自己写" style="margin-top:12px">
+    <button class="btn" data-a="docancel">划掉这一项</button><button class="btn soft" data-a="back">返回</button>`;
+  }
+  if(m==='move'){
+    h+=`<div class="hr"></div><div class="two"><div><label class="l">开始</label><input id="ms" type="time" value="${e.start}"></div><div><label class="l">结束</label><input id="me" type="time" value="${e.end}"></div></div>
+    <div class="chips" style="margin-top:12px">${[['推迟 30 分钟',30],['推迟 1 小时',60],['提前 30 分钟',-30]].map(x=>`<button class="chip" data-shift="${x[1]}">${x[0]}</button>`).join('')}</div>
+    <label class="l">原因（可不填）</label>
+    <div class="chips">${MOVE_R.map(r=>`<button class="chip" data-v="${esc(r)}" data-to="#mr">${esc(r)}</button>`).join('')}</div>
+    <input id="mr" placeholder="改期原因" style="margin-top:12px">
+    <button class="btn" data-a="domove">确认改期</button><button class="btn soft" data-a="back">返回</button>`;
+  }
+  if(m==='img'){
+    const using=hooks.generateImage?'将使用自定义生图函数':S.settings.imgUrl?'将调用生图接口'+(S.settings.imgModel?'（'+esc(S.settings.imgModel)+'）':''):'尚未接入生图接口，将生成黑白示意图。可在设置里填写接口。';
+    h+=`<div class="hr"></div><label class="l">提示词（可修改）</label><textarea id="ip" rows="5">${esc(e.img?.prompt||buildPrompt(e))}</textarea>
+    <p class="sub" style="margin-top:8px">${using}</p>
+    <button class="btn" data-a="doimg">生成画面</button><button class="btn soft" data-a="back">返回</button>`;
+  }
+  openSheet(h,keep);
+}
+
+function formSheet(ev,preset){
+  const isNew=!ev;
+  const e=ev||{date:dates()[sel],start:'09:00',end:'10:00',title:'',place:'',who:'',note:'',mood:'',tag:'life',...(preset||{})};
+  cur=ev?ev.id:null;
+  openSheet(`<h2 class="sh2">${isNew?'新增安排':'编辑安排'}</h2><p class="sub">${dateLabel(e.date)}</p>
+  <label class="l">标题</label><input id="f_t" value="${esc(e.title)}" placeholder="要做什么">
+  <div class="two"><div><label class="l">开始</label><input id="f_s" type="time" value="${e.start}"></div><div><label class="l">结束</label><input id="f_e" type="time" value="${e.end}"></div></div>
+  <div class="two"><div><label class="l">地点</label><input id="f_p" value="${esc(e.place)}"></div><div><label class="l">同行的人</label><input id="f_w" value="${esc(e.who)}"></div></div>
+  <label class="l">类型</label><div class="chips" id="f_tag">${Object.entries(TAGS).map(([k,v])=>`<button class="chip ${k===e.tag?'on':''}" data-tag="${k}">${I(v.i)}${v.n}</button>`).join('')}</div>
+  <label class="l">具体安排</label><textarea id="f_n" rows="3">${esc(e.note)}</textarea>
+  <label class="l">心声</label><input id="f_m" value="${esc(e.mood)}" placeholder="此刻心里想的一句话">
+  <button class="btn" data-a="saveform" data-new="${isNew?1:0}" data-date="${e.date}">保存</button><button class="btn soft" data-a="${isNew?'close':'back'}">取消</button>`);
+}
+
+function refreshSheet(){
+  openSheet(`<h2 class="sh2">刷新日程</h2><p class="sub">重新安排 ${esc(S.settings.name)} 接下来的日子。</p>
+  <label class="l">范围</label><div class="chips" id="r_scope"><button class="chip on" data-scope="all">未来三天</button><button class="chip" data-scope="one">只刷新当前这一天</button></div>
+  <div class="sw"><span>保留已完成的安排</span><button class="tg on" id="r_keep" aria-label="保留已完成"></button></div>
+  <label class="l">给 ${esc(S.settings.name)} 的提示（接入文本接口后生效）</label><textarea id="r_note" rows="3" placeholder="例如：明天要去参加朋友的婚礼；这两天有点感冒"></textarea>
+  <button class="btn" data-a="dorefresh">开始刷新</button><button class="btn soft" data-a="close">取消</button>`);
+}
+function settingsSheet(){
+  const s=S.settings,v=k=>esc(s[k]);
+  openSheet(`<h2 class="sh2">设置</h2>
+  <label class="l">角色名</label><input id="s_name" value="${v('name')}">
+  <label class="l">角色设定（用于生成日程与画面，可留空）</label><textarea id="s_persona" rows="3">${v('persona')}</textarea>
+  <label class="l">画面风格前缀</label><input id="s_style" value="${v('style')}">
+  <div class="hr"></div><h3 class="sh2" style="font-size:15px;margin-top:14px">文本接口（兼容 OpenAI）</h3>
+  <p class="sub">用于刷新日程。不填则使用本地随机生成。</p>
+  <label class="l">地址</label><input id="s_turl" value="${v('textUrl')}" placeholder="https://xxx/v1">
+  <div class="two"><div><label class="l">Key</label><input id="s_tkey" type="password" value="${v('textKey')}"></div><div><label class="l">模型</label><input id="s_tmodel" value="${v('textModel')}"></div></div>
+  <div class="hr"></div><h3 class="sh2" style="font-size:15px;margin-top:14px">生图接口（兼容 OpenAI）</h3>
+  <p class="sub">不填则生成黑白示意图。接口需允许浏览器跨域访问。Key 只保存在这台设备的浏览器里。</p>
+  <label class="l">地址</label><input id="s_iurl" value="${v('imgUrl')}" placeholder="https://xxx/v1">
+  <div class="two"><div><label class="l">Key</label><input id="s_ikey" type="password" value="${v('imgKey')}"></div><div><label class="l">模型</label><input id="s_imodel" value="${v('imgModel')}"></div></div>
+  <label class="l">尺寸</label><input id="s_isize" value="${v('imgSize')}">
+  <button class="btn" data-a="savesettings">保存设置</button>
+  <div class="hr"></div><h3 class="sh2" style="font-size:15px;margin-top:14px">数据</h3>
+  <p class="sub">把日程文本复制给 ${esc(S.settings.name)} 的聊天，让对话能知道当前的安排。</p>
+  <button class="btn ghost" data-a="copytext">复制日程文本</button>
+  <button class="btn ghost" data-a="exportjson">导出数据</button>
+  <textarea id="s_data" rows="3" placeholder="导出的数据会出现在这里；粘贴数据后可导入" style="margin-top:10px"></textarea>
+  <button class="btn ghost" data-a="importjson">导入数据</button>
+  <button class="btn soft" data-a="clearall">清空所有日程</button>`);
+}
+
+/* ---------- 动作 ---------- */
+function setDone(e){e.status=e.status==='done'?'todo':'done';logEv(e,e.status==='done'?'标记完成':'撤回完成');save();render();navigator.vibrate&&navigator.vibrate(8)}
+function applyCancel(e,reason){e.status='cancelled';e.reason=reason;logEv(e,'划掉：'+reason);save();render()}
+function animateCancel(id,cb){
+  const r=document.querySelector(`.row[data-id="${id}"]`);
+  if(!r){cb();return}
+  r.scrollIntoView({block:'center',behavior:'smooth'});
+  setTimeout(()=>{r.classList.remove('st-todo','live');r.classList.add('st-cancelled');setTimeout(cb,750)},250);
+}
+function applyMove(e,s,en,reason){
+  if(!e.movedFrom)e.movedFrom=e.start;
+  logEv(e,`改期：${e.start}-${e.end} 改为 ${s}-${en}${reason?'（'+reason+'）':''}`);
+  e.start=s;e.end=en;save();render();
+}
+function flash(id,ms=1000){const r=document.querySelector(`.row[data-id="${id}"]`);if(!r)return;r.scrollIntoView({block:'center',behavior:'smooth'});r.classList.add('pick');setTimeout(()=>r.classList.remove('pick'),ms)}
+
+async function doRefresh(scope,keepDone,note){
+  const ds=scope==='all'?dates():[dates()[sel]];
+  const btn=sheet.querySelector('[data-a="dorefresh"]');
+  if(btn){btn.disabled=true;btn.textContent='正在安排……'}
+  let evs;
+  const useApi=hooks.generateSchedule||S.settings.textUrl;
+  try{evs=useApi?await llmGen(ds,note):mockGen(ds)}
+  catch(err){toast('文本接口出错，已改用本地生成：'+err.message);evs=mockGen(ds)}
+  const kept=keepDone?S.events.filter(e=>ds.includes(e.date)&&e.status==='done'):[];
+  S.events=S.events.filter(e=>!ds.includes(e.date)||kept.includes(e));
+  evs=evs.filter(n=>!kept.some(k=>k.date===n.date&&overlap(k,n)));
+  S.events.push(...evs);ds.forEach(d=>S.gen[d]=1);
+  save();closeSheet();render();toast(`已刷新 ${ds.length} 天的日程`);
+}
+
+function randomChange(){
+  const d=dates()[sel];
+  let pool=evsOf(d).filter(e=>e.status==='todo');
+  if(d===today()){const f=pool.filter(e=>toMin(e.start)>=nowMin());if(f.length)pool=f}
+  if(!pool.length){toast('这一天没有可以变动的安排');return}
+  const ev=pick(pool),name=S.settings.name;
+  flash(ev.id,1200);
+  const canMove=toMin(ev.end)+90<1430;
+  setTimeout(()=>{
+    if(canMove&&Math.random()<.4){
+      const sh=pick([30,60,90]),r=pick(MOVE_R);
+      applyMove(ev,toT(toMin(ev.start)+sh),toT(toMin(ev.end)+sh),r);
+      toast(`${name} 把「${ev.title}」推迟了 ${sh} 分钟：${r}`);
+    }else{
+      const r=pick(CANCEL_R);
+      animateCancel(ev.id,()=>{applyCancel(ev,r);toast(`${name} 划掉了「${ev.title}」：${r}`)});
+    }
+  },1300);
+}
+
+async function randomImage(){
+  const d=dates()[sel];
+  let pool=evsOf(d).filter(e=>e.status!=='cancelled');
+  if(!pool.length){toast('这一天还没有可以生图的安排');return}
+  const fresh=pool.filter(e=>!e.img);if(fresh.length)pool=fresh;
+  const rows=[...document.querySelectorAll('.row[data-id]')].filter(r=>pool.some(p=>p.id===r.dataset.id));
+  for(let i=0;i<9;i++){rows.forEach(r=>r.classList.remove('pick'));const r=pick(rows);r.classList.add('pick');await sleep(90+i*28)}
+  const ev=pick(pool);
+  rows.forEach(r=>r.classList.remove('pick'));
+  flash(ev.id,2200);
+  toast(`为「${ev.title}」生成画面`);
+  await runImage(ev,'',true);
+}
+async function runImage(ev,prompt,openAfter){
+  ev._busy=true;render();if(sheetOpen()&&cur===ev.id)detail(ev.id,'view',true);
+  const img=await genImage(ev,prompt);
+  ev._busy=false;ev.img=img;logEv(ev,'生成画面');save();render();
+  if(openAfter||(sheetOpen()&&cur===ev.id))detail(ev.id,'view',openAfter?false:true);
+}
+
+function toText(){
+  const n=S.settings.name;let t=`【${n}的日程】\n`;
+  dates().forEach((d,i)=>{
+    t+=`\n${['今天','明天','后天'][i]} ${dateLabel(d)}\n`;
+    evsOf(d).forEach(e=>{
+      let f=`${e.start}-${e.end} ${e.title}`;
+      const ex=[e.place,e.who&&'与'+e.who].filter(Boolean).join('，');if(ex)f+=`（${ex}）`;
+      if(e.status==='done')f+=' [已完成]';
+      if(e.status==='cancelled')f+=` [已取消：${e.reason||'临时有事'}]`;
+      if(e.movedFrom&&e.status!=='cancelled')f+=` [已改期，原 ${e.movedFrom}]`;
+      t+=f+'\n';
+    });
+  });
+  return t.trim();
+}
+
+/* ---------- 事件 ---------- */
+const shiftT=(t,m)=>toT(Math.max(0,Math.min(1439,toMin(t)+m)));
+sheet.addEventListener('click',async ev=>{
+  const t=ev.target;
+  const chip=t.closest('[data-v]');
+  if(chip){const i=$(chip.dataset.to);if(i){i.value=chip.dataset.v}return}
+  const sh=t.closest('[data-shift]');
+  if(sh){const m=+sh.dataset.shift;$('#ms').value=shiftT($('#ms').value,m);$('#me').value=shiftT($('#me').value,m);return}
+  const tg=t.closest('[data-tag]');
+  if(tg){sheet.querySelectorAll('#f_tag .chip').forEach(c=>c.classList.toggle('on',c===tg));return}
+  const sc=t.closest('[data-scope]');
+  if(sc){sheet.querySelectorAll('#r_scope .chip').forEach(c=>c.classList.toggle('on',c===sc));return}
+  if(t.closest('#r_keep')){$('#r_keep').classList.toggle('on');return}
+  const b=t.closest('[data-a]');if(!b)return;
+  const a=b.dataset.a,e=cur&&byId(cur);
+  switch(a){
+    case 'close':closeSheet();break;
+    case 'back':detail(cur);break;
+    case 'done':setDone(e);detail(cur,'view',true);break;
+    case 'restore':e.status='todo';e.reason='';logEv(e,'恢复安排');save();render();detail(cur,'view',true);break;
+    case 'cancelmode':detail(cur,'cancel',true);break;
+    case 'movemode':detail(cur,'move',true);break;
+    case 'imgmode':detail(cur,'img',true);break;
+    case 'edit':formSheet(e);break;
+    case 'del':if(confirm('删除这一项安排？')){S.events=S.events.filter(x=>x.id!==cur);save();closeSheet();render();toast('已删除')}break;
+    case 'docancel':{
+      const r=$('#rs').value.trim()||'临时有事去不了',id=cur;
+      closeSheet();setTimeout(()=>animateCancel(id,()=>{applyCancel(byId(id),r);toast('已划掉')}),300);break}
+    case 'domove':{
+      const s=$('#ms').value,en=$('#me').value;
+      if(!s||!en||toMin(en)<=toMin(s)){toast('结束时间要晚于开始时间');break}
+      const r=$('#mr').value.trim();applyMove(e,s,en,r);
+      const clash=evsOf(e.date).some(o=>o.id!==e.id&&o.status!=='cancelled'&&overlap(o,e));
+      detail(cur);if(clash)toast('已改期，注意和别的安排有重叠');break}
+    case 'doimg':runImage(e,$('#ip').value,false);detail(cur,'view');break;
+    case 'regen':runImage(e,e.img?.prompt||'',false);break;
+    case 'view':{const v=$('#viewer');v.querySelector('img').src=e.img.src;v.classList.add('on');break}
+    case 'saveform':{
+      const title=$('#f_t').value.trim(),s=$('#f_s').value,en=$('#f_e').value;
+      if(!title){toast('先写个标题');break}
+      if(!s||!en||toMin(en)<=toMin(s)){toast('结束时间要晚于开始时间');break}
+      const tag=sheet.querySelector('#f_tag .chip.on')?.dataset.tag||'life';
+      const f={title,start:s,end:en,place:$('#f_p').value.trim(),who:$('#f_w').value.trim(),tag,note:$('#f_n').value.trim(),mood:$('#f_m').value.trim()};
+      if(b.dataset.new==='1'){const n=mk({...f,date:b.dataset.date});logEv(n,'新增安排');S.events.push(n);save();closeSheet();render();flash(n.id,1400)}
+      else{Object.assign(e,f);logEv(e,'编辑了安排');save();render();detail(cur)}
+      break}
+    case 'dorefresh':{
+      const scope=sheet.querySelector('#r_scope .chip.on').dataset.scope;
+      doRefresh(scope,$('#r_keep').classList.contains('on'),$('#r_note').value.trim());break}
+    case 'savesettings':{
+      const g=id=>$(id).value.trim(),s=S.settings;
+      s.name=g('#s_name')||'char';s.persona=g('#s_persona');s.style=g('#s_style');
+      s.textUrl=g('#s_turl');s.textKey=g('#s_tkey');s.textModel=g('#s_tmodel');
+      s.imgUrl=g('#s_iurl');s.imgKey=g('#s_ikey');s.imgModel=g('#s_imodel');s.imgSize=g('#s_isize')||'1024x1024';
+      save();closeSheet();render();toast('设置已保存');break}
+    case 'copytext':copy(toText());break;
+    case 'exportjson':{const j=JSON.stringify(S,(k,v)=>k[0]==='_'?undefined:v);$('#s_data').value=j;copy(j);break}
+    case 'importjson':{
+      try{const o=JSON.parse($('#s_data').value);if(!Array.isArray(o.events))throw 0;S={...DEF,...o,settings:{...DEF.settings,...(o.settings||{})}};save();closeSheet();render();toast('已导入')}
+      catch(err){toast('数据格式不对，导入失败')}break}
+    case 'clearall':if(confirm('清空所有日程？此操作无法撤销')){S.events=[];S.gen={};save();closeSheet();render()}break;
+  }
+});
+$('#viewer').addEventListener('click',()=>$('#viewer').classList.remove('on'));
+$('#btnSet').addEventListener('click',settingsSheet);
+$('#tabs').addEventListener('click',e=>{const b=e.target.closest('.tab');if(!b)return;sel=+b.dataset.i;render()});
+$('#list').addEventListener('click',e=>{
+  const b=e.target.closest('[data-a]');if(!b)return;
+  const row=b.closest('.row'),a=b.dataset.a;
+  if(a==='chk'){e.stopPropagation();setDone(byId(row.dataset.id))}
+  else if(a==='open')detail(row.dataset.id);
+  else if(a==='gap')formSheet(null,{start:b.dataset.s,end:b.dataset.e});
+  else if(a==='genday'){const d=dates()[sel];S.events.push(...mockDay(d));S.gen[d]=1;save();render()}
+});
+$('#list').addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.matches('.card')){detail(e.target.closest('.row').dataset.id)}});
+$('#dock').addEventListener('click',e=>{
+  const b=e.target.closest('button');if(!b)return;
+  ({refresh:refreshSheet,change:randomChange,rimg:randomImage,add:()=>formSheet(null)})[b.dataset.d]();
+});
+/* 左右滑动切换日期 */
+let tx=0,ty=0;
+document.addEventListener('touchstart',e=>{tx=e.touches[0].clientX;ty=e.touches[0].clientY},{passive:true});
+document.addEventListener('touchend',e=>{
+  if(sheetOpen())return;
+  const dx=e.changedTouches[0].clientX-tx,dy=e.changedTouches[0].clientY-ty;
+  if(Math.abs(dx)>70&&Math.abs(dy)<45){const n=sel+(dx<0?1:-1);if(n>=0&&n<=2){sel=n;render();window.scrollTo({top:0})}}
+},{passive:true});
+
+/* ---------- 启动 ---------- */
+function ensureWindow(){
+  let ch=false;
+  dates().forEach(d=>{if(!S.gen[d]&&!S.events.some(e=>e.date===d)){S.events.push(...mockDay(d));S.gen[d]=1;ch=true}else if(!S.gen[d]){S.gen[d]=1;ch=true}});
+  const t=today();
+  const old=S.events.filter(e=>e.date<addD(t,-7));
+  if(old.length){S.events=S.events.filter(e=>!old.includes(e));ch=true}
+  if(ch)save();
+}
+let lastDay=today();
+setInterval(()=>{
+  if(today()!==lastDay){lastDay=today();ensureWindow();sel=0;render();return}
+  if(!sheetOpen())render();
+},30000);
+
+window.CharSchedule={
+  hooks,
+  getText:toText,
+  getData:()=>S,
+  cancel(id,reason){const e=byId(id);if(e){applyCancel(e,reason||'临时有事去不了')}},
+  move(id,start,end,reason){const e=byId(id);if(e)applyMove(e,start,end,reason||'')},
+  setDone(id){const e=byId(id);if(e&&e.status!=='done')setDone(e)},
+  add(o){const n=mk(o);S.events.push(n);save();render();return n.id},
+  refresh:()=>doRefresh('all',true,'')
+};
+
+ensureWindow();render();
+(async function hydrate(){
+  try{
+    S=await load();
+    ensureWindow();render();
+  }catch(e){}
+})();
+})();
+</script>
+<script src="../js/nano-own-back.js"></script>
+</body>
+</html>

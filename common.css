@@ -1,0 +1,6 @@
+* { box-sizing: border-box; }
+/* 高度链统一用 100vh（不用 100dvh / 不堆 safe-area）：PWA 没有地址栏，
+   100vh 才是 WebKit 认定的整屏高度；由 iOS 自己去处理安全区。 */
+html, body { margin: 0; height: 100vh; overflow: hidden; background: #000; }
+.bg { position: fixed; top: 0; left: 0; right: 0; height: 100vh; z-index: 0; background: #ffffff; background-size: cover; background-position: center; }
+.app { position: fixed; top: 0; left: 0; right: 0; height: 100vh; z-index: 1; background: transparent; }

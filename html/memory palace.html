@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<script src="../js/nano-runtime.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#fff7f8">
+<title>记忆宫殿 · Memory Palace</title>
+<link rel="stylesheet" href="../css/memory palace.css?v=20261004c">
+<script src="../js/appearance.js"></script>
+</head>
+<body>
+<div class="app" id="app">
+
+  <!-- ================= 首页 ================= -->
+  <div id="pageSelect">
+    <div class="brand">
+      <h1 id="brandTitle">Memory<br>Palace</h1>
+      <p>这里保存着 character 对你的认识、经历过的片段，以及慢慢形成的偏好。选一位，进入 TA 的记忆空间。</p>
+    </div>
+
+    <div class="carousel-wrap">
+      <div class="carousel" id="carousel"></div>
+      <div class="swipe-hint">← 左右滑动切换角色 →</div>
+    </div>
+
+    <button class="pick-btn" id="btnPick" type="button">
+      就你了 · YOU IT IS
+      <small>进入 TA 的记忆宫殿</small>
+    </button>
+  </div>
+
+  <!-- ================= 内页 ================= -->
+  <div id="pagePalace" hidden>
+    <header class="top">
+      <button class="back-btn" id="btnBack" aria-label="返回">‹</button>
+      <div class="top-name" id="topName"></div>
+      <div class="top-right"></div>
+    </header>
+
+    <section class="stats-card" id="statsCard"></section>
+
+    <div class="search">
+      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.8" stroke-width="1.6"/><path d="m16 16 5 5" stroke-width="1.6" stroke-linecap="round"/></svg>
+      <input id="q" type="search" placeholder="寻找一段记忆……">
+    </div>
+
+    <div class="rail" id="roomRail"></div>
+
+    <div class="bottom-actions">
+      <button class="btn" id="btnAdd" type="button">＋ 存入记忆</button>
+      <button class="btn primary" id="btnSave" type="button">保存修改</button>
+    </div>
+
+    <div class="timeline" id="list"></div>
+  </div>
+
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="sheet" id="sheet"></div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script src="../js/mem-link.js?v=20261006a"></script>
+<script src="../js/memory palace.js?v=20261002b"></script>
+</body>
+</html>

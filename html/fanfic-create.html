@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<script src="../js/nano-runtime.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>New Story</title>
+  <link rel="stylesheet" href="../css/fanfic.css?v=20261018f">
+  <script src="../js/appearance.js"></script>
+</head>
+<body class="ff-page">
+  <header class="ff-top">
+    <button class="ff-icon-btn" id="ffBack" type="button" aria-label="返回">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <div class="ff-top-title">
+      <span>New Story</span>
+      <em>新建同人文</em>
+    </div>
+    <span style="width:38px"></span>
+  </header>
+
+  <main class="ff-main ff-create">
+    <section class="ff-section">
+      <div class="ff-sec-label"><b>01</b><span>Character · 角色</span></div>
+      <h2 class="ff-sec-title">和谁一起写</h2>
+      <p class="ff-sec-desc">只显示当前 user 名下可用的角色。</p>
+      <div class="ff-chars" id="ffChars"></div>
+      <div class="ff-no-chars" id="ffNoChars" style="display:none">当前 user 下还没有角色。先到 Character 里创建一个，再回来写故事。</div>
+    </section>
+
+    <section class="ff-section">
+      <div class="ff-sec-label"><b>02</b><span>Genres · 题材</span></div>
+      <h2 class="ff-sec-title">你们的故事发生在哪里</h2>
+      <p class="ff-sec-desc">可以叠加任意多个题材，越具体越好。</p>
+      <div id="ffGenres"></div>
+      <div class="ff-hint" id="ffCustomGenreHint"></div>
+    </section>
+
+    <section class="ff-section">
+      <div class="ff-sec-label"><b>03</b><span>Premise · 设定</span></div>
+      <h2 class="ff-sec-title">再给他们一点设定</h2>
+      <p class="ff-sec-desc">可以写身份、关系、世界观、想看的桥段，或者只写一句“想看清冷的人先动心”。</p>
+      <input class="ff-input" id="ffTitle" maxlength="40" placeholder="小说标题（可留空，由第一章生成）" style="margin-bottom:10px">
+      <textarea class="ff-textarea" id="ffSetting" maxlength="2000" placeholder="例如：他们在一场连下七天雨的南方小城重逢；他以为你早就不记得了。"></textarea>
+    </section>
+
+    <section class="ff-section">
+      <div class="ff-sec-label"><b>04</b><span>Ending · 结局</span></div>
+      <h2 class="ff-sec-title">最后落在哪里</h2>
+      <div class="ff-segment" id="ffEnding">
+        <button class="ff-seg on" data-ending="HE" type="button"><b>HE</b><span>圆满</span></button>
+        <button class="ff-seg" data-ending="BE" type="button"><b>BE</b><span>遗憾</span></button>
+        <button class="ff-seg" data-ending="OE" type="button"><b>OE</b><span>开放</span></button>
+      </div>
+    </section>
+
+    <section class="ff-section">
+      <div class="ff-sec-label"><b>05</b><span>Length · 篇幅</span></div>
+      <h2 class="ff-sec-title">写多长</h2>
+      <div class="ff-segment" id="ffLength">
+        <button class="ff-seg on" data-length="short" type="button"><b>短篇</b><span>6–9 章</span></button>
+        <button class="ff-seg" data-length="medium" type="button"><b>中篇</b><span>10–15 章</span></button>
+        <button class="ff-seg" data-length="long" type="button"><b>长篇</b><span>16–20 章</span></button>
+      </div>
+      <div class="ff-hint" id="ffPlanHint">计划约 8 章，每章约 2000 字。</div>
+      <div class="ff-words-row" style="margin-top:12px">
+        <input class="ff-input" id="ffWords" type="number" min="800" max="6000" step="200" value="2000">
+        <span>字 / 章</span>
+      </div>
+      <div class="ff-chips small" id="ffWordQuick" style="margin-top:10px">
+        <button class="ff-chip" data-words="1200" type="button">1200</button>
+        <button class="ff-chip on" data-words="2000" type="button">2000</button>
+        <button class="ff-chip" data-words="3000" type="button">3000</button>
+        <button class="ff-chip" data-words="4000" type="button">4000</button>
+      </div>
+      <p class="ff-hint">每章单独生成，正文优先；生成完正文后再补段评和章评。</p>
+    </section>
+
+    <section class="ff-section">
+      <div class="ff-sec-label"><b>06</b><span>Style · 文风</span></div>
+      <h2 class="ff-sec-title">用什么文风写</h2>
+      <p class="ff-sec-desc">可以选一个内置文风，也可以自己写。留空则由 AI 根据题材自行决定。</p>
+      <div class="ff-chips" id="ffStyles"></div>
+      <div class="ff-hint" id="ffCustomStyleHint"></div>
+      <input class="ff-input" id="ffCustomStyle" maxlength="200" placeholder="DIY 文风：例如克制的白描、短句、大量留白、不写心理活动" style="margin-top:10px">
+    </section>
+  </main>
+
+  <div class="ff-start-wrap">
+    <button class="ff-start" id="ffStart" type="button">生成第一章</button>
+  </div>
+
+  <div class="ff-toast" id="ffToast"></div>
+
+  <script src="../js/user-scope.js?v=20261018a"></script>
+  <script src="../js/fanfic-common.js?v=20261018f"></script>
+  <script src="../js/fanfic-create.js?v=20261018f"></script>
+  <script src="../swipe-back.js"></script>
+</body>
+</html>

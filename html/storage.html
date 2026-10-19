@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<script src="../js/nano-runtime.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>储存</title>
+    <link rel="stylesheet" href="../css/storage.css?v=20261017a">
+    <link rel="stylesheet" href="../css/panel-ui.css?v=20261018o">
+<script src="../js/appearance.js"></script>
+</head>
+<body class="panel-storage">
+
+    <!-- 顶栏：返回 / 储存 / 刷新 -->
+    <nav class="navbar">
+        <button class="nav-icon-btn" onclick="goBack()" aria-label="返回" data-back>
+            <svg width="12" height="21" viewBox="0 0 12 21" fill="none">
+                <path d="M10.5 1.5L2 10.5L10.5 19.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </button>
+        <div class="nav-title">储存</div>
+<button class="nav-icon-btn" onclick="refreshPage(this)" aria-label="刷新">
+    <svg id="refresh-icon" width="20" height="20" viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" stroke-width="2"
+         stroke-linecap="round" stroke-linejoin="round">
+        <path d="M20 11a8 8 0 1 0-2.34 5.66"/>
+        <polyline points="20 4 20 11 13 11"/>
+    </svg>
+</button>
+    </nav>
+
+    <main>
+        <!-- 总览卡片：App 储存数据 -->
+        <section class="overview-card">
+            <div class="overview-top">
+                <div>
+                    <div class="overview-label">App 储存数据</div>
+                    <div class="overview-amount" id="totalUsedAmount">--</div>
+                </div>
+                <div class="overview-quota">
+                    <div class="overview-label">可用配额</div>
+                    <div class="overview-quota-value" id="totalCapacityLabel">--</div>
+                </div>
+            </div>
+
+            <div class="progress-bar" id="progressBar"></div>
+
+            <div class="legend" id="legend"></div>
+        </section>
+
+        <!-- 操作 -->
+        <section class="list-group">
+            <button class="list-item" onclick="handleCompressImages()">
+                <span class="item-title">压缩图片</span>
+                <div class="item-right">
+                    <span class="item-sub">压缩聊天/头像图片</span>
+                    <svg class="chevron" width="8" height="13" viewBox="0 0 8 13"><path d="M1 1.5L6.5 6.5L1 11.5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </div>
+            </button>
+            <button class="list-item" onclick="openActionSheet()">
+                <span class="item-title">清空局部数据</span>
+                <div class="item-right">
+                    <span class="item-sub">按 App / 图片多选</span>
+                    <svg class="chevron" width="8" height="13" viewBox="0 0 8 13"><path d="M1 1.5L6.5 6.5L1 11.5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </div>
+            </button>
+        </section>
+
+        <section class="list-group">
+            <button class="list-item" onclick="openGlobalClearAlert()">
+                <span class="item-title text-red">清空全局数据</span>
+            </button>
+        </section>
+
+        <div class="footer-note">占用数据统计自 IndexedDB 与 localStorage；可用配额为该浏览器对此网站实际分配的存储空间。</div>
+    </main>
+
+    <!-- 忙碌遮罩 -->
+    <div class="overlay" id="overlay" onclick="closeActionSheet()"></div>
+
+    <!-- 底部弹窗：按 App / 图片多选清理（右侧下滑栏已隐藏，功能保留） -->
+    <div class="action-sheet" id="actionSheet">
+        <div class="sheet-header">
+            <button class="sheet-btn sheet-cancel" onclick="closeActionSheet()" data-close>取消</button>
+            <div class="sheet-title">清空局部数据</div>
+            <button class="sheet-btn sheet-confirm" id="sheetConfirm" onclick="confirmSelectedClear()">清空</button>
+        </div>
+        <div class="sheet-grid no-scrollbar" id="clearSheetGrid"></div>
+    </div>
+
+    <!-- iOS Alert -->
+    <div class="alert-overlay" id="iosAlert">
+        <div class="alert-box">
+            <div class="alert-header">
+                <div class="alert-title" id="iosAlertTitle">清空全局数据</div>
+                <div class="alert-message" id="iosAlertMessage">此操作将清除所有的应用缓存及聊天记录，且不可恢复。<br>是否继续？</div>
+            </div>
+            <div class="alert-buttons">
+                <button class="alert-btn alert-btn-cancel" onclick="closeiOSAlert()" data-close>取消</button>
+                <button class="alert-btn alert-btn-confirm text-red" id="iosAlertConfirm" onclick="confirmAlert()">确认清空</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="../js/storage.js?v=20261018e"></script>
+<script src="../js/api-float.js"></script>
+<script src="../swipe-back.js"></script>
+</body>
+</html>

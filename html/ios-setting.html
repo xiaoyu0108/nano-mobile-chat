@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<script src="../js/nano-runtime.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>窥屏</title>
+  <link rel="stylesheet" href="../css/ios-setting.css?v=20261013c">
+  <script src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
+  <script src="../js/appearance.js"></script>
+</head>
+<body class="sk">
+  <header class="sk-top">
+    <button class="sk-back" data-back aria-label="返回">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
+    </button>
+    <span class="sk-title">窥屏</span>
+    <span class="sk-top-spacer"></span>
+  </header>
+
+  <main class="sk-wrap">
+    <div class="sk-hero">
+      <div class="sk-hero-kicker">iOS 快捷指令</div>
+      <div class="sk-hero-title">让 TA 看看你的屏幕</div>
+      <div class="sk-hero-sub">按一下截屏，TA 会用人设点评你正在看的内容，并写进你们的聊天。</div>
+    </div>
+
+    <div class="sk-missing" id="skMissing" hidden></div>
+
+    <div class="sk-choose">
+      <span class="sk-choose-label">谁来看</span>
+      <div class="sk-choose-pill">
+        <select id="isChar" class="sk-select"></select>
+        <svg class="sk-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+      </div>
+    </div>
+
+    <div class="sk-lead">
+      <span class="sk-lead-dot"></span>
+      <span>推荐 <b>方式 A</b>：Key 不出手机，Nano 用你自己的主 API 完成点评。</span>
+    </div>
+
+    <section class="sk-primary">
+      <div class="sk-line">
+        <span class="sk-line-label">把它粘进快捷指令的「打开 URL」</span>
+      </div>
+      <div class="sk-copy">
+        <code id="isLinkA"></code>
+        <button class="sk-copy-btn" data-copy="isLinkA">复制</button>
+      </div>
+      <div class="sk-note">把链接里的 <b>{{识别文本}}</b> 删掉，改插入「从图像中提取文本」的结果。</div>
+      <div class="sk-note" style="color:#c14a70">⚠️ iPhone 注意：iOS 用「打开 URL」打开这种链接会进 <b>Safari</b>，进不了你添加到主屏的 Nano（系统限制，且两者存储隔离，所以看起来没反应）。iPhone 上请改用下面的 <b>方式 B</b> 或 <b>方式 C</b>；只有电脑 Chrome / Edge 的「让 TA 看我的真实屏幕」才能直接共享屏幕。</div>
+    </section>
+
+    <details class="sk-fold">
+      <summary><span>方式 B · 快捷指令直连 API</span><svg class="sk-fold-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <div class="sk-fold-body">
+        <div class="sk-line">
+          <span class="sk-line-label">接口地址</span>
+        </div>
+        <div class="sk-copy"><code id="isUrl2"></code><button class="sk-copy-btn" data-copy="isUrl2">复制</button></div>
+
+        <div class="sk-line">
+          <span class="sk-line-label">主 API Key（方式 B 的 Authorization 头部用）</span>
+        </div>
+        <div class="sk-copy"><code id="isApiKey"></code><button class="sk-copy-btn" data-copy="isApiKey">复制</button><button class="sk-copy-btn" id="isApiKeyReveal" type="button">显示</button></div>
+
+        <div class="sk-line">
+          <span class="sk-line-label">请求体 JSON（请求体选「文件」引用它）</span>
+        </div>
+        <div class="sk-copy"><pre id="isBody"></pre><button class="sk-copy-btn" data-copy="isBody">复制</button></div>
+
+        <div class="sk-line">
+          <span class="sk-line-label">回传深链（把 {{模型回复}} 换成回复变量）</span>
+        </div>
+        <div class="sk-copy"><code id="isLinkB"></code><button class="sk-copy-btn" data-copy="isLinkB">复制</button></div>
+        <div class="sk-note">头部加 <b>Authorization: Bearer 你的Key</b> 与 <b>Content-Type: application/json</b>。Key 会存在快捷指令里，注意安全。</div>
+      </div>
+    </details>
+
+    <details class="sk-fold">
+      <summary><span>方式 C · 屏幕速聊（快捷指令 + 服务端）</span><svg class="sk-fold-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <div class="sk-fold-body">
+        <div class="sk-note" style="color:#c14a70">需要你自己部署一个 Cloudflare Worker（`push-worker`），部署步骤见 <b>docs/ios-shortcuts.md</b> 的「部署 push-worker」。没有服务端就用上面的<b>方式 B</b>：快捷指令直连你已有的模型接口即可。</div>
+        <div class="sk-note">在任意 App 里双击「辅助触控」运行快捷指令：截屏 → 发到你的服务端 → 回复直接弹在系统窗口里、可继续打字；等你回到小手机后，这几轮会按顺序自动合并进该角色的聊天。Key 只存在服务端，不进快捷指令。</div>
+
+        <div class="sk-line" style="margin-top:12px"><span class="sk-line-label">服务端地址（Cloudflare Worker 根地址）</span></div>
+        <input id="isPeekUrl" class="sk-textarea" style="min-height:40px;height:42px" placeholder="https://nanopush.nano315.online" autocomplete="off">
+
+        <div class="sk-line" style="margin-top:12px"><span class="sk-line-label">令牌（与 Worker 的 PEEK_TOKEN 一致）</span></div>
+        <div class="sk-copy"><code id="isPeekToken"></code><button class="sk-copy-btn" data-copy="isPeekToken">复制</button></div>
+
+        <div class="sk-line" style="margin-top:12px"><span class="sk-line-label">接口地址（快捷指令 POST 到这里）</span></div>
+        <div class="sk-copy"><code id="isPeekEndpoint"></code><button class="sk-copy-btn" data-copy="isPeekEndpoint">复制</button></div>
+
+        <div class="sk-line" style="margin-top:12px"><span class="sk-line-label">人设 / system（填进快捷指令的文本里）</span></div>
+        <div class="sk-note">现在<b>人设会自动从 App 同步到服务端</b>：你在 Nano 里切换角色后即时生效，快捷指令里 <b>system 可以直接不填</b>（留空即用当前角色人设）。下面这段是给你需要手动填（方式 B / 自定义）时用的。</div>
+        <div class="sk-copy"><pre id="isPeekSystem"></pre><button class="sk-copy-btn" data-copy="isPeekSystem">复制</button></div>
+
+        <button class="sk-copy-btn" id="isPeekSave" style="margin-top:12px">保存配置</button>
+
+        <div class="sk-note" style="margin-top:12px">
+          快捷指令怎么搭：<br>
+          1) 截屏 → <b>Base64 编码</b>（关掉换行）；<br>
+          2) <b>获取 URL 内容</b>：POST 到上面「接口地址」，头部加 <code>X-Peek-Token: 你的令牌</code>；<br>
+          3) 请求体选 <b>文件</b>，引用一个 <b>文本</b> 动作：<br>
+          <code>{"chatId":"&lt;角色ID&gt;","system":"&lt;人设&gt;","image":"data:image/jpeg;base64,&lt;截图base64&gt;"}</code>；<br>
+          4) <b>获取字典值</b> 取 <code>reply</code> → <b>显示提醒</b> 弹出；<br>
+          5) 接着 <b>要求输入</b> 拿到你打的字，把 image 换成 text 再发一轮 → 循环，形成连续对话。
+        </div>
+      </div>
+    </details>
+
+    <details class="sk-fold">
+      <summary><span>提示词 · 人设</span><svg class="sk-fold-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <div class="sk-fold-body">
+        <textarea id="isPrompt" class="sk-textarea" rows="6" placeholder="角色的性格 / 语气 / 你和 TA 的关系…"></textarea>
+        <div class="sk-note">已自动填入所选角色的人设，可自行删改。</div>
+      </div>
+    </details>
+
+    <details class="sk-fold">
+      <summary><span>完整步骤</span><svg class="sk-fold-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <div class="sk-fold-body">
+        <div id="isGuide" class="sk-guide"></div>
+      </div>
+    </details>
+
+    <div class="sk-foot">灵动岛 / 锁屏显示见 <b>docs/ios-shortcuts.md</b></div>
+    <div class="sk-spacer"></div>
+  </main>
+
+  <div class="sk-toast" id="isToast"></div>
+  <script src="../js/ios-setting.js?v=20261016c"></script>
+  <script src="../swipe-back.js"></script>
+</body>
+</html>

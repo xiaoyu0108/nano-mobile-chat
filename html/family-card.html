@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<script src="../js/nano-runtime.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#ffffff">
+<title>亲属卡</title>
+<link rel="stylesheet" href="../css/family-card.css?v=20261006c">
+<script src="../js/appearance.js"></script>
+</head>
+<body class="nano-family-card">
+<div class="fc-app">
+    <header class="fc-topbar">
+        <button class="fc-back" id="backBtn" data-back aria-label="返回">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15.5 4.5 8 12l7.5 7.5"/></svg>
+        </button>
+        <div class="fc-title">亲属卡</div>
+        <button class="fc-refresh" id="refreshBtn" title="刷新对方流水" aria-label="刷新">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+        </button>
+    </header>
+
+    <div class="fc-tabs" id="fcTabs">
+        <button class="fc-tab active" data-tab="mine">我的</button>
+        <button class="fc-tab" data-tab="other">他的</button>
+    </div>
+
+    <main class="fc-scroll" id="fcScroll">
+        <section class="fc-summary">
+            <div class="fc-summary-item">
+                <div class="fc-summary-num" id="fcTotal">¥0.00</div>
+                <div class="fc-summary-label">总授信额度</div>
+            </div>
+            <div class="fc-summary-item">
+                <div class="fc-summary-num" id="fcUsed">¥0.00</div>
+                <div class="fc-summary-label">已用额度</div>
+            </div>
+            <div class="fc-summary-item">
+                <div class="fc-summary-num" id="fcBalance">¥0.00</div>
+                <div class="fc-summary-label">银行卡余额</div>
+            </div>
+        </section>
+
+        <section class="fc-section">
+            <div class="fc-section-head">
+                <span class="fc-section-title">亲属卡</span>
+                <button class="fc-add" id="inviteBtn">邀请开卡</button>
+            </div>
+            <div class="fc-list" id="fcList"></div>
+        </section>
+
+        <section class="fc-section">
+            <div class="fc-section-head">
+                <span class="fc-section-title">银行开销流水</span>
+            </div>
+            <div class="fc-flow" id="fcFlow"></div>
+        </section>
+    </main>
+</div>
+
+<div class="fc-modal" id="inviteModal">
+    <div class="fc-modal-card">
+        <div class="fc-modal-title">邀请对方开启亲属卡</div>
+        <div class="fc-modal-desc">由你出资、对方使用，额度可随时调整。发出后由对方决定是否接受。</div>
+        <div class="fc-banks-label">开卡银行</div>
+        <div class="fc-banks" id="inviteBanks"></div>
+        <input class="fc-input" id="inviteLimit" type="number" inputmode="decimal" placeholder="额度，例如 2000">
+        <div class="fc-modal-actions">
+            <button class="fc-btn ghost" id="inviteCancel">取消</button>
+            <button class="fc-btn primary" id="inviteConfirm">发出邀请</button>
+        </div>
+    </div>
+</div>
+
+<div class="fc-modal" id="limitModal">
+    <div class="fc-modal-card">
+        <div class="fc-modal-title">调整额度</div>
+        <div class="fc-modal-desc" id="limitDesc">设置这张亲属卡的可用额度。</div>
+        <input class="fc-input" id="limitInput" type="number" inputmode="decimal" placeholder="额度">
+        <div class="fc-modal-actions">
+            <button class="fc-btn ghost" id="limitCancel">取消</button>
+            <button class="fc-btn primary" id="limitConfirm">保存</button>
+        </div>
+    </div>
+</div>
+
+<div class="fc-toast" id="fcToast"></div>
+
+<script src="../js/bank-theme.js?v=20261006a"></script>
+<script src="../js/family-card-store.js?v=20261006a"></script>
+<script src="../js/family-card.js?v=20261006c"></script>
+<script src="../swipe-back.js"></script>
+</body>
+</html>

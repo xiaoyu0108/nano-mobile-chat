@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<script src="../js/nano-runtime.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>群聊</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" media="print" onload="this.media='all'">
+<link rel="stylesheet" href="../css/groups.css?v=20261018e">
+<script src="../js/appearance.js?v=20261010a"></script>
+<script src="../js/nano-notify.js?v=20261018b"></script>
+<script src="../js/reroll-reason.js?v=20261018a"></script>
+<script src="../js/nano-badge.js"></script>
+<script src="../js/group-store.js"></script>
+</head>
+<body class="nano-groups nano-chat-inner">
+<div class="chat-container" id="app">
+
+    <header class="topbar">
+        <button class="back-btn" id="backBtn" data-back><i class="fas fa-chevron-left"></i></button>
+        <div class="topbar-title" id="chatTitle">
+            群聊
+            <span class="g-meta" id="groupMeta"></span>
+        </div>
+        <div class="topbar-avatar" id="topbarAvatar">群</div>
+    </header>
+
+    <div class="group-notice-bar" id="groupNoticeBar" style="display:none;">
+        <div class="notice-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+            </svg>
+        </div>
+        <span class="notice-text" id="noticeText"></span>
+        <span class="notice-more" id="noticeMore">详情</span>
+        <button class="notice-close" id="noticeClose" type="button" aria-label="移除群公告">
+            <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+        </button>
+    </div>
+
+    <div class="multi-select-bar" id="multiSelectBar">
+        <span id="msCount">已选 0 条</span>
+        <div class="ms-actions">
+            <button id="msCancel">取消</button>
+            <button id="msDelete">删除</button>
+        </div>
+    </div>
+
+    <div class="message-scroll" id="messageScroll">
+        <div class="date-label" id="dateLabel">今天</div>
+        <div id="messageContainer"></div>
+    </div>
+
+    <!-- 正在输入指示（屏幕左下角，生成回复期间持续显示） -->
+    <div class="group-typing" id="groupTyping">
+        <div class="gt-avatar" id="groupTypingAvatar">群</div>
+        <div class="gt-bubble"><span></span><span></span><span></span></div>
+    </div>
+
+    <footer class="bottom-bar">
+        <div class="emoji-recommend hidden" id="emojiRecommend"></div>
+        <button class="more-btn" id="moreBtn">
+            <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+        </button>
+        <div class="input-shell">
+            <div class="above-input" id="aboveInput">
+                <div class="mention-dropdown" id="mentionDropdown"></div>
+                <div class="quote-bar" id="quoteBar">
+                    <span class="qb-name" id="quoteName"></span>
+                    <span class="qb-text" id="quoteText"></span>
+                    <button class="qb-cancel" id="quoteCancel">×</button>
+                </div>
+            </div>
+            <div class="input-row">
+                <input class="input" id="messageInput" type="text" placeholder="发送到群聊" autocomplete="off">
+                <div class="emoji-voice-group">
+                    <button class="emoji-btn" id="emojiBtn"><i class="far fa-smile"></i></button>
+                    <button class="voice-btn" id="voiceBtn"><i class="fas fa-microphone"></i></button>
+                </div>
+            </div>
+        </div>
+        <button class="send-btn" id="sendBtn"><i class="fas fa-arrow-up"></i></button>
+    </footer>
+
+    <div class="more-overlay" id="moreOverlay">
+        <button class="more-item" data-action="reroll"><div class="mi-icon" style="background:#8e44ad;color:#fff;"><i class="fas fa-redo"></i></div><span class="mi-label">重roll</span></button>
+        <button class="more-item" data-action="redpacket"><div class="mi-icon" style="background:#e6353d;color:#fff;"><i class="fas fa-envelope"></i></div><span class="mi-label">群红包</span></button>
+        <button class="more-item" data-action="image"><div class="mi-icon" style="background:#34c759;color:#fff;"><i class="far fa-image"></i></div><span class="mi-label">图片</span></button>
+        <button class="more-item" data-action="chain"><div class="mi-icon" style="background:#ff9500;color:#fff;"><i class="fas fa-list-ol"></i></div><span class="mi-label">群接龙</span></button>
+        <button class="more-item" data-action="notice"><div class="mi-icon" style="background:#f0a500;color:#fff;"><i class="fas fa-bullhorn"></i></div><span class="mi-label">群公告</span></button>
+        <button class="more-item" data-action="nickname"><div class="mi-icon" style="background:#007aff;color:#fff;"><i class="fas fa-user-tag"></i></div><span class="mi-label">群昵称</span></button>
+        <button class="more-item" data-action="offline"><div class="mi-icon" style="background:#5b6cff;color:#fff;"><i class="fas fa-map-marker-alt"></i></div><span class="mi-label">线下</span></button>
+        <button class="more-item" data-action="memory"><div class="mi-icon" style="background:#00b8a9;color:#fff;"><i class="fas fa-brain"></i></div><span class="mi-label">记忆</span></button>
+        <button class="more-item" data-action="invitechar"><div class="mi-icon" style="background:#af52de;color:#fff;"><i class="fas fa-user-plus"></i></div><span class="mi-label">邀请角色</span></button>
+    </div>
+
+    <div class="longpress-menu" id="longpressMenu">
+        <button class="menu-item" data-action="reply"><span class="mi-icon"><i class="fas fa-reply"></i></span><span>引用</span></button>
+        <button class="menu-item" data-action="recall"><span class="mi-icon"><i class="fas fa-undo-alt"></i></span><span>撤回</span></button>
+        <button class="menu-item danger" data-action="delete"><span class="mi-icon"><i class="fas fa-trash"></i></span><span>删除</span></button>
+        <div class="menu-divider"></div>
+        <button class="menu-item" data-action="multiselect"><span class="mi-icon"><i class="fas fa-check-circle"></i></span><span>多选</span></button>
+        <button class="menu-item" data-action="favorite"><span class="mi-icon"><i class="fas fa-star"></i></span><span>收藏</span></button>
+        <button class="menu-item" data-action="edit"><span class="mi-icon"><i class="fas fa-pen"></i></span><span>编辑</span></button>
+    </div>
+
+    <div class="ios-alert-overlay" id="iosAlert">
+        <div class="ios-alert-box">
+            <div class="ios-alert-title" id="alertTitle">提示</div>
+            <div class="ios-alert-message" id="alertMessage"></div>
+            <button class="ios-alert-button" id="alertButton" data-close>确定</button>
+        </div>
+    </div>
+
+    <div class="ios-popup-overlay" id="actionPopup">
+        <div class="ios-popup-card">
+            <div class="ios-popup-header">
+                <div class="ios-popup-title" id="apTitle">标题</div>
+                <div class="ios-popup-subtitle" id="apSubtitle"></div>
+            </div>
+            <div class="ios-popup-body" id="apBody"></div>
+            <div class="ios-popup-actions">
+                <button class="ios-popup-btn ios-popup-btn-cancel" id="apCancel" data-close>取消</button>
+                <button class="ios-popup-btn ios-popup-btn-confirm" id="apConfirm">确定</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="voice-sheet-overlay" id="voiceSheetOverlay">
+        <div class="voice-sheet">
+            <div class="vs-header">
+                <div class="vs-title">发送语音给 <span id="vsRecipient">群聊</span></div>
+                <button class="vs-close" id="vsClose" data-close><i class="fas fa-times"></i></button>
+            </div>
+            <div class="vs-tabs">
+                <button class="vs-tab active" id="vsTabText">文字语音</button>
+                <button class="vs-tab" id="vsTabRecord">录音语音</button>
+            </div>
+            <textarea class="vs-input" id="vsInput" placeholder="输入这条语音要表达的内容"></textarea>
+            <button class="vs-record-btn" id="vsRecordBtn" style="display:none;">
+                <i class="fas fa-microphone" id="vsRecordIcon"></i>
+                <span id="vsRecordText">点击开始录音</span>
+            </button>
+            <div class="vs-footer">
+                <button class="vs-btn secondary" id="vsCancel" data-close>取消</button>
+                <button class="vs-btn primary" id="vsSend">发送语音</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 发红包（只保留普通） -->
+    <div class="rp-overlay" id="rpOverlay">
+        <div class="rp-nav">
+            <button class="rp-back" id="rpBack" data-back><i class="fas fa-chevron-left"></i></button>
+            <div class="rp-title">发红包</div>
+            <div class="rp-placeholder"></div>
+        </div>
+        <div class="rp-body">
+            <div class="rp-field">
+                <span class="rp-label">金额</span>
+                <input id="rpAmount" type="number" step="0.01" min="0" value="0">
+                <span class="rp-unit">元</span>
+            </div>
+            <div class="rp-field">
+                <span class="rp-label">备注</span>
+                <input class="rp-wish" id="rpWish" type="text" maxlength="30" placeholder="恭喜发财" value="恭喜发财">
+            </div>
+            <div class="rp-field">
+                <span class="rp-label">红包个数</span>
+                <input id="rpCount" type="number" step="1" min="1" value="1">
+                <span class="rp-unit">个</span>
+            </div>
+            <div class="rp-amount-display">
+                <span class="rp-num"><span class="rp-currency">¥</span><span id="rpDisplay">0.00</span></span>
+            </div>
+            <button class="rp-send-btn" id="rpSendBtn">塞钱进红包</button>
+            <div class="rp-note">未领取的红包，将于24小时后发起退款</div>
+        </div>
+    </div>
+
+    <!-- 开红包（图三） -->
+    <div class="openrp-overlay" id="openRpOverlay">
+        <div class="openrp-card">
+            <div class="openrp-sender">
+                <span class="ors-avatar" id="openRpAvatar">群</span>
+                <span id="openRpSender">群友 发出的红包</span>
+            </div>
+            <div class="openrp-wish" id="openRpWish">恭喜发财</div>
+            <button class="openrp-open-btn" id="openRpBtn">開</button>
+            <button class="openrp-close" id="openRpClose" data-close><i class="fas fa-times"></i></button>
+        </div>
+    </div>
+
+    <!-- 红包内页（图二） -->
+    <div class="rp-detail-overlay" id="rpDetailOverlay">
+        <div class="rp-detail-top">
+            <div class="rp-detail-nav">
+                <button id="rpDetailBack" data-back><i class="fas fa-chevron-left"></i></button>
+                <button><i class="fas fa-ellipsis-h"></i></button>
+            </div>
+            <div class="rp-detail-info">
+                <div class="rp-di-avatar">
+                    <span class="rp-di-img" id="rpDetailAvatar">群</span>
+                    <span id="rpDetailSender">群友 发出的红包</span>
+                </div>
+                <div class="rp-di-wish" id="rpDetailWish">恭喜发财</div>
+            </div>
+            <div class="rp-detail-amount">
+                <div class="rp-da-num"><span id="rpDetailMyAmount">0.00</span><span class="rp-da-unit">元</span></div>
+                <div class="rp-da-hint">已存入零钱，可用于发红包 ›</div>
+            </div>
+        </div>
+        <div class="rp-detail-body">
+            <div class="rp-detail-summary" id="rpDetailSummary"></div>
+            <div id="rpDetailList"></div>
+        </div>
+    </div>
+
+    <!-- 抢红包提示条（屏幕中心） -->
+    <div class="rp-toast" id="rpToast">
+        <span id="rpToastText"></span>
+    </div>
+
+    <!-- ===== 表情包弹窗（与单聊一致） ===== -->
+    <div class="emoji-panel-overlay" id="emojiPanelOverlay">
+      <div class="emoji-panel" id="emojiPanel">
+        <div class="ep-header">
+          <div class="ep-title">表情包</div>
+          <button class="ep-close" id="emojiPanelClose" title="关闭" data-close>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <div class="ep-groups" id="emojiGroups"></div>
+        <div class="ep-grid" id="emojiGrid"></div>
+        <div class="ep-empty" id="emojiEmpty" style="display:none;">暂无表情包</div>
+      </div>
+    </div>
+
+    <!-- ===== 图片查看（点击图片进入，底部四个按钮） ===== -->
+    <div class="img-lightbox" id="imgLightbox">
+        <img id="imgLightboxImg" alt="图片">
+        <div class="img-lightbox-actions" id="imgLightboxActions">
+            <button data-act="cancel" title="取消">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                <span>取消</span>
+            </button>
+            <button data-act="reroll" title="重roll">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/><path d="M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                <span>重roll</span>
+            </button>
+            <button data-act="view" title="查看">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                <span>查看</span>
+            </button>
+            <button data-act="save" title="保存">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                <span>保存</span>
+            </button>
+        </div>
+    </div>
+
+</div>
+
+<script src="../js/chat-emoji.js"></script>
+<script src="../js/nano-tts.js"></script>
+        <script src="../js/nano-holiday.js?v=20261012a"></script>
+        <script src="../js/groups.js?v=20261018e"></script>
+<script src="../js/api-float.js?v=20261005a"></script>
+<script src="../swipe-back.js"></script>
+</body>
+</html>

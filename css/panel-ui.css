@@ -1,0 +1,954 @@
+/* ============================================================
+   panel-ui.css — 收藏 / 其他 内页极简皮肤
+   白底 · 黑白灰 · 无多余说明文字
+   ============================================================ */
+:root {
+    --m-ink: #0b0b0c;
+    --m-ink-2: #4a4a4f;
+    --m-muted: #8e8e93;
+    --m-line: #e8e8ea;
+    --m-line-soft: #f1f1f3;
+    --m-fill: #f6f6f7;
+}
+
+/* ============================================================
+   收藏
+   ============================================================ */
+body.panel-favorite,
+body.panel-favorite .phone,
+body.panel-favorite .main-content {
+    background: #fff !important;
+    color: var(--m-ink) !important;
+}
+
+.panel-favorite .nav-bar {
+    background: #fff !important;
+    border-bottom: 1px solid var(--m-line) !important;
+    min-height: 0 !important;
+    padding: calc(14px + max(var(--safe-top, 0px), env(safe-area-inset-top, 0px))) 20px 12px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+}
+.panel-favorite .nav-back {
+    width: 36px !important;
+    height: 36px !important;
+    border-radius: 50% !important;
+    background: var(--m-fill) !important;
+    border: 0 !important;
+    color: var(--m-ink) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 0 !important;
+    flex-shrink: 0 !important;
+}
+.panel-favorite .nav-back svg {
+    width: 18px !important;
+    height: 18px !important;
+    stroke: var(--m-ink) !important;
+    stroke-width: 2 !important;
+    fill: none !important;
+}
+.panel-favorite .nav-title {
+    flex: 1 !important;
+    margin: 0 !important;
+    text-align: left !important;
+    font-size: 24px !important;
+    font-weight: 750 !important;
+    letter-spacing: -0.04em !important;
+    color: var(--m-ink) !important;
+}
+.panel-favorite .main-content {
+    padding: 6px 20px calc(28px + env(safe-area-inset-bottom, 0px)) !important;
+}
+
+.panel-favorite .favorites-list {
+    background: #fff !important;
+    gap: 0 !important;
+}
+.panel-favorite .favorite-wrapper {
+    background: #fff !important;
+    border: 0 !important;
+    border-bottom: 1px solid var(--m-line-soft) !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+}
+.panel-favorite .favorite-wrapper:last-child {
+    border-bottom: 0 !important;
+}
+.panel-favorite .favorite-item {
+    background: #fff !important;
+    padding: 16px 0 !important;
+    gap: 14px !important;
+    border-radius: 0 !important;
+}
+.panel-favorite .favorite-item:active {
+    background: #fafafa !important;
+}
+.panel-favorite .favorite-actions {
+    background: var(--m-ink) !important;
+    color: #fff !important;
+    border-radius: 0 !important;
+}
+.panel-favorite .favorite-actions span {
+    color: #fff !important;
+    font-weight: 600 !important;
+}
+
+.panel-favorite .fav-avatar {
+    width: 42px !important;
+    height: 42px !important;
+    border-radius: 50% !important;
+    background: var(--m-fill) !important;
+    color: var(--m-ink) !important;
+    font-size: 14px !important;
+    font-weight: 650 !important;
+}
+.panel-favorite .fav-avatar::after {
+    display: none !important;
+}
+.panel-favorite .fav-avatar .avatar-inner {
+    border-radius: 50% !important;
+    background: var(--m-fill) !important;
+    color: var(--m-ink) !important;
+    font-size: 14px !important;
+    font-weight: 650 !important;
+}
+.panel-favorite .fav-avatar.type-user,
+.panel-favorite .fav-avatar.type-char,
+.panel-favorite .fav-avatar.type-npc,
+.panel-favorite .fav-avatar.type-default {
+    background: var(--m-fill) !important;
+}
+
+.panel-favorite .fav-info {
+    min-width: 0 !important;
+}
+.panel-favorite .fav-name {
+    font-size: 13px !important;
+    font-weight: 650 !important;
+    color: var(--m-ink) !important;
+}
+.panel-favorite .fav-content {
+    display: -webkit-box !important;
+    -webkit-line-clamp: 2 !important;
+    -webkit-box-orient: vertical !important;
+    overflow: hidden !important;
+    font-size: 14px !important;
+    line-height: 1.55 !important;
+    color: var(--m-ink-2) !important;
+    margin-top: 4px !important;
+}
+.panel-favorite .fav-footer {
+    margin-top: 6px !important;
+}
+.panel-favorite .fav-sender {
+    font-size: 11px !important;
+    color: var(--m-ink-2) !important;
+}
+.panel-favorite .fav-time {
+    font-size: 11px !important;
+    color: var(--m-muted) !important;
+}
+.panel-favorite .empty-state {
+    color: var(--m-muted) !important;
+}
+.panel-favorite .empty-state svg {
+    stroke: #c7c7cc !important;
+}
+.panel-favorite .empty-hint,
+.panel-favorite .fav-toggle {
+    display: none !important;
+}
+
+/* 收藏全文弹窗 */
+.panel-favorite .modal-overlay {
+    background: rgba(0, 0, 0, 0.32) !important;
+    backdrop-filter: blur(6px) !important;
+    -webkit-backdrop-filter: blur(6px) !important;
+}
+.panel-favorite .modal-card {
+    background: #fff !important;
+    border-radius: 18px !important;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.16) !important;
+}
+.panel-favorite .detail-card {
+    border-radius: 18px !important;
+}
+.panel-favorite .detail-meta {
+    border-bottom: 1px solid var(--m-line-soft) !important;
+}
+.panel-favorite .detail-sender {
+    color: var(--m-ink) !important;
+}
+.panel-favorite .detail-time {
+    color: var(--m-muted) !important;
+}
+.panel-favorite .detail-content {
+    color: #222 !important;
+}
+.panel-favorite .modal-btn.primary,
+.panel-favorite .modal-btn {
+    border-radius: 10px !important;
+}
+.panel-favorite .modal-btn.primary {
+    background: var(--m-ink) !important;
+    color: #fff !important;
+}
+
+/* ============================================================
+   其他
+   ============================================================ */
+body.panel-other {
+    background: #fff !important;
+    color: var(--m-ink) !important;
+}
+.panel-other .top-bar {
+    background: #fff !important;
+    border-bottom: 1px solid var(--m-line) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    gap: 10px !important;
+    min-height: 0 !important;
+    padding: calc(14px + max(var(--safe-top, 0px), env(safe-area-inset-top, 0px))) 20px 12px !important;
+    position: sticky !important;
+    top: 0 !important;
+}
+.panel-other .top-back {
+    position: static !important;
+    left: auto !important;
+    bottom: auto !important;
+    width: 36px !important;
+    height: 36px !important;
+    border-radius: 50% !important;
+    background: var(--m-fill) !important;
+    border: 0 !important;
+    color: var(--m-ink) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 0 !important;
+    flex-shrink: 0 !important;
+}
+.panel-other .top-back svg {
+    width: 18px !important;
+    height: 18px !important;
+    stroke: var(--m-ink) !important;
+}
+.panel-other .top-copy {
+    display: block !important;
+    flex: 1 !important;
+}
+.panel-other .top-bar-title {
+    font-size: 24px !important;
+    font-weight: 750 !important;
+    letter-spacing: -0.04em !important;
+    color: var(--m-ink) !important;
+}
+.panel-other .top-kicker,
+.panel-other .top-badge {
+    display: none !important;
+}
+
+.panel-other .container {
+    background: #fff !important;
+    padding: 16px 20px calc(40px + env(safe-area-inset-bottom, 0px)) !important;
+    height: calc(100vh - 76px - max(var(--safe-top, 0px), env(safe-area-inset-top, 0px))) !important;
+}
+
+/* 分段磁贴 */
+.panel-other .seg-bar {
+    background: #fff !important;
+    gap: 8px !important;
+    padding: 0 0 16px !important;
+    position: static !important;
+}
+.panel-other .seg-btn {
+    background: #fff !important;
+    border: 1px solid var(--m-line) !important;
+    color: var(--m-ink-2) !important;
+    border-radius: 14px !important;
+    min-height: 62px !important;
+    box-shadow: none !important;
+    font-weight: 600 !important;
+}
+.panel-other .seg-btn svg {
+    stroke: currentColor !important;
+    fill: none !important;
+}
+.panel-other .seg-btn.active {
+    background: var(--m-ink) !important;
+    border-color: var(--m-ink) !important;
+    color: #fff !important;
+    box-shadow: none !important;
+}
+.panel-other .seg-panel.active {
+    animation: none !important;
+}
+
+/* 分组 */
+.panel-other .group-title {
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.12em !important;
+    text-transform: uppercase !important;
+    color: var(--m-muted) !important;
+    padding: 0 2px 8px !important;
+}
+.panel-other .group-title.spaced {
+    margin-top: 20px !important;
+}
+.panel-other .list-group {
+    background: #fff !important;
+    border: 1px solid var(--m-line) !important;
+    border-radius: 16px !important;
+    box-shadow: none !important;
+    margin-bottom: 0 !important;
+}
+.panel-other .list-item {
+    background: #fff !important;
+    border-bottom: 1px solid var(--m-line-soft) !important;
+    padding: 14px 16px !important;
+    min-height: 58px !important;
+    gap: 12px !important;
+}
+.panel-other .list-item:last-child {
+    border-bottom: 0 !important;
+}
+.panel-other .item-title {
+    font-size: 15px !important;
+    font-weight: 600 !important;
+    color: var(--m-ink) !important;
+    letter-spacing: -0.01em !important;
+}
+.panel-other .item-desc {
+    font-size: 11px !important;
+    color: var(--m-muted) !important;
+    line-height: 1.45 !important;
+    margin-top: 2px !important;
+}
+.panel-other .section-note {
+    display: none !important;
+}
+.panel-other .note-row .note-text {
+    font-size: 11px !important;
+    color: var(--m-muted) !important;
+    line-height: 1.5 !important;
+}
+.panel-other .row-chevron {
+    color: #b8b8bd !important;
+}
+
+/* 开关 */
+.panel-other .ios-switch-track {
+    background: #e6e6e8 !important;
+}
+.panel-other .ios-switch-track::before {
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.16) !important;
+}
+.panel-other .ios-switch input:checked + .ios-switch-track {
+    background: var(--m-ink) !important;
+}
+
+/* 按钮 */
+.panel-other .preview-btn {
+    background: var(--m-ink) !important;
+    border: 1px solid var(--m-ink) !important;
+    color: #fff !important;
+    border-radius: 10px !important;
+    box-shadow: none !important;
+    font-weight: 600 !important;
+}
+.panel-other .preview-btn.ghost {
+    background: #fff !important;
+    color: var(--m-ink) !important;
+    border-color: var(--m-line) !important;
+}
+.panel-other .key-input {
+    background: var(--m-fill) !important;
+    border: 1px solid transparent !important;
+    color: var(--m-ink) !important;
+    border-radius: 10px !important;
+}
+.panel-other .key-input:focus {
+    background: #fff !important;
+    border-color: var(--m-ink) !important;
+    box-shadow: none !important;
+}
+.panel-other .nudge-btn {
+    background: var(--m-fill) !important;
+    border: 0 !important;
+    color: var(--m-ink) !important;
+    border-radius: 8px !important;
+}
+.panel-other .nudge-btn.reset {
+    color: var(--m-muted) !important;
+}
+.panel-other .nudge-value {
+    color: var(--m-muted) !important;
+}
+.panel-other .slider-value {
+    background: var(--m-fill) !important;
+    color: var(--m-ink) !important;
+}
+.panel-other .ball-range {
+    --pct: 50%;
+}
+.panel-other .ball-range::-webkit-slider-runnable-track {
+    background: linear-gradient(to right, var(--m-ink) 0 var(--pct), #e6e6e8 var(--pct) 100%) !important;
+}
+.panel-other .ball-range::-webkit-slider-thumb {
+    background: #fff !important;
+    border: 1px solid var(--m-ink) !important;
+    box-shadow: none !important;
+}
+.panel-other .ball-range::-moz-range-progress {
+    background: var(--m-ink) !important;
+}
+.panel-other .ball-range::-moz-range-track {
+    background: #e6e6e8 !important;
+}
+.panel-other .status-dot {
+    background: #c7c7cc !important;
+    box-shadow: none !important;
+}
+.panel-other .item-title.danger {
+    color: var(--m-ink) !important;
+}
+
+/* ============================================================
+   钱包
+   ============================================================ */
+body.panel-wallet,
+body.panel-wallet .app {
+    background: #fff !important;
+    color: var(--m-ink) !important;
+}
+.panel-wallet .nav-bar {
+    background: #fff !important;
+    border-bottom: 0 !important;
+    min-height: 0 !important;
+    padding: calc(14px + max(var(--safe-top, 0px), env(safe-area-inset-top, 0px))) 20px 12px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    justify-content: flex-start !important;
+}
+.panel-wallet .nav-back {
+    width: 36px !important;
+    height: 36px !important;
+    border-radius: 50% !important;
+    background: var(--m-fill) !important;
+    color: var(--m-ink) !important;
+}
+.panel-wallet .nav-back svg {
+    width: 18px !important;
+    height: 18px !important;
+    stroke: var(--m-ink) !important;
+}
+.panel-wallet .nav-title {
+    flex: 1 !important;
+    margin: 0 !important;
+    text-align: left !important;
+    font-size: 24px !important;
+    font-weight: 750 !important;
+    letter-spacing: -0.04em !important;
+    color: var(--m-ink) !important;
+}
+.panel-wallet .nav-right {
+    flex: none !important;
+}
+.panel-wallet .nav-action {
+    width: 36px !important;
+    height: 36px !important;
+    border-radius: 50% !important;
+    background: var(--m-fill) !important;
+    color: var(--m-ink) !important;
+}
+.panel-wallet .nav-action svg {
+    stroke: var(--m-ink) !important;
+}
+
+.panel-wallet .tab-switch {
+    background: var(--m-fill) !important;
+    border-radius: 12px !important;
+}
+.panel-wallet .tab-switch .tab-btn {
+    color: var(--m-muted) !important;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+.panel-wallet .tab-switch .tab-btn.active {
+    background: var(--m-ink) !important;
+    color: #fff !important;
+}
+
+/* 银行卡保留原本的多样配色（金卡 / 情侣粉卡 / 自己的灰卡等），只统一页面外框 */
+.panel-wallet .card-swipe-hint {
+    display: none !important;
+}
+
+.panel-wallet .balance-actions .action-btn {
+    background: #fff !important;
+    border: 1px solid var(--m-line) !important;
+    color: var(--m-ink) !important;
+    border-radius: 12px !important;
+    font-weight: 600 !important;
+}
+.panel-wallet .balance-actions .action-btn.recharge {
+    background: var(--m-ink) !important;
+    border-color: var(--m-ink) !important;
+    color: #fff !important;
+}
+.panel-wallet .balance-actions .action-btn svg {
+    color: var(--m-ink) !important;
+}
+.panel-wallet .balance-actions .action-btn.recharge svg {
+    color: #fff !important;
+}
+
+.panel-wallet .pay-setting-row {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    margin: 0 0 18px;
+    background: #fff;
+    border: 1px solid var(--m-line);
+    border-radius: 16px;
+    text-align: left;
+    cursor: pointer;
+    color: var(--m-ink);
+}
+.panel-wallet .pay-setting-row:active { background: #fafafa; }
+.panel-wallet .pay-setting-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+.panel-wallet .pay-setting-title {
+    font-size: 15px;
+    font-weight: 600;
+}
+.panel-wallet .pay-setting-sub {
+    font-size: 11px;
+    color: var(--m-muted);
+}
+.panel-wallet .row-chevron { color: #b8b8bd; flex: none; }
+.panel-wallet .pay-clear-btn {
+    width: 100%;
+    height: 36px;
+    margin-top: 6px;
+    border: 0;
+    border-radius: 10px;
+    background: var(--m-fill);
+    color: var(--m-ink);
+    font-size: 12.5px;
+    font-weight: 600;
+}
+.panel-wallet .ios-switch {
+    position: relative;
+    display: inline-block;
+    width: 46px;
+    height: 28px;
+    flex: none;
+}
+.panel-wallet .ios-switch input {
+    position: absolute;
+    opacity: 0;
+    width: 1px;
+    height: 1px;
+}
+.panel-wallet .ios-switch-track {
+    position: absolute;
+    inset: 0;
+    background: #e6e6e8;
+    border-radius: 999px;
+    transition: background 0.2s ease;
+}
+.panel-wallet .ios-switch-track::before {
+    content: "";
+    position: absolute;
+    left: 2px;
+    top: 2px;
+    width: 24px;
+    height: 24px;
+    background: #fff;
+    border-radius: 50%;
+    box-shadow: 0 1px 3px rgba(0,0,0,.16);
+    transition: transform 0.2s ease;
+}
+.panel-wallet .ios-switch input:checked + .ios-switch-track { background: var(--m-ink); }
+.panel-wallet .ios-switch input:checked + .ios-switch-track::before { transform: translateX(18px); }
+
+.panel-wallet .section-header .section-title {
+    font-size: 15px !important;
+    font-weight: 650 !important;
+    color: var(--m-ink) !important;
+    letter-spacing: -0.01em !important;
+}
+.panel-wallet .section-header .section-count {
+    color: var(--m-muted) !important;
+}
+.panel-wallet .entry-list {
+    background: #fff !important;
+    border: 1px solid var(--m-line) !important;
+    border-radius: 16px !important;
+    box-shadow: none !important;
+}
+.panel-wallet .entry-item-wrap {
+    border-bottom: 1px solid #f5f5f6 !important;
+}
+.panel-wallet .entry-item-wrap:last-child {
+    border-bottom: 0 !important;
+}
+.panel-wallet .entry-item {
+    background: #fff !important;
+}
+.panel-wallet .entry-item:active {
+    background: #fafafa !important;
+}
+.panel-wallet .entry-item .entry-icon.income,
+.panel-wallet .entry-item .entry-icon.expense {
+    background: var(--m-fill) !important;
+    color: var(--m-ink) !important;
+    border-radius: 10px !important;
+}
+.panel-wallet .entry-item .entry-info .entry-desc {
+    color: var(--m-ink) !important;
+}
+.panel-wallet .entry-item .entry-info .entry-time {
+    color: var(--m-muted) !important;
+}
+.panel-wallet .entry-item .entry-amount.income {
+    color: var(--m-ink) !important;
+}
+.panel-wallet .entry-item .entry-amount.expense {
+    color: #6b6b70 !important;
+}
+.panel-wallet .entry-delete-btn {
+    background: var(--m-ink) !important;
+    color: #fff !important;
+}
+.panel-wallet .stats-card {
+    background: #fff !important;
+    border: 1px solid var(--m-line) !important;
+    border-radius: 16px !important;
+    box-shadow: none !important;
+}
+.panel-wallet .stats-card .stat-value.income {
+    color: var(--m-ink) !important;
+}
+.panel-wallet .stats-card .stat-value.expense {
+    color: #6b6b70 !important;
+}
+.panel-wallet .stats-card .stat-label {
+    color: var(--m-muted) !important;
+}
+.panel-wallet .empty-entries {
+    color: var(--m-muted) !important;
+}
+.panel-wallet .empty-entries svg {
+    stroke: #c7c7cc !important;
+}
+
+.panel-wallet .modal-overlay {
+    background: rgba(0, 0, 0, 0.32) !important;
+    backdrop-filter: blur(6px) !important;
+    -webkit-backdrop-filter: blur(6px) !important;
+}
+.panel-wallet .modal-card {
+    background: #fff !important;
+    border-radius: 18px !important;
+}
+.panel-wallet .modal-card .btn-confirm {
+    background: var(--m-ink) !important;
+    color: #fff !important;
+}
+.panel-wallet .modal-card .btn-cancel {
+    background: var(--m-fill) !important;
+    color: var(--m-ink) !important;
+}
+.panel-wallet #bkSave {
+    background: var(--m-ink) !important;
+}
+.panel-wallet .toast {
+    background: rgba(0, 0, 0, 0.86) !important;
+}
+
+/* ============================================================
+   备份与恢复
+   ============================================================ */
+body.panel-backup {
+    background: #fff !important;
+    color: var(--m-ink) !important;
+    padding-top: calc(74px + max(var(--safe-top, 0px), env(safe-area-inset-top, 0px))) !important;
+}
+.panel-backup .navbar {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    background: #fff !important;
+    border-bottom: 1px solid var(--m-line) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    padding: calc(14px + max(var(--safe-top, 0px), env(safe-area-inset-top, 0px))) 20px 12px !important;
+    min-height: 0 !important;
+    z-index: 100 !important;
+}
+.panel-backup .nav-title {
+    flex: 1 !important;
+    text-align: left !important;
+    font-size: 24px !important;
+    font-weight: 750 !important;
+    letter-spacing: -0.04em !important;
+    color: var(--m-ink) !important;
+}
+.panel-backup .nav-icon-btn {
+    width: 36px !important;
+    height: 36px !important;
+    border-radius: 50% !important;
+    background: var(--m-fill) !important;
+    color: var(--m-ink) !important;
+    flex-shrink: 0 !important;
+}
+.panel-backup .nav-icon-btn svg {
+    width: 18px !important;
+    height: 18px !important;
+    stroke: var(--m-ink) !important;
+}
+.panel-backup main {
+    padding: 6px 20px 40px !important;
+}
+.panel-backup .list-group {
+    background: #fff !important;
+    border: 1px solid var(--m-line) !important;
+    border-radius: 16px !important;
+    box-shadow: none !important;
+    margin: 0 0 18px 0 !important;
+}
+.panel-backup .section-title {
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.12em !important;
+    text-transform: uppercase !important;
+    color: var(--m-muted) !important;
+    padding: 14px 16px 8px !important;
+}
+.panel-backup .section-footer {
+    display: none !important;
+}
+.panel-backup .list-item {
+    padding: 14px 16px !important;
+    min-height: 58px !important;
+    border-bottom: 1px solid #f5f5f6 !important;
+}
+.panel-backup .list-item:last-child {
+    border-bottom: 0 !important;
+}
+.panel-backup .item-title {
+    font-size: 15px !important;
+    font-weight: 600 !important;
+    color: var(--m-ink) !important;
+}
+.panel-backup .item-sub {
+    display: none !important;
+}
+.panel-backup .item-icon {
+    width: 34px !important;
+    height: 34px !important;
+    border-radius: 10px !important;
+    background: var(--m-fill) !important;
+    color: var(--m-ink) !important;
+}
+.panel-backup .chevron {
+    color: #c3c3c8 !important;
+}
+.panel-backup .char-select {
+    background: var(--m-fill) !important;
+    border: 1px solid transparent !important;
+    border-radius: 10px !important;
+    color: var(--m-ink) !important;
+    height: 34px !important;
+}
+.panel-backup .spinner {
+    border-color: rgba(0, 0, 0, 0.12) !important;
+    border-top-color: var(--m-ink) !important;
+}
+.panel-backup .alert-overlay,
+.panel-backup .progress-overlay {
+    background: rgba(0, 0, 0, 0.32) !important;
+    backdrop-filter: blur(6px) !important;
+    -webkit-backdrop-filter: blur(6px) !important;
+}
+.panel-backup .alert-box,
+.panel-backup .progress-card {
+    background: #fff !important;
+    border-radius: 18px !important;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.16) !important;
+}
+.panel-backup .alert-title,
+.panel-backup .progress-title {
+    color: var(--m-ink) !important;
+}
+.panel-backup .alert-message,
+.panel-backup .progress-text {
+    color: var(--m-ink-2) !important;
+}
+.panel-backup .alert-btn {
+    color: var(--m-ink) !important;
+}
+.panel-backup .alert-btn-confirm {
+    color: var(--m-ink) !important;
+    font-weight: 700 !important;
+}
+.panel-backup .alert-btn-confirm.danger {
+    color: #111 !important;
+}
+.panel-backup .progress-bar {
+    background: var(--m-fill) !important;
+}
+.panel-backup .progress-fill {
+    background: var(--m-ink) !important;
+}
+
+/* ============================================================
+   储存
+   ============================================================ */
+body.panel-storage {
+    background: #fff !important;
+    color: var(--m-ink) !important;
+    padding-top: calc(74px + max(var(--safe-top, 0px), env(safe-area-inset-top, 0px))) !important;
+}
+.panel-storage .navbar {
+    background: #fff !important;
+    border-bottom: 1px solid var(--m-line) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    padding: calc(14px + max(var(--safe-top, 0px), env(safe-area-inset-top, 0px))) 20px 12px !important;
+    min-height: 0 !important;
+}
+.panel-storage .nav-title {
+    flex: 1 !important;
+    text-align: left !important;
+    font-size: 24px !important;
+    font-weight: 750 !important;
+    letter-spacing: -0.04em !important;
+    color: var(--m-ink) !important;
+}
+.panel-storage .nav-icon-btn {
+    width: 36px !important;
+    height: 36px !important;
+    border-radius: 50% !important;
+    background: var(--m-fill) !important;
+    color: var(--m-ink) !important;
+    flex: none !important;
+}
+.panel-storage .nav-icon-btn svg { stroke: var(--m-ink) !important; }
+.panel-storage main { padding: 6px 20px 40px !important; }
+.panel-storage .overview-card {
+    background: #fff !important;
+    border: 1px solid var(--m-line) !important;
+    border-radius: 18px !important;
+    box-shadow: none !important;
+    margin: 0 0 18px !important;
+    padding: 18px !important;
+}
+.panel-storage .overview-label { color: var(--m-muted) !important; }
+.panel-storage .overview-amount { font-size: 36px !important; font-weight: 800 !important; color: var(--m-ink) !important; }
+.panel-storage .overview-quota-value { color: var(--m-ink) !important; }
+.panel-storage .progress-bar {
+    background: var(--m-fill) !important;
+    border-radius: 999px !important;
+    overflow: hidden !important;
+}
+.panel-storage .legend-item { color: var(--m-muted) !important; }
+.panel-storage .list-group {
+    background: #fff !important;
+    border: 1px solid var(--m-line) !important;
+    border-radius: 16px !important;
+    box-shadow: none !important;
+    overflow: hidden !important;
+    margin: 0 0 18px !important;
+}
+.panel-storage .list-item {
+    background: #fff !important;
+    border-bottom: 1px solid #f5f5f6 !important;
+    padding: 14px 16px !important;
+    min-height: 58px !important;
+}
+.panel-storage .list-item:last-child { border-bottom: 0 !important; }
+.panel-storage .item-title {
+    font-size: 15px !important;
+    font-weight: 600 !important;
+    color: var(--m-ink) !important;
+}
+.panel-storage .item-sub {
+    font-size: 11px !important;
+    color: var(--m-muted) !important;
+}
+.panel-storage .footer-note { display: none !important; }
+.panel-storage .text-red { color: var(--m-ink) !important; }
+.panel-storage .chevron { color: #c3c3c8 !important; }
+.panel-storage .action-sheet {
+    background: #fff !important;
+    border-radius: 20px 20px 0 0 !important;
+}
+.panel-storage .sheet-header { border-bottom: 1px solid var(--m-line-soft) !important; }
+.panel-storage .sheet-title { color: var(--m-ink) !important; }
+.panel-storage .sheet-confirm { color: var(--m-ink) !important; font-weight: 700 !important; }
+.panel-storage .sheet-btn { color: var(--m-muted) !important; }
+.panel-storage .sheet-item {
+    background: var(--m-fill) !important;
+    border: 1px solid transparent !important;
+}
+.panel-storage .sheet-item.selected {
+    background: #fff !important;
+    border-color: var(--m-ink) !important;
+}
+.panel-storage .sheet-check { color: var(--m-ink) !important; }
+.panel-storage .alert-overlay { background: rgba(0,0,0,.32) !important; backdrop-filter: blur(6px) !important; }
+.panel-storage .alert-box { background: #fff !important; border-radius: 18px !important; }
+.panel-storage .alert-title { color: var(--m-ink) !important; }
+.panel-storage .alert-message { color: var(--m-ink-2) !important; }
+.panel-storage .alert-btn { color: var(--m-ink) !important; }
+.panel-storage .alert-btn-confirm { font-weight: 700 !important; }
+.panel-storage .alert-btn-cancel { border-right-color: var(--m-line) !important; }
+
+/* 收藏分割线更浅 */
+.panel-favorite .favorite-wrapper {
+    border-bottom: 0 !important;
+}
+.panel-favorite .favorite-wrapper + .favorite-wrapper .favorite-item {
+    border-top: 0.5px solid #f5f5f7 !important;
+}
+
+@media (max-width: 390px) {
+    .panel-favorite .nav-title,
+    .panel-other .top-bar-title { font-size: 22px !important; }
+    .panel-favorite .nav-bar,
+    .panel-other .top-bar { padding-left: 16px !important; padding-right: 16px !important; }
+    .panel-favorite .main-content,
+    .panel-other .container { padding-left: 16px !important; padding-right: 16px !important; }
+}
+
+/* 支付密码：假圆点 */
+input[data-masked-key="1"] {
+    -webkit-text-security: disc;
+    text-security: disc;
+}
+

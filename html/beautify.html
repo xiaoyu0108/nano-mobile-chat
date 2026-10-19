@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<script src="../js/nano-runtime.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>美化</title>
+<link rel="stylesheet" href="../css/beautify.css?v=20261017a">
+</head>
+<body>
+<div id="app">
+<header class="header">
+<button class="back" id="back" aria-label="返回" data-back>
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5 8 12l7 7"/></svg>
+</button>
+<div class="title">美化</div>
+<div class="header-right"></div>
+</header>
+
+<main class="content">
+<nav class="tabs">
+<button class="active" data-page="global">全局</button>
+<button data-page="chat">聊天</button>
+<button data-page="font">字体</button>
+</nav>
+
+<!-- ===== 全局页面 ===== -->
+<section class="page active" id="global">
+<div class="group">
+<div class="labelrow"><span class="label">CSS代码</span><span class="import-actions"><button class="import" id="globalExport" aria-label="导出预设">
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.6" y1="13.5" x2="15.4" y2="17.5"/><line x1="15.4" y1="6.5" x2="8.6" y2="10.5"/></svg>
+</button><button class="import" id="globalImport" aria-label="导入">
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11"/><path d="m8 10 4 4 4-4"/><path d="M5 20h14"/><path d="M5 16v4"/><path d="M19 16v4"/></svg>
+</button></span><input class="hidden" id="globalFile" type="file" accept=".txt,.json,.css"></div>
+<div class="editor-wrap"><textarea id="globalCode" spellcheck="false" placeholder="全局 CSS 代码…"></textarea></div>
+</div>
+<div class="tools"><button class="tool" data-clear="global">清空</button><button class="tool" data-restore="global">还原</button><button class="tool" data-copy="global">复制初始</button><button class="tool apply" data-apply="global">应用</button></div>
+<div class="live-preview" id="globalPreviewCard">
+<div class="lp-head" data-lp="global" role="button" tabindex="0" aria-expanded="false">
+<span class="lp-title">全局预览</span><span class="lp-sub">真实页面 · 点开查看</span><span class="lp-caret">▾</span>
+</div>
+<div class="lp-body"><iframe class="lp-frame" id="globalPreviewFrame" data-target="global" data-src="../index.html" loading="lazy" title="全局预览"></iframe></div>
+<span id="globalPreview" style="display:none"></span>
+</div>
+<div class="group"><div class="labelrow"><span class="label">预设</span></div><div class="presetrow"><select id="globalPreset"></select><button class="delete" data-delete="global" aria-label="删除">
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="m7 7 1 13h8l1-13"/><path d="M10 11v5M14 11v5"/></svg>
+</button></div></div>
+<div class="namerow"><input class="name" id="globalName" placeholder="预设名称"><div class="actions"><button class="action save" data-save="global">保存</button><button class="action edit" data-edit="global">修改</button></div></div>
+</section>
+
+<!-- ===== 聊天页面 ===== -->
+<section class="page" id="chat">
+<div class="group">
+<div class="labelrow"><span class="label">CSS代码</span><span class="import-actions"><button class="import" id="chatExport" aria-label="导出预设">
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.6" y1="13.5" x2="15.4" y2="17.5"/><line x1="15.4" y1="6.5" x2="8.6" y2="10.5"/></svg>
+</button><button class="import" id="chatImport" aria-label="导入">
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11"/><path d="m8 10 4 4 4-4"/><path d="M5 20h14"/><path d="M5 16v4"/><path d="M19 16v4"/></svg>
+</button></span><input class="hidden" id="chatFile" type="file" accept=".txt,.json,.css"></div>
+<div class="editor-wrap"><textarea id="chatCode" spellcheck="false" placeholder="聊天 CSS 代码…"></textarea></div>
+</div>
+<div class="tools"><button class="tool" data-clear="chat">清空</button><button class="tool" data-restore="chat">还原</button><button class="tool" data-copy="chat">复制初始</button><button class="tool apply" data-apply="chat">应用</button></div>
+<div class="tune-card">
+<div class="labelrow"><span class="label">头像调节（头像方圆 / 头像大小 / 头像框）</span></div>
+<div class="tune-row"><span class="tune-label">头像方圆</span><input type="range" class="tune-slider" id="avatarRadius" min="0" max="50" step="1" value="50"><span class="tune-val" id="avatarRadiusVal">50%</span></div>
+<div class="tune-row"><span class="tune-label">头像大小</span><input type="range" class="tune-slider" id="avatarSize" min="20" max="80" step="1" value="36"><span class="tune-val" id="avatarSizeVal">36px</span></div>
+<div class="tune-row"><span class="tune-label">头像框 PNG</span><input type="text" id="avatarFrameUrl" placeholder="粘贴扣好的透明 PNG 链接" style="flex:1;min-width:0;padding:8px 10px;border:1px solid rgba(60,60,67,0.12);border-radius:10px;font-size:13px;background:#fff;color:#1c1c1e;outline:none"></div>
+<div class="tune-row"><span class="tune-label">框大小</span><input type="range" class="tune-slider" id="avatarFrameScale" min="0" max="40" step="1" value="16"><span class="tune-val" id="avatarFrameScaleVal">16%</span></div>
+<div class="tune-row tune-row-4"><span class="tune-label">头像框预设</span><select id="avatarFramePreset" style="flex:1;min-width:0;height:34px;border:1px solid rgba(60,60,67,0.12);border-radius:10px;padding:0 8px;font-size:13px;background:#fff;color:#1c1c1e"><option value="">选择预设…</option></select><button class="tool-sm" id="avatarFramePresetSave" title="存为预设" style="margin-left:6px;display:flex;align-items:center;justify-content:center;width:36px;padding:0;flex:none"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg></button>
+<button class="tool-sm" id="avatarFramePresetDel" title="删除选中预设" style="margin-left:4px;display:flex;align-items:center;justify-content:center;width:36px;padding:0;flex:none;color:#e0245e"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="m7 7 1 13h8l1-13"/><path d="M10 11v5M14 11v5"/></svg></button></div>
+</div>
+<div class="live-preview" id="chatPreviewCard">
+<div class="lp-head" data-lp="chat" role="button" tabindex="0" aria-expanded="false">
+<span class="lp-title">聊天预览</span><span class="lp-sub">真实页面 · 点开查看</span><span class="lp-caret">▾</span>
+</div>
+<div class="lp-body"><iframe class="lp-frame" id="chatPreviewFrame" data-target="chat" data-src="chat_inner.html" loading="lazy" title="聊天预览"></iframe></div>
+<span id="chatPreview" style="display:none"></span>
+</div>
+<div class="group"><div class="labelrow"><span class="label">预设</span></div><div class="presetrow"><select id="chatPreset"></select><button class="delete" data-delete="chat" aria-label="删除">
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="m7 7 1 13h8l1-13"/><path d="M10 11v5M14 11v5"/></svg>
+</button></div></div>
+<div class="namerow"><input class="name" id="chatName" placeholder="预设名称"><div class="actions"><button class="action save" data-save="chat">保存</button><button class="action edit" data-edit="chat">修改</button></div></div>
+</section>
+
+<!-- ===== 字体页面 ===== -->
+<section class="page" id="font">
+<div class="font-preview-card">
+<div style="font-size:var(--font-size-preview,28px);font-weight:400;font-family:inherit;line-height:1.4;transition:font-size 0.15s" id="fontPreview">Aa 你好，世界</div>
+ <div style="font-size:11px;color:#8e8e93;margin-top:4px" id="fontMeta">系统默认</div>
+ </div>
+
+ <div class="group">
+  <div class="labelrow"><span class="label">快速切换 / 还原</span></div>
+  <div class="font-preset-bar" id="fontPresetBar"></div>
+ </div>
+
+ <div class="font-size-group">
+<div class="font-size-header">
+<span class="font-size-label">字体大小</span>
+<span class="font-size-value" id="fontSizeDisplay">16px</span>
+</div>
+<div class="font-size-slider-wrap">
+<input type="range" class="font-size-slider" id="fontSizeSlider" min="10" max="32" value="16" step="1">
+<div class="font-size-marks">
+<span>10</span>
+<span>16</span>
+<span>24</span>
+<span>32</span>
+</div>
+</div>
+</div>
+
+<div class="group">
+<div class="labelrow"><span class="label">字体文件</span><button class="import" id="fontImport" aria-label="导入字体">
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11"/><path d="m8 10 4 4 4-4"/><path d="M5 20h14"/><path d="M5 16v4"/><path d="M19 16v4"/></svg>
+</button><input class="hidden" id="fontFile" type="file" accept=".ttf,.otf,.woff,.woff2"></div>
+<div class="font-file-row"><span id="filename">未选择</span><button class="tool-sm" id="fontClearFile">清除</button></div>
+</div>
+
+<div class="group">
+<div class="labelrow"><span class="label">字体 URL</span></div>
+<div class="url-row"><input class="name" id="fontUrl" type="url" placeholder="https://example.com/font.ttf"><button class="tool apply" id="urlApply">连接</button></div>
+</div>
+
+<div class="tools"><button class="tool" id="fontClear">清空</button><button class="tool" id="fontRestore">还原</button><button class="tool apply" id="fontApply">应用</button></div>
+
+<div class="group"><div class="labelrow"><span class="label">预设</span></div><div class="presetrow"><select id="fontPreset"></select><button class="delete" id="fontDelete" aria-label="删除">
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="m7 7 1 13h8l1-13"/><path d="M10 11v5M14 11v5"/></svg>
+</button></div></div>
+<div class="namerow"><input class="name" id="fontName" placeholder="预设名称"><div class="actions"><button class="action save" id="fontSave">保存</button><button class="action edit" id="fontEdit">修改</button></div></div>
+</section>
+
+</main>
+</div>
+<div class="toast" id="toast"></div>
+
+<script src="../js/nano-global-template.js?v=20261005e"></script>
+<script src="../js/nano-chat-template.js?v=20261006c"></script>
+<script src="../js/avatar-frame.js?v=20261010a"></script>
+<script src="../js/nano-export.js?v=20261015a"></script>
+<script src="../js/beautify.js?v=20261017a"></script>
+<script src="../js/api-float.js?v=20261005a"></script>
+<script src="../swipe-back.js"></script>
+<script>
+(function () {
+  function fill() {
+    var s = document.getElementById('avatarFramePreset'); if (!s || !window.NanoAvatarFrame) return;
+    var ps = NanoAvatarFrame.getPresets();
+    s.innerHTML = '<option value="">选择预设…</option>' + ps.map(function (p, i) { return '<option value="' + i + '">' + String(p.name || ('预设' + (i + 1))).replace(/[<>&]/g, '') + '</option>'; }).join('');
+  }
+  document.addEventListener('DOMContentLoaded', function () {
+    fill();
+    var s = document.getElementById('avatarFramePreset');
+    if (s) s.addEventListener('change', function () {
+      var ps = window.NanoAvatarFrame ? NanoAvatarFrame.getPresets() : [];
+      var p = ps[parseInt(this.value, 10)];
+      var inp = document.getElementById('avatarFrameUrl');
+      if (p && inp) { inp.value = p.url || ''; inp.dispatchEvent(new Event('input', { bubbles: true })); inp.dispatchEvent(new Event('change', { bubbles: true })); }
+    });
+    var b = document.getElementById('avatarFramePresetSave');
+    if (b) b.addEventListener('click', function () {
+      var inp = document.getElementById('avatarFrameUrl');
+      var url = (inp && inp.value || '').trim();
+      if (!url) { alert('先粘贴头像框链接'); return; }
+      if (!window.NanoAvatarFrame) return;
+      var name = prompt('给这个头像框起个名字', '头像框 ' + (NanoAvatarFrame.getPresets().length + 1));
+      if (name == null) return;
+      var ps = NanoAvatarFrame.getPresets();
+      ps.push({ name: (name || '').trim() || ('头像框' + (ps.length + 1)), url: url });
+      try { localStorage.setItem('avatar_frame_presets', JSON.stringify(ps)); } catch (e) {}
+      fill(); alert('已保存预设');
+    });
+    var d = document.getElementById('avatarFramePresetDel');
+    if (d) d.addEventListener('click', function () {
+      if (!window.NanoAvatarFrame) return;
+      var s = document.getElementById('avatarFramePreset');
+      var idx = s ? parseInt(s.value, 10) : NaN;
+      if (isNaN(idx)) { alert('先在下拉里选一个预设'); return; }
+      var ps = NanoAvatarFrame.getPresets(); ps.splice(idx, 1);
+      try { localStorage.setItem('avatar_frame_presets', JSON.stringify(ps)); } catch (e) {}
+      fill(); alert('已删除预设');
+    });
+  });
+})();
+</script>
+</body>
+</html>

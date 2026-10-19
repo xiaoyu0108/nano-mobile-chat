@@ -1,0 +1,820 @@
+/* ===== wallet.css ===== */
+/* 隐藏数字输入框的上下调节按钮 */
+input[type=number]::-webkit-outer-spin-button,
+input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none !important; margin: 0 !important; }
+input[type=number] { -moz-appearance: textfield !important; appearance: textfield !important; }
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+}
+html,
+body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #ffffff;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", "PingFang SC", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    position: fixed;
+    top: 0;
+    left: 0;
+}
+
+/* ===== 容器 ===== */
+.app {
+    width: 100%;
+    height: 100%;
+    max-width: 430px;
+    margin: 0 auto;
+    background: #ffffff;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+}
+
+/* ===== 顶栏 ===== */
+.nav-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: calc(10px + max(var(--safe-top, 0px), env(safe-area-inset-top, 0px))) 12px 10px;
+    background: #ffffff;
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    border-bottom: 0.5px solid rgba(60, 60, 67, 0.08);
+    flex-shrink: 0;
+    min-height: 44px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+.nav-bar .nav-back {
+    width: 40px;
+    height: 40px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.04);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 20px;
+    color: #007aff;
+    transition: all 0.15s;
+    flex-shrink: 0;
+}
+.nav-bar .nav-back:active {
+    transform: scale(0.88);
+    background: rgba(0, 0, 0, 0.08);
+}
+.nav-bar .nav-back svg {
+    width: 20px;
+    height: 20px;
+    stroke: #007aff;
+    stroke-width: 2.5;
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+.nav-bar .nav-title {
+    font-size: 17px;
+    font-weight: 600;
+    color: #1c1c1e;
+    letter-spacing: -0.3px;
+    flex: 1;
+    text-align: center;
+    margin: 0 8px;
+}
+.nav-bar .nav-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.nav-bar .nav-action {
+    width: 36px;
+    height: 36px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(0, 122, 255, 0.10);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 20px;
+    color: #007aff;
+    transition: all 0.15s;
+    flex-shrink: 0;
+}
+.nav-bar .nav-action:active {
+    transform: scale(0.88);
+    background: rgba(0, 122, 255, 0.20);
+}
+.nav-bar .nav-action svg {
+    width: 22px;
+    height: 22px;
+    stroke: currentColor;
+    stroke-width: 2.5;
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+.nav-bar .nav-action.hidden {
+    display: none;
+}
+
+/* ===== 切换标签 ===== */
+.tab-switch {
+    display: flex;
+    background: rgba(120, 120, 128, 0.08);
+    border-radius: 10px;
+    padding: 3px;
+    margin: 0 16px 12px 16px;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 5;
+}
+.tab-switch .tab-btn {
+    flex: 1;
+    border: none;
+    background: transparent;
+    padding: 8px 0;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    color: #6c6c70;
+    cursor: pointer;
+    transition: all 0.25s cubic-bezier(0.32, 0.72, 0, 1);
+    font-family: inherit;
+}
+.tab-switch .tab-btn.active {
+    background: #ffffff;
+    color: #1c1c1e;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+.tab-switch .tab-btn:active {
+    transform: scale(0.95);
+}
+
+/* ===== 页面容器 ===== */
+.page-container {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+}
+.page {
+    position: absolute;
+    inset: 0;
+    overflow-y: auto;
+    padding: 0 16px 30px;
+    -webkit-overflow-scrolling: touch;
+    transition: opacity 0.25s ease, transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+    opacity: 0;
+    transform: translateX(20px);
+    pointer-events: none;
+}
+.page.active {
+    opacity: 1;
+    transform: translateX(0);
+    pointer-events: auto;
+}
+.page::-webkit-scrollbar {
+    display: none;
+}
+
+/* ===== 银行卡卡�?===== */
+.bank-card {
+    background: linear-gradient(145deg, #1a2a4a, #0d1b36);
+    border-radius: 20px;
+    padding: 24px 20px 20px;
+    margin-bottom: 16px;
+    box-shadow: 0 8px 32px rgba(0, 20, 50, 0.20), 0 2px 8px rgba(0, 0, 0, 0.06);
+    position: relative;
+    overflow: hidden;
+    min-height: 170px;
+}
+.bank-card::before {
+    content: '';
+    position: absolute;
+    top: -40%;
+    right: -20%;
+    width: 160px;
+    height: 160px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.04);
+}
+.bank-card::after {
+    content: '';
+    position: absolute;
+    bottom: -30%;
+    left: -10%;
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.03);
+}
+/* 银行卡堆叠（Apple 钱包风格）：选中的整张在顶部，其余只露一条边叠在下面 */
+.bank-stack { position: relative; margin-bottom: 14px; }
+.bank-stack .bank-card {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 200px;
+    min-height: 0;
+    margin: 0;
+    padding: 22px;
+    border-radius: 16px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    transform-origin: top center;
+    transition: top 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
+    cursor: pointer;
+}
+.bank-stack .bank-card.top { box-shadow: 0 12px 26px rgba(0, 0, 0, 0.24); animation: cardPop 0.42s ease; }
+.bank-stack .bank-card.peek { box-shadow: 0 8px 18px rgba(0, 0, 0, 0.14); }
+/* 选中卡片：放大 → 停顿 → 回位 */
+@keyframes cardPop {
+    0%   { transform: scale(0.96); }
+    40%  { transform: scale(1.06); }
+    72%  { transform: scale(1.06); }
+    100% { transform: scale(1); }
+}
+/* 金卡用深色文字保证对比度 */
+.bank-card.on-gold .card-bank-name,
+.bank-card.on-gold .balance-label,
+.bank-card.on-gold .balance-amount,
+.bank-card.on-gold .card-number,
+.bank-card.on-gold .card-holder,
+.bank-card.on-gold .fc-bound,
+.bank-card.on-gold .currency { color: #3a2f10; }
+.bank-card.on-gold .fc-badge { background: rgba(58, 47, 16, 0.18); color: #3a2f10; }
+/* 亲属卡淡粉底 → 浅粉文字 */
+.bank-card.on-light .card-bank-name,
+.bank-card.on-light .balance-label,
+.bank-card.on-light .balance-amount,
+.bank-card.on-light .card-number,
+.bank-card.on-light .card-holder,
+.bank-card.on-light .fc-bound,
+.bank-card.on-light .currency { color: #b4799a; }
+.bank-card.on-light .fc-badge { background: rgba(255, 255, 255, 0.85); color: #c98caa; }
+/* 自己的卡：灰色 */
+.bank-card.own {
+    background: linear-gradient(145deg, #3d434a, #22262b);
+    box-shadow: 0 8px 32px rgba(20, 24, 28, 0.22), 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+/* 亲属卡 / 亲密卡：粉色 */
+.bank-card.family {
+    background: linear-gradient(145deg, #ff9ec4, #ff5fa2);
+    box-shadow: 0 8px 32px rgba(255, 95, 162, 0.28), 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+.bank-card.family .card-chip {
+    background: linear-gradient(135deg, #ffe1ee, #ffb6d3);
+    opacity: 0.85;
+}
+/* 亲属卡行：徽标 → 连接线 → 绑定人 */
+.card-bank-name .fc-badge {
+    display: inline-block; padding: 1px 7px; border-radius: 8px;
+    background: rgba(255, 255, 255, 0.35); font-size: 11px; font-weight: 700;
+    color: #fff; letter-spacing: 0.5px; margin-right: 2px;
+}
+.card-bank-name .fc-link { display: inline-flex; vertical-align: middle; margin: 0 4px; opacity: 0.9; }
+.card-bank-name .fc-bound { font-weight: 600; color: #fff; }
+.card-swipe-hint { text-align: center; font-size: 11px; color: rgba(120, 120, 130, 0.6); margin-bottom: 14px; }
+.bank-card .card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    position: relative;
+    z-index: 1;
+}
+.bank-card .card-bank-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.7);
+    letter-spacing: 1px;
+}
+.bank-card .card-chip {
+    width: 32px;
+    height: 24px;
+    background: linear-gradient(135deg, #d4af37, #b8962e);
+    border-radius: 4px;
+    opacity: 0.7;
+}
+.bank-card .card-balance {
+    margin-top: 18px;
+    position: relative;
+    z-index: 1;
+}
+.bank-card .card-balance .balance-label {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.5);
+    letter-spacing: 0.5px;
+    font-weight: 500;
+}
+.bank-card .card-balance .balance-amount {
+    display: block;
+    font-size: 38px;
+    font-weight: 700;
+    color: #ffffff;
+    letter-spacing: -0.5px;
+    margin-top: 2px;
+    font-feature-settings: "tnum";
+}
+.bank-card .card-balance .balance-amount .currency {
+    font-size: 22px;
+    font-weight: 600;
+    margin-right: 2px;
+}
+.bank-card .card-bottom {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    margin-top: 20px;
+    position: relative;
+    z-index: 1;
+}
+.bank-card .card-number {
+    font-size: 17px;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.85);
+    letter-spacing: 2px;
+    font-feature-settings: "tnum";
+}
+.bank-card .card-number .mask {
+    letter-spacing: 1px;
+}
+.bank-card .card-holder {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.45);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* ===== 操作按钮 ===== */
+.balance-actions {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+.balance-actions .action-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px 0;
+    border: none;
+    border-radius: 14px;
+    background: #ffffff;
+    font-size: 15px;
+    font-weight: 500;
+    color: #1c1c1e;
+    cursor: pointer;
+    transition: all 0.15s;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+    border: 0.5px solid rgba(60, 60, 67, 0.06);
+}
+.balance-actions .action-btn:active {
+    transform: scale(0.94);
+    background: #f2f2f7;
+}
+.balance-actions .action-btn svg {
+    width: 18px;
+    height: 18px;
+    color: #007aff;
+    fill: currentColor;
+    stroke: none;
+}
+.balance-actions .action-btn.recharge svg {
+    color: #34c759;
+}
+
+/* ===== 统计卡片（记账页�?===== */
+.stats-card {
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 16px;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+    border: 0.5px solid rgba(60, 60, 67, 0.06);
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+}
+.stats-card .stat-item {
+    text-align: center;
+}
+.stats-card .stat-item .stat-value {
+    font-size: 20px;
+    font-weight: 700;
+    font-feature-settings: "tnum";
+}
+.stats-card .stat-item .stat-value.income {
+    color: #34c759;
+}
+.stats-card .stat-item .stat-value.expense {
+    color: #ff3b30;
+}
+.stats-card .stat-item .stat-label {
+    font-size: 12px;
+    color: #8e8e93;
+    margin-top: 2px;
+    font-weight: 500;
+}
+.stats-card .stat-divider {
+    width: 0.5px;
+    height: 36px;
+    background: rgba(60, 60, 67, 0.10);
+}
+
+/* ===== 列表样式 ===== */
+.section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 0 10px;
+}
+.section-header .section-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #1c1c1e;
+}
+.section-header .section-count {
+    font-size: 13px;
+    color: #8e8e93;
+    font-weight: 400;
+}
+
+.entry-list {
+    background: #ffffff;
+    border-radius: 14px;
+    overflow: hidden;
+    border: 0.5px solid rgba(60, 60, 67, 0.06);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.02);
+}
+.entry-item-wrap {
+    overflow: hidden;
+    position: relative;
+    border-bottom: 0.5px solid rgba(60, 60, 67, 0.06);
+    transition: max-height 0.3s ease, opacity 0.3s ease, transform 0.3s ease;
+}
+.entry-item-wrap:last-child {
+    border-bottom: none;
+}
+.entry-item-wrap.swiped-out {
+    max-height: 0;
+    opacity: 0;
+    transform: translateX(30px);
+    pointer-events: none;
+    border-bottom: none;
+}
+
+.entry-item {
+    display: flex;
+    align-items: center;
+    padding: 12px 16px;
+    background: #ffffff;
+    transition: transform 0.25s cubic-bezier(0.32, 0.72, 0, 1);
+    cursor: default;
+    position: relative;
+    z-index: 2;
+    touch-action: pan-y;
+}
+.entry-item .entry-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-right: 12px;
+}
+.entry-item .entry-icon.income {
+    background: rgba(52, 199, 89, 0.12);
+    color: #34c759;
+}
+.entry-item .entry-icon.expense {
+    background: rgba(255, 59, 48, 0.12);
+    color: #ff3b30;
+}
+.entry-item .entry-icon svg {
+    width: 18px;
+    height: 18px;
+    stroke: currentColor;
+    stroke-width: 2;
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+.entry-item .entry-info {
+    flex: 1;
+    min-width: 0;
+}
+.entry-item .entry-info .entry-desc {
+    font-size: 15px;
+    font-weight: 500;
+    color: #1c1c1e;
+    line-height: 1.3;
+}
+.entry-item .entry-info .entry-time {
+    font-size: 12px;
+    color: #8e8e93;
+    margin-top: 1px;
+}
+.entry-item .entry-amount {
+    font-size: 15px;
+    font-weight: 600;
+    flex-shrink: 0;
+    margin-left: 10px;
+    font-feature-settings: "tnum";
+}
+.entry-item .entry-amount.income {
+    color: #34c759;
+}
+.entry-item .entry-amount.expense {
+    color: #ff3b30;
+}
+
+/* 左滑删除按钮 */
+.entry-delete-btn {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 80px;
+    background: #ff3b30;
+    color: #fff;
+    border: none;
+    font-size: 15px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border-radius: 0 14px 14px 0;
+    z-index: 1;
+    transition: opacity 0.2s;
+}
+.entry-delete-btn:active {
+    opacity: 0.7;
+}
+.entry-delete-btn svg {
+    width: 22px;
+    height: 22px;
+    stroke: currentColor;
+    stroke-width: 2;
+    fill: none;
+    margin-right: 6px;
+}
+
+/* 左滑状�?*/
+.entry-item-wrap.swiped .entry-item {
+    transform: translateX(-80px);
+}
+
+.entry-item-wrap .entry-item:active {
+    background: #f2f2f7;
+}
+
+/* 空状�?*/
+.empty-entries {
+    padding: 30px 16px;
+    text-align: center;
+    color: #8e8e93;
+    font-size: 14px;
+}
+.empty-entries svg {
+    width: 40px;
+    height: 40px;
+    stroke: #c7c7cc;
+    stroke-width: 1.5;
+    fill: none;
+    margin-bottom: 10px;
+}
+
+/* ===== iOS 弹窗 ===== */
+.modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.12);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    animation: modalFade 0.25s ease;
+}
+.modal-overlay.active {
+    display: flex;
+}
+@keyframes modalFade {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+.modal-card {
+    width: min(320px, calc(100vw - 40px));
+    background: rgba(242, 242, 247, 0.95);
+    backdrop-filter: blur(30px) saturate(180%);
+    -webkit-backdrop-filter: blur(30px) saturate(180%);
+    border-radius: 20px;
+    overflow: hidden;
+    border: 0.5px solid rgba(255, 255, 255, 0.3);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.12);
+    animation: modalPop 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+}
+@keyframes modalPop {
+    from {
+        transform: scale(0.92);
+        opacity: 0;
+    }
+    to {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+.modal-card .modal-header {
+    padding: 18px 16px 6px;
+    text-align: center;
+}
+.modal-card .modal-header .modal-title {
+    font-size: 17px;
+    font-weight: 600;
+    color: #1c1c1e;
+}
+.modal-card .modal-header .modal-sub {
+    font-size: 13px;
+    color: #8e8e93;
+    margin-top: 3px;
+}
+
+.modal-card .modal-body {
+    padding: 10px 16px 14px;
+}
+.modal-card .modal-body .input-group {
+    background: #ffffff;
+    border-radius: 12px;
+    border: 0.5px solid rgba(60, 60, 67, 0.12);
+    overflow: hidden;
+}
+.modal-card .modal-body .input-row {
+    display: flex;
+    align-items: center;
+    padding: 10px 14px;
+    border-bottom: 0.5px solid rgba(60, 60, 67, 0.12);
+}
+.modal-card .modal-body .input-row:last-child {
+    border-bottom: none;
+}
+.modal-card .modal-body .input-row .label {
+    font-size: 15px;
+    font-weight: 500;
+    color: #1c1c1e;
+    width: 56px;
+    flex-shrink: 0;
+}
+.modal-card .modal-body .input-row input,
+.modal-card .modal-body .input-row select {
+    flex: 1;
+    border: none;
+    outline: none;
+    background: transparent;
+    font-size: 15px;
+    color: #1c1c1e;
+    font-family: inherit;
+}
+.modal-card .modal-body .input-row input::placeholder {
+    color: #c7c7cc;
+}
+.modal-card .modal-body .input-row input[type="number"] {
+    font-feature-settings: "tnum";
+    -moz-appearance: textfield;
+}
+.modal-card .modal-body .input-row input[type="number"]::-webkit-outer-spin-button,
+.modal-card .modal-body .input-row input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+.modal-card .modal-body .input-row select {
+    appearance: auto;
+    padding-right: 4px;
+}
+
+.modal-card .modal-actions {
+    display: flex;
+    border-top: 0.5px solid rgba(60, 60, 67, 0.12);
+}
+.modal-card .modal-actions button {
+    flex: 1;
+    height: 46px;
+    border: none;
+    background: transparent;
+    font-size: 17px;
+    cursor: pointer;
+    transition: background 0.15s;
+    font-family: inherit;
+}
+.modal-card .modal-actions button:active {
+    background: rgba(0, 0, 0, 0.05);
+}
+.modal-card .modal-actions .btn-cancel {
+    color: #007aff;
+    font-weight: 400;
+    border-right: 0.5px solid rgba(60, 60, 67, 0.12);
+}
+.modal-card .modal-actions .btn-confirm {
+    color: #007aff;
+    font-weight: 600;
+}
+
+/* ===== Toast ===== */
+.toast {
+    position: fixed;
+    bottom: 100px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.72);
+    color: #fff;
+    padding: 10px 24px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 500;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    z-index: 999;
+    max-width: 80%;
+    text-align: center;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+}
+.toast.show {
+    opacity: 1;
+}
+
+/* ===== 响应�?===== */
+@media (max-width: 480px) {
+    .bank-card {
+        padding: 18px 16px 16px;
+        min-height: 145px;
+    }
+    .bank-card .card-balance .balance-amount {
+        font-size: 30px;
+    }
+    .bank-card .card-number {
+        font-size: 14px;
+    }
+    .entry-item {
+        padding: 10px 14px;
+    }
+    .entry-item .entry-icon {
+        width: 32px;
+        height: 32px;
+        margin-right: 10px;
+    }
+    .entry-item .entry-amount {
+        font-size: 14px;
+    }
+    .balance-actions .action-btn {
+        font-size: 13px;
+        padding: 10px 0;
+    }
+    .stats-card .stat-item .stat-value {
+        font-size: 17px;
+    }
+    .entry-delete-btn {
+        width: 70px;
+        font-size: 13px;
+        border-radius: 0 12px 12px 0;
+    }
+    .entry-delete-btn svg {
+        width: 18px;
+        height: 18px;
+        margin-right: 4px;
+    }
+}
+@media (max-width: 380px) {
+    .bank-card .card-balance .balance-amount {
+        font-size: 26px;
+    }
+    .modal-card {
+        width: calc(100vw - 24px);
+    }
+}
+@media (max-width: 520px) {
+    .app {
+        max-width: none;
+    }
+}

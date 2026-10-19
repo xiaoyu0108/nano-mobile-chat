@@ -1,0 +1,185 @@
+/* ============================================================
+   discover.css �?纯白�?· 照片�?+ 极简入口
+   已移除右侧菜单，照片墙尺�?圆角重新调和
+   ============================================================ */
+
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+
+html,body{
+  margin:0;background:#fff;color:#111;
+  font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue","PingFang SC",
+  "Hiragino Sans GB",Arial,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
+
+/* ---------- 顶栏 ---------- */
+.top-bar{
+  position:sticky;top:0;z-index:10;
+  min-height:44px;
+  padding:calc(10px + max(var(--safe-top, 0px), env(safe-area-inset-top, 0px))) 12px 10px;
+  display:flex;align-items:center;justify-content:center;
+  background:#fff;
+  border-bottom:.5px solid rgba(0,0,0,.06);
+}
+.top-bar-title{
+  font-size:17px;font-weight:600;letter-spacing:-.3px;color:#111;
+}
+
+/* ---------- 容器 ---------- */
+.container{
+  max-width:560px;margin:0 auto;
+  padding:26px 20px 52px;
+  overflow:hidden;
+}
+
+/* ============================================================
+   照片轮播�?—�?尺寸与圆角重新调�?
+   ============================================================ */
+.carousel-section{margin-bottom:36px}
+
+.carousel{
+  height:340px;
+  position:relative;
+  perspective:1000px;
+}
+
+.card{
+  position:absolute;
+  width:212px;height:284px;
+  left:50%;top:16px;
+  transform:translateX(-50%);
+  border-radius:26px;           /* 更圆润，与入口卡片呼�?*/
+  background:#f2f2f7;
+  overflow:hidden;
+  box-shadow:0 16px 34px rgba(0,0,0,.10);
+  transition:transform .5s cubic-bezier(.2,.75,.2,1),opacity .35s,z-index .1s;
+  cursor:pointer;user-select:none;
+}
+.card img{width:100%;height:100%;object-fit:cover;display:block}
+.card::after{
+  content:"";position:absolute;inset:0;
+  background:linear-gradient(180deg,rgba(255,255,255,.04),transparent 45%,rgba(0,0,0,.10));
+  pointer-events:none;
+}
+
+/* 中心最大，两侧依次缩小，间距收紧让整体更紧�?*/
+.card.center  {transform:translateX(-50%) scale(1);z-index:5}
+.card.left    {transform:translateX(calc(-50% - 122px)) scale(.80) rotateY(14deg);z-index:3;opacity:.95}
+.card.right   {transform:translateX(calc(-50% + 122px)) scale(.80) rotateY(-14deg);z-index:3;opacity:.95}
+.card.farleft {transform:translateX(calc(-50% - 196px)) scale(.64) rotateY(20deg);z-index:2;opacity:.68}
+.card.farright{transform:translateX(calc(-50% + 196px)) scale(.64) rotateY(-20deg);z-index:2;opacity:.68}
+
+/* 圆点 */
+.dots{display:flex;justify-content:center;gap:6px;margin-top:20px}
+.dot{width:5px;height:5px;border-radius:50%;background:#dcdce0;transition:.25s}
+.dot.active{width:18px;border-radius:9px;background:#111}
+
+/* ============================================================
+   三个入口
+   ============================================================ */
+.entries{
+  display:flex;flex-direction:column;gap:12px;
+}
+
+.entry{
+  display:flex;align-items:center;
+  padding:15px 16px;
+  border-radius:20px;               /* 与照片圆角呼�?*/
+  background:#fafafa;
+  border:.5px solid rgba(0,0,0,.04);
+  text-align:left;
+  transition:background .18s,transform .18s;
+}
+.entry:active{
+  background:#f2f2f7;
+  transform:scale(.985);
+}
+
+.entry-icon{
+  width:42px;height:42px;border-radius:13px;
+  display:grid;place-items:center;flex:none;
+  box-shadow:0 4px 12px rgba(0,0,0,.08);
+}
+.entry-icon svg{width:22px;height:22px;fill:#fff}
+
+.entry-text{
+  flex:1;margin-left:14px;
+  display:flex;flex-direction:column;
+  min-width:0;
+}
+.entry-title{
+  font-size:16px;font-weight:600;letter-spacing:-.3px;color:#111;
+}
+.entry-cn{
+  margin-left:6px;
+  font-size:11px;
+  font-weight:500;
+  letter-spacing:.02em;
+  color:#b8b2b4;
+}
+.entry-desc{
+  margin-top:3px;font-size:11px;color:#9a9a9f;letter-spacing:.1px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+
+.entry-arrow{
+  width:8px;height:14px;flex:none;margin-left:10px;
+}
+
+/* ============================================================
+   换图弹层
+   ============================================================ */
+.mask{
+  position:fixed;inset:0;background:rgba(0,0,0,.2);
+  opacity:0;pointer-events:none;transition:.25s;z-index:20;
+}
+.mask.open{opacity:1;pointer-events:auto}
+
+.sheet{
+  position:fixed;left:50%;bottom:0;width:min(560px,100%);
+  transform:translate(-50%,105%);
+  background:rgba(255,255,255,.98);
+  backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
+  border-radius:24px 24px 0 0;padding:11px 20px 25px;
+  z-index:21;transition:.3s cubic-bezier(.2,.8,.2,1);
+}
+.sheet.open{transform:translate(-50%,0)}
+
+.grabber{width:35px;height:4px;background:#d1d1d6;border-radius:9px;margin:1px auto 18px}
+.sheet h3{font-size:14px;margin:0 0 13px;font-weight:600}
+.sheet button{
+  width:100%;height:49px;text-align:left;
+  border-top:.5px solid #ececec;font-size:15px;
+}
+.sheet .cancel{color:#8e8e93}
+
+/* toast */
+.toast{
+  position:fixed;left:50%;bottom:24px;z-index:30;
+  background:#111;color:#fff;border-radius:30px;
+  padding:9px 15px;font-size:12px;
+  transform:translate(-50%,12px);opacity:0;transition:.25s;
+  pointer-events:none;white-space:nowrap;
+}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+
+input{display:none}
+/* 隐藏滚动条但保留滚动能力 */
+html, body {
+  overflow-y: auto;
+  scrollbar-width: none;        /* Firefox */
+  -ms-overflow-style: none;     /* IE/Edge */
+}
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  display: none;                /* Chrome/Safari/WebKit */
+  width: 0;
+  height: 0;
+}
+
+/* 如果外层容器还叠加了滚动条，用这个兜�?*/
+.container, .page {
+  overflow: hidden;
+}

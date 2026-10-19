@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<script src="../js/nano-runtime.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>共享集市</title>
+<link rel="stylesheet" href="../css/market.css?v=20261018a">
+</head>
+<body>
+
+<div class="app" id="app">
+  <header class="topbar">
+    <div class="topbar-left">
+      <button class="topbar-btn topbar-back" id="topBackBtn" type="button" aria-label="返回" hidden>
+        <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
+      <div class="brand" id="brandBtn">
+        共享集市
+        <small>MARKET</small>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <button class="topbar-btn" id="topSearchBtn" aria-label="搜索">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m16.5 16.5 4 4"/></svg>
+      </button>
+      <button class="topbar-btn" id="topProfileBtn" aria-label="我的">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M5 21c.8-4 3.5-6 7-6s6.2 2 7 6"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <!-- 首页 -->
+    <section class="page active" id="page-home">
+      <div class="hero">
+        <div class="eyebrow">SHARE · COLLECT · CREATE</div>
+        <h1>好资源，<br><em>值得被看见。</em></h1>
+      </div>
+
+      <div class="mode-banner" id="modeBanner">
+        <svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z"/><path d="M12 8v5M12 16h.01"/></svg>
+        <span id="modeText">正在连接共享服务器…</span>
+        <button class="set" id="modeSet" hidden>去设置</button>
+      </div>
+
+      <div class="section-label"><h2>资源分类</h2><span>FOLDERS</span></div>
+      <div class="folder-grid" id="folderGrid"></div>
+
+      <div class="section-label"><h2>最近分享</h2><span id="recentLabel">LATEST</span></div>
+      <div class="search-row">
+        <label class="search-box">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m16.5 16.5 4 4"/></svg>
+          <input id="homeSearch" placeholder="搜索资源、作者或关键词">
+        </label>
+        <button class="search-btn" id="homeSearchBtn">搜索</button>
+      </div>
+      <div class="post-list" id="homePosts"></div>
+    </section>
+
+    <!-- 分类页 -->
+    <section class="page" id="page-category">
+      <div class="page-header">
+        <span class="page-kicker">COLLECTION</span>
+        <h1 id="categoryTitle">全部资源</h1>
+        <p id="categorySub">浏览集市内的用户分享。</p>
+      </div>
+      <div class="search-row">
+        <label class="search-box">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m16.5 16.5 4 4"/></svg>
+          <input id="categorySearch" placeholder="在当前分类中搜索">
+        </label>
+      </div>
+      <div class="post-list" id="categoryPosts"></div>
+    </section>
+
+    <!-- 发布页 -->
+    <section class="page" id="page-upload">
+      <div class="page-header">
+        <h1>发布资源</h1>
+        <p>填写资源信息、上传图片与文件，即可分享给集市里的所有人。</p>
+      </div>
+      <form id="uploadForm">
+        <div class="form-group">
+          <label class="form-label">资源名称</label>
+          <input class="form-input" id="resourceTitle" maxlength="80" required placeholder="例如：极简灰白全局美化">
+        </div>
+        <div class="form-group">
+          <label class="form-label">资源分类</label>
+          <select class="form-select" id="resourceCategory" required></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">资源介绍</label>
+          <textarea class="form-textarea" id="resourceDesc" maxlength="2000" placeholder="介绍资源特点、适用范围、导入方式等"></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">预览图片（可多张）</label>
+          <label class="upload-zone" for="imageInput">
+            <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+            <strong>点击上传图片</strong>
+            <span>支持 JPG / PNG / WEBP · 可多选</span>
+            <input id="imageInput" type="file" accept="image/*" multiple>
+          </label>
+          <div class="upload-image-grid" id="imagePreviewGrid"></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">资源文件（可多个）</label>
+          <label class="upload-zone" for="resourceFile">
+            <svg viewBox="0 0 24 24"><path d="M12 16V4m-5 5 5-5 5 5"/><path d="M4 16v4h16v-4"/></svg>
+            <strong id="fileLabel">点击选择文件</strong>
+            <span>美化CSS / 世界书 / 表情包 / 角色卡 / 字体 / 音乐 等</span>
+            <input id="resourceFile" type="file" multiple>
+          </label>
+          <div class="upload-file-list" id="uploadFileList"></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">关键词（选填）</label>
+          <input class="form-input" id="resourceTags" placeholder="用逗号分隔，如：灰白、极简、手机端">
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" id="clearUpload">清空</button>
+          <button type="submit" class="btn btn-primary" id="submitBtn">发布资源</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- 个人主页 -->
+    <section class="page" id="page-profile">
+      <div class="page-header">
+        <h1>我的主页</h1>
+        <p>管理个人资料，查看已发布的资源。</p>
+      </div>
+      <div class="profile-card">
+        <div class="profile-avatar" id="profileAvatar">U</div>
+        <div class="profile-info">
+          <h2 id="profileName">资源玩家</h2>
+          <p id="profileBio">分享灵感，也收藏灵感。</p>
+        </div>
+        <button class="profile-edit" id="editProfileBtn">编辑</button>
+      </div>
+      <div class="profile-stats">
+        <div class="profile-stat"><strong id="myPostCount">0</strong><span>已发布</span></div>
+        <div class="profile-stat"><strong id="myLikeCount">0</strong><span>收到点赞</span></div>
+        <div class="profile-stat"><strong id="myImportCount">0</strong><span>已导入</span></div>
+      </div>
+      <div class="section-label"><h2>我上传的资源</h2><span>MY FILES</span></div>
+      <div id="myPosts"></div>
+    </section>
+  </main>
+
+  <nav class="bottombar">
+    <button class="nav-btn active" data-page="page-home">
+      <svg viewBox="0 0 24 24"><path d="M4 10.5 12 4l8 6.5"/><path d="M6 9.5V20h12V9.5"/><path d="M10 20v-6h4v6"/></svg>
+      <span>首页</span>
+    </button>
+    <button class="nav-btn" data-page="page-category" id="navCategory">
+      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></svg>
+      <span>分类</span>
+    </button>
+    <button class="nav-btn" data-page="page-upload">
+      <svg viewBox="0 0 24 24"><path d="M12 16V4m-5 5 5-5 5 5"/><path d="M4 16v4h16v-4"/></svg>
+      <span>发布</span>
+    </button>
+    <button class="nav-btn" data-page="page-profile">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M5 21c.8-4 3.5-6 7-6s6.2 2 7 6"/></svg>
+      <span>我的</span>
+    </button>
+  </nav>
+</div>
+
+<!-- 详情页 -->
+<div class="detail-page" id="detailPage">
+  <div class="detail-header">
+    <button class="detail-back" id="detailBack" aria-label="返回">
+      <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <span class="detail-header-title">资源详情</span>
+    <span class="detail-header-spacer"></span>
+  </div>
+  <div class="detail-content" id="detailContent"></div>
+</div>
+
+<!-- 图片灯箱 -->
+<div class="lightbox" id="lightbox">
+  <button class="lightbox-close" id="lightboxClose">×</button>
+  <img id="lightboxImg" src="" alt="">
+</div>
+
+<!-- 个人资料编辑弹窗 -->
+<div class="modal-overlay" id="profileModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>编辑个人资料</h3>
+      <button class="modal-close" id="closeProfileModal">×</button>
+    </div>
+    <div class="form-group">
+      <label class="form-label">头像</label>
+      <label class="upload-zone" for="avatarFile" style="padding:20px;">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M5 21c.8-4 3.5-6 7-6s6.2 2 7 6"/></svg>
+        <strong>选择头像图片</strong>
+        <span>支持 JPG / PNG / WEBP</span>
+        <input id="avatarFile" type="file" accept="image/*">
+      </label>
+    </div>
+    <div class="form-group">
+      <label class="form-label">昵称</label>
+      <input class="form-input" id="nicknameInput" maxlength="24" placeholder="输入昵称">
+    </div>
+    <div class="form-group">
+      <label class="form-label">个人简介</label>
+      <input class="form-input" id="bioInput" maxlength="80" placeholder="一句话介绍自己">
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-secondary" id="cancelProfileModal">取消</button>
+      <button class="btn btn-primary" id="saveProfileModal">保存</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="../js/appearance.js?v=20261018a"></script>
+<script src="../js/market.js?v=20261018a"></script>
+</body>
+</html>

@@ -1,0 +1,3911 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <script src="js/nano-runtime.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <script>
+    // 版本升级时强制清一次缓存并重载：避免手机/PWA 一直跑旧 JS（屏幕共享/思维链等问题）
+    (function () {
+        try {
+            var KEY = 'nano_build';
+            var CUR = 'nano-2026-10-05-01';
+            var prev = null, ok = false;
+            try { prev = localStorage.getItem(KEY); } catch (e) {}
+            if (prev === CUR) return;
+            try { localStorage.setItem(KEY, CUR); ok = true; } catch (e) {}
+            var jobs = [];
+            try {
+                if (window.caches && caches.keys) jobs.push(caches.keys().then(function (ks) {
+                    return Promise.all(ks.map(function (k) { return caches.delete(k).catch(function () {}); }));
+                }));
+            } catch (e) {}
+            try {
+                if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) jobs.push(navigator.serviceWorker.getRegistrations().then(function (rs) {
+                    return Promise.all(rs.map(function (r) { return r.unregister().catch(function () {}); }));
+                }));
+            } catch (e) {}
+            var fired = false;
+            var go = function () { if (fired) return; fired = true; if (ok) { try { location.reload(); } catch (e) {} } };
+            Promise.all(jobs).catch(function () {}).then(go);
+            setTimeout(go, 1200);
+        } catch (e) {}
+    })();
+    </script>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="纳米">
+    <meta name="theme-color" content="#ffffff">
+    <link rel="icon" href="icons/icon-192.png">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
+    <link rel="apple-touch-icon" sizes="512x512" href="icons/icon-512.png">
+    <link rel="manifest" href="manifest.json">
+    <title>纳米</title>
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+    <!-- 聊天/通话/设置页会同步加载 localforage；在这里提前拉，避免它们卡在 CDN 往返上 -->
+    <link rel="preload" as="script" href="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js">
+    <link rel="dns-prefetch" href="https://unpkg.com">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" media="print" onload="this.media='all'">
+    <link rel="stylesheet" href="common.css">
+    <style>
+        :root {
+            --safe-inset-top: env(safe-area-inset-top, 0px);
+            --safe-inset-bottom: env(safe-area-inset-bottom, 0px);
+        }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100vh;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            overscroll-behavior: none;
+            background: transparent;
+        }
+
+        .app-container {
+            width: 100%;
+            height: 100vh;
+            margin: 0;
+            background: transparent;
+            padding: 0 16px 0 16px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            border: none;
+            position: relative;
+        }
+
+        .app-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            min-height: 0;
+            padding-top: 0;
+            padding-bottom: 0;
+        }
+
+        .top-bar {
+            position: absolute;
+            top: calc(14px + var(--safe-inset-top));
+            left: 16px;
+            right: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 20;
+            pointer-events: none;
+        }
+        .top-bar.hidden {
+            display: none !important;
+        }
+        .top-bar>* {
+            pointer-events: auto;
+        }
+        .top-bar .spacer {
+            flex: 1;
+        }
+
+        .menu-btn, .add-btn {
+            width: 38px;
+            height: 38px;
+            border-radius: 38px;
+            background: rgba(0, 0, 0, 0.03);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+            border: 0.5px solid rgba(0, 0, 0, 0.04);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 17px;
+            color: #1c1c1e;
+            cursor: pointer;
+            transition: all 0.15s;
+            flex-shrink: 0;
+            background: #ffffff;
+        }
+        .menu-btn:active, .add-btn:active {
+            transform: scale(0.88);
+            background: rgba(0, 0, 0, 0.05);
+        }
+        .add-btn {
+            color: #007aff;
+            font-size: 20px;
+        }
+
+        .iframe-container {
+            flex: 1;
+            display: none;
+            flex-direction: column;
+            overflow: hidden;
+            min-height: 0;
+            border-radius: 16px;
+            background: transparent;
+            position: relative;
+        }
+        .iframe-container.active {
+            display: flex;
+        }
+        .iframe-container iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            background: transparent;
+        }
+
+        .bottom-actions {
+            position: absolute;
+            bottom: 20px;
+            left: 16px;
+            right: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            z-index: 20;
+            pointer-events: none;
+            background: transparent;
+        }
+        .bottom-actions.hidden {
+            display: none !important;
+        }
+        .bottom-actions>* {
+            pointer-events: auto;
+        }
+
+        .capsule-group {
+            display: flex;
+            background: rgba(255, 255, 255, 0.35);
+            backdrop-filter: blur(30px) saturate(240%);
+            -webkit-backdrop-filter: blur(30px) saturate(240%);
+            border-radius: 50px;
+            padding: 5px 8px;
+            border: 0.5px solid rgba(255, 255, 255, 0.45);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
+            gap: 2px;
+        }
+
+        .capsule-btn {
+            width: 50px;
+            height: 40px;
+            border-radius: 40px;
+            background: transparent;
+            border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            color: #8e8e93;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .capsule-btn:active {
+            transform: scale(0.88);
+            background: rgba(0, 122, 255, 0.08);
+        }
+        .capsule-btn.active-btn {
+            background: rgba(0, 122, 255, 0.15);
+            color: #007aff;
+            box-shadow: none;
+        }
+
+        .circle-more {
+            width: 52px;
+            height: 52px;
+            border-radius: 52px;
+            background: #ffffff;
+            border: 0.5px solid rgba(0, 0, 0, 0.04);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            color: #8e8e93;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .circle-more:active {
+            transform: scale(0.88);
+            background: rgba(0, 122, 255, 0.08);
+        }
+        .circle-more.active-btn {
+            background: rgba(0, 122, 255, 0.15);
+            color: #007aff;
+            box-shadow: none;
+        }
+
+        .fullscreen-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100vh;
+            background: #ffffff;
+            z-index: 100;
+            display: none;
+            flex-direction: column;
+            overflow: hidden;
+            border: none;
+            padding: 0 16px 0 16px;
+        }
+        .fullscreen-overlay.active {
+            display: flex;
+        }
+        .fullscreen-overlay.no-header .overlay-header {
+            display: none;
+        }
+
+        .overlay-inner {
+            width: 100%;
+            max-width: 430px;
+            margin: 0 auto;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .overlay-header {
+            display: flex;
+            justify-content: flex-start;
+            align-items: center;
+            padding: calc(14px + var(--safe-inset-top)) 0 12px 0;
+            flex-shrink: 0;
+            position: relative;
+        }
+        .overlay-header .back-btn {
+            width: 38px;
+            height: 38px;
+            border-radius: 38px;
+            background: rgba(0, 0, 0, 0.03);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+            border: 0.5px solid rgba(0, 0, 0, 0.04);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 17px;
+            color: #1c1c1e;
+            cursor: pointer;
+            transition: all 0.15s;
+            background: #ffffff;
+            flex-shrink: 0;
+        }
+        .overlay-header .back-btn:active {
+            transform: scale(0.88);
+            background: rgba(0, 0, 0, 0.05);
+        }
+        .overlay-header .back-btn.hidden {
+            display: none !important;
+        }
+        .overlay-header .overlay-title {
+            flex: 1;
+            text-align: center;
+            font-size: 17px;
+            font-weight: 600;
+            color: #1c1c1e;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .overlay-header .placeholder {
+            width: 38px;
+            flex-shrink: 0;
+        }
+
+        .overlay-content {
+            flex: 1;
+            overflow: hidden;
+            min-height: 0;
+            border-radius: 16px;
+            background: transparent;
+            position: relative;
+        }
+        .overlay-content iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            background: transparent;
+        }
+        #voiceCallFrame {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border: none;
+            background: transparent;
+            display: none;
+        }
+        #chatInnerFrame {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border: none;
+            background: transparent;
+            display: none;
+        }
+        #musicFrame {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border: none;
+            background: transparent;
+            display: none;
+        }
+        #momentsFrame {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border: none;
+            background: transparent;
+            display: none;
+        }
+        #insFrame {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border: none;
+            background: transparent;
+            display: none;
+        }
+
+        /* 通话 / 音乐是整屏沉浸页：位置交给它们自己的 CSS，不加安全区兜底 */
+
+        .voice-float-ball {
+            position: absolute;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: linear-gradient(145deg, #34c759, #12a150);
+            box-shadow: 0 8px 24px rgba(18, 161, 80, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+            cursor: grab;
+            z-index: 99999;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+            transition: transform 0.15s, box-shadow 0.15s;
+        }
+
+        .voice-float-ball.is-video {
+            background: linear-gradient(145deg, #5ac8fa, #0a84ff);
+            box-shadow: 0 8px 24px rgba(10, 132, 255, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+        }
+
+        .voice-float-ball::after {
+            content: '';
+            position: absolute;
+            inset: -5px;
+            border-radius: 50%;
+            border: 2px solid rgba(52, 199, 89, 0.5);
+            animation: voiceBallPulse 1.8s ease-out infinite;
+            pointer-events: none;
+        }
+        .voice-float-ball.is-video::after { border-color: rgba(10, 132, 255, 0.5); }
+        @keyframes voiceBallPulse {
+            0% { transform: scale(0.9); opacity: 0.7; }
+            100% { transform: scale(1.3); opacity: 0; }
+        }
+
+        .voice-float-ball:active {
+            cursor: grabbing;
+            transform: scale(0.92);
+        }
+
+        .voice-float-ball .ball-icon {
+            width: 24px;
+            height: 24px;
+            stroke: #ffffff;
+            stroke-width: 2.5;
+            fill: none;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            pointer-events: none;
+        }
+
+        .voice-float-ball .ball-time {
+            font-size: 10px;
+            color: #ffffff;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            margin-top: 1px;
+            pointer-events: none;
+        }
+
+        .voice-float-ball.dragging {
+            transition: none;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(0, 0, 0, 0.06);
+        }
+
+        /* 统一内置通知栏：椭圆形透明白玻璃，左侧头像 + 昵称 + 具体信息 */
+        .app-notify {
+            position: absolute;
+            left: 50%;
+            top: calc(8px + var(--safe-inset-top));
+            transform: translate(-50%, -150%) scale(0.96);
+            z-index: 100000;
+            width: min(92vw, 430px);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 9px 16px 9px 10px;
+            border-radius: 26px;
+            background: rgba(255, 255, 255, 0.58);
+            color: #111;
+            border: 1px solid rgba(255, 255, 255, 0.75);
+            box-shadow:
+                0 12px 34px rgba(0, 0, 0, 0.12),
+                0 2px 8px rgba(0, 0, 0, 0.05),
+                inset 0 1px 0 rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(30px) saturate(180%);
+            -webkit-backdrop-filter: blur(30px) saturate(180%);
+            transition: transform 0.32s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.32s;
+            opacity: 0;
+            cursor: pointer;
+        }
+        .app-notify.show { transform: translate(-50%, 0) scale(1); opacity: 1; }
+        .app-notify .an-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            overflow: hidden;
+            flex: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.055);
+            color: #1c1c1e;
+            font-size: 15px;
+            font-weight: 700;
+            box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.65);
+        }
+        .app-notify .an-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+            border-radius: 50%;
+        }
+        .app-notify .an-main {
+            min-width: 0;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .app-notify .an-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: #111;
+            letter-spacing: -0.01em;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .app-notify .an-body {
+            font-size: 12px;
+            color: #555;
+            line-height: 1.38;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        .app-notify .an-actions { margin-top: 4px; }
+        .app-notify .an-action {
+            display: inline-block;
+            padding: 4px 11px;
+            border-radius: 999px;
+            background: rgba(0, 0, 0, 0.065);
+            color: #111;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .app-notify .an-action:active { background: rgba(0, 0, 0, 0.12); }
+        /* 旧 pink 样式统一收进白玻璃，不再出现粉色横幅 */
+        .app-notify.pink {
+            background: rgba(255, 255, 255, 0.58);
+            color: #111;
+            box-shadow:
+                0 12px 34px rgba(0, 0, 0, 0.12),
+                0 2px 8px rgba(0, 0, 0, 0.05),
+                inset 0 1px 0 rgba(255, 255, 255, 0.85);
+        }
+        .app-notify.pink .an-title { color: #111; }
+        .app-notify.pink .an-body { color: #555; }
+        .app-notify.pink .an-action { background: rgba(0, 0, 0, 0.065); color: #111; }
+
+        .music-float-ball {
+            position: absolute;
+            width: 42px; height: 42px;
+            border-radius: 50%;
+            z-index: 99998;
+            display: none;
+            align-items: center; justify-content: center;
+            cursor: grab;
+            user-select: none; -webkit-user-select: none;
+            touch-action: none;
+            transition: width 0.28s cubic-bezier(0.32, 0.72, 0, 1),
+                        height 0.28s cubic-bezier(0.32, 0.72, 0, 1),
+                        border-radius 0.28s cubic-bezier(0.32, 0.72, 0, 1),
+                        transform 0.2s,
+                        box-shadow 0.2s;
+            overflow: hidden;
+            background: linear-gradient(145deg, #2a2a2e 0%, #1a1a1e 100%);
+            box-shadow:
+                0 5px 18px rgba(0, 0, 0, 0.24),
+                0 2px 6px rgba(0, 0, 0, 0.12),
+                inset 0 1px 0 rgba(255, 255, 255, 0.08);
+            border: 1.5px solid rgba(255, 255, 255, 0.85);
+        }
+        .music-float-ball.show { display: flex; }
+        body.keyboard-open .music-float-ball { display: none !important; }
+        .music-float-ball:active { cursor: grabbing; }
+
+        .music-float-ball.expanded {
+            width: 210px;
+            height: 74px;
+            border-radius: 20px;
+            cursor: default;
+            padding: 8px;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 10px;
+            background: linear-gradient(145deg, #2a2a2e 0%, #1a1a1e 100%);
+            box-shadow:
+                0 10px 32px rgba(0, 0, 0, 0.28),
+                0 2px 6px rgba(0, 0, 0, 0.16),
+                inset 0 1px 0 rgba(255, 255, 255, 0.08);
+            position: absolute;
+        }
+
+        .music-float-ball .ball-cover {
+            width: 100%; height: 100%;
+            object-fit: cover; border-radius: 50%;
+            animation: ballRotate 16s linear infinite;
+            animation-play-state: paused;
+            flex-shrink: 0;
+            display: block;
+        }
+        .music-float-ball.playing .ball-cover { animation-play-state: running; }
+        .music-float-ball.expanded .ball-cover {
+            width: 46px; height: 46px;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.4);
+            border-radius: 50%;
+            overflow: hidden;
+        }
+        .music-float-ball .ball-placeholder {
+            width: 100%; height: 100%;
+            display: flex; align-items: center; justify-content: center;
+            color: rgba(255, 255, 255, 0.5);
+            flex-shrink: 0;
+        }
+        .music-float-ball .ball-placeholder svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 1.8; fill: none; }
+        .music-float-ball.expanded .ball-placeholder {
+            width: 46px; height: 46px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 50%;
+        }
+        @keyframes ballRotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+        .ball-expand-content {
+            display: none;
+            flex: 1;
+            flex-direction: column;
+            min-width: 0;
+            justify-content: center;
+            gap: 4px;
+            height: 100%;
+            padding-right: 38px;
+        }
+        .music-float-ball.expanded .ball-expand-content { display: flex; }
+        .ball-expand-title {
+            font-size: 11.5px; font-weight: 600; color: #fff;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+            line-height: 1.2;
+        }
+        .ball-expand-artist {
+            font-size: 9.5px; color: rgba(255,255,255,0.55);
+            margin-top: 1px;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .ball-expand-buttons { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+        .ball-expand-btn {
+            width: 22px; height: 22px;
+            border: none; background: transparent;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer; color: rgba(255,255,255,0.9);
+            border-radius: 50%; padding: 0;
+        }
+        .ball-expand-btn:active { background: rgba(255,255,255,0.1); }
+        .ball-expand-btn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+        .ball-expand-btn.play { width: 26px; height: 26px; background: rgba(255,255,255,0.15); }
+        .ball-expand-btn.play svg { width: 14px; height: 14px; fill: #fff; stroke: none; }
+
+        .ball-off-btn {
+            position: absolute;
+            top: 6px; right: 6px;
+            padding: 2px 6px;
+            background: #fff;
+            color: #ff3b30;
+            border: 1px solid #ff3b30;
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 0.3px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-family: inherit;
+            display: none;
+            line-height: 1.4;
+        }
+        .music-float-ball.expanded .ball-off-btn { display: block; }
+
+        /* 顶部灵动岛区域：透明点击带（背景仍延伸，下方按钮不受影响）。
+           点一下 = 回到聊天页 / 返回上一层，解决“点灵动岛回不去聊天”。 */
+        .notch-tap {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: var(--safe-inset-top);
+            z-index: 100002;
+            background: transparent;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        @media (max-width: 520px) {
+            .app-container {
+                padding: 0;
+            }
+            .fullscreen-overlay {
+                padding: 0;
+            }
+            .overlay-inner {
+                max-width: none;
+            }
+            .overlay-content {
+                border-radius: 0;
+            }
+        }
+    </style>
+
+    <!-- ============================================================
+         开场动画样式（原 开场.html 的 <style>，已内联）
+         ============================================================ -->
+    <style>
+        :root { --ink: #090909; }
+
+        #nano-opening {
+            position: fixed; inset: 0; z-index: 99999; background: #fff;
+            display: flex; justify-content: center; align-items: center;
+            overflow: hidden; isolation: isolate;
+            transition: opacity 0.6s ease-in-out;
+            cursor: pointer;
+        }
+        #nano-opening.fade-out { opacity: 0; pointer-events: none; }
+
+        #nano-opening .scene {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            max-width: none; max-height: none;
+        }
+
+        #nano-opening svg { width: 100%; height: 100%; display: block; overflow: visible; }
+
+        #nano-opening .orbits { opacity: 0; animation: orbitsIn 0.8s cubic-bezier(.16,1,.3,1) 0.1s forwards; }
+        #nano-opening .orbit { fill: none; stroke: var(--ink); stroke-linecap: round; }
+        #nano-opening .orbit.back  { stroke-width: 1;    opacity: .15; stroke-dasharray: 2 12; }
+        #nano-opening .orbit.mid   { stroke-width: 1.15; opacity: .5;  stroke-dasharray: 380 1000; }
+        #nano-opening .orbit.front { stroke-width: 1.25; opacity: .75; stroke-dasharray: 480 1100; }
+        #nano-opening .o1 { animation: orbitFlow1 5s  linear 0.8s infinite; }
+        #nano-opening .o2 { animation: orbitFlow2 6s  linear 0.8s infinite; }
+        #nano-opening .o3 { animation: orbitFlow3 7s  linear 0.9s infinite; }
+        #nano-opening .o4 { animation: orbitFlow4 5.5s linear 1s   infinite; }
+
+        #nano-opening .planet {
+            fill: var(--ink); transform-box: fill-box; transform-origin: center;
+            opacity: 0;
+            animation: planetIn .5s cubic-bezier(.16,1,.3,1) var(--d) forwards,
+                       planetPulse 2.5s ease-in-out var(--p) infinite;
+        }
+        #nano-opening .planet.glow { filter: url(#planetGlow); }
+
+        #nano-opening .star {
+            fill: var(--ink); opacity: 0; transform-box: fill-box; transform-origin: center;
+            animation: starIn .5s cubic-bezier(.16,1,.3,1) var(--d) forwards,
+                       starPulse 3s ease-in-out var(--p) infinite;
+        }
+
+        #nano-opening .dust {
+            fill: var(--ink); opacity: 0;
+            animation: dustIn .6s ease-out var(--d) forwards;
+        }
+
+        #nano-opening .axis { stroke: var(--ink); stroke-width: 1; opacity: .7; stroke-linecap: round; }
+        #nano-opening .axis.top    { stroke-dasharray: 7 18; animation: axisTop    1.2s cubic-bezier(.16,1,.3,1) 0.05s both; }
+        #nano-opening .axis.bottom { stroke-dasharray: 7 18; animation: axisBottom 1.2s cubic-bezier(.16,1,.3,1) 0.05s both; }
+        #nano-opening .diamond { fill: var(--ink); transform-box: fill-box; transform-origin: center;
+                     animation: diamondIn .4s cubic-bezier(.16,1,.3,1) var(--d) both; }
+
+        #nano-opening .brand-container {
+            position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%, -50%) skewX(-8deg);
+            display: flex; align-items: baseline;
+            z-index: 20;
+            white-space: nowrap;
+        }
+
+        #nano-opening .letter {
+            display: inline-block;
+            font-family: "Avenir Next", "Helvetica Neue", Helvetica, Arial, sans-serif;
+            font-size: 170px;
+            font-weight: 800;
+            letter-spacing: -6px;
+            color: var(--ink);
+            line-height: 1;
+            opacity: 0;
+            filter: blur(10px);
+            animation: letterReveal 0.8s cubic-bezier(.16,1,.3,1) forwards;
+            text-shadow: 0 4px 20px rgba(0,0,0,.08);
+        }
+
+        #nano-opening .letter:nth-child(1) { animation-delay: 0.60s; }
+        #nano-opening .letter:nth-child(2) { animation-delay: 0.85s; }
+        #nano-opening .letter:nth-child(3) { animation-delay: 1.10s; }
+        #nano-opening .letter:nth-child(4) { animation-delay: 1.35s; margin-left: -2px; }
+
+        #nano-opening .letter.o {
+            position: relative;
+            width: 150px; height: 150px;
+            display: flex; justify-content: center; align-items: center;
+            border: 14px solid var(--ink);
+            border-radius: 50%;
+            box-sizing: border-box;
+            margin-left: 6px;
+            font-size: 0;
+            text-shadow: none;
+            animation: letterReveal 0.8s cubic-bezier(.16,1,.3,1) 1.35s forwards,
+                       oBreath 3s ease-in-out 2.2s infinite;
+        }
+
+        #nano-opening .o-planet-system {
+            width: 110%;
+            height: 110%;
+            position: absolute;
+            top: -5%;
+            left: -5%;
+            overflow: visible;
+        }
+
+        #nano-opening .o-center-planet {
+            fill: var(--ink);
+            transform-box: fill-box;
+            transform-origin: center;
+            animation: oCenterPulse 2s ease-in-out infinite;
+        }
+
+        #nano-opening .o-orbit {
+            fill: none;
+            stroke: var(--ink);
+            stroke-width: 1.2;
+            opacity: 0.55;
+        }
+        #nano-opening .o-orbit-1 { animation: oOrbitSpin1 4s linear infinite; transform-origin: 50px 50px; }
+        #nano-opening .o-orbit-2 { animation: oOrbitSpin2 6s linear infinite reverse; transform-origin: 50px 50px; }
+
+        #nano-opening .o-mini-planet {
+            fill: var(--ink);
+            transform-box: fill-box;
+            transform-origin: center;
+        }
+
+        @keyframes letterReveal {
+            0%   { opacity: 0; filter: blur(10px); transform: translateY(24px); }
+            100% { opacity: 1; filter: blur(0);    transform: translateY(0); }
+        }
+
+        @keyframes oBreath {
+            0%, 100% { transform: scale(1); }
+            50%      { transform: scale(1.05); }
+        }
+
+        @keyframes oCenterPulse {
+            0%, 100% { transform: scale(1); }
+            50%      { transform: scale(1.3); }
+        }
+
+        @keyframes oOrbitSpin1 {
+            0%   { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        @keyframes oOrbitSpin2 {
+            0%   { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @keyframes orbitsIn { from { opacity: 0; transform: scale(.85) rotate(-3deg); } to { opacity: 1; transform: scale(1) rotate(0); } }
+        @keyframes orbitFlow1 { to { stroke-dashoffset: -1330; } }
+        @keyframes orbitFlow2 { to { stroke-dashoffset:  1520; } }
+        @keyframes orbitFlow3 { to { stroke-dashoffset: -1750; } }
+        @keyframes orbitFlow4 { to { stroke-dashoffset:  1450; } }
+
+        @keyframes axisTop    { from { stroke-dashoffset:  80; opacity: 0; } to { stroke-dashoffset: 0; opacity: .7; } }
+        @keyframes axisBottom { from { stroke-dashoffset: -80; opacity: 0; } to { stroke-dashoffset: 0; opacity: .7; } }
+        @keyframes diamondIn  { from { opacity: 0; transform: scale(0) rotate(45deg); } to { opacity: 1; transform: scale(1) rotate(45deg); } }
+
+        @keyframes planetIn    { from { opacity: 0; transform: scale(0); } to { opacity: 1; transform: scale(1); } }
+        @keyframes planetPulse { 0%,100% { filter: brightness(1); transform: scale(1); } 50% { filter: brightness(.78); transform: scale(1.07); } }
+        @keyframes starIn      { from { opacity: 0; transform: scale(0) rotate(45deg); } to { opacity: .8; transform: scale(1) rotate(45deg); } }
+        @keyframes starPulse   { 0%,100% { opacity: .5; } 50% { opacity: .95; } }
+        @keyframes dustIn      { from { opacity: 0; } to { opacity: .55; } }
+
+        @media (max-width: 768px) {
+            #nano-opening .letter { font-size: 88px; letter-spacing: -3px; }
+            #nano-opening .letter.o { width: 78px; height: 78px; border-width: 8px; margin-left: 3px; }
+            #nano-opening .o-planet-system { width: 110%; height: 110%; top: -5%; left: -5%; }
+            #nano-opening .scene { width: 130vw; height: 130vw; }
+        }
+
+        /* ===== 纳米主界面外壳 ===== */
+        .home-shell { position: fixed; inset: 0; z-index: 1; background: #fff; }
+        .home-shell iframe { width: 100%; height: 100%; border: 0; display: block; background: #fff; }
+        .home-shell.pre-splash { visibility: hidden; }
+        .hidden-shell { display: none !important; }
+    </style>
+    <!-- 开场动画样式结束 -->
+
+    <script src="js/appearance.js"></script>
+</head>
+<body class="nano-index">
+<script>
+/* 一次性强制更新：清掉旧 Service Worker 与缓存，保证拿到最新代码（每个版本号只执行一次） */
+(function () {
+    try {
+        var KEY = 'nano_force_reset_v58';
+        if (localStorage.getItem(KEY) === '1') return;
+        localStorage.setItem(KEY, '1');
+        var tasks = [];
+        if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+            tasks.push(navigator.serviceWorker.getRegistrations().then(function (rs) {
+                return Promise.all(rs.map(function (r) { return r.unregister(); }));
+            }));
+        }
+        if (window.caches && caches.keys) {
+            tasks.push(caches.keys().then(function (ks) {
+                return Promise.all(ks.map(function (k) { return caches.delete(k); }));
+            }));
+        }
+        Promise.all(tasks).then(function () { location.reload(); }).catch(function () { location.reload(); });
+    } catch (e) {}
+})();
+</script>
+<script>
+/* 用一次 URL 参数绕过任何被缓存的 index.html（只跳一次） */
+(function () {
+    try {
+        var B = '58';
+        var u = new URL(location.href);
+        if (u.searchParams.get('b') !== B) { u.searchParams.set('b', B); location.replace(u.toString()); }
+    } catch (e) {}
+})();
+</script>
+<div class="bg"></div>
+<script src="bg.js"></script>
+
+<!-- ============================================================
+     开场动画（原 开场.html 的 <body>，已内联）
+     ============================================================ -->
+
+
+<div class="home-shell pre-splash" id="homeShell">
+    <iframe id="homeFrame" src="html/home.html" title="纳米桌面"></iframe>
+</div>
+<div class="app hidden-shell" id="legacyShell" aria-hidden="true">
+  <div class="app-container">
+    <div class="app-content" id="appContent">
+      <div class="iframe-container" id="iframeChat"><iframe data-src="html/chat.html"></iframe></div>
+      <div class="iframe-container" id="iframeApi"><iframe data-src="html/api.html"></iframe></div>
+      <div class="iframe-container" id="iframeMore"><iframe data-src="html/more.html"></iframe></div>
+      <div class="iframe-container" id="iframeDiscover"><iframe data-src="html/discover.html"></iframe></div>
+    </div>
+    <div class="bottom-actions" id="bottomBar" style="display:none">
+      <div class="capsule-group">
+        <button class="capsule-btn active-btn" data-page="chat" id="navChat"></button>
+        <button class="capsule-btn" data-page="api" id="navApi"></button>
+        <button class="capsule-btn" data-page="discover" id="navDiscover"></button>
+        <button class="capsule-btn" data-page="more" id="navMore"></button>
+      </div>
+      <div class="circle-more" id="circleMore"></div>
+    </div>
+  </div>
+</div>
+<div class="notch-tap" id="notchTap" aria-hidden="true"></div>
+<!-- ============ 开屏动画（nano-splash.html）复制从这里开始 ============ -->
+<script>
+(function () {
+  var TOTAL = 2800;   // 总载入时长（毫秒）
+  var HOP   = 1800;   // 兔兔跳进场时长（毫秒）
+  var FAST  = 5;      // 点击后的加速倍数
+  var SEGS  = 20;     // 进度条格数（像素风分段）
+  var INK = '#4a4850', PINK = '#f9c4de', CHEEK = '#fcd5e5';
+
+  // 15 x 16 像素米菲兔头  # 描边  p 粉  w 白  c 腮红
+  var GRID = [
+    '...###...###...',
+    '..#..##.#...#..',
+    '..#...#.#...#..',
+    '..#...#.#...#..',
+    '..#...#.#...#..',
+    '..#...#.#...#..',
+    '..#p..#.#...#..',
+    '..pwp..#....#..',
+    '.pwpwp.......#.',
+    '.#pwp........#.',
+    '#..p..........#',
+    '#...#.....#...#',
+    '#...#.....#...#',
+    '.#.cc..#..cc.#.',
+    '..#.........#..',
+    '...#########...'
+  ];
+  var COLOR = { '#': INK, p: PINK, w: '#fff', c: CHEEK };
+  var rects = '';
+  GRID.forEach(function (row, y) {
+    for (var x = 0; x < row.length; x++) {
+      var c = COLOR[row[x]];
+      if (c) rects += '<rect x="' + x + '" y="' + y + '" width="1" height="1" fill="' + c + '"/>';
+    }
+  });
+
+  var css =
+    '#nano-splash{position:fixed;top:0;left:0;right:0;bottom:0;z-index:2147483000;background:#fff;' +
+      'display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;' +
+      'touch-action:manipulation;-webkit-tap-highlight-color:transparent;transition:opacity .4s ease}' +
+    '#nano-splash.out{opacity:0;pointer-events:none}' +
+    '#nano-splash .ns-run{display:flex;flex-direction:column;align-items:center}' +
+    '#nano-splash .ns-hop{width:90px;height:96px;transform-origin:50% 100%}' +
+    '#nano-splash .ns-hop.idle{animation:ns-idle 1.4s ease-in-out infinite}' +
+    '#nano-splash svg{display:block;width:100%;height:100%;shape-rendering:crispEdges}' +
+    '#nano-splash .ns-shadow{width:64px;height:6px;margin-top:6px;border-radius:50%;background:rgba(74,72,80,.12)}' +
+    '#nano-splash .ns-barwrap{display:flex;justify-content:center;margin-top:20px}' +
+    '#nano-splash .ns-bar{box-sizing:border-box;width:min(44vw,170px);height:14px;padding:2px;' +
+      'border:2px solid ' + INK + ';background:#fff}' +
+    '#nano-splash .ns-fill{height:100%;width:0;background:' + PINK + '}' +
+    '@keyframes ns-idle{0%,100%{transform:scale(1,1)}50%{transform:scale(1.03,.96)}}';
+
+  function init() {
+    var style = document.createElement('style');
+    style.textContent = css;
+    document.head.appendChild(style);
+
+    var el = document.createElement('div');
+    el.id = 'nano-splash';
+    el.innerHTML =
+      '<div class="ns-run">' +
+        '<div class="ns-hop"><svg viewBox="0 0 15 16" xmlns="http://www.w3.org/2000/svg">' + rects + '</svg></div>' +
+        '<div class="ns-shadow"></div>' +
+      '</div>' +
+      '<div class="ns-barwrap"><div class="ns-bar"><div class="ns-fill"></div></div></div>';
+    document.body.insertBefore(el, document.body.firstChild);
+
+    var run = el.querySelector('.ns-run');
+    var hop = el.querySelector('.ns-hop');
+    var shadow = el.querySelector('.ns-shadow');
+    var fill = el.querySelector('.ns-fill');
+
+    // 从屏幕左侧外面，三连跳到中间
+    var startX = -(window.innerWidth / 2 + 100);
+    var anims = [];
+    anims.push(run.animate(
+      [{ transform: 'translateX(' + startX + 'px)' }, { transform: 'translateX(0)' }],
+      { duration: HOP, easing: 'cubic-bezier(.25,.5,.5,1)', fill: 'both' }
+    ));
+
+    var hopFrames = [{ offset: 0, transform: 'translateY(0) scale(1,1)', easing: 'ease-out' }];
+    var shFrames  = [{ offset: 0, transform: 'scale(1)', opacity: 1, easing: 'ease-out' }];
+    for (var i = 0; i < 3; i++) {
+      var b = i / 3;
+      hopFrames.push(
+        { offset: b + 0.05, transform: 'translateY(0) scale(1.12,.86)',   easing: 'ease-out' },
+        { offset: b + 0.17, transform: 'translateY(-34px) scale(.92,1.1)', easing: 'ease-in' },
+        { offset: b + 0.30, transform: 'translateY(0) scale(1.14,.84)',   easing: 'ease-out' }
+      );
+      shFrames.push(
+        { offset: b + 0.05, transform: 'scale(1)',  opacity: 1,  easing: 'ease-out' },
+        { offset: b + 0.17, transform: 'scale(.6)', opacity: .5, easing: 'ease-in' },
+        { offset: b + 0.30, transform: 'scale(1)',  opacity: 1,  easing: 'ease-out' }
+      );
+    }
+    hopFrames.push({ offset: 1, transform: 'translateY(0) scale(1,1)' });
+    shFrames.push({ offset: 1, transform: 'scale(1)', opacity: 1 });
+
+    var hopAnim = hop.animate(hopFrames, { duration: HOP });
+    anims.push(hopAnim);
+    anims.push(shadow.animate(shFrames, { duration: HOP }));
+    hopAnim.onfinish = function () { hop.classList.add('idle'); };
+
+    // 进度条
+    var t = 0, last = performance.now(), speed = 1, finished = false;
+    function ease(x) { return x < .5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2; }
+    function tick(now) {
+      var dt = Math.min(now - last, 100);
+      last = now;
+      t += dt * speed;
+      var p = Math.min(1, t / TOTAL);
+      fill.style.width = (Math.floor(ease(p) * SEGS) / SEGS * 100) + '%';
+      if (p >= 1) finish(); else requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+
+    function finish() {
+      if (finished) return;
+      finished = true;
+      setTimeout(function () {
+        el.classList.add('out');
+        setTimeout(function () {
+          if (el.parentNode) el.parentNode.removeChild(el);
+          document.dispatchEvent(new Event('nano-splash-done'));
+        }, 450);
+      }, 200 / speed);
+    }
+
+    // 点屏幕任意位置：加速跳过
+    function skip() {
+      if (speed === FAST) return;
+      speed = FAST;
+      anims.forEach(function (a) { a.playbackRate = FAST; });
+    }
+    el.addEventListener('pointerdown', skip);
+    window.NanoSplash = { skip: skip };
+  }
+
+  if (document.body) init();
+  else document.addEventListener('DOMContentLoaded', init);
+})();
+</script>
+<!-- ============ 开屏动画复制到这里结束 ============ -->
+<script>
+document.addEventListener('nano-splash-done', function () {
+  var h = document.getElementById('homeShell');
+  if (h) h.classList.remove('pre-splash');
+}, { once: true });
+setTimeout(function () {
+  var h = document.getElementById('homeShell');
+  if (h) h.classList.remove('pre-splash');
+}, 5200);
+</script>
+
+
+<div class="fullscreen-overlay" id="fullscreenOverlay">
+    <div class="overlay-inner">
+        <div class="overlay-header">
+            <button class="back-btn" id="overlayBack" data-back><i class="fas fa-chevron-left"></i></button>
+            <span class="overlay-title" id="overlayTitle"></span>
+            <div class="placeholder"></div>
+        </div>
+        <div class="overlay-content">
+            <iframe id="overlayFrame" src="about:blank"></iframe>
+            <iframe id="overlayFrame2" src="about:blank"></iframe>
+            <iframe id="voiceCallFrame" src="about:blank"></iframe>
+            <iframe id="chatInnerFrame" src="about:blank"></iframe>
+            <iframe id="musicFrame" src="about:blank"></iframe>
+            <iframe id="momentsFrame" src="about:blank"></iframe>
+            <iframe id="insFrame" src="about:blank"></iframe>
+        </div>
+    </div>
+</div>
+
+<script>
+    (function() {
+        // 全屏 / PWA 下刘海或状态栏可能压住顶栏按钮：给顶部安全区一个最小高度，
+        // 只把按钮往下让一点，仍然保持全屏。
+        // 顶部安全区 = 刚好越过灵动岛的像素值。默认：全屏 PWA 用 48~54px；
+        // 普通浏览器/非全屏直接用浏览器真实 env（不凭空留白）。
+        // 可用「其他 → 界面 → 灵动岛安全区」或 localStorage.nano_top_inset 覆盖微调。
+        // 灵动岛安全区开关：关闭只影响「全屏 PWA 报 0 时的 48px 兜底」，仍尊重浏览器真实安全区。
+        function topInsetEnabled() {
+            try {
+                var v = localStorage.getItem('nano_top_inset_enabled');
+                if (v === '1') return true;
+                if (v === '0') return false;
+            } catch (e) {}
+            try { return /iPhone|Android/i.test(navigator.userAgent); } catch (e) { return false; }
+        }
+        // 是否处于「已安装的全屏 PWA」：只有这时才需要用 48px 兜底（因为这种模式下 env() 可能报 0）
+        function isStandalonePWA() {
+            try {
+                if (navigator.standalone === true) return true;
+                if (window.matchMedia && (window.matchMedia('(display-mode: standalone)').matches || window.matchMedia('(display-mode: fullscreen)').matches || window.matchMedia('(display-mode: minimal-ui)').matches)) return true;
+            } catch (e) {}
+            return false;
+        }
+        // 仅 iOS 保留顶部安全留白；其它平台默认不留白
+        function isIOSDevice() {
+            try { return /iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); } catch (e) { return false; }
+        }
+        function isAndroidDevice() {
+            try { return /Android/i.test(navigator.userAgent); } catch (e) { return false; }
+        }
+        function applyTopInset() {
+            var custom = NaN;
+            try { custom = parseFloat(localStorage.getItem('nano_top_inset')); } catch (e) {}
+            try {
+                var val;
+                if (topInsetEnabled() && isFinite(custom) && custom >= 0) {
+                    val = custom + 'px';                         // 用户自定义，优先
+                } else if (topInsetEnabled() && isStandalonePWA() && isIOSDevice()) {
+                    // 已安装全屏 PWA（iOS）：env 报 0 时兜底 48px（刚好越过灵动岛），报得再大也夹到 54px
+                    val = 'max(min(env(safe-area-inset-top, 0px), 54px), 48px)';
+                } else if (topInsetEnabled() && isStandalonePWA() && isAndroidDevice()) {
+                    // 安卓全屏 PWA 的 env 经常报 0；兜底 40px，避免顶栏按钮钻进刘海/状态栏
+                    val = 'max(env(safe-area-inset-top, 0px), 40px)';
+                } else {
+                    // 普通浏览器 / 非 iOS：直接用浏览器给的真实安全区（通常为 0），不凭空加一条空白
+                    val = 'env(safe-area-inset-top, 0px)';
+                }
+                document.documentElement.style.setProperty('--safe-inset-top', val);
+            } catch (e) {}
+        }
+        try { applyTopInset(); } catch (e) {}
+
+        // 外壳内置顶栏已移除；保留空壳以便旧逻辑的 classList 调用不报错
+        const topBar = document.getElementById('topBar') || { classList: { add: function () {}, remove: function () {}, contains: function () { return false; } } };
+        const bottomBar = document.getElementById('bottomBar');
+        const appContent = document.getElementById('appContent');
+        const circleMoreBtn = document.getElementById('circleMore');
+
+        const overlay = document.getElementById('fullscreenOverlay');
+        // 两个通用全屏帧轮换使用：某个帧正在后台生成时，用另一个帧打开新页面，
+        // 这样切换页面不会销毁正在生成的那个帧（生成不中断）。
+        const overlayFrameA = document.getElementById('overlayFrame');
+        const overlayFrameB = document.getElementById('overlayFrame2');
+        let overlayFrame = overlayFrameA;
+        const voiceCallFrame = document.getElementById('voiceCallFrame');
+        const chatInnerFrame = document.getElementById('chatInnerFrame');
+        const musicFrame = document.getElementById('musicFrame');
+        const momentsFrame = document.getElementById('momentsFrame');
+        const insFrame = document.getElementById('insFrame');
+        const overlayBack = document.getElementById('overlayBack');
+        const overlayTitle = document.getElementById('overlayTitle');
+
+        const pageConfig = {
+            'chat': { mode: 'home', title: '', container: 'iframeChat' },
+            'api': { mode: 'api', title: 'API', container: 'iframeApi' },
+            'discover': { mode: 'more', title: '发现', container: 'iframeDiscover' },
+            'more': { mode: 'more', title: '更多', container: 'iframeMore' }
+        };
+
+        let currentPage = 'chat';
+        let overlayActive = false;
+        let isChatInnerActive = false;
+        let currentOverlaySource = null;
+        let lastFullscreenOpen = { url: '', at: 0 };
+        let pendingJumpMsgId = null;
+        let voiceCallKeptAlive = false;
+        let isMusicFrameActive = false;
+        let lastGroupUrl = null;
+        let lastGroupTitle = '';
+        const groupApiInFlight = {};
+
+        function getChatInnerIframe() {
+            try {
+                if (chatInnerFrame && frameBase(chatInnerFrame) === 'chat_inner.html') return chatInnerFrame;
+            } catch (e) {}
+            const chatContainer = document.getElementById('iframeChat');
+            if (chatContainer) {
+                return chatContainer.querySelector('iframe');
+            }
+            return null;
+        }
+
+        function restoreTopBar() {
+            const config = pageConfig[currentPage];
+            if (config && config.mode === 'home') {
+                topBar.classList.remove('hidden');
+                appContent.style.paddingTop = '0';
+            } else {
+                topBar.classList.add('hidden');
+                appContent.style.paddingTop = '0';
+            }
+        }
+
+        function restoreBottomBar() {
+            bottomBar.classList.remove('hidden');
+            appContent.style.paddingBottom = '0';
+        }
+
+        // 让底栏留白区域的颜色跟随当前页面，避免出现一条与主题不符的白边
+        function syncShellBg() {
+            try {
+                var bgEl = document.querySelector('.bg');
+                if (!bgEl) return;
+                var bi = bgEl.style.backgroundImage;
+                if (bi && bi !== 'none' && bi !== '') return; // 用户设了自定义壁纸就保留
+                var frame = document.querySelector('.iframe-container.active iframe');
+                var doc = frame && frame.contentDocument;
+                if (!doc || !doc.body) return;
+                var c = '';
+                try { c = getComputedStyle(doc.body).backgroundColor; } catch (e) {}
+                if (!c || c === 'transparent' || c === 'rgba(0, 0, 0, 0)') {
+                    try { c = getComputedStyle(doc.documentElement).backgroundColor; } catch (e) {}
+                }
+                if (c && c !== 'transparent' && c !== 'rgba(0, 0, 0, 0)') bgEl.style.backgroundColor = c;
+            } catch (e) {}
+        }
+        try {
+            document.querySelectorAll('.iframe-container iframe').forEach(function (f) {
+                f.addEventListener('load', function () {
+                    try { if (f.closest('.iframe-container.active')) syncShellBg(); } catch (e) {}
+                });
+            });
+            window.addEventListener('load', function () { setTimeout(syncShellBg, 300); setTimeout(syncShellBg, 900); });
+            document.addEventListener('visibilitychange', function () { if (!document.hidden) syncShellBg(); });
+        } catch (e) {}
+
+        function switchPage(page) {
+            if (currentPage === page) return;
+            const config = pageConfig[page];
+            if (!config) return;
+            // 首次切到这个 tab 才真正加载它的 iframe（启动时只加载首页，快很多）
+            try {
+                const box = document.getElementById(config.container);
+                const fr = box && box.querySelector('iframe');
+                if (fr && !fr.getAttribute('src') && fr.getAttribute('data-src')) {
+                    fr.setAttribute('src', withBuild(fr.getAttribute('data-src')));
+                }
+            } catch (e) {}
+
+            document.querySelectorAll('.iframe-container').forEach(el => {
+                el.classList.remove('active');
+            });
+            const target = document.getElementById(config.container);
+            if (target) target.classList.add('active');
+
+            currentPage = page;
+
+            pumpSafeTop();
+            setTimeout(syncShellBg, 60);
+            setTimeout(syncShellBg, 500);
+
+            document.querySelectorAll('.capsule-btn').forEach(btn => {
+                btn.classList.remove('active-btn');
+                if (btn.dataset.page === page) {
+                    btn.classList.add('active-btn');
+                }
+            });
+
+            circleMoreBtn.classList.remove('active-btn');
+
+            if (!overlayActive) {
+                restoreTopBar();
+                restoreBottomBar();
+            }
+        }
+
+        // ===== 右滑返回：统一入口（内页左边缘手势 / 宿主文档边缘手势都会用到）=====
+        // 返回 true 表示这次滑动已经被处理
+        function nanoActiveOverlayFrame() {
+            try {
+                const frames = document.querySelectorAll('#fullscreenOverlay iframe');
+                for (let i = frames.length - 1; i >= 0; i--) {
+                    const f = frames[i];
+                    if (f.offsetParent === null) continue;
+                    const r = f.getBoundingClientRect();
+                    if (r.width > 0 && r.height > 0) return f;
+                }
+            } catch (e) {}
+            return null;
+        }
+        // 让当前浮层内页自己先处理一次返回；处理不了就收起整层
+        function nanoAskOverlayBack() {
+            const f = nanoActiveOverlayFrame();
+            if (!f) return false;
+            let done = false;
+            let timer = null;
+            const cleanup = function () {
+                window.removeEventListener('message', onMsg);
+                if (timer) clearTimeout(timer);
+            };
+            function onMsg(ev) {
+                const d = ev.data;
+                if (!d) return;
+                if (d.type === 'nanoBackHandled') { done = true; cleanup(); }
+                else if (d.type === 'nanoBackUnhandled') { cleanup(); try { closeFullscreen(); } catch (e) {} }
+            }
+            window.addEventListener('message', onMsg);
+            timer = setTimeout(function () { if (!done) { cleanup(); try { closeFullscreen(); } catch (e) {} } }, 320);
+            try { f.contentWindow.postMessage({ type: 'nanoRequestBack' }, '*'); } catch (e) { cleanup(); return false; }
+            return true;
+        }
+        function nanoSwipeBackAction() {
+            try {
+                const ob = document.getElementById('overlayBack');
+                if (ob && overlay.classList.contains('active') && ob.getBoundingClientRect().height > 0) {
+                    ob.click();
+                    return true;
+                }
+                if (overlayActive) {
+                    if (!nanoAskOverlayBack()) { try { closeFullscreen(); } catch (e) {} }
+                    return true;
+                }
+                if (currentPage !== 'chat') {
+                    switchPage('chat');
+                    return true;
+                }
+            } catch (e) {}
+            return false;
+        }
+        // 悬浮球环形菜单的「返回」直接复用这套逻辑（关浮层 / 回聊天页）
+        window.__nanoGoBack = function () {
+            try { return nanoSwipeBackAction(); } catch (e) { return false; }
+        };
+        // 边缘手势落在父文档（浮层左右 16px 留白）时，swipe-back.js 会派发此事件
+        document.addEventListener('nano:swipe-back-fallback', function (e) {
+            if (nanoSwipeBackAction()) {
+                try { e.preventDefault(); } catch (err) {}
+            }
+        });
+
+        function showChatInnerFrame() {
+            chatInnerFrame.style.display = 'block';
+            // 回到单聊时让内页重读一遍已保存的美化（含头像框），避免实时广播漏掉时样式不生效
+            try {
+                var _cw = chatInnerFrame.contentWindow;
+                if (_cw) {
+                    var _ping = function () { try { _cw.postMessage({ type: 'beautify:refresh' }, '*'); } catch (e) {} };
+                    setTimeout(_ping, 80);
+                    setTimeout(_ping, 420);
+                }
+            } catch (e) {}
+            overlayFrame.style.display = 'none';
+            hideOtherGenericFrame();
+            voiceCallFrame.style.display = 'none';
+            musicFrame.style.display = 'none';
+            insFrame.style.display = 'none';
+            isMusicFrameActive = false;
+        }
+        function showInsFrame() {
+            insFrame.style.display = 'block';
+            overlayFrame.style.display = 'none';
+            hideOtherGenericFrame();
+            chatInnerFrame.style.display = 'none';
+            voiceCallFrame.style.display = 'none';
+            musicFrame.style.display = 'none';
+            momentsFrame.style.display = 'none';
+            isMusicFrameActive = false;
+            try { insFrame.contentWindow.postMessage({ type: 'nano:insShown' }, '*'); } catch (e) {}
+        }
+        // 选一个通用全屏帧来打开 url：优先复用已加载同一应用的帧；
+        // 其次选一个没有在后台生成的帧，避免销毁正在生成的那个（切页不中断生成）。
+        function pickOverlayFrame(url) {
+            const want = baseName(url);
+            // 已加载同一应用的帧优先复用
+            if (frameBase(overlayFrameA) === want) { overlayFrame = overlayFrameA; return; }
+            if (overlayFrameB && frameBase(overlayFrameB) === want) { overlayFrame = overlayFrameB; return; }
+            // 否则挑一个没有在后台生成任务的帧，避免销毁正在生成的那个
+            const aBusy = hasActiveRefreshForFrame(overlayFrameA);
+            const bBusy = overlayFrameB ? hasActiveRefreshForFrame(overlayFrameB) : false;
+            if (aBusy && !bBusy && overlayFrameB) { overlayFrame = overlayFrameB; return; }
+            if (bBusy && !aBusy) { overlayFrame = overlayFrameA; return; }
+        }
+        function hideOtherGenericFrame() {
+            const other = (overlayFrame === overlayFrameA) ? overlayFrameB : overlayFrameA;
+            if (other) other.style.display = 'none';
+        }
+        function showOverlayFrame() {
+            overlayFrame.style.display = 'block';
+            hideOtherGenericFrame();
+            chatInnerFrame.style.display = 'none';
+            voiceCallFrame.style.display = 'none';
+            musicFrame.style.display = 'none';
+            momentsFrame.style.display = 'none';
+            insFrame.style.display = 'none';
+            isMusicFrameActive = false;
+        }
+        // 通用全屏帧：这些页面已加载同一 URL 时直接复用（不重载），切换更快；
+        // 未列出的页面仍按原逻辑加载，避免停留在旧子页面。
+        // 注意：与 user（人设/马甲）强相关的页面不能复用缓存帧，否则切换 user 后仍显示上一个 user 的数据
+        const REUSE_SAFE_PAGES = ['other.html', 'emoji.html', 'inner-setting.html', 'nano-setting.html',
+            'groups.html', 'group-setting.html', 'imessage.html', 'storage.html', 'backup.html',
+            'wallet.html', 'appstore.html', 'family-card.html'];
+        function reuseOrLoadOverlayFrame(url) {
+            const base = baseName(url);
+            // data-loaded-url 可能残留，但 iframe 已经被重置为 about:blank；
+            // 必须同时确认当前 src 仍是目标页面，否则返回后会白屏。
+            const loadedExact = overlayFrame.getAttribute('data-loaded-url') === url && frameBase(overlayFrame) === base;
+            if (loadedExact && REUSE_SAFE_PAGES.indexOf(base) !== -1) {
+                try { overlayFrame.contentWindow.postMessage({ type: 'nanoOverlayReopen' }, '*'); } catch (e) {}
+                return;
+            }
+            if (frameBase(overlayFrame) === base && hasActiveRefreshForFrame(overlayFrame)) return;
+            overlayFrame.setAttribute('data-loaded-url', url);
+            overlayFrame.src = url;
+        }
+        function showVoiceFrame() {
+            voiceCallFrame.style.display = 'block';
+            overlayFrame.style.display = 'none';
+            hideOtherGenericFrame();
+            chatInnerFrame.style.display = 'none';
+            musicFrame.style.display = 'none';
+            momentsFrame.style.display = 'none';
+            insFrame.style.display = 'none';
+            isMusicFrameActive = false;
+        }
+        function showMusicFrame() {
+            musicFrame.style.display = 'block';
+            overlayFrame.style.display = 'none';
+            hideOtherGenericFrame();
+            chatInnerFrame.style.display = 'none';
+            voiceCallFrame.style.display = 'none';
+            momentsFrame.style.display = 'none';
+            insFrame.style.display = 'none';
+            isMusicFrameActive = true;
+            try { syncMusicBall(); } catch (e) {}
+        }
+        function showMomentsFrame() {
+            momentsFrame.style.display = 'block';
+            overlayFrame.style.display = 'none';
+            hideOtherGenericFrame();
+            chatInnerFrame.style.display = 'none';
+            voiceCallFrame.style.display = 'none';
+            musicFrame.style.display = 'none';
+            insFrame.style.display = 'none';
+            isMusicFrameActive = false;
+        }
+
+        const OVERLAY_FRAME_IDS = ['overlayFrame', 'overlayFrame2', 'chatInnerFrame', 'voiceCallFrame', 'musicFrame', 'momentsFrame', 'insFrame'];
+        function getSafeTopFrames() {
+            const frames = [];
+            OVERLAY_FRAME_IDS.forEach(function(id) {
+                const f = document.getElementById(id);
+                if (f) frames.push(f);
+            });
+            document.querySelectorAll('.iframe-container iframe').forEach(function(f) {
+                if (f) frames.push(f);
+            });
+            var hf = document.getElementById('homeFrame');
+            if (hf) frames.push(hf);
+            return frames;
+        }
+        function setSafeVars(f, top, bot) {
+            try {
+                if (f && f.contentDocument && f.contentDocument.documentElement) {
+                    const de = f.contentDocument.documentElement;
+                    de.style.setProperty('--safe-top', top);
+                    de.style.setProperty('--safe-t', top);
+                    de.style.setProperty('--safe-inset-top', top);
+                    de.style.setProperty('--safe-bottom', bot);
+                    de.style.setProperty('--safe-b', bot);
+                    // 底栏专用：iPhone 底部安全区（Home 指示条 / 悬浮栏）像素值
+                    de.style.setProperty('--nano-safe-bottom', bot);
+                }
+            } catch (e) {}
+        }
+        // 安全区真正的像素值：用探针元素量 env()，比读自定义属性可靠
+        // （部分 iOS 读 --x: env(...) 会拿到原始 token，parseFloat 出来是 0）
+        function measureSafeInsets() {
+            try {
+                const probe = document.createElement('div');
+                probe.style.cssText = 'position:fixed;left:-9999px;top:0;width:1px;height:1px;visibility:hidden;' +
+                    'padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);';
+                document.body.appendChild(probe);
+                const cs = getComputedStyle(probe);
+                let top = parseFloat(cs.paddingTop) || 0;
+                const bottom = parseFloat(cs.paddingBottom) || 0;
+                probe.parentNode.removeChild(probe);
+                // 把顶部安全区夹在 48~54px：
+                //  · 报成 0 的 WebView → 48（刚好越过灵动岛）
+                //  · 报得很大的 WebView（某些内嵌浏览器 env 会到 100+）→ 54，避免顶栏离灵动岛很远
+                // 想要更精确可用「其他 → 界面 → 灵动岛安全区」或 localStorage.nano_top_inset 覆盖。
+                // 注意：关闭开关时不写死 0，而是保留浏览器真实安全区 —— 否则全屏 PWA 下按钮会跑到灵动岛里
+                var _customTop = NaN;
+                try { _customTop = parseFloat(localStorage.getItem('nano_top_inset')); } catch (e) {}
+                if (isFinite(_customTop) && _customTop >= 0) { top = _customTop; }
+                else if (top > 0) { top = Math.min(top, 54); }                 // 真实安全区（全屏 PWA）→ 直接用，封顶 54
+                else if (topInsetEnabled() && isStandalonePWA() && isIOSDevice()) { top = 48; }  // 全屏 PWA(iOS) 却报 0 → 兜底 48
+                else if (topInsetEnabled() && isStandalonePWA() && isAndroidDevice()) { top = 40; } // 安卓全屏 PWA 的 env 常报 0 → 兜底 40
+                else { top = 0; }                                              // 非全屏 / 非 iOS / 无安全区 → 0，不凭空留白
+                return { top: top, bottom: bottom };
+            } catch (e) { return { top: 0, bottom: 0 }; }
+        }
+        // 这些页面自己会用 --safe-top 给顶栏留白 —— 顶栏背景能一直铺到刘海里去
+        const SELF_SAFE_PAGES = ['home.html', 'chat.html', 'chat_inner.html', 'groups.html', 'group-setting.html',
+            'mask.html', 'character.html', 'favorite.html', 'emoji.html', 'memory.html', 'worldbook.html',
+            'music.html', 'voice-call.html', 'video-call.html', 'storage.html', 'backup.html', 'other.html', 'more.html',
+            'discover.html', 'api.html', 'moments.html', 'ins.html', 'inner-setting.html', 'beautify.html',
+            'books.html', 'couple-spaces.html', 'halo.html', 'offline.html', 'offline-setting.html',
+            'heart-setting.html', 'market.html', 'mcp.html',
+            'phone.html', 'assistant.html', 'nano-setting.html', 'family-card.html', 'wallet.html', 'appstore.html',
+            'cycle.html', 'fanfic.html', 'fanfic-create.html', 'fanfic-read.html', 'imessage.html', 'memory palace.html', 'app-host.html', 'meet.html', 'mall.html'];
+        // 其余页面（发现/更多/API/moments/ins/…）兜底：内容整体让到灵动岛下面
+        function applySafeFallback(f) {
+            try {
+                const name = frameBase(f);
+                if (!name || SELF_SAFE_PAGES.indexOf(name) !== -1) return;
+                const doc = f.contentDocument;
+                if (!doc || !doc.head || doc.getElementById('nanoSafeFallback')) return;
+                const st = doc.createElement('style');
+                st.id = 'nanoSafeFallback';
+                st.textContent = 'body{padding-top:var(--safe-top,0px)!important}';
+                doc.head.appendChild(st);
+            } catch (e) {}
+        }
+        function applySafeTopToFrames() {
+            try {
+                const insets = measureSafeInsets();
+                const topVal = insets.top ? (insets.top + 'px') : '0px';
+                const botVal = insets.bottom ? (insets.bottom + 'px') : '0px';
+                getSafeTopFrames().forEach(function (f) {
+                    setSafeVars(f, topVal, botVal);
+                    applySafeFallback(f);
+                });
+            } catch (e) {}
+        }
+        // 内页 iframe 的 load 事件要等所有子资源（大脚本/CDN）加载完才触发，
+        // 期间 --safe-top 一直缺失，顶栏会先顶到灵动岛里再跳下来。
+        // 这里在内页刚建立 document 时就尽早注入安全区像素值，避免那段“缓冲跳动”。
+        function pumpSafeTop() {
+            try { applySafeTopToFrames(); } catch (e) {}
+            [30, 80, 160, 320, 700, 1400].forEach(function (t) {
+                setTimeout(function () { try { applySafeTopToFrames(); } catch (e) {} }, t);
+            });
+        }
+        getSafeTopFrames().forEach(function(f) {
+            if (f) f.addEventListener('load', applySafeTopToFrames);
+        });
+        window.addEventListener('load', applySafeTopToFrames);
+        window.addEventListener('resize', applySafeTopToFrames);
+        window.addEventListener('orientationchange', applySafeTopToFrames);
+        try { if (window.visualViewport) window.visualViewport.addEventListener('resize', applySafeTopToFrames); } catch (e) {}
+        setTimeout(applySafeTopToFrames, 300);
+
+        // 构建版本号（改这里即可让所有同源页面刷新缓存）
+        var BUILD = 'nano-2026-10-18-05';
+
+        // 给同源页面 URL 追加构建版本号，避免浏览器/Service Worker 缓存到旧 HTML
+        function pageUrl(u) {
+            try {
+                if (!u || /^(https?:|blob:|data:|about:|file:)/i.test(u)) return u;
+                if (u === 'index.html' || u === '../index.html') return u;
+                if (u.indexOf('html/') === 0) return u;
+                if (/\.html(\?|#|$)/i.test(u)) return 'html/' + u;
+            } catch (e) {}
+            return u;
+        }
+        function withBuild(u) {
+            try {
+                u = pageUrl(u);
+                if (!u || /^(https?:|blob:|data:|about:|file:)/i.test(u)) return u;
+                var b = BUILD || '';
+                if (!b) return u;
+                return u + (u.indexOf('?') === -1 ? '?' : '&') + 'nb=' + encodeURIComponent(b);
+            } catch (e) { return u; }
+        }
+        function openFullscreen(url, title, showBack, source) {
+            url = withBuild(url);
+            const pageName = baseName(url);
+            // 防止双击同一个入口时连续设置 iframe.src，导致加载被中断成白屏
+            try {
+                const now = Date.now();
+                if (overlayActive && lastFullscreenOpen.url === url && now - lastFullscreenOpen.at < 700) {
+                    showOverlayFrame();
+                    return;
+                }
+                lastFullscreenOpen = { url: url, at: now };
+            } catch (e) {}
+            voiceCallKeptAlive = false;
+            try { urlSourceMap[baseName(url)] = source || ''; } catch (e) {}
+            if (pageName === 'voice-call.html' || pageName === 'video-call.html') {
+                showVoiceFrame();
+                voiceCallFrame.src = url;
+                overlay.classList.add('no-header');
+                overlayTitle.textContent = '';
+                overlayBack.classList.add('hidden');
+            } else if (pageName === 'music.html') {
+                showMusicFrame();
+                if (frameBase(musicFrame) !== 'music.html') {
+                    musicFrame.src = url;
+                }
+                overlay.classList.add('no-header');
+                overlayTitle.textContent = '';
+                overlayBack.classList.add('hidden');
+            } else if (pageName === 'chat_inner.html') {
+                showChatInnerFrame();
+                // 同一个聊天且 iframe 还活着就不重载，直接复用（切换更快）
+                if (chatInnerFrame.getAttribute('data-loaded-url') !== url) {
+                    chatInnerFrame.setAttribute('data-loaded-url', url);
+                    chatInnerFrame.src = url;
+                }
+                overlay.classList.add('no-header');
+                overlayTitle.textContent = '';
+                overlayBack.classList.add('hidden');
+            } else if (pageName === 'memory.html') {
+                pickOverlayFrame(url);
+                showOverlayFrame();
+                reuseOrLoadOverlayFrame(url);
+                overlay.classList.add('no-header');
+                overlayTitle.textContent = '';
+                overlayBack.classList.add('hidden');
+            } else if (pageName === 'moments.html') {
+                showMomentsFrame();
+                if (frameBase(momentsFrame) !== 'moments.html') {
+                    momentsFrame.src = url;
+                } else {
+                    try { momentsFrame.contentWindow.postMessage({ type: 'nano:momentsShown' }, '*'); } catch (e) {}
+                }
+                overlay.classList.add('no-header');
+                overlayTitle.textContent = '';
+                overlayBack.classList.add('hidden');
+            } else if (pageName === 'ins.html') {
+                showInsFrame();
+                if (frameBase(insFrame) !== 'ins.html') {
+                    insFrame.src = url;
+                } else {
+                    try { insFrame.contentWindow.postMessage({ type: 'nano:insShown' }, '*'); } catch (e) {}
+                }
+                overlay.classList.add('no-header');
+                overlayTitle.textContent = '';
+                overlayBack.classList.add('hidden');
+            } else {
+                pickOverlayFrame(url);
+                showOverlayFrame();
+                // 同一个页面且已加载过 → 直接复用（切换更快）；正在后台生成 → 也必须复用（否则中断生成）
+                reuseOrLoadOverlayFrame(url);
+                const ownNavPages = ['chat.html', 'api.html', 'more.html', 'schedule.html', 'worldbook.html', 'emoji.html', 'favorite.html', 'offline.html', 'offline-setting.html', 'moments.html', 'groups.html', 'group-setting.html', 'other.html', 'storage.html', 'backup.html', 'phone.html', 'ins.html', 'couple-spaces.html', 'halo.html', 'books.html', 'mask.html', 'character.html', 'inner-setting.html', 'nano-setting.html', 'ios-setting.html', 'assistant.html', 'family-card.html', 'wallet.html', 'appstore.html', 'cycle.html', 'fanfic.html', 'fanfic-create.html', 'fanfic-read.html', 'market.html', 'mcp.html', 'heart-setting.html', 'imessage.html', 'memory palace.html', 'app-host.html', 'meet.html', 'mall.html'];
+                const hasOwnNav = ownNavPages.indexOf(pageName) !== -1;
+                const noOuterHeader = hasOwnNav || pageName === 'mall.html' || (showBack === false && !(title || ''));
+                if (noOuterHeader) {
+                    overlay.classList.add('no-header');
+                    overlayTitle.textContent = '';
+                    overlayBack.classList.add('hidden');
+                } else {
+                    overlay.classList.remove('no-header');
+                    if (source === 'chat_inner') {
+                        overlayTitle.textContent = '';
+                    } else {
+                        overlayTitle.textContent = title || '';
+                    }
+                }
+            }
+            overlay.classList.add('active');
+            overlayActive = true;
+            currentOverlaySource = source || 'main';
+            topBar.classList.add('hidden');
+            bottomBar.classList.add('hidden');
+            appContent.style.paddingTop = '0';
+            appContent.style.paddingBottom = '0';
+
+            if (showBack === false) {
+                overlayBack.classList.add('hidden');
+            } else if (pageName !== 'chat_inner.html') {
+                overlayBack.classList.remove('hidden');
+            }
+            pumpSafeTop();
+        }
+
+        function closeFullscreen() {
+            const wasOverlaySource = currentOverlaySource;
+            const hadJump = !!pendingJumpMsgId;
+
+            overlay.classList.remove('active');
+            overlay.classList.remove('no-header');
+            overlayBack.classList.remove('hidden');
+            overlayActive = false;
+            voiceCallKeptAlive = false;
+
+            try {
+                [document.getElementById('chatInnerFrame'), overlayFrame].forEach(function (fr) {
+                    if (fr && fr.contentWindow) fr.contentWindow.postMessage({ type: 'nanoOverlayClosed' }, '*');
+                });
+            } catch (e) {}
+
+            const chatInnerAlive = frameBase(chatInnerFrame) === 'chat_inner.html';
+
+            const _vcBase = frameBase(voiceCallFrame);
+            if (_vcBase === 'voice-call.html' || _vcBase === 'video-call.html') {
+                voiceCallFrame.style.display = 'none';
+                voiceCallFrame.src = 'about:blank';
+            }
+
+            if (isMusicFrameActive) {
+                musicFrame.style.display = 'none';
+                isMusicFrameActive = false;
+                try { syncMusicBall(); } catch (e) {}
+            }
+
+            if (insFrame && insFrame.style.display !== 'none' && frameBase(insFrame) === 'ins.html') {
+                insFrame.style.display = 'none';
+                try { insFrame.contentWindow.postMessage({ type: 'nano:insHidden' }, '*'); } catch (e) {}
+                currentOverlaySource = null;
+                isChatInnerActive = false;
+                restoreBottomBar();
+                if (wasOverlaySource === 'discover' || currentPage === 'discover') {
+                    if (currentPage !== 'discover') {
+                        switchPage('discover');
+                    } else {
+                        topBar.classList.add('hidden');
+                        appContent.style.paddingTop = '0';
+                    }
+                } else {
+                    restoreTopBar();
+                    if (currentPage !== 'chat') switchPage('chat');
+                }
+                return;
+            }
+
+            if (wasOverlaySource === 'chat_inner' && chatInnerAlive) {
+                currentOverlaySource = 'main';
+                isChatInnerActive = true;
+                if (hadJump) {
+                    let chatInfo = null;
+                    try { chatInfo = JSON.parse(sessionStorage.getItem('inner_setting_info') || 'null'); } catch(e){}
+                    if (!chatInfo) { try { chatInfo = JSON.parse(sessionStorage.getItem('last_chat_info') || 'null'); } catch(e){} }
+                    const chatId = chatInfo && chatInfo.chatId ? chatInfo.chatId : 'default';
+                    const chatName = chatInfo && chatInfo.chatName ? chatInfo.chatName : '聊天';
+                    let url = 'chat_inner.html?chat=' + encodeURIComponent(chatId) + '&name=' + encodeURIComponent(chatName);
+                    url += '&jump=' + encodeURIComponent(pendingJumpMsgId);
+                    url = withBuild(url);
+                    pendingJumpMsgId = null;
+                    showChatInnerFrame();
+                    chatInnerFrame.setAttribute('data-loaded-url', url);
+                    chatInnerFrame.src = url;
+                    overlay.classList.add('active');
+                    overlay.classList.add('no-header');
+                    overlayTitle.textContent = '';
+                    overlayBack.classList.add('hidden');
+                    overlayActive = true;
+                    topBar.classList.add('hidden');
+                    bottomBar.classList.add('hidden');
+                    appContent.style.paddingTop = '0';
+                    appContent.style.paddingBottom = '0';
+                    return;
+                }
+                showChatInnerFrame();
+                overlay.classList.add('active');
+                overlay.classList.add('no-header');
+                overlayTitle.textContent = '';
+                overlayBack.classList.add('hidden');
+                overlayActive = true;
+                topBar.classList.add('hidden');
+                bottomBar.classList.add('hidden');
+                appContent.style.paddingTop = '0';
+                appContent.style.paddingBottom = '0';
+                // 重新回到 chat_inner：恢复未读上下文，避免在会话里还被当成"未读"
+                try {
+                    let info = null;
+                    try { info = JSON.parse(sessionStorage.getItem('last_chat_info') || 'null'); } catch (e) {}
+                    const cid = (info && info.chatId) || '';
+                    if (chatInnerFrame && chatInnerFrame.contentWindow) {
+                        chatInnerFrame.contentWindow.postMessage({ type: 'nanoOverlayOpen', chatId: cid }, '*');
+                    }
+                } catch (e) {}
+                return;
+            }
+
+            // 从聊天列表进入单聊：返回时先回到聊天列表，而不是直接回桌面
+            try {
+                if (wasOverlaySource === 'main' &&
+                    frameBase(overlayFrame) === 'chat.html' &&
+                    frameBase(chatInnerFrame) === 'chat_inner.html' &&
+                    chatInnerFrame.style.display !== 'none') {
+                    showOverlayFrame();
+                    overlay.classList.add('active');
+                    overlay.classList.add('no-header');
+                    overlayActive = true;
+                    currentOverlaySource = 'main';
+                    overlayTitle.textContent = '';
+                    overlayBack.classList.add('hidden');
+                    return;
+                }
+            } catch (e) {}
+
+            // 从聊天列表进入群聊：返回时回到聊天列表
+            try {
+                if (wasOverlaySource === 'chat' && frameBase(overlayFrame) === 'groups.html') {
+                    overlayFrame.src = withBuild('chat.html');
+                    showOverlayFrame();
+                    overlay.classList.add('active');
+                    overlay.classList.add('no-header');
+                    overlayActive = true;
+                    currentOverlaySource = 'main';
+                    overlayTitle.textContent = '';
+                    overlayBack.classList.add('hidden');
+                    return;
+                }
+            } catch (e) {}
+
+            if (wasOverlaySource === 'groups' && lastGroupUrl) {
+                overlayFrame.style.display = 'block';
+                chatInnerFrame.style.display = 'none';
+                voiceCallFrame.style.display = 'none';
+                musicFrame.style.display = 'none';
+                isMusicFrameActive = false;
+                overlayFrame.src = withBuild(lastGroupUrl);
+                overlay.classList.add('no-header');
+                overlayTitle.textContent = '';
+                overlayBack.classList.add('hidden');
+                overlay.classList.add('active');
+                overlayActive = true;
+                currentOverlaySource = null;
+                isChatInnerActive = false;
+                topBar.classList.add('hidden');
+                bottomBar.classList.add('hidden');
+                appContent.style.paddingTop = '0';
+                appContent.style.paddingBottom = '0';
+                return;
+            }
+
+            // 从聊天列表/聊天资料打开的功能页：关闭后回到聊天列表
+            try {
+                if (wasOverlaySource === 'chat') {
+                    overlayFrame.src = withBuild('chat.html');
+                    showOverlayFrame();
+                    overlay.classList.add('active');
+                    overlay.classList.add('no-header');
+                    overlayActive = true;
+                    currentOverlaySource = 'main';
+                    overlayTitle.textContent = '';
+                    overlayBack.classList.add('hidden');
+                    return;
+                }
+            } catch (e) {}
+
+            if (wasOverlaySource === 'discover') {
+                overlayFrame.style.display = 'none';
+            hideOtherGenericFrame();
+                retireOverlayFrame();
+                momentsFrame.style.display = 'none';
+                currentOverlaySource = null;
+                isChatInnerActive = false;
+                restoreBottomBar();
+                if (currentPage !== 'discover') {
+                    switchPage('discover');
+                } else {
+                    topBar.classList.add('hidden');
+                    appContent.style.paddingTop = '0';
+                }
+                return;
+            }
+
+            if (wasOverlaySource === 'more') {
+                overlayFrame.style.display = 'none';
+            hideOtherGenericFrame();
+                retireOverlayFrame();
+                currentOverlaySource = null;
+                isChatInnerActive = false;
+                restoreBottomBar();
+                if (currentPage !== 'more') {
+                    switchPage('more');
+                } else {
+                    topBar.classList.add('hidden');
+                    appContent.style.paddingTop = '0';
+                }
+                return;
+            }
+
+            if (wasOverlaySource === 'moments') {
+                momentsFrame.style.display = 'none';
+                currentOverlaySource = null;
+                isChatInnerActive = false;
+                restoreBottomBar();
+                restoreTopBar();
+                return;
+            }
+
+            // 从 DIY 应用返回：默认回到 AppStore（应用内部也可自己设计返回逻辑）
+            if (wasOverlaySource === 'appstore') {
+                currentOverlaySource = 'discover';
+                pickOverlayFrame('appstore.html');
+                showOverlayFrame();
+                overlayFrame.src = withBuild('appstore.html');
+                overlay.classList.add('active');
+                overlay.classList.add('no-header');
+                overlayActive = true;
+                overlayTitle.textContent = '';
+                overlayBack.classList.add('hidden');
+                isChatInnerActive = false;
+                topBar.classList.add('hidden');
+                bottomBar.classList.add('hidden');
+                appContent.style.paddingTop = '0';
+                appContent.style.paddingBottom = '0';
+                return;
+            }
+
+            chatInnerFrame.style.display = 'none';
+            momentsFrame.style.display = 'none';
+            overlayFrame.style.display = 'block';
+            retireOverlayFrame();
+            currentOverlaySource = null;
+            isChatInnerActive = false;
+            restoreBottomBar();
+            if (currentPage !== 'chat') {
+                switchPage('chat');
+            } else {
+                topBar.classList.remove('hidden');
+                appContent.style.paddingTop = '0';
+            }
+        }
+
+        // ===== 冷启动：从系统通知点进来（sw.js 把目标放在 ?open= 上）=====
+        try {
+            const params = new URLSearchParams(location.search);
+            const openTarget = params.get('open');
+            if (openTarget) {
+                // 处理完立刻从地址栏移除：避免系统把带 ?open 的地址当作下次冷启动的入口，直接跳进会话页
+                try {
+                    params.delete('open');
+                    const qs = params.toString();
+                    history.replaceState(null, '', location.pathname + (qs ? ('?' + qs) : '') + location.hash);
+                } catch (e) {}
+                const handledKey = 'nano_open_handled_' + openTarget;
+                let alreadyHandled = false;
+                try { alreadyHandled = sessionStorage.getItem(handledKey) === '1'; } catch (e) {}
+                if (!alreadyHandled) {
+                    try { sessionStorage.setItem(handledKey, '1'); } catch (e) {}
+                    setTimeout(function () { try { openNotifyTarget(openTarget); } catch (e) {} }, 900);
+                }
+            }
+            // 通知里「直接回复」后冷启动：带 chatId + 回复文本
+            const ssReplyChat = params.get('ssreply');
+            const ssReplyText = params.get('sstext');
+            if (ssReplyChat && ssReplyText) {
+                try {
+                    params.delete('ssreply'); params.delete('sstext');
+                    const qs2 = params.toString();
+                    history.replaceState(null, '', location.pathname + (qs2 ? ('?' + qs2) : '') + location.hash);
+                } catch (e) {}
+                setTimeout(function () { try { nanoScreenReplySend(ssReplyChat, ssReplyText); } catch (e) {} }, 1100);
+            }
+        } catch (e) {}
+
+        overlayBack.addEventListener('click', closeFullscreen);
+
+        // 顶部灵动岛透明点击带：有全屏页时点一下返回上一层，否则回到聊天页
+        var notchTap = document.getElementById('notchTap');
+        if (notchTap) {
+            notchTap.addEventListener('click', function () {
+                if (overlayActive) {
+                    closeFullscreen();
+                } else if (currentPage !== 'chat') {
+                    switchPage('chat');
+                }
+            });
+        }
+
+        document.querySelectorAll('.capsule-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const page = this.dataset.page;
+                if (page === 'moments') {
+                    openFullscreen('moments.html', 'Moments', false, 'moments');
+                    document.querySelectorAll('.capsule-btn').forEach(b => b.classList.remove('active-btn'));
+                    circleMoreBtn.classList.add('active-btn');
+                    return;
+                }
+                if (page && pageConfig[page]) {
+                    switchPage(page);
+                }
+            });
+        });
+
+        circleMoreBtn.addEventListener('click', function() {
+            openFullscreen('phone.html', '手机', false, 'more');
+            document.querySelectorAll('.capsule-btn').forEach(b => b.classList.remove('active-btn'));
+            circleMoreBtn.classList.add('active-btn');
+        });
+
+        let musicBallEl = null;
+        let musicBallState = { visible: false, playing: false, cover: '', title: '', artist: '', mode: '' };
+        let isMusicBallDragging = false;
+
+        function createMusicBall() {
+            if (musicBallEl) return;
+            musicBallEl = document.createElement('div');
+            musicBallEl.className = 'music-float-ball';
+            musicBallEl.innerHTML =
+                '<img class="ball-cover" src="" style="display:none;" alt="">' +
+                '<div class="ball-placeholder">' +
+                '  <svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>' +
+                '</div>' +
+                '<div class="ball-expand-content">' +
+                '  <div>' +
+                '    <div class="ball-expand-title">未选择歌曲</div>' +
+                '    <div class="ball-expand-artist">点击播放</div>' +
+                '  </div>' +
+                '  <div class="ball-expand-buttons">' +
+                '    <button class="ball-expand-btn" data-mball="mode" aria-label="播放模式"><svg viewBox="0 0 24 24"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg></button>' +
+                '    <button class="ball-expand-btn" data-mball="prev" aria-label="上一首"><svg viewBox="0 0 24 24"><polygon points="19 20 9 12 19 4 19 20" fill="currentColor" stroke="none"/><line x1="5" y1="19" x2="5" y2="5"/></svg></button>' +
+                '    <button class="ball-expand-btn play" data-mball="play" aria-label="播放"><svg viewBox="0 0 24 24"><polygon points="6 4 20 12 6 20 6 4"/></svg></button>' +
+                '    <button class="ball-expand-btn" data-mball="next" aria-label="下一首"><svg viewBox="0 0 24 24"><polygon points="5 4 15 12 5 20 5 4" fill="currentColor" stroke="none"/><line x1="19" y1="5" x2="19" y2="19"/></svg></button>' +
+                '    <button class="ball-expand-btn" data-mball="list" aria-label="歌单"><svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="4" cy="6" r="1.2" fill="currentColor" stroke="none"/><circle cx="4" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="4" cy="18" r="1.2" fill="currentColor" stroke="none"/></svg></button>' +
+                '  </div>' +
+                '</div>' +
+                '<button class="ball-off-btn" type="button">OFF</button>';
+
+            musicBallEl.querySelectorAll('.ball-expand-btn').forEach(function (btn) {
+                btn.addEventListener('mousedown', function (e) { e.stopPropagation(); });
+                btn.addEventListener('touchstart', function (e) { e.stopPropagation(); }, { passive: true });
+                btn.addEventListener('click', function (e) {
+                    e.stopPropagation(); e.preventDefault();
+                    var act = btn.getAttribute('data-mball');
+                    if (act === 'list') { openMusicFromBall(); return; }
+                    postToMusic({ type: 'musicBallCmd', cmd: act });
+                });
+            });
+            var offBtn = musicBallEl.querySelector('.ball-off-btn');
+            offBtn.addEventListener('mousedown', function (e) { e.stopPropagation(); });
+            offBtn.addEventListener('touchstart', function (e) { e.stopPropagation(); }, { passive: true });
+            offBtn.addEventListener('click', function (e) {
+                e.stopPropagation(); e.preventDefault();
+                postToMusic({ type: 'musicBallCmd', cmd: 'off' });
+            });
+
+            var saved = null;
+            try { saved = JSON.parse(localStorage.getItem('nano_music_ball_pos') || 'null'); } catch (e) {}
+            if (saved && typeof saved.x === 'number') {
+                musicBallEl.style.left = saved.x + 'px';
+                musicBallEl.style.top = saved.y + 'px';
+            } else {
+                musicBallEl.style.right = '16px';
+                musicBallEl.style.top = '58%';
+            }
+
+            var startX = 0, startY = 0, offX = 0, offY = 0, moved = false, lastTapTs = 0, suppressClick = false, lastTouchTs = 0;
+
+            function down(cx, cy) {
+                isMusicBallDragging = true; moved = false;
+                startX = cx; startY = cy;
+                var r = musicBallEl.getBoundingClientRect();
+                offX = cx - r.left; offY = cy - r.top;
+                musicBallEl.classList.add('dragging');
+            }
+            function move(cx, cy) {
+                if (!isMusicBallDragging) return;
+                if (Math.abs(cx - startX) > 4 || Math.abs(cy - startY) > 4) moved = true;
+                var bw = musicBallEl.classList.contains('expanded') ? 210 : 42;
+                var bh = musicBallEl.classList.contains('expanded') ? 74 : 42;
+                var x = Math.max(0, Math.min(window.innerWidth - bw, cx - offX));
+                var y = Math.max(0, Math.min(window.innerHeight - bh, cy - offY));
+                musicBallEl.style.left = x + 'px';
+                musicBallEl.style.top = y + 'px';
+                musicBallEl.style.right = 'auto';
+            }
+            function up() {
+                if (!isMusicBallDragging) return;
+                isMusicBallDragging = false;
+                musicBallEl.classList.remove('dragging');
+                if (moved) {
+                    // 拖动结束：不触发点击，避免拖完顺带展开/回音乐
+                    suppressClick = true;
+                    setTimeout(function () { suppressClick = false; }, 350);
+                    try {
+                        var r = musicBallEl.getBoundingClientRect();
+                        localStorage.setItem('nano_music_ball_pos', JSON.stringify({ x: r.left, y: r.top }));
+                    } catch (e) {}
+                }
+            }
+
+            // 用 click 统一判定单击/双击（click 每次点按只触发一次，避免 mouse/touch 重复触发）
+            musicBallEl.addEventListener('click', function (e) {
+                if (e.target.closest && (e.target.closest('.ball-expand-btn') || e.target.closest('.ball-off-btn'))) return;
+                if (suppressClick) { suppressClick = false; return; }
+                var now = Date.now();
+                if (now - lastTapTs < 280) {
+                    // 双击：回到音乐 App
+                    lastTapTs = 0;
+                    openMusicFromBall();
+                } else {
+                    // 单击：展开 / 收起悬浮球
+                    lastTapTs = now;
+                    setTimeout(function () {
+                        if (lastTapTs === now) {
+                            lastTapTs = 0;
+                            toggleMusicBallExpand();
+                        }
+                    }, 290);
+                }
+            });
+            musicBallEl.addEventListener('mousedown', function (e) {
+                // 触摸后浏览器会补发鼠标事件，忽略它，避免影响拖拽状态
+                if (Date.now() - lastTouchTs < 700) return;
+                e.preventDefault(); down(e.clientX, e.clientY);
+            });
+            document.addEventListener('mousemove', function (e) { if (isMusicBallDragging) move(e.clientX, e.clientY); });
+            document.addEventListener('mouseup', up);
+            musicBallEl.addEventListener('touchstart', function (e) {
+                lastTouchTs = Date.now();
+                var t = e.touches[0]; down(t.clientX, t.clientY);
+            }, { passive: true });
+            document.addEventListener('touchmove', function (e) {
+                if (isMusicBallDragging && e.touches.length === 1) move(e.touches[0].clientX, e.touches[0].clientY);
+            }, { passive: true });
+            document.addEventListener('touchend', up);
+
+            document.addEventListener('click', function (e) {
+                if (!musicBallEl || !musicBallEl.classList.contains('expanded')) return;
+                if (musicBallEl.contains(e.target)) return;
+                musicBallEl.classList.remove('expanded');
+            });
+
+            document.body.appendChild(musicBallEl);
+        }
+
+        let appNotifyTimer = null;
+        function escapeNotifyHtml(s) {
+            return String(s == null ? '' : s)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+        function hideAppNotify() {
+            const el = document.getElementById('appNotify');
+            if (el) el.classList.remove('show');
+        }
+        function showAppNotify(title, body, app, opts) {
+            opts = opts || {};
+            let el = document.getElementById('appNotify');
+            if (!el) {
+                el = document.createElement('div');
+                el.id = 'appNotify';
+                el.className = 'app-notify';
+                el.addEventListener('click', function () {
+                    if (el._target) { try { openNotifyTarget(el._target); } catch (e) {} hideAppNotify(); return; }
+                    if (el._action && el._action.url) { openAppFromNotify(el._action); hideAppNotify(); return; }
+                    if (el._app === 'music') openMusicFromBall();
+                    hideAppNotify();
+                });
+                document.body.appendChild(el);
+            }
+            // 短时间内同一条通知只弹一次，避免多个通道重复触发
+            const notifyName = String(opts.name || title || app || '通知').trim();
+            const dedupeKey = notifyName + '|' + String(body || '') + '|' + String(opts.target || '');
+            const now = Date.now();
+            if (el._lastKey === dedupeKey && now - (el._lastAt || 0) < 1200) return;
+            el._lastKey = dedupeKey;
+            el._lastAt = now;
+
+            el._app = app || '';
+            el._action = (opts.action && opts.url) ? { label: opts.action, url: opts.url, title: opts.title || '' } : null;
+            el._target = opts.target || '';
+            el.classList.remove('pink');
+
+            // 头像：优先 opts.avatar；其次 icon（仅当它是图片地址）；否则用昵称首字
+            const avatarUrl = String(opts.avatar || '');
+            const iconValue = String(opts.icon || '');
+            const usableAvatar = avatarUrl || (/^(https?:|data:image|blob:)/i.test(iconValue) ? iconValue : '');
+            const initial = notifyName.charAt(0) || 'N';
+            const avatarHtml = usableAvatar
+                ? '<div class="an-avatar"><img src="' + escapeNotifyHtml(usableAvatar) + '" alt=""></div>'
+                : '<div class="an-avatar">' + escapeNotifyHtml(initial) + '</div>';
+
+            el.innerHTML = avatarHtml +
+                '<div class="an-main"><div class="an-title">' + escapeNotifyHtml(notifyName) + '</div>' +
+                '<div class="an-body">' + escapeNotifyHtml(body) + '</div>' +
+                (el._action ? '<div class="an-actions"><span class="an-action">' + escapeNotifyHtml(el._action.label) + '</span></div>' : '') +
+                (!el._action && el._target ? '<div class="an-actions"><span class="an-action">点击查看</span></div>' : '') +
+                '</div>';
+            el.classList.add('show');
+            // 切到后台 / 锁屏时，同步弹一条系统通知，避免只在内页提示而看不到
+            try {
+                if (window.NanoNotify && document.hidden) {
+                    window.NanoNotify.notify(title, body, {
+                        icon: opts.icon,
+                        avatar: opts.avatar,
+                        name: opts.name,
+                        target: opts.target || ((opts.action && opts.url) || ''),
+                        tag: app ? ('nano-app-' + app) : ''
+                    });
+                }
+            } catch (e) {}
+            clearTimeout(appNotifyTimer);
+            appNotifyTimer = setTimeout(hideAppNotify, (el._action || el._target) ? 9000 : 5200);
+        }
+        window.__nanoAppNotify = showAppNotify;
+
+        // ===== 供「角色接管手机」等外部模块使用的安全壳接口 =====
+        window.__nanoShell = {
+            open: function (url, title, src) { try { openFullscreen(url, title || '', false, src || 'takeover'); return true; } catch (e) { return false; } },
+            close: function () { try { closeFullscreen(); return true; } catch (e) { return false; } },
+            back: function () { try { return !!(window.__nanoGoBack && window.__nanoGoBack()); } catch (e) { return false; } },
+            isOverlayActive: function () { try { return overlay.classList.contains('active'); } catch (e) { return false; } },
+            readScreen: function () { return __tkReadScreen(); },
+            say: function (chatId, name, text) { return __tkSay(chatId, name, text); },
+            postToChat: function (msg) { try { chatInnerFrame.contentWindow.postMessage(msg, '*'); return true; } catch (e) { return false; } },
+            scroll: function (dy) { return __tkScroll(dy); },
+            notify: function (t, b) { try { showAppNotify(t || '', b || '', 'social', { pink: true }); return true; } catch (e) { return false; } }
+        };
+        function __tkReadScreen() {
+            try {
+                var frames = [overlayFrame, overlayFrameB, chatInnerFrame, voiceCallFrame, musicFrame, momentsFrame, insFrame];
+                for (var i = 0; i < frames.length; i++) {
+                    var f = frames[i]; if (!f) continue;
+                    var vis = f.style.display && f.style.display !== 'none';
+                    if (!vis) continue;
+                    var src = ''; try { src = frameBase(f); } catch (e) {}
+                    var text = ''; try { if (f.contentDocument && f.contentDocument.body) text = f.contentDocument.body.innerText || ''; } catch (e) {}
+                    return { app: src || 'app', url: (f.getAttribute && f.getAttribute('data-loaded-url')) || src, text: String(text).replace(/\n{3,}/g, '\n\n').slice(0, 4000) };
+                }
+                var mainText = ''; try { mainText = (appContent ? appContent.innerText : '') || ''; } catch (e) {}
+                return { app: 'home', url: '', text: String(mainText).slice(0, 2400) };
+            } catch (e) { return { app: 'unknown', url: '', text: '' }; }
+        }
+        function __tkSay(chatId, name, text) {
+            try {
+                var url = 'chat_inner.html?chat=' + encodeURIComponent(chatId) + '&name=' + encodeURIComponent(name || '');
+                openFullscreen(url, '', false, 'main');
+                setTimeout(function () {
+                    try { chatInnerFrame.contentWindow.postMessage({ type: 'NANO_CHAR_SAY', chatId: String(chatId), text: String(text || '') }, '*'); } catch (e) {}
+                }, 700);
+                return true;
+            } catch (e) { return false; }
+        }
+        function __tkScroll(dy) {
+            try {
+                var frames = [overlayFrame, overlayFrameB, chatInnerFrame, voiceCallFrame, musicFrame, momentsFrame, insFrame];
+                for (var i = 0; i < frames.length; i++) {
+                    var f = frames[i];
+                    if (!f || !f.style.display || f.style.display === 'none') continue;
+                    var w = f.contentWindow, d = f.contentDocument;
+                    if (w && typeof w.scrollBy === 'function') { w.scrollBy(0, Number(dy) || 0); return true; }
+                    if (d && d.scrollingElement) { d.scrollingElement.scrollTop += (Number(dy) || 0); return true; }
+                }
+                return false;
+            } catch (e) { return false; }
+        }
+
+        const refreshState = {};
+        const urlSourceMap = {};
+        // 注意：要 decodeURIComponent。带空格的页面（如 “memory palace.html”）在 iframe 的
+        // location.href 里会被编码成 memory%20palace.html，不解码就匹配不到 SELF_SAFE_PAGES /
+        // ownNavPages，外壳会误判并给它叠加一层 body 安全区留白（只有记忆宫殿受影响）。
+        function baseName(p) {
+            try {
+                var s = String(p || '').split('?')[0].split('/').pop();
+                try { return decodeURIComponent(s); } catch (e) { return s; }
+            } catch (e) { return ''; }
+        }
+        // 读取 iframe 里「实际正在显示」的页面名：页面可能在 iframe 内自己 location.href 跳转过，
+        // 此时 src 属性已过期，用属性判断会误以为它还停在旧页面。
+        function frameBase(f) {
+            if (!f) return '';
+            try {
+                var w = f.contentWindow;
+                var h = w && w.location && w.location.href;
+                if (h && h !== 'about:blank') return baseName(h);
+            } catch (e) {}
+            return baseName(f.getAttribute('src'));
+        }
+        function frameForWindow(win) {
+            if (!win) return null;
+            for (let i = 0; i < OVERLAY_FRAME_IDS.length; i++) {
+                const f = document.getElementById(OVERLAY_FRAME_IDS[i]);
+                if (f && f.contentWindow === win) return f;
+            }
+            const tabs = document.querySelectorAll('.iframe-container iframe');
+            for (let j = 0; j < tabs.length; j++) {
+                if (tabs[j].contentWindow === win) return tabs[j];
+            }
+            return null;
+        }
+        function isAppForeground(url) {
+            const want = baseName(url);
+            if (!want) return false;
+            const matches = function (f) { return !!(f && frameBase(f) === want); };
+            if (overlayActive) {
+                for (let i = 0; i < OVERLAY_FRAME_IDS.length; i++) {
+                    const f = document.getElementById(OVERLAY_FRAME_IDS[i]);
+                    if (f && f.style.display !== 'none' && matches(f)) return true;
+                }
+                return false;
+            }
+            return matches(document.querySelector('.iframe-container.active iframe'));
+        }
+        function hasActiveRefreshForFrame(f) {
+            if (!f) return false;
+            let win = null;
+            try { win = f.contentWindow; } catch (e) { return false; }
+            for (const k in refreshState) {
+                const r = refreshState[k];
+                if (r && r.active && r.win && r.win === win) return true;
+            }
+            return false;
+        }
+        function retireOverlayFrame() {
+            try {
+                if (overlayFrame && hasActiveRefreshForFrame(overlayFrame)) {
+                    overlayFrame.style.display = 'none';
+            hideOtherGenericFrame();
+                    return;
+                }
+            } catch (e) {}
+            overlayFrame.style.display = 'none';
+            hideOtherGenericFrame();
+            try { overlayFrame.removeAttribute('data-loaded-url'); } catch (e) {}
+            overlayFrame.setAttribute('src', 'about:blank');
+        }
+        function handleNanoRefresh(data, fromWin) {
+            const id = data.id || '';
+            const key = id + '|' + (data.key || 'main');
+            const meta = {
+                id: id,
+                key: data.key || 'main',
+                name: data.name || id || '内容',
+                label: data.label || '',
+                url: data.url || '',
+                title: data.title || data.name || '',
+                chat: !!data.chat
+            };
+            if (data.phase === 'start') {
+                refreshState[key] = { meta: meta, win: fromWin || null, active: true };
+                return;
+            }
+            const rec = refreshState[key];
+            if (rec) {
+                rec.active = false;
+                meta.label = meta.label || rec.meta.label || '';
+                meta.chat = meta.chat || rec.meta.chat;
+                meta.url = meta.url || rec.meta.url;
+                meta.name = meta.name || rec.meta.name;
+                meta.title = meta.title || rec.meta.title;
+            }
+            const name = meta.name || '内容';
+            const label = meta.label ? (' · ' + meta.label) : '';
+            if (data.phase === 'fail') {
+                showAppNotify(name + label + '刷新失败', data.body || '生成失败，请稍后重试。', meta.id,
+                    { action: '去看看', url: meta.url, title: meta.title });
+                return;
+            }
+            if (data.phase === 'success') {
+                if (meta.chat) return;
+                if (isAppForeground(meta.url)) return;
+                showAppNotify(name + label + '刷新成功', data.body || '内容已更新，点「去看看」查看。', meta.id,
+                    { action: '去看看', url: meta.url, title: meta.title });
+            }
+        }
+        function openAppFromNotify(action) {
+            const url = action && action.url;
+            if (!url) return;
+            const source = urlSourceMap[baseName(url)] || 'more';
+            try {
+                pickOverlayFrame(url);
+                if (overlayFrame && frameBase(overlayFrame) === baseName(url)) {
+                    showOverlayFrame();
+                    overlayActive = true;
+                    currentOverlaySource = source;
+                    overlay.classList.add('active');
+                    overlay.classList.add('no-header');
+                    topBar.classList.add('hidden');
+                    bottomBar.classList.add('hidden');
+                    appContent.style.paddingTop = '0';
+                    appContent.style.paddingBottom = '0';
+                    overlayBack.classList.add('hidden');
+                    return;
+                }
+            } catch (e) {}
+            openFullscreen(url, action.title || '', false, source);
+        }
+        function openNotifyTarget(target) {
+            target = String(target || '');
+            if (!target) return;
+            // 屏幕共享点评通知：点通知只在底部弹一个「快速回复」输入框，不打开整个聊天
+            if (target.indexOf('ss-reply:') === 0) { showScreenReplyPopup(target.slice(9)); return; }
+            if (target === 'moments') { openFullscreen('moments.html', 'Moments', false, 'discover'); return; }
+            if (target === 'ins') { openFullscreen('ins.html?v=14', 'Instagram', false, 'discover'); return; }
+            if (target === 'halo') { openFullscreen('halo.html', 'Halo', false, 'discover'); return; }
+            if (target === 'music') { openMusicFromBall(); return; }
+            if (target === 'books') { openFullscreen('books.html', 'Books', false, 'discover'); return; }
+            if (target.indexOf('chat:') === 0) {
+                const chatId = target.slice(5);
+                let info = null;
+                try { info = JSON.parse(sessionStorage.getItem('last_chat_info') || 'null'); } catch (e) {}
+                const same = !!(info && String(info.chatId) === String(chatId));
+                const name = same ? (info.chatName || '') : '';
+                try {
+                    sessionStorage.setItem('last_chat_info', JSON.stringify({
+                        chatId: chatId,
+                        chatName: name,
+                        chatAvatar: same ? (info.chatAvatar || '') : ''
+                    }));
+                } catch (e) {}
+                openFullscreen('chat_inner.html?chat=' + encodeURIComponent(chatId) + '&name=' + encodeURIComponent(name || '聊天'), '', false, 'main');
+            }
+            if (target.indexOf('group:') === 0) {
+                const gid = target.slice(6);
+                openFullscreen('groups.html?group=' + encodeURIComponent(gid), '群聊', false, 'main');
+                return;
+            }
+            if (target.indexOf('offline:') === 0) {
+                const oid = target.slice(8);
+                // 线上 → 线下：系统提示「已进入线下」
+                try { if (window.__nanoShell) window.__nanoShell.postToChat({ type: 'NANO_SYS_NOTICE', text: '已进入线下' }); } catch (e) {}
+                openFullscreen('offline.html?chat=' + encodeURIComponent(oid), '线下聊天', false, 'main');
+                return;
+            }
+        }
+
+        function postToMusic(msg) {
+            try {
+                if (musicFrame && frameBase(musicFrame) === 'music.html') {
+                    musicFrame.contentWindow.postMessage(msg, '*');
+                }
+            } catch (e) {}
+        }
+
+        // ===== 屏幕共享：点通知后的「快速回复」弹窗 =====
+        function escSS(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+        function nanoScreenReplySend(chatId, text) {
+            text = String(text || '').trim();
+            if (!chatId || !text) return;
+            try {
+                if (window.__nanoShell && __nanoShell.postToChat) {
+                    window.__nanoShell.postToChat({ type: 'NANO_USER_SAY', chatId: String(chatId), text: text });
+                    return;
+                }
+            } catch (e) {}
+            try {
+                if (window.__nanoShell && __nanoShell.open) {
+                    window.__nanoShell.open('chat_inner.html?chat=' + encodeURIComponent(chatId) + '&name=' + encodeURIComponent('聊天'), '', 'main');
+                    setTimeout(function () { try { window.__nanoShell.postToChat({ type: 'NANO_USER_SAY', chatId: String(chatId), text: text }); } catch (e) {} }, 1100);
+                }
+            } catch (e) {}
+        }
+        function showScreenReplyPopup(chatId) {
+            var old = document.getElementById('ssReplyOverlay');
+            if (old) { try { old.remove(); } catch (e) {} }
+            var name = 'TA';
+            try {
+                var info = JSON.parse(sessionStorage.getItem('last_chat_info') || 'null');
+                if (info && String(info.chatId) === String(chatId) && info.chatName) name = info.chatName;
+            } catch (e) {}
+            var el = document.createElement('div');
+            el.id = 'ssReplyOverlay';
+            el.style.cssText = 'position:fixed;inset:0;z-index:100600;background:rgba(40,25,32,.38);display:flex;align-items:flex-end;justify-content:center;padding:18px;padding-bottom:calc(18px + env(safe-area-inset-bottom))';
+            el.innerHTML =
+                '<div style="width:min(94vw,440px);background:linear-gradient(180deg,#fff7fb,#fffdf4);border-radius:20px;box-shadow:0 20px 60px rgba(120,70,90,.32);padding:16px 16px 14px">' +
+                    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">' +
+                        '<div style="font-size:14px;font-weight:800;color:#b23a5b">回复 ' + escSS(name) + '</div>' +
+                        '<button id="ssReplyClose" style="margin-left:auto;border:0;background:#ffe1ea;color:#b23a5b;border-radius:12px;padding:6px 12px;font-size:12px;font-weight:700">关闭</button>' +
+                    '</div>' +
+                    '<textarea id="ssReplyInput" placeholder="说点什么…" rows="3" style="width:100%;box-sizing:border-box;border:1px solid rgba(210,160,180,.4);border-radius:14px;padding:11px 12px;font-size:15px;line-height:1.5;color:#4a353f;background:#fff;resize:none;outline:none;font-family:inherit"></textarea>' +
+                    '<button id="ssReplySend" style="margin-top:10px;width:100%;height:44px;border:0;border-radius:14px;background:linear-gradient(120deg,#ffb0cd,#ef8fb8);color:#fff;font-size:15px;font-weight:800">发送</button>' +
+                '</div>';
+            document.body.appendChild(el);
+            var ta = el.querySelector('#ssReplyInput');
+            var close = function () { try { el.remove(); } catch (e) {} };
+            el.querySelector('#ssReplyClose').onclick = close;
+            el.addEventListener('click', function (e) { if (e.target === el) close(); });
+            el.querySelector('#ssReplySend').onclick = function () {
+                var t = String(ta.value || '').trim();
+                if (!t) return;
+                nanoScreenReplySend(chatId, t);
+                close();
+            };
+            setTimeout(function () { try { ta.focus(); } catch (e) {} }, 80);
+        }
+
+        function openMusicFromBall() {
+            if (musicBallEl) musicBallEl.classList.remove('expanded');
+            var src = (currentPage === 'discover') ? 'discover' : 'more';
+            openFullscreen('music.html', '', false, src);
+        }
+
+        function toggleMusicBallExpand() {
+            if (!musicBallEl) return;
+            var expanded = musicBallEl.classList.toggle('expanded');
+            if (expanded) {
+                musicBallEl.style.right = 'auto';
+                var r = musicBallEl.getBoundingClientRect();
+                if (r.right > window.innerWidth - 8) {
+                    musicBallEl.style.left = Math.max(8, window.innerWidth - 210 - 8) + 'px';
+                }
+                if (r.bottom > window.innerHeight - 8) {
+                    musicBallEl.style.top = Math.max(8, window.innerHeight - 74 - 8) + 'px';
+                }
+                updateMusicBall();
+            }
+        }
+
+        function updateMusicBall() {
+            if (!musicBallEl) return;
+            var cover = musicBallEl.querySelector('.ball-cover');
+            var ph = musicBallEl.querySelector('.ball-placeholder');
+            if (musicBallState.cover) {
+                cover.src = musicBallState.cover; cover.style.display = 'block'; ph.style.display = 'none';
+            } else {
+                cover.style.display = 'none'; ph.style.display = 'flex';
+            }
+            musicBallEl.querySelector('.ball-expand-title').textContent = musicBallState.title || '未选择歌曲';
+            musicBallEl.querySelector('.ball-expand-artist').textContent =
+                musicBallState.artist || (musicBallState.title ? '' : '点击播放');
+            var playEl = musicBallEl.querySelector('.ball-expand-btn.play');
+            if (playEl) {
+                playEl.innerHTML = musicBallState.playing
+                    ? '<svg viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>'
+                    : '<svg viewBox="0 0 24 24"><polygon points="6 4 20 12 6 20 6 4"/></svg>';
+            }
+            musicBallEl.classList.toggle('playing', !!musicBallState.playing);
+        }
+
+        function syncMusicBall() {
+            var shouldShow = musicBallState.visible && !isMusicFrameActive;
+            if (shouldShow) {
+                createMusicBall();
+                updateMusicBall();
+                musicBallEl.classList.add('show');
+            } else if (musicBallEl) {
+                musicBallEl.classList.remove('show');
+                musicBallEl.classList.remove('expanded');
+            }
+        }
+
+        (function() {
+            let floatBall = null;
+            let isDragging = false;
+            let dragOffsetX = 0;
+            let dragOffsetY = 0;
+            let callTimer = null;
+            let callSeconds = 0;
+            let isClick = false;
+            let isFloatBallVisible = false;
+
+            function savePosition(x, y) {
+                try {
+                    localStorage.setItem('voice_float_ball_pos', JSON.stringify({ x: x, y: y }));
+                } catch (e) {}
+            }
+
+            function loadPosition() {
+                try {
+                    const raw = localStorage.getItem('voice_float_ball_pos');
+                    if (raw) {
+                        const pos = JSON.parse(raw);
+                        return pos;
+                    }
+                } catch (e) {}
+                return null;
+            }
+
+            function createFloatBall() {
+                if (floatBall) return;
+
+                floatBall = document.createElement('div');
+                floatBall.className = 'voice-float-ball';
+                floatBall.innerHTML = `
+                    <svg class="ball-icon" viewBox="0 0 24 24" fill="none" stroke="#34c759" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+                    </svg>
+                    <span class="ball-time" id="ballTime">00:00</span>
+                `;
+
+                const savedPos = loadPosition();
+                if (savedPos) {
+                    floatBall.style.left = savedPos.x + 'px';
+                    floatBall.style.top = savedPos.y + 'px';
+                } else {
+                    floatBall.style.right = '20px';
+                    floatBall.style.bottom = '120px';
+                }
+
+                floatBall.addEventListener('mousedown', function(e) {
+                    if (e.button !== 0) return;
+                    isClick = true;
+                    startDrag(e.clientX, e.clientY);
+                    e.preventDefault();
+                });
+
+                document.addEventListener('mousemove', function(e) {
+                    if (!isDragging) return;
+                    isClick = false;
+                    moveDrag(e.clientX, e.clientY);
+                });
+
+                document.addEventListener('mouseup', function(e) {
+                    if (!isDragging) return;
+                    endDrag();
+                    if (isClick) {
+                        restoreVoiceCall();
+                    }
+                    isClick = false;
+                });
+
+                floatBall.addEventListener('touchstart', function(e) {
+                    const touch = e.touches[0];
+                    isClick = true;
+                    startDrag(touch.clientX, touch.clientY);
+                    e.preventDefault();
+                }, { passive: false });
+
+                document.addEventListener('touchmove', function(e) {
+                    if (!isDragging) return;
+                    isClick = false;
+                    const touch = e.touches[0];
+                    moveDrag(touch.clientX, touch.clientY);
+                    e.preventDefault();
+                }, { passive: false });
+
+                document.addEventListener('touchend', function(e) {
+                    if (!isDragging) return;
+                    endDrag();
+                    if (isClick) {
+                        restoreVoiceCall();
+                    }
+                    isClick = false;
+                });
+
+                document.body.appendChild(floatBall);
+            }
+
+            function startDrag(clientX, clientY) {
+                if (!floatBall) return;
+                const rect = floatBall.getBoundingClientRect();
+                dragOffsetX = clientX - rect.left;
+                dragOffsetY = clientY - rect.top;
+                isDragging = true;
+                floatBall.classList.add('dragging');
+            }
+
+            function moveDrag(clientX, clientY) {
+                if (!floatBall || !isDragging) return;
+                let x = clientX - dragOffsetX;
+                let y = clientY - dragOffsetY;
+                const maxX = window.innerWidth - 64;
+                const maxY = window.innerHeight - 64;
+                x = Math.max(0, Math.min(maxX, x));
+                y = Math.max(0, Math.min(maxY, y));
+                floatBall.style.left = x + 'px';
+                floatBall.style.top = y + 'px';
+                floatBall.style.right = 'auto';
+                floatBall.style.bottom = 'auto';
+            }
+
+            function endDrag() {
+                if (!floatBall) return;
+                isDragging = false;
+                floatBall.classList.remove('dragging');
+                const rect = floatBall.getBoundingClientRect();
+                savePosition(rect.left, rect.top);
+            }
+
+            function startCallTimer() {
+                if (callTimer) clearInterval(callTimer);
+                callTimer = setInterval(function() {
+                    callSeconds++;
+                    const m = String(Math.floor(callSeconds / 60)).padStart(2, '0');
+                    const s = String(callSeconds % 60).padStart(2, '0');
+                    const timeEl = document.getElementById('ballTime');
+                    if (timeEl) timeEl.textContent = m + ':' + s;
+                }, 1000);
+            }
+
+            function stopCallTimer() {
+                if (callTimer) {
+                    clearInterval(callTimer);
+                    callTimer = null;
+                }
+            }
+
+            function showFloatBall(seconds) {
+                if (seconds !== undefined && seconds > 0) {
+                    callSeconds = seconds;
+                }
+                const m = String(Math.floor(callSeconds / 60)).padStart(2, '0');
+                const s = String(callSeconds % 60).padStart(2, '0');
+                const timeEl = document.getElementById('ballTime');
+                if (timeEl) timeEl.textContent = m + ':' + s;
+
+                if (!floatBall) createFloatBall();
+                if (floatBall) {
+                    // 兜底：保存的位置可能越界（旋转/换机型），或节点被移除过，重新挂回并夹进可视区
+                    try {
+                        if (!floatBall.parentNode) document.body.appendChild(floatBall);
+                        floatBall.style.position = 'fixed';
+                        const r = floatBall.getBoundingClientRect();
+                        if (r.left < 0 || r.top < 0 || r.right > window.innerWidth || r.bottom > window.innerHeight) {
+                            floatBall.style.left = '';
+                            floatBall.style.top = '';
+                            floatBall.style.right = '20px';
+                            floatBall.style.bottom = '120px';
+                        }
+                    } catch (e) {}
+                    floatBall.style.display = 'flex';
+                    isFloatBallVisible = true;
+                    // 按当前通话类型切换悬浮球配色与图标（语音=绿色电话 / 视频=蓝色摄像头）
+                    try {
+                        const isVideo = frameBase(document.getElementById('voiceCallFrame')) === 'video-call.html';
+                        floatBall.classList.toggle('is-video', isVideo);
+                        const icon = floatBall.querySelector('.ball-icon');
+                        if (icon) {
+                            icon.innerHTML = isVideo
+                                ? '<path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/>'
+                                : '<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>';
+                        }
+                    } catch (e) {}
+                }
+                startCallTimer();
+            }
+
+            function hideFloatBall() {
+                if (floatBall) {
+                    floatBall.style.display = 'none';
+                    isFloatBallVisible = false;
+                }
+                stopCallTimer();
+            }
+
+            function removeFloatBall() {
+                if (floatBall) {
+                    floatBall.remove();
+                    floatBall = null;
+                    isFloatBallVisible = false;
+                }
+                stopCallTimer();
+                callSeconds = 0;
+            }
+
+            function restoreVoiceCall() {
+                const currentSeconds = callSeconds;
+                hideFloatBall();
+                const frame = document.getElementById('voiceCallFrame');
+                // 只要通话帧还活着（src 还在、没被置回 about:blank），就从悬浮球直接续接原通话，绝不重载/重连
+                const _src = frame ? (frame.getAttribute('src') || frame.src || '') : '';
+                const _alive = !!frame && !!frame.contentWindow && _src && _src.indexOf('about:blank') === -1;
+                if (_alive || voiceCallKeptAlive) {
+                    voiceCallKeptAlive = true;
+                    overlayFrame.style.display = 'none';
+            hideOtherGenericFrame();
+                    chatInnerFrame.style.display = 'none';
+                    musicFrame.style.display = 'none';
+                    isMusicFrameActive = false;
+                    voiceCallFrame.style.display = 'block';
+                    overlay.classList.add('active');
+                    overlay.classList.add('no-header');
+                    overlayActive = true;
+                    currentOverlaySource = 'voice-call';
+                    topBar.classList.add('hidden');
+                    bottomBar.classList.add('hidden');
+                    appContent.style.paddingTop = '0';
+                    appContent.style.paddingBottom = '0';
+                    if (frame.contentWindow) {
+                        frame.contentWindow.postMessage({
+                            type: 'restoreVoiceCall',
+                            seconds: currentSeconds
+                        }, '*');
+                    }
+                    return;
+                }
+                const url = 'voice-call.html?chat=' + encodeURIComponent(getChatId()) + '&name=' + encodeURIComponent(getContactName());
+                openFullscreen(url, '语音电话', false);
+                setTimeout(function() {
+                    const f = document.getElementById('voiceCallFrame');
+                    if (f && f.contentWindow) {
+                        f.contentWindow.postMessage({
+                            type: 'restoreVoiceCall',
+                            seconds: currentSeconds
+                        }, '*');
+                    }
+                }, 400);
+            }
+
+            function getChatId() {
+                try {
+                    const urlParams = new URLSearchParams(window.location.search);
+                    return urlParams.get('chat') || 'default';
+                } catch (e) { return 'default'; }
+            }
+
+            function getContactName() {
+                try {
+                    const urlParams = new URLSearchParams(window.location.search);
+                    return urlParams.get('name') || 'AI 助手';
+                } catch (e) { return 'AI 助手'; }
+            }
+
+            window.__voiceFloatBall = {
+                show: showFloatBall,
+                hide: hideFloatBall,
+                remove: removeFloatBall,
+                getTime: function() { return callSeconds; },
+                setTime: function(seconds) { callSeconds = seconds; },
+                isVisible: function() { return isFloatBallVisible; }
+            };
+        })();
+
+        function openChatInnerPage() {
+            let chatInfo = null;
+            try {
+                chatInfo = JSON.parse(sessionStorage.getItem('last_chat_info') || 'null');
+            } catch(e) {}
+            const chatId = chatInfo && chatInfo.chatId ? chatInfo.chatId : 'default';
+            const chatName = chatInfo && chatInfo.chatName ? chatInfo.chatName : '聊天';
+            const url = 'chat_inner.html?chat=' + encodeURIComponent(chatId) +
+                        '&name=' + encodeURIComponent(chatName);
+            isChatInnerActive = true;
+            currentOverlaySource = 'main';
+            openFullscreen(url, '', false, 'main');
+        }
+
+
+        const APP_ROUTES = {
+            chat: 'chat.html', api: 'api.html', couple: 'couple-spaces.html', halo: 'halo.html',
+            instagram: 'ins.html', together: 'books.html', music: 'music.html', memory: 'memory palace.html',
+            imessage: 'imessage.html', peek: 'ios-setting.html', market: 'market.html', shop: 'mall.html',
+            schedule: 'schedule.html', mcp: 'mcp.html', tide: 'cycle.html', fanfic: 'fanfic.html',
+            store: 'appstore.html', book: 'worldbook.html', beauty: 'beautify.html', phone: 'phone.html',
+            settings: 'more.html', friend: 'character.html', album: 'moments.html',
+            editprofile: 'mask.html', send: 'chat.html'
+        };
+        function openNanoApp(id, name) {
+            const u = APP_ROUTES[id];
+            if (!u) {
+                try { showAppNotify('纳米', (name || id) + ' 暂未接入', id, {}); } catch (e) {}
+                return;
+            }
+            openFullscreen(u, name || '', true, 'home');
+        }
+        window.addEventListener('message', function(event) {
+            const data = event.data;
+            if (!data) return;
+
+            if (data.type === 'nanoOpenApp') {
+                try { openNanoApp(data.id, data.name); } catch (e) {}
+                return;
+            }
+
+            if (data.type === 'groupApiFetch' || data.type === 'chatApiFetch') {
+                const isChat = (data.type === 'chatApiFetch');
+                const token = data.token;
+                if (!token) return;
+                if (groupApiInFlight[token]) return;
+                groupApiInFlight[token] = true;
+                const resultKey = data.resultKey || ((isChat ? 'chat_api_result_' : 'group_api_result_') + token);
+                const doneType = isChat ? 'chatApiDone' : 'groupApiDone';
+                const storeResult = function(result) {
+                    try { localStorage.setItem(resultKey, JSON.stringify(result)); } catch (e) {}
+                    delete groupApiInFlight[token];
+                    [overlayFrame, chatInnerFrame].forEach(function(fr) {
+                        try { if (fr && fr.contentWindow) fr.contentWindow.postMessage({ type: doneType, token: token }, '*'); } catch (e) {}
+                    });
+                };
+                try {
+                    fetch(data.url, { method: data.method || 'POST', headers: data.headers || {}, body: data.body })
+                        .then(function(resp) {
+                            return resp.text().then(function(t) { return { ok: resp.ok, status: resp.status, text: t }; });
+                        })
+                        .catch(function(err) {
+                            return { ok: false, status: 0, error: String((err && err.message) || err) };
+                        })
+                        .then(storeResult);
+                } catch (err) {
+                    storeResult({ ok: false, status: 0, error: String((err && err.message) || err) });
+                }
+                return;
+            }
+
+            if (data.type === 'swipeBack') {
+                try { nanoSwipeBackAction(); } catch (e) {}
+                return;
+            }
+
+            if (data.type === 'navigate') {
+                const page = data.page;
+                if (page && pageConfig[page]) {
+                    switchPage(page);
+                }
+            }
+
+            if (data.type === 'currentMaskChanged' || data.type === 'homeDataUpdated' || data.type === 'contactsDataUpdated' || data.type === 'nanoEmojiUpdated' || data.type === 'emojiDataUpdated') {
+                document.querySelectorAll('iframe').forEach(function(t) {
+                    if (t && t.contentWindow) {
+                        try { t.contentWindow.postMessage(data, '*'); } catch(e) {}
+                    }
+                });
+                const c = document.getElementById('chatInnerFrame');
+                if (c && frameBase(c) === 'chat_inner.html') {
+                    try { c.contentWindow.postMessage(data, '*'); } catch(e) {}
+                }
+                const mf = document.getElementById('momentsFrame');
+                if (mf && frameBase(mf) === 'moments.html') {
+                    try { mf.contentWindow.postMessage(data, '*'); } catch(e) {}
+                }
+            }
+
+            // 收藏变动：广播给收藏页，实时刷新（如果它正开着）
+            if (data.type === 'refreshFavorites') {
+                try {
+                    const frames = document.querySelectorAll('iframe');
+                    for (let i = 0; i < frames.length; i++) {
+                        try { frames[i].contentWindow.postMessage(data, '*'); } catch (e) {}
+                    }
+                } catch (e) {}
+            }
+
+            if (data.type === 'nanoCharUpdated') {
+                // 角色资料（头像/昵称）改动：同步给单聊页 + 聊天列表，实时换头像
+                const c = document.getElementById('chatInnerFrame');
+                if (c && frameBase(c) === 'chat_inner.html') {
+                    try { c.contentWindow.postMessage(data, '*'); } catch (e) {}
+                }
+                try {
+                    const frames = document.querySelectorAll('iframe');
+                    for (let i = 0; i < frames.length; i++) {
+                        if (frames[i] === c) continue;
+                        try { frames[i].contentWindow.postMessage(data, '*'); } catch (e) {}
+                    }
+                } catch (e) {}
+            }
+
+            const innerSettingTypes = ['autoMsgChanged', 'autoMsgIntervalChanged', 'autoMomentChanged', 'autoMomentIntervalChanged', 'autoSocialChanged', 'timeAwareChanged', 'allowImageChanged', 'allowMomentImageChanged', 'remarkChanged', 'cotChanged', 'messagesCleared', 'nanoTransMode', 'nanoBlockChanged', 'nanoCharBlocked', 'nanoCharUnblocked'];
+            if (innerSettingTypes.indexOf(data.type) !== -1) {
+                const c = document.getElementById('chatInnerFrame');
+                if (c && frameBase(c) === 'chat_inner.html') {
+                    try { c.contentWindow.postMessage(data, '*'); } catch(e) {}
+                }
+            }
+
+            // iMessage 是独立 App：拉黑后写入的新消息 / 拉黑状态变化要同步给正在打开的 iMessage
+            if (data.type === 'nanoIMessageUpdated' || data.type === 'nanoBlockChanged' || data.type === 'nanoCharBlocked' || data.type === 'nanoCharUnblocked') {
+                document.querySelectorAll('iframe').forEach(function(f) {
+                    try { if (f && f.contentWindow) f.contentWindow.postMessage(data, '*'); } catch (e) {}
+                });
+            }
+
+            // DIY 应用改了名字 / 图标：同步给正在打开的 AppStore
+            if (data.type === 'nanoAppManifestChanged') {
+                document.querySelectorAll('iframe').forEach(function(f) {
+                    try { if (f && f.contentWindow) f.contentWindow.postMessage(data, '*'); } catch (e) {}
+                });
+            }
+
+            if (data.type === 'momentsDataUpdated') {
+                const mf = document.getElementById('momentsFrame');
+                if (mf && frameBase(mf) === 'moments.html') {
+                    try { mf.contentWindow.postMessage({ type: 'momentsDataUpdated' }, '*'); } catch(e) {}
+                }
+            }
+
+            if (data.type === 'marketResourceImported') {
+                document.querySelectorAll('iframe').forEach(function(f) {
+                    try { if (f && f.contentWindow) f.contentWindow.postMessage(data, '*'); } catch (e) {}
+                });
+            }
+
+            if (data.type === 'beautify:apply' || data.type === 'beautify:font') {
+                if (window.__nanoAppearance) {
+                    try { window.__nanoAppearance.applyMessage(data); } catch (e) {}
+                }
+                document.querySelectorAll('iframe').forEach(function(f) {
+                    if (f && f.contentWindow) {
+                        try { f.contentWindow.postMessage(data, '*'); } catch (e) {}
+                    }
+                });
+            }
+
+            // 心声美化：娜娜助手下发的 CSS，转发给正在打开的 chat_inner
+            if (data.type === 'nanoVoiceCss') {
+                const cf = document.getElementById('chatInnerFrame');
+                if (cf && frameBase(cf) === 'chat_inner.html') {
+                    try { cf.contentWindow.postMessage({ type: 'nanoVoiceCss', css: data.css || '' }, '*'); } catch (e) {}
+                }
+            }
+
+            if (data.type === 'nanoBottomShift' || data.type === 'nanoTopShift') {
+                if (window.__nanoAppearance) {
+                    try { window.__nanoAppearance.applyMessage(data); } catch (e) {}
+                }
+                document.querySelectorAll('iframe').forEach(function(f) {
+                    if (f && f.contentWindow) {
+                        try { f.contentWindow.postMessage(data, '*'); } catch (e) {}
+                    }
+                });
+            }
+
+            // 「其他 → 界面 → 灵动岛安全区」微调：更新外壳与所有子页的顶部安全区
+            if (data.type === 'nanoTopInset') {
+                try {
+                    if (typeof data.enabled === 'boolean') localStorage.setItem('nano_top_inset_enabled', data.enabled ? '1' : '0');
+                    var _v = parseFloat(data.value);
+                    if (isFinite(_v) && _v >= 0) localStorage.setItem('nano_top_inset', String(_v));
+                    else localStorage.removeItem('nano_top_inset');
+                } catch (e) {}
+                try { applyTopInset(); } catch (e) {}
+                try { pumpSafeTop(); } catch (e) {}
+            }
+
+            if (data.type === 'closeBeautify') {
+                closeFullscreen();
+            }
+
+            if (data.type === 'listenMenuAction') {
+                try {
+                    if (data.action === 'end') {
+                        if (musicFrame && musicFrame.contentWindow) {
+                            musicFrame.contentWindow.postMessage({ type: 'endDuo' }, '*');
+                        }
+                    } else if (data.action === 'start') {
+                        openFullscreen('music.html', '', false, 'more');
+                        setTimeout(function () {
+                            try {
+                                if (musicFrame && musicFrame.contentWindow) {
+                                    musicFrame.contentWindow.postMessage({
+                                        type: 'startDuo',
+                                        charId: data.chatId || '',
+                                        charName: data.name || ''
+                                    }, '*');
+                                }
+                            } catch (e) {}
+                        }, 450);
+                    }
+                } catch (e) {}
+                return;
+            }
+
+            if (data.type === 'openChatForChar') {
+                try {
+                    const cid = data.chatId || 'default';
+                    const cname = data.name || '聊天';
+                    try {
+                        sessionStorage.setItem('nano_pending_listen_invite', JSON.stringify({
+                            chatId: cid,
+                            name: cname,
+                            song: data.song || '',
+                            artist: data.artist || '',
+                            toName: cname,
+                            ts: Date.now()
+                        }));
+                    } catch (e) {}
+                    const url = 'chat_inner.html?chat=' + encodeURIComponent(cid) + '&name=' + encodeURIComponent(cname);
+                    openFullscreen(url, cname, false, 'main');
+                    setTimeout(function () {
+                        try {
+                            const fr = document.getElementById('chatInnerFrame');
+                            if (fr && fr.contentWindow) {
+                                fr.contentWindow.postMessage({ type: 'nanoConsumeListenInvite', chatId: cid }, '*');
+                            }
+                        } catch (e) {}
+                    }, 500);
+                } catch (e) {}
+                return;
+            }
+            if (data.type === 'listenEnd') {
+                try {
+                    if (musicFrame && musicFrame.contentWindow) {
+                        musicFrame.contentWindow.postMessage({ type: 'endDuo' }, '*');
+                    }
+                } catch (e) {}
+                return;
+            }
+
+            if (data.type === 'listenAccepted') {
+                try {
+                    openFullscreen('music.html', '', false, 'more');
+                    setTimeout(function () {
+                        try {
+                            if (musicFrame && musicFrame.contentWindow) {
+                                musicFrame.contentWindow.postMessage({
+                                    type: 'startDuo',
+                                    charId: data.chatId || '',
+                                    charName: data.charName || '',
+                                    song: data.song || ''
+                                }, '*');
+                            }
+                        } catch (e) {}
+                    }, 450);
+                } catch (e) {}
+                return;
+            }
+
+            if (data.type === 'NANO_LISTEN_NOTICE') {
+                const nf = document.getElementById('chatInnerFrame');
+                if (nf && frameBase(nf) === 'chat_inner.html') {
+                    try { nf.contentWindow.postMessage(data, '*'); } catch (e) {}
+                }
+                return;
+            }
+
+            if (data.type === 'NANO_LISTEN_INVITE_CARD' || data.type === 'NANO_LISTEN_INVITE_RESULT') {
+                const cf = document.getElementById('chatInnerFrame');
+                if (cf && frameBase(cf) === 'chat_inner.html') {
+                    try { cf.contentWindow.postMessage(data, '*'); } catch (e) {}
+                }
+                return;
+            }
+
+            if (data.type === 'NANO_COUPLE_SHARE_CARD') {
+                const cf = document.getElementById('chatInnerFrame');
+                if (cf && frameBase(cf) === 'chat_inner.html') {
+                    try { cf.contentWindow.postMessage(data, '*'); } catch (e) {}
+                }
+                return;
+            }
+
+            if (data.type === 'nanoRefresh') {
+                handleNanoRefresh(data, event.source);
+                return;
+            }
+
+            if (data.type === 'appNotify') {
+                // 所有应用通知统一走内置玻璃通知栏（头像 + 昵称 + 具体信息）
+                try {
+                    showAppNotify(data.title || 'Nano', data.body || '', data.app || '', {
+                        icon: data.icon || '',
+                        avatar: data.avatar || '',
+                        name: data.name || data.title || '',
+                        target: data.target || '',
+                        action: data.action || '',
+                        url: data.url || ''
+                    });
+                } catch (e) {}
+                return;
+            }
+
+            if (data.type === 'musicBallState') {
+                musicBallState = {
+                    visible: !!data.visible,
+                    playing: !!data.playing,
+                    cover: data.cover || '',
+                    title: data.title || '',
+                    artist: data.artist || '',
+                    mode: data.mode || ''
+                };
+                try { syncMusicBall(); } catch (e) {}
+                return;
+            }
+
+            if (data.type === 'nanoHideOuterHeader') {
+                overlay.classList.add('no-header');
+                overlayTitle.textContent = '';
+                overlayBack.classList.add('hidden');
+                return;
+            }
+
+            if (data.type === 'openFullscreen') {
+                const source = data.source || 'main';
+                if (source === 'chat_inner') {
+                    currentOverlaySource = 'chat_inner';
+                }
+                const showBack = data.showBack !== undefined ? data.showBack : true;
+                openFullscreen(data.url, data.title, showBack, source);
+            }
+
+            if (data.type === 'closeFullscreen') {
+                closeFullscreen();
+            }
+
+            if (data.type === 'backToDiscover') {
+                currentOverlaySource = 'discover';
+                closeFullscreen();
+            }
+
+            if (data.type === 'setTitle') {
+                overlayTitle.textContent = data.title || '';
+            }
+
+            if (data.type === 'groupChatTitle') {
+                lastGroupTitle = data.title || '群聊';
+                if (overlayActive && currentOverlaySource !== 'groups') {
+                    overlayTitle.textContent = lastGroupTitle;
+                }
+            }
+
+            if (data.type === 'groupsDataUpdated' || data.type === 'groupChatCreated') {
+                document.querySelectorAll('iframe').forEach(function (fr) {
+                    try { if (fr && fr.contentWindow) fr.contentWindow.postMessage({ type: 'groupsDataUpdated', groupId: data.groupId || '' }, '*'); } catch (e) {}
+                });
+            }
+
+            if (data.type === 'backgroundChanged') {
+                const target = document.getElementById('chatInnerFrame');
+                if (target && frameBase(target) === 'chat_inner.html') {
+                    target.contentWindow.postMessage(data, '*');
+                    console.log('[Index] 转发背景更改到 chat_inner:', data.bgType);
+                }
+            }
+
+            if (data.type === 'NANO_MEMORY_UPDATED') {
+                const target = document.getElementById('overlayFrame');
+                if (target && frameBase(target) === 'memory.html') {
+                    target.contentWindow.postMessage(data, '*');
+                }
+                // 记忆页增删改后，让正在打开的会话立即重载长期记忆
+                const cf = document.getElementById('chatInnerFrame');
+                if (cf && frameBase(cf) === 'chat_inner.html') {
+                    try { cf.contentWindow.postMessage(data, '*'); } catch (e) {}
+                }
+            }
+
+            // 线下 → 直接退出：回到聊天列表，并记住该角色「下次直接进线下」
+            if (data.type === 'nanoOfflineExitToChat') {
+                try { localStorage.setItem('nano_chat_mode_' + (data.chatId || 'default'), 'offline'); } catch (e) {}
+                try { currentOverlaySource = 'main'; } catch (e) {}
+                try { closeFullscreen(); } catch (e) {}
+                return;
+            }
+
+            // 线下 → 返回线上：提示「已结束线下」并把线下最近几轮带回线上作衔接
+            if (data.type === 'nanoOfflineReturnOnline') {
+                const chatId = data.chatId || '';
+                try { localStorage.setItem('nano_chat_mode_' + (chatId || 'default'), 'online'); } catch (e) {}
+                const lu = String(data.lastUser || '').trim();
+                const lc = String(data.lastChar || '').trim();
+                const rounds = Array.isArray(data.rounds) ? data.rounds : null;
+                const deliver = function (win) {
+                    if (!win) return;
+                    try {
+                        win.postMessage({ type: 'NANO_SYS_NOTICE', text: '已结束线下' }, '*');
+                        if (chatId && (lu || lc || (rounds && rounds.length))) win.postMessage({ type: 'NANO_OFFLINE_ROUND', chatId: chatId, lastUser: lu, lastChar: lc, rounds: rounds }, '*');
+                    } catch (e) {}
+                };
+                const cf2 = document.getElementById('chatInnerFrame');
+                const expected = chatId ? ('chat=' + encodeURIComponent(chatId)) : '';
+                const loadedUrl = cf2 ? (cf2.getAttribute('data-loaded-url') || '') : '';
+                const aliveForChat = cf2 && frameBase(cf2) === 'chat_inner.html' && (!expected || loadedUrl.indexOf(expected) !== -1);
+                if (aliveForChat) {
+                    currentOverlaySource = 'chat_inner';
+                    closeFullscreen();
+                    setTimeout(function () { deliver(cf2.contentWindow); }, 60);
+                } else {
+                    let chatInfo = null;
+                    try { chatInfo = JSON.parse(sessionStorage.getItem('last_chat_info') || 'null'); } catch (e) {}
+                    const name = (chatInfo && chatInfo.chatId === chatId && chatInfo.chatName) || data.name || '聊天';
+                    const url = 'chat_inner.html?chat=' + encodeURIComponent(chatId || 'default') + '&name=' + encodeURIComponent(name);
+                    openFullscreen(url, '', false, 'main');
+                    let tries = 0;
+                    (function waitReady() {
+                        tries++;
+                        const f = document.getElementById('chatInnerFrame');
+                        let ready = false;
+                        try { ready = !!(f && f.contentWindow && f.contentWindow.document && f.contentWindow.document.readyState === 'complete'); } catch (e) {}
+                        if (ready || tries > 12) { deliver(f && f.contentWindow); return; }
+                        setTimeout(waitReady, 250);
+                    })();
+                }
+                return;
+            }
+
+            if (data.type === 'jumpToMessage') {
+                pendingJumpMsgId = data.msgId || null;
+                currentOverlaySource = 'chat_inner';
+                closeFullscreen();
+            }
+
+            if (data.type === 'groupDissolved') {
+                lastGroupUrl = null;
+                lastGroupTitle = '';
+                currentOverlaySource = 'main';
+                closeFullscreen();
+            }
+
+            if (data.type === 'nanoCloseOverlay' || data.type === 'nano:closeMoments') {
+                try { closeFullscreen(); } catch (e) {}
+                return;
+            }
+
+            if (data.type === 'notifyOpen') {
+                try { openNotifyTarget(data.target || ''); } catch (e) {}
+                setTimeout(function () { try { if (window.AutoPushBridge) AutoPushBridge.pull(true); } catch (e) {} }, 1500);
+                return;
+            }
+
+            // 通知里「直接回复」拿到文本（Android 网页通知的文本动作）：落进私聊
+            if (data.type === 'notifyReply') {
+                try { nanoScreenReplySend(data.chatId || '', data.text || ''); } catch (e) {}
+                return;
+            }
+
+            if (data.type === 'keepAlive') {
+                try { localStorage.setItem('nano_keep_alive', data.enabled ? '1' : '0'); } catch (e) {}
+                if (data.enabled && navigator.wakeLock && navigator.wakeLock.request) {
+                    navigator.wakeLock.request('screen').catch(function () {});
+                }
+                try { if (window.NanoKeepAlive) window.NanoKeepAlive.apply(!!data.enabled); } catch (e) {}
+            }
+            if (data.type === 'notifySetting') {
+                try { localStorage.setItem('nano_notify_enabled', data.enabled ? '1' : '0'); } catch (e) {}
+                if (data.enabled && 'Notification' in window && Notification.permission === 'default') {
+                    try { Notification.requestPermission(); } catch (e) {}
+                }
+            }
+
+            if (data.type === 'openChat') {
+                const chatName = data.chatName || '聊天';
+                const chatAvatar = data.chatAvatar || '';
+                const chatId = data.chatId || 'default';
+                console.log('[Index] 打开聊天:', chatId, chatName);
+                try {
+                    sessionStorage.setItem('last_chat_info', JSON.stringify({ chatId, chatName, chatAvatar }));
+                } catch(e) {}
+                // 上次从线下「直接退出」的角色：再点开直接进线下，不进线上
+                let chatMode = 'online';
+                try { chatMode = localStorage.getItem('nano_chat_mode_' + (chatId || 'default')) || 'online'; } catch (e) {}
+                if (chatMode === 'offline') {
+                    isChatInnerActive = false;
+                    currentOverlaySource = 'main';
+                    openFullscreen('offline.html?chat=' + encodeURIComponent(chatId) + '&name=' + encodeURIComponent(chatName), '线下聊天', false, 'main');
+                    return;
+                }
+                const url = 'chat_inner.html?chat=' + encodeURIComponent(chatId) + '&name=' + encodeURIComponent(chatName);
+                isChatInnerActive = true;
+                currentOverlaySource = 'main';
+                openFullscreen(url, '', false, 'main');
+                try {
+                    setTimeout(function () {
+                        const fr = document.getElementById('chatInnerFrame');
+                        if (fr && fr.contentWindow) fr.contentWindow.postMessage({ type: 'nanoOverlayOpen', chatId: chatId }, '*');
+                    }, 120);
+                } catch (e) {}
+            }
+
+            if (data.type === 'openGroupChat') {
+                lastGroupUrl = 'groups.html?group=' + encodeURIComponent(data.groupId || '');
+                lastGroupTitle = data.groupName || '群聊';
+                openFullscreen(lastGroupUrl, lastGroupTitle, false, 'chat');
+                try {
+                    setTimeout(function () {
+                        if (overlayFrame && overlayFrame.contentWindow) overlayFrame.contentWindow.postMessage({ type: 'nanoOverlayOpen', chatId: data.groupId || '' }, '*');
+                    }, 160);
+                } catch (e) {}
+            }
+
+            if (data.type === 'openRoleLibrary') {
+                openFullscreen('character.html', 'Character', true, 'chat');
+            }
+
+            if (data.type === 'alert') {
+                alert(data.message);
+            }
+
+            if (data.type === 'NANO_TRANSFER_SUBMIT' || data.type === 'NANO_GIFT_SUBMIT' || data.type === 'NANO_IMAGE_SUBMIT') {
+                const chatIframe = getChatInnerIframe();
+                if (chatIframe && chatIframe.contentWindow) {
+                    chatIframe.contentWindow.postMessage(data, '*');
+                }
+            }
+
+            // 亲属卡：页面在 overlay 里发起，必须转给正在打开的单聊内页（chatInnerFrame）
+            if (data.type === 'NANO_FAMILY_CARD_SUBMIT' || data.type === 'NANO_FAMILY_CARD_RESULT' || data.type === 'NANO_FAMILY_SPEND_NOTICE') {
+                const frame = document.getElementById('chatInnerFrame');
+                if (frame && frameBase(frame) === 'chat_inner.html') {
+                    try { frame.contentWindow.postMessage(data, '*'); } catch (e) {}
+                } else {
+                    const chatIframe = getChatInnerIframe();
+                    if (chatIframe && chatIframe.contentWindow) {
+                        try { chatIframe.contentWindow.postMessage(data, '*'); } catch (e) {}
+                    }
+                }
+            }
+
+            // 生成类 / 主动消息通知：统一走内置玻璃通知栏
+            if (data.type === 'NANO_GEN_NOTIFY') {
+                try {
+                    showAppNotify(data.title || 'Nano', data.body || '', data.channel || data.app || '', {
+                        avatar: data.avatar || data.icon || '',
+                        name: data.name || data.title || '',
+                        target: data.target || '',
+                        action: data.action || '',
+                        url: data.url || ''
+                    });
+                } catch (e) {}
+                return;
+            }
+
+            // 线下美化等：广播给所有 iframe，让已打开的线下页实时重读设置
+            if (data.type === 'offlineSettingsChanged') {
+                document.querySelectorAll('iframe').forEach(function (fr) {
+                    try { if (fr.contentWindow) fr.contentWindow.postMessage({ type: 'offlineSettingsChanged' }, '*'); } catch (e) {}
+                });
+            }
+
+            if (data.type === 'NANO_VOICE_CALL_CARD' || data.type === 'NANO_VIDEO_CALL_CARD' || data.type === 'NANO_CALL_REPLY') {
+                const frame = document.getElementById('chatInnerFrame');
+                if (frame && frameBase(frame) === 'chat_inner.html') {
+                    frame.contentWindow.postMessage(data, '*');
+                    console.log('[Index] 转发通话卡片到 chat_inner (chatInnerFrame)');
+                } else {
+                    const chatIframe = getChatInnerIframe();
+                    if (chatIframe && chatIframe.contentWindow) {
+                        chatIframe.contentWindow.postMessage(data, '*');
+                        console.log('[Index] 转发语音通话卡片到 chat_inner (iframeChat)');
+                    }
+                }
+            }
+
+            if (data.type === 'aiProactiveVoiceCall') {
+                const chatId = data.chatId || 'default';
+                const name = data.name || 'AI 助手';
+                const page = data.video ? 'video-call.html' : 'voice-call.html';
+                const url = page + '?chat=' + encodeURIComponent(chatId) +
+                           '&name=' + encodeURIComponent(name) +
+                           '&incoming=1';
+                console.log('[Index] AI 主动来电:', data.scenario, url);
+                voiceCallKeptAlive = false;
+                openFullscreen(url, data.video ? '视频通话' : '语音电话', false, 'main');
+            }
+
+            if (data.type === 'syncCallTime') {
+                if (window.__voiceFloatBall) {
+                    window.__voiceFloatBall.setTime(data.seconds || 0);
+                }
+            }
+
+            if (data.type === 'minimizeVoiceCall') {
+                if (window.__voiceFloatBall) {
+                    window.__voiceFloatBall.show(data.seconds || 0);
+                }
+                voiceCallKeptAlive = true;
+                voiceCallFrame.style.display = 'none';
+                const chatInnerAlive = frameBase(chatInnerFrame) === 'chat_inner.html';
+                if (!chatInnerAlive) {
+                    showChatInnerFrame();
+                    const _cu = withBuild('chat_inner.html?chat=' + encodeURIComponent(getChatId()) + '&name=' + encodeURIComponent(getContactName()));
+                    chatInnerFrame.setAttribute('data-loaded-url', _cu);
+                    chatInnerFrame.src = _cu;
+                } else {
+                    showChatInnerFrame();
+                }
+                overlay.classList.add('no-header');
+                overlayTitle.textContent = '';
+                overlayBack.classList.add('hidden');
+                overlay.classList.add('active');
+                overlayActive = true;
+                currentOverlaySource = 'main';
+                topBar.classList.add('hidden');
+                bottomBar.classList.add('hidden');
+                appContent.style.paddingTop = '0';
+                appContent.style.paddingBottom = '0';
+            }
+
+            if (data.type === 'voiceCallEnded') {
+                if (window.__voiceFloatBall) {
+                    window.__voiceFloatBall.remove();
+                }
+                voiceCallFrame.style.display = 'none';
+                voiceCallFrame.src = 'about:blank';
+                voiceCallKeptAlive = false;
+                const chatInnerAlive = frameBase(chatInnerFrame) === 'chat_inner.html';
+                if (chatInnerAlive) {
+                    showChatInnerFrame();
+                    overlay.classList.add('no-header');
+                    overlayTitle.textContent = '';
+                    overlayBack.classList.add('hidden');
+                    overlay.classList.add('active');
+                    overlayActive = true;
+                    currentOverlaySource = 'main';
+                    topBar.classList.add('hidden');
+                    bottomBar.classList.add('hidden');
+                    appContent.style.paddingTop = '0';
+                    appContent.style.paddingBottom = '0';
+                } else {
+                    closeFullscreen();
+                    openChatInnerPage();
+                }
+            }
+        });
+
+        function reportMusicSmoke(pass, detail) {
+            const el = document.createElement('div');
+            el.id = 'musicSmokeResult';
+            el.textContent = detail || '';
+            document.body.appendChild(el);
+            document.title = 'MUSIC_SMOKE_' + (pass ? 'PASS' : 'FAIL');
+        }
+
+        if (new URLSearchParams(window.location.search).get('smoke') === 'music') {
+            (async function musicSmoke() {
+                try {
+                    const waitMs = ms => new Promise(r => setTimeout(r, ms));
+                    openFullscreen('music.html', '', false, 'more');
+                    let okLoad = false;
+                    for (let i = 0; i < 60; i++) {
+                        try {
+                            if (musicFrame.contentDocument && musicFrame.contentDocument.title && musicFrame.contentDocument.title.indexOf('音乐') !== -1) {
+                                okLoad = true;
+                                break;
+                            }
+                        } catch (e) {}
+                        await waitMs(100);
+                    }
+                    if (!okLoad) {
+                        reportMusicSmoke(false, 'music iframe not loaded');
+                        return;
+                    }
+                    const win1 = musicFrame.contentWindow;
+                    const doc1 = musicFrame.contentDocument;
+                    try { doc1.documentElement.setAttribute('data-music-alive', '1'); } catch (e) {}
+                    const checks = [];
+                    const pass = c => checks.push(!!c);
+                    pass(overlay.classList.contains('active') && overlay.classList.contains('no-header'));
+                    pass(overlayBack.classList.contains('hidden'));
+                    pass(musicFrame.style.display === 'block');
+
+                    closeFullscreen();
+                    pass(!overlay.classList.contains('active'));
+                    pass(musicFrame.src.indexOf('music.html') !== -1);
+                    pass(musicFrame.contentWindow === win1);
+
+                    switchPage('chat');
+                    pass(musicFrame.contentWindow === win1);
+                    try {
+                        pass(musicFrame.contentDocument.documentElement.getAttribute('data-music-alive') === '1');
+                    } catch (e) { pass(false); }
+
+                    switchPage('more');
+                    openFullscreen('music.html', '', false, 'more');
+                    pass(musicFrame.style.display === 'block');
+                    pass(musicFrame.contentWindow === win1);
+
+                    const allPass = checks.every(Boolean);
+                    reportMusicSmoke(allPass, allPass ? 'MUSIC_SMOKE_PASS checks=' + checks.length : 'MUSIC_SMOKE_FAIL [' + checks.join(',') + ']');
+                    try { closeFullscreen(); } catch (e) {}
+                    switchPage('chat');
+                } catch (err) {
+                    reportMusicSmoke(false, 'err=' + String(err && err.message ? err.message : err));
+                }
+            })();
+        }
+
+        switchPage('chat');
+
+        // ===== iOS 键盘弹出时隐藏悬浮球，避免遮挡输入栏 =====
+        (function watchKeyboard() {
+            if (!window.visualViewport) return;
+            const vv = window.visualViewport;
+            function propagate(kb) {
+                // 把键盘高度同步给所有同源 iframe，让内部输入栏整体上移。
+                // 安卓部分 WebView 会同时缩短布局视口：这时 100% 已经在键盘上沿，
+                // 再同步完整键盘高度会重复上移，底栏和键盘之间就会空一条。iOS 保持原样。
+                let eff = kb;
+                if (/Android/i.test(navigator.userAgent || '')) {
+                    const layoutKb = Math.max(0, Math.round(kbBaseH - (window.innerHeight || 0)));
+                    eff = Math.max(0, kb - Math.min(kb, layoutKb));
+                }
+                let frames = [];
+                try { frames = Array.prototype.slice.call(document.querySelectorAll('iframe')); } catch (e) {}
+                frames.forEach(function (fr) {
+                    try {
+                        const doc = fr.contentDocument;
+                        if (!doc) return;
+                        doc.documentElement.style.setProperty('--nano-kb', eff + 'px');
+                        doc.documentElement.classList.toggle('keyboard-open', eff > 0.5);
+                        try { fr.contentWindow.postMessage({ type: 'nanoKeyboard', kb: eff }, '*'); } catch (e) {}
+                    } catch (e) {}
+                });
+            }
+            // 键盘占用的高度 = 布局视口高度 − 可视视口高度 − 可视视口顶部偏移。
+            // 关键：iOS 弹出键盘时 window.innerHeight 会一起变小，直接相减会得到 0，
+            // 于是内页不收缩、输入框被键盘压住（安卓 innerHeight 不变所以正常）。
+            // 这里记录「无键盘时的基准高度」kbBaseH 再相减，iOS/安卓都正确。
+            let kbBaseH = 0;
+            function kbNow() {
+                kbBaseH = Math.max(kbBaseH, window.innerHeight || 0, vv.height || 0);
+                return Math.max(0, Math.round(kbBaseH - vv.height - vv.offsetTop));
+            }
+            function resetKbBase() { kbBaseH = 0; setTimeout(update, 350); }
+            window.addEventListener('orientationchange', resetKbBase);
+            function update() {
+                const kb = kbNow();
+                if (kb === update._last) return;
+                update._last = kb;
+                document.body.classList.toggle('keyboard-open', kb > 120);
+                propagate(kb);
+            }
+            vv.addEventListener('resize', update);
+            vv.addEventListener('scroll', update);
+            // 内页重新聚焦输入框时主动查询一次当前键盘高度（iOS 第二次弹出可能不触发 resize）
+            window.addEventListener('message', function (ev) {
+                var d = ev.data;
+                if (d && d.type === 'nanoKeyboardQuery') {
+                    var kb = kbNow();
+                    try { ev.source.postMessage({ type: 'nanoKeyboard', kb: kb }, '*'); } catch (e) {}
+                }
+            });
+            setTimeout(update, 300);
+        })();
+
+    })();
+
+    // ===== 开场动画逻辑（原 开场.html 的脚本，已内联）=====
+    (function () {
+        const intro = document.getElementById('nano-opening');
+        if (!intro) return;
+
+        function skipIntro() {
+            if (intro.classList.contains('fade-out')) return;
+            intro.classList.add('fade-out');
+            setTimeout(function () {
+                if (intro.parentNode) intro.remove();
+                console.log('开场动画已跳过，进入主界面');
+            }, 450);
+        }
+
+        document.body.addEventListener('click', skipIntro);
+        document.body.addEventListener('touchstart', skipIntro);
+
+        const autoSkipTimer = setTimeout(skipIntro, 1200);
+
+        document.body.addEventListener('click', function () {
+            clearTimeout(autoSkipTimer);
+        }, { once: true });
+
+        window.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') skipIntro();
+        });
+    })();
+
+    // ===== 后台预热：等界面空闲后，把常用页面逐个拉进 SW 缓存 =====
+    // 目的：第一次打开这些页也不用等整页网络往返，切换几乎没有加载感。
+    (function warmPages() {
+        try {
+            if (!navigator.serviceWorker) return;
+            if (navigator.connection && (navigator.connection.saveData || /(^|-)2g$|slow-2g|(^|-)3g$/.test(navigator.connection.effectiveType || ''))) return;
+            var pages = ['chat_inner.html', 'storage.html', 'backup.html', 'other.html', 'beautify.html',
+                'inner-setting.html', 'groups.html', 'group-setting.html', 'music.html', 'ins.html',
+                'moments.html', 'halo.html', 'books.html', 'character.html', 'mask.html', 'favorite.html',
+                'emoji.html', 'worldbook.html', 'memory.html', 'phone.html', 'offline.html',
+                'offline-setting.html', 'couple-spaces.html', 'voice-call.html', 'video-call.html', 'api.html', 'cycle.html', 'fanfic.html', 'fanfic-create.html', 'fanfic-read.html',
+                'discover.html', 'more.html'];
+            var i = 0;
+            function next() {
+                if (i >= pages.length) return;
+                var u = pages[i++];
+                try {
+                    fetch('html/' + u, { credentials: 'same-origin' }).catch(function () {}).then(function () {
+                        setTimeout(next, 250);
+                    });
+                } catch (e) { setTimeout(next, 250); }
+            }
+            // SW 已停用：直接顺序 fetch，浏览器 HTTP 缓存同样能命中
+            // 改为空闲时才预热，避免和首页/首屏资源抢带宽
+            var startWarm = function () { setTimeout(next, 300); };
+            if (window.requestIdleCallback) requestIdleCallback(startWarm, { timeout: 6000 });
+            else setTimeout(startWarm, 6000);
+        } catch (e) {}
+    })();
+
+    // ===== 预热其它底部 tab：提前把 iframe 建好，切换时不用再等整页加载 =====
+    (function warmTabs() {
+        try {
+            var frames = Array.prototype.slice.call(
+                document.querySelectorAll('.iframe-container iframe[data-src]')
+            );
+            var i = 0;
+            function next() {
+                if (i >= frames.length) return;
+                var fr = frames[i++];
+                try {
+                    if (!fr.getAttribute('src')) fr.setAttribute('src', withBuild(fr.getAttribute('data-src')));
+                } catch (e) {}
+                setTimeout(next, 1600);
+            }
+            // 首页稳定后、设备空闲时再逐个预热，别和首屏抢带宽
+            var startTabWarm = function () { setTimeout(next, 200); };
+            if (window.requestIdleCallback) requestIdleCallback(startTabWarm, { timeout: 7000 });
+            else setTimeout(startTabWarm, 5000);
+        } catch (e) {}
+    })();
+
+    // ===== 版本自愈：构建号变化时注销旧 SW、清缓存并刷新一次（解决 iOS PWA 不更新） =====
+    (function nanoSelfHeal() {
+        var changed = false;
+        try {
+            changed = localStorage.getItem('nano_build') !== BUILD;
+            if (changed) localStorage.setItem('nano_build', BUILD);
+        } catch (e) {}
+        window.__nanoHealing = changed;
+        if (!changed) return;
+        if (!('serviceWorker' in navigator)) return;
+        try {
+            navigator.serviceWorker.getRegistrations().then(function (rs) {
+                return Promise.all(rs.map(function (r) { return r.unregister(); }));
+            }).then(function () {
+                if (!window.caches) return null;
+                return caches.keys().then(function (ks) {
+                    return Promise.all(ks.map(function (k) { return caches.delete(k); }));
+                });
+            }).then(function () {
+                location.reload();
+            }).catch(function () {});
+        } catch (e) {}
+    })();
+
+    // ===== Service Worker =====
+    // 未配置后台推送时：保持注销，保证每次都加载最新代码（解决 iOS PWA 缓存旧版本）。
+    // 配置了推送服务器后：注册 sw.js（后台推送必须依赖 Service Worker）。
+    try {
+        if ('serviceWorker' in navigator) {
+            var __pushCfg = false;
+            try {
+                __pushCfg = !!(localStorage.getItem('nano_push_endpoint') && localStorage.getItem('nano_push_vapid'));
+            } catch (e) {}
+            // 即使没配 Web Push，也要注册 SW：系统通知（new Notification 在部分安卓 WebView 不可用）
+            // 依赖 ServiceWorkerRegistration.showNotification 才能稳定出现在顶部通知栏。
+            navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(function () {});
+        }
+    } catch (e) {}
+</script>
+    <script src="js/api-float.js?v=20261013a"></script>
+<script src="js/mem-link.js?v=20261006a"></script>
+<script src="js/aux-memory.js"></script>
+<script src="js/nano-notify.js?v=20261018b"></script>
+<script src="js/nano-push.js"></script>
+<script src="swipe-back.js"></script>
+<script src="js/keep-alive.js?v=20261013b"></script>
+<script src="js/char-takeover.js?v=20261009a"></script>
+<script src="js/screen-share.js?v=20261013e"></script>
+<script src="js/ios-bridge.js?v=20261018a"></script>
+<script src="js/auto-push-bridge.js?v=20261017d"></script>
+<script src="js/online-catchup.js?v=20261018c"></script>
+</div>
+    <!-- 小号试探：居中弹窗（不暴露是谁）-->
+    <div class="alt-probe-overlay" id="altProbeOverlay">
+        <div class="alt-probe-card">
+            <div class="alt-probe-avatar">
+                <svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+            </div>
+            <div class="alt-probe-name" id="altProbeName">某人</div>
+            <div class="alt-probe-bio" id="altProbeBio">想加你为好友</div>
+            <div class="alt-probe-actions">
+                <button class="alt-probe-btn reject" id="altProbeReject">拒绝</button>
+                <button class="alt-probe-btn accept" id="altProbeAccept">接受</button>
+            </div>
+        </div>
+    </div>
+    <style>
+        .alt-probe-overlay { position: fixed; inset: 0; z-index: 100000; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.3); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); padding: 24px; }
+        .alt-probe-overlay.active { display: flex; }
+        .alt-probe-card { width: min(320px, 100%); background: rgba(255,255,255,0.98); border-radius: 20px; padding: 22px 20px 16px; box-shadow: 0 20px 55px rgba(0,0,0,0.22); text-align: center; }
+        .alt-probe-avatar { width: 72px; height: 72px; margin: 0 auto 12px; border-radius: 50%; background: #e5e5ea; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+        .alt-probe-avatar svg { width: 40px; height: 40px; fill: #8e8e93; }
+        .alt-probe-name { font-size: 17px; font-weight: 600; color: #1c1c1e; }
+        .alt-probe-bio { font-size: 13px; color: #8e8e93; margin-top: 6px; line-height: 1.5; }
+        .alt-probe-actions { display: flex; gap: 10px; margin-top: 18px; }
+        .alt-probe-btn { flex: 1; border: none; border-radius: 12px; padding: 12px 0; font-size: 15px; font-weight: 600; cursor: pointer; font-family: inherit; }
+        .alt-probe-btn.reject { background: #f0f0f3; color: #55555a; }
+        .alt-probe-btn.accept { background: #34c759; color: #fff; }
+        .alt-probe-btn:active { opacity: 0.85; }
+    </style>
+    <script>
+    (function () {
+        var overlay = document.getElementById('altProbeOverlay');
+        if (!overlay) return;
+        var current = null;
+        function open(alt) {
+            current = alt;
+            document.getElementById('altProbeName').textContent = alt.name || '某人';
+            document.getElementById('altProbeBio').textContent = alt.bio || '想加你为好友';
+            overlay.classList.add('active');
+        }
+        function close() { overlay.classList.remove('active'); }
+        function clearPending() {
+            try {
+                var req = indexedDB.open('nano_alt_probe_db', 1);
+                req.onupgradeneeded = function (e) { try { var d = e.target.result; if (!d.objectStoreNames.contains('pending')) d.createObjectStore('pending', { keyPath: 'key' }); } catch (err) {} };
+                req.onsuccess = function () { try { req.result.transaction('pending', 'readwrite').objectStore('pending').delete('current'); } catch (e) {} };
+            } catch (e) {}
+        }
+        // 写入 nano_characters_db，并广播，让聊天列表 / 主页（朋友圈等）都刷新出这个新好友。
+        // 与群聊「加陌生人为好友」(js/groups.js addNpcFriend) 保持同一套路：isNpc:true 才会出现在列表里。
+        // 小号是角色本人披的马甲：它自己知道自己是本人，只是不能让用户知道。
+        // 把「小号身份 + 本人完整人设 + 铁律」写进角色设定，线上/线下/iMessage 共用同一套提示词。
+        function buildAltMaskSetting(alt) {
+            var origin = alt.origin || {};
+            var charName = origin.name || '角色';
+            var persona = String(origin.setting || '').slice(0, 6000);
+            var name = alt.name || '小号';
+            var bio = alt.bio || '';
+            // 公开内容放最前（列表 / 记忆宫殿只截前 20~42 字做简介预览）；
+            // 「是谁的小号」这类身份说明一律放最后一句，避免被用户从预览里看到。
+            return (bio ? (bio + '\n') : ('网名「' + name + '」。\n'))
+                + (persona ? ('【你本人的完整设定，请以本人性格来扮演这个身份】\n' + persona + '\n\n') : '')
+                + '【铁律】以网名「' + name + '」的身份与用户交流，但内心与行为逻辑都遵循本人设定。\n'
+                + '【小号身份】你是「' + charName + '」本人开的小号，网名「' + name + '」。你非常清楚自己就是「' + charName + '」本人，只是为了试探/接近用户才披上这个身份。\n'
+                + '【被认出来时 · 别死鸭子嘴硬】默认不主动暴露、不主动承认，先用装傻/岔开/反将一军之类自然的方式应付；但如果对方已经非常笃定、证据十足地认定你就是「' + charName + '」（反复点名、说出只有本人才知道的细节、你越描越黑根本圆不过去），那就别再硬邦邦地否认、更不要复读“你认错人了”。按你本人的真实脾气处理：可以半推半就地松口承认、可以恼羞成怒地承认、也可以气到直接拉黑对方（在回复最后单独一行输出 [拉黑我]）来结束这场追问。承认或翻脸都要像真人，别演成一台只会说“不是”的机器。';
+        }
+        function addFriend(alt) {
+            try {
+                var req = indexedDB.open('nano_characters_db', 1);
+                req.onupgradeneeded = function (e) { try { var d = e.target.result; if (!d.objectStoreNames.contains('characters')) d.createObjectStore('characters', { keyPath: 'id' }); } catch (err) {} };
+                req.onsuccess = function () {
+                    try {
+                        var db = req.result;
+                        // 小号只归属当前人设：写入 bindUser，避免不同 user 之间串号
+                        var _bind = '';
+                        try {
+                            var _d = JSON.parse(localStorage.getItem('nano_mask_data') || localStorage.getItem('nano_home_data') || 'null');
+                            if (_d && Array.isArray(_d.masks) && _d.masks.length) _bind = String(_d.currentMaskId || (_d.masks[0] && _d.masks[0].id) || '');
+                        } catch (e) {}
+                        var rec = {
+                            id: alt.id || ('alt_' + Date.now()),
+                            name: alt.name || '小号',
+                            avatar: alt.avatar || '',
+                            gender: alt.gender || '未知',
+                            nationality: alt.nationality || '未知',
+                            setting: buildAltMaskSetting(alt),
+                            isNpc: true,
+                            isAltProbe: true,
+                            bindUser: _bind,
+                            altOriginId: (alt.origin && alt.origin.id) || ''
+                        };
+                        var tx = db.transaction('characters', 'readwrite');
+                        tx.objectStore('characters').put(rec);
+                        tx.oncomplete = function () {
+                            try { db.close(); } catch (e) {}
+                            notifyContactsUpdated();
+                        };
+                        tx.onerror = function () { try { db.close(); } catch (e) {} };
+                    } catch (e) {}
+                };
+            } catch (e) {}
+        }
+        // 通知所有 iframe（聊天列表 / 朋友圈 / ins 等）重新读取角色库
+        function notifyContactsUpdated() {
+            try {
+                document.querySelectorAll('iframe').forEach(function (f) {
+                    try { f.contentWindow.postMessage({ type: 'contactsDataUpdated' }, '*'); } catch (e) {}
+                });
+            } catch (e) {}
+        }
+        function tellFramesDone() {
+            try { document.querySelectorAll('iframe').forEach(function (f) { try { f.contentWindow.postMessage({ type: 'NANO_ALT_PROBE_DONE' }, '*'); } catch (e) {} }); } catch (e) {}
+        }
+        document.getElementById('altProbeAccept').addEventListener('click', function () {
+            if (current) addFriend(current);
+            clearPending(); close(); tellFramesDone();
+            try { if (window.__nanoAppNotify) window.__nanoAppNotify('已添加好友', (current && current.name ? current.name : '新好友') + ' 已加入聊天列表', 'social', { avatar: (current && current.avatar) || '', name: (current && current.name) || '新好友' }); } catch (err) {}
+        });
+        document.getElementById('altProbeReject').addEventListener('click', function () { clearPending(); close(); tellFramesDone(); });
+        window.addEventListener('message', function (e) {
+            var d = e.data;
+            if (d && d.type === 'NANO_ALT_PROBE' && d.alt) {
+                open(d.alt);
+                try { if (window.__nanoAppNotify) window.__nanoAppNotify('好友申请', '有个陌生人想加你为好友', 'social', { avatar: (d.alt && d.alt.avatar) || '', name: (d.alt && d.alt.name) || '好友申请' }); } catch (err) {}
+            }
+        });
+        // 刷新后仍显示未处理的小号
+        try {
+            var req = indexedDB.open('nano_alt_probe_db', 1);
+            req.onupgradeneeded = function (e) { try { var d = e.target.result; if (!d.objectStoreNames.contains('pending')) d.createObjectStore('pending', { keyPath: 'key' }); } catch (err) {} };
+            req.onsuccess = function () { try { var r = req.result.transaction('pending', 'readonly').objectStore('pending').get('current'); r.onsuccess = function () { if (r.result && r.result.value) open(r.result.value); }; } catch (e) {} };
+        } catch (e) {}
+    })();
+    </script>
+</body>
+</html>

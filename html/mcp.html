@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<script src="../js/nano-runtime.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MCP</title>
+<link rel="stylesheet" href="../css/mcp.css?v=20261018a">
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="topbar-left">
+      <button class="topbar-btn topbar-back" id="mcpBackBtn" type="button" aria-label="返回">
+        <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
+      <div class="brand" id="brandBtn">
+        MCP
+        <small>TOOLS</small>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <button class="topbar-btn" id="addServerBtn" aria-label="添加服务器">
+        <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <div class="hero">
+      <span class="eyebrow">MODEL CONTEXT PROTOCOL</span>
+      <h1>连接 <em>MCP</em> 工具</h1>
+      <p>已内置几个公开免费的 MCP 和本地「陪伴型」工具，点开即可用；也可以自己添加服务器。开启开关后，聊天里的角色就能主动调用它们。</p>
+    </div>
+
+    <button class="help-btn" data-help="helpBox">⚙️ 如何接入自己的 MCP？（含令牌说明）</button>
+    <div class="help" id="helpBox" hidden>
+      <h4>自己接入（三步）</h4>
+      <ol>
+        <li>准备一个 MCP 服务器地址（<b>Streamable HTTP</b>，形如 <code>https://xxx/mcp</code>）。</li>
+        <li>点右上角 <b>＋</b>，填「名称 + 地址」；需要鉴权就在「令牌」里填你的 Bearer Token。</li>
+        <li>保存后点该服务器 → 自动连接并列出工具；把开关打开，聊天里的角色即可调用。</li>
+      </ol>
+      <h4 style="margin-top:10px">令牌在哪填</h4>
+      <ol>
+        <li><b>服务器令牌</b>：填在「＋添加服务器」弹窗的「令牌」框里，就是该 MCP 服务商给你的 API Key（<code>Authorization: Bearer ...</code>）。</li>
+        <li><b>代理安全锁（可选）</b>：想让代理只允许你自己用，就在 Worker 端执行 <code>npx wrangler secret put MCP_TOKEN</code> 设一个值；再在浏览器控制台执行 <code>localStorage.setItem('nano_mcp_token','同一个值')</code>。两处一致才放行；不设则代理对访问者开放。</li>
+      </ol>
+      <h4 style="margin-top:10px">MCP 里还有什么</h4>
+      <ol>
+        <li><b>Nano 原生工具</b>：天气、时间、定位、地图、打开网页、打开 App，本地直接执行，不需要服务器。</li>
+        <li><b>远程 MCP</b>：DeepWiki / GitMCP / Microsoft Learn / Cloudflare Docs，也可以添加自己的服务器。</li>
+        <li><b>那个 JSON</b>：点开任意工具后，文本框里是调用这个工具要传的参数（JSON 对象）。没有参数就保留 <code>{}</code>，改好点「运行」即可测试。</li>
+      </ol>
+      <h4 style="margin-top:10px">限制</h4>
+      <ol>
+        <li>只支持远程 HTTP（不支持本地 <code>npx</code> stdio 服务器）。</li>
+        <li>需要 OAuth 登录的服务器暂不支持，请用 API Key / Bearer。</li>
+      </ol>
+    </div>
+
+    <div class="section-label"><h2>内置推荐</h2><span>PRESETS</span></div>
+    <div id="presetList"></div>
+
+    <div class="section-label" style="margin-top:24px"><h2>我的服务器</h2><span>SERVERS</span></div>
+    <div id="serverList"></div>
+  </main>
+</div>
+
+<!-- 添加 / 编辑服务器 -->
+<div class="modal-overlay" id="serverModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="serverModalTitle">添加 MCP 服务器</h3>
+      <button class="modal-close" id="closeServerModal">×</button>
+    </div>
+    <div class="field">
+      <label>名称</label>
+      <input class="input" id="srvName" placeholder="例如：本地工具 / 高德地图">
+    </div>
+    <div class="field">
+      <label>服务器地址（https://…/mcp）</label>
+      <input class="input" id="srvUrl" placeholder="https://example.com/mcp" autocomplete="off">
+    </div>
+    <div class="field" style="margin-bottom:0">
+      <label>令牌（可选，Authorization: Bearer）</label>
+      <input class="input" id="srvToken" placeholder="留空表示不需要" autocomplete="off" data-masked-key="1">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="cancelServerModal">取消</button>
+      <button class="btn btn-primary" id="saveServerModal">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 调用工具 -->
+<div class="modal-overlay" id="toolModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="toolModalTitle">调用工具</h3>
+      <button class="modal-close" id="closeToolModal">×</button>
+    </div>
+    <p class="tool-desc" id="toolDesc"></p>
+    <div class="field">
+      <label>参数（JSON）</label>
+      <textarea class="textarea" id="toolArgs" spellcheck="false"></textarea>
+      <div class="tool-hint" id="toolHint">参数是这个工具需要的 JSON 输入；没有参数就保留 <code>{}</code>。</div>
+    </div>
+    <div id="toolResultWrap" style="display:none">
+      <label style="display:block;font-size:12px;font-weight:700;color:var(--ink2);margin-bottom:8px">结果</label>
+      <div class="result" id="toolResult"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="cancelToolModal">关闭</button>
+      <button class="btn btn-primary" id="runToolBtn">运行</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<script src="../js/appearance.js?v=20261018a"></script>
+<script src="../js/nano-mcp-runtime.js?v=20261018a"></script>
+<script src="../js/mcp.js?v=20261018a"></script>
+</body>
+</html>

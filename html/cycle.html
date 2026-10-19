@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<script src="../js/nano-runtime.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>月潮</title>
+  <link rel="stylesheet" href="../css/cycle.css?v=20261018d">
+  <script src="../js/appearance.js"></script>
+</head>
+<body class="nano-cycle">
+
+  <div class="cy-app">
+    <header class="cy-top">
+      <button class="cy-icon-btn" id="cyBack" type="button" aria-label="返回">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
+      <div class="cy-brand">
+        <span class="cy-overline">MOON TIDE</span>
+        <h1>月潮</h1>
+      </div>
+      <button class="cy-icon-btn" id="cySettings" type="button" aria-label="设置">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 8.5 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 8.5 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3a2 2 0 1 1 4 0v.09A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c.16.34.4.65.7.9.3.24.67.37 1.06.4H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"/></svg>
+      </button>
+    </header>
+
+    <main class="cy-scroll" id="cyScroll">
+      <section class="cy-hero" id="cyHero">
+        <div class="cy-hero-glow"></div>
+        <div class="cy-moon" aria-hidden="true">
+          <span class="cy-star s1"></span>
+          <span class="cy-star s2"></span>
+          <span class="cy-star s3"></span>
+          <svg viewBox="0 0 120 120">
+            <defs>
+              <linearGradient id="moonFill" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#fff6ef"/>
+                <stop offset=".55" stop-color="#f7d9d2"/>
+                <stop offset="1" stop-color="#e6b9c8"/>
+              </linearGradient>
+            </defs>
+            <circle cx="60" cy="60" r="38" fill="url(#moonFill)"/>
+            <path d="M74 26a38 38 0 1 0 20 48 30 30 0 0 1-20-48z" fill="#fffaf6" opacity=".86"/>
+          </svg>
+        </div>
+        <div class="cy-hero-copy">
+          <div class="cy-kicker" id="cyPhaseKicker">黄体期 · LUTEAL</div>
+          <div class="cy-count"><span id="cyDays">11</span><small>天</small></div>
+          <div class="cy-count-label">距离下次经期</div>
+          <div class="cy-next-date" id="cyNextDate">预计 10月29日</div>
+          <div class="cy-progress"><span id="cyProgress"></span></div>
+          <div class="cy-hero-meta">
+            <span id="cyTodayLabel">今天 10/18</span>
+            <span id="cyCycleLen">28 天周期</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="cy-card cy-calendar">
+        <div class="cy-cal-head">
+          <button class="cy-nav-btn" id="cyPrev" type="button" aria-label="上个月">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+          </button>
+          <div class="cy-month-wrap">
+            <div class="cy-month" id="cyMonth">2026年10月</div>
+            <div class="cy-month-en" id="cyMonthEn">OCTOBER</div>
+          </div>
+          <button class="cy-nav-btn" id="cyNext" type="button" aria-label="下个月">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+          </button>
+        </div>
+        <div class="cy-week"><span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span></div>
+        <div class="cy-grid" id="cyGrid"></div>
+        <div class="cy-legend">
+          <span><i class="dot period"></i>经期</span>
+          <span><i class="dot predicted"></i>预计</span>
+          <span><i class="dot fertile"></i>排卵期</span>
+          <span><i class="dot ovulation"></i>排卵日</span>
+        </div>
+      </section>
+
+      <section class="cy-card cy-phase">
+        <div class="cy-phase-head">
+          <div>
+            <div class="cy-phase-name" id="cyPhaseName">黄体期</div>
+            <div class="cy-phase-en" id="cyPhaseEn">LUTEAL PHASE</div>
+          </div>
+          <div class="cy-phase-chip" id="cyPhaseChip">还有 11 天</div>
+        </div>
+        <p class="cy-phase-desc" id="cyPhaseDesc">身体在为下一次周期做准备。可以放慢一点，多睡一会儿，少喝冰的。</p>
+        <div class="cy-phase-track"><span id="cyPhaseTrack"></span></div>
+        <div class="cy-phase-foot">
+          <span>排卵期 <b id="cyFertile">10/10–10/16</b></span>
+          <span>排卵日 <b id="cyOvulation">10/15</b></span>
+        </div>
+      </section>
+
+      <div class="cy-actions">
+        <button class="cy-primary" id="cyRecord" type="button">记录这次经期</button>
+        <button class="cy-ghost" id="cyAdjust" type="button">调整周期</button>
+      </div>
+
+      <section class="cy-card cy-perm">
+        <button class="cy-perm-open" id="cyPermOpen" type="button">
+          <span class="cy-perm-avs" id="cyPermAvatars"></span>
+          <span class="cy-perm-copy">
+            <b>谁能知道</b>
+            <em id="cyPermSummary">仅自己可见</em>
+          </span>
+          <span class="cy-perm-arrow">›</span>
+        </button>
+        <button class="cy-link" id="cyNotifyBtn" type="button">开启系统提醒</button>
+      </section>
+
+      <p class="cy-privacy">数据只保存在这台设备 · 推算仅供参考，不用于医疗判断</p>
+    </main>
+  </div>
+
+  <div class="cy-onboard" id="cyOnboard">
+    <div class="cy-onboard-card">
+      <div class="cy-onboard-moon" aria-hidden="true">
+        <svg viewBox="0 0 120 120">
+          <circle cx="60" cy="60" r="34" fill="#f7dfd9"/>
+          <path d="M74 28a34 34 0 1 0 18 44 27 27 0 0 1-18-44z" fill="#fffaf7"/>
+        </svg>
+      </div>
+      <span class="cy-overline">WELCOME TO MOON TIDE</span>
+      <h2>你好，月潮</h2>
+      <p class="cy-onboard-sub">记下最近一次经期，之后每个月都会自动为你推算。你也可以随时修改。</p>
+      <label class="cy-field">
+        <span>最近一次经期开始</span>
+        <input type="date" id="cyOnboardStart">
+      </label>
+      <div class="cy-onboard-row">
+        <div class="cy-stepper">
+          <span>经期天数</span>
+          <div><button type="button" data-step="period:-1">−</button><b id="cyOnboardPeriod">5</b><button type="button" data-step="period:1">＋</button></div>
+        </div>
+        <div class="cy-stepper">
+          <span>周期长度</span>
+          <div><button type="button" data-step="cycle:-1">−</button><b id="cyOnboardCycle">28</b><button type="button" data-step="cycle:1">＋</button></div>
+        </div>
+      </div>
+      <button class="cy-primary cy-onboard-go" id="cyOnboardSave" type="button">开始记录</button>
+      <p class="cy-onboard-note">只保存在本机 · 之后可以修改</p>
+    </div>
+  </div>
+
+  <div class="cy-sheet-overlay" id="cyPermSheet">
+    <div class="cy-sheet" role="dialog" aria-modal="true">
+      <div class="cy-grab"></div>
+      <div class="cy-sheet-head">
+        <div>
+          <h3>谁能知道</h3>
+          <p>只把月潮分享给你选择的角色</p>
+        </div>
+        <button class="cy-sheet-x" id="cyPermClose" type="button" aria-label="关闭">&times;</button>
+      </div>
+      <div class="cy-char-list" id="cyCharList"></div>
+      <p class="cy-deploy-note">后台主动提醒需要部署 push-worker；不部署时，App 内聊天仍会读取月潮。</p>
+      <div class="cy-sheet-actions">
+        <button class="cy-cancel" id="cyPermCancel" type="button">取消</button>
+        <button class="cy-save" id="cyPermSave" type="button">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="cy-sheet-overlay" id="cySheet">
+    <div class="cy-sheet" role="dialog" aria-modal="true">
+      <div class="cy-grab"></div>
+      <div class="cy-sheet-head">
+        <div>
+          <h3 id="cySheetTitle">记录经期</h3>
+          <p id="cySheetSub">选择这一次的开始和结束日期</p>
+        </div>
+        <button class="cy-sheet-x" id="cySheetClose" type="button" aria-label="关闭">&times;</button>
+      </div>
+      <div class="cy-range">
+        <label class="cy-field"><span>开始</span><input type="date" id="cyStart"></label>
+        <label class="cy-field"><span>结束</span><input type="date" id="cyEnd"></label>
+      </div>
+      <div class="cy-sheet-actions">
+        <button class="cy-danger" id="cyDeleteRecord" type="button">删除</button>
+        <button class="cy-cancel" id="cyCancelRecord" type="button">取消</button>
+        <button class="cy-save" id="cySaveRecord" type="button">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="cy-sheet-overlay" id="cySettingSheet">
+    <div class="cy-sheet" role="dialog" aria-modal="true">
+      <div class="cy-grab"></div>
+      <div class="cy-sheet-head">
+        <div>
+          <h3>调整周期</h3>
+          <p>推算会用你最近几次记录来修正</p>
+        </div>
+        <button class="cy-sheet-x" id="cySettingClose" type="button" aria-label="关闭">&times;</button>
+      </div>
+      <div class="cy-setting-row">
+        <span>平均周期</span>
+        <div class="cy-stepper"><div><button type="button" data-set="cycle:-1">−</button><b id="cySetCycle">28</b><button type="button" data-set="cycle:1">＋</button></div><em>天</em></div>
+      </div>
+      <div class="cy-setting-row">
+        <span>经期长度</span>
+        <div class="cy-stepper"><div><button type="button" data-set="period:-1">−</button><b id="cySetPeriod">5</b><button type="button" data-set="period:1">＋</button></div><em>天</em></div>
+      </div>
+      <div class="cy-setting-row">
+        <span>提前提醒</span>
+        <div class="cy-stepper"><div><button type="button" data-set="remind:-1">−</button><b id="cySetRemind">3</b><button type="button" data-set="remind:1">＋</button></div><em>天</em></div>
+      </div>
+      <label class="cy-toggle-row">
+        <div><b>经期提醒</b><span>到日子让被授权的角色关心你</span></div>
+        <input type="checkbox" id="cyReminderOn" class="cy-switch">
+      </label>
+      <div class="cy-sheet-actions">
+        <button class="cy-danger" id="cyReset" type="button">清空记录</button>
+        <button class="cy-save" id="cySaveSetting" type="button">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="cy-toast" id="cyToast"></div>
+
+  <script src="../js/nano-notify.js?v=20261018b"></script>
+  <script src="../js/user-scope.js?v=20261018b"></script>
+  <script src="../js/cycle-store.js?v=20261018d"></script>
+  <script src="../js/cycle.js?v=20261018d"></script>
+  <script src="../swipe-back.js"></script>
+</body>
+</html>
