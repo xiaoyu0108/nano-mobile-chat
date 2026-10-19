@@ -4,25 +4,62 @@
   var $ = function (id) { return document.getElementById(id); };
   function on(id, ev, fn) { var el = $(id); if (el) el.addEventListener(ev, fn); }
   var APPS = [
-    { id: 'chat', name: '聊天' }, { id: 'api', name: 'API' }, { id: 'couple', name: '情侣空间' },
-    { id: 'halo', name: 'Halo' }, { id: 'instagram', name: 'Instagram' }, { id: 'together', name: '一起看' },
-    { id: 'music', name: '音乐' }, { id: 'memory', name: '记忆宫殿' }, { id: 'imessage', name: 'iMessage' },
-    { id: 'peek', name: '窥屏' }, { id: 'market', name: '共享集市' }, { id: 'shop', name: '商城' },
-    { id: 'schedule', name: '日程' }, { id: 'mcp', name: 'MCP' }, { id: 'tide', name: '月潮' },
-    { id: 'fanfic', name: '同人文' }, { id: 'store', name: '应用商店' }, { id: 'book', name: '世界书' },
-    { id: 'beauty', name: '美化' }, { id: 'phone', name: '查手机' }, { id: 'settings', name: '设置' }
+    { id: 'chat', name: '聊天', icon: 'chat' }, { id: 'api', name: 'API', icon: 'api' }, { id: 'couple', name: '情侣空间', icon: 'couple' },
+    { id: 'halo', name: 'Halo', icon: 'halo' }, { id: 'instagram', name: 'Instagram', icon: 'instagram' }, { id: 'together', name: '一起看', icon: 'together' },
+    { id: 'music', name: '音乐', icon: 'music' }, { id: 'memory', name: '记忆宫殿', icon: 'memory' }, { id: 'imessage', name: 'iMessage', icon: 'imessage' },
+    { id: 'peek', name: '窥屏', icon: 'peek' }, { id: 'market', name: '共享集市', icon: 'market' }, { id: 'shop', name: '商城', icon: 'shop' },
+    { id: 'schedule', name: '日程', icon: 'schedule' }, { id: 'mcp', name: 'MCP', icon: 'mcp' }, { id: 'tide', name: '月潮', icon: 'tide' },
+    { id: 'fanfic', name: '同人文', icon: 'fanfic' }, { id: 'store', name: '应用商店', icon: 'store' }, { id: 'book', name: '世界书', icon: 'book' },
+    { id: 'beauty', name: '美化', icon: 'beauty' }, { id: 'phone', name: '查手机', icon: 'phone' }, { id: 'settings', name: '设置', icon: 'settings' }
   ];
+
+const S1='<g fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">';
+const APP_ICONS = {
+ chat:'<path d="M5 4h14a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3h-7l-5.5 3.5V17A3 3 0 0 1 3 14V7a3 3 0 0 1 2-3Zm2.5 5a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5Zm4.5 0a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5Zm4.5 0a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5Z"/>',
+ /* API：代码括号 + 斜杠（原图标是乱码） */
+ api:S1+'<path d="M8 7l-5 5 5 5"/><path d="M16 7l5 5-5 5"/><path d="M13.6 4.8l-3.2 14.4"/></g>',
+ couple:'<path d="M12 21s-8.5-5.2-9.8-10.4C1.1 6.1 6.7 2.5 10.4 6L12 7.7 13.6 6c3.7-3.5 9.3.1 8.2 4.6C20.5 15.8 12 21 12 21Z"/>',
+ halo:'<path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2Zm0 3a7 7 0 0 1 6.9 6H14a2 2 0 0 0-4 0H5.1A7 7 0 0 1 12 5Zm0 14a7 7 0 0 1-6.9-6H10a2 2 0 0 0 4 0h4.9a7 7 0 0 1-6.9 6Z"/>',
+ instagram:'<path d="M7 2h10a5 5 0 0 1 5 5v10a5 5 0 0 1-5 5H7a5 5 0 0 1-5-5V7a5 5 0 0 1 5-5Zm0 3a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2H7Zm5 2a5 5 0 1 1 0 10 5 5 0 0 1 0-10Zm0 3a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm5.5-4a1.2 1.2 0 1 1 0 2.4 1.2 1.2 0 0 1 0-2.4Z"/>',
+ /* 一起看 = 一起看书：翻开的书 */
+ together:'<path fill-rule="evenodd" d="M2.5 5.4C5.8 4.8 9.2 5.3 11.2 6.9v12.4C9.2 17.9 5.8 17.5 2.5 18.1ZM5 9.4h4.6v1.5H5ZM5 12.4h4.6v1.5H5ZM21.5 5.4C18.2 4.8 14.8 5.3 12.8 6.9v12.4c2-1.4 5.4-1.8 8.7-1.2ZM14.4 9.4H19v1.5h-4.6ZM14.4 12.4H19v1.5h-4.6Z"/>',
+ music:'<path d="M19 3v12.2a4 4 0 1 1-2-3.5V7l-8 2v9.2a4 4 0 1 1-2-3.5V6l12-3Z"/>',
+ memory:'<g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4"/><path d="M17.599 6.5a3 3 0 0 0 .399-1.375"/><path d="M6.003 5.125A3 3 0 0 0 6.401 6.5"/><path d="M3.477 10.896a4 4 0 0 1 .585-.396"/><path d="M19.938 10.5a4 4 0 0 1 .585.396"/><path d="M6 18a4 4 0 0 1-1.967-.516"/><path d="M19.967 17.484A4 4 0 0 1 18 18"/></g>',
+ imessage:'<path d="M4 3h16a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2h-5l-4 4v-4H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm2 5v2h12V8H6Zm0 4v2h8v-2H6Z"/>',
+ peek:'<path d="M12 5c-5.5 0-9.5 5.5-10 7 1.5 3 5 7 10 7s8.5-4 10-7c-.5-1.5-4.5-7-10-7Zm0 11a4 4 0 1 1 0-8 4 4 0 0 1 0 8Zm0-2a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"/>',
+ market:'<path d="M4 3h16l2 5v2a3 3 0 0 1-2 2.8V21H4v-8.2A3 3 0 0 1 2 10V8l2-5Zm1.4 2L4.2 8h15.6l-1.2-3H5.4ZM6 13v6h12v-6H6Zm2 1h8v2H8v-2Z"/>',
+ mcp:'<g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/></g>',
+ tide:'<path d="M2 8c2.5 0 2.5-2 5-2s2.5 2 5 2 2.5-2 5-2 2.5 2 5 2v3c-2.5 0-2.5-2-5-2s-2.5 2-5 2-2.5-2-5-2-2.5 2-5 2V8Zm0 7c2.5 0 2.5-2 5-2s2.5 2 5 2 2.5-2 5-2 2.5 2 5 2v3c-2.5 0-2.5-2-5-2s-2.5 2-5 2-2.5-2-5-2-2.5 2-5 2v-3Z"/>',
+ fanfic:'<g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></g>',
+ store:'<path d="M12 2 3 6v5c0 5.5 3.8 9.8 9 11 5.2-1.2 9-5.5 9-11V6l-9-4Zm0 3.2 6 2.7V11c0 4-2.5 7.4-6 8.6-3.5-1.2-6-4.6-6-8.6V7.9l6-2.7Zm-1 3.3v3H8v2h3v3h2v-3h3v-2h-3v-3h-2Z"/>',
+ /* 世界书：合上的书 + 圆环（区别于「一起看」） */
+ book:'<g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></g>',
+ beauty:'<path d="M12 2 14.4 8.6 21 11l-6.6 2.4L12 20l-2.4-6.6L3 11l6.6-2.4L12 2Zm7 13 .9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15Z"/>',
+ settings:'<path d="M19.4 13a7.8 7.8 0 0 0 0-2l2-1.5-2-3.5-2.4 1a7.4 7.4 0 0 0-1.7-1L15 3h-6l-.4 3a7.4 7.4 0 0 0-1.7 1l-2.4-1-2 3.5 2 1.5a7.8 7.8 0 0 0 0 2l-2 1.5 2 3.5 2.4-1a7.4 7.4 0 0 0 1.7 1L9 21h6l.4-3a7.4 7.4 0 0 0 1.7-1l2.4 1 2-3.5-2.1-1.5ZM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z"/>',
+ phone:'<path d="M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm0 3v13h10V5H7Zm4 15h2v1h-2v-1Z"/>',
+ schedule:'<path fill-rule="evenodd" d="M7 2h2v2h6V2h2v2h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2V2ZM5 9v11h14V9H5Zm3 3h3v3H8Zm5 0h3v3h-3Z"/>',
+ shop:'<path d="M4.3 8h15.4l1 11.6a2.4 2.4 0 0 1-2.4 2.6H5.7a2.4 2.4 0 0 1-2.4-2.6Z"/><path d="M8.5 10.5V7a3.5 3.5 0 0 1 7 0v3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'
+};
+
+  function appIconHtml(name) {
+    return '<svg viewBox="0 0 24 24" aria-hidden="true">' + (APP_ICONS[name] || APP_ICONS.book) + '</svg>';
+  }
+
   var IDB_BG = 'nano_desktop_bg';
   var IDB_CUSTOM = 'nano_app_custom';
   var IDB_PRESETS = 'nano_desktop_presets';
   var IDB_LAYOUT = 'nano_widget_layout_v1';
   var IDB_IMGS = 'nano_widget_images_v1';
+  var CUSTOM_SOUND_KEY = 'nano_custom_sound';
   var toastTimer = null;
   var bg = null;
   var custom = {};
   var presets = [];
   var pendingIcon = '';
+  var pendingAvatar = '';
   var editingApp = '';
+  var maskData = { masks: [], currentMaskId: null };
+  var currentUser = null;
 
   var NN = null;
   try { NN = window.parent && window.parent.NanoNotify ? window.parent.NanoNotify : window.NanoNotify; } catch (e) {}
@@ -58,15 +95,29 @@
     post({ type: 'nanoDesktopChanged', layout: !!layout });
   }
 
-  function openSheet(title, html) {
+  var sheetBack = null;
+
+  function openSheet(title, html, onBack) {
+    sheetBack = onBack || null;
     $('sheetTitle').textContent = title;
     $('sheetBody').innerHTML = html;
     $('modal').classList.add('show');
   }
 
   function closeSheet() {
+    sheetBack = null;
     $('modal').classList.remove('show');
     $('sheetBody').innerHTML = '';
+  }
+
+  function backSheet() {
+    if (sheetBack) {
+      var f = sheetBack;
+      sheetBack = null;
+      f();
+    } else {
+      closeSheet();
+    }
   }
 
   function esc(s) {
@@ -109,6 +160,24 @@
         } catch (e) { resolve(null); }
       });
     }).catch(function () { return null; });
+  }
+
+  function idbPut(name, version, store, value, stores) {
+    return idbOpen(name, version, stores).then(function (db) {
+      return new Promise(function (resolve) {
+        try {
+          var tx = db.transaction(store, 'readwrite');
+          tx.objectStore(store).put(value);
+          tx.oncomplete = function () { try { db.close(); } catch (e) {} resolve(true); };
+          tx.onerror = function () { try { db.close(); } catch (e) {} resolve(false); };
+        } catch (e) { try { db.close(); } catch (e2) {} resolve(false); }
+      });
+    }).catch(function () { return false; });
+  }
+
+  function saveMaskData() {
+    try { localStorage.setItem('nano_mask_data', JSON.stringify(maskData)); } catch (e) {}
+    return idbPut('nano_mask_db', 1, 'mask_data', { key: 'data', value: maskData }, [{ name: 'mask_data', keyPath: 'key' }]);
   }
 
   function loadMask() {
@@ -169,8 +238,9 @@
       custom = r[1] && typeof r[1] === 'object' ? r[1] : {};
       presets = Array.isArray(r[2]) ? r[2] : [];
       var data = r[3];
-      var m = currentMask(data);
-      renderInfo(m, data);
+      maskData = data && Array.isArray(data.masks) ? data : { masks: [], currentMaskId: null };
+      currentUser = currentMask(maskData);
+      renderInfo(currentUser, maskData);
     }).catch(function () {
       renderInfo(null, { masks: [] });
     });
@@ -210,6 +280,11 @@
     if (sizeVal) sizeVal.textContent = String(settings.size || 52);
     var bt = $('ballToggle');
     if (bt) bt.checked = settings.enabled !== false;
+    var bp = $('ballPreview');
+    if (bp) {
+      bp.style.width = (settings.size || 52) + 'px';
+      bp.style.height = (settings.size || 52) + 'px';
+    }
     refreshStorage();
     refreshNotify();
   }
@@ -257,15 +332,25 @@
     }
     var row = $('barkKeyRow');
     if (row) row.classList.toggle('show', !!(bark && bark.checked));
-    fillSounds();
+    loadCustomSoundThenFill();
     refreshPush();
   }
 
-  function fillSounds() {
+  function loadCustomSoundThenFill() {
+    return NanoIDB.get(CUSTOM_SOUND_KEY).then(function (v) {
+      if (v && v.url && NN && NN.setCustomSound) NN.setCustomSound(v.url);
+      var nameEl = $('customSoundName');
+      if (nameEl) nameEl.textContent = v && v.name ? v.name : '未上传';
+      fillSounds(true);
+    }).catch(function () { fillSounds(true); });
+  }
+
+  function fillSounds(reset) {
     var sel = $('soundSelect');
     if (!sel || !NN || !NN.sounds) return;
-    if (sel.options.length) return;
+    if (sel.options.length && !reset) return;
     var cur = localStorage.getItem('nano_notify_sound') || 'ding';
+    sel.innerHTML = '';
     NN.sounds.forEach(function (s) {
       var o = document.createElement('option');
       o.value = s.id || s.key || s.name;
@@ -273,20 +358,41 @@
       if (o.value === cur) o.selected = true;
       sel.appendChild(o);
     });
+    if (NN.getCustomSound && NN.getCustomSound()) {
+      var c = document.createElement('option');
+      c.value = 'custom';
+      c.textContent = '自定义 MP3';
+      if (cur === 'custom') c.selected = true;
+      sel.appendChild(c);
+    }
   }
 
   function refreshPush() {
     var status = $('webPushStatus');
     var btn = $('webPushBtn');
-    if (!status) return;
-    if (!NP) { status.textContent = '未加载'; if (btn) btn.textContent = '不可用'; return; }
+    var toggle = $('webPushToggle');
+    if (!NP) {
+      if (status) status.textContent = '未加载';
+      if (btn) btn.textContent = '不可用';
+      if (toggle) { toggle.checked = false; toggle.disabled = true; }
+      return;
+    }
     Promise.resolve(NP.status ? NP.status() : null).then(function (s) {
-      if (!s) { status.textContent = '可开启'; if (btn) btn.textContent = '开启'; return; }
-      if (s.permission === 'denied') { status.textContent = '权限被拒绝'; if (btn) btn.textContent = '重试'; }
-      else if (s.subscribed) { status.textContent = '已开启'; if (btn) btn.textContent = '重新订阅'; }
-      else if (s.configured) { status.textContent = '已配置'; if (btn) btn.textContent = '开启'; }
-      else { status.textContent = '未配置'; if (btn) btn.textContent = '开启'; }
-    }).catch(function () { status.textContent = '检查失败'; });
+      if (!s) {
+        if (status) status.textContent = '可开启';
+        if (btn) btn.textContent = '开启';
+        if (toggle) toggle.checked = false;
+        return;
+      }
+      if (toggle) toggle.checked = !!s.subscribed;
+      if (status) {
+        if (s.permission === 'denied') status.textContent = '权限被拒绝';
+        else if (s.subscribed) status.textContent = '已开启';
+        else if (s.configured) status.textContent = '已配置';
+        else status.textContent = '未配置';
+      }
+      if (btn) btn.textContent = s.subscribed ? '重新订阅' : '开启';
+    }).catch(function () { if (status) status.textContent = '检查失败'; });
   }
 
   function setBg(next) {
@@ -325,7 +431,7 @@
     var rows = APPS.map(function (a) {
       var c = custom[a.id] || {};
       var name = c.name || a.name;
-      var preview = c.icon ? '<span class="app-preview"><img src="' + esc(c.icon) + '" alt=""></span>' : '<span class="app-preview">' + esc(String(name).charAt(0)) + '</span>';
+      var preview = c.icon ? '<span class="app-preview"><img src="' + esc(c.icon) + '" alt=""></span>' : '<span class="app-preview">' + appIconHtml(a.icon) + '</span>';
       return '<button class="list-row" data-app="' + a.id + '">' + preview +
         '<span class="list-main"><span class="list-name">' + esc(name) + '</span><span class="list-sub">' + esc(c.name || c.icon ? '已自定义' : '默认') + '</span></span>' +
         '<span class="chev">›</span></button>';
@@ -343,11 +449,12 @@
     pendingIcon = (custom[id] && custom[id].icon) || '';
     var name = (custom[id] && custom[id].name) || a.name;
     openSheet('编辑 ' + a.name,
-      '<div class="edit-preview"><span class="app-preview" id="editPreview">' + (pendingIcon ? '<img src="' + esc(pendingIcon) + '" alt="">' : esc(String(name).charAt(0))) + '</span>' +
+      '<div class="edit-preview"><span class="app-preview" id="editPreview">' + (pendingIcon ? '<img src="' + esc(pendingIcon) + '" alt="">' : appIconHtml(a.icon)) + '</span>' +
       '<button class="mini-btn" id="pickIcon">选择图标</button></div>' +
       '<input class="edit-name" id="editName" maxlength="12" value="' + esc(name) + '" placeholder="App 名称">' +
       '<button class="sheet-btn" id="saveApp">保存</button>' +
-      '<button class="sheet-btn grey" id="resetApp">恢复默认</button>'
+      '<button class="sheet-btn grey" id="resetApp">恢复默认</button>',
+      function () { openAppsSheet(); }
     );
     var pick = $('pickIcon');
     if (pick) pick.addEventListener('click', function () { $('iconFile').click(); });
@@ -360,7 +467,7 @@
       if (Object.keys(patch).length) custom[id] = patch; else delete custom[id];
       NanoIDB.set(IDB_CUSTOM, custom).then(function () { notifyHome(false); });
       renderValues();
-      closeSheet();
+      openAppsSheet();
       toast('已保存');
     });
     var reset = $('resetApp');
@@ -368,8 +475,61 @@
       delete custom[id];
       NanoIDB.set(IDB_CUSTOM, custom).then(function () { notifyHome(false); });
       renderValues();
-      closeSheet();
+      openAppsSheet();
       toast('已恢复默认');
+    });
+  }
+
+  function openProfileEdit() {
+    if (!currentUser) {
+      toast('没有可编辑的面具');
+      openPage('mask.html', '面具');
+      return;
+    }
+    pendingAvatar = '';
+    var name = currentUser.name || '未命名';
+    var avatarHtml = currentUser.avatar
+      ? '<img src="' + esc(currentUser.avatar) + '" alt="">'
+      : esc(String(name).charAt(0).toUpperCase());
+    openSheet('编辑资料',
+      '<div class="edit-preview">' +
+        '<span class="profile-edit-avatar" id="profilePreview">' + avatarHtml + '</span>' +
+        '<button class="mini-btn" id="pickAvatar">选择头像</button>' +
+      '</div>' +
+      '<input class="edit-name" id="editProfileName" maxlength="16" value="' + esc(name) + '" placeholder="昵称">' +
+      '<button class="sheet-btn" id="saveProfile">保存</button>'
+    );
+    getMaskAvatar(currentUser.id).then(function (url) {
+      if (!url) return;
+      currentUser.avatar = url;
+      var p = $('profilePreview');
+      if (p) p.innerHTML = '<img src="' + esc(url) + '" alt="">';
+    });
+    var pick = $('pickAvatar');
+    if (pick) pick.addEventListener('click', function () {
+      var f = $('avatarFile');
+      if (f) f.click();
+    });
+    var save = $('saveProfile');
+    if (save) save.addEventListener('click', function () {
+      var v = ($('editProfileName').value || '').trim() || '未命名';
+      currentUser.name = v;
+      var idx = (maskData.masks || []).findIndex(function (m) { return String(m.id) === String(currentUser.id); });
+      if (idx >= 0) maskData.masks[idx].name = v;
+      var tasks = [];
+      tasks.push(NanoIDB ? Promise.resolve(saveMaskData()) : Promise.resolve(false));
+      if (pendingAvatar) {
+        tasks.push(idbPut('MaskAvatarDB', 1, 'avatars', { id: currentUser.id, data: pendingAvatar }, [{ name: 'avatars', keyPath: 'id' }]));
+        currentUser.avatar = pendingAvatar;
+        if (idx >= 0) maskData.masks[idx].avatar = pendingAvatar;
+      }
+      Promise.all(tasks).then(function () {
+        post({ type: 'currentMaskChanged', maskId: currentUser.id, data: maskData });
+        post({ type: 'homeDataUpdated', data: maskData });
+        renderInfo(currentUser, maskData);
+        closeSheet();
+        toast('资料已保存');
+      });
     });
   }
 
@@ -524,7 +684,7 @@
   }
 
   async function enablePush() {
-    if (!NP) { toast('推送模块未加载'); return; }
+    if (!NP) { toast('推送模块未加载'); return false; }
     var endpoint = '';
     try { endpoint = (localStorage.getItem('nano_push_endpoint') || '').trim(); } catch (e) {}
     if (!endpoint) endpoint = 'https://nanopush.nano315.online';
@@ -539,21 +699,202 @@
         key = (j && (j.publicKey || j.vapid || j.key)) || '';
       } catch (e) {}
     }
-    if (!key) { toast('服务端未返回 VAPID 公钥'); return; }
+    if (!key) { toast('服务端未返回 VAPID 公钥'); return false; }
     try {
       NP.setup(endpoint, key, token);
       await NP.enable();
       localStorage.setItem('nano_notify_enabled', '1');
       refreshNotify();
       toast('Web Push 已开启');
+      return true;
     } catch (e) {
       toast(e && e.message ? e.message : '开启失败');
+      var t = $('webPushToggle');
+      if (t) t.checked = false;
+      return false;
     }
+  }
+
+  /* ================= 界面安全区 ================= */
+  var SHIFT_STEP = 4, SHIFT_MIN = -160, SHIFT_MAX = 200, INSET_DEFAULT = 48;
+  var INSET_ENABLED_KEY = 'nano_top_inset_enabled';
+  var SHIFT_KEYS = { top: 'nanoTopShift', bottom: 'nanoBottomShift', inset: 'nano_top_inset' };
+  var SHIFT_VAL = { top: 'topShiftVal', bottom: 'bottomShiftVal', inset: 'insetShiftVal' };
+
+  function shiftRead(key) {
+    try {
+      var v = localStorage.getItem(key);
+      if (v === null || v === '') return key === SHIFT_KEYS.inset ? INSET_DEFAULT : 0;
+      return parseInt(v, 10) || 0;
+    } catch (e) { return key === SHIFT_KEYS.inset ? INSET_DEFAULT : 0; }
+  }
+
+  function insetEnabled() {
+    try {
+      var v = localStorage.getItem(INSET_ENABLED_KEY);
+      if (v === '1') return true;
+      if (v === '0') return false;
+    } catch (e) {}
+    try { return /iPhone|Android/i.test(navigator.userAgent); } catch (e) { return false; }
+  }
+
+  function shiftRender(target, n) {
+    var el = $(SHIFT_VAL[target]);
+    if (el) el.textContent = (n > 0 ? '+' : '') + n;
+  }
+
+  function shiftPostInset(enabled, value) {
+    post({ type: 'nanoTopInset', enabled: !!enabled, value: value });
+  }
+
+  function shiftApply(target, n) {
+    n = parseInt(n, 10) || 0;
+    if (target === 'inset') n = Math.max(0, Math.min(220, n));
+    else n = Math.max(SHIFT_MIN, Math.min(SHIFT_MAX, n));
+    var key = SHIFT_KEYS[target];
+    try { localStorage.setItem(key, String(n)); } catch (e) {}
+    shiftRender(target, n);
+    if (target === 'inset') { shiftPostInset(insetEnabled(), n); return; }
+    post({ type: target === 'top' ? 'nanoTopShift' : 'nanoBottomShift', value: n });
+  }
+
+  function syncInsetUI() {
+    var on = insetEnabled();
+    var t = $('insetToggle');
+    var row = $('insetNudgeRow');
+    if (t) t.checked = on;
+    if (row) row.style.display = on ? '' : 'none';
+  }
+
+  function initInterface() {
+    document.querySelectorAll('.nudge-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var target = this.getAttribute('data-target');
+        var dir = parseInt(this.getAttribute('data-dir'), 10) || 0;
+        if (!target) return;
+        if (target === 'inset') {
+          if (dir === 0) {
+            try { localStorage.removeItem(SHIFT_KEYS.inset); } catch (e) {}
+            shiftRender('inset', INSET_DEFAULT);
+            shiftPostInset(insetEnabled(), null);
+            return;
+          }
+          shiftApply('inset', shiftRead(SHIFT_KEYS.inset) + dir * 2);
+          return;
+        }
+        shiftApply(target, dir === 0 ? 0 : shiftRead(SHIFT_KEYS[target]) + dir * SHIFT_STEP);
+      });
+    });
+    on('insetToggle', 'change', function () {
+      var on = this.checked;
+      try { localStorage.setItem(INSET_ENABLED_KEY, on ? '1' : '0'); } catch (e) {}
+      syncInsetUI();
+      shiftPostInset(on, on ? shiftRead(SHIFT_KEYS.inset) : null);
+    });
+    shiftRender('top', shiftRead(SHIFT_KEYS.top));
+    shiftRender('bottom', shiftRead(SHIFT_KEYS.bottom));
+    shiftRender('inset', shiftRead(SHIFT_KEYS.inset));
+    syncInsetUI();
+  }
+
+  /* ================= 纳米助手 ================= */
+  var NANO_AVATAR = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80">' +
+    '<rect width="80" height="80" rx="20" fill="#ff4d94"/>' +
+    '<rect x="18" y="24" width="44" height="34" rx="12" fill="#fff"/>' +
+    '<circle cx="32" cy="41" r="4.5" fill="#ff4d94"/><circle cx="48" cy="41" r="4.5" fill="#ff4d94"/>' +
+    '<rect x="38" y="10" width="4" height="12" rx="2" fill="#fff"/><circle cx="40" cy="9" r="4" fill="#fff"/></svg>'
+  );
+
+  function ensureNanoCharacter(on) {
+    return new Promise(function (resolve) {
+      function run(attempt) {
+        try {
+          var req = indexedDB.open('nano_characters_db', 1);
+          req.onupgradeneeded = function (e) {
+            var db = e.target.result;
+            if (!db.objectStoreNames.contains('characters')) db.createObjectStore('characters', { keyPath: 'id' });
+          };
+          req.onsuccess = function (e) {
+            var db = e.target.result;
+            if (!db.objectStoreNames.contains('characters')) {
+              var empty = db.objectStoreNames.length === 0;
+              try { db.close(); } catch (err) {}
+              if (empty && attempt < 1) {
+                var del = indexedDB.deleteDatabase('nano_characters_db');
+                del.onsuccess = function () { run(attempt + 1); };
+                del.onerror = function () { resolve(false); };
+                return;
+              }
+              resolve(false);
+              return;
+            }
+            try {
+              var tx = db.transaction('characters', 'readwrite');
+              var st = tx.objectStore('characters');
+              var g = st.get('nano_ai');
+              g.onsuccess = function () {
+                var ex = g.result;
+                try {
+                  if (on) {
+                    if (!ex) {
+                      st.put({ id: 'nano_ai', name: '纳米', avatar: NANO_AVATAR, gender: '女', nationality: '中国', setting: '', bindUser: '', isNpc: true, nanoAssistant: true });
+                    } else {
+                      ex.name = ex.name || '纳米';
+                      ex.isNpc = true;
+                      ex.nanoAssistant = true;
+                      st.put(ex);
+                    }
+                  } else if (ex) {
+                    st.delete('nano_ai');
+                  }
+                } catch (err) {}
+              };
+              tx.oncomplete = function () { try { db.close(); } catch (err) {} resolve(true); };
+              tx.onerror = function () { try { db.close(); } catch (err) {} resolve(false); };
+            } catch (err) { try { db.close(); } catch (err2) {} resolve(false); }
+          };
+          req.onerror = function () { resolve(false); };
+        } catch (e) { resolve(false); }
+      }
+      run(0);
+    });
+  }
+
+  function initAssistant() {
+    var t = $('nanoToggle');
+    if (!t) return;
+    var on = false;
+    try { on = localStorage.getItem('nano_assistant_enabled') === '1'; } catch (e) {}
+    t.checked = on;
+    if (on) ensureNanoCharacter(true);
+    t.addEventListener('change', function () {
+      var v = this.checked;
+      ensureNanoCharacter(v).then(function () {
+        try { localStorage.setItem('nano_assistant_enabled', v ? '1' : '0'); } catch (e) {}
+        post({ type: 'nanoCharUpdated' });
+        post({ type: 'contactsDataUpdated' });
+        post({ type: 'homeDataUpdated' });
+        toast(v ? '纳米助手已开启' : '纳米助手已关闭');
+      });
+    });
   }
 
   function bind() {
     on('backBtn', 'click', function () {
       if (!post({ type: 'closeFullscreen' })) { try { history.back(); } catch (e) {} }
+    });
+
+    on('idCard', 'click', openProfileEdit);
+    on('avatarFile', 'change', function (e) {
+      var f = e.target.files && e.target.files[0];
+      if (!f) return;
+      resizeImage(f, 320, 'image/png').then(function (url) {
+        pendingAvatar = url;
+        var p = $('profilePreview');
+        if (p) p.innerHTML = '<img src="' + esc(url) + '" alt="">';
+      }).catch(function () { toast('头像处理失败'); });
+      e.target.value = '';
     });
 
     on('rowBg', 'click', openBgSheet);
@@ -591,7 +932,7 @@
       e.target.value = '';
     });
 
-    on('sheetClose', 'click', closeSheet);
+    on('sheetClose', 'click', backSheet);
     on('modal', 'click', function (e) { if (e.target === $('modal')) closeSheet(); });
 
     on('keepToggle', 'change', function () {
@@ -643,6 +984,38 @@
     });
 
     on('webPushBtn', 'click', enablePush);
+    on('webPushToggle', 'change', function () {
+      var t = this;
+      if (t.checked) {
+        enablePush().then(function (ok) { if (!ok) t.checked = false; });
+      } else if (NP && NP.disable) {
+        Promise.resolve(NP.disable()).then(function () {
+          toast('Web Push 已关闭');
+          refreshPush();
+        }).catch(function () { t.checked = true; });
+      }
+    });
+
+    on('uploadSoundBtn', 'click', function () { var f = $('soundFile'); if (f) f.click(); });
+    on('soundFile', 'change', function (e) {
+      var f = e.target.files && e.target.files[0];
+      if (!f) return;
+      if (f.size > 12 * 1024 * 1024) { toast('铃声文件不能超过 12MB'); return; }
+      var reader = new FileReader();
+      reader.onload = function () {
+        var data = { url: String(reader.result || ''), name: f.name || '自定义 MP3', at: Date.now() };
+        NanoIDB.set(CUSTOM_SOUND_KEY, data).then(function () {
+          if (NN && NN.setCustomSound) NN.setCustomSound(data.url);
+          try { localStorage.setItem('nano_notify_sound', 'custom'); } catch (err) {}
+          var nameEl = $('customSoundName');
+          if (nameEl) nameEl.textContent = data.name;
+          fillSounds(true);
+          toast('铃声已保存');
+        });
+      };
+      reader.readAsDataURL(f);
+      e.target.value = '';
+    });
 
     on('soundSelect', 'change', function () {
       try { localStorage.setItem('nano_notify_sound', this.value); } catch (e) {}
@@ -669,7 +1042,22 @@
       s.size = Number(this.value) || 52;
       var v = $('ballSizeValue');
       if (v) v.textContent = String(s.size);
+      var bp = $('ballPreview');
+      if (bp) { bp.style.width = s.size + 'px'; bp.style.height = s.size + 'px'; }
       writeBall(s);
+    });
+    on('ballResetPos', 'click', function () {
+      var s = readBall();
+      s.x = null;
+      s.y = null;
+      writeBall(s);
+      toast('悬浮球位置已重置');
+    });
+
+    document.querySelectorAll('[data-open]').forEach(function (el) {
+      el.addEventListener('click', function () {
+        openPage(el.dataset.open, el.dataset.title || '');
+      });
     });
 
     on('interfaceSettings', 'click', function () { openPage('beautify.html', '美化'); });
@@ -680,6 +1068,8 @@
 
   function init() {
     bind();
+    initInterface();
+    initAssistant();
     loadAll().then(function () {
       renderValues();
     });

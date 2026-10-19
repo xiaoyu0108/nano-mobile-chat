@@ -140,9 +140,49 @@
         osc.stop(ctx.currentTime + start + dur + 0.02);
     }
 
+    // ===== 自定义 MP3 铃声 =====
+    var customSoundUrl = '';
+    function setCustomSound(url) {
+        customSoundUrl = String(url || '');
+    }
+    function getCustomSound() { return customSoundUrl; }
+    function loadCustomSound() {
+        try {
+            var req = indexedDB.open('nano_app_storage', 1);
+            req.onupgradeneeded = function (e) {
+                try {
+                    var db = e.target.result;
+                    if (!db.objectStoreNames.contains('kv')) db.createObjectStore('kv');
+                } catch (err) {}
+            };
+            req.onsuccess = function (e) {
+                var db = e.target.result;
+                try {
+                    var get = db.transaction('kv', 'readonly').objectStore('kv').get('nano_custom_sound');
+                    get.onsuccess = function () {
+                        var v = get.result;
+                        if (v && v.url) customSoundUrl = v.url;
+                        try { db.close(); } catch (err) {}
+                    };
+                    get.onerror = function () { try { db.close(); } catch (err) {} };
+                } catch (err) { try { db.close(); } catch (err2) {} }
+            };
+        } catch (e) {}
+    }
+    try { loadCustomSound(); } catch (e) {}
+
     function playSound(name) {
         name = name || currentSound();
         if (name === 'none') return;
+        if (name === 'custom') {
+            if (!customSoundUrl) return;
+            try {
+                var audio = new Audio(customSoundUrl);
+                audio.volume = 0.85;
+                audio.play().catch(function () {});
+            } catch (e) {}
+            return;
+        }
         var ctx = getCtx();
         if (!ctx) return;
         var doPlay = function () {
@@ -453,6 +493,8 @@
         setBarkEnabled: setBarkEnabled,
         barkLevel: barkLevel,
         setBarkLevel: setBarkLevel,
-        barkPush: barkPush
+        barkPush: barkPush,
+        setCustomSound: setCustomSound,
+        getCustomSound: getCustomSound
     };
 })();

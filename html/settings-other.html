@@ -23,23 +23,60 @@
 
   <main class="scroll">
     <section class="list">
-      <label class="row">
-        <span class="row-label">显示悬浮球</span>
+      <div class="row">
+        <span class="row-label">悬浮球</span>
+        <span class="ball-preview" id="ballPreview"><i class="ball-core"></i></span>
         <span class="switch"><input type="checkbox" id="ballToggle"><i></i></span>
-      </label>
+      </div>
       <div class="row">
         <span class="row-label">悬浮球大小</span>
-        <input class="range" id="ballSize" type="range" min="44" max="72" step="2">
+        <input class="range" id="ballSize" type="range" min="36" max="80" step="2">
         <span class="row-value" id="ballSizeValue">52</span>
       </div>
-      <button class="row" id="interfaceSettings">
-        <span class="row-label">界面与字体</span>
-        <span class="row-value">美化</span>
+      <button class="row" id="ballResetPos">
+        <span class="row-label">重置悬浮球位置</span>
         <span class="chev">›</span>
       </button>
-      <button class="row" id="assistantSettings">
-        <span class="row-label">助手</span>
-        <span class="row-value">纳米设置</span>
+
+      <div class="row">
+        <span class="row-label">顶栏位置</span>
+        <span class="nudge">
+          <button class="nudge-btn" data-target="top" data-dir="-1" type="button">上移</button>
+          <span class="nudge-value" id="topShiftVal">0</span>
+          <button class="nudge-btn" data-target="top" data-dir="1" type="button">下移</button>
+          <button class="nudge-btn" data-target="top" data-dir="0" type="button">恢复</button>
+        </span>
+      </div>
+      <label class="row">
+        <span class="row-label">灵动岛安全区</span>
+        <span class="switch"><input type="checkbox" id="insetToggle"><i></i></span>
+      </label>
+      <div class="row" id="insetNudgeRow" style="display:none;">
+        <span class="row-label">安全区高度</span>
+        <span class="nudge">
+          <button class="nudge-btn" data-target="inset" data-dir="-1" type="button">上移</button>
+          <span class="nudge-value" id="insetShiftVal">48</span>
+          <button class="nudge-btn" data-target="inset" data-dir="1" type="button">下移</button>
+          <button class="nudge-btn" data-target="inset" data-dir="0" type="button">恢复</button>
+        </span>
+      </div>
+      <div class="row">
+        <span class="row-label">底栏位置</span>
+        <span class="nudge">
+          <button class="nudge-btn" data-target="bottom" data-dir="-1" type="button">上移</button>
+          <span class="nudge-value" id="bottomShiftVal">0</span>
+          <button class="nudge-btn" data-target="bottom" data-dir="1" type="button">下移</button>
+          <button class="nudge-btn" data-target="bottom" data-dir="0" type="button">恢复</button>
+        </span>
+      </div>
+
+      <label class="row">
+        <span class="row-label">纳米助手</span>
+        <span class="switch"><input type="checkbox" id="nanoToggle"><i></i></span>
+      </label>
+      <button class="row" id="interfaceSettings">
+        <span class="row-label">字体与美化</span>
+        <span class="row-value">美化</span>
         <span class="chev">›</span>
       </button>
       <button class="row" id="otherSettings">
@@ -48,7 +85,7 @@
         <span class="chev">›</span>
       </button>
     </section>
-    <p class="hint">悬浮球在主界面和所有功能页都会显示，可直接拖动到合适的位置。</p>
+    <p class="hint">界面位置用于适配 iPhone 顶栏、底栏和灵动岛安全区；纳米助手开启后会出现在角色列表中。</p>
   </main>
 </div>
 <div class="toast" id="toast"></div>

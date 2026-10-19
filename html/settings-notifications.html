@@ -32,7 +32,7 @@
         <span class="switch"><input type="checkbox" id="notifyToggle"><i></i></span>
       </label>
       <label class="row">
-        <span class="row-label">Bark 推送</span>
+        <span class="row-label">Bark 推送 <em class="row-tag">iPhone 专用</em></span>
         <span class="switch"><input type="checkbox" id="barkToggle"><i></i></span>
       </label>
       <div class="subrow" id="barkKeyRow">
@@ -40,21 +40,27 @@
         <button class="mini-btn" id="barkKeySave">保存</button>
         <button class="mini-btn dark" id="barkKeyTest">测试</button>
       </div>
-      <div class="row">
+      <label class="row">
         <span class="row-label">Web Push</span>
         <span class="row-value" id="webPushStatus">检查中…</span>
-        <button class="mini-btn" id="webPushBtn">开启</button>
-      </div>
+        <span class="switch"><input type="checkbox" id="webPushToggle"><i></i></span>
+      </label>
       <div class="row">
         <span class="row-label">通知声音</span>
         <select class="select" id="soundSelect"></select>
         <button class="mini-btn" id="soundPreview">试听</button>
+      </div>
+      <div class="row">
+        <span class="row-label">上传 MP3 铃声</span>
+        <span class="row-value" id="customSoundName">未上传</span>
+        <button class="mini-btn" id="uploadSoundBtn">选择</button>
       </div>
     </section>
     <p class="hint" id="barkStatus">Bark 未设置。后台保活、系统通知和 Web Push 都在本页管理。</p>
   </main>
 </div>
 <div class="toast" id="toast"></div>
+<input type="file" id="soundFile" accept="audio/mpeg,audio/mp3,audio/*" class="hidden">
 <script src="../js/settings.js"></script>
 </body>
 </html>

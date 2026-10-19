@@ -110,6 +110,7 @@ button, a {
   display: flex;
   align-items: center;
   gap: 14px;
+  cursor: pointer;
   padding: 18px;
   margin: 4px 0 18px;
   background: #f7f7f7;
@@ -154,6 +155,45 @@ button, a {
   text-overflow: ellipsis;
 }
 
+.id-edit {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: #8e8e93;
+}
+
+.id-edit svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.profile-edit-avatar {
+  width: 82px;
+  height: 82px;
+  border-radius: 50%;
+  background: #d8d8dc center/cover no-repeat;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-size: 28px;
+  font-weight: 650;
+  overflow: hidden;
+}
+
+.profile-edit-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 /* 五个功能卡片 */
 .cards {
   display: flex;
@@ -165,6 +205,8 @@ button, a {
   display: flex;
   align-items: center;
   gap: 14px;
+  width: 100%;
+  text-align: left;
   padding: 16px;
   background: #fff;
   border: 1px solid var(--line);
@@ -263,6 +305,14 @@ label.row:active {
   font-size: 15.5px;
 }
 
+.row-tag {
+  font-style: normal;
+  font-size: 11px;
+  color: #9a9a9f;
+  margin-left: 5px;
+  font-weight: 400;
+}
+
 .row-value {
   font-size: 13px;
   color: var(--muted);
@@ -277,6 +327,56 @@ label.row:active {
   color: #c7c7cc;
   font-size: 20px;
   line-height: 1;
+}
+
+.ball-preview {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: #2c2c2e;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 5px 14px rgba(0, 0, 0, .2);
+  flex: none;
+  margin-left: auto;
+}
+
+.ball-core {
+  width: 62%;
+  height: 62%;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .16);
+  display: block;
+}
+
+.nudge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+
+.nudge-btn {
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 8px;
+  background: #f3f3f3;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.nudge-btn:active {
+  background: #e7e7e7;
+}
+
+.nudge-value {
+  min-width: 30px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
 }
 
 .switch {
@@ -489,6 +589,8 @@ label.row:active {
   gap: 12px;
   padding: 11px 2px;
   border-bottom: 1px solid #f2f2f2;
+  text-align: left;
+  width: 100%;
 }
 
 .list-row:last-child {
@@ -515,17 +617,27 @@ label.row:active {
   object-fit: cover;
 }
 
+.app-preview svg {
+  width: 54%;
+  height: 54%;
+  fill: currentColor;
+  stroke: currentColor;
+  color: #fff;
+}
+
 .list-main {
   flex: 1;
   min-width: 0;
 }
 
 .list-name {
+  display: block;
   font-size: 15px;
   font-weight: 600;
 }
 
 .list-sub {
+  display: block;
   font-size: 12px;
   color: var(--muted);
   margin-top: 2px;

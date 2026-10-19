@@ -23,12 +23,15 @@
 
   <main class="scroll">
     <!-- 装饰信息卡片：不可点击 -->
-    <section class="id-card" aria-label="账户信息">
+    <section class="id-card" id="idCard" aria-label="账户信息">
       <div class="id-avatar" id="idAvatar">纳</div>
       <div class="id-info">
         <div class="id-name" id="idName">纳米用户</div>
         <div class="id-sub" id="idSub">纳米 ID · 本地账号</div>
       </div>
+      <span class="id-edit" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+      </span>
     </section>
 
     <nav class="cards" aria-label="设置分类">
@@ -54,7 +57,7 @@
         <span class="card-chev">›</span>
       </a>
 
-      <a class="card" href="settings-storage.html">
+      <button class="card" data-open="storage.html" data-title="储存">
         <span class="card-icon">
           <svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.66 3.58 3 8 3s8-1.34 8-3V5"/><path d="M4 12c0 1.66 3.58 3 8 3s8-1.34 8-3"/></svg>
         </span>
@@ -63,7 +66,7 @@
           <span class="card-sub">空间与缓存</span>
         </span>
         <span class="card-chev">›</span>
-      </a>
+      </button>
 
       <a class="card" href="settings-other.html">
         <span class="card-icon">
@@ -76,7 +79,7 @@
         <span class="card-chev">›</span>
       </a>
 
-      <a class="card" href="settings-backup.html">
+      <button class="card" data-open="backup.html" data-title="备份">
         <span class="card-icon">
           <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="5" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg>
         </span>
@@ -85,11 +88,22 @@
           <span class="card-sub">完整数据备份与恢复</span>
         </span>
         <span class="card-chev">›</span>
-      </a>
+      </button>
     </nav>
     <div class="version">纳米 · 本机设置</div>
   </main>
 </div>
+<div class="modal" id="modal">
+  <div class="sheet">
+    <div class="sheet-head">
+      <div class="sheet-title" id="sheetTitle">编辑资料</div>
+      <button class="sheet-close" id="sheetClose" aria-label="关闭">×</button>
+    </div>
+    <div class="sheet-body" id="sheetBody"></div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<input type="file" id="avatarFile" accept="image/*" class="hidden">
 <script src="../js/settings.js"></script>
 </body>
 </html>
