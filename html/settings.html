@@ -1,0 +1,948 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<script src="../js/nano-runtime.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>设置</title>
+<link rel="icon" href="../icons/icon-192.png">
+<script>window.__NANO_FONT_ONLY = true;</script>
+<script src="../js/appearance.js"></script>
+<script src="../js/nano-idb.js"></script>
+<style>
+  :root{
+    --bg:#f2f2f7;
+    --card:#ffffff;
+    --ink:#111111;
+    --muted:#8e8e93;
+    --line:#ececef;
+    --soft:#f7f7f9;
+    --track:#d9d9de;
+    --black:#111111;
+    --radius:16px;
+    --safe-top:0px;
+    --safe-bottom:0px;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;background:var(--bg);color:var(--ink);overflow:hidden;
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Helvetica Neue",Arial,sans-serif}
+  button,input,select{font:inherit;color:inherit}
+  button{border:0;background:transparent;cursor:pointer}
+  .app{height:100%;max-width:480px;margin:0 auto;display:flex;flex-direction:column;background:var(--bg)}
+  .nav{flex:none;display:flex;align-items:center;gap:10px;padding:calc(8px + var(--safe-top)) 14px 8px;background:rgba(242,242,247,.92);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);z-index:5}
+  .nav .back{width:38px;height:38px;border-radius:50%;display:grid;place-items:center}
+  .nav .back:active{background:rgba(0,0,0,.06)}
+  .nav .back svg{width:22px;height:22px;fill:currentColor}
+  .nav h1{font-size:20px;font-weight:700;letter-spacing:-.2px;flex:1;text-align:center}
+  .nav .spacer{width:38px;flex:none}
+  .scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:4px 0 calc(34px + var(--safe-bottom))}
+  .id-card{margin:8px 16px 4px;background:var(--card);border-radius:20px;padding:16px;display:flex;align-items:center;gap:14px;box-shadow:0 1px 0 rgba(0,0,0,.03)}
+  .id-card:active{background:#fafafa}
+  .id-avatar{width:62px;height:62px;border-radius:50%;background:#d1d1d6 center/cover no-repeat;display:grid;place-items:center;color:#fff;font-size:24px;font-weight:700;flex:none;overflow:hidden}
+  .id-info{flex:1;min-width:0}
+  .id-name{font-size:18px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .id-sub{margin-top:4px;font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .chev{color:#c4c4c9;font-size:22px;line-height:1;flex:none}
+  .group-title{margin:22px 28px 7px;font-size:12.5px;font-weight:600;color:var(--muted);letter-spacing:.02em}
+  .group{margin:0 16px;background:var(--card);border-radius:var(--radius);overflow:hidden;box-shadow:0 1px 0 rgba(0,0,0,.03)}
+  .row{display:flex;align-items:center;gap:12px;min-height:52px;padding:10px 16px;width:100%;text-align:left;background:var(--card);border-bottom:1px solid var(--line)}
+  .row:last-child{border-bottom:0}
+  button.row:active{background:#f7f7f9}
+  .row-ic{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;background:#f2f2f7;flex:none}
+  .row-ic svg{width:16px;height:16px;fill:#111}
+  .row-label{flex:1;min-width:0;font-size:15.5px}
+  .row-value{font-size:13px;color:var(--muted);max-width:46%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .row-note{font-size:12px;color:var(--muted);line-height:1.45;padding:0 16px 12px}
+  .switch{margin-left:auto;flex:none;position:relative;width:48px;height:29px;display:block}
+  .switch input{position:absolute;opacity:0;width:0;height:0}
+  .switch i{position:absolute;inset:0;border-radius:999px;background:var(--track);transition:background .18s}
+  .switch i:after{content:"";position:absolute;top:2px;left:2px;width:25px;height:25px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.22);transition:transform .18s}
+  .switch input:checked + i{background:var(--black)}
+  .switch input:checked + i:after{transform:translateX(19px)}
+  .subrow{display:none;padding:0 16px 14px;background:var(--card);border-bottom:1px solid var(--line);gap:8px;align-items:center;flex-wrap:wrap}
+  .subrow.show{display:flex}
+  .text-input{flex:1;min-width:140px;height:38px;border:1px solid var(--line);border-radius:10px;padding:0 11px;background:var(--soft);outline:none;font-size:14px}
+  .mini-btn{height:32px;padding:0 12px;border-radius:9px;background:#f0f0f3;font-size:12.5px;font-weight:600;white-space:nowrap}
+  .mini-btn:active{background:#e5e5ea}
+  .mini-btn.dark{background:var(--black);color:#fff}
+  .mini-btn.dark:active{opacity:.85}
+  .range{flex:1;accent-color:#111;min-width:120px}
+  .select{height:34px;border:0;border-radius:8px;background:#f2f2f7;padding:0 8px;font-size:13px;max-width:130px}
+  .note{padding:0 16px 12px;font-size:12px;color:var(--muted);line-height:1.5}
+  .version{text-align:center;color:#b4b4b9;font-size:11.5px;padding:22px 0 6px}
+  .toast{position:fixed;left:50%;bottom:calc(26px + var(--safe-bottom));transform:translate(-50%,18px);opacity:0;background:#111;color:#fff;border-radius:999px;padding:10px 17px;font-size:13px;z-index:400;pointer-events:none;transition:.22s;max-width:86vw;text-align:center}
+  .toast.show{opacity:1;transform:translate(-50%,0)}
+  .modal{position:fixed;inset:0;z-index:300;display:none;align-items:flex-end;background:rgba(0,0,0,.34)}
+  .modal.show{display:flex}
+  .sheet{width:100%;max-width:480px;margin:0 auto;background:#fff;border-radius:22px 22px 0 0;max-height:82vh;display:flex;flex-direction:column;padding:18px 16px calc(18px + var(--safe-bottom));box-shadow:0 -14px 44px rgba(0,0,0,.15)}
+  .sheet-head{display:flex;align-items:center;justify-content:space-between;padding-bottom:12px;flex:none}
+  .sheet-title{font-size:17px;font-weight:700}
+  .sheet-close{width:32px;height:32px;border-radius:50%;background:#f2f2f7;font-size:20px;line-height:1;display:grid;place-items:center}
+  .sheet-body{overflow-y:auto;-webkit-overflow-scrolling:touch;display:flex;flex-direction:column;gap:10px}
+  .list-row{display:flex;align-items:center;gap:12px;padding:11px 2px;border-bottom:1px solid var(--line)}
+  .list-row:last-child{border-bottom:0}
+  .app-preview{width:42px;height:42px;border-radius:12px;background:#111 center/cover no-repeat;color:#fff;display:grid;place-items:center;font-size:17px;font-weight:700;flex:none;overflow:hidden}
+  .app-preview img{width:100%;height:100%;object-fit:cover}
+  .list-main{flex:1;min-width:0}
+  .list-name{font-size:15px;font-weight:600}
+  .list-sub{font-size:12px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .preset-actions{display:flex;gap:6px;flex:none}
+  .preset-actions .mini-btn{height:28px;padding:0 9px;font-size:11.5px}
+  .swatches{display:flex;gap:12px;flex-wrap:wrap;padding:6px 0 10px}
+  .swatch{width:44px;height:44px;border-radius:50%;border:2px solid #e5e5ea;background:#fff}
+  .swatch:active{transform:scale(.95)}
+  .sheet-btn{width:100%;height:46px;border-radius:14px;background:#111;color:#fff;font-size:15px;font-weight:600;margin-top:4px}
+  .sheet-btn.grey{background:#f2f2f7;color:#111}
+  .edit-preview{display:flex;flex-direction:column;align-items:center;gap:10px;padding:6px 0 12px}
+  .edit-preview .app-preview{width:78px;height:78px;border-radius:22px;font-size:30px}
+  .edit-name{width:100%;height:44px;border:1px solid var(--line);border-radius:12px;padding:0 12px;background:var(--soft);outline:none;font-size:15px;text-align:center}
+  .hidden{display:none!important}
+  @media (max-width:360px){.row{padding-left:12px;padding-right:12px}.group{margin-left:10px;margin-right:10px}.group-title{margin-left:22px}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="nav">
+    <button class="back" id="backBtn" aria-label="返回">
+      <svg viewBox="0 0 24 24"><path d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+    </button>
+    <h1>设置</h1>
+    <div class="spacer"></div>
+  </header>
+
+  <main class="scroll">
+    <section class="id-card" id="idCard">
+      <div class="id-avatar" id="idAvatar">纳</div>
+      <div class="id-info">
+        <div class="id-name" id="idName">纳米用户</div>
+        <div class="id-sub" id="idSub">纳米 ID · 本地账号</div>
+      </div>
+      <div class="chev">›</div>
+    </section>
+
+    <div class="group-title">桌面</div>
+    <section class="group">
+      <button class="row" id="rowBg">
+        <span class="row-ic"><svg viewBox="0 0 24 24"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg></span>
+        <span class="row-label">桌面背景</span><span class="row-value" id="bgValue">默认</span><span class="chev">›</span>
+      </button>
+      <button class="row" id="rowApps">
+        <span class="row-ic"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></svg></span>
+        <span class="row-label">App 图标与名称</span><span class="row-value" id="appsValue">默认</span><span class="chev">›</span>
+      </button>
+      <button class="row" id="rowPresets">
+        <span class="row-ic"><svg viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg></span>
+        <span class="row-label">桌面装饰预设</span><span class="row-value" id="presetsValue">0 个</span><span class="chev">›</span>
+      </button>
+      <button class="row" id="rowImport">
+        <span class="row-ic"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg></span>
+        <span class="row-label">导入桌面装饰</span><span class="chev">›</span>
+      </button>
+      <button class="row" id="rowExport">
+        <span class="row-ic"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg></span>
+        <span class="row-label">导出桌面装饰</span><span class="chev">›</span>
+      </button>
+      <button class="row" id="rowReset">
+        <span class="row-ic"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg></span>
+        <span class="row-label">还原默认桌面</span><span class="chev">›</span>
+      </button>
+    </section>
+
+    <div class="group-title">通知</div>
+    <section class="group">
+      <label class="row">
+        <span class="row-ic"><svg viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-7 7v4l-2 3h18l-2-3V9a7 7 0 0 0-7-7zM9 20a3 3 0 0 0 6 0"/></svg></span>
+        <span class="row-label">后台保活</span>
+        <span class="switch"><input type="checkbox" id="keepToggle"><i></i></span>
+      </label>
+      <label class="row">
+        <span class="row-ic"><svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg></span>
+        <span class="row-label">允许通知</span>
+        <span class="switch"><input type="checkbox" id="notifyToggle"><i></i></span>
+      </label>
+      <label class="row">
+        <span class="row-ic"><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4z"/><path d="m8 12 3 3 5-6"/></svg></span>
+        <span class="row-label">Bark 推送</span>
+        <span class="switch"><input type="checkbox" id="barkToggle"><i></i></span>
+      </label>
+      <div class="subrow" id="barkKeyRow">
+        <input class="text-input" id="barkKeyInput" type="text" placeholder="粘贴 Bark 密钥" autocomplete="off">
+        <button class="mini-btn" id="barkKeySave">保存</button>
+        <button class="mini-btn dark" id="barkKeyTest">测试</button>
+      </div>
+      <div class="row">
+        <span class="row-ic"><svg viewBox="0 0 24 24"><path d="M12 2v20M2 12h20"/></svg></span>
+        <span class="row-label">Web Push</span>
+        <span class="row-value" id="webPushStatus">检查中…</span>
+        <button class="mini-btn" id="webPushBtn">开启</button>
+      </div>
+      <div class="note" id="barkStatus">未设置 Bark</div>
+      <div class="row">
+        <span class="row-ic"><svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></span>
+        <span class="row-label">通知声音</span>
+        <select class="select" id="soundSelect"></select>
+        <button class="mini-btn" id="soundPreview">试听</button>
+      </div>
+    </section>
+
+    <div class="group-title">储存</div>
+    <section class="group">
+      <div class="row">
+        <span class="row-ic"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg></span>
+        <span class="row-label">已用空间</span><span class="row-value" id="storageUsage">读取中…</span>
+      </div>
+      <button class="row" id="clearCache">
+        <span class="row-ic"><svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M6 6l1 15h10l1-15"/></svg></span>
+        <span class="row-label">清理缓存</span><span class="chev">›</span>
+      </button>
+      <button class="row" id="storagePage">
+        <span class="row-ic"><svg viewBox="0 0 24 24"><path d="M22 12H2M5.5 5 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-7A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1z"/></svg></span>
+        <span class="row-label">存储管理</span><span class="chev">›</span>
+      </button>
+    </section>
+
+    <div class="group-title">其他</div>
+    <section class="group">
+      <label class="row">
+        <span class="row-ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg></span>
+        <span class="row-label">显示悬浮球</span>
+        <span class="switch"><input type="checkbox" id="ballToggle"><i></i></span>
+      </label>
+      <div class="row">
+        <span class="row-ic"><svg viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3"/></svg></span>
+        <span class="row-label">悬浮球大小</span>
+        <input class="range" id="ballSize" type="range" min="44" max="72" step="2">
+        <span class="row-value" id="ballSizeValue">52</span>
+      </div>
+      <button class="row" id="interfaceSettings">
+        <span class="row-ic"><svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18"/><circle cx="12" cy="12" r="9"/></svg></span>
+        <span class="row-label">界面与字体</span><span class="row-value">美化</span><span class="chev">›</span>
+      </button>
+      <button class="row" id="assistantSettings">
+        <span class="row-ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></span>
+        <span class="row-label">助手</span><span class="row-value">纳米设置</span><span class="chev">›</span>
+      </button>
+      <button class="row" id="otherSettings">
+        <span class="row-ic"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></span>
+        <span class="row-label">更多设置</span><span class="row-value">后台 / 推送</span><span class="chev">›</span>
+      </button>
+    </section>
+
+    <div class="group-title">备份</div>
+    <section class="group">
+      <button class="row" id="backupPage">
+        <span class="row-ic"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg></span>
+        <span class="row-label">备份与恢复</span><span class="row-value">全部数据</span><span class="chev">›</span>
+      </button>
+    </section>
+
+    <div class="version">纳米 · 本机设置</div>
+  </main>
+</div>
+
+<div class="modal" id="modal">
+  <div class="sheet">
+    <div class="sheet-head">
+      <div class="sheet-title" id="sheetTitle">设置</div>
+      <button class="sheet-close" id="sheetClose" aria-label="关闭">×</button>
+    </div>
+    <div class="sheet-body" id="sheetBody"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<input type="file" id="bgFile" accept="image/*" class="hidden">
+<input type="file" id="iconFile" accept="image/*" class="hidden">
+<input type="file" id="importFile" accept="application/json,.json" class="hidden">
+
+<script>
+(function () {
+  'use strict';
+
+  var $ = function (id) { return document.getElementById(id); };
+  var APPS = [
+    { id: 'chat', name: '聊天' }, { id: 'api', name: 'API' }, { id: 'couple', name: '情侣空间' },
+    { id: 'halo', name: 'Halo' }, { id: 'instagram', name: 'Instagram' }, { id: 'together', name: '一起看' },
+    { id: 'music', name: '音乐' }, { id: 'memory', name: '记忆宫殿' }, { id: 'imessage', name: 'iMessage' },
+    { id: 'peek', name: '窥屏' }, { id: 'market', name: '共享集市' }, { id: 'shop', name: '商城' },
+    { id: 'schedule', name: '日程' }, { id: 'mcp', name: 'MCP' }, { id: 'tide', name: '月潮' },
+    { id: 'fanfic', name: '同人文' }, { id: 'store', name: '应用商店' }, { id: 'book', name: '世界书' },
+    { id: 'beauty', name: '美化' }, { id: 'phone', name: '查手机' }, { id: 'settings', name: '设置' }
+  ];
+  var IDB_BG = 'nano_desktop_bg';
+  var IDB_CUSTOM = 'nano_app_custom';
+  var IDB_PRESETS = 'nano_desktop_presets';
+  var IDB_LAYOUT = 'nano_widget_layout_v1';
+  var IDB_IMGS = 'nano_widget_images_v1';
+  var toastTimer = null;
+  var bg = null;
+  var custom = {};
+  var presets = [];
+  var pendingIcon = '';
+  var editingApp = '';
+
+  var NN = null;
+  try { NN = window.parent && window.parent.NanoNotify ? window.parent.NanoNotify : window.NanoNotify; } catch (e) {}
+  var NP = null;
+  try { NP = window.parent && window.parent.NanoPush ? window.parent.NanoPush : window.NanoPush; } catch (e) {}
+
+  function toast(msg) {
+    var el = $('toast');
+    if (!el) return;
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.classList.remove('show'); }, 2200);
+  }
+
+  function post(msg) {
+    try {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage(msg, '*');
+        return true;
+      }
+    } catch (e) {}
+    return false;
+  }
+
+  function openPage(url, title) {
+    if (!post({ type: 'openFullscreen', url: url, title: title || '', showBack: true, source: 'settings' })) {
+      try { location.href = url; } catch (e) {}
+    }
+  }
+
+  function notifyHome(layout) {
+    post({ type: 'nanoDesktopChanged', layout: !!layout });
+  }
+
+  function openSheet(title, html) {
+    $('sheetTitle').textContent = title;
+    $('sheetBody').innerHTML = html;
+    $('modal').classList.add('show');
+  }
+
+  function closeSheet() {
+    $('modal').classList.remove('show');
+    $('sheetBody').innerHTML = '';
+  }
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  function fmtMB(n) {
+    if (!isFinite(n) || n <= 0) return '0 MB';
+    if (n > 1024 * 1024 * 1024) return (n / 1024 / 1024 / 1024).toFixed(1) + ' GB';
+    return (n / 1024 / 1024).toFixed(1) + ' MB';
+  }
+
+  function idbOpen(name, version, stores) {
+    return new Promise(function (resolve, reject) {
+      try {
+        var req = indexedDB.open(name, version);
+        req.onupgradeneeded = function (e) {
+          var db = e.target.result;
+          (stores || []).forEach(function (s) {
+            if (!db.objectStoreNames.contains(s.name)) {
+              db.createObjectStore(s.name, s.keyPath ? { keyPath: s.keyPath } : undefined);
+            }
+          });
+        };
+        req.onsuccess = function (e) { resolve(e.target.result); };
+        req.onerror = function () { reject(req.error); };
+      } catch (e) { reject(e); }
+    });
+  }
+
+  function idbGet(name, version, store, key, stores) {
+    return idbOpen(name, version, stores).then(function (db) {
+      return new Promise(function (resolve) {
+        try {
+          var r = db.transaction(store, 'readonly').objectStore(store).get(key);
+          r.onsuccess = function () { resolve(r.result || null); };
+          r.onerror = function () { resolve(null); };
+        } catch (e) { resolve(null); }
+      });
+    }).catch(function () { return null; });
+  }
+
+  function loadMask() {
+    try {
+      var raw = localStorage.getItem('nano_mask_data');
+      if (raw) {
+        var d = JSON.parse(raw);
+        if (d && Array.isArray(d.masks)) return Promise.resolve(d);
+      }
+    } catch (e) {}
+    return idbGet('nano_mask_db', 1, 'mask_data', 'data', [{ name: 'mask_data', keyPath: 'key' }]).then(function (row) {
+      return row && row.value && Array.isArray(row.value.masks) ? row.value : { masks: [], currentMaskId: null };
+    });
+  }
+
+  function currentMask(data) {
+    if (!data || !data.masks || !data.masks.length) return null;
+    return data.masks.find(function (m) { return String(m.id) === String(data.currentMaskId); }) || data.masks[0];
+  }
+
+  function getMaskAvatar(id) {
+    return idbGet('MaskAvatarDB', 1, 'avatars', id, [{ name: 'avatars', keyPath: 'id' }]).then(function (row) {
+      return row && row.data ? row.data : '';
+    });
+  }
+
+  function resizeImage(file, max, type, quality) {
+    return new Promise(function (resolve, reject) {
+      var reader = new FileReader();
+      reader.onerror = function () { reject(new Error('读取失败')); };
+      reader.onload = function () {
+        var img = new Image();
+        img.onerror = function () { reject(new Error('图片无法解析')); };
+        img.onload = function () {
+          var w = img.width, h = img.height, scale = Math.min(1, max / Math.max(w, h));
+          var cw = Math.max(1, Math.round(w * scale)), ch = Math.max(1, Math.round(h * scale));
+          var canvas = document.createElement('canvas');
+          canvas.width = cw; canvas.height = ch;
+          var ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, cw, ch);
+          try { resolve(canvas.toDataURL(type || 'image/jpeg', quality || .86)); }
+          catch (e) { reject(e); }
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function loadAll() {
+    return Promise.all([
+      NanoIDB.get(IDB_BG),
+      NanoIDB.get(IDB_CUSTOM),
+      NanoIDB.get(IDB_PRESETS),
+      loadMask()
+    ]).then(function (r) {
+      bg = r[0] || null;
+      custom = r[1] && typeof r[1] === 'object' ? r[1] : {};
+      presets = Array.isArray(r[2]) ? r[2] : [];
+      var data = r[3];
+      var m = currentMask(data);
+      renderInfo(m, data);
+    }).catch(function () {
+      renderInfo(null, { masks: [] });
+    });
+  }
+
+  function renderInfo(m, data) {
+    var av = $('idAvatar'), nm = $('idName'), sub = $('idSub');
+    if (!av || !nm || !sub) return;
+    var name = m && m.name ? m.name : '纳米用户';
+    nm.textContent = name;
+    sub.textContent = '纳米 ID · 本地账号' + (data && data.masks ? ' · ' + data.masks.length + ' 个面具' : '');
+    av.textContent = String(name).charAt(0).toUpperCase();
+    av.style.backgroundImage = '';
+    if (m && m.id) {
+      getMaskAvatar(m.id).then(function (url) {
+        if (!url) return;
+        av.style.backgroundImage = 'url("' + String(url).replace(/"/g, '\\"') + '")';
+        av.textContent = '';
+      });
+    }
+  }
+
+  function renderValues() {
+    var bgv = $('bgValue');
+    if (bgv) bgv.textContent = bg && bg.type === 'image' ? '自定义图片' : (bg && bg.type === 'color' ? '纯色' : '默认');
+    var av = $('appsValue');
+    if (av) {
+      var n = Object.keys(custom || {}).length;
+      av.textContent = n ? n + ' 个已自定义' : '默认';
+    }
+    var pv = $('presetsValue');
+    if (pv) pv.textContent = presets.length + ' 个';
+    var size = $('ballSize');
+    var sizeVal = $('ballSizeValue');
+    var settings = readBall();
+    if (size) size.value = String(settings.size || 52);
+    if (sizeVal) sizeVal.textContent = String(settings.size || 52);
+    var bt = $('ballToggle');
+    if (bt) bt.checked = settings.enabled !== false;
+    refreshStorage();
+    refreshNotify();
+  }
+
+  function readBall() {
+    try {
+      var raw = localStorage.getItem('nanoApiBall');
+      var s = raw ? JSON.parse(raw) : {};
+      return Object.assign({ enabled: true, size: 52, icon: 'classic', x: null, y: null }, s || {});
+    } catch (e) {
+      return { enabled: true, size: 52, icon: 'classic', x: null, y: null };
+    }
+  }
+
+  function writeBall(settings) {
+    try { localStorage.setItem('nanoApiBall', JSON.stringify(settings)); } catch (e) {}
+    post({ type: 'apiBallSettings', settings: settings });
+    var sizeVal = $('ballSizeValue');
+    if (sizeVal) sizeVal.textContent = String(settings.size || 52);
+  }
+
+  function refreshStorage() {
+    var el = $('storageUsage');
+    if (!el) return;
+    if (navigator.storage && navigator.storage.estimate) {
+      navigator.storage.estimate().then(function (e) {
+        el.textContent = fmtMB(e.usage || 0) + ' / ' + fmtMB(e.quota || 0);
+      }).catch(function () { el.textContent = '不可用'; });
+    } else {
+      el.textContent = '不可用';
+    }
+  }
+
+  function refreshNotify() {
+    var keep = $('keepToggle');
+    if (keep) keep.checked = localStorage.getItem('nano_keep_alive') === '1';
+    var notify = $('notifyToggle');
+    if (notify) notify.checked = localStorage.getItem('nano_notify_enabled') === '1';
+    var bark = $('barkToggle');
+    if (bark && NN) bark.checked = NN.barkEnabled ? !!NN.barkEnabled() : true;
+    var keyInput = $('barkKeyInput');
+    if (keyInput && NN && NN.barkKey) {
+      keyInput.value = NN.barkKey() || '';
+      if (!keyInput.value && NN.barkKeyAsync) NN.barkKeyAsync().then(function (k) { if (k && !keyInput.value) keyInput.value = k; });
+    }
+    var row = $('barkKeyRow');
+    if (row) row.classList.toggle('show', !!(bark && bark.checked));
+    fillSounds();
+    refreshPush();
+  }
+
+  function fillSounds() {
+    var sel = $('soundSelect');
+    if (!sel || !NN || !NN.sounds) return;
+    if (sel.options.length) return;
+    var cur = localStorage.getItem('nano_notify_sound') || 'ding';
+    NN.sounds.forEach(function (s) {
+      var o = document.createElement('option');
+      o.value = s.id || s.key || s.name;
+      o.textContent = s.name || s.label || s.id || '提示音';
+      if (o.value === cur) o.selected = true;
+      sel.appendChild(o);
+    });
+  }
+
+  function refreshPush() {
+    var status = $('webPushStatus');
+    var btn = $('webPushBtn');
+    if (!status) return;
+    if (!NP) { status.textContent = '未加载'; if (btn) btn.textContent = '不可用'; return; }
+    Promise.resolve(NP.status ? NP.status() : null).then(function (s) {
+      if (!s) { status.textContent = '可开启'; if (btn) btn.textContent = '开启'; return; }
+      if (s.permission === 'denied') { status.textContent = '权限被拒绝'; if (btn) btn.textContent = '重试'; }
+      else if (s.subscribed) { status.textContent = '已开启'; if (btn) btn.textContent = '重新订阅'; }
+      else if (s.configured) { status.textContent = '已配置'; if (btn) btn.textContent = '开启'; }
+      else { status.textContent = '未配置'; if (btn) btn.textContent = '开启'; }
+    }).catch(function () { status.textContent = '检查失败'; });
+  }
+
+  function setBg(next) {
+    bg = next;
+    renderValues();
+    var p = next ? NanoIDB.set(IDB_BG, next) : NanoIDB.del(IDB_BG);
+    Promise.resolve(p).then(function () { notifyHome(false); });
+  }
+
+  function openBgSheet() {
+    openSheet('桌面背景',
+      '<button class="sheet-btn" id="pickBg">选择图片</button>' +
+      '<div class="swatches">' +
+        '<button class="swatch" data-color="#ffffff" style="background:#fff" aria-label="白色"></button>' +
+        '<button class="swatch" data-color="#f2f2f7" style="background:#f2f2f7" aria-label="浅灰"></button>' +
+        '<button class="swatch" data-color="#d1d1d6" style="background:#d1d1d6" aria-label="灰色"></button>' +
+        '<button class="swatch" data-color="#8e8e93" style="background:#8e8e93" aria-label="深灰"></button>' +
+        '<button class="swatch" data-color="#111111" style="background:#111" aria-label="黑色"></button>' +
+      '</div>' +
+      '<button class="sheet-btn grey" id="resetBg">恢复默认背景</button>'
+    );
+    var pick = $('pickBg');
+    if (pick) pick.addEventListener('click', function () { $('bgFile').click(); });
+    var reset = $('resetBg');
+    if (reset) reset.addEventListener('click', function () { setBg(null); closeSheet(); toast('已恢复默认背景'); });
+    $('sheetBody').querySelectorAll('.swatch').forEach(function (b) {
+      b.addEventListener('click', function () {
+        setBg({ type: 'color', value: b.dataset.color, at: Date.now() });
+        closeSheet();
+        toast('桌面背景已更新');
+      });
+    });
+  }
+
+  function openAppsSheet() {
+    var rows = APPS.map(function (a) {
+      var c = custom[a.id] || {};
+      var name = c.name || a.name;
+      var preview = c.icon ? '<span class="app-preview"><img src="' + esc(c.icon) + '" alt=""></span>' : '<span class="app-preview">' + esc(String(name).charAt(0)) + '</span>';
+      return '<button class="list-row" data-app="' + a.id + '">' + preview +
+        '<span class="list-main"><span class="list-name">' + esc(name) + '</span><span class="list-sub">' + esc(c.name || c.icon ? '已自定义' : '默认') + '</span></span>' +
+        '<span class="chev">›</span></button>';
+    }).join('');
+    openSheet('App 图标与名称', rows);
+    $('sheetBody').querySelectorAll('[data-app]').forEach(function (row) {
+      row.addEventListener('click', function () { openAppEditor(row.dataset.app); });
+    });
+  }
+
+  function openAppEditor(id) {
+    var a = APPS.find(function (x) { return x.id === id; });
+    if (!a) return;
+    editingApp = id;
+    pendingIcon = (custom[id] && custom[id].icon) || '';
+    var name = (custom[id] && custom[id].name) || a.name;
+    openSheet('编辑 ' + a.name,
+      '<div class="edit-preview"><span class="app-preview" id="editPreview">' + (pendingIcon ? '<img src="' + esc(pendingIcon) + '" alt="">' : esc(String(name).charAt(0))) + '</span>' +
+      '<button class="mini-btn" id="pickIcon">选择图标</button></div>' +
+      '<input class="edit-name" id="editName" maxlength="12" value="' + esc(name) + '" placeholder="App 名称">' +
+      '<button class="sheet-btn" id="saveApp">保存</button>' +
+      '<button class="sheet-btn grey" id="resetApp">恢复默认</button>'
+    );
+    var pick = $('pickIcon');
+    if (pick) pick.addEventListener('click', function () { $('iconFile').click(); });
+    var save = $('saveApp');
+    if (save) save.addEventListener('click', function () {
+      var v = ($('editName').value || '').trim() || a.name;
+      var patch = {};
+      if (v !== a.name) patch.name = v;
+      if (pendingIcon) patch.icon = pendingIcon;
+      if (Object.keys(patch).length) custom[id] = patch; else delete custom[id];
+      NanoIDB.set(IDB_CUSTOM, custom).then(function () { notifyHome(false); });
+      renderValues();
+      closeSheet();
+      toast('已保存');
+    });
+    var reset = $('resetApp');
+    if (reset) reset.addEventListener('click', function () {
+      delete custom[id];
+      NanoIDB.set(IDB_CUSTOM, custom).then(function () { notifyHome(false); });
+      renderValues();
+      closeSheet();
+      toast('已恢复默认');
+    });
+  }
+
+  function openPresetsSheet() {
+    var html = '<button class="sheet-btn" id="savePreset">保存当前桌面为预设</button>';
+    if (presets.length) {
+      html += presets.map(function (p) {
+        return '<div class="list-row" data-preset="' + esc(p.id) + '">' +
+          '<span class="list-main"><span class="list-name">' + esc(p.name || '未命名预设') + '</span>' +
+          '<span class="list-sub">' + new Date(p.at || Date.now()).toLocaleString() + '</span></span>' +
+          '<span class="preset-actions">' +
+            '<button class="mini-btn dark" data-act="apply">切换</button>' +
+            '<button class="mini-btn" data-act="overwrite">覆盖</button>' +
+            '<button class="mini-btn" data-act="delete">删除</button>' +
+          '</span></div>';
+      }).join('');
+    } else {
+      html += '<div class="note">还没有预设。保存后会出现在这里，可以随时切换、覆盖或删除。</div>';
+    }
+    openSheet('桌面装饰预设', html);
+    var save = $('savePreset');
+    if (save) save.addEventListener('click', savePreset);
+    $('sheetBody').querySelectorAll('[data-preset]').forEach(function (row) {
+      var id = row.dataset.preset;
+      row.querySelectorAll('[data-act]').forEach(function (b) {
+        b.addEventListener('click', function (e) {
+          e.stopPropagation();
+          var act = b.dataset.act;
+          if (act === 'apply') applyPreset(id);
+          else if (act === 'overwrite') overwritePreset(id);
+          else if (act === 'delete') deletePreset(id);
+        });
+      });
+    });
+  }
+
+  async function savePreset() {
+    var name = prompt('预设名称', '桌面 ' + (presets.length + 1));
+    if (name == null) return;
+    name = String(name).trim() || '未命名预设';
+    var layout = await NanoIDB.get(IDB_LAYOUT);
+    var imgs = await NanoIDB.get(IDB_IMGS);
+    presets.push({ id: 'p' + Date.now(), name: name, at: Date.now(), bg: bg, apps: custom, layout: layout || null, imgs: imgs || null });
+    await NanoIDB.set(IDB_PRESETS, presets);
+    renderValues();
+    openPresetsSheet();
+    toast('预设已保存');
+  }
+
+  async function applyPreset(id) {
+    var p = presets.find(function (x) { return String(x.id) === String(id); });
+    if (!p) return;
+    bg = p.bg || null;
+    custom = p.apps && typeof p.apps === 'object' ? p.apps : {};
+    if (bg) await NanoIDB.set(IDB_BG, bg); else await NanoIDB.del(IDB_BG);
+    await NanoIDB.set(IDB_CUSTOM, custom);
+    if (p.layout) await NanoIDB.set(IDB_LAYOUT, p.layout);
+    else await NanoIDB.del(IDB_LAYOUT);
+    if (p.imgs) await NanoIDB.set(IDB_IMGS, p.imgs);
+    else await NanoIDB.del(IDB_IMGS);
+    renderValues();
+    notifyHome(true);
+    closeSheet();
+    toast('已切换到「' + (p.name || '预设') + '」');
+  }
+
+  async function overwritePreset(id) {
+    var p = presets.find(function (x) { return String(x.id) === String(id); });
+    if (!p) return;
+    var layout = await NanoIDB.get(IDB_LAYOUT);
+    var imgs = await NanoIDB.get(IDB_IMGS);
+    p.bg = bg;
+    p.apps = custom;
+    p.layout = layout || null;
+    p.imgs = imgs || null;
+    p.at = Date.now();
+    await NanoIDB.set(IDB_PRESETS, presets);
+    openPresetsSheet();
+    toast('预设已更新');
+  }
+
+  async function deletePreset(id) {
+    if (!confirm('删除这个预设？')) return;
+    presets = presets.filter(function (x) { return String(x.id) !== String(id); });
+    await NanoIDB.set(IDB_PRESETS, presets);
+    renderValues();
+    openPresetsSheet();
+    toast('预设已删除');
+  }
+
+  function exportDesktop() {
+    Promise.all([NanoIDB.get(IDB_LAYOUT), NanoIDB.get(IDB_IMGS)]).then(function (r) {
+      var data = {
+        version: 1,
+        kind: 'nano-desktop-decoration',
+        exportedAt: new Date().toISOString(),
+        bg: bg,
+        apps: custom,
+        layout: r[0] || null,
+        imgs: r[1] || null,
+        presets: presets
+      };
+      var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = '纳米桌面装饰-' + new Date().toISOString().slice(0, 10) + '.json';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+      toast('已导出桌面装饰');
+    });
+  }
+
+  function importDesktop(file) {
+    var reader = new FileReader();
+    reader.onload = async function () {
+      try {
+        var d = JSON.parse(reader.result);
+        if (!d || d.kind !== 'nano-desktop-decoration') throw new Error('不是桌面装饰文件');
+        bg = d.bg || null;
+        custom = d.apps && typeof d.apps === 'object' ? d.apps : {};
+        var jobs = [];
+        jobs.push(bg ? NanoIDB.set(IDB_BG, bg) : NanoIDB.del(IDB_BG));
+        jobs.push(NanoIDB.set(IDB_CUSTOM, custom));
+        jobs.push(d.layout ? NanoIDB.set(IDB_LAYOUT, d.layout) : NanoIDB.del(IDB_LAYOUT));
+        jobs.push(d.imgs ? NanoIDB.set(IDB_IMGS, d.imgs) : NanoIDB.del(IDB_IMGS));
+        if (Array.isArray(d.presets) && d.presets.length) {
+          var ids = new Set(presets.map(function (p) { return String(p.id); }));
+          d.presets.forEach(function (p) { if (p && p.id && !ids.has(String(p.id))) presets.push(p); });
+          jobs.push(NanoIDB.set(IDB_PRESETS, presets));
+        }
+        await Promise.all(jobs);
+        renderValues();
+        notifyHome(true);
+        toast('桌面装饰已导入');
+      } catch (e) {
+        toast(e && e.message ? e.message : '导入失败');
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  async function resetDesktop() {
+    if (!confirm('还原默认桌面？背景、App 图标/名称和布局会恢复默认，预设会保留。')) return;
+    bg = null;
+    custom = {};
+    await Promise.all([NanoIDB.del(IDB_BG), NanoIDB.del(IDB_CUSTOM), NanoIDB.del(IDB_LAYOUT), NanoIDB.del(IDB_IMGS)]);
+    try { localStorage.removeItem('mpLayout4'); localStorage.removeItem('mpImgs3'); } catch (e) {}
+    renderValues();
+    notifyHome(true);
+    toast('已还原默认桌面');
+  }
+
+  async function enablePush() {
+    if (!NP) { toast('推送模块未加载'); return; }
+    var endpoint = '';
+    try { endpoint = (localStorage.getItem('nano_push_endpoint') || '').trim(); } catch (e) {}
+    if (!endpoint) endpoint = 'https://nanopush.nano315.online';
+    var key = '';
+    try { key = (localStorage.getItem('nano_push_vapid') || '').trim(); } catch (e) {}
+    var token = '';
+    try { token = localStorage.getItem('nano_push_token') || localStorage.getItem('nano_peek_token') || ''; } catch (e) {}
+    if (!key) {
+      try {
+        var r = await fetch(endpoint.replace(/\/+$/, '') + '/vapid', { credentials: 'omit' });
+        var j = await r.json();
+        key = (j && (j.publicKey || j.vapid || j.key)) || '';
+      } catch (e) {}
+    }
+    if (!key) { toast('服务端未返回 VAPID 公钥'); return; }
+    try {
+      NP.setup(endpoint, key, token);
+      await NP.enable();
+      localStorage.setItem('nano_notify_enabled', '1');
+      refreshNotify();
+      toast('Web Push 已开启');
+    } catch (e) {
+      toast(e && e.message ? e.message : '开启失败');
+    }
+  }
+
+  function bind() {
+    $('backBtn').addEventListener('click', function () {
+      if (!post({ type: 'closeFullscreen' })) { try { history.back(); } catch (e) {} }
+    });
+
+    $('idCard').addEventListener('click', function () { openPage('mask.html', '面具'); });
+
+    $('rowBg').addEventListener('click', openBgSheet);
+    $('rowApps').addEventListener('click', openAppsSheet);
+    $('rowPresets').addEventListener('click', openPresetsSheet);
+    $('rowImport').addEventListener('click', function () { $('importFile').click(); });
+    $('rowExport').addEventListener('click', exportDesktop);
+    $('rowReset').addEventListener('click', resetDesktop);
+
+    $('bgFile').addEventListener('change', function (e) {
+      var f = e.target.files && e.target.files[0];
+      if (!f) return;
+      resizeImage(f, 1800, 'image/jpeg', .88).then(function (url) {
+        setBg({ type: 'image', value: url, at: Date.now() });
+        closeSheet();
+        toast('桌面背景已更新');
+      }).catch(function () { toast('图片处理失败'); });
+      e.target.value = '';
+    });
+
+    $('iconFile').addEventListener('change', function (e) {
+      var f = e.target.files && e.target.files[0];
+      if (!f) return;
+      resizeImage(f, 320, 'image/png').then(function (url) {
+        pendingIcon = url;
+        var p = $('editPreview');
+        if (p) p.innerHTML = '<img src="' + esc(url) + '" alt="">';
+      }).catch(function () { toast('图标处理失败'); });
+      e.target.value = '';
+    });
+
+    $('importFile').addEventListener('change', function (e) {
+      var f = e.target.files && e.target.files[0];
+      if (f) importDesktop(f);
+      e.target.value = '';
+    });
+
+    $('sheetClose').addEventListener('click', closeSheet);
+    $('modal').addEventListener('click', function (e) { if (e.target === $('modal')) closeSheet(); });
+
+    $('keepToggle').addEventListener('change', function () {
+      var on = this.checked;
+      try { localStorage.setItem('nano_keep_alive', on ? '1' : '0'); } catch (e) {}
+      post({ type: 'keepAlive', enabled: on });
+      if (on && window.Navigation && navigator.wakeLock) { navigator.wakeLock.request('screen').catch(function () {}); }
+    });
+
+    $('notifyToggle').addEventListener('change', function () {
+      var on = this.checked;
+      try { localStorage.setItem('nano_notify_enabled', on ? '1' : '0'); } catch (e) {}
+      post({ type: 'notifySetting', enabled: on });
+      if (on && NN && NN.ensurePermission) { try { NN.ensurePermission(); } catch (e) {} }
+    });
+
+    $('barkToggle').addEventListener('change', function () {
+      var on = this.checked;
+      if (NN && NN.setBarkEnabled) NN.setBarkEnabled(on);
+      var row = $('barkKeyRow');
+      if (row) row.classList.toggle('show', on);
+      $('barkStatus').textContent = on ? 'Bark 推送已开启' : 'Bark 推送已关闭';
+    });
+
+    $('barkKeySave').addEventListener('click', function () {
+      if (!NN || !NN.setBarkKey) { toast('通知模块未加载'); return; }
+      var k = ($('barkKeyInput').value || '').trim();
+      NN.setBarkKey(k);
+      $('barkStatus').textContent = k ? 'Bark 密钥已保存' : '已清空 Bark 密钥';
+      toast('已保存');
+    });
+
+    $('barkKeyTest').addEventListener('click', function () {
+      if (!NN || !NN.barkPush) { toast('通知模块未加载'); return; }
+      var k = ($('barkKeyInput').value || '').trim();
+      if (!k) { toast('请先填写 Bark 密钥'); return; }
+      NN.setBarkKey(k);
+      $('barkStatus').textContent = '发送中…';
+      NN.barkPush('测试推送', '收到就说明配置成功 ✓', { force: true }, k).then(function () {
+        $('barkStatus').textContent = '已发送，请查看系统通知';
+        toast('已发送');
+      }).catch(function () {
+        $('barkStatus').textContent = '发送失败，请检查密钥';
+        toast('发送失败');
+      });
+    });
+
+    $('webPushBtn').addEventListener('click', enablePush);
+
+    $('soundSelect').addEventListener('change', function () {
+      try { localStorage.setItem('nano_notify_sound', this.value); } catch (e) {}
+    });
+    $('soundPreview').addEventListener('click', function () {
+      if (NN && NN.playSound) { try { NN.playSound($('soundSelect').value); } catch (e) {} }
+    });
+
+    $('clearCache').addEventListener('click', function () {
+      if (!window.caches) { toast('当前环境不支持'); return; }
+      caches.keys().then(function (keys) {
+        return Promise.all(keys.map(function (k) { return caches.delete(k); }));
+      }).then(function () { toast('缓存已清理'); refreshStorage(); });
+    });
+    $('storagePage').addEventListener('click', function () { openPage('storage.html', '储存'); });
+
+    $('ballToggle').addEventListener('change', function () {
+      var s = readBall();
+      s.enabled = this.checked;
+      writeBall(s);
+    });
+    $('ballSize').addEventListener('input', function () {
+      var s = readBall();
+      s.size = Number(this.value) || 52;
+      $('ballSizeValue').textContent = String(s.size);
+      writeBall(s);
+    });
+
+    $('interfaceSettings').addEventListener('click', function () { openPage('beautify.html', '美化'); });
+    $('assistantSettings').addEventListener('click', function () { openPage('nano-setting.html', '纳米设置'); });
+    $('otherSettings').addEventListener('click', function () { openPage('other.html', '其他'); });
+    $('backupPage').addEventListener('click', function () { openPage('backup.html', '备份与恢复'); });
+  }
+
+  function init() {
+    bind();
+    loadAll().then(function () {
+      renderValues();
+    });
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
+</script>
+</body>
+</html>

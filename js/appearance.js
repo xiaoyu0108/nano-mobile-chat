@@ -809,6 +809,16 @@
     // ---- 启动时按已保存配置注入 ----
     // 只读取「用户显式点过 应用」的 v2 键，避免首次进入美化页时默认模板就覆盖全部 UI
     function applySaved() {
+        // 新页面只同步字体，不套用旧聊天/全局美化 CSS，避免破坏新设计
+        if (window.__NANO_FONT_ONLY) {
+            var _fOnly = readFontCfgSync();
+            if (_fOnly) {
+                applyFontCfg(_fOnly);
+            } else {
+                loadFontCfgFromIDB().then(function (c) { if (c) applyFontCfg(c); });
+            }
+            return;
+        }
         // 先聊天后全局：全局样式永远最后注入，保证“全局”能覆盖所有页面（含聊天）
         try {
             applyChatCss(migrateChatCss(cssOnly(readCss('beautify_chat_v2'))));
@@ -988,7 +998,9 @@
 
     window.addEventListener('message', function(e) {
         var d = e.data;
-        if (d && d.type && window.__nanoAppearance) {
+        if (!d || !d.type) return;
+        if (window.__NANO_FONT_ONLY && d.type !== 'beautify:font') return;
+        if (window.__nanoAppearance) {
             window.__nanoAppearance.applyMessage(d);
         }
     });

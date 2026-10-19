@@ -892,8 +892,7 @@
         .home-shell iframe { width: 100%; height: 100%; border: 0; display: block; background: #fff; }
         .home-shell.pre-splash { visibility: hidden; }
         .hidden-shell { display: none !important; }
-        /* 全屏页面打开时隐藏桌面悬浮助手球，避免压在聊天/功能页上 */
-        body.nano-overlay-open .ab-ball { display: none !important; }
+
     </style>
     <!-- 开场动画样式结束 -->
 
@@ -1557,7 +1556,7 @@ setTimeout(function () {
             'music.html', 'voice-call.html', 'video-call.html', 'storage.html', 'backup.html', 'other.html', 'more.html',
             'discover.html', 'api.html', 'moments.html', 'ins.html', 'inner-setting.html', 'beautify.html',
             'books.html', 'couple-spaces.html', 'halo.html', 'offline.html', 'offline-setting.html',
-            'heart-setting.html', 'market.html', 'mcp.html',
+            'heart-setting.html', 'market.html', 'mcp.html', 'settings.html', 'schedule.html',
             'phone.html', 'assistant.html', 'nano-setting.html', 'family-card.html', 'wallet.html', 'appstore.html',
             'cycle.html', 'fanfic.html', 'fanfic-create.html', 'fanfic-read.html', 'imessage.html', 'memory palace.html', 'app-host.html', 'meet.html', 'mall.html'];
         // 其余页面（发现/更多/API/moments/ins/…）兜底：内容整体让到灵动岛下面
@@ -1694,7 +1693,7 @@ setTimeout(function () {
                 showOverlayFrame();
                 // 同一个页面且已加载过 → 直接复用（切换更快）；正在后台生成 → 也必须复用（否则中断生成）
                 reuseOrLoadOverlayFrame(url);
-                const ownNavPages = ['chat.html', 'api.html', 'more.html', 'schedule.html', 'worldbook.html', 'emoji.html', 'favorite.html', 'offline.html', 'offline-setting.html', 'moments.html', 'groups.html', 'group-setting.html', 'other.html', 'storage.html', 'backup.html', 'phone.html', 'ins.html', 'couple-spaces.html', 'halo.html', 'books.html', 'mask.html', 'character.html', 'inner-setting.html', 'nano-setting.html', 'ios-setting.html', 'assistant.html', 'family-card.html', 'wallet.html', 'appstore.html', 'cycle.html', 'fanfic.html', 'fanfic-create.html', 'fanfic-read.html', 'market.html', 'mcp.html', 'heart-setting.html', 'imessage.html', 'memory palace.html', 'app-host.html', 'meet.html', 'mall.html'];
+                const ownNavPages = ['chat.html', 'api.html', 'more.html', 'settings.html', 'beautify.html', 'schedule.html', 'worldbook.html', 'emoji.html', 'favorite.html', 'offline.html', 'offline-setting.html', 'moments.html', 'groups.html', 'group-setting.html', 'other.html', 'storage.html', 'backup.html', 'phone.html', 'ins.html', 'couple-spaces.html', 'halo.html', 'books.html', 'mask.html', 'character.html', 'inner-setting.html', 'nano-setting.html', 'ios-setting.html', 'assistant.html', 'family-card.html', 'wallet.html', 'appstore.html', 'cycle.html', 'fanfic.html', 'fanfic-create.html', 'fanfic-read.html', 'market.html', 'mcp.html', 'heart-setting.html', 'imessage.html', 'memory palace.html', 'app-host.html', 'meet.html', 'mall.html'];
                 const hasOwnNav = ownNavPages.indexOf(pageName) !== -1;
                 const noOuterHeader = hasOwnNav || pageName === 'mall.html' || (showBack === false && !(title || ''));
                 if (noOuterHeader) {
@@ -1826,12 +1825,17 @@ setTimeout(function () {
                 return;
             }
 
-            // 从聊天列表进入单聊：返回时先回到聊天列表，而不是直接回桌面
+            // 私聊返回：始终回到 chat 的第一个按钮页面（聊天列表）
             try {
-                if (wasOverlaySource === 'main' &&
-                    frameBase(overlayFrame) === 'chat.html' &&
-                    frameBase(chatInnerFrame) === 'chat_inner.html' &&
-                    chatInnerFrame.style.display !== 'none') {
+                if (frameBase(chatInnerFrame) === 'chat_inner.html' &&
+                    chatInnerFrame.style.display !== 'none' &&
+                    wasOverlaySource !== 'chat_inner') {
+                    try { sessionStorage.setItem('nano_chat_active_page', JSON.stringify({ page: 'chat', at: Date.now() })); } catch (e) {}
+                    if (frameBase(overlayFrame) !== 'chat.html') {
+                        overlayFrame.src = withBuild('chat.html');
+                    } else {
+                        try { overlayFrame.contentWindow.postMessage({ type: 'nanoChatGoHome' }, '*'); } catch (e) {}
+                    }
                     showOverlayFrame();
                     overlay.classList.add('active');
                     overlay.classList.add('no-header');
@@ -1888,6 +1892,21 @@ setTimeout(function () {
                     overlay.classList.add('no-header');
                     overlayActive = true;
                     currentOverlaySource = 'main';
+                    overlayTitle.textContent = '';
+                    overlayBack.classList.add('hidden');
+                    return;
+                }
+            } catch (e) {}
+
+            // 从设置页进入的二级页面：关闭后回到设置页
+            try {
+                if (wasOverlaySource === 'settings' && frameBase(overlayFrame) !== 'settings.html') {
+                    overlayFrame.src = withBuild('settings.html');
+                    showOverlayFrame();
+                    overlay.classList.add('active');
+                    overlay.classList.add('no-header');
+                    overlayActive = true;
+                    currentOverlaySource = 'settings';
                     overlayTitle.textContent = '';
                     overlayBack.classList.add('hidden');
                     return;
@@ -2874,7 +2893,7 @@ setTimeout(function () {
             imessage: 'imessage.html', peek: 'ios-setting.html', market: 'market.html', shop: 'mall.html',
             schedule: 'schedule.html', mcp: 'mcp.html', tide: 'cycle.html', fanfic: 'fanfic.html',
             store: 'appstore.html', book: 'worldbook.html', beauty: 'beautify.html', phone: 'phone.html',
-            settings: 'more.html', friend: 'character.html', album: 'moments.html',
+            settings: 'settings.html', friend: 'character.html', album: 'moments.html',
             editprofile: 'mask.html', send: 'chat.html'
         };
         function openNanoApp(id, name) {
@@ -2891,6 +2910,13 @@ setTimeout(function () {
 
             if (data.type === 'nanoOpenApp') {
                 try { openNanoApp(data.id, data.name); } catch (e) {}
+                return;
+            }
+            if (data.type === 'nanoDesktopChanged') {
+                try {
+                    const hf = document.getElementById('homeFrame');
+                    if (hf && hf.contentWindow) hf.contentWindow.postMessage(data, '*');
+                } catch (e) {}
                 return;
             }
 

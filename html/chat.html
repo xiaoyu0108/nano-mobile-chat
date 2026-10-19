@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <script src="../js/nano-runtime.js"></script>
+  <script>window.__NANO_FONT_ONLY = true;</script>
+  <script src="../js/appearance.js"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <link rel="icon" href="../icons/icon-192.png" />
   <title>纳米 · 聊天</title>
@@ -1507,7 +1509,7 @@
     if (!av || !nameEl || !bioEl) return;
 
     const name = currentUser ? (currentUser.name || '未命名') : '选择面具';
-    const bio = currentUser ? (currentUser.setting || '这个人很神秘，什么都没有写。') : '先选择一个面具，再开始聊天。';
+    const bio = currentUser ? (currentUser.caption || '认真生活，偶尔摸鱼。') : '先选择一个面具，再开始聊天。';
 
     if (document.activeElement !== nameEl) nameEl.textContent = name;
     if (document.activeElement !== bioEl) bioEl.textContent = bio;
@@ -1888,9 +1890,9 @@
       bioEl.addEventListener('blur', function () {
         if (!currentUser) return;
         const v = bioEl.textContent.trim();
-        currentUser.setting = v;
+        currentUser.caption = v;
         const m = (maskData.masks || []).find(function (x) { return String(x.id) === String(currentUser.id); });
-        if (m) m.setting = v;
+        if (m) m.caption = v;
         saveMaskData();
         post({ type: 'currentMaskChanged', maskId: currentUser.id, data: maskData });
         post({ type: 'homeDataUpdated', data: maskData });
@@ -1930,6 +1932,9 @@
       }
       if (d.type === 'contactsDataUpdated' || d.type === 'nanoCharUpdated') {
         loadFriends().then(function () { if (currentTab === 'friends') renderCurrent(); renderProfile(); });
+      }
+      if (d.type === 'nanoChatGoHome') {
+        activatePage('chat');
       }
     });
 

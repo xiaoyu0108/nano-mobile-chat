@@ -4,6 +4,8 @@
 <script src="../js/nano-runtime.js"></script>
 <meta charset="UTF-8">
 <script src="../js/nano-idb.js"></script>
+<script>window.__NANO_FONT_ONLY = true;</script>
+<script src="../js/appearance.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#ffffff">
 <link rel="icon" href="../icons/icon-192.png">
@@ -37,6 +39,7 @@ img{-webkit-user-drag:none;user-drag:none}
 .it.app,.it.dk{display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer}
 .icon-wrap{width:var(--ic);height:var(--ic);border-radius:calc(var(--ic)*.3);display:grid;place-items:center;flex:none;background:linear-gradient(160deg,#2b2b2b,#0e0e0e);box-shadow:0 6px 14px rgba(0,0,0,.2),inset 0 1px 0 rgba(255,255,255,.12)}
 .icon-wrap svg{width:calc(var(--ic)*.45);height:calc(var(--ic)*.45);fill:currentColor;color:#fff}
+.icon-wrap img{width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block}
 .app-name{font-size:11px;font-weight:520;line-height:1.2;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;color:#333;letter-spacing:-.15px}
 .it.dk{position:relative}
 .it.dk .icon-wrap{width:57px;height:57px;border-radius:18px}
@@ -608,7 +611,8 @@ const WORDER=['clock','photo','photow','call','bubbles','about','online','send',
 /* =====================================================
    状态
 ===================================================== */
-const COLS=4, KEY='mpLayout4', IKEY='mpImgs3', IDB_LAYOUT='nano_widget_layout_v1', IDB_IMGS='nano_widget_images_v1';
+const COLS=4, KEY='mpLayout4', IKEY='mpImgs3', IDB_LAYOUT='nano_widget_layout_v1', IDB_IMGS='nano_widget_images_v1', IDB_BG='nano_desktop_bg', IDB_CUSTOM='nano_app_custom';
+let DESKTOP_BG=null, APP_CUSTOM={};
 const DOCK_DEFAULT=['chat','api','imessage','settings'];
 const APPITEM={}; APPS.forEach(a=>APPITEM[a.id]={id:a.id,c:0,r:0});
 let S={pages:[[]],dock:[null,null,null,null],rows:0};
@@ -711,6 +715,32 @@ function saveImgs(){
     return true;
   }catch(e){toast('图片保存失败');return false}
 }
+async function loadDesktopCustom(){
+  try{ DESKTOP_BG = await NanoIDB.get(IDB_BG); }catch(e){ DESKTOP_BG=null; }
+  try{ APP_CUSTOM = (await NanoIDB.get(IDB_CUSTOM)) || {}; }catch(e){ APP_CUSTOM={}; }
+}
+function applyDesktopBg(){
+  const phone=document.querySelector('.phone');
+  if(!phone) return;
+  if(DESKTOP_BG&&DESKTOP_BG.type==='image'&&DESKTOP_BG.value){
+    phone.style.background='#fff url("'+String(DESKTOP_BG.value).replace(/"/g,'%22')+'") center/cover no-repeat';
+  }else if(DESKTOP_BG&&DESKTOP_BG.type==='color'&&DESKTOP_BG.value){
+    phone.style.background=DESKTOP_BG.value;
+  }else{
+    phone.style.background='#fff';
+  }
+}
+async function reloadDesktop(includeLayout){
+  await loadDesktopCustom();
+  if(includeLayout){
+    for(const k in IMG) delete IMG[k];
+    let ok=false;
+    try{ ok=await loadState(); }catch(e){}
+    if(!ok) defaultState();
+  }
+  applyDesktopBg();
+  render();
+}
 
 /* =====================================================
    渲染
@@ -728,8 +758,11 @@ function wiEl(it,W,H){
 function itemNode(it,inDock){
   const el=document.createElement('div');el.dataset.id=it.id;
   if(isApp(it)){
-    const a=APP[it.id];el.className='it '+(inDock?'dk':'app');
-    el.innerHTML=`<div class="icon-wrap">${svg(a.icon)}</div><div class="app-name">${a.name}</div>`;el.setAttribute('aria-label',a.name);
+    const a=APP[it.id],c=APP_CUSTOM[it.id]||{};
+    const nm=c.name||a.name;
+    const iconHtml=c.icon?`<img src="${String(c.icon).replace(/"/g,'&quot;')}" alt="">`:svg(a.icon);
+    el.className='it '+(inDock?'dk':'app');
+    el.innerHTML=`<div class="icon-wrap">${iconHtml}</div><div class="app-name">${nm}</div>`;el.setAttribute('aria-label',nm);
     if(!inDock)place(el,it);
   }else{
     el.className='it wd';place(el,it);
@@ -922,14 +955,16 @@ function dragEnd(ok){
    点击 / 编辑文字 / 换图 / 删除
 ===================================================== */
 function openApp(app){
+  const c=APP_CUSTOM[app.id]||{};
+  const nm=c.name||app.name;
   try{
     if(window.parent&&window.parent!==window){
-      window.parent.postMessage({type:'nanoOpenApp',id:app.id,name:app.name},'*');
+      window.parent.postMessage({type:'nanoOpenApp',id:app.id,name:nm},'*');
       return;
     }
   }catch(e){}
-  toast('打开 '+app.name);
-  document.dispatchEvent(new CustomEvent('phoneappopen',{detail:{id:app.id,name:app.name}}));
+  toast('打开 '+nm);
+  document.dispatchEvent(new CustomEvent('phoneappopen',{detail:{id:app.id,name:nm}}));
 }
 [pager,dockEl].forEach(root=>root.addEventListener('click',e=>{
   if(Date.now()<suppressUntil)return;
@@ -1109,10 +1144,17 @@ function toast(text,label,fn){
 /* =====================================================
    启动
 ===================================================== */
+window.addEventListener('message', function(e){
+  const d=e.data;
+  if(!d||!d.type) return;
+  if(d.type==='nanoDesktopChanged') reloadDesktop(!!d.layout);
+});
 function init(){
   M=calcM();
   defaultState();
+  applyDesktopBg();
   render();
+  loadDesktopCustom().then(function(){ applyDesktopBg(); render(); });
   (async function hydrate(){
     try{
       const ok=await loadState();
