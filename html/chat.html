@@ -1,218 +1,1976 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html lang="zh-CN">
 <head>
-<script src="../js/nano-runtime.js"></script>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <link rel="icon" href="../icons/icon-192.png">
-    <title>纳米 · 聊天</title>
-    <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
-    <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" media="print" onload="this.media='all'">
-<link rel="stylesheet" href="../css/chat.css?v=20261018q">
-<link rel="stylesheet" href="../css/chat-nano.css?v=20261019a">
-<script src="../js/appearance.js?v=20261010a"></script>
-    <script src="../js/nano-badge.js"></script>
-<script src="../js/group-store.js"></script>
-<script src="../js/nano-notify.js?v=20261018b"></script>
+  <meta charset="UTF-8" />
+  <script src="../js/nano-runtime.js"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <link rel="icon" href="../icons/icon-192.png" />
+  <title>纳米 · 聊天</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --text: #111111;
+      --text-secondary: #666666;
+      --text-tertiary: #999999;
+      --border: #f0f0f0;
+      --hover: #f7f7f7;
+      --active: #eeeeee;
+      --accent: #111111;
+      --danger: #e54d42;
+      --radius: 16px;
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+      --gray-avatar: #d1d1d1;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      overflow: hidden;
+      user-select: none;
+    }
+
+    /* ========== App Shell ========== */
+    .app {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      max-width: 480px;
+      margin: 0 auto;
+      background: var(--bg);
+    }
+
+    .page {
+      display: none;
+      flex: 1;
+      flex-direction: column;
+      overflow: hidden;
+      /* 关键修复：移除底部 padding，让列表自然延伸到底部 */
+      /* 如果是主页等需要滚动的页面，可以在对应的内部容器加 padding */
+      padding-bottom: 0;
+    }
+
+    .page.active {
+      display: flex;
+    }
+
+    /* ========== Top Bar ========== */
+    .top-bar {
+      height: 52px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 12px;
+      flex-shrink: 0;
+      background: var(--bg);
+    }
+
+    .top-bar .left,
+    .top-bar .right {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      min-width: 80px;
+    }
+
+    .top-bar .right {
+      justify-content: flex-end;
+    }
+
+    .top-bar .title {
+      font-size: 17px;
+      font-weight: 600;
+      letter-spacing: 0.2px;
+    }
+
+    .icon-btn {
+      width: 40px;
+      height: 40px;
+      border: none;
+      background: transparent;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      color: var(--text);
+      transition: background 0.15s;
+    }
+
+    .icon-btn:active {
+      background: var(--active);
+    }
+
+    .icon-btn svg {
+      width: 22px;
+      height: 22px;
+      fill: currentColor;
+    }
+
+    /* ========== Avatar Switcher ========== */
+    .avatar-switcher {
+      padding: 12px 16px 14px;
+      display: flex;
+      gap: 18px;
+      overflow-x: auto;
+      scrollbar-width: none;
+      flex-shrink: 0;
+    }
+
+    .avatar-switcher::-webkit-scrollbar {
+      display: none;
+    }
+
+    .avatar-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+      cursor: pointer;
+    }
+
+    .avatar-item .ring {
+      position: relative;
+      width: 68px;
+      height: 68px;
+      border-radius: 50%;
+      padding: 3px;
+      background: linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888);
+      transition: all 0.25s ease;
+    }
+
+    .avatar-item:not(.active) .ring {
+      background: #e8e8e8;
+      padding: 2px;
+    }
+
+    .avatar-item.active .ring {
+      background: linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888);
+      padding: 3px;
+    }
+
+    .avatar-item .ring-inner {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      background: #fff;
+      padding: 2px;
+      display: block;
+    }
+
+    .avatar-item .ring img,
+    .avatar-item .ring .placeholder {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      object-fit: cover;
+      background: var(--gray-avatar);
+      display: block;
+    }
+
+    .avatar-item .add-badge {
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: #111;
+      border: 2px solid #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 2;
+    }
+
+    .avatar-item .add-badge svg {
+      width: 12px;
+      height: 12px;
+      fill: #fff;
+    }
+
+    .avatar-item .name {
+      font-size: 12px;
+      color: var(--text-secondary);
+      max-width: 68px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      text-align: center;
+    }
+
+    .avatar-item.active .name {
+      color: var(--text);
+      font-weight: 500;
+    }
+
+    .thin-sep {
+      height: 1px;
+      background: var(--border);
+      margin: 0 16px;
+      flex-shrink: 0;
+    }
+
+    /* ========== Search ========== */
+    .search-wrap {
+      padding: 12px 16px;
+      flex-shrink: 0;
+    }
+
+    .search-box {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      height: 36px;
+      background: #f5f5f5;
+      border-radius: 18px;
+      padding: 0 14px;
+    }
+
+    .search-box svg {
+      width: 16px;
+      height: 16px;
+      fill: var(--text-tertiary);
+      flex-shrink: 0;
+    }
+
+    .search-box input {
+      flex: 1;
+      border: none;
+      background: transparent;
+      font-size: 14px;
+      color: var(--text);
+      outline: none;
+    }
+
+    .search-box input::placeholder {
+      color: var(--text-tertiary);
+    }
+
+    /* ========== Tabs ========== */
+    .tabs {
+      display: flex;
+      padding: 0 16px;
+      gap: 24px;
+      flex-shrink: 0;
+      height: 40px;
+      align-items: center;
+    }
+
+    .tab {
+      font-size: 15px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      position: relative;
+      padding: 6px 0;
+      font-weight: 400;
+      transition: color 0.15s;
+    }
+
+    .tab.active {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    .tab.active::after {
+      content: "";
+      position: absolute;
+      bottom: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 16px;
+      height: 2px;
+      background: var(--text);
+      border-radius: 1px;
+    }
+
+    /* ========== Chat List ========== */
+    .list-area {
+      flex: 1;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      /* 给底部留一点呼吸空间，避免最后一个卡片紧贴屏幕边缘（可选） */
+      padding-bottom: 80px;
+    }
+
+    .list-area::-webkit-scrollbar {
+      width: 0;
+    }
+
+    .chat-item {
+      position: relative;
+      height: 72px;
+      overflow: hidden;
+      background: var(--bg);
+    }
+
+    .chat-item-inner {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      gap: 12px;
+      background: var(--bg);
+      transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+      z-index: 2;
+    }
+
+    .chat-item.swiped .chat-item-inner {
+      transform: translateX(-140px);
+    }
+
+    .chat-item .avatar {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      object-fit: cover;
+      background: var(--gray-avatar);
+      flex-shrink: 0;
+    }
+
+    .chat-item .content {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .chat-item .row1 {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .chat-item .name {
+      font-size: 16px;
+      font-weight: 500;
+      color: var(--text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .chat-item .time {
+      font-size: 12px;
+      color: var(--text-tertiary);
+      flex-shrink: 0;
+      margin-left: 8px;
+    }
+
+    .chat-item .msg {
+      font-size: 13px;
+      color: var(--text-secondary);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .chat-item.pinned .name::before {
+      content: "";
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      margin-right: 4px;
+      background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23999'%3E%3Cpath d='M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z'/%3E%3C/svg%3E") center/contain no-repeat;
+      vertical-align: -1px;
+    }
+
+    /* swipe actions */
+    .swipe-actions {
+      position: absolute;
+      right: 0;
+      top: 0;
+      bottom: 0;
+      width: 140px;
+      display: flex;
+      z-index: 1;
+    }
+
+    .swipe-actions button {
+      flex: 1;
+      border: none;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 500;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      cursor: pointer;
+    }
+
+    .swipe-actions .pin-btn {
+      background: #666;
+    }
+
+    .swipe-actions .del-btn {
+      background: var(--danger);
+    }
+
+    .swipe-actions svg {
+      width: 18px;
+      height: 18px;
+      fill: #fff;
+    }
+
+    /* empty state */
+    .empty {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: var(--text-tertiary);
+      font-size: 14px;
+      gap: 12px;
+    }
+
+    .empty svg {
+      width: 48px;
+      height: 48px;
+      fill: #ddd;
+    }
+
+    /* ========== Profile Page ========== */
+    .profile-header {
+      padding: 16px 16px 12px;
+      display: flex;
+      gap: 20px;
+      align-items: center;
+    }
+
+    .profile-avatar-wrap {
+      position: relative;
+      flex-shrink: 0;
+    }
+
+    .profile-avatar {
+      width: 86px;
+      height: 86px;
+      border-radius: 50%;
+      object-fit: cover;
+      background: var(--gray-avatar);
+      display: block;
+    }
+
+    .profile-info {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .profile-stats {
+      display: flex;
+      width: 100%;
+    }
+
+    .stat {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+    }
+
+    .stat .num {
+      font-size: 17px;
+      font-weight: 600;
+      line-height: 1.2;
+    }
+
+    .stat .label {
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-top: 2px;
+    }
+
+    .profile-name-row {
+      padding: 0 16px 2px;
+    }
+
+    .profile-name {
+      font-size: 15px;
+      font-weight: 600;
+      line-height: 1.3;
+    }
+
+    .profile-bio {
+      padding: 0 16px 14px;
+      font-size: 14px;
+      color: var(--text);
+      line-height: 1.45;
+    }
+
+    .profile-actions {
+      padding: 0 16px 18px;
+      display: flex;
+      gap: 8px;
+    }
+
+    .profile-actions button {
+      flex: 1;
+      height: 32px;
+      border: none;
+      background: #efefef;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    .profile-actions button:active {
+      background: #e0e0e0;
+    }
+
+    .func-list {
+      padding: 4px 16px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .func-card {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 14px 8px;
+      background: transparent;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .func-card:active {
+      background: var(--hover);
+    }
+
+    .func-card .icon-wrap {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: #f5f5f5;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .func-card .icon-wrap svg {
+      width: 22px;
+      height: 22px;
+      fill: var(--text);
+    }
+
+    .func-card .func-text {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .func-card .func-title {
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--text);
+    }
+
+    .func-card .func-desc {
+      font-size: 12px;
+      color: var(--text-tertiary);
+      margin-top: 2px;
+    }
+
+    .func-card .arrow {
+      width: 18px;
+      height: 18px;
+      fill: #ccc;
+      flex-shrink: 0;
+    }
+
+    /* ========== Placeholder pages ========== */
+    .placeholder-page {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-tertiary);
+      font-size: 15px;
+      gap: 12px;
+    }
+
+    .placeholder-page svg {
+      width: 56px;
+      height: 56px;
+      fill: #ddd;
+    }
+
+    /* ========== 悬浮 Dock（透明无遮挡） ========== */
+    .dock-wrap {
+      position: absolute;
+      bottom: calc(16px + var(--safe-bottom));
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 100;
+      /* 关键：包裹层不拦截事件，透明穿透 */
+      pointer-events: none;
+    }
+
+    .dock {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      background: #ffffff;
+      border-radius: 999px;
+      padding: 6px 8px;
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0,0,0,0.04);
+      pointer-events: auto; /* 胶囊本体可点击 */
+    }
+
+    .dock-btn {
+      width: 52px;
+      height: 52px;
+      border: none;
+      background: transparent;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      color: #999;
+      transition: all 0.2s;
+    }
+
+    .dock-btn svg {
+      width: 24px;
+      height: 24px;
+      fill: currentColor;
+    }
+
+    .dock-btn.active {
+      background: #111111;
+      color: #fff;
+    }
+
+    .dock-btn:not(.active):active {
+      background: rgba(0, 0, 0, 0.06);
+    }
+
+    /* 确保聊天列表可以滑动到最底部 */
+    .list-area {
+      position: relative;
+      z-index: 1;
+    }
+    .chat-item {
+      position: relative;
+      z-index: 1;
+    }
+
+    /* 主页和占位页需要滚动时也能滑到底部 */
+    .page > .placeholder-page,
+    .page > .func-list,
+    .page > .profile-header {
+      padding-bottom: 90px; /* 给内部内容加上底部内边距，防止被 Dock 遮挡 */
+    }
+
+    /* ===== 纳米接入层：安全区 / 真实头像 / 建群弹层 ===== */
+    .top-bar {
+      height: calc(52px + var(--safe-top, 0px));
+      padding: var(--safe-top, 0px) 12px 0;
+    }
+
+    .chat-item .avatar {
+      background-size: cover;
+      background-position: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .profile-avatar {
+      background-size: cover;
+      background-position: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 28px;
+      font-weight: 600;
+    }
+
+    .list-area {
+      padding-bottom: calc(92px + var(--safe-bottom, 0px));
+    }
+
+    .page > .profile-header,
+    .page > .func-list {
+      padding-bottom: calc(100px + var(--safe-bottom, 0px));
+    }
+
+    .func-card {
+      cursor: pointer;
+    }
+
+    .empty[data-empty-action] {
+      cursor: pointer;
+    }
+
+    .group-mask {
+      position: fixed;
+      inset: 0;
+      z-index: 300;
+      display: none;
+      align-items: flex-end;
+      background: rgba(0, 0, 0, .35);
+    }
+
+    .group-mask.show { display: flex; }
+
+    .group-sheet {
+      width: 100%;
+      max-width: 480px;
+      margin: 0 auto;
+      background: #fff;
+      border-radius: 22px 22px 0 0;
+      padding: 18px 16px calc(18px + var(--safe-bottom, 0px));
+      max-height: 80vh;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      box-shadow: 0 -12px 40px rgba(0, 0, 0, .12);
+    }
+
+    .group-sheet-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 17px;
+      font-weight: 600;
+    }
+
+    .group-sheet-head button {
+      width: 32px;
+      height: 32px;
+      border: 0;
+      background: #f2f2f2;
+      border-radius: 50%;
+      font-size: 20px;
+      line-height: 1;
+      color: #555;
+    }
+
+    .group-name-input {
+      height: 42px;
+      border: 0;
+      border-radius: 12px;
+      background: #f5f5f5;
+      padding: 0 13px;
+      font-size: 15px;
+      outline: none;
+    }
+
+    .group-members {
+      flex: 1;
+      min-height: 120px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .group-member-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 9px 2px;
+      border-bottom: 1px solid #f3f3f3;
+    }
+
+    .group-member-avatar {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      background: #d1d1d1 center/cover no-repeat;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 15px;
+      font-weight: 600;
+      flex-shrink: 0;
+      overflow: hidden;
+    }
+
+    .group-member-name {
+      flex: 1;
+      min-width: 0;
+      font-size: 15px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .group-member-row input {
+      width: 20px;
+      height: 20px;
+      accent-color: #111;
+    }
+
+    .group-create-btn {
+      height: 46px;
+      border: 0;
+      border-radius: 14px;
+      background: #111;
+      color: #fff;
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    .group-create-btn:disabled {
+      opacity: .35;
+    }
+
+    .group-empty {
+      padding: 26px 10px;
+      text-align: center;
+      color: #999;
+      font-size: 13px;
+      line-height: 1.7;
+    }
+  </style>
 </head>
-<body class="nano-chat">
-<div class="app-container">
-    <div class="app-content">
-
-        <!-- 页面顶栏：返回 / 标题 / 加好友 / 建群（位于灵动岛下方） -->
-        <div class="page-topbar">
-            <button class="page-topbar-btn" id="nanoChatBack" type="button" aria-label="返回"><i class="fas fa-chevron-left"></i></button>
-            <div class="nano-chat-title">聊天</div>
-            <div class="nano-top-actions">
-                <button class="page-topbar-btn" id="maskPageBtn" type="button" aria-label="人设" style="display:none;"><i class="fas fa-bars"></i></button>
-                <button class="page-topbar-btn" id="characterPageBtn" type="button" aria-label="加好友"><i class="fas fa-user-plus"></i></button>
-                <button class="page-topbar-btn" id="nanoGroupBtn" type="button" aria-label="建群"><i class="fas fa-users"></i></button>
-            </div>
+<body>
+  <div class="app">
+    <!-- ========== 聊天页 ========== -->
+    <div class="page active" id="page-chat">
+      <div class="top-bar">
+        <div class="left">
+          <button class="icon-btn" id="btn-back" aria-label="返回">
+            <svg viewBox="0 0 24 24"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+          </button>
         </div>
-
-        <!-- Nano 品牌 -->
-        <div class="nano-brand">Nano</div>
-
-        <!-- 状态栏 -->
-        <div class="user-status-wrapper">
-            <div class="user-status-bar" id="userStatusBar">
-                <div class="left">
-                    <div class="user-avatar" id="userAvatar">
-                        <span id="userAvatarPlaceholder">?</span>
-                        <img id="userAvatarImage" style="display:none;" alt="头像">
-                    </div>
-                    <span class="user-name" id="userNameDisplay">
-                        <span class="placeholder">选择人设</span>
-                    </span>
-                </div>
-                <div class="right">
-                    <span class="char-count" id="charCountDisplay">0</span>
-                    <span class="arrow" id="arrowIcon">⌵</span>
-                </div>
-            </div>
-            <div class="user-dropdown" id="userDropdown"></div>
+        <div class="title">聊天</div>
+        <div class="right">
+          <button class="icon-btn" id="btn-meet" aria-label="Meet">
+            <svg viewBox="0 0 24 24"><path d="M15 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm-9-2V7H4v3H1v2h3v3h2v-3h3v-2H6zm9 4c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+          </button>
+          <button class="icon-btn" id="btn-new-group" aria-label="新建群聊">
+            <svg viewBox="0 0 24 24"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
+          </button>
         </div>
+      </div>
 
-        <!-- 头像行 -->
-        <div class="avatar-row" id="avatarRow">
-            <div class="avatar-item" data-index="0"></div>
-            <div class="avatar-item" data-index="1"></div>
-            <div class="avatar-item" data-index="2"></div>
-            <div class="avatar-item" data-index="3"></div>
-            <div class="avatar-item avatar-add" id="avatarAddBtn"><i class="fas fa-plus"></i></div>
+      <!-- 面具头像切换（由真实 user / mask 数据渲染） -->
+      <div class="avatar-switcher" id="avatar-switcher"></div>
+
+      <div class="thin-sep"></div>
+
+      <!-- 搜索 -->
+      <div class="search-wrap">
+        <div class="search-box">
+          <svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+          <input type="text" placeholder="搜索好友 / 群聊" id="search-input" />
         </div>
+      </div>
 
-        <!-- 搜索框 -->
-        <div class="search-wrap">
-            <div class="search-box">
-                <i class="fas fa-search" id="searchIcon"></i>
-                <input type="text" placeholder="搜索联系人、群聊" id="searchInput" autocomplete="off">
-                <span class="search-clear hidden" id="searchClear"><i class="fas fa-times-circle"></i></span>
-            </div>
-        </div>
+      <!-- 好友 / 群聊 Tab -->
+      <div class="tabs">
+        <div class="tab active" data-tab="friends">好友</div>
+        <div class="tab" data-tab="groups">群聊</div>
+      </div>
 
-        <!-- Tab 切换 -->
-        <div class="tabs-switch">
-            <div class="tab-group">
-                <button class="tab-btn active" id="tabFriends">好友</button>
-                <button class="tab-btn" id="tabGroups">群聊</button>
-            </div>
-        </div>
-
-        <!-- 聊天列表 -->
-        <div class="chat-list" id="chatList">
-            <div class="no-result" id="noResult">未找到相关联系人</div>
-        </div>
-
+      <!-- 列表 -->
+      <div class="list-area" id="list-friends"></div>
+      <div class="list-area" id="list-groups" style="display:none;"></div>
     </div>
-</div>
 
-<!-- 通讯录 -->
-<div class="nano-subpage" id="nanoPageContacts">
-    <div class="nano-sub-top">
-        <button class="page-topbar-btn" data-nano-back type="button" aria-label="返回"><i class="fas fa-chevron-left"></i></button>
-        <div class="nano-chat-title">通讯录</div>
-        <span class="nano-top-spacer"></span>
-    </div>
-    <div class="nano-contact-list" id="nanoContactsList"></div>
-</div>
-
-<!-- 我的 -->
-<div class="nano-subpage" id="nanoPageProfile">
-    <div class="nano-sub-top">
-        <button class="page-topbar-btn" data-nano-back type="button" aria-label="返回"><i class="fas fa-chevron-left"></i></button>
-        <div class="nano-chat-title">我的</div>
-        <span class="nano-top-spacer"></span>
-    </div>
-    <div class="nano-profile-card">
-        <div class="nano-profile-avatar" id="nanoProfileAvatar"></div>
-        <div class="nano-profile-name" id="nanoProfileName">我</div>
-        <div class="nano-profile-sub" id="nanoProfileSub">当前面具</div>
-    </div>
-    <div class="nano-func-list">
-        <button class="nano-func-card" data-open="wallet.html" data-title="钱包">
-            <span class="nano-func-ic">¥</span>
-            <span class="nano-func-text"><b>钱包</b><i>余额、账单与支付</i></span>
-            <span class="nano-func-arrow">›</span>
-        </button>
-        <button class="nano-func-card" data-open="favorite.html" data-title="收藏">
-            <span class="nano-func-ic">★</span>
-            <span class="nano-func-text"><b>收藏</b><i>收藏的消息与内容</i></span>
-            <span class="nano-func-arrow">›</span>
-        </button>
-        <button class="nano-func-card" data-open="emoji.html" data-title="表情包">
-            <span class="nano-func-ic">☺</span>
-            <span class="nano-func-text"><b>表情包</b><i>管理常用表情</i></span>
-            <span class="nano-func-arrow">›</span>
-        </button>
-        <button class="nano-func-card" data-open="mask.html" data-title="面具">
-            <span class="nano-func-ic">◐</span>
-            <span class="nano-func-text"><b>面具</b><i>切换与管理人物设</i></span>
-            <span class="nano-func-arrow">›</span>
-        </button>
-    </div>
-</div>
-
-<!-- 底部 Dock -->
-<nav class="nano-dock" id="nanoDock" aria-label="聊天导航">
-    <button class="nano-dock-btn active" data-tab="chat" aria-label="聊天">
-        <svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H5.17L4 17.17V4h16v12zM7 9h2v2H7zm4 0h2v2h-2zm4 0h2v2h-2z"/></svg>
-    </button>
-    <button class="nano-dock-btn" data-tab="contacts" aria-label="通讯录">
+    <!-- ========== 通讯录 ========== -->
+    <div class="page" id="page-contacts">
+      <div class="top-bar">
+        <div class="left"></div>
+        <div class="title">通讯录</div>
+        <div class="right"></div>
+      </div>
+      <div class="placeholder-page">
         <svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
-    </button>
-    <button class="nano-dock-btn" data-tab="moments" aria-label="朋友圈">
+        <span>通讯录（后续接入）</span>
+      </div>
+    </div>
+
+    <!-- ========== 朋友圈 ========== -->
+    <div class="page" id="page-moments">
+      <div class="top-bar">
+        <div class="left"></div>
+        <div class="title">朋友圈</div>
+        <div class="right"></div>
+      </div>
+      <div class="placeholder-page">
         <svg viewBox="0 0 24 24"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
-    </button>
-    <button class="nano-dock-btn" data-tab="profile" aria-label="我的">
-        <svg viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
-    </button>
-</nav>
+        <span>朋友圈（后续接入）</span>
+      </div>
+    </div>
 
-<!-- 群聊创建弹窗 -->
-<div class="group-modal" id="groupModal">
-    <div class="group-modal-card">
-        <h4>创建群聊</h4>
-        <div class="sub-title" id="groupSubTitle">设置群信息并添加成员</div>
-        <div class="group-avatar-picker">
-            <div class="g-avatar" id="groupAvatarPicker">
-                <span id="groupAvatarPlaceholder">+</span>
-                <img id="groupAvatarPreview" style="display:none;" alt="群头像">
+    <!-- ========== 主页 ========== -->
+    <div class="page" id="page-profile">
+      <div class="top-bar">
+        <div class="left"></div>
+        <div class="title">主页</div>
+        <div class="right"></div>
+      </div>
+
+      <div class="profile-header">
+        <div class="profile-avatar-wrap">
+          <div class="profile-avatar" id="profile-avatar" style="background:var(--gray-avatar);"></div>
+        </div>
+        <div class="profile-info">
+          <div class="profile-stats">
+            <div class="stat">
+              <span class="num" id="stat-posts">128</span>
+              <span class="label">动态</span>
             </div>
-        </div>
-        <div class="group-form-group">
-            <label>群名称</label>
-            <input type="text" id="groupNameInput" placeholder="输入群名称">
-        </div>
-        <div class="group-add-member-row">
-            <select id="groupMemberSelect"><option value="">选择要添加的成员...</option></select>
-            <button class="btn-add-member" id="groupAddMemberBtn">添加</button>
-        </div>
-        <div class="group-member-list" id="groupMemberList"></div>
-        <div class="group-modal-actions">
-            <button class="btn-cancel" id="groupCancel" data-close>取消</button>
-            <button class="btn-add" id="groupConfirm">创建</button>
-        </div>
-    </div>
-</div>
-
-<!-- 头像弹窗 -->
-<div class="ios-modal" id="avatarModal">
-    <div class="ios-modal-card">
-        <h4>更换头像</h4>
-        <div class="ios-modal-actions">
-            <button id="modalGallery"><i class="fas fa-images"></i>从图库选择</button>
-            <button id="modalUrlBtn"><i class="fas fa-link"></i>输入 URL</button>
-            <button class="cancel-btn" id="modalCancel" data-close>取消</button>
-        </div>
-        <div id="urlInputArea" style="display:none;">
-            <div class="url-input-wrap">
-                <input type="text" id="urlInput" placeholder="输入图片链接 (https://...)" autocomplete="off">
+            <div class="stat">
+              <span class="num" id="stat-followers">1.2k</span>
+              <span class="label">关注者</span>
             </div>
-            <button class="url-submit-btn" id="urlSubmit">确认</button>
+            <div class="stat">
+              <span class="num" id="stat-following">356</span>
+              <span class="label">关注中</span>
+            </div>
+          </div>
         </div>
-    </div>
-</div>
+      </div>
 
-<!-- 群头像弹窗 -->
-<div class="ios-modal" id="groupAvatarModal">
-    <div class="ios-modal-card">
-        <h4>更换群头像</h4>
-        <button class="modal-option" id="groupAvatarGallery">从图库选择</button>
-        <div class="modal-divider"></div>
-        <button class="modal-option" id="groupAvatarUrl">输入图片 URL</button>
-        <div class="modal-actions">
-            <button class="modal-btn" id="groupAvatarCancel" data-close>取消</button>
+      <div class="profile-name-row">
+        <div class="profile-name" id="profile-name" contenteditable="true">Lulu</div>
+      </div>
+      <div class="profile-bio" id="profile-bio" contenteditable="true">认真生活，偶尔摸鱼。</div>
+
+      <div class="profile-actions">
+        <button id="btn-edit">编辑资料</button>
+        <button>分享主页</button>
+      </div>
+
+      <div class="func-list">
+        <div class="func-card" data-open="wallet">
+          <div class="icon-wrap">
+            <svg viewBox="0 0 24 24"><path d="M21 18v1c0 1.1-.9 2-2 2H5c-1.11 0-2-.9-2-2V5c0-1.1.89-2 2-2h14c1.1 0 2 .9 2 2v1h-9c-1.11 0-2 .9-2 2v8c0 1.1.89 2 2 2h9zm-9-2h10V8H12v8zm4-2.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></svg>
+          </div>
+          <div class="func-text">
+            <div class="func-title">钱包</div>
+            <div class="func-desc">余额、账单与支付</div>
+          </div>
+          <svg class="arrow" viewBox="0 0 24 24"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/></svg>
         </div>
+
+        <div class="func-card" data-open="favorite">
+          <div class="icon-wrap">
+            <svg viewBox="0 0 24 24"><path d="M17 3H7c-1.1 0-1.99.9-1.99 2L5 21l7-3 7 3V5c0-1.1-.9-2-2-2z"/></svg>
+          </div>
+          <div class="func-text">
+            <div class="func-title">收藏</div>
+            <div class="func-desc">收藏的消息与内容</div>
+          </div>
+          <svg class="arrow" viewBox="0 0 24 24"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/></svg>
+        </div>
+
+        <div class="func-card" data-open="emoji">
+          <div class="icon-wrap">
+            <svg viewBox="0 0 24 24"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z"/></svg>
+          </div>
+          <div class="func-text">
+            <div class="func-title">表情包</div>
+            <div class="func-desc">管理常用表情</div>
+          </div>
+          <svg class="arrow" viewBox="0 0 24 24"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/></svg>
+        </div>
+
+        <div class="func-card" data-open="mask">
+          <div class="icon-wrap">
+            <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/></svg>
+          </div>
+          <div class="func-text">
+            <div class="func-title">面具</div>
+            <div class="func-desc">切换与管理人物设</div>
+          </div>
+          <svg class="arrow" viewBox="0 0 24 24"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/></svg>
+        </div>
+      </div>
     </div>
-</div>
 
-<input type="file" class="file-input-hidden" id="groupImageFileInput" accept="image/*" style="display:none;">
+    <!-- ========== 悬浮 Dock（透明穿透） ========== -->
+    <div class="dock-wrap">
+      <div class="dock">
+        <button class="dock-btn active" data-page="chat" aria-label="聊天">
+          <svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H5.17L4 17.17V4h16v12zM7 9h2v2H7zm4 0h2v2h-2zm4 0h2v2h-2z"/></svg>
+        </button>
+        <button class="dock-btn" data-page="contacts" aria-label="通讯录">
+          <svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+        </button>
+        <button class="dock-btn" data-page="moments" aria-label="朋友圈">
+          <svg viewBox="0 0 24 24"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
+        </button>
+        <button class="dock-btn" data-page="profile" aria-label="主页">
+          <svg viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
+        </button>
+      </div>
+    </div>
 
-<script src="../js/chat.js?v=20261018b"></script>
-<script src="../js/chat-nano.js?v=20261019a"></script>
-<script src="../js/api-float.js"></script>
-<script src="../swipe-back.js"></script>
+    <!-- ========== 新建群聊 ========== -->
+    <div class="group-mask" id="groupMask">
+      <div class="group-sheet">
+        <div class="group-sheet-head">
+          <span>新建群聊</span>
+          <button type="button" id="groupClose" aria-label="关闭">×</button>
+        </div>
+        <input class="group-name-input" id="groupNameInput" type="text" placeholder="群聊名称" maxlength="24" />
+        <div class="group-members" id="groupMembers"></div>
+        <button class="group-create-btn" id="groupCreateBtn" type="button">创建群聊</button>
+      </div>
+    </div>
+  </div>
+
+  <script defer src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
+  <script>
+(function () {
+  'use strict';
+
+  const HOME_KEY = 'nano_mask_data';
+  const LEGACY_KEYS = ['nano_home_data', 'peach_home_data'];
+  const GROUP_KEY = 'nano_groups_data';
+  const PIN_KEY = 'nano_pinned_data';
+  const GROUP_DATA_PREFIX = 'group_data_';
+  const GROUP_MSG_PREFIX = 'group_msgs_';
+  const ACTIVE_PAGE_KEY = 'nano_chat_active_page';
+  const MEMBER_BG = ['#2c5fb1', '#b1552c', '#2c7a3e', '#6d2cb1', '#d96f3a', '#0a84ff', '#ff375f', '#30d158'];
+
+  let maskData = { masks: [], currentMaskId: null };
+  let currentUser = null;
+  let allChars = [];
+  let friendsData = [];
+  let groupsData = [];
+  let currentTab = 'friends';
+  let searchKw = '';
+  let activePage = 'chat';
+
+  const $ = function (id) { return document.getElementById(id); };
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  function escAttr(s) {
+    return esc(s).replace(/`/g, '&#96;');
+  }
+
+  function post(msg) {
+    try {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage(msg, '*');
+        return true;
+      }
+    } catch (e) {}
+    return false;
+  }
+
+  function setReturnPage(page) {
+    try {
+      sessionStorage.setItem(ACTIVE_PAGE_KEY, JSON.stringify({ page: page, at: Date.now() }));
+    } catch (e) {}
+  }
+
+  function takeReturnPage() {
+    try {
+      const raw = sessionStorage.getItem(ACTIVE_PAGE_KEY);
+      if (!raw) return 'chat';
+      sessionStorage.removeItem(ACTIVE_PAGE_KEY);
+      const d = JSON.parse(raw);
+      if (d && Date.now() - d.at < 120000 && (d.page === 'profile' || d.page === 'chat')) return d.page;
+    } catch (e) {}
+    return 'chat';
+  }
+
+  function openPage(url, title, returnPage) {
+    setReturnPage(returnPage || 'chat');
+    if (!post({ type: 'openFullscreen', url: url, title: title || '', showBack: true, source: 'chat' })) {
+      try { location.href = url; } catch (e) {}
+    }
+  }
+
+  /* ================= IndexedDB ================= */
+  function openDb(name, version, stores) {
+    return new Promise(function (resolve, reject) {
+      const req = indexedDB.open(name, version);
+      req.onupgradeneeded = function (e) {
+        const db = e.target.result;
+        (stores || []).forEach(function (s) {
+          if (!db.objectStoreNames.contains(s.name)) {
+            db.createObjectStore(s.name, s.keyPath ? { keyPath: s.keyPath } : undefined);
+          }
+        });
+      };
+      req.onsuccess = function (e) { resolve(e.target.result); };
+      req.onerror = function () { reject(req.error); };
+    });
+  }
+
+  function dbGetAll(name, version, store, stores) {
+    return openDb(name, version, stores).then(function (db) {
+      return new Promise(function (resolve) {
+        try {
+          const tx = db.transaction(store, 'readonly');
+          const r = tx.objectStore(store).getAll();
+          r.onsuccess = function () { resolve(r.result || []); };
+          r.onerror = function () { resolve([]); };
+        } catch (e) { resolve([]); }
+      });
+    }).catch(function () { return []; });
+  }
+
+  function dbGet(name, version, store, key, stores) {
+    return openDb(name, version, stores).then(function (db) {
+      return new Promise(function (resolve) {
+        try {
+          const tx = db.transaction(store, 'readonly');
+          const r = tx.objectStore(store).get(key);
+          r.onsuccess = function () { resolve(r.result || null); };
+          r.onerror = function () { resolve(null); };
+        } catch (e) { resolve(null); }
+      });
+    }).catch(function () { return null; });
+  }
+
+  function dbPut(name, version, store, value, stores) {
+    return openDb(name, version, stores).then(function (db) {
+      return new Promise(function (resolve) {
+        try {
+          const tx = db.transaction(store, 'readwrite');
+          tx.objectStore(store).put(value);
+          tx.oncomplete = function () { resolve(true); };
+          tx.onerror = function () { resolve(false); };
+        } catch (e) { resolve(false); }
+      });
+    }).catch(function () { return false; });
+  }
+
+  function dbDelete(name, version, store, key, stores) {
+    return openDb(name, version, stores).then(function (db) {
+      return new Promise(function (resolve) {
+        try {
+          const tx = db.transaction(store, 'readwrite');
+          tx.objectStore(store).delete(key);
+          tx.oncomplete = function () { resolve(true); };
+          tx.onerror = function () { resolve(false); };
+        } catch (e) { resolve(false); }
+      });
+    }).catch(function () { return false; });
+  }
+
+  function getCharacters() {
+    return dbGetAll('nano_characters_db', 1, 'characters', [{ name: 'characters', keyPath: 'id' }]);
+  }
+
+  function getMaskAvatar(id) {
+    return dbGet('MaskAvatarDB', 1, 'avatars', id, [{ name: 'avatars', keyPath: 'id' }]).then(function (row) {
+      return row && row.data ? row.data : '';
+    });
+  }
+
+  /* ================= 人设 / mask ================= */
+  function loadMaskLocal() {
+    try {
+      for (let i = 0; i < [HOME_KEY].concat(LEGACY_KEYS).length; i++) {
+        const key = [HOME_KEY].concat(LEGACY_KEYS)[i];
+        const raw = localStorage.getItem(key);
+        if (!raw) continue;
+        const d = JSON.parse(raw);
+        if (d && Array.isArray(d.masks)) {
+          if (key !== HOME_KEY) {
+            try { localStorage.setItem(HOME_KEY, JSON.stringify(d)); } catch (e) {}
+          }
+          return d;
+        }
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  function loadMaskData() {
+    const local = loadMaskLocal();
+    if (local) return Promise.resolve(local);
+    return dbGet('nano_mask_db', 1, 'mask_data', 'data', [{ name: 'mask_data', keyPath: 'key' }]).then(function (row) {
+      if (row && row.value && Array.isArray(row.value.masks)) return row.value;
+      return { masks: [], currentMaskId: null };
+    });
+  }
+
+  function saveMaskData() {
+    try { localStorage.setItem(HOME_KEY, JSON.stringify(maskData)); } catch (e) {}
+    dbPut('nano_mask_db', 1, 'mask_data', { key: 'data', value: maskData }, [{ name: 'mask_data', keyPath: 'key' }]);
+  }
+
+  function resolveCurrentUser() {
+    const masks = maskData.masks || [];
+    let u = masks.find(function (m) { return String(m.id) === String(maskData.currentMaskId); });
+    if (!u && masks.length) {
+      u = masks[0];
+      maskData.currentMaskId = u.id;
+    }
+    return u || null;
+  }
+
+  /* ================= 消息预览 ================= */
+  function getRemark(chatId) {
+    try {
+      const raw = localStorage.getItem('chat_setting_remark_' + chatId);
+      if (!raw) return '';
+      try { return JSON.parse(raw); } catch (e) { return raw; }
+    } catch (e) { return ''; }
+  }
+
+  async function getLastMessage(chatId) {
+    const key = 'chat_messages_' + chatId;
+    if (window.localforage) {
+      try {
+        const m = await localforage.getItem(key);
+        if (Array.isArray(m) && m.length) return m[m.length - 1];
+      } catch (e) {}
+    }
+    try {
+      const m = JSON.parse(localStorage.getItem(key) || '[]');
+      if (Array.isArray(m) && m.length) return m[m.length - 1];
+    } catch (e) {}
+    return null;
+  }
+
+  function previewText(m) {
+    if (!m) return '';
+    if (m.isImage && m.imageData && (m.imageData.isEmoji || m.imageData.emojiName || m.imageData.desc === '表情包')) {
+      return '[表情包：' + (m.imageData.emojiName || m.imageData.desc || '表情') + ']';
+    }
+    if (m.isImage) return '[图片]';
+    if (m.isCard) {
+      const t = m.cardData && m.cardData.cardType;
+      if (t === 'transfer') return '[转账]';
+      if (t === 'gift') return '[礼物]';
+      if (t === 'call') return m.cardData.missed ? '[未接电话]' : '[语音通话]';
+      return '[卡片消息]';
+    }
+    if (m.isVoice) return '[语音]';
+    const text = String(m.text || '');
+    return text.length > 20 ? text.slice(0, 20) + '...' : text;
+  }
+
+  function timeText(m) {
+    if (!m) return '';
+    if (m.time) return String(m.time);
+    const ts = m.timestamp || m.createdAt || m.ts;
+    if (ts) {
+      try {
+        const d = new Date(ts);
+        return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+      } catch (e) {}
+    }
+    return '';
+  }
+
+  function getPinnedIds() {
+    try {
+      const key = currentUser ? String(currentUser.id) : 'default';
+      const d = JSON.parse(localStorage.getItem(PIN_KEY) || '{}');
+      return Array.isArray(d[key]) ? d[key] : [];
+    } catch (e) { return []; }
+  }
+
+  function savePinnedIds(ids) {
+    try {
+      const key = currentUser ? String(currentUser.id) : 'default';
+      const d = JSON.parse(localStorage.getItem(PIN_KEY) || '{}');
+      d[key] = ids;
+      localStorage.setItem(PIN_KEY, JSON.stringify(d));
+    } catch (e) {}
+  }
+
+  /* ================= 数据加载 ================= */
+  async function loadFriends() {
+    allChars = await getCharacters();
+    const pinned = getPinnedIds();
+    let list = [];
+    if (currentUser) {
+      list = allChars.filter(function (c) {
+        return String(c.bindUser) === String(currentUser.id) || !!c.nanoAssistant;
+      });
+    }
+    const rows = await Promise.all(list.map(async function (c) {
+      const id = String(c.id);
+      const last = await getLastMessage(id);
+      const remark = getRemark(id);
+      return {
+        id: id,
+        type: 'single',
+        name: remark || c.name || '未命名',
+        avatar: c.avatar || '',
+        msg: last ? ((last.type === 'right' ? '我：' : '') + previewText(last)) : (c.setting ? String(c.setting).slice(0, 20) + '...' : '点击开始对话'),
+        time: timeText(last),
+        pinned: pinned.indexOf(id) !== -1
+      };
+    }));
+    rows.sort(function (a, b) {
+      if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+      return String(a.name).localeCompare(String(b.name), 'zh-CN');
+    });
+    friendsData = rows;
+  }
+
+  function getGroupLastMessage(groupId) {
+    try {
+      const raw = localStorage.getItem(GROUP_MSG_PREFIX + groupId);
+      const m = raw ? JSON.parse(raw) : [];
+      return Array.isArray(m) && m.length ? m[m.length - 1] : null;
+    } catch (e) { return null; }
+  }
+
+  function groupPreview(m, group) {
+    if (!m) return '';
+    let prefix = '';
+    if (m.type === 'right') prefix = '我：';
+    else if (m.senderName) prefix = m.senderName + '：';
+    else if (m.senderId) {
+      try {
+        const gd = JSON.parse(localStorage.getItem(GROUP_DATA_PREFIX + group.id) || 'null');
+        const mem = gd && (gd.members || []).find(function (x) { return String(x.id) === String(m.senderId); });
+        if (mem) prefix = (mem.nick || mem.name || '') + '：';
+      } catch (e) {}
+    }
+    return prefix + previewText(m);
+  }
+
+  function loadGroups() {
+    let groups = [];
+    try {
+      const raw = localStorage.getItem(GROUP_KEY);
+      groups = raw ? (JSON.parse(raw).groups || []) : [];
+    } catch (e) {}
+    const pinned = getPinnedIds();
+    groupsData = groups.filter(function (g) { return g && !g.pending; }).map(function (g) {
+      const last = getGroupLastMessage(g.id);
+      return {
+        id: String(g.id),
+        type: 'group',
+        name: g.name || '未命名群聊',
+        avatar: g.avatar || '',
+        msg: last ? groupPreview(last, g) : '点击进入群聊',
+        time: timeText(last),
+        pinned: pinned.indexOf(String(g.id)) !== -1
+      };
+    }).sort(function (a, b) {
+      if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+      return String(b.id).localeCompare(String(a.id));
+    });
+  }
+
+  /* ================= 渲染 ================= */
+  function emptyHtml(text, action) {
+    return '<div class="empty"' + (action ? ' data-empty-action="' + action + '"' : '') + '>' +
+      '<svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>' +
+      '<span>' + esc(text) + '</span></div>';
+  }
+
+  function renderList(containerId, data) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    if (!data.length) {
+      let text = '暂无内容';
+      let action = '';
+      if (containerId === 'list-friends') {
+        if (!currentUser) { text = '请先在「面具」页面选择当前人设'; action = 'mask'; }
+        else { text = '该人设暂无绑定角色'; action = 'character'; }
+      } else {
+        text = '暂无群聊';
+      }
+      container.innerHTML = emptyHtml(text, action);
+      return;
+    }
+
+    const sorted = data.slice().sort(function (a, b) { return (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0); });
+
+    container.innerHTML = sorted.map(function (item) {
+      const initial = String(item.name || '?').charAt(0).toUpperCase();
+      const bg = item.avatar
+        ? ' style="background-image:url(\'' + String(item.avatar).replace(/'/g, '%27').replace(/"/g, '%22') + '\')"'
+        : '';
+      const avatar = '<div class="avatar"' + bg + '>' + (item.avatar ? '' : esc(initial)) + '</div>';
+      return '<div class="chat-item ' + (item.pinned ? 'pinned' : '') + '" data-id="' + escAttr(item.id) + '" data-type="' + item.type + '" data-name="' + escAttr(item.name) + '" data-avatar="' + escAttr(item.avatar || '') + '">' +
+        '<div class="swipe-actions">' +
+          '<button class="pin-btn" data-action="pin"><svg viewBox="0 0 24 24"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/></svg><span>' + (item.pinned ? '取消置顶' : '置顶') + '</span></button>' +
+          '<button class="del-btn" data-action="delete"><svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg><span>删除</span></button>' +
+        '</div>' +
+        '<div class="chat-item-inner">' + avatar +
+          '<div class="content"><div class="row1"><span class="name">' + esc(item.name) + '</span><span class="time">' + esc(item.time) + '</span></div>' +
+          '<div class="msg">' + esc(item.msg) + '</div></div>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+
+    bindSwipe(container);
+    bindOpen(container);
+  }
+
+  function renderCurrent() {
+    const data = currentTab === 'friends' ? friendsData : groupsData;
+    const kw = searchKw.toLowerCase();
+    const filtered = kw ? data.filter(function (d) {
+      return String(d.name).toLowerCase().indexOf(kw) !== -1 || String(d.msg).toLowerCase().indexOf(kw) !== -1;
+    }) : data;
+    renderList(currentTab === 'friends' ? 'list-friends' : 'list-groups', filtered);
+  }
+
+  function avatarItemHtml(m, active) {
+    const name = m && m.name ? m.name : '添加';
+    const initial = String(name).charAt(0).toUpperCase();
+    return '<div class="avatar-item ' + (active ? 'active' : '') + '" data-id="' + escAttr(m ? m.id : '') + '">' +
+      '<div class="ring"><div class="ring-inner"><div class="placeholder" style="background:var(--gray-avatar);display:flex;align-items:center;justify-content:center;color:#fff;font-size:20px;font-weight:600;">' + esc(initial) + '</div></div>' +
+      '<div class="add-badge"><svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg></div></div>' +
+      '<span class="name">' + esc(name) + '</span></div>';
+  }
+
+  function renderAvatarSwitcher() {
+    const box = $('avatar-switcher');
+    if (!box) return;
+    const masks = maskData.masks || [];
+    if (!masks.length) {
+      box.innerHTML = avatarItemHtml({ id: '', name: '添加' }, false);
+    } else {
+      box.innerHTML = masks.map(function (m) {
+        return avatarItemHtml(m, String(m.id) === String(maskData.currentMaskId));
+      }).join('');
+    }
+
+    masks.forEach(function (m) {
+      getMaskAvatar(m.id).then(function (url) {
+        if (!url) return;
+        const item = box.querySelector('.avatar-item[data-id="' + String(m.id).replace(/"/g, '\\"') + '"] .ring-inner');
+        if (item) item.innerHTML = '<img src="' + escAttr(url) + '" alt="">';
+      });
+    });
+
+    box.querySelectorAll('.avatar-item').forEach(function (item) {
+      item.addEventListener('click', function (e) {
+        if (e.target.closest('.add-badge')) {
+          e.stopPropagation();
+          openPage('mask.html', '面具', 'chat');
+          return;
+        }
+        const id = item.dataset.id;
+        if (!id) { openPage('mask.html', '面具', 'chat'); return; }
+        setCurrentMask(id);
+      });
+    });
+  }
+
+  function setCurrentMask(id) {
+    if (String(maskData.currentMaskId) === String(id)) return;
+    maskData.currentMaskId = id;
+    currentUser = resolveCurrentUser();
+    saveMaskData();
+    post({ type: 'currentMaskChanged', maskId: id, data: maskData });
+    post({ type: 'homeDataUpdated', data: maskData });
+    renderAvatarSwitcher();
+    loadFriends().then(function () {
+      if (currentTab === 'friends') renderCurrent();
+      renderProfile();
+    });
+  }
+
+  function renderProfile() {
+    const av = $('profile-avatar');
+    const nameEl = $('profile-name');
+    const bioEl = $('profile-bio');
+    if (!av || !nameEl || !bioEl) return;
+
+    const name = currentUser ? (currentUser.name || '未命名') : '选择面具';
+    const bio = currentUser ? (currentUser.setting || '这个人很神秘，什么都没有写。') : '先选择一个面具，再开始聊天。';
+
+    if (document.activeElement !== nameEl) nameEl.textContent = name;
+    if (document.activeElement !== bioEl) bioEl.textContent = bio;
+
+    av.style.backgroundImage = '';
+    av.textContent = String(name).charAt(0).toUpperCase();
+    if (currentUser) {
+      getMaskAvatar(currentUser.id).then(function (url) {
+        if (!url || !currentUser) return;
+        av.style.backgroundImage = 'url("' + String(url).replace(/"/g, '\\"') + '")';
+        av.textContent = '';
+      });
+    }
+
+    const posts = $('stat-posts');
+    const followers = $('stat-followers');
+    const following = $('stat-following');
+    if (posts) posts.textContent = String(friendsData.length);
+    if (followers) followers.textContent = String(groupsData.length);
+    if (following) following.textContent = String((maskData.masks || []).length);
+  }
+
+  /* ================= 左滑 / 点击 ================= */
+  function bindSwipe(container) {
+    let startX = 0;
+    let currentItem = null;
+    let isSwiping = false;
+
+    container.querySelectorAll('.chat-item').forEach(function (item) {
+      const inner = item.querySelector('.chat-item-inner');
+
+      item.addEventListener('touchstart', function (e) {
+        container.querySelectorAll('.chat-item.swiped').forEach(function (el) {
+          if (el !== item) el.classList.remove('swiped');
+        });
+        startX = e.touches[0].clientX;
+        currentItem = item;
+        isSwiping = true;
+      }, { passive: true });
+
+      item.addEventListener('touchmove', function (e) {
+        if (!isSwiping || !currentItem) return;
+        const dx = e.touches[0].clientX - startX;
+        if (dx < -10) {
+          const offset = Math.max(dx, -140);
+          inner.style.transform = 'translateX(' + offset + 'px)';
+          inner.style.transition = 'none';
+        } else if (dx > 10 && item.classList.contains('swiped')) {
+          const offset = Math.min(dx - 140, 0);
+          inner.style.transform = 'translateX(' + offset + 'px)';
+          inner.style.transition = 'none';
+        }
+      }, { passive: true });
+
+      item.addEventListener('touchend', function (e) {
+        if (!isSwiping || !currentItem) return;
+        inner.style.transition = '';
+        const dx = e.changedTouches[0].clientX - startX;
+        if (dx < -60) {
+          item.classList.add('swiped');
+          inner.style.transform = '';
+        } else {
+          item.classList.remove('swiped');
+          inner.style.transform = '';
+        }
+        isSwiping = false;
+        currentItem = null;
+      });
+
+      item.querySelectorAll('.swipe-actions button').forEach(function (btn) {
+        btn.addEventListener('click', function (e) {
+          e.stopPropagation();
+          const action = btn.dataset.action;
+          const id = item.dataset.id;
+          const type = item.dataset.type;
+          if (action === 'pin') togglePin(id, type);
+          else if (action === 'delete') deleteItem(id, type);
+        });
+      });
+    });
+  }
+
+  function bindOpen(container) {
+    container.querySelectorAll('.chat-item-inner').forEach(function (inner) {
+      inner.addEventListener('click', function () {
+        const item = inner.closest('.chat-item');
+        if (!item) return;
+        if (item.classList.contains('swiped')) {
+          item.classList.remove('swiped');
+          return;
+        }
+        const id = item.dataset.id;
+        const name = item.dataset.name || '';
+        const avatar = item.dataset.avatar || '';
+        if (item.dataset.type === 'group') {
+          if (!post({ type: 'openGroupChat', groupId: id, groupName: name })) {
+            location.href = 'groups.html?group=' + encodeURIComponent(id);
+          }
+        } else {
+          if (!post({ type: 'openChat', chatId: id, chatName: name, chatAvatar: avatar })) {
+            location.href = 'chat_inner.html?chat=' + encodeURIComponent(id) + '&name=' + encodeURIComponent(name);
+          }
+        }
+      });
+    });
+  }
+
+  function togglePin(id, type) {
+    const list = type === 'group' ? groupsData : friendsData;
+    const item = list.find(function (x) { return String(x.id) === String(id); });
+    if (item) item.pinned = !item.pinned;
+    const ids = new Set(getPinnedIds());
+    if (item && item.pinned) ids.add(String(id)); else ids.delete(String(id));
+    savePinnedIds(Array.from(ids));
+    renderCurrent();
+  }
+
+  async function deleteItem(id, type) {
+    if (type === 'group') {
+      if (!confirm('删除该群聊？聊天记录也会一并删除。')) return;
+      try {
+        const raw = JSON.parse(localStorage.getItem(GROUP_KEY) || '{}');
+        raw.groups = (raw.groups || []).filter(function (g) { return String(g.id) !== String(id); });
+        localStorage.setItem(GROUP_KEY, JSON.stringify(raw));
+      } catch (e) {}
+      try { localStorage.removeItem(GROUP_DATA_PREFIX + id); } catch (e) {}
+      try { localStorage.removeItem(GROUP_MSG_PREFIX + id); } catch (e) {}
+      savePinnedIds(getPinnedIds().filter(function (x) { return String(x) !== String(id); }));
+      loadGroups();
+      renderCurrent();
+      renderProfile();
+      post({ type: 'groupsDataUpdated', groupId: id });
+      return;
+    }
+
+    if (!confirm('删除该角色？其聊天记录也会一并删除。')) return;
+    await dbDelete('nano_characters_db', 1, 'characters', id, [{ name: 'characters', keyPath: 'id' }]);
+    try { localStorage.removeItem('chat_messages_' + id); } catch (e) {}
+    try { localStorage.removeItem('chat_setting_remark_' + id); } catch (e) {}
+    if (window.localforage) {
+      try { localforage.removeItem('chat_messages_' + id).catch(function () {}); } catch (e) {}
+    }
+    savePinnedIds(getPinnedIds().filter(function (x) { return String(x) !== String(id); }));
+    await loadFriends();
+    renderCurrent();
+    renderProfile();
+    post({ type: 'contactsDataUpdated' });
+  }
+
+  /* ================= 建群 ================= */
+  async function openGroupModal() {
+    const mask = $('groupMask');
+    const input = $('groupNameInput');
+    const box = $('groupMembers');
+    if (!mask || !box) return;
+    input.value = '';
+    box.innerHTML = '<div class="group-empty">正在读取角色…</div>';
+    mask.classList.add('show');
+
+    allChars = await getCharacters();
+    const list = currentUser ? allChars.filter(function (c) {
+      return String(c.bindUser) === String(currentUser.id);
+    }) : [];
+
+    if (!list.length) {
+      box.innerHTML = '<div class="group-empty">当前人设还没有绑定角色<br>先去「角色库」添加吧</div>';
+      return;
+    }
+
+    box.innerHTML = list.map(function (c) {
+      const name = c.name || '未命名';
+      const av = c.avatar
+        ? ' style="background-image:url(\'' + String(c.avatar).replace(/'/g, '%27').replace(/"/g, '%22') + '\')"'
+        : '';
+      return '<label class="group-member-row">' +
+        '<span class="group-member-avatar"' + av + '>' + (c.avatar ? '' : esc(name.charAt(0))) + '</span>' +
+        '<span class="group-member-name">' + esc(name) + '</span>' +
+        '<input type="checkbox" value="' + escAttr(c.id) + '">' +
+      '</label>';
+    }).join('');
+  }
+
+  function closeGroupModal() {
+    const mask = $('groupMask');
+    if (mask) mask.classList.remove('show');
+  }
+
+  async function createGroup() {
+    const name = ($('groupNameInput').value || '').trim() || '群聊';
+    const box = $('groupMembers');
+    const selected = Array.from(box.querySelectorAll('input[type="checkbox"]:checked')).map(function (i) { return String(i.value); });
+    if (!selected.length) {
+      alert('请至少添加一个成员');
+      return;
+    }
+
+    const chars = allChars.length ? allChars : await getCharacters();
+    const memberNames = selected.map(function (id) {
+      const c = chars.find(function (ch) { return String(ch.id) === String(id); });
+      return c ? (c.name || id) : id;
+    });
+    const current = currentUser;
+    const group = {
+      id: 'g' + Date.now(),
+      name: name,
+      avatar: '',
+      members: selected,
+      memberNames: memberNames,
+      createdBy: current ? current.id : null,
+      createdByName: current ? current.name : '未知',
+      createdAt: Date.now()
+    };
+
+    try {
+      const raw = JSON.parse(localStorage.getItem(GROUP_KEY) || '{}');
+      raw.groups = Array.isArray(raw.groups) ? raw.groups : [];
+      raw.groups.push(group);
+      localStorage.setItem(GROUP_KEY, JSON.stringify(raw));
+    } catch (e) {}
+
+    try {
+      const memberObjects = selected.map(function (id, i) {
+        const c = chars.find(function (ch) { return String(ch.id) === String(id); }) || {};
+        const nm = c.name || id;
+        return {
+          id: id,
+          name: nm,
+          nick: nm,
+          initial: String(nm).charAt(0),
+          bg: MEMBER_BG[i % MEMBER_BG.length],
+          avatar: c.avatar || '',
+          role: '成员',
+          title: '',
+          level: 1,
+          msgCount: 0
+        };
+      });
+      localStorage.setItem(GROUP_DATA_PREFIX + group.id, JSON.stringify({
+        name: name,
+        notice: '',
+        avatar: '',
+        ownerId: 'me',
+        members: memberObjects
+      }));
+    } catch (e) {}
+
+    closeGroupModal();
+    currentTab = 'groups';
+    document.querySelectorAll('.tabs .tab').forEach(function (t) {
+      t.classList.toggle('active', t.dataset.tab === 'groups');
+    });
+    const lf = $('list-friends');
+    const lg = $('list-groups');
+    if (lf) lf.style.display = 'none';
+    if (lg) lg.style.display = 'block';
+    loadGroups();
+    renderCurrent();
+    renderProfile();
+    post({ type: 'groupChatCreated', group: group });
+    post({ type: 'groupsDataUpdated', groupId: group.id });
+  }
+
+  /* ================= 页面切换 ================= */
+  function activatePage(page) {
+    activePage = page;
+    document.querySelectorAll('.dock-btn').forEach(function (b) {
+      b.classList.toggle('active', b.dataset.page === page);
+    });
+    document.querySelectorAll('.page').forEach(function (p) {
+      p.classList.toggle('active', p.id === 'page-' + page);
+    });
+    if (page === 'profile') renderProfile();
+  }
+
+  function bindStatic() {
+    const back = $('btn-back');
+    if (back) {
+      back.addEventListener('click', function () {
+        if (!post({ type: 'closeFullscreen' })) {
+          try { history.back(); } catch (e) {}
+        }
+      });
+    }
+
+    const meet = $('btn-meet');
+    if (meet) {
+      meet.addEventListener('click', function () { openPage('meet.html', 'Meet', 'chat'); });
+    }
+
+    const newGroup = $('btn-new-group');
+    if (newGroup) newGroup.addEventListener('click', openGroupModal);
+
+    const groupClose = $('groupClose');
+    if (groupClose) groupClose.addEventListener('click', closeGroupModal);
+    const groupMask = $('groupMask');
+    if (groupMask) {
+      groupMask.addEventListener('click', function (e) {
+        if (e.target === groupMask) closeGroupModal();
+      });
+    }
+    const groupCreate = $('groupCreateBtn');
+    if (groupCreate) groupCreate.addEventListener('click', createGroup);
+
+    document.querySelectorAll('.tabs .tab').forEach(function (tab) {
+      tab.addEventListener('click', function () {
+        document.querySelectorAll('.tabs .tab').forEach(function (t) { t.classList.remove('active'); });
+        tab.classList.add('active');
+        currentTab = tab.dataset.tab;
+        const lf = $('list-friends');
+        const lg = $('list-groups');
+        if (lf) lf.style.display = currentTab === 'friends' ? 'block' : 'none';
+        if (lg) lg.style.display = currentTab === 'groups' ? 'block' : 'none';
+        renderCurrent();
+      });
+    });
+
+    const search = $('search-input');
+    if (search) {
+      search.addEventListener('input', function (e) {
+        searchKw = e.target.value.trim();
+        renderCurrent();
+      });
+    }
+
+    document.querySelectorAll('.dock-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        const page = btn.dataset.page;
+        if (page === 'contacts') {
+          openPage('character.html', '角色库', 'chat');
+          return;
+        }
+        if (page === 'moments') {
+          openPage('moments.html', '朋友圈', 'chat');
+          return;
+        }
+        activatePage(page);
+      });
+    });
+
+    document.querySelectorAll('.func-card').forEach(function (card) {
+      card.addEventListener('click', function () {
+        const page = card.dataset.open;
+        if (!page) return;
+        const titleEl = card.querySelector('.func-title');
+        setReturnPage('profile');
+        openPage(page + '.html', titleEl ? titleEl.textContent : '', 'profile');
+      });
+    });
+
+    const editBtn = $('btn-edit');
+    const nameEl = $('profile-name');
+    const bioEl = $('profile-bio');
+    if (editBtn && nameEl) {
+      editBtn.addEventListener('click', function () {
+        if (!currentUser) { openPage('mask.html', '面具', 'profile'); return; }
+        nameEl.focus();
+        try { document.execCommand('selectAll', false, null); } catch (e) {}
+      });
+    }
+    if (nameEl) {
+      nameEl.addEventListener('blur', function () {
+        if (!currentUser) return;
+        let v = nameEl.textContent.trim();
+        if (!v) { v = '未命名'; nameEl.textContent = v; }
+        currentUser.name = v;
+        const m = (maskData.masks || []).find(function (x) { return String(x.id) === String(currentUser.id); });
+        if (m) m.name = v;
+        saveMaskData();
+        post({ type: 'currentMaskChanged', maskId: currentUser.id, data: maskData });
+        post({ type: 'homeDataUpdated', data: maskData });
+        renderAvatarSwitcher();
+      });
+      nameEl.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); nameEl.blur(); }
+      });
+    }
+    if (bioEl) {
+      bioEl.addEventListener('blur', function () {
+        if (!currentUser) return;
+        const v = bioEl.textContent.trim();
+        currentUser.setting = v;
+        const m = (maskData.masks || []).find(function (x) { return String(x.id) === String(currentUser.id); });
+        if (m) m.setting = v;
+        saveMaskData();
+        post({ type: 'currentMaskChanged', maskId: currentUser.id, data: maskData });
+        post({ type: 'homeDataUpdated', data: maskData });
+      });
+      bioEl.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); bioEl.blur(); }
+      });
+    }
+
+    document.addEventListener('click', function (e) {
+      const el = e.target.closest('[data-empty-action]');
+      if (!el) return;
+      const action = el.dataset.emptyAction;
+      if (action === 'group') openGroupModal();
+      else if (action === 'mask') openPage('mask.html', '面具', 'chat');
+      else openPage('character.html', '角色库', 'chat');
+    });
+
+    window.addEventListener('message', function (e) {
+      const d = e.data;
+      if (!d || !d.type) return;
+      if (d.type === 'currentMaskChanged' || d.type === 'homeDataUpdated') {
+        if (d.data && Array.isArray(d.data.masks)) {
+          maskData = d.data;
+        } else {
+          loadMaskData().then(function (v) { maskData = v; currentUser = resolveCurrentUser(); renderAvatarSwitcher(); renderProfile(); });
+          return;
+        }
+        currentUser = resolveCurrentUser();
+        renderAvatarSwitcher();
+        loadFriends().then(function () { if (currentTab === 'friends') renderCurrent(); renderProfile(); });
+      }
+      if (d.type === 'groupsDataUpdated' || d.type === 'groupChatCreated') {
+        loadGroups();
+        if (currentTab === 'groups') renderCurrent();
+        renderProfile();
+      }
+      if (d.type === 'contactsDataUpdated' || d.type === 'nanoCharUpdated') {
+        loadFriends().then(function () { if (currentTab === 'friends') renderCurrent(); renderProfile(); });
+      }
+    });
+
+    window.addEventListener('storage', function (e) {
+      if (!e.key) return;
+      if (e.key === GROUP_KEY || e.key.indexOf(GROUP_MSG_PREFIX) === 0) {
+        loadGroups();
+        if (currentTab === 'groups') renderCurrent();
+      }
+      if (e.key === HOME_KEY) {
+        maskData = loadMaskLocal() || maskData;
+        currentUser = resolveCurrentUser();
+        renderAvatarSwitcher();
+        loadFriends().then(function () { if (currentTab === 'friends') renderCurrent(); renderProfile(); });
+      }
+    });
+  }
+
+  async function loadAll() {
+    try { maskData = await loadMaskData(); } catch (e) { maskData = { masks: [], currentMaskId: null }; }
+    currentUser = resolveCurrentUser();
+    await loadFriends();
+    loadGroups();
+    renderAvatarSwitcher();
+    renderCurrent();
+    renderProfile();
+  }
+
+  function init() {
+    bindStatic();
+    loadAll().then(function () {
+      activatePage(takeReturnPage());
+    }).catch(function () {
+      activatePage('chat');
+    });
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
+
+  </script>
 </body>
 </html>

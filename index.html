@@ -892,6 +892,8 @@
         .home-shell iframe { width: 100%; height: 100%; border: 0; display: block; background: #fff; }
         .home-shell.pre-splash { visibility: hidden; }
         .hidden-shell { display: none !important; }
+        /* 全屏页面打开时隐藏桌面悬浮助手球，避免压在聊天/功能页上 */
+        body.nano-overlay-open .ab-ball { display: none !important; }
     </style>
     <!-- 开场动画样式结束 -->
 
@@ -1710,6 +1712,7 @@ setTimeout(function () {
             }
             overlay.classList.add('active');
             overlayActive = true;
+            try { document.body.classList.add('nano-overlay-open'); } catch (e) {}
             currentOverlaySource = source || 'main';
             topBar.classList.add('hidden');
             bottomBar.classList.add('hidden');
@@ -1965,6 +1968,7 @@ setTimeout(function () {
                 topBar.classList.remove('hidden');
                 appContent.style.paddingTop = '0';
             }
+            try { document.body.classList.remove('nano-overlay-open'); } catch (e) {}
         }
 
         // ===== 冷启动：从系统通知点进来（sw.js 把目标放在 ?open= 上）=====
