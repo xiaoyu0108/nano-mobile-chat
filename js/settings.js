@@ -50,6 +50,8 @@ const APP_ICONS = {
   var IDB_PRESETS = 'nano_desktop_presets';
   var IDB_LAYOUT = 'nano_widget_layout_v1';
   var IDB_IMGS = 'nano_widget_images_v1';
+  var LS_BG = 'nano_desktop_bg_ls';
+  var LS_CUSTOM = 'nano_app_custom_ls';
   var CUSTOM_SOUND_KEY = 'nano_custom_sound';
   var toastTimer = null;
   var bg = null;
@@ -93,6 +95,27 @@ const APP_ICONS = {
 
   function notifyHome(layout) {
     post({ type: 'nanoDesktopChanged', layout: !!layout });
+  }
+
+  function requestPersistStorage() {
+    try {
+      if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function () {});
+    } catch (e) {}
+  }
+
+  function saveBgBoth(next) {
+    var p = next ? NanoIDB.set(IDB_BG, next) : NanoIDB.del(IDB_BG);
+    try {
+      if (next) localStorage.setItem(LS_BG, JSON.stringify(next));
+      else localStorage.removeItem(LS_BG);
+    } catch (e) {}
+    return p;
+  }
+
+  function saveCustomBoth(next) {
+    var p = NanoIDB.set(IDB_CUSTOM, next || {});
+    try { localStorage.setItem(LS_CUSTOM, JSON.stringify(next || {})); } catch (e) {}
+    return p;
   }
 
   var sheetBack = null;
@@ -236,6 +259,19 @@ const APP_ICONS = {
     ]).then(function (r) {
       bg = r[0] || null;
       custom = r[1] && typeof r[1] === 'object' ? r[1] : {};
+      if (!bg) {
+        try { bg = JSON.parse(localStorage.getItem(LS_BG) || 'null'); } catch (e) {}
+      }
+      if (!r[1] || !Object.keys(custom).length) {
+        try {
+          var localCustom = JSON.parse(localStorage.getItem(LS_CUSTOM) || 'null');
+          if (localCustom && typeof localCustom === 'object' && Object.keys(localCustom).length) {
+            custom = localCustom;
+            try { NanoIDB.set(IDB_CUSTOM, custom); } catch (e) {}
+          }
+        } catch (e) {}
+      }
+      try { if (bg && !r[0]) NanoIDB.set(IDB_BG, bg); } catch (e) {}
       presets = Array.isArray(r[2]) ? r[2] : [];
       var data = r[3];
       maskData = data && Array.isArray(data.masks) ? data : { masks: [], currentMaskId: null };
@@ -284,7 +320,14 @@ const APP_ICONS = {
     if (bp) {
       bp.style.width = (settings.size || 52) + 'px';
       bp.style.height = (settings.size || 52) + 'px';
+      bp.innerHTML = settings.image
+        ? '<img src="' + esc(settings.image) + '" alt="">'
+        : '<i class="ball-core"></i>';
     }
+    var bs = $('ballStyleValue');
+    if (bs) bs.textContent = settings.image ? '自定义图片' : '经典样式';
+    var brs = $('ballResetStyle');
+    if (brs) brs.style.display = settings.image ? '' : 'none';
     refreshStorage();
     refreshNotify();
   }
@@ -398,8 +441,7 @@ const APP_ICONS = {
   function setBg(next) {
     bg = next;
     renderValues();
-    var p = next ? NanoIDB.set(IDB_BG, next) : NanoIDB.del(IDB_BG);
-    Promise.resolve(p).then(function () { notifyHome(false); });
+    Promise.resolve(saveBgBoth(next)).then(function () { notifyHome(false); });
   }
 
   function openBgSheet() {
@@ -465,7 +507,7 @@ const APP_ICONS = {
       if (v !== a.name) patch.name = v;
       if (pendingIcon) patch.icon = pendingIcon;
       if (Object.keys(patch).length) custom[id] = patch; else delete custom[id];
-      NanoIDB.set(IDB_CUSTOM, custom).then(function () { notifyHome(false); });
+      saveCustomBoth(custom).then(function () { notifyHome(false); });
       renderValues();
       openAppsSheet();
       toast('已保存');
@@ -473,7 +515,7 @@ const APP_ICONS = {
     var reset = $('resetApp');
     if (reset) reset.addEventListener('click', function () {
       delete custom[id];
-      NanoIDB.set(IDB_CUSTOM, custom).then(function () { notifyHome(false); });
+      saveCustomBoth(custom).then(function () { notifyHome(false); });
       renderValues();
       openAppsSheet();
       toast('已恢复默认');
@@ -584,8 +626,8 @@ const APP_ICONS = {
     if (!p) return;
     bg = p.bg || null;
     custom = p.apps && typeof p.apps === 'object' ? p.apps : {};
-    if (bg) await NanoIDB.set(IDB_BG, bg); else await NanoIDB.del(IDB_BG);
-    await NanoIDB.set(IDB_CUSTOM, custom);
+    await saveBgBoth(bg);
+    await saveCustomBoth(custom);
     if (p.layout) await NanoIDB.set(IDB_LAYOUT, p.layout);
     else await NanoIDB.del(IDB_LAYOUT);
     if (p.imgs) await NanoIDB.set(IDB_IMGS, p.imgs);
@@ -652,8 +694,8 @@ const APP_ICONS = {
         bg = d.bg || null;
         custom = d.apps && typeof d.apps === 'object' ? d.apps : {};
         var jobs = [];
-        jobs.push(bg ? NanoIDB.set(IDB_BG, bg) : NanoIDB.del(IDB_BG));
-        jobs.push(NanoIDB.set(IDB_CUSTOM, custom));
+        jobs.push(saveBgBoth(bg));
+        jobs.push(saveCustomBoth(custom));
         jobs.push(d.layout ? NanoIDB.set(IDB_LAYOUT, d.layout) : NanoIDB.del(IDB_LAYOUT));
         jobs.push(d.imgs ? NanoIDB.set(IDB_IMGS, d.imgs) : NanoIDB.del(IDB_IMGS));
         if (Array.isArray(d.presets) && d.presets.length) {
@@ -677,7 +719,12 @@ const APP_ICONS = {
     bg = null;
     custom = {};
     await Promise.all([NanoIDB.del(IDB_BG), NanoIDB.del(IDB_CUSTOM), NanoIDB.del(IDB_LAYOUT), NanoIDB.del(IDB_IMGS)]);
-    try { localStorage.removeItem('mpLayout4'); localStorage.removeItem('mpImgs3'); } catch (e) {}
+    try {
+      localStorage.removeItem('mpLayout4');
+      localStorage.removeItem('mpImgs3');
+      localStorage.removeItem(LS_BG);
+      localStorage.removeItem(LS_CUSTOM);
+    } catch (e) {}
     renderValues();
     notifyHome(true);
     toast('已还原默认桌面');
@@ -1053,6 +1100,29 @@ const APP_ICONS = {
       writeBall(s);
       toast('悬浮球位置已重置');
     });
+    on('ballStyleRow', 'click', function () {
+      var f = $('ballFile');
+      if (f) f.click();
+    });
+    on('ballFile', 'change', function (e) {
+      var f = e.target.files && e.target.files[0];
+      if (!f) return;
+      resizeImage(f, 240, 'image/png').then(function (url) {
+        var s = readBall();
+        s.image = url;
+        writeBall(s);
+        renderValues();
+        toast('悬浮球样式已更新');
+      }).catch(function () { toast('图片处理失败'); });
+      e.target.value = '';
+    });
+    on('ballResetStyle', 'click', function () {
+      var s = readBall();
+      delete s.image;
+      writeBall(s);
+      renderValues();
+      toast('已恢复经典样式');
+    });
 
     document.querySelectorAll('[data-open]').forEach(function (el) {
       el.addEventListener('click', function () {
@@ -1060,16 +1130,42 @@ const APP_ICONS = {
       });
     });
 
-    on('interfaceSettings', 'click', function () { openPage('beautify.html', '美化'); });
     on('assistantSettings', 'click', function () { openPage('nano-setting.html', '纳米设置'); });
-    on('otherSettings', 'click', function () { openPage('other.html', '其他'); });
     on('backupPage', 'click', function () { openPage('backup.html', '备份与恢复'); });
   }
+
+  /* ================= 返回：设置子页回上一页，而不是直接回主页 ================= */
+  function settingsBack() {
+    var page = document.body && document.body.dataset ? document.body.dataset.page : '';
+    if (page && page !== 'settings') {
+      // 设置子页永远先回设置首页，不把整个浮层关掉回桌面
+      try { location.href = 'settings.html'; } catch (e) {}
+      return true;
+    }
+    return false;
+  }
+
+  window.__nanoInternalBack = function () {
+    return settingsBack();
+  };
+
+  window.addEventListener('message', function (e) {
+    var d = e && e.data;
+    if (!d || d.type !== 'nanoRequestBack') return;
+    var handled = false;
+    try { handled = settingsBack(); } catch (err) {}
+    try {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({ type: handled ? 'nanoBackHandled' : 'nanoBackUnhandled' }, '*');
+      }
+    } catch (err) {}
+  });
 
   function init() {
     bind();
     initInterface();
     initAssistant();
+    requestPersistStorage();
     loadAll().then(function () {
       renderValues();
     });

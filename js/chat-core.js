@@ -1017,6 +1017,13 @@
             prompt += '\n' + window.NanoHoliday.buildVagueTimeBlock(new Date()) + '\n';
         }
 
+        // 日程：让角色知道自己此刻真实在做什么，并允许聊天改变计划时回写日程
+        try {
+            const __schedBlock = window.NanoScheduleBridge && window.NanoScheduleBridge.promptBlockSync
+                ? window.NanoScheduleBridge.promptBlockSync() : '';
+            if (__schedBlock) prompt += '\n' + __schedBlock + '\n';
+        } catch (e) {}
+
         if (wbBack) prompt += wbBack + '\n';
 
         // 语音/表情包频率兜底：最近几轮没发就本轮强制提醒
@@ -1274,7 +1281,13 @@
                             coupleKind: msg.cardData.coupleKind,
                             coupleSummary: msg.cardData.coupleSummary,
                             coupleDetail: msg.cardData.coupleDetail,
-                            shareId: msg.cardData.shareId
+                            shareId: msg.cardData.shareId,
+                            eventId: msg.cardData.eventId,
+                            date: msg.cardData.date,
+                            start: msg.cardData.start,
+                            end: msg.cardData.end,
+                            mood: msg.cardData.mood,
+                            img: (typeof msg.cardData.img === 'string' && msg.cardData.img.indexOf('data:') !== 0) ? msg.cardData.img : null
                         } : null,
                         voiceData: msg.voiceData ? { duration: msg.voiceData.duration } : null,
                         transcript: msg.transcript || null,
@@ -1307,7 +1320,7 @@
                             isImage: msg.isImage || false,
                             isCard: msg.isCard || false,
                             isVoice: msg.isVoice || false,
-                            cardData: msg.cardData ? { cardType: msg.cardData.cardType, missed: msg.cardData.missed, claimed: msg.cardData.claimed, status: msg.cardData.status, response: msg.cardData.response, amount: msg.cardData.amount, issuer: msg.cardData.issuer, holder: msg.cardData.holder, familyId: msg.cardData.familyId, limit: msg.cardData.limit, food: msg.cardData.food, shop: msg.cardData.shop, price: msg.cardData.price, note: msg.cardData.note, place: msg.cardData.place, lat: msg.cardData.lat, lng: msg.cardData.lng, distance: msg.cardData.distance, eta: msg.cardData.eta, paidBy: msg.cardData.paidBy, action: msg.cardData.action, altName: msg.cardData.altName, altSetting: msg.cardData.altSetting, altFirst: msg.cardData.altFirst, title: msg.cardData.title, sub: msg.cardData.sub, footer: msg.cardData.footer, storyId: msg.cardData.storyId, excerpt: msg.cardData.excerpt, content: msg.cardData.content, genres: msg.cardData.genres, chapters: msg.cardData.chapters, ending: msg.cardData.ending, callId: msg.cardData.callId, video: msg.cardData.video, duration: msg.cardData.duration, direction: msg.cardData.direction, toName: msg.cardData.toName, systemNotice: msg.cardData.systemNotice, coupleKind: msg.cardData.coupleKind, coupleSummary: msg.cardData.coupleSummary, coupleDetail: msg.cardData.coupleDetail, shareId: msg.cardData.shareId } : null,
+                            cardData: msg.cardData ? { cardType: msg.cardData.cardType, missed: msg.cardData.missed, claimed: msg.cardData.claimed, status: msg.cardData.status, response: msg.cardData.response, amount: msg.cardData.amount, issuer: msg.cardData.issuer, holder: msg.cardData.holder, familyId: msg.cardData.familyId, limit: msg.cardData.limit, food: msg.cardData.food, shop: msg.cardData.shop, price: msg.cardData.price, note: msg.cardData.note, place: msg.cardData.place, lat: msg.cardData.lat, lng: msg.cardData.lng, distance: msg.cardData.distance, eta: msg.cardData.eta, paidBy: msg.cardData.paidBy, action: msg.cardData.action, altName: msg.cardData.altName, altSetting: msg.cardData.altSetting, altFirst: msg.cardData.altFirst, title: msg.cardData.title, sub: msg.cardData.sub, footer: msg.cardData.footer, storyId: msg.cardData.storyId, excerpt: msg.cardData.excerpt, content: msg.cardData.content, genres: msg.cardData.genres, chapters: msg.cardData.chapters, ending: msg.cardData.ending, callId: msg.cardData.callId, video: msg.cardData.video, duration: msg.cardData.duration, direction: msg.cardData.direction, toName: msg.cardData.toName, systemNotice: msg.cardData.systemNotice, coupleKind: msg.cardData.coupleKind, coupleSummary: msg.cardData.coupleSummary, coupleDetail: msg.cardData.coupleDetail, shareId: msg.cardData.shareId, eventId: msg.cardData.eventId, date: msg.cardData.date, start: msg.cardData.start, end: msg.cardData.end, mood: msg.cardData.mood, img: (typeof msg.cardData.img === 'string' && msg.cardData.img.indexOf('data:') !== 0) ? msg.cardData.img : null } : null,
                             // 兜底副本也要保留「表情包」标记，否则 localStorage 满时聊天列表里表情包会变成「图片」
                             imageData: msg.imageData ? { textImage: msg.imageData.textImage, desc: msg.imageData.desc, emojiName: msg.imageData.emojiName, isEmoji: msg.imageData.isEmoji || false } : null,
                             think: msg.think || null,
@@ -2223,7 +2236,21 @@
     }
 
     // ===== 构建卡片 HTML =====
-    function buildCardHTML(cardData) {
+    function buildCardHTMLLegacy(cardData) {
+        if (cardData.cardType === 'scheduleReport') {
+            const clean = function (v) { return String(v == null ? '' : v).replace(/[<>&"]/g, ''); };
+            const imgSrc = String(cardData.img || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+            const img = imgSrc
+                ? '<img class="schedule-card-img" src="' + imgSrc + '" alt="" style="width:100%;max-height:190px;object-fit:cover;border-radius:12px;display:block;margin-bottom:9px;">'
+                : '';
+            const sub = [clean(cardData.start), clean(cardData.place)].filter(Boolean).join(' · ');
+            const note = clean(cardData.note || cardData.title || '');
+            return '<div class="card-main" style="display:block;">' + img +
+                '<div style="font-size:12px;color:#8e8e93;margin-bottom:4px;">日程报备' + (sub ? ' · ' + sub : '') + '</div>' +
+                '<div class="card-title" style="font-size:15px;">' + clean(cardData.title || '刚刚的记录') + '</div>' +
+                (note ? '<div class="card-sub" style="margin-top:5px;line-height:1.55;">' + note + '</div>' : '') +
+                '</div>';
+        }
         if (cardData.cardType === 'file') {
             const name = String(cardData.name || '文件').replace(/[<>&]/g, '');
             const size = String(cardData.size || '').replace(/[<>&]/g, '');
@@ -2475,6 +2502,24 @@
         return '';
     }
 
+    // 初始卡片统一版式：通用模板（深色状态栏 + 金额/图标主区 + 两列信息 + 留言 + 按钮）
+    // 旧版 HTML 保留为兜底，万一通用构建器未加载也不会白屏。
+    function buildCardHTML(cardData, type, time) {
+        try {
+            if (window.NanoCardUI && window.NanoCardUI.build) {
+                return window.NanoCardUI.build(cardData, {
+                    side: type === 'right' ? 'right' : 'left',
+                    time: time || (cardData && cardData.time) || '刚刚',
+                    meName: currentUserName || '我',
+                    otherName: displayName || 'TA'
+                });
+            }
+        } catch (err) {
+            try { console.warn('[card] 通用卡片构建失败，使用旧版：', err); } catch (e) {}
+        }
+        return buildCardHTMLLegacy(cardData);
+    }
+
     // ===== 创建消息行 =====
     function buildRecallContent(text, isCard, cardData, isVoice, transcript, isImage, imageData) {
         if (isImage) {
@@ -2644,7 +2689,8 @@
                 ((cardData.status === 'received' || cardData.status === 'returned' || cardData.status === 'accepted' || cardData.status === 'rejected') ? ' ' + cardData.status : '') +
                 (cardData.missed ? ' missed' : '');
             card.className = 'bubble-card ' + type + ' ' + (cardData.cardType || '') + extraClass;
-            try { card.innerHTML = buildCardHTML(cardData); } catch (err) { card.innerHTML = ''; }
+            if (cardData.cardType === 'call' && cardData.callId) card.dataset.callid = cardData.callId;
+            try { card.innerHTML = buildCardHTML(cardData, type, time); } catch (err) { card.innerHTML = ''; }
             content.appendChild(card);
         } else if (isVoice) {
             const vb = createVoiceBubble(type, voiceData?.duration || 3, voiceData?.unread || false, transcript,
@@ -3089,6 +3135,19 @@
         if (rerollBtn) rerollBtn.style.display = (ivCurrentPrompt && ivList.length <= 1) ? 'flex' : 'none';
         const dlBtn = document.getElementById('ivDownload');
         if (dlBtn) dlBtn.style.display = 'flex';
+        let cap = document.getElementById('ivCaption');
+        if (opts.caption) {
+            if (!cap) {
+                cap = document.createElement('div');
+                cap.id = 'ivCaption';
+                cap.style.cssText = 'position:absolute;left:50%;bottom:calc(70px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);max-width:86vw;padding:9px 14px;border-radius:14px;background:rgba(255,255,255,.9);color:#1c1c1e;font-size:13px;line-height:1.55;text-align:center;box-shadow:0 6px 22px rgba(0,0,0,.2);';
+                viewer.appendChild(cap);
+            }
+            cap.textContent = String(opts.caption);
+            cap.style.display = 'block';
+        } else if (cap) {
+            cap.style.display = 'none';
+        }
         viewer.classList.add('active');
     }
     function closeImageViewer() {
@@ -6704,6 +6763,8 @@
             // 每次回复前强制从 IndexedDB 重读一次表情包数据：这样无论用户何时、以何种方式
             // （链接 / 上传图片 / 纳米助手 / 其它页面）新加的表情包，角色这一轮都能读到并使用。
             try { await getEmojiData(true); } catch (e) {}
+            // 刷新角色日程上下文（当前在做什么、今天/明天安排、是否被叫醒）
+            try { if (window.NanoScheduleBridge) await window.NanoScheduleBridge.refreshContext(); } catch (e) {}
             let __sys = buildSystemPrompt();
             if (offlineRoundHint && (offlineRoundHint.user || offlineRoundHint.char || (offlineRoundHint.rounds && offlineRoundHint.rounds.length))) {
                 let roundText = '';
@@ -7587,6 +7648,13 @@
         reply = cleanReplyText(reply);
         if (!reply) return;
 
+        // 聊天里改变计划：读取隐藏的 [schedule:...] 标记并回写日程，然后从气泡里移除标记
+        try {
+            if (window.NanoScheduleBridge && NanoScheduleBridge.applyMarkers) {
+                reply = await NanoScheduleBridge.applyMarkers(reply, { charId: chatId, charName: displayName });
+            }
+        } catch (e) {}
+
         // 私聊里请求“把我拉回某个群”：角色同意则解除退群状态，并给群聊留言
         try { handleReinviteRequest(reply, quoteTarget); } catch (e) {}
 
@@ -8464,6 +8532,55 @@
         }
     }
 
+    // 日程到点后自动生成的「报备」卡片：轮询日程库，补进私聊
+    let __schedReportBusy = false;
+    let __schedImgWarned = false;
+    async function deliverScheduleReports() {
+        if (__schedReportBusy || !window.NanoScheduleBridge || !NanoScheduleBridge.takeReports) return;
+        if (!isStorageReady) return;
+        __schedReportBusy = true;
+        try {
+            // 若当前日程刚开始且还没有照片，聊天页也会尝试生成一次（需在 API 页配置生图接口）
+            try {
+                if (NanoScheduleBridge.generateDueReport) {
+                    const gen = await NanoScheduleBridge.generateDueReport({ charId: chatId, charName: displayName });
+                    if (gen && gen.ok === false && gen.error && !gen.background && !__schedImgWarned) {
+                        __schedImgWarned = true;
+                        try { showAlert('日程生图失败', gen.error + '\n今天不会再次自动调用，避免浪费额度。'); } catch (e) {}
+                    }
+                }
+            } catch (e) {}
+            const list = await NanoScheduleBridge.takeReports({ charId: chatId, charName: displayName });
+            if (!Array.isArray(list) || !list.length) return;
+            const now = new Date();
+            const timeStr = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+            let added = 0;
+            list.forEach(function (r) {
+                if (!r || !r.img) return;
+                addMessage('left', '', timeStr, null, false, true, {
+                    cardType: 'scheduleReport',
+                    eventId: r.eventId || '',
+                    title: r.title || '刚刚的记录',
+                    place: r.place || '',
+                    date: r.date || new Date().toISOString().slice(0, 10),
+                    start: r.start || '',
+                    end: r.end || '',
+                    note: r.note || '',
+                    img: r.img
+                });
+                added++;
+            });
+            if (added) {
+                saveMessages();
+                renderMessages();
+                scrollToBottom();
+            }
+        } catch (e) {
+        } finally {
+            __schedReportBusy = false;
+        }
+    }
+
     async function handleReroll() {
         if (!messages || messages.length === 0) {
             showAlert('提示', '没有可重roll的消息');
@@ -8598,8 +8715,7 @@ if (callCard) {
     if (isMultiSelect) return;
     
     const cardMain = callCard.querySelector('.card-main');
-    if (!cardMain) return;
-    const callId = cardMain.dataset.callid;
+    const callId = callCard.dataset.callid || (cardMain && cardMain.dataset.callid);
     if (!callId) {
         console.warn('[Chat] 通话卡片缺少 callId');
         return;
@@ -8622,6 +8738,22 @@ if (callCard) {
     }, 300);
     return;
 }
+
+        // ===== 日程报备卡片：点开看图片和角色的一句话备注 =====
+        const scheduleCard = e.target.closest('.bubble-card.scheduleReport');
+        if (scheduleCard) {
+            if (isMultiSelect) return;
+            const sRow = scheduleCard.closest('.message-row');
+            const sMsg = sRow ? messages.find(m => m.id === sRow.dataset.id) : null;
+            if (sMsg && sMsg.cardData) {
+                if (sMsg.cardData.img) {
+                    openImageViewer(sMsg.cardData.img, null, { caption: sMsg.cardData.note || sMsg.cardData.title || '' });
+                } else {
+                    showAlert(sMsg.cardData.title || '日程报备', sMsg.cardData.note || '');
+                }
+            }
+            return;
+        }
 
         // ===== 文件 / 手机内容分享卡片：点击查看完整内容 =====
         const fileCard = e.target.closest('.bubble-card.file');
@@ -8672,18 +8804,36 @@ if (callCard) {
 
     sendBtn.addEventListener('click', function() {
         const text = messageInput.value.trim();
-        // 输入框为空：点发送/回复按钮 = 让角色回复；有内容 = 只发送，不自动回复
-        if (!text) {
-            triggerReply();
-            return;
+        function proceed() {
+            // 输入框为空：点发送/回复按钮 = 让角色回复；有内容 = 只发送，不自动回复
+            if (!text) {
+                triggerReply();
+                return;
+            }
+            sendMessage();
         }
-        sendMessage();
+        // 深夜角色正在睡觉时，先问用户要不要叫醒；叫醒后角色会知道是用户叫醒的
+        try {
+            if (window.NanoScheduleBridge && NanoScheduleBridge.guardSend) {
+                NanoScheduleBridge.guardSend(proceed);
+                return;
+            }
+        } catch (e) {}
+        proceed();
     });
 
     sendBtn.addEventListener('dblclick', function(e) {
         e.preventDefault();
         e.stopPropagation();
+        const sleepModal = document.getElementById('nanoScheduleSleepModal');
+        if (sleepModal && sleepModal.style.display === 'flex') return;
         console.log('[Chat] 双击发送按钮，触发AI回复');
+        try {
+            if (window.NanoScheduleBridge && NanoScheduleBridge.guardSend) {
+                NanoScheduleBridge.guardSend(function () { triggerReply(); });
+                return;
+            }
+        } catch (err) {}
         triggerReply();
     });
 
@@ -8989,8 +9139,7 @@ if (callCard) {
         window._callCardTimer = null;
     }
     const cardMain = callCard.querySelector('.card-main');
-    if (!cardMain) return;
-    const callId = cardMain.dataset.callid;
+    const callId = callCard.dataset.callid || (cardMain && cardMain.dataset.callid);
     if (!callId) return;
     
     // 获取卡片对应的消息行
@@ -10153,9 +10302,12 @@ if (data.type === 'NANO_VOICE_CALL_CARD' || data.type === 'NANO_VIDEO_CALL_CARD'
             try { consumePendingStoreCards(); } catch (e) {}
             // 商城：角色偶尔主动给你买一份礼物（每天最多一次，不调用 API）
             try { maybeCharStoreGift(); } catch (e) {}
+            // 日程报备：把到点生成的照片和备注补成卡片
+            try { setTimeout(function () { deliverScheduleReports(); }, 1800); } catch (e) {}
             // 纪念日：加载进角色记忆，并检查今天是否有到期的纪念日（由角色自动发卡）
             try { refreshCoupleAnnivNotice().then(function () { try { maybeAutoSendAnniversary(); } catch (e) {} }); } catch (e) {}
             try { setInterval(function () { try { maybeAutoSendAnniversary(); } catch (e) {} }, 30 * 60 * 1000); } catch (e) {}
+            try { setInterval(function () { try { deliverScheduleReports(); } catch (e) {} }, 45 * 1000); } catch (e) {}
             // 断点续生成：上次离开时回复还没生成完，回到该聊天后继续加载
             try {
                 if (chatPendingGet()) {

@@ -37,9 +37,9 @@
 <div class="tools"><button class="tool" data-clear="global">清空</button><button class="tool" data-restore="global">还原</button><button class="tool" data-copy="global">复制初始</button><button class="tool apply" data-apply="global">应用</button></div>
 <div class="live-preview" id="globalPreviewCard">
 <div class="lp-head" data-lp="global" role="button" tabindex="0" aria-expanded="false">
-<span class="lp-title">全局预览</span><span class="lp-sub">真实页面 · 点开查看</span><span class="lp-caret">▾</span>
+<span class="lp-title">聊天页预览</span><span class="lp-sub">chat.html · 点开查看</span><span class="lp-caret">▾</span>
 </div>
-<div class="lp-body"><iframe class="lp-frame" id="globalPreviewFrame" data-target="global" data-src="../index.html" loading="lazy" title="全局预览"></iframe></div>
+<div class="lp-body"><iframe class="lp-frame" id="globalPreviewFrame" data-target="global" data-src="chat.html" loading="lazy" title="聊天页预览"></iframe></div>
 <span id="globalPreview" style="display:none"></span>
 </div>
 <div class="group"><div class="labelrow"><span class="label">预设</span></div><div class="presetrow"><select id="globalPreset"></select><button class="delete" data-delete="global" aria-label="删除">
@@ -112,13 +112,13 @@
 <div class="group">
 <div class="labelrow"><span class="label">字体文件</span><button class="import" id="fontImport" aria-label="导入字体">
 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11"/><path d="m8 10 4 4 4-4"/><path d="M5 20h14"/><path d="M5 16v4"/><path d="M19 16v4"/></svg>
-</button><input class="hidden" id="fontFile" type="file" accept=".ttf,.otf,.woff,.woff2"></div>
+</button><input class="hidden" id="fontFile" type="file" accept=".ttf,.otf,.tof,.woff,.woff2,.ttc,.otc,.eot,.svg"></div>
 <div class="font-file-row"><span id="filename">未选择</span><button class="tool-sm" id="fontClearFile">清除</button></div>
 </div>
 
 <div class="group">
 <div class="labelrow"><span class="label">字体 URL</span></div>
-<div class="url-row"><input class="name" id="fontUrl" type="url" placeholder="https://example.com/font.ttf"><button class="tool apply" id="urlApply">连接</button></div>
+<div class="url-row"><input class="name" id="fontUrl" type="url" placeholder="字体直链 .ttf/.otf/.woff2 或字体 CSS 链接"><button class="tool apply" id="urlApply">连接</button></div>
 </div>
 
 <div class="tools"><button class="tool" id="fontClear">清空</button><button class="tool" id="fontRestore">还原</button><button class="tool apply" id="fontApply">应用</button></div>
@@ -133,11 +133,11 @@
 </div>
 <div class="toast" id="toast"></div>
 
-<script src="../js/nano-global-template.js?v=20261005e"></script>
-<script src="../js/nano-chat-template.js?v=20261006c"></script>
+<script src="../js/nano-global-template.js?v=20261020a"></script>
+<script src="../js/nano-chat-template.js?v=20261020a"></script>
 <script src="../js/avatar-frame.js?v=20261010a"></script>
 <script src="../js/nano-export.js?v=20261015a"></script>
-<script src="../js/beautify.js?v=20261017a"></script>
+<script src="../js/beautify.js?v=20261020a"></script>
 <script src="../js/api-float.js?v=20261005a"></script>
 <script src="../swipe-back.js"></script>
 <script>

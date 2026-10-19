@@ -5,6 +5,7 @@
 <script src="../js/nano-idb.js"></script>
 <script>window.__NANO_FONT_ONLY = true;</script>
 <script src="../js/appearance.js"></script>
+<script src="../js/schedule-bridge.js?v=20261019d"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
 <title>日程</title>
@@ -23,13 +24,14 @@ svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stro
 
 /* ---------- 顶栏 ---------- */
 .top{display:flex;justify-content:space-between;align-items:center;padding:calc(var(--safe-top, env(safe-area-inset-top, 0px)) + 14px) 20px 4px}
-.who{font-size:13px;color:var(--mute);letter-spacing:.04em}
+.who{font-size:13px;color:var(--mute);letter-spacing:.04em;display:inline-flex;align-items:center;gap:6px;background:none;border:0;padding:6px 2px;text-align:left}
 .who b{color:var(--ink);font-weight:600}
+.who .chev{font-size:18px;color:var(--faint);line-height:1}
 .top .ibtn{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;border:1px solid var(--line)}
 .top .ibtn:active{background:var(--soft)}
 
 /* ---------- 三日标签 ---------- */
-.tabs{display:grid;grid-template-columns:repeat(3,1fr);padding:6px 12px 0}
+.tabs{display:grid;grid-template-columns:repeat(2,1fr);padding:6px 12px 0}
 .tab{padding:8px 4px 10px;display:flex;flex-direction:column;align-items:center;gap:0;position:relative;color:var(--faint);transition:color .2s}
 .tab .lb{font-size:12px}
 .tab .nu{font-family:var(--serif);font-size:40px;line-height:1.1;font-weight:700;font-variant-numeric:tabular-nums}
@@ -76,6 +78,23 @@ svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stro
 .cm span{display:inline-flex;align-items:center;gap:4px}
 .cm svg.i{width:12px;height:12px}
 .badge{display:inline-block;margin-top:7px;font-size:11px;padding:1px 8px;border-radius:999px;border:1px solid currentColor}
+.badge.photo{display:inline-flex;align-items:center;gap:4px;border-color:var(--ink);background:var(--ink);color:#fff}
+.badge.photo svg.i{width:12px;height:12px;stroke-width:2}
+.mark{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:var(--soft);color:var(--ink);flex:none}
+.mark svg.i{width:12px;height:12px;stroke-width:2}
+.char-row{display:flex;align-items:center;gap:12px;width:100%;padding:12px 4px;border-bottom:1px solid var(--line);text-align:left;background:#fff}
+.char-row:last-child{border-bottom:0}
+.char-row:active{background:var(--soft)}
+.char-av{width:42px;height:42px;border-radius:50%;background:var(--soft);overflow:hidden;display:grid;place-items:center;flex:none;font-family:var(--serif);font-weight:700;font-size:17px}
+.char-av img{width:100%;height:100%;object-fit:cover;display:block}
+.char-info{flex:1;min-width:0}
+.char-name{display:block;font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.char-sub{display:block;font-size:12px;color:var(--mute);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.char-row .chev{color:var(--faint);font-size:18px}
+.photo-row{display:flex;align-items:center;gap:12px;width:100%;padding:13px 4px;margin-top:6px;border-top:1px solid var(--line);text-align:left;background:#fff}
+.photo-row:active{background:var(--soft)}
+.photo-state{font-size:12px;color:var(--ink2);background:var(--soft);border-radius:999px;padding:4px 9px;flex:none}
+.report-note{margin:16px 0 0;padding:12px 14px;border-radius:12px;background:var(--soft);font-size:14px;line-height:1.7;color:var(--ink2)}
 .rs{margin-top:6px;font-size:12px;color:var(--mute)}
 .chk{width:24px;height:24px;border-radius:50%;border:1.5px solid #000;display:grid;place-items:center;flex:none;margin-top:-1px;transition:all .2s}
 .chk svg.i{width:14px;height:14px;stroke-width:2.2;opacity:0}
@@ -188,8 +207,7 @@ textarea{resize:vertical;line-height:1.6}
 <body>
 
 <header class="top">
-  <div class="who" id="who"></div>
-  <button class="ibtn" id="btnSet" aria-label="设置"></button>
+  <button class="who" id="who" type="button" aria-label="切换角色"></button>
 </header>
 <nav class="tabs" id="tabs"></nav>
 <section class="dayhead" id="dayhead"></section>
@@ -197,9 +215,6 @@ textarea{resize:vertical;line-height:1.6}
 
 <nav class="dock" id="dock">
   <button data-d="refresh"></button>
-  <button data-d="change"></button>
-  <button data-d="rimg"></button>
-  <button data-d="add"></button>
 </nav>
 
 <div class="scrim" id="scrim"></div>
@@ -258,31 +273,159 @@ const P={
 const I=n=>`<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${P[n]||''}</svg>`;
 const TAGS={life:{n:'起居',i:'sun'},work:{n:'工作',i:'brief'},meal:{n:'用餐',i:'cup'},social:{n:'社交',i:'users'},rest:{n:'休息',i:'moon'},out:{n:'外出',i:'pin'},study:{n:'学习',i:'book'}};
 
-/* ---------- 数据 ---------- */
-const KEY='charSchedule.v1';
-const IDB_KEY='nano_schedule_v1';
-const DEF={settings:{name:'char',persona:'',style:'黑白胶片摄影，柔和自然光，留白构图',textUrl:'',textKey:'',textModel:'',imgUrl:'',imgKey:'',imgModel:'',imgSize:'1024x1024'},events:[],gen:{}};
-function loadLocal(){
-  try{const r=localStorage.getItem(KEY);if(r){const o=JSON.parse(r);return {...DEF,...o,settings:{...DEF.settings,...(o.settings||{})}}}}catch(e){}
-  return JSON.parse(JSON.stringify(DEF));
+/* ---------- 数据（按角色分开保存） ---------- */
+const KEY='charSchedule.v2';
+const LEGACY_KEY='charSchedule.v1';
+const IDB_KEY='nano_schedule_v2';
+const LEGACY_IDB_KEY='nano_schedule_v1';
+const DEF={settings:{name:'char',persona:'',style:'黑白胶片摄影，柔和自然光，留白构图',textUrl:'',textKey:'',textModel:'',imgUrl:'',imgKey:'',imgModel:'',imgSize:'1024x1024',charId:'',avatar:''},events:[],gen:{},lastRefresh:0,imgGenDay:'',imgGenAt:0,photoReport:true};
+let STORE={version:2,lastCharId:'',chars:{}};
+let CHARS=[];
+let CHAR=null;
+let S=JSON.parse(JSON.stringify(DEF));
+let LEGACY=null;
+let warned=false;
+let refreshing=false;
+
+function post(msg){
+  try{ if(window.parent&&window.parent!==window){ window.parent.postMessage(msg,'*'); return true; } }catch(e){}
+  return false;
 }
-let S=loadLocal();
-async function load(){
+function normalizeStore(o){
+  if(!o||typeof o!=='object')return {version:2,lastCharId:'',chars:{}};
+  if(!o.chars||typeof o.chars!=='object')o.chars={};
+  o.version=2;
+  return o;
+}
+function readLocalStore(){
+  try{const r=localStorage.getItem(KEY);if(r)return normalizeStore(JSON.parse(r))}catch(e){}
+  return null;
+}
+function lightStore(store){
+  try{
+    return JSON.parse(JSON.stringify(store,(k,v)=>{
+      if(k==='src'&&typeof v==='string'&&v.indexOf('data:')===0)return '';
+      return v;
+    }));
+  }catch(e){return store}
+}
+async function persistStore(){
+  try{
+    if(window.NanoIDB)await NanoIDB.set(IDB_KEY,STORE);
+    try{
+      const txt=JSON.stringify(lightStore(STORE));
+      if(txt.length<4300000)localStorage.setItem(KEY,txt);
+    }catch(e){}
+  }catch(e){}
+}
+async function loadStore(){
   let o=null;
   try{ o=await NanoIDB.get(IDB_KEY); }catch(e){}
+  if(!o)o=readLocalStore();
   if(!o){
-    try{const r=localStorage.getItem(KEY);if(r)o=JSON.parse(r)}catch(e){}
-    if(o){ try{ NanoIDB.set(IDB_KEY,o); }catch(e){} }
+    try{ o=await NanoIDB.get(LEGACY_IDB_KEY); }catch(e){}
+    if(!o){ try{const r=localStorage.getItem(LEGACY_KEY);if(r)o=JSON.parse(r)}catch(e){} }
+    if(o)LEGACY=o;
   }
-  if(!o) return JSON.parse(JSON.stringify(DEF));
-  return {...DEF,...o,settings:{...DEF.settings,...(o.settings||{})}};
+  return normalizeStore(o);
 }
-let warned=false;
+function charDataFor(ch){
+  const id=String(ch.id);
+  if(!STORE.chars[id])STORE.chars[id]=JSON.parse(JSON.stringify(DEF));
+  const d=STORE.chars[id];
+  d.settings=Object.assign({},DEF.settings,d.settings||{});
+  d.settings.charId=id;
+  d.settings.name=ch.name||d.settings.name||'char';
+  d.settings.persona=String(ch.setting||ch.desc||ch.persona||'');
+  d.settings.avatar=ch.avatar||d.settings.avatar||'';
+  if(!Array.isArray(d.events))d.events=[];
+  return d;
+}
 function save(){
+  if(!CHAR)return;
   try{
-    const data=JSON.parse(JSON.stringify(S,(k,v)=>k[0]==='_'?undefined:v));
-    if(window.NanoIDB) NanoIDB.set(IDB_KEY,data);
+    S.settings.charId=String(CHAR.id);
+    S.settings.name=CHAR.name||S.settings.name||'char';
+    const id=String(CHAR.id);
+    STORE.chars[id]=S;
+    STORE.lastCharId=id;
+    const data=JSON.parse(JSON.stringify(STORE,(k,v)=>k[0]==='_'?undefined:v));
+    STORE=data;
+    if(STORE.chars[id])S=STORE.chars[id];
+    persistStore();
   }catch(e){if(!warned){warned=true;toast('本机存储不可用或已满，改动仅在本次打开期间有效')}}
+}
+
+/* ---------- 角色选择 ---------- */
+function currentMaskId(){
+  try{
+    const d=JSON.parse(localStorage.getItem('nano_mask_data')||'null');
+    return d&&d.currentMaskId!=null?String(d.currentMaskId):'';
+  }catch(e){return ''}
+}
+function loadCharacters(){
+  return new Promise(resolve=>{
+    try{
+      const req=indexedDB.open('nano_characters_db',1);
+      req.onupgradeneeded=e=>{try{const db=e.target.result;if(!db.objectStoreNames.contains('characters'))db.createObjectStore('characters',{keyPath:'id'})}catch(err){}};
+      req.onsuccess=e=>{
+        const db=e.target.result;
+        try{
+          if(!db.objectStoreNames.contains('characters')){resolve([]);return}
+          const r=db.transaction('characters','readonly').objectStore('characters').getAll();
+          r.onsuccess=()=>resolve(r.result||[]);
+          r.onerror=()=>resolve([]);
+        }catch(err){resolve([])}
+      };
+      req.onerror=()=>resolve([]);
+    }catch(e){resolve([])}
+  });
+}
+function pickableChars(all){
+  const mask=currentMaskId();
+  let list=(all||[]).filter(c=>c&&c.id&&c.name&&!c.nanoAssistant);
+  if(mask){
+    const bound=list.filter(c=>!c.bindUser||String(c.bindUser)===mask);
+    if(bound.length)list=bound;
+  }
+  return list;
+}
+function charAvatar(c){
+  const name=String((c&&c.name)||'C');
+  return c&&c.avatar?`<span class="char-av"><img src="${esc(c.avatar)}" alt=""></span>`:`<span class="char-av">${esc(name.charAt(0).toUpperCase())}</span>`;
+}
+function openCharSheet(){
+  const rows=CHARS.length?CHARS.map(c=>{
+    const active=CHAR&&String(c.id)===String(c.id);
+    return `<button class="char-row" data-cid="${esc(String(c.id))}">${charAvatar(c)}<span class="char-info"><span class="char-name">${esc(c.name)}${active?' · 当前':''}</span><span class="char-sub">${esc(String(c.setting||c.desc||c.persona||'还没有角色设定').replace(/\s+/g,' ').slice(0,36))}</span></span><span class="chev">›</span></button>`;
+  }).join(''):`<div class="empty" style="padding:34px 10px">还没有角色，请先在聊天里创建角色。</div>`;
+  const photoOn=!!CHAR&&S.photoReport!==false;
+  const photoRow=CHAR?`<button class="photo-row" data-photo="1"><span class="char-info"><span class="char-name">日程报备照片</span><span class="char-sub">每天最多 1 张；只用于日程报备，不影响私聊生图</span></span><span class="photo-state">${photoOn?'已开启':'已关闭'}</span></button>`:'';
+  openSheet(`<h2 class="sh2">选择角色</h2><p class="sub">日程会按角色分别保存；聊天里的 TA 也会知道自己此刻在做什么。</p>${rows}${photoRow}<button class="btn soft" data-a="close">取消</button>`);
+}
+function selectChar(ch,silent){
+  if(!ch)return;
+  CHAR=ch;
+  const d=charDataFor(ch);
+  if(LEGACY&&(!Array.isArray(d.events)||!d.events.length)){
+    const legacyName=String((LEGACY.settings&&LEGACY.settings.name)||'');
+    if(!legacyName||legacyName===String(ch.name)){
+      d.events=Array.isArray(LEGACY.events)?LEGACY.events:[];
+      d.gen=LEGACY.gen||{};
+      d.settings=Object.assign({},d.settings,LEGACY.settings||{});
+      d.settings.charId=String(ch.id);
+      d.settings.name=ch.name||d.settings.name;
+      d.settings.persona=String(ch.setting||ch.desc||ch.persona||d.settings.persona||'');
+      LEGACY=null;
+    }
+  }
+  S=d;
+  ensureWindow();
+  save();
+  closeSheet();
+  render();
+  if(!silent&&!S.events.length)toast('点底部「刷新」生成今天和明天的日程');
+  setTimeout(()=>{try{resumeJob();resumeImgJob()}catch(e){}},250);
 }
 
 /* ---------- 本地日程生成 ---------- */
@@ -344,13 +487,14 @@ sleep:[
 };
 function mockDay(date){
   const wd=parseD(date).getDay(),wk=wd===0||wd===6;
+  const out=[mk({date,start:'00:00',end:'06:30',title:'睡觉',place:'卧室',who:'',note:'夜里睡得很沉，闹钟还没响。',mood:'……',tag:'rest'})];
   const slots=[
     {p:'wake',r:[420,510],d:[30,45]},{p:'breakfast',r:[480,570],d:[30,40]},
     {p:wk?'leisureAm':'workAm',r:[570,660],d:[75,150]},{p:'lunch',r:[720,780],d:[50,70]},
     {p:wk?'leisurePm':'workPm',r:[840,960],d:[90,150]},{p:'extra',r:[1000,1050],d:[30,50],prob:.5},
     {p:'dinner',r:[1080,1140],d:[60,90]},{p:'night',r:[1200,1260],d:[60,100]},{p:'sleep',r:[1350,1400],d:[20,30]}
   ];
-  let cur=0;const out=[];
+  let cur=0;
   for(const s of slots){
     if(s.prob&&Math.random()>s.prob)continue;
     const it=pick(POOL[s.p]);
@@ -367,27 +511,213 @@ function mk(o){return {id:uid(),status:'todo',log:[],title:'',place:'',who:'',no
 function norm(e,ds){
   const tm=t=>{const m=/^(\d{1,2}):(\d{2})$/.exec(String(t||'').trim());return m?`${pad(+m[1])}:${m[2]}`:null};
   const s=tm(e.start),en=tm(e.end);
-  if(!e||!ds.includes(e.date)||!s||!en||toMin(en)<=toMin(s)||!e.title)return null;
-  return mk({date:e.date,start:s,end:en,title:String(e.title),place:String(e.place||''),who:String(e.who||e.with||''),note:String(e.note||''),mood:String(e.mood||''),tag:TAGS[e.tag]?e.tag:'life'});
+  if(!e||!ds.includes(e.date)||!s||!en||!e.title)return null;
+  // 跨夜安排（如 23:00-07:00）：日程按当天显示到 23:59，避免整条被丢掉
+  const end=toMin(en)<=toMin(s)?'23:59':en;
+  return mk({date:e.date,start:s,end,title:String(e.title),place:String(e.place||''),who:String(e.who||e.with||''),note:String(e.note||''),mood:String(e.mood||''),tag:TAGS[e.tag]?e.tag:'life'});
 }
 
-/* ---------- 文本 / 生图接口 ---------- */
+/* ---------- 主 API / 生图接口 ---------- */
 const hooks={generateSchedule:null,generateImage:null};
 const ep=(u,suf)=>{u=u.trim().replace(/\/+$/,'');return u.endsWith(suf)?u:u+suf};
+const JOB_KEY='nano_schedule_job_v1';
+const IMG_JOB_KEY='nano_schedule_img_job_v1';
+let activeJobToken='';
+let activeImgJobToken='';
+function readJob(){try{const raw=localStorage.getItem(JOB_KEY);return raw?JSON.parse(raw):null}catch(e){return null}}
+function writeJob(job){try{localStorage.setItem(JOB_KEY,JSON.stringify(job))}catch(e){}}
+function clearJob(token){
+  try{
+    const j=readJob();
+    if(!token||!j||j.token===token)localStorage.removeItem(JOB_KEY);
+    const rk=j&&j.resultKey;
+    if(rk)localStorage.removeItem(rk);
+  }catch(e){}
+}
+function readImgJob(){try{const raw=localStorage.getItem(IMG_JOB_KEY);return raw?JSON.parse(raw):null}catch(e){return null}}
+function writeImgJob(job){try{localStorage.setItem(IMG_JOB_KEY,JSON.stringify(job))}catch(e){}}
+function clearImgJob(token){
+  try{
+    const j=readImgJob();
+    if(!token||!j||j.token===token){
+      localStorage.removeItem(IMG_JOB_KEY);
+      if(j&&j.resultKey)localStorage.removeItem(j.resultKey);
+    }
+  }catch(e){}
+}
+function parseImageText(txt,prompt){
+  let j={};
+  try{j=JSON.parse(String(txt||'{}'))}catch(e){throw new Error('生图接口返回的内容不是 JSON')}
+  const item=j&&j.data&&j.data[0];
+  const src=item&&(item.url||(item.b64_json?'data:image/png;base64,'+item.b64_json:''));
+  if(!src)throw new Error('生图接口没有返回图片地址');
+  return {src,kind:'api',prompt};
+}
+function applyImgResult(job,res){
+  if(!res||!res.src)return false;
+  if(!CHAR||!job.charId||String(job.charId)!==String(CHAR.id))return false;
+  const ev=byId(job.eventId);
+  if(!ev)return false;
+  ev.img=res;
+  ev.report={at:Date.now(),note:String(ev.mood||ev.note||'').trim().slice(0,80),delivered:false};
+  logEv(ev,'生成画面');
+  save();render();
+  if(sheetOpen()&&cur===ev.id)detail(ev.id,'view',true);
+  return true;
+}
+function processImgJob(job){
+  if(!job||!job.resultKey)return false;
+  let raw='';
+  try{raw=localStorage.getItem(job.resultKey)||''}catch(e){}
+  if(!raw)return false;
+  try{localStorage.removeItem(job.resultKey)}catch(e){}
+  try{
+    const r=JSON.parse(raw);
+    if(!r.ok)throw new Error(r.error||r.text||('HTTP '+(r.status||'')));
+    const res=parseImageText(r.text,job.prompt);
+    applyImgResult(job,res);
+    clearImgJob(job.token);
+    toast('日程图片已生成并保存');
+  }catch(err){
+    clearImgJob(job.token);
+    showError('日程生图失败：\n'+(err&&err.message||'未知错误')+'（今天不会再次自动调用）');
+  }
+  return true;
+}
+function attachImgJob(job){
+  if(!job)return;
+  if(processImgJob(job))return;
+  const onMsg=ev=>{
+    if(!ev||!ev.data||ev.data.type!=='chatApiDone'||ev.data.token!==job.token)return;
+    window.removeEventListener('message',onMsg);
+    setTimeout(()=>processImgJob(job),80);
+  };
+  window.addEventListener('message',onMsg);
+  let tries=0;
+  const timer=setInterval(()=>{
+    tries++;
+    if(tries>72){clearInterval(timer);return}
+    if(processImgJob(job)){clearInterval(timer);window.removeEventListener('message',onMsg)}
+  },5000);
+  setTimeout(()=>{window.removeEventListener('message',onMsg);clearInterval(timer)},6*60*1000);
+}
+function resumeImgJob(){
+  if(!CHAR)return false;
+  const job=readImgJob();
+  if(!job||!job.charId||String(job.charId)!==String(CHAR.id))return false;
+  if(processImgJob(job))return true;
+  const age=Date.now()-(job.startedAt||0);
+  if(age<5*60*1000){
+    toast('日程图片还在后台生成，完成后会自动保存');
+    attachImgJob(job);
+  }else{
+    clearImgJob(job.token);
+    showError('上次的日程生图已中断（超过 5 分钟没有结果）');
+  }
+  return true;
+}
+function parseEventsText(txt,ds){
+  let t=String(txt||'').replace(/```json|```/g,'');
+  const a=t.indexOf('{'),b=t.lastIndexOf('}');
+  if(a<0||b<0)throw new Error('主 API 返回的内容不是可解析的日程 JSON');
+  const data=JSON.parse(t.slice(a,b+1));
+  const list=(data.events||[]).map(e=>norm(e,ds)).filter(Boolean);
+  if(!list.length)throw new Error('主 API 没有返回有效的日程');
+  return list;
+}
+function waitParentResult(token,resultKey,timeout){
+  return new Promise((resolve,reject)=>{
+    let done=false;
+    function onMsg(ev){
+      if(!ev||!ev.data||ev.data.type!=='chatApiDone'||ev.data.token!==token)return;
+      finish(true);
+    }
+    function finish(fromMsg){
+      if(done)return;done=true;
+      window.removeEventListener('message',onMsg);
+      setTimeout(()=>{
+        try{
+          const raw=localStorage.getItem(resultKey);
+          if(!raw)throw new Error('后台没有返回结果');
+          localStorage.removeItem(resultKey);
+          resolve(JSON.parse(raw));
+        }catch(err){reject(err)}
+      },fromMsg?40:0);
+    }
+    window.addEventListener('message',onMsg);
+    setTimeout(()=>{if(done)return;done=true;window.removeEventListener('message',onMsg);const e=new Error('后台仍在生成，可稍后回到日程查看');e.background=true;reject(e)},timeout||120000);
+  });
+}
+async function requestViaParent(url,headers,body,token,resultKey){
+  await new Promise(resolve=>setTimeout(resolve,20));
+  window.parent.postMessage({type:'chatApiFetch',token:token,resultKey:resultKey,url:url,method:'POST',headers:headers,body:body},'*');
+  const r=await waitParentResult(token,resultKey,120000);
+  if(!r.ok){
+    let msg=r.error||('HTTP '+(r.status||''));
+    if(!r.error&&r.text)msg+='\n'+String(r.text).replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').slice(0,400);
+    throw new Error(msg);
+  }
+  return String(r.text||'');
+}
+async function getMainConfig(){
+  let o=null;
+  try{
+    o=await new Promise(resolve=>{
+      // 不指定版本：以当前实际版本打开，避免 VersionError 读不到配置
+      const req=indexedDB.open('nano_api_db');
+      req.onupgradeneeded=e=>{try{const db=e.target.result;if(!db.objectStoreNames.contains('api_data'))db.createObjectStore('api_data',{keyPath:'key'})}catch(err){}};
+      req.onsuccess=e=>{
+        try{
+          const db=e.target.result;
+          if(!db.objectStoreNames.contains('api_data')){resolve(null);return}
+          const r=db.transaction('api_data','readonly').objectStore('api_data').get('nano_api_config');
+          r.onsuccess=()=>{
+            const rec=r.result;
+            let v=rec?(rec.value&&typeof rec.value==='object'?rec.value:rec):null;
+            if(typeof v==='string'){try{v=JSON.parse(v)}catch(e){}}
+            resolve(v);
+          };
+          r.onerror=()=>resolve(null);
+        }catch(err){resolve(null)}
+      };
+      req.onerror=()=>resolve(null);
+    });
+  }catch(e){}
+  if(!o){try{o=JSON.parse(localStorage.getItem('nano_api_config')||'null')}catch(e){}}
+  if(o&&o.value&&typeof o.value==='object'&&!o.mainUrl)o=o.value;
+  return o||null;
+}
 async function llmGen(ds,extra){
   const st=S.settings;
   if(hooks.generateSchedule){const r=await hooks.generateSchedule({name:st.name,persona:st.persona,dates:ds,note:extra});return r.map(e=>norm(e,ds)).filter(Boolean)}
-  const sys=`你是角色日程生成器。为角色「${st.name}」生成日程。${st.persona?'角色设定：'+st.persona+'。':''}只输出 JSON，不要任何解释。格式：{"events":[{"date":"YYYY-MM-DD","start":"HH:MM","end":"HH:MM","title":"","place":"","who":"同行的人，没有则留空","note":"具体安排，1-2句","mood":"角色此刻的一句心声","tag":"life|work|meal|social|rest|out|study"}]}。要求：每天6-9项，按时间排序、互不重叠，时间在00:00-23:59内，符合角色性格，注意周末与工作日的区别。`;
-  const usr=`日期：${ds.join('、')}。${extra?'补充说明：'+extra:''}`;
-  const r=await fetch(ep(st.textUrl,'/chat/completions'),{method:'POST',headers:{'Content-Type':'application/json',...(st.textKey?{Authorization:'Bearer '+st.textKey}:{})},body:JSON.stringify({model:st.textModel||'gpt-4o-mini',temperature:.9,messages:[{role:'system',content:sys},{role:'user',content:usr}]})});
-  if(!r.ok)throw new Error('HTTP '+r.status);
-  const j=await r.json();
-  let txt=(j.choices?.[0]?.message?.content||'').replace(/```json|```/g,'');
-  const a=txt.indexOf('{'),b=txt.lastIndexOf('}');
-  const data=JSON.parse(txt.slice(a,b+1));
-  const list=(data.events||[]).map(e=>norm(e,ds)).filter(Boolean);
-  if(!list.length)throw new Error('返回内容无法解析');
-  return list;
+  const cfg=await getMainConfig();
+  const url=(cfg&&cfg.mainUrl)||st.textUrl||'';
+  const key=(cfg&&cfg.mainKey)||st.textKey||'';
+  const model=(cfg&&cfg.mainModel)||st.textModel||'gpt-4o-mini';
+  if(!url)throw new Error('还没有配置主 API');
+  const now=new Date();
+  const sys=`你是角色日程生成器。为角色「${st.name}」生成真实、具体的一天安排。${st.persona?'角色设定：'+st.persona+'。':''}只输出 JSON，不要任何解释。格式：{"events":[{"date":"YYYY-MM-DD","start":"HH:MM","end":"HH:MM","title":"","place":"","who":"同行的人，没有则留空","note":"具体安排，1-2句","mood":"角色此刻的一句心声","tag":"life|work|meal|social|rest|out|study"}]}。要求：每天6-9项，按时间排序、互不重叠，时间在00:00-23:59内，符合角色性格、职业和生活习惯，注意周末与工作日的区别；必须包含 00:00-06:30 的夜间睡眠、起床、三餐、工作/学习，并在22:00之后安排入睡（可以和夜间睡眠分开写）。`;
+  const usr=`现在是 ${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}。请为下面两天生成日程：${ds.join('、')}。${extra?'补充说明：'+extra:''}`;
+  const headers={'Content-Type':'application/json',...(key?{Authorization:'Bearer '+key}:{})};
+  const body=JSON.stringify({model,temperature:.9,messages:[{role:'system',content:sys},{role:'user',content:usr}]});
+  const endpoint=ep(url,'/chat/completions');
+  let rawText='';
+  if(window.parent&&window.parent!==window){
+    // 交给宿主页面请求：即使离开日程页，生成也会继续
+    const token='sched_'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+    const resultKey='sched_api_result_'+token;
+    activeJobToken=token;
+    writeJob({token,resultKey,charId:CHAR?String(CHAR.id):'',dates:ds,note:extra||'',startedAt:Date.now()});
+    rawText=await requestViaParent(endpoint,headers,body,token,resultKey);
+  }else{
+    const r=await fetch(endpoint,{method:'POST',headers,body});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    rawText=await r.text();
+  }
+  let j;
+  try{j=JSON.parse(rawText||'{}')}catch(e){j={}}
+  const txt=String(j.choices?.[0]?.message?.content||'');
+  return parseEventsText(txt,ds);
 }
 function buildPrompt(ev){
   const st=S.settings;
@@ -411,21 +741,34 @@ async function genImage(ev,custom){
   const st=S.settings,prompt=(custom||'').trim()||buildPrompt(ev);
   try{
     if(hooks.generateImage){const src=await hooks.generateImage({prompt,event:ev});return {src,kind:'api',prompt}}
-    if(st.imgUrl){
-      const r=await fetch(ep(st.imgUrl,'/images/generations'),{method:'POST',headers:{'Content-Type':'application/json',...(st.imgKey?{Authorization:'Bearer '+st.imgKey}:{})},body:JSON.stringify({model:st.imgModel||undefined,prompt,n:1,size:st.imgSize||'1024x1024'})});
-      if(!r.ok)throw new Error('HTTP '+r.status);
-      const j=await r.json(),d=j.data?.[0];
-      const src=d?.url||(d?.b64_json?'data:image/png;base64,'+d.b64_json:'');
-      if(!src)throw new Error('接口没有返回图片');
-      return {src,kind:'api',prompt};
+    const cfg=await getMainConfig();
+    const imgUrl=(cfg&&cfg.imgUrl)||st.imgUrl||'';
+    const imgKey=(cfg&&cfg.imgKey)||st.imgKey||'';
+    const imgModel=(cfg&&cfg.imgModel)||st.imgModel||'';
+    if(!imgUrl)throw new Error('还没有配置生图 API，请到「API → 生图」填写地址、Key 和模型');
+    const endpoint=ep(imgUrl,'/images/generations');
+    const headers={'Content-Type':'application/json',...(imgKey?{Authorization:'Bearer '+imgKey}:{})};
+    const body=JSON.stringify({model:imgModel||undefined,prompt,n:1,size:st.imgSize||'1024x1024'});
+    if(window.parent&&window.parent!==window){
+      const token='schedimg_'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+      const resultKey='sched_img_result_'+token;
+      activeImgJobToken=token;
+      writeImgJob({token,resultKey,charId:CHAR?String(CHAR.id):'',eventId:ev.id,prompt,startedAt:Date.now()});
+      const raw=await requestViaParent(endpoint,headers,body,token,resultKey);
+      return parseImageText(raw,prompt);
     }
-  }catch(err){toast('生图接口出错，已改用示意图：'+err.message)}
-  await sleep(650);
-  return {src:artSVG(ev.id+Math.random()),kind:'art',prompt};
+    const r=await fetch(endpoint,{method:'POST',headers,body});
+    if(!r.ok)throw new Error('生图接口返回 HTTP '+r.status);
+    return parseImageText(await r.text(),prompt);
+  }catch(err){
+    const e=new Error((err&&err.message)||'生图失败');
+    e.background=!!(err&&err.background);
+    throw e;
+  }
 }
 
 /* ---------- 工具 ---------- */
-const dates=()=>{const t=today();return [t,addD(t,1),addD(t,2)]};
+const dates=()=>{const t=today();return [t,addD(t,1)]};
 let sel=0,cur=null,mode='view';
 const evsOf=d=>S.events.filter(e=>e.date===d).sort((a,b)=>toMin(a.start)-toMin(b.start));
 const byId=id=>S.events.find(e=>e.id===id);
@@ -453,13 +796,13 @@ function copy(txt){
 /* ---------- 渲染 ---------- */
 function render(){renderTop();renderTabs();renderHead();renderList()}
 function renderTop(){
-  $('#who').innerHTML=`<b>${esc(S.settings.name)}</b> 的日程`;
-  $('#btnSet').innerHTML=I('sliders');
-  const D=[['refresh','刷新'],['swap','临时变动'],['shuffle','随机生图'],['plus','新增']],keys=['refresh','change','rimg','add'];
-  $('#dock').querySelectorAll('button').forEach((b,i)=>{b.innerHTML=I(D[i][0])+`<span>${D[i][1]}</span>`;b.dataset.d=keys[i]});
+  const name=CHAR?CHAR.name:S.settings.name;
+  $('#who').innerHTML=`<b>${esc(name)}</b> 的日程<span class="chev">›</span>`;
+  const b=$('#dock').querySelector('button');
+  if(b){b.innerHTML=refreshing?`${I('refresh')}<span>生成中</span>`:`${I('refresh')}<span>刷新</span>`;b.dataset.d='refresh';b.disabled=refreshing}
 }
 function renderTabs(){
-  const ds=dates(),lb=['今天','明天','后天'];
+  const ds=dates(),lb=['今天','明天'];
   $('#tabs').innerHTML=ds.map((d,i)=>{
     const es=evsOf(d),dn=es.filter(e=>e.status==='done').length;
     return `<button class="tab ${i===sel?'on':''}" data-i="${i}"><span class="lb">${lb[i]}</span><span class="nu">${parseD(d).getDate()}</span><span class="pg">${es.length?dn+' / '+es.length:'空'}</span></button>`;
@@ -475,7 +818,7 @@ function renderHead(){
 }
 function renderList(){
   const d=dates()[sel],es=evsOf(d),el=$('#list');
-  if(!es.length){el.innerHTML=`<div class="empty">${esc(S.settings.name)} 在这一天还没有安排<button class="btn" data-a="genday">生成这一天</button></div>`;return}
+  if(!es.length){el.innerHTML=`<div class="empty">${esc(S.settings.name)} 在这一天还没有安排<button class="btn" data-a="refreshall">生成今天和明天</button></div>`;return}
   const isT=d===today(),nm=nowMin();let h='',markDone=!isT;
   const nowRow=()=>`<div class="nowrow"><div class="tm"><b>${nowT()}</b></div><div class="rail"><b></b></div><div class="ln"></div></div>`;
   es.forEach((e,i)=>{
@@ -494,14 +837,16 @@ function card(e,first,last){
   let badge='';
   if(live)badge='进行中';else if(e.status==='cancelled')badge='已划掉';else if(e.status==='done')badge='已完成';else if(e.movedFrom)badge='改期自 '+e.movedFrom;
   const th=e._busy?'<div class="thumb busy"></div>':(e.img?`<img class="thumb" src="${esc(e.img.src)}" alt="">`:'');
+  const photo=e.img?`<span class="badge photo">${I('image')}已记录</span>`:'';
   return `<div class="row st-${e.status} ${live?'live':''} ${isPast(e)?'past':''} ${first?'first':''} ${last?'last':''}" data-id="${e.id}">
     <div class="tm"><b>${e.start}</b><i>${e.end}</i></div>
     <div class="rail"><span class="dot"></span></div>
     <div class="card" data-a="open" role="button" tabindex="0">
       <div class="cmain">
-        <div class="ctop"><span class="ic">${I(tg.i)}</span><span class="t">${esc(e.title)}</span></div>
+        <div class="ctop"><span class="ic">${I(tg.i)}</span><span class="t">${esc(e.title)}</span>${e.chatEditedAt?`<span class="mark" title="聊天后调整">${I('edit')}</span>`:''}</div>
         <div class="cm">${e.place?`<span>${I('pin')}${esc(e.place)}</span>`:''}${e.who?`<span>${I('users')}${esc(e.who)}</span>`:''}</div>
         ${badge?`<span class="badge">${esc(badge)}</span>`:''}
+        ${photo}
         ${e.status==='cancelled'&&e.reason?`<div class="rs">${esc(e.reason)}</div>`:''}
       </div>
       ${th}
@@ -515,6 +860,10 @@ function openSheet(html,keep){const y=sheet.scrollTop;sheet.innerHTML='<div clas
 function closeSheet(){scrim.classList.remove('on');sheet.classList.remove('on')}
 scrim.addEventListener('click',closeSheet);
 const sheetOpen=()=>sheet.classList.contains('on');
+function showError(msg){
+  const text=String(msg||'未知错误').slice(0,900);
+  openSheet(`<h2 class="sh2">生成失败</h2><p class="sub" style="white-space:pre-wrap;line-height:1.7;color:var(--ink2)">${esc(text)}</p><button class="btn" data-a="close">知道了</button>`);
+}
 
 const CANCEL_R=['临时有急事要处理','突然下雨，不想出门','对方临时改了时间','身体有点不舒服，想歇着','睡过头了，来不及了','事情提前做完了，不用去了','心情不太好，想一个人待着','被别的事情绊住了'];
 const MOVE_R=['前一件事拖延了','对方说晚一点更方便','想多休息一会儿','路上堵车','临时插进来一件事'];
@@ -534,6 +883,7 @@ function detail(id,m='view',keep){
   <div class="meta">${e.place?`<div>${I('pin')}${esc(e.place)}</div>`:''}${e.who?`<div>${I('users')}${esc(e.who)}</div>`:''}</div>
   ${e.note?`<p class="note">${esc(e.note)}</p>`:''}
   ${e.mood?`<p class="mood">${esc(e.mood)}</p>`:''}
+  ${e.report&&e.report.note?`<p class="report-note">${esc(e.report.note)}</p>`:''}
   ${e.status==='cancelled'&&e.reason?`<p class="why">划掉的原因：${esc(e.reason)}</p>`:''}
   ${picBlock(e)}`;
   if(m==='view'){
@@ -631,19 +981,107 @@ function applyMove(e,s,en,reason){
 }
 function flash(id,ms=1000){const r=document.querySelector(`.row[data-id="${id}"]`);if(!r)return;r.scrollIntoView({block:'center',behavior:'smooth'});r.classList.add('pick');setTimeout(()=>r.classList.remove('pick'),ms)}
 
-async function doRefresh(scope,keepDone,note){
-  const ds=scope==='all'?dates():[dates()[sel]];
-  const btn=sheet.querySelector('[data-a="dorefresh"]');
-  if(btn){btn.disabled=true;btn.textContent='正在安排……'}
-  let evs;
-  const useApi=hooks.generateSchedule||S.settings.textUrl;
-  try{evs=useApi?await llmGen(ds,note):mockGen(ds)}
-  catch(err){toast('文本接口出错，已改用本地生成：'+err.message);evs=mockGen(ds)}
-  const kept=keepDone?S.events.filter(e=>ds.includes(e.date)&&e.status==='done'):[];
+function applyGenerated(evs,ds){
+  const kept=S.events.filter(e=>ds.includes(e.date)&&(e.status==='done'||e.status==='cancelled'));
   S.events=S.events.filter(e=>!ds.includes(e.date)||kept.includes(e));
   evs=evs.filter(n=>!kept.some(k=>k.date===n.date&&overlap(k,n)));
-  S.events.push(...evs);ds.forEach(d=>S.gen[d]=1);
-  save();closeSheet();render();toast(`已刷新 ${ds.length} 天的日程`);
+  S.events.push(...evs);
+  ds.forEach(d=>S.gen[d]=1);
+  S.lastRefresh=Date.now();
+  save();render();
+}
+function processJobResult(job){
+  if(!job||!job.resultKey)return false;
+  let raw='';
+  try{raw=localStorage.getItem(job.resultKey)||''}catch(e){}
+  if(!raw)return false;
+  try{localStorage.removeItem(job.resultKey)}catch(e){}
+  try{
+    const r=JSON.parse(raw);
+    if(!r.ok)throw new Error(r.error||r.text||('HTTP '+(r.status||'')));
+    const evs=parseEventsText(r.text,job.dates);
+    if(CHAR&&job.charId&&String(job.charId)===String(CHAR.id)){
+      applyGenerated(evs,job.dates);
+      clearJob(job.token);
+      toast('上次的日程已生成并保存');
+    }else{
+      clearJob(job.token);
+    }
+  }catch(err){
+    clearJob(job.token);
+    showError('日程生成失败：\n'+(err&&err.message||'未知错误'));
+  }
+  return true;
+}
+function attachJob(job){
+  if(!job)return;
+  if(processJobResult(job))return;
+  const onMsg=ev=>{
+    if(!ev||!ev.data||ev.data.type!=='chatApiDone'||ev.data.token!==job.token)return;
+    window.removeEventListener('message',onMsg);
+    setTimeout(()=>processJobResult(job),80);
+  };
+  window.addEventListener('message',onMsg);
+  let tries=0;
+  const timer=setInterval(()=>{
+    tries++;
+    if(tries>72){clearInterval(timer);return}
+    if(processJobResult(job)){clearInterval(timer);window.removeEventListener('message',onMsg)}
+  },5000);
+  setTimeout(()=>{window.removeEventListener('message',onMsg);clearInterval(timer)},6*60*1000);
+}
+function resumeJob(){
+  if(!CHAR)return false;
+  const job=readJob();
+  if(!job||!job.charId||String(job.charId)!==String(CHAR.id))return false;
+  if(processJobResult(job))return true;
+  const age=Date.now()-(job.startedAt||0);
+  if(age<5*60*1000){
+    toast('上次的日程还在后台生成，完成后会自动保存');
+    attachJob(job);
+  }else{
+    clearJob(job.token);
+    showError('上次的日程生成已中断（超过 5 分钟没有结果），请重新点刷新');
+  }
+  return true;
+}
+async function refreshSchedule(note){
+  if(!CHAR){openCharSheet();return}
+  if(refreshing)return;
+  const oldJob=readJob();
+  if(oldJob&&oldJob.charId&&String(oldJob.charId)===String(CHAR.id)&&Date.now()-(oldJob.startedAt||0)<5*60*1000){
+    toast('上一次生成还在进行，请稍候');
+    attachJob(oldJob);
+    return;
+  }
+  if(oldJob)clearJob(oldJob.token);
+  refreshing=true;render();
+  const ds=dates();
+  let evs=null;
+  try{
+    evs=await llmGen(ds,note||'');
+    applyGenerated(evs,ds);
+    clearJob(activeJobToken);
+    toast('主 API 已生成今天和明天的安排');
+  }catch(err){
+    refreshing=false;
+    render();
+    if(err&&err.background){
+      const j=readJob();
+      if(j)attachJob(j);
+      toast('仍在后台生成，完成后会自动保存；可以先返回');
+      return;
+    }
+    clearJob(activeJobToken);
+    showError('日程生成失败：\n'+(err&&err.message||'未知错误'));
+    return;
+  }
+  refreshing=false;
+  render();
+}
+async function doRefresh(scope,keepDone,note){
+  await refreshSchedule(note);
+  closeSheet();
 }
 
 function randomChange(){
@@ -679,17 +1117,92 @@ async function randomImage(){
   toast(`为「${ev.title}」生成画面`);
   await runImage(ev,'',true);
 }
-async function runImage(ev,prompt,openAfter){
+let autoReporting=false;
+let imgConfigWarned=false;
+function isSleepLike(e){
+  return /睡|就寝|晚安|入睡|睡眠/.test(String((e&&e.title)||'')+' '+String((e&&e.note)||''));
+}
+function imgDayKey(){return 'nano_schedule_img_day_'+(CHAR?CHAR.id:'default')}
+function imgLockedToday(){
+  try{if(localStorage.getItem(imgDayKey())===today())return true}catch(e){}
+  return S&&S.imgGenDay===today();
+}
+function markImgDay(){
+  if(!S)return;
+  S.imgGenDay=today();
+  S.imgGenAt=Date.now();
+  try{localStorage.setItem(imgDayKey(),today())}catch(e){}
+  save();
+}
+async function runImage(ev,prompt,openAfter,autoReport){
+  if(!ev||ev._busy)return;
+  if(imgLockedToday()){
+    if(!autoReport)toast('今天已经生成过一次日程图片，明天再试');
+    return;
+  }
+  try{
+    const cfg=await getMainConfig();
+    if(!(cfg&&cfg.imgUrl)&&!S.settings.imgUrl){
+      if(!imgConfigWarned){
+        imgConfigWarned=true;
+        showError('日程生图失败：\n还没有配置生图 API，请到「API → 生图」填写地址、Key 和模型');
+      }
+      return;
+    }
+    imgConfigWarned=false;
+  }catch(e){}
+  markImgDay();
+  ev.imgTriedAt=Date.now();
   ev._busy=true;render();if(sheetOpen()&&cur===ev.id)detail(ev.id,'view',true);
-  const img=await genImage(ev,prompt);
-  ev._busy=false;ev.img=img;logEv(ev,'生成画面');save();render();
+  let img=null,errMsg='',errBg=false;
+  try{ img=await genImage(ev,prompt); }catch(e){ errMsg=(e&&e.message)||'生图失败'; errBg=!!(e&&e.background); }
+  ev._busy=false;
+  if(img){
+    ev.img=img;
+    logEv(ev,'生成画面');
+    clearImgJob(activeImgJobToken);
+    if(autoReport){
+      ev.report={at:Date.now(),note:(ev.mood||ev.note||'').trim().slice(0,80),delivered:false};
+    }
+  }else if(!errBg){
+    clearImgJob(activeImgJobToken);
+  }
+  save();render();
   if(openAfter||(sheetOpen()&&cur===ev.id))detail(ev.id,'view',openAfter?false:true);
+  if(errMsg){
+    if(errBg){
+      const j=readImgJob();
+      if(j&&j.token===activeImgJobToken)attachImgJob(j);
+      toast('图片仍在后台生成，完成后会自动保存；可以先返回');
+    }else showError('日程生图失败：\n'+errMsg+'（今天不会再次自动调用，避免浪费额度）');
+  }
+}
+async function autoReportTick(){
+  if(!CHAR||!S||autoReporting||refreshing)return;
+  if(S.photoReport===false)return;
+  if(imgLockedToday())return;
+  if(!window.NanoScheduleBridge||!window.NanoScheduleBridge.generateDueReport)return;
+  autoReporting=true;
+  try{
+    // 自动报备图只在共享桥接层生成：私聊卡片和日程页引用同一条 event.img
+    const res=await window.NanoScheduleBridge.generateDueReport({charId:CHAR.id,charName:CHAR.name});
+    if(res&&res.ok===false&&!res.background&&!imgConfigWarned){
+      imgConfigWarned=true;
+      showError('日程生图失败：\n'+(res.error||'未知错误')+'（今天不会再次自动调用）');
+    }
+    if(res&&res.ok&&!res.skipped){
+      STORE=await loadStore();
+      S=charDataFor(CHAR);
+      if(!sheetOpen())render();
+      else if(cur)detail(cur,'view',true);
+    }
+  }finally{autoReporting=false}
 }
 
 function toText(){
   const n=S.settings.name;let t=`【${n}的日程】\n`;
   dates().forEach((d,i)=>{
-    t+=`\n${['今天','明天','后天'][i]} ${dateLabel(d)}\n`;
+    t+=`\n${['今天','明天'][i]||''} ${dateLabel(d)}\n`;
     evsOf(d).forEach(e=>{
       let f=`${e.start}-${e.end} ${e.title}`;
       const ex=[e.place,e.who&&'与'+e.who].filter(Boolean).join('，');if(ex)f+=`（${ex}）`;
@@ -706,6 +1219,20 @@ function toText(){
 const shiftT=(t,m)=>toT(Math.max(0,Math.min(1439,toMin(t)+m)));
 sheet.addEventListener('click',async ev=>{
   const t=ev.target;
+  if(t.closest('[data-photo]')){
+    if(CHAR){
+      S.photoReport=S.photoReport===false;
+      save();
+      openCharSheet();
+    }
+    return;
+  }
+  const cr=t.closest('.char-row');
+  if(cr){
+    const c=CHARS.find(x=>String(x.id)===String(cr.dataset.cid));
+    if(c)selectChar(c);
+    return;
+  }
   const chip=t.closest('[data-v]');
   if(chip){const i=$(chip.dataset.to);if(i){i.value=chip.dataset.v}return}
   const sh=t.closest('[data-shift]');
@@ -766,7 +1293,7 @@ sheet.addEventListener('click',async ev=>{
   }
 });
 $('#viewer').addEventListener('click',()=>$('#viewer').classList.remove('on'));
-$('#btnSet').addEventListener('click',settingsSheet);
+$('#who').addEventListener('click',openCharSheet);
 $('#tabs').addEventListener('click',e=>{const b=e.target.closest('.tab');if(!b)return;sel=+b.dataset.i;render()});
 $('#list').addEventListener('click',e=>{
   const b=e.target.closest('[data-a]');if(!b)return;
@@ -774,12 +1301,12 @@ $('#list').addEventListener('click',e=>{
   if(a==='chk'){e.stopPropagation();setDone(byId(row.dataset.id))}
   else if(a==='open')detail(row.dataset.id);
   else if(a==='gap')formSheet(null,{start:b.dataset.s,end:b.dataset.e});
-  else if(a==='genday'){const d=dates()[sel];S.events.push(...mockDay(d));S.gen[d]=1;save();render()}
+  else if(a==='refreshall'){refreshSchedule('')}
 });
 $('#list').addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.matches('.card')){detail(e.target.closest('.row').dataset.id)}});
 $('#dock').addEventListener('click',e=>{
   const b=e.target.closest('button');if(!b)return;
-  ({refresh:refreshSheet,change:randomChange,rimg:randomImage,add:()=>formSheet(null)})[b.dataset.d]();
+  if(b.dataset.d==='refresh')refreshSchedule('');
 });
 /* 左右滑动切换日期 */
 let tx=0,ty=0;
@@ -787,41 +1314,86 @@ document.addEventListener('touchstart',e=>{tx=e.touches[0].clientX;ty=e.touches[
 document.addEventListener('touchend',e=>{
   if(sheetOpen())return;
   const dx=e.changedTouches[0].clientX-tx,dy=e.changedTouches[0].clientY-ty;
-  if(Math.abs(dx)>70&&Math.abs(dy)<45){const n=sel+(dx<0?1:-1);if(n>=0&&n<=2){sel=n;render();window.scrollTo({top:0})}}
+  if(Math.abs(dx)>70&&Math.abs(dy)<45){const n=sel+(dx<0?1:-1);if(n>=0&&n<=1){sel=n;render();window.scrollTo({top:0})}}
 },{passive:true});
 
 /* ---------- 启动 ---------- */
 function ensureWindow(){
-  let ch=false;
-  dates().forEach(d=>{if(!S.gen[d]&&!S.events.some(e=>e.date===d)){S.events.push(...mockDay(d));S.gen[d]=1;ch=true}else if(!S.gen[d]){S.gen[d]=1;ch=true}});
+  if(!S||!Array.isArray(S.events))return;
   const t=today();
   const old=S.events.filter(e=>e.date<addD(t,-7));
-  if(old.length){S.events=S.events.filter(e=>!old.includes(e));ch=true}
-  if(ch)save();
+  if(old.length){S.events=S.events.filter(e=>!old.includes(e));save()}
 }
 let lastDay=today();
 setInterval(()=>{
+  if(!CHAR)return;
   if(today()!==lastDay){lastDay=today();ensureWindow();sel=0;render();return}
   if(!sheetOpen())render();
 },30000);
+
+window.addEventListener('message',async e=>{
+  const d=e&&e.data;if(!d)return;
+  if(d.type==='nanoScheduleUpdated'){
+    try{
+      STORE=await loadStore();
+      if(CHAR&&(!d.charId||String(d.charId)===String(CHAR.id))){
+        S=charDataFor(CHAR);
+        ensureWindow();
+        if(!sheetOpen())render();
+        else if(cur)detail(cur,'view',true);
+      }
+    }catch(err){}
+  }
+  if(d.type==='nanoScheduleReport'){
+    if(CHAR&&(!d.charId||String(d.charId)===String(CHAR.id))){
+      try{
+        STORE=await loadStore();
+        S=charDataFor(CHAR);
+        if(!sheetOpen())render();
+      }catch(err){}
+    }
+  }
+});
 
 window.CharSchedule={
   hooks,
   getText:toText,
   getData:()=>S,
+  getStore:()=>STORE,
+  getChar:()=>CHAR,
+  getActiveEvent:()=>evsOf(today()).find(e=>isLive(e))||null,
   cancel(id,reason){const e=byId(id);if(e){applyCancel(e,reason||'临时有事去不了')}},
   move(id,start,end,reason){const e=byId(id);if(e)applyMove(e,start,end,reason||'')},
   setDone(id){const e=byId(id);if(e&&e.status!=='done')setDone(e)},
   add(o){const n=mk(o);S.events.push(n);save();render();return n.id},
-  refresh:()=>doRefresh('all',true,'')
+  refresh:(note)=>refreshSchedule(note||'')
 };
 
-ensureWindow();render();
-(async function hydrate(){
+function renderCharPlaceholder(){
+  $('#who').innerHTML='<b>日程</b><span class="chev">›</span>';
+  $('#tabs').innerHTML='';
+  $('#dayhead').innerHTML='';
+  $('#list').innerHTML='<div class="empty">先选择一个角色，再生成日程<button class="btn" data-a="pickchar">选择角色</button></div>';
+  $('#dock').querySelector('button').innerHTML=I('refresh')+'<span>刷新</span>';
+}
+$('#list').addEventListener('click',e=>{
+  if(e.target.closest('[data-a="pickchar"]'))openCharSheet();
+},true);
+
+(async function boot(){
   try{
-    S=await load();
-    ensureWindow();render();
-  }catch(e){}
+    STORE=await loadStore();
+    CHARS=pickableChars(await loadCharacters());
+  }catch(e){STORE=normalizeStore(STORE);CHARS=[]}
+  if(!CHARS.length){renderCharPlaceholder();toast('还没有可用的角色');return}
+  const q=new URLSearchParams(location.search).get('char');
+  const target=CHARS.find(c=>String(c.id)===String(q))||CHARS.find(c=>String(c.id)===String(STORE.lastCharId));
+  if(target){
+    selectChar(target,true);
+    if(!q)setTimeout(openCharSheet,120);
+  }else{renderCharPlaceholder();openCharSheet()}
+  setTimeout(()=>{try{autoReportTick()}catch(e){}},5000);
+  setInterval(()=>{try{autoReportTick()}catch(e){}},45000);
 })();
 })();
 </script>

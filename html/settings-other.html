@@ -22,22 +22,35 @@
   </header>
 
   <main class="scroll">
+    <div class="group-title">悬浮球</div>
     <section class="list">
       <div class="row">
-        <span class="row-label">悬浮球</span>
+        <span class="row-label">显示悬浮球</span>
         <span class="ball-preview" id="ballPreview"><i class="ball-core"></i></span>
         <span class="switch"><input type="checkbox" id="ballToggle"><i></i></span>
       </div>
+      <button class="row" id="ballStyleRow" type="button">
+        <span class="row-label">悬浮球样式</span>
+        <span class="row-value" id="ballStyleValue">经典样式</span>
+        <span class="chev">›</span>
+      </button>
+      <button class="row" id="ballResetStyle" type="button" style="display:none;">
+        <span class="row-label">恢复经典样式</span>
+        <span class="chev">›</span>
+      </button>
       <div class="row">
         <span class="row-label">悬浮球大小</span>
         <input class="range" id="ballSize" type="range" min="36" max="80" step="2">
         <span class="row-value" id="ballSizeValue">52</span>
       </div>
-      <button class="row" id="ballResetPos">
+      <button class="row" id="ballResetPos" type="button">
         <span class="row-label">重置悬浮球位置</span>
         <span class="chev">›</span>
       </button>
+    </section>
 
+    <div class="group-title">页面</div>
+    <section class="list">
       <div class="row">
         <span class="row-label">顶栏位置</span>
         <span class="nudge">
@@ -69,19 +82,17 @@
           <button class="nudge-btn" data-target="bottom" data-dir="0" type="button">恢复</button>
         </span>
       </div>
+    </section>
 
+    <div class="group-title">助手</div>
+    <section class="list">
       <label class="row">
         <span class="row-label">纳米助手</span>
         <span class="switch"><input type="checkbox" id="nanoToggle"><i></i></span>
       </label>
-      <button class="row" id="interfaceSettings">
-        <span class="row-label">字体与美化</span>
-        <span class="row-value">美化</span>
-        <span class="chev">›</span>
-      </button>
-      <button class="row" id="otherSettings">
-        <span class="row-label">更多设置</span>
-        <span class="row-value">后台 / 推送</span>
+      <button class="row" id="assistantSettings" type="button">
+        <span class="row-label">助手设置</span>
+        <span class="row-value">知识库与工具</span>
         <span class="chev">›</span>
       </button>
     </section>
@@ -89,6 +100,7 @@
   </main>
 </div>
 <div class="toast" id="toast"></div>
-<script src="../js/settings.js"></script>
+<input type="file" id="ballFile" accept="image/*" class="hidden">
+<script src="../js/settings.js?v=20261019a"></script>
 </body>
 </html>

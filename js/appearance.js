@@ -502,6 +502,9 @@
     // 旧版聊天模板：气泡偏大偏宽、底栏底部留白过多，就地修正已保存的聊天 CSS
     function migrateChatCss(css) {
         if (!css) return css;
+        // 新版聊天模板（通用卡片：.bubble-card .card-header）不再套用旧版缩小规则，
+        // 否则「还原初始模板」后刷新会被改回 6/11/15，和初始 UI 不一致。
+        if (/\.nano-chat-inner\s+\.bubble-card\s+\.card-header/.test(css)) return css;
         var fixed = css;
         if (fixed.indexOf('.nano-chat-inner .bubble') !== -1) {
             fixed = fixed.replace(/(\.nano-chat-inner\s+\.bubble\s*\{[^}]*?)padding\s*:\s*7px\s+16px\s*;/m, '$1padding: 6px 11px;');
@@ -536,12 +539,49 @@
     }
 
     // ---- 字体 ----
+    // Cloudflare 字体代理：可在控制台执行
+    //   localStorage.setItem('nano_cf_font_proxy', 'https://你的worker.workers.dev/?url=')
+    // 或设置 window.NANO_CF_FONT_PROXY 覆盖。留空时自动使用公共 Cloudflare CORS 代理。
+    function getCfFontProxy() {
+        try {
+            if (window.NANO_CF_FONT_PROXY) return String(window.NANO_CF_FONT_PROXY);
+            var v = localStorage.getItem('nano_cf_font_proxy');
+            if (v) return String(v);
+        } catch (e) {}
+        return '';
+    }
+    function fontProxyList(raw) {
+        var u = String(raw || '').trim();
+        if (!/^https?:/i.test(u)) return [];
+        var enc = encodeURIComponent(u);
+        var out = [];
+        var custom = getCfFontProxy();
+        if (custom) out.push(custom.indexOf('{url}') !== -1 ? custom.replace('{url}', enc) : custom + enc);
+        out.push('https://test.cors.workers.dev/?' + u);
+        out.push('https://cors.isomorphic-git.org/' + u);
+        out.push('https://api.allorigins.win/raw?url=' + enc);
+        out.push('https://corsproxy.io/?url=' + enc);
+        out.push('https://api.codetabs.com/v1/proxy?quest=' + enc);
+        return out.filter(function (x, i, a) { return x && a.indexOf(x) === i; });
+    }
+    function normalizeFontUrl(raw) {
+        var u = String(raw || '').trim();
+        if (!u) return u;
+        if (/^\/\//.test(u)) u = 'https:' + u;
+        var gh = u.match(/^https?:\/\/github\.com\/([^\/]+)\/([^\/]+)\/blob\/([^\/]+)\/(.+)$/i);
+        if (gh) u = 'https://raw.githubusercontent.com/' + gh[1] + '/' + gh[2] + '/' + gh[3] + '/' + gh[4];
+        u = u.replace(/^https?:\/\/github\.com\/([^\/]+)\/([^\/]+)\/raw\//i, 'https://raw.githubusercontent.com/$1/$2/');
+        return u;
+    }
     function fontFormatFor(source) {
-        var s = String(source || '').toLowerCase();
-        if (/\.woff2($|[?#])/.test(s)) return 'woff2';
-        if (/\.woff($|[?#])/.test(s)) return 'woff';
-        if (/\.(otf|tof)($|[?#])/.test(s)) return 'opentype';
-        if (/\.ttf($|[?#])/.test(s)) return 'truetype';
+        var s = String(source || '').toLowerCase().split(/[?#]/)[0];
+        if (/\.woff2$/.test(s)) return 'woff2';
+        if (/\.woff$/.test(s)) return 'woff';
+        if (/\.(otf|tof)$/.test(s)) return 'opentype';
+        if (/\.ttf$/.test(s)) return 'truetype';
+        if (/\.ttc$/.test(s) || /\.otc$/.test(s)) return '';
+        if (/\.eot$/.test(s)) return 'embedded-opentype';
+        if (/\.svg$/.test(s)) return 'svg';
         // 无扩展名/CDN 链接不写 format()，让浏览器自行嗅探
         return '';
     }
@@ -575,7 +615,7 @@
             }
             return '';
         }
-        if (cfg.type === 'url' && cfg.source) return String(cfg.source).replace(/"/g, '\\"');
+        if (cfg.type === 'url' && cfg.source) return normalizeFontUrl(cfg.source).replace(/"/g, '\\"');
         return '';
     }
 
@@ -598,19 +638,15 @@
             return out;
         }
         if (cfg.type === 'url' && cfg.source) {
+            var norm = normalizeFontUrl(cfg.source);
             if (cfg.__resolved) add(cfg.__resolved, fontFormatFor(cfg.__resolved));
-            add(cfg.source, cfg.format || fontFormatFor(cfg.source));
+            add(norm, cfg.format || fontFormatFor(norm));
             // https 页面里 http 字体属混合内容，会被浏览器拦掉：补一个 https 升级候选
-            if (/^http:\/\//i.test(cfg.source) && location.protocol === 'https:') {
-                add(cfg.source.replace(/^http:\/\//i, 'https://'), fontFormatFor(cfg.source));
+            if (/^http:\/\//i.test(norm) && location.protocol === 'https:') {
+                add(norm.replace(/^http:\/\//i, 'https://'), fontFormatFor(norm));
             }
-            if (/^https?:/i.test(cfg.source)) {
-                var _s2 = /^http:\/\//i.test(cfg.source) && location.protocol === 'https:' ? cfg.source.replace(/^http:\/\//i, 'https://') : cfg.source;
-                var enc = encodeURIComponent(_s2);
-                add('https://api.nano315.online/audio/proxy?url=' + enc, '');
-                add('https://api.allorigins.win/raw?url=' + enc, '');
-                add('https://corsproxy.io/?url=' + enc, '');
-                add('https://api.codetabs.com/v1/proxy?quest=' + enc, '');
+            if (/^https?:/i.test(norm)) {
+                fontProxyList(norm).forEach(function (p) { add(p, ''); });
             }
         }
         return out;
@@ -667,6 +703,52 @@
             s.textContent = css;
         } catch (e) {}
     }
+    function isCssFontUrl(u) {
+        var s = String(u || '');
+        return /fonts\.googleapis\.com/i.test(s) || /use\.typekit\.net/i.test(s) ||
+            /fonts\.cdnfonts\.com/i.test(s) || /fontlibrary\.org/i.test(s) ||
+            /\.css(?:[?#]|$)/i.test(s) || /[?&]family=/i.test(s);
+    }
+    function fetchTextSmart(raw) {
+        var u = normalizeFontUrl(raw);
+        var cands = [u].concat(fontProxyList(u));
+        var i = 0;
+        function next() {
+            if (i >= cands.length) return Promise.reject(new Error('字体 CSS 无法读取'));
+            var c = cands[i++];
+            return fetch(c, { mode: 'cors', credentials: 'omit' }).then(function (r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.text();
+            }).then(function (txt) {
+                if (txt && /@font-face|font-family\s*:/i.test(txt)) return txt;
+                return next();
+            }).catch(next);
+        }
+        return next();
+    }
+    function rewriteCssFontUrls(css, baseUrl) {
+        function abs(u) {
+            u = String(u || '').trim();
+            if (!u || /^data:|^blob:/i.test(u)) return u;
+            if (/^\/\//.test(u)) u = 'https:' + u;
+            if (/^https?:/i.test(u)) return u;
+            try { return new URL(u, baseUrl).href; } catch (e) { return u; }
+        }
+        return String(css || '').replace(/@font-face\s*\{[\s\S]*?\}/gi, function (block) {
+            return block.replace(/url\(\s*(['"]?)([^'")]+)\1\s*\)(\s*format\(\s*(['"]?)([^'")]+)\4\s*\))?/gi,
+                function (m, q, raw, fmtPart, fq, fmt) {
+                    var u = abs(raw);
+                    if (!/^https?:/i.test(u)) return m;
+                    var list = [u].concat(fontProxyList(u));
+                    var seen = {};
+                    return list.map(function (x) {
+                        if (!x || seen[x]) return '';
+                        seen[x] = 1;
+                        return 'url("' + String(x).replace(/"/g, '\\"') + '")' + (fmt ? ' format("' + fmt + '")' : '');
+                    }).filter(Boolean).join(',');
+                });
+        });
+    }
 
     // Google Fonts 的 css2 链接本身不是字体文件，先解析出真正的 woff2 地址再注入
     var _gfontResolving = {};
@@ -691,8 +773,17 @@
         }
         // 粘贴的 @font-face CSS / 外链字体样式表：直接注入，并用它的字体族名
         ensureFontRawCss((cfg.type === 'url' && cfg.cssText) ? cfg.cssText : '');
-        ensureFontLink((cfg.type === 'url' && cfg.cssFamily && cfg.source && /^(https?:|data:)/i.test(cfg.source)) ? cfg.source : '');
+        ensureFontLink((cfg.type === 'url' && cfg.cssFamily && cfg.source && !cfg.cssText && /^(https?:|data:)/i.test(cfg.source)) ? cfg.source : '');
         applyStyle('nano-beautify-font', buildFontCss(cfg));
+        // 外链字体 CSS：用 Cloudflare 代理拉取一次，补全相对地址 + 字体文件代理候选；
+        // 成功后就替换掉原始 <link>，避免原站 CORS / 防盗链导致字体静默失败。
+        if (cfg.type === 'url' && cfg.cssFamily && cfg.source && !cfg.cssText && isCssFontUrl(cfg.source)) {
+            fetchTextSmart(cfg.source).then(function (text) {
+                if (!text) return;
+                ensureFontRawCss(rewriteCssFontUrls(text, cfg.source));
+                ensureFontLink('');
+            }).catch(function () {});
+        }
         // 兼容旧配置：Google Fonts CSS 链接在无 cssFamily 时，解析成真实字体文件后重新注入
         if (!cfg.cssFamily && cfg.type === 'url' && cfg.source &&
             /fonts\.googleapis\.com\/css/i.test(cfg.source) && !cfg.__resolved && !_gfontResolving[cfg.source]) {

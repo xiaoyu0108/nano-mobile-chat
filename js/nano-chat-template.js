@@ -58,10 +58,10 @@ window.NANO_CHAT_TEMPLATE = `/* ================================================
   --chat-bg: #ffffff;
   --chat-text: #1c1c1e;
   --chat-sub: #8e8e93;
-  --chat-accent: #007aff;
+  --chat-accent: #2c2c2e;
   --chat-glass-bg: rgba(255, 255, 255, 0.65);
   --chat-glass-line: rgba(255, 255, 255, 0.5);
-  --bubble-me: #007aff;
+  --bubble-me: #2c2c2e;
   --bubble-me-text: #ffffff;
   --bubble-other: #dedede;
   --bubble-other-text: #111111;
@@ -316,80 +316,135 @@ window.NANO_CHAT_TEMPLATE = `/* ================================================
 .nano-chat-inner .image-desc-bubble .idb-inner { padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; }
 .nano-chat-inner .image-desc-bubble .idb-text { font-size: 12px; color: #3c4a58; line-height: 1.4; }
 
-/* 2.5 卡片（私聊）
-   HTML：<div class="bubble-card left|right transfer|gift|listen|couple|invite|call|image|familycard|takeout|location ...">
-           <div class="card-main"><div class="icon-wrap"><svg/></div>
-             <div><div class="card-title">…</div><div class="card-sub">…</div></div></div>
-           <div class="card-footer"><span class="card-footer-text">…</span>
-             <div class="card-actions"><button class="card-btn [return-btn]">…</button></div></div>
-         </div>
-   状态类：.claimed/.received/.returned/.response（变灰）.missed（未接来电）
-   换图标：.bubble-card.transfer .icon-wrap svg{display:none}
-           .bubble-card.transfer .icon-wrap::before{content:url("图片")} */
-.nano-chat-inner .bubble-card { position: relative; width: 208px; border-radius: 16px; overflow: hidden; font-size: 14px; }
+/* 2.5 卡片（私聊）——通用模板
+   HTML（由 js/nano-card-ui.js 统一生成）：
+   <div class="bubble-card left|right transfer|gift|listen|couple|call|file|...">
+     <div class="card-header"><div class="status"><svg/><span>状态</span></div><div class="time">14:28</div></div>
+     <div class="main-section">金额 / 图标 + 标题</div>
+     <div class="info-section"><div class="info-grid">4 个 .info-item</div></div>
+     <div class="message-box card-note">留言（可选）</div>
+     <div class="card-footer">.card-footer-text 或 .card-actions > .card-btn</div>
+   </div>
+   兼容旧选择器：.card-main / .card-title / .card-sub / .icon-wrap / .card-footer / .card-btn
+   仍然保留，之前写的卡片美化大多可以直接继续用。 */
+.nano-chat-inner .bubble-card {
+    position: relative; width: 248px; max-width: 100%;
+    background: #ffffff; color: #111111;
+    border: 1px solid #e5e5e5; border-radius: 16px;
+    box-shadow: 0 5px 18px rgba(0,0,0,0.08);
+    overflow: hidden; font-size: 14px; line-height: 1.3;
+}
 .nano-chat-inner .bubble-card.right { align-self: flex-end; }
 .nano-chat-inner .bubble-card.left { align-self: flex-start; }
-.nano-chat-inner .bubble-card.right::before { content: ""; position: absolute; bottom: 0; right: -6px; width: 14px; height: 14px; border-bottom-left-radius: 12px; background: inherit; z-index: -1; }
-.nano-chat-inner .bubble-card.left::before { content: ""; position: absolute; bottom: 0; left: -6px; width: 14px; height: 14px; border-bottom-right-radius: 12px; background: inherit; z-index: -1; }
-.nano-chat-inner .bubble-card.right::after { content: ""; position: absolute; bottom: 0; right: -18px; width: 18px; height: 14px; background: var(--chat-bg); border-bottom-left-radius: 8px; z-index: 1; }
-.nano-chat-inner .bubble-card.left::after { content: ""; position: absolute; bottom: 0; left: -18px; width: 18px; height: 14px; background: var(--chat-bg); border-bottom-right-radius: 8px; z-index: 1; }
-.nano-chat-inner .bubble-card .card-main { display: flex; align-items: center; gap: 10px; padding: 12px 12px 8px; }
-.nano-chat-inner .bubble-card .icon-wrap { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.nano-chat-inner .bubble-card .icon-wrap svg { width: 16px; height: 16px; }
-.nano-chat-inner .bubble-card .card-title { font-size: 17px; font-weight: 600; line-height: 1.2; }
-.nano-chat-inner .bubble-card .card-sub { font-size: 11px; opacity: 0.9; margin-top: 2px; }
-.nano-chat-inner .bubble-card .card-footer { padding: 5px 12px; font-size: 10px; opacity: 0.85; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.nano-chat-inner .bubble-card .card-footer .card-footer-text { flex: 1; }
-.nano-chat-inner .bubble-card .card-footer .card-actions { display: flex; gap: 6px; }
-.nano-chat-inner .bubble-card .card-btn { border: none; border-radius: 10px; padding: 4px 10px; font-size: 11px; cursor: pointer; color: #fff; font-weight: 500; background: rgba(255, 255, 255, 0.28); }
-.nano-chat-inner .bubble-card .card-btn.return-btn { background: rgba(0, 0, 0, 0.14); }
-.nano-chat-inner .bubble-card.transfer { background: #f7a24e; color: #fff; }
-.nano-chat-inner .bubble-card.transfer .icon-wrap { background: rgba(255, 255, 255, 0.25); }
-.nano-chat-inner .bubble-card.transfer .card-footer { border-top: 1px solid rgba(255, 255, 255, 0.25); }
-.nano-chat-inner .bubble-card.gift { background: #ff6fa0; color: #fff; }
-.nano-chat-inner .bubble-card.gift .icon-wrap { background: rgba(255, 255, 255, 0.25); }
-.nano-chat-inner .bubble-card.gift .card-footer { border-top: 1px solid rgba(255, 255, 255, 0.25); }
-.nano-chat-inner .bubble-card.transfer.claimed, .nano-chat-inner .bubble-card.transfer.response,
-.nano-chat-inner .bubble-card.transfer.received, .nano-chat-inner .bubble-card.transfer.returned,
-.nano-chat-inner .bubble-card.gift.claimed, .nano-chat-inner .bubble-card.gift.response,
-.nano-chat-inner .bubble-card.gift.received, .nano-chat-inner .bubble-card.gift.returned { background: #dcdcdc; color: #8a8a8a; }
-.nano-chat-inner .bubble-card.listen { background: #fff; color: #111; }
-.nano-chat-inner .bubble-card.listen .icon-wrap { background: rgba(0, 0, 0, 0.06); color: #111; }
-.nano-chat-inner .bubble-card.listen .card-footer { border-top: 1px solid rgba(0, 0, 0, 0.06); }
-.nano-chat-inner .bubble-card.listen .card-btn { background: #1c1c1e; color: #fff; }
-.nano-chat-inner .bubble-card.listen .card-btn.return-btn { background: #ececf0; color: #555; }
-.nano-chat-inner .bubble-card.couple { background: linear-gradient(135deg, #fff6f8, #f7eef4); color: #6b4b57; box-shadow: 0 6px 18px rgba(201, 139, 157, 0.12); }
-.nano-chat-inner .bubble-card.couple .icon-wrap { background: rgba(201, 139, 157, 0.16); color: #c07d93; }
-.nano-chat-inner .bubble-card.couple .card-title { font-family: "Songti SC", "STSong", serif; font-size: 16px; }
-.nano-chat-inner .bubble-card.couple .card-sub { color: #a3858f; }
-.nano-chat-inner .bubble-card.couple .card-footer { border-top: 1px solid rgba(201, 139, 157, 0.18); color: #b2949d; }
-.nano-chat-inner .bubble-card.invite { background: #fff; color: #111; }
-.nano-chat-inner .bubble-card.invite .icon-wrap { background: rgba(0, 0, 0, 0.06); color: #111; }
-.nano-chat-inner .bubble-card.invite .card-footer { border-top: 1px solid rgba(0, 0, 0, 0.06); }
-.nano-chat-inner .bubble-card.invite .card-btn { background: #1c1c1e; color: #fff; }
-.nano-chat-inner .bubble-card.invite .card-btn.return-btn { background: #ececf0; color: #555; }
-.nano-chat-inner .bubble-card.call { background: #fff; padding: 10px 12px; display: flex; align-items: center; gap: 8px; }
-.nano-chat-inner .bubble-card.call .icon-wrap { background: rgba(0, 122, 255, 0.1); }
-.nano-chat-inner .bubble-card.call.missed .icon-wrap { background: rgba(255, 59, 48, 0.1); }
-.nano-chat-inner .bubble-card.call .card-title { font-size: 14px; color: #111; }
-.nano-chat-inner .bubble-card.call.missed .card-title { color: #ff3b30; }
-.nano-chat-inner .bubble-card.call .card-sub { font-size: 11px; color: #999; margin-top: 1px; }
-/* 亲属卡 / 外卖 / 定位卡片（可在「聊天美化」里自由覆盖） */
-.nano-chat-inner .bubble-card.familycard { background: #fff; color: #111; }
-.nano-chat-inner .bubble-card.familycard .icon-wrap { background: rgba(175, 82, 222, 0.14); color: #af52de; }
-.nano-chat-inner .bubble-card.familycard .card-footer { border-top: 1px solid rgba(0, 0, 0, 0.06); }
-.nano-chat-inner .bubble-card.familycard .card-btn { background: #af52de; color: #fff; }
-.nano-chat-inner .bubble-card.familycard .card-btn.return-btn { background: #ececf0; color: #555; }
-.nano-chat-inner .bubble-card.familycard.response, .nano-chat-inner .bubble-card.familycard.rejected { background: #dcdcdc; color: #8a8a8a; }
-.nano-chat-inner .bubble-card.takeout { background: #fff; color: #111; }
-.nano-chat-inner .bubble-card.takeout .icon-wrap { background: rgba(255, 138, 0, 0.14); color: #ff8a00; }
-.nano-chat-inner .bubble-card.takeout .card-footer { border-top: 1px solid rgba(0, 0, 0, 0.06); }
-.nano-chat-inner .bubble-card.takeout .card-btn { background: #ff8a00; color: #fff; }
-.nano-chat-inner .bubble-card.takeout .card-btn.return-btn { background: #ececf0; color: #555; }
-.nano-chat-inner .bubble-card.takeout.response, .nano-chat-inner .bubble-card.takeout.accepted, .nano-chat-inner .bubble-card.takeout.rejected { background: #dcdcdc; color: #8a8a8a; }
-.nano-chat-inner .bubble-card.location { background: #fff; color: #111; }
-.nano-chat-inner .bubble-card.location .icon-wrap { background: rgba(50, 173, 230, 0.14); color: #32ade6; }
-.nano-chat-inner .bubble-card.location .card-footer { border-top: 1px solid rgba(0, 0, 0, 0.06); }
+.nano-chat-inner .bubble-card::before,
+.nano-chat-inner .bubble-card::after { content: none !important; display: none !important; }
+.nano-chat-inner .bubble-card .card-header {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 8px 12px; background: #111111; color: #ffffff;
+}
+.nano-chat-inner .bubble-card .status {
+    display: flex; align-items: center; gap: 6px; min-width: 0;
+    font-size: 12px; font-weight: 500;
+}
+.nano-chat-inner .bubble-card .status svg { width: 13px; height: 13px; flex-shrink: 0; color: #a0a0a0; }
+.nano-chat-inner .bubble-card .status span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nano-chat-inner .bubble-card .time { flex-shrink: 0; font-size: 11px; color: #b0b0b0; }
+.nano-chat-inner .bubble-card .main-section {
+    padding: 12px 12px 10px; text-align: center; border-bottom: 1px solid #f0f0f0;
+}
+.nano-chat-inner .bubble-card .main-icon {
+    width: 38px; height: 38px; margin: 0 auto 6px;
+    display: flex; align-items: center; justify-content: center;
+    background: #f5f5f5; border-radius: 11px; color: #222222;
+}
+.nano-chat-inner .bubble-card .main-icon svg { width: 18px; height: 18px; }
+.nano-chat-inner .bubble-card .main-label { font-size: 10.5px; color: #888888; margin-bottom: 2px; }
+.nano-chat-inner .bubble-card .main-title {
+    font-size: 15px; font-weight: 700; color: #111111; line-height: 1.25;
+    overflow-wrap: anywhere; word-break: break-word;
+}
+.nano-chat-inner .bubble-card .main-sub { margin-top: 3px; font-size: 10.5px; color: #8e8e93; line-height: 1.35; overflow-wrap: anywhere; }
+.nano-chat-inner .bubble-card .amount {
+    font-size: 23px; font-weight: 700; color: #111111; letter-spacing: -0.4px; line-height: 1.15;
+    overflow-wrap: anywhere;
+}
+.nano-chat-inner .bubble-card .amount span { font-size: 14px; font-weight: 500; margin-right: 1px; }
+.nano-chat-inner .bubble-card .info-section { padding: 9px 12px 4px; }
+.nano-chat-inner .bubble-card .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px 9px; }
+.nano-chat-inner .bubble-card .info-item { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.nano-chat-inner .bubble-card .icon-box {
+    width: 25px; height: 25px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: #f5f5f5; border-radius: 7px; color: #333333;
+}
+.nano-chat-inner .bubble-card .icon-box svg { width: 12px; height: 12px; }
+.nano-chat-inner .bubble-card .info-content { min-width: 0; }
+.nano-chat-inner .bubble-card .info-label { font-size: 9px; color: #999999; line-height: 1.1; margin-bottom: 1px; }
+.nano-chat-inner .bubble-card .info-value {
+    font-size: 10.5px; font-weight: 500; color: #111111; line-height: 1.2;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.nano-chat-inner .bubble-card .message-box {
+    margin: 8px 12px 0; padding: 6px 8px;
+    background: #f8f8f8; border-radius: 8px;
+    font-size: 11px; line-height: 1.4; color: #444444;
+    white-space: pre-wrap; overflow-wrap: anywhere;
+    max-height: 76px; overflow-y: auto;
+}
+.nano-chat-inner .bubble-card .chain-list {
+    margin: 8px 12px 0; padding: 4px 8px; max-height: 120px; overflow-y: auto;
+    background: #f8f8f8; border-radius: 8px;
+}
+.nano-chat-inner .bubble-card .chain-item { padding: 3px 0; font-size: 11px; color: #333; line-height: 1.35; }
+.nano-chat-inner .bubble-card .chain-item .idx { color: #999; margin-right: 4px; }
+.nano-chat-inner .bubble-card .chain-item .chain-name { color: #999; font-size: 10px; }
+.nano-chat-inner .bubble-card .card-image { padding: 0; border-bottom: 1px solid #f0f0f0; background: #f5f5f5; }
+.nano-chat-inner .bubble-card .card-image img { display: block; width: 100%; max-height: 120px; object-fit: cover; }
+.nano-chat-inner .bubble-card .card-footer {
+    display: flex; align-items: center; gap: 8px;
+    padding: 9px 12px 11px; border-top: 0; opacity: 1;
+}
+.nano-chat-inner .bubble-card .card-footer.status-only { padding: 8px 12px 10px; }
+.nano-chat-inner .bubble-card .card-footer-text {
+    flex: 1; min-width: 0; display: flex; align-items: center;
+    font-size: 10.5px; line-height: 1.4; color: #8e8e93;
+}
+.nano-chat-inner .bubble-card .card-actions { display: flex; gap: 8px; flex: 1; }
+.nano-chat-inner .bubble-card .card-btn,
+.nano-chat-inner .bubble-card .btn {
+    flex: 1; height: 32px; min-width: 0; padding: 0 8px;
+    display: flex; align-items: center; justify-content: center; gap: 4px;
+    border: none; border-radius: 9px; font-family: inherit;
+    font-size: 12px; font-weight: 600; line-height: 1; cursor: pointer;
+    transition: transform .12s ease, background .12s ease;
+}
+.nano-chat-inner .bubble-card .card-btn:active,
+.nano-chat-inner .bubble-card .btn:active { transform: scale(.97); }
+.nano-chat-inner .bubble-card .btn-primary,
+.nano-chat-inner .bubble-card .card-btn.primary { background: #111111; color: #ffffff; }
+.nano-chat-inner .bubble-card .btn-primary:active,
+.nano-chat-inner .bubble-card .card-btn.primary:active { background: #333333; }
+.nano-chat-inner .bubble-card .btn-secondary,
+.nano-chat-inner .bubble-card .card-btn.secondary,
+.nano-chat-inner .bubble-card .card-btn.return-btn { background: #f5f5f5; color: #333333; }
+.nano-chat-inner .bubble-card .btn-secondary:active,
+.nano-chat-inner .bubble-card .card-btn.secondary:active,
+.nano-chat-inner .bubble-card .card-btn.return-btn:active { background: #e8e8e8; }
+.nano-chat-inner .bubble-card.claimed .card-header,
+.nano-chat-inner .bubble-card.response .card-header,
+.nano-chat-inner .bubble-card.received .card-header,
+.nano-chat-inner .bubble-card.returned .card-header,
+.nano-chat-inner .bubble-card.accepted .card-header,
+.nano-chat-inner .bubble-card.rejected .card-header,
+.nano-chat-inner .bubble-card.opened .card-header { background: #8e8e93; }
+.nano-chat-inner .bubble-card.claimed .main-section,
+.nano-chat-inner .bubble-card.response .main-section,
+.nano-chat-inner .bubble-card.received .main-section,
+.nano-chat-inner .bubble-card.returned .main-section,
+.nano-chat-inner .bubble-card.accepted .main-section,
+.nano-chat-inner .bubble-card.rejected .main-section,
+.nano-chat-inner .bubble-card.opened .main-section { opacity: .82; }
+.nano-chat-inner .bubble-card .card-btn:disabled { opacity: .5; cursor: default; }
 
 /* 2.6 输入中动画 */
 .nano-chat-inner .typing-indicator { display: none; align-items: flex-end; gap: 8px; padding: 4px 0 6px 0; }
@@ -417,7 +472,7 @@ window.NANO_CHAT_TEMPLATE = `/* ================================================
            <button class="send-btn" id="sendBtn"><i class="fas fa-arrow-up"></i></button>
          </footer>
    JS：#moreBtn 更多面板；#emojiBtn 表情包；#voiceBtn 语音；#sendBtn 发送
-       （.disabled 置灰 / .reply-mode 绿色=回复）；.voice-btn.active 录音中。 */
+       （.disabled 置灰 / .reply-mode 深灰=回复）；.voice-btn.active 录音中。 */
 .nano-chat-inner .bottom-bar {
   position: relative; z-index: 30; width: 100%; flex-shrink: 0;
   padding: var(--chat-bottombar-pad, 6px 14px 4px);
@@ -426,7 +481,7 @@ window.NANO_CHAT_TEMPLATE = `/* ================================================
 .nano-chat-inner .more-btn { width: 42px; height: 42px; border: none; border-radius: 50%; background: var(--chat-glass-bg); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; border: 0.5px solid var(--chat-glass-line); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.6); color: var(--chat-text); transition: all 0.15s; }
 .nano-chat-inner .more-btn:active { transform: scale(0.88); background: rgba(200, 200, 210, 0.15); }
 .nano-chat-inner .more-btn svg { width: 20px; height: 20px; stroke: currentColor; stroke-width: 2; fill: none; }
-.nano-chat-inner .input-shell { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 2px 6px 2px 14px; background: rgba(255, 255, 255, 0.5); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-radius: 30px; border: 0.5px solid var(--chat-glass-line); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.6); min-height: 42px; justify-content: center; }
+.nano-chat-inner .input-shell { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 2px 6px 2px 14px; background: rgba(255, 255, 255, 0.32); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-radius: 30px; border: 0.5px solid var(--chat-glass-line); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.6); min-height: 42px; justify-content: center; }
 .nano-chat-inner .input-row { display: flex; align-items: center; gap: 4px; width: 100%; }
 .nano-chat-inner .input { flex: 1; border: none; outline: none; background: transparent; font-size: 16px; color: var(--chat-text); padding: 6px 2px; min-width: 0; font-family: inherit; }
 .nano-chat-inner .input::placeholder { color: #aeaeb2; font-weight: 400; }
@@ -434,10 +489,10 @@ window.NANO_CHAT_TEMPLATE = `/* ================================================
 .nano-chat-inner .emoji-btn, .nano-chat-inner .voice-btn { width: 32px; height: 32px; border: none; border-radius: 50%; background: transparent; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; color: var(--chat-sub); font-size: 17px; transition: all 0.15s; }
 .nano-chat-inner .emoji-btn:active, .nano-chat-inner .voice-btn:active { transform: scale(0.88); background: rgba(0, 0, 0, 0.04); }
 .nano-chat-inner .voice-btn.active { color: #ff3b30; background: rgba(255, 59, 48, 0.12); }
-.nano-chat-inner .send-btn { position: relative; overflow: visible; width: 42px; height: 42px; border: none; border-radius: 50%; background: var(--chat-accent); display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; transition: all 0.15s; color: #fff; font-size: 17px; box-shadow: 0 4px 16px rgba(0, 122, 255, 0.3); }
-.nano-chat-inner .send-btn:active { transform: scale(0.88); background: #0055b3; }
+.nano-chat-inner .send-btn { position: relative; overflow: visible; width: 42px; height: 42px; border: none; border-radius: 50%; background: var(--bubble-me); display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; transition: all 0.15s; color: #fff; font-size: 17px; box-shadow: 0 4px 16px rgba(44, 44, 46, 0.28); }
+.nano-chat-inner .send-btn:active { transform: scale(0.88); background: #1c1c1e; }
 .nano-chat-inner .send-btn.disabled { background: #8e8e93; box-shadow: none; }
-.nano-chat-inner .send-btn.reply-mode { background: #34c759; box-shadow: 0 4px 16px rgba(52, 199, 89, 0.3); }
+.nano-chat-inner .send-btn.reply-mode { background: #2c2c2e; box-shadow: 0 4px 16px rgba(44, 44, 46, 0.28); }
 .nano-chat-inner .quote-bar { display: none; align-items: center; background: rgba(255, 255, 255, 0.92); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); padding: 8px 12px; border-radius: 14px; border: 0.5px solid var(--chat-glass-line); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.6); font-size: 13px; color: var(--chat-sub); gap: 8px; max-width: 100%; }
 .nano-chat-inner .quote-bar.active { display: flex; }
 .nano-chat-inner .quote-bar .quote-name { font-weight: 600; color: var(--chat-text); margin-right: 2px; flex-shrink: 0; }
@@ -523,40 +578,129 @@ window.NANO_CHAT_TEMPLATE = `/* ================================================
 .nano-groups .voice-bubble .voice-duration { font-size: 13px; margin-left: 4px; }
 .nano-groups .voice-transcript { font-size: 13px; color: #555; }
 
-/* 3.4 卡片（群聊：红包 / 群通知 / 群接龙）
-   HTML 同私聊 .bubble-card，无非是变体类不同。
-   换图标：.bubble-card.redpacket .icon-wrap svg{display:none}
-           .bubble-card.redpacket .icon-wrap::before{content:url("图片")} */
-.nano-groups .bubble-card { position: relative; width: 240px; border-radius: 16px; overflow: hidden; font-size: 14px; }
+/* 3.4 卡片（群聊：红包 / 群公告 / 群接龙）
+   与私聊共用同一套通用模板 HTML / 类名，只是额外支持：
+   .chain-list / .chain-item / .chain-name（接龙列表）
+   .card-btn[data-notice]（群公告确认）
+   .card-btn[data-chain]（群接龙参与） */
+.nano-groups .bubble-card {
+    position: relative; width: 248px; max-width: 100%;
+    background: #ffffff; color: #111111;
+    border: 1px solid #e5e5e5; border-radius: 16px;
+    box-shadow: 0 5px 18px rgba(0,0,0,0.08);
+    overflow: hidden; font-size: 14px; line-height: 1.3;
+}
 .nano-groups .bubble-card.right { align-self: flex-end; }
 .nano-groups .bubble-card.left { align-self: flex-start; }
-.nano-groups .bubble-card .card-main { display: flex; align-items: center; gap: 10px; padding: 14px; }
-.nano-groups .bubble-card .icon-wrap { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.nano-groups .bubble-card .icon-wrap svg { width: 18px; height: 18px; }
-.nano-groups .bubble-card .card-title { font-size: 17px; font-weight: 600; line-height: 1.3; }
-.nano-groups .bubble-card .card-sub { font-size: 12px; opacity: 0.85; margin-top: 3px; }
-.nano-groups .bubble-card .card-footer { padding: 8px 14px; font-size: 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.nano-groups .bubble-card .card-btn { border: none; border-radius: 10px; padding: 5px 12px; font-size: 12px; font-weight: 600; cursor: pointer; }
-.nano-groups .bubble-card.redpacket { background: linear-gradient(135deg, #fa5151, #e6353d); color: #fff; }
-.nano-groups .bubble-card.redpacket .icon-wrap { background: rgba(255, 255, 255, 0.25); }
-.nano-groups .bubble-card.redpacket .card-footer { border-top: 1px solid rgba(255, 255, 255, 0.2); }
-.nano-groups .bubble-card.redpacket.opened { background: #d8d8dc; color: #8a8a8a; }
-.nano-groups .bubble-card.redpacket .card-btn { color: #e6353d; background: #fff; }
-.nano-groups .bubble-card.notice { background: #fff; color: var(--chat-text); border: 1px solid rgba(0, 0, 0, 0.06); }
-.nano-groups .bubble-card.notice .icon-wrap { background: rgba(240, 165, 0, 0.15); }
-.nano-groups .bubble-card.notice .icon-wrap svg { stroke: #f0a500; }
-.nano-groups .bubble-card.notice .card-footer { border-top: 1px solid rgba(0, 0, 0, 0.06); color: var(--chat-sub); }
-.nano-groups .bubble-card.notice .card-btn { background: rgba(0, 122, 255, 0.12); color: var(--chat-accent); }
-.nano-groups .bubble-card.notice .card-btn.confirmed { background: rgba(52, 199, 89, 0.15); color: #34c759; }
-.nano-groups .bubble-card.chain { background: #fff; color: var(--chat-text); border: 1px solid rgba(0, 0, 0, 0.06); width: 260px; }
-.nano-groups .bubble-card.chain .icon-wrap { background: rgba(0, 122, 255, 0.12); }
-.nano-groups .bubble-card.chain .icon-wrap svg { stroke: var(--chat-accent); }
-.nano-groups .bubble-card.chain .chain-list { padding: 8px 14px; border-top: 1px solid rgba(0, 0, 0, 0.06); max-height: 180px; overflow-y: auto; }
-.nano-groups .bubble-card.chain .chain-item { font-size: 13px; color: var(--chat-text); padding: 4px 0; }
-.nano-groups .bubble-card.chain .chain-item .idx { color: var(--chat-sub); margin-right: 6px; }
-.nano-groups .bubble-card.chain .chain-footer { padding: 8px 14px; border-top: 1px solid rgba(0, 0, 0, 0.06); }
-.nano-groups .bubble-card.chain .chain-btn { width: 100%; border: none; border-radius: 10px; padding: 8px 0; background: var(--chat-accent); color: #fff; font-size: 14px; }
-.nano-groups .bubble-card.chain .chain-btn:disabled { background: #c7c7cc; }
+.nano-groups .bubble-card::before,
+.nano-groups .bubble-card::after { content: none !important; display: none !important; }
+.nano-groups .bubble-card .card-header {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 8px 12px; background: #111111; color: #ffffff;
+}
+.nano-groups .bubble-card .status {
+    display: flex; align-items: center; gap: 6px; min-width: 0;
+    font-size: 12px; font-weight: 500;
+}
+.nano-groups .bubble-card .status svg { width: 13px; height: 13px; flex-shrink: 0; color: #a0a0a0; }
+.nano-groups .bubble-card .status span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nano-groups .bubble-card .time { flex-shrink: 0; font-size: 11px; color: #b0b0b0; }
+.nano-groups .bubble-card .main-section {
+    padding: 12px 12px 10px; text-align: center; border-bottom: 1px solid #f0f0f0;
+}
+.nano-groups .bubble-card .main-icon {
+    width: 38px; height: 38px; margin: 0 auto 6px;
+    display: flex; align-items: center; justify-content: center;
+    background: #f5f5f5; border-radius: 11px; color: #222222;
+}
+.nano-groups .bubble-card .main-icon svg { width: 18px; height: 18px; }
+.nano-groups .bubble-card .main-label { font-size: 10.5px; color: #888888; margin-bottom: 2px; }
+.nano-groups .bubble-card .main-title {
+    font-size: 15px; font-weight: 700; color: #111111; line-height: 1.25;
+    overflow-wrap: anywhere; word-break: break-word;
+}
+.nano-groups .bubble-card .main-sub { margin-top: 3px; font-size: 10.5px; color: #8e8e93; line-height: 1.35; overflow-wrap: anywhere; }
+.nano-groups .bubble-card .amount {
+    font-size: 23px; font-weight: 700; color: #111111; letter-spacing: -0.4px; line-height: 1.15;
+    overflow-wrap: anywhere;
+}
+.nano-groups .bubble-card .amount span { font-size: 14px; font-weight: 500; margin-right: 1px; }
+.nano-groups .bubble-card .info-section { padding: 9px 12px 4px; }
+.nano-groups .bubble-card .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px 9px; }
+.nano-groups .bubble-card .info-item { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.nano-groups .bubble-card .icon-box {
+    width: 25px; height: 25px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: #f5f5f5; border-radius: 7px; color: #333333;
+}
+.nano-groups .bubble-card .icon-box svg { width: 12px; height: 12px; }
+.nano-groups .bubble-card .info-content { min-width: 0; }
+.nano-groups .bubble-card .info-label { font-size: 9px; color: #999999; line-height: 1.1; margin-bottom: 1px; }
+.nano-groups .bubble-card .info-value {
+    font-size: 10.5px; font-weight: 500; color: #111111; line-height: 1.2;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.nano-groups .bubble-card .message-box {
+    margin: 8px 12px 0; padding: 6px 8px;
+    background: #f8f8f8; border-radius: 8px;
+    font-size: 11px; line-height: 1.4; color: #444444;
+    white-space: pre-wrap; overflow-wrap: anywhere;
+    max-height: 76px; overflow-y: auto;
+}
+.nano-groups .bubble-card .chain-list {
+    margin: 8px 12px 0; padding: 4px 8px; max-height: 120px; overflow-y: auto;
+    background: #f8f8f8; border-radius: 8px;
+}
+.nano-groups .bubble-card .chain-item { padding: 3px 0; font-size: 11px; color: #333; line-height: 1.35; }
+.nano-groups .bubble-card .chain-item .idx { color: #999; margin-right: 4px; }
+.nano-groups .bubble-card .chain-item .chain-name { color: #999; font-size: 10px; }
+.nano-groups .bubble-card .card-image { padding: 0; border-bottom: 1px solid #f0f0f0; background: #f5f5f5; }
+.nano-groups .bubble-card .card-image img { display: block; width: 100%; max-height: 120px; object-fit: cover; }
+.nano-groups .bubble-card .card-footer {
+    display: flex; align-items: center; gap: 8px;
+    padding: 9px 12px 11px; border-top: 0; opacity: 1;
+}
+.nano-groups .bubble-card .card-footer.status-only { padding: 8px 12px 10px; }
+.nano-groups .bubble-card .card-footer-text {
+    flex: 1; min-width: 0; display: flex; align-items: center;
+    font-size: 10.5px; line-height: 1.4; color: #8e8e93;
+}
+.nano-groups .bubble-card .card-actions { display: flex; gap: 8px; flex: 1; }
+.nano-groups .bubble-card .card-btn,
+.nano-groups .bubble-card .btn {
+    flex: 1; height: 32px; min-width: 0; padding: 0 8px;
+    display: flex; align-items: center; justify-content: center; gap: 4px;
+    border: none; border-radius: 9px; font-family: inherit;
+    font-size: 12px; font-weight: 600; line-height: 1; cursor: pointer;
+    transition: transform .12s ease, background .12s ease;
+}
+.nano-groups .bubble-card .card-btn:active,
+.nano-groups .bubble-card .btn:active { transform: scale(.97); }
+.nano-groups .bubble-card .btn-primary,
+.nano-groups .bubble-card .card-btn.primary { background: #111111; color: #ffffff; }
+.nano-groups .bubble-card .btn-primary:active,
+.nano-groups .bubble-card .card-btn.primary:active { background: #333333; }
+.nano-groups .bubble-card .btn-secondary,
+.nano-groups .bubble-card .card-btn.secondary,
+.nano-groups .bubble-card .card-btn.return-btn { background: #f5f5f5; color: #333333; }
+.nano-groups .bubble-card .btn-secondary:active,
+.nano-groups .bubble-card .card-btn.secondary:active,
+.nano-groups .bubble-card .card-btn.return-btn:active { background: #e8e8e8; }
+.nano-groups .bubble-card.claimed .card-header,
+.nano-groups .bubble-card.response .card-header,
+.nano-groups .bubble-card.received .card-header,
+.nano-groups .bubble-card.returned .card-header,
+.nano-groups .bubble-card.accepted .card-header,
+.nano-groups .bubble-card.rejected .card-header,
+.nano-groups .bubble-card.opened .card-header { background: #8e8e93; }
+.nano-groups .bubble-card.claimed .main-section,
+.nano-groups .bubble-card.response .main-section,
+.nano-groups .bubble-card.received .main-section,
+.nano-groups .bubble-card.returned .main-section,
+.nano-groups .bubble-card.accepted .main-section,
+.nano-groups .bubble-card.rejected .main-section,
+.nano-groups .bubble-card.opened .main-section { opacity: .82; }
+.nano-groups .bubble-card .card-btn:disabled { opacity: .5; cursor: default; }
 
 /* 3.5 底部 dock（群聊） */
 .nano-groups .bottom-bar { position: relative; z-index: 30; width: 100%; flex-shrink: 0; padding: var(--chat-bottombar-pad, 8px 12px 4px); display: flex; align-items: center; gap: 8px; background: transparent; }
@@ -570,9 +714,9 @@ window.NANO_CHAT_TEMPLATE = `/* ================================================
 .nano-groups .emoji-voice-group { display: flex; gap: 4px; flex-shrink: 0; }
 .nano-groups .emoji-btn, .nano-groups .voice-btn { width: 30px; height: 30px; border: none; border-radius: 50%; background: transparent; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--chat-sub); font-size: 19px; }
 .nano-groups .emoji-btn:active, .nano-groups .voice-btn:active { background: rgba(0, 0, 0, 0.05); }
-.nano-groups .send-btn { position: relative; overflow: visible; width: 42px; height: 42px; border: none; border-radius: 50%; background: var(--chat-accent); display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; color: #fff; font-size: 18px; box-shadow: 0 2px 8px rgba(0, 122, 255, 0.35); }
+.nano-groups .send-btn { position: relative; overflow: visible; width: 42px; height: 42px; border: none; border-radius: 50%; background: var(--bubble-me); display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; color: #fff; font-size: 18px; box-shadow: 0 2px 8px rgba(44, 44, 46, 0.3); }
 .nano-groups .send-btn:active { transform: scale(0.9); }
-.nano-groups .send-btn.reply-mode { background: #34c759; box-shadow: 0 2px 8px rgba(52, 199, 89, 0.35); }
+.nano-groups .send-btn.reply-mode { background: #2c2c2e; box-shadow: 0 2px 8px rgba(44, 44, 46, 0.3); }
 .nano-groups .quote-bar { display: none; background: rgba(255, 255, 255, 0.96); padding: 8px 12px; font-size: 12px; align-items: center; gap: 8px; border-radius: 12px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08); }
 .nano-groups .quote-bar.active { display: flex; }
 .nano-groups .quote-bar .qb-name { font-weight: 600; color: var(--chat-accent); flex-shrink: 0; }
@@ -739,109 +883,69 @@ window.NANO_CHAT_TEMPLATE = `/* ================================================
 /* ============================================================
    配方 O：卡片（转账 / 红包 / 一起听 / 文件 / 情侣卡…）完全重构
    ------------------------------------------------------------
-   所有卡片同构（变体：transfer / gift / listen / file / couple / invite / call / image / familycard / takeout / location …）：
+   所有卡片同构（变体：transfer / gift / listen / file / couple / invite / call / familycard / takeout / location / redpacket / notice / chain …）：
      .bubble-card.<变体>
-       .card-main
-         .icon-wrap (内含 svg)
-         div                      ← 文字组：没有类名，用 .card-main > div:not(.icon-wrap) 选中
-           .card-title
-           .card-sub
+       .card-header
+         .status > svg + span        ← 深色状态栏：状态图标 + 文字
+         .time                       ← 右侧时间
+       .main-section
+         .main-icon > svg            ← 图标（金额类没有这一块）
+         .main-label                 ← 小标签
+         .main-title.card-title      ← 主标题
+         .main-sub.card-sub          ← 副标题
+         .amount                     ← 金额（转账 / 外卖 / 商城等金额类）
+       .info-section > .info-grid > .info-item ×4
+         .icon-box + .info-content > .info-label + .info-value
+       .message-box.card-note        ← 留言 / 文件预览（可选）
        .card-footer
-         .card-footer-text
-         .card-actions > .card-btn[.return-btn]
-   重点：默认是「图标 + 文字」一行排列；下面可改成任意多行 / 多栏，功能按钮不受影响。
+         .card-footer-text           ← 纯状态文字
+         或 .card-actions > .card-btn
+   重点：默认就是「通用模板」的上下结构；改颜色 / 宽度 / 按钮最安全，别删按钮。
 
-   // ① 允许换行（不必挤在一行）
-   .nano-chat-inner .bubble-card .card-main { flex-wrap: wrap; align-items: flex-start; }
-   // 让文字整组换到第二行（图标独占一行）：
-   .nano-chat-inner .bubble-card .card-main > div:not(.icon-wrap) { flex: 1 1 100%; min-width: 0; }
-   // 或让标题、副标题各自独占一行：
-   .nano-chat-inner .bubble-card .card-title { flex: 0 0 100%; }
-   .nano-chat-inner .bubble-card .card-sub   { flex: 0 0 100%; }
-   // 长文本自动折行、不溢出：
-   .nano-chat-inner .bubble-card .card-title,
-   .nano-chat-inner .bubble-card .card-sub { white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
-
-   // ② 换图标（隐藏原 svg，再给 .icon-wrap 换背景图）
-   .nano-chat-inner .bubble-card.transfer .icon-wrap svg { display: none; }
-   .nano-chat-inner .bubble-card.transfer .icon-wrap { background: url("https://.../icon.svg") center/20px no-repeat; }
-
-   // ③ 换底色 / 圆角 / 宽度
-   .nano-chat-inner .bubble-card.transfer { background: #5b8def; color: #fff; border-radius: 12px; }
-   .nano-chat-inner .bubble-card { width: 208px; }        // 想更宽/更窄改这里，改宽才好排版
-   // 给整张卡铺一张图（图 + 兜底色）：
-   .nano-chat-inner .bubble-card.gift { background: url("https://.../card-bg.png") center/cover no-repeat, #ff6fa0; }
-
-   // ④ 底栏也换行 / 按钮换行
-   .nano-chat-inner .bubble-card .card-footer { flex-wrap: wrap; gap: 6px; }
-   .nano-chat-inner .bubble-card .card-actions { flex: 1 1 100%; justify-content: flex-end; }
-
-   // ⑤ 用 grid 做更自由的多行版式（例：图标跨两行，右侧标题+副标题）
-   .nano-chat-inner .bubble-card .card-main {
-     display: grid; grid-template-columns: 32px 1fr; gap: 4px 10px; align-items: center;
-   }
-   .nano-chat-inner .bubble-card .icon-wrap { grid-row: span 2; }
-   // 想完全上下堆叠：grid-template-columns: 1fr; 再让图标 grid-column: 1 / -1; justify-self: start;
+   // ① 改宽度 / 圆角 / 底色
+   .nano-chat-inner .bubble-card { width: 260px; border-radius: 14px; }
+   .nano-chat-inner .bubble-card.transfer { background: #fff; color: #111; }
+   // ② 改顶部状态栏（深色 / 浅色 / 渐变都行）
+   .nano-chat-inner .bubble-card .card-header { background: #1c1c1e; }
+   // ③ 改主区图标 / 金额
+   .nano-chat-inner .bubble-card .main-icon { width: 44px; height: 44px; border-radius: 14px; }
+   .nano-chat-inner .bubble-card .amount { font-size: 28px; }
+   // ④ 两列信息改成单列（或调间距）
+   .nano-chat-inner .bubble-card .info-grid { grid-template-columns: 1fr; gap: 6px; }
+   // ⑤ 换图标（.main-icon / .icon-box 里都是 svg）
+   .nano-chat-inner .bubble-card.transfer .main-icon svg { display: none; }
+   .nano-chat-inner .bubble-card.transfer .main-icon { background: url("https://.../icon.svg") center/20px no-repeat; }
+   // ⑥ 底部按钮（primary = 接收 / 确认，return-btn = 退还 / 拒绝）
+   .nano-chat-inner .bubble-card .card-btn.primary { background: #111; color: #fff; }
+   .nano-chat-inner .bubble-card .card-btn.return-btn { background: #f5f5f5; color: #333; }
 
    注意：
-   - 选择器一定要带 .nano-chat-inner 前缀！模板自带的卡片样式是
-     .nano-chat-inner .bubble-card .card-main{...}（优先级 0,3,0）。
-     只写 .card-main{...}（0,1,0）会被它压掉、看起来「根本不生效」。同前缀 + 写在后面才生效。
-   - 文字组没类名，用 .card-main > div:not(.icon-wrap) 命中；只改某变体就再加 .transfer / .gift…
-   - 想让「金额」和「备注」拆成两行，必须给文字组 display:contents（见配方 O2），
-     否则 .card-title / .card-sub 会作为一个整体，无法各自成行。
-   - 通话卡/一起听卡的部分文字带行内样式，改不动时用 !important（例如 .card-sub{... !important}）。
-   - 换行/重排是纯 CSS，接收/退回按钮与点击事件照旧；但别删 .card-btn 等元素，删了功能会丢。
+   - 选择器一定要带 .nano-chat-inner 前缀，并且写在模板后面才压得住默认样式。
+   - 保留 .card-header / .main-section / .info-section / .card-footer / .card-btn 等类名；
+     旧的卡片美化如果只改颜色 / 圆角 / 宽度，通常仍然生效。
+   - 卡片 HTML 由 js/nano-card-ui.js 统一生成；要改结构（加行 / 删行）请改该文件。
    ============================================================ */
 
 /* ============================================================
-   配方 O2：把卡片做成「方形四行」版式（可玩性配方 · 默认不启用）
-   初始卡片仍然是长方形；这里只是「想改成方形」时的示例，照抄即可。
-   目标：第1行 图标+英文 / 第2行 大号主体 / 第3行 小字备注 / 第4行 1:1 接收·退还
-   要点（也是以前「不生效」的原因）：
-     ① 卡片样式必须带 .nano-chat-inner 前缀；模板自带的是
-        .nano-chat-inner .bubble-card …（优先级 0,3,0），
-        只写 .card-main{…}（0,1,0）会被它压掉、看起来完全没反应；
-     ② .card-title / .card-sub 被包在一个匿名 div 里，必须给该 div display:contents，
-        它俩才能各自成为独立的一行。
-   只作用于转账/红包；要让别的卡片（一起听/文件/情侣卡…）也变方形，
-   把选择器里的 .transfer,.gift 换成对应变体类名即可；想要更小就调小 width/height。
+   配方 O2：卡片紧凑 / 方形版式（可玩性配方 · 默认不启用）
+   新的卡片结构是：.card-header → .main-section → .info-section → .card-footer，
+   想改方形 / 更紧凑，直接改这些块即可；按钮 .card-btn 不要删。
    用法：把下面注释里的整段 CSS 复制到你的「聊天美化」CSS 末尾即可生效。
    ============================================================ */
-/* 方形卡片 CSS：
+/* 紧凑方形卡片 CSS：
 .nano-chat-inner .bubble-card.transfer,
 .nano-chat-inner .bubble-card.gift {
-  display: flex; flex-direction: column;
-  width: 200px; height: 200px; box-sizing: border-box;
-  border-radius: 20px; padding: 0; overflow: hidden;
+  width: 220px; border-radius: 18px;
 }
-.nano-chat-inner .bubble-card.transfer .card-main,
-.nano-chat-inner .bubble-card.gift .card-main {
-  flex: 1; min-height: 0;
-  display: grid; grid-template-columns: auto 1fr;
-  grid-template-rows: auto 1fr auto; gap: 2px 10px;
-  padding: 14px 14px 6px; align-items: center;
-}
-.nano-chat-inner .bubble-card.transfer .card-main > div:not(.icon-wrap),
-.nano-chat-inner .bubble-card.gift .card-main > div:not(.icon-wrap) { display: contents; }
-.nano-chat-inner .bubble-card.transfer .card-main .icon-wrap,
-.nano-chat-inner .bubble-card.gift .card-main .icon-wrap { grid-column: 1; grid-row: 1; width: 34px; height: 34px; border-radius: 50%; }
-.nano-chat-inner .bubble-card.transfer .card-main::before { content: "transfer"; grid-column: 2; grid-row: 1; align-self: center; font-size: 17px; font-weight: 700; }
-.nano-chat-inner .bubble-card.gift .card-main::before { content: "gift"; grid-column: 2; grid-row: 1; align-self: center; font-size: 17px; font-weight: 700; }
-.nano-chat-inner .bubble-card.transfer .card-main .card-title,
-.nano-chat-inner .bubble-card.gift .card-main .card-title { grid-column: 1 / -1; grid-row: 2; align-self: center; font-size: 30px; font-weight: 700; line-height: 1.1; }
-.nano-chat-inner .bubble-card.transfer .card-main .card-sub,
-.nano-chat-inner .bubble-card.gift .card-main .card-sub { grid-column: 1 / -1; grid-row: 3; align-self: end; font-size: 12px; opacity: .85; }
-.nano-chat-inner .bubble-card.transfer .card-footer,
-.nano-chat-inner .bubble-card.gift .card-footer { flex: none; display: block; padding: 0 12px 12px; }
-.nano-chat-inner .bubble-card.transfer .card-footer .card-footer-text,
-.nano-chat-inner .bubble-card.gift .card-footer .card-footer-text { display: none; }
-.nano-chat-inner .bubble-card.transfer .card-footer .card-actions,
-.nano-chat-inner .bubble-card.gift .card-footer .card-actions { display: flex; gap: 10px; }
-.nano-chat-inner .bubble-card.transfer .card-footer .card-btn,
-.nano-chat-inner .bubble-card.gift .card-footer .card-btn { flex: 1 1 0; text-align: center; padding: 8px 0; font-size: 14px; border-radius: 12px; }
+.nano-chat-inner .bubble-card .card-header { padding: 6px 10px; }
+.nano-chat-inner .bubble-card .main-section { padding: 10px 10px 8px; }
+.nano-chat-inner .bubble-card .main-icon { width: 34px; height: 34px; border-radius: 9px; }
+.nano-chat-inner .bubble-card .amount { font-size: 26px; }
+.nano-chat-inner .bubble-card .info-section { padding: 8px 10px 2px; }
+.nano-chat-inner .bubble-card .info-grid { gap: 6px 8px; }
+.nano-chat-inner .bubble-card .card-footer { padding: 8px 10px 10px; }
+.nano-chat-inner .bubble-card .card-btn { height: 30px; font-size: 11px; }
 */
-
 /* 配方 L：只移动「消息头像」，顶栏「设置」按钮原地不动、逻辑不变
    消息头像 = .message-avatar；顶栏设置按钮 = .topbar-avatar，两者完全独立。
    只动消息头像用本配方；要把顶栏头像/设置按钮一起重排用配方 C。三种玩法任选：

@@ -452,6 +452,22 @@
         var cls = 'bubble-card ' + type + ' ' + (cd.cardType || '');
         if (cd.opened) cls += ' opened';
         card.className = cls;
+        if (window.NanoCardUI && window.NanoCardUI.build) {
+            var _who = getMember(m.senderId) || {};
+            try {
+                card.innerHTML = window.NanoCardUI.build(cd, {
+                    side: type,
+                    time: m.time || '',
+                    meName: (currentUser && (currentUser.nick || currentUser.name)) || '我',
+                    otherName: _who.nick || _who.name || group.name || '群成员',
+                    groupName: group.name || '',
+                    groupMemberCount: group.members ? group.members.length : 0
+                });
+                return card;
+            } catch (e) {
+                try { console.warn('[groups] 通用卡片构建失败，使用旧版：', e); } catch (e2) {}
+            }
+        }
         var iconSvg = '', title = '', sub = '', footer = '', extra = '';
         if (cd.cardType === 'redpacket') {
             iconSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M3 10h18"/><circle cx="12" cy="14" r="2"/></svg>';

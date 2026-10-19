@@ -192,9 +192,9 @@ html.nano-android.keyboard-open body.nano-chat-inner .bottom-bar {
   clip-path: polygon(100% 0, 100% 100%, 0 100%);
 }
 
-/* 自己‑蓝色，靠右 */
+/* 自己‑黑灰色，靠右 */
 .bubble.me {
-  background: #007aff;
+  background: #2c2c2e;
   color: #ffffff;
   margin-left: auto;
 }
@@ -205,7 +205,7 @@ html.nano-android.keyboard-open body.nano-chat-inner .bottom-bar {
   bottom: 5px;
   width: 17px;
   height: 17px;
-  background: #007aff;
+  background: #2c2c2e;
   clip-path: polygon(0 0, 100% 100%, 0 100%);
 }
 
@@ -278,195 +278,150 @@ html.nano-android.keyboard-open body.nano-chat-inner .bottom-bar {
     color: #555;
 }
 
+/* ============================================================
+   卡片：通用模板（深色状态栏 + 主内容 + 两列信息 + 留言 + 按钮）
+   结构与根目录「通用模板.html」一致；宽度按聊天区缩小，不撑屏。
+   ============================================================ */
 .bubble-card {
-    position: relative; width: 208px; border-radius: 16px; overflow: hidden; font-size: 14px;
+    position: relative; width: 248px; max-width: 100%;
+    background: #ffffff; color: #111111;
+    border: 1px solid #e5e5e5; border-radius: 16px;
+    box-shadow: 0 5px 18px rgba(0,0,0,0.08);
+    overflow: hidden; font-size: 14px; line-height: 1.3;
 }
 .bubble-card.right { align-self: flex-end; }
 .bubble-card.left { align-self: flex-start; }
-.bubble-card.right::before {
-    content: ""; position: absolute; bottom: 0; right: -6px;
-    width: 14px; height: 14px; border-bottom-left-radius: 12px; background: inherit; z-index: -1;
-}
-.bubble-card.left::before {
-    content: ""; position: absolute; bottom: 0; left: -6px;
-    width: 14px; height: 14px; border-bottom-right-radius: 12px; background: inherit; z-index: -1;
-}
-.bubble-card.right::after {
-    content: ""; position: absolute; bottom: 0; right: -18px;
-    width: 18px; height: 14px; background: var(--page-bg); border-bottom-left-radius: 8px; z-index: 1;
-}
-.bubble-card.left::after {
-    content: ""; position: absolute; bottom: 0; left: -18px;
-    width: 18px; height: 14px; background: var(--page-bg); border-bottom-right-radius: 8px; z-index: 1;
-}
-.bubble-card .card-main { display: flex; align-items: center; gap: 10px; padding: 12px 12px 8px; }
-.bubble-card .icon-wrap {
-    width: 32px; height: 32px; border-radius: 50%;
-    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
-}
-.bubble-card .icon-wrap svg { width: 16px; height: 16px; }
-.bubble-card .card-title { font-size: 17px; font-weight: 600; line-height: 1.2; }
-.bubble-card .card-sub { font-size: 11px; opacity: 0.9; margin-top: 2px; }
-.bubble-card .card-footer { padding: 5px 12px; font-size: 10px; opacity: 0.85; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.bubble-card .card-footer .card-footer-text { flex: 1; }
-.bubble-card .card-footer .card-actions { display: flex; gap: 6px; }
-.bubble-card .card-btn {
-    border: none; border-radius: 10px; padding: 4px 10px; font-size: 11px;
-    cursor: pointer; color: #fff; font-weight: 500;
-    background: rgba(255,255,255,0.28);
-    transition: transform 0.12s, background 0.12s;
-}
-.bubble-card .card-btn:active { transform: scale(0.94); background: rgba(255,255,255,0.42); }
-.bubble-card .card-btn.return-btn { background: rgba(0,0,0,0.14); }
-.bubble-card.transfer { background: #F7A24E; color: #fff; }
-.bubble-card.transfer .icon-wrap { background: rgba(255,255,255,0.25); }
-.bubble-card.transfer .card-footer { border-top: 1px solid rgba(255,255,255,0.25); }
-.bubble-card.transfer.claimed { background: #DCDCDC; color: #8a8a8a; }
-.bubble-card.transfer.claimed .icon-wrap { background: rgba(0,0,0,0.06); }
-.bubble-card.transfer.claimed .card-footer { border-top-color: rgba(0,0,0,0.08); }
-.bubble-card.transfer.response { background: #DCDCDC; color: #8a8a8a; }
-.bubble-card.transfer.response .icon-wrap { background: rgba(0,0,0,0.06); }
-.bubble-card.transfer.response .card-footer { border-top-color: rgba(0,0,0,0.08); }
-/* 原卡片在对方接收/退还后也变灰（非 response 卡） */
-.bubble-card.transfer.received, .bubble-card.transfer.returned { background: #DCDCDC; color: #8a8a8a; }
-.bubble-card.transfer.received .icon-wrap, .bubble-card.transfer.returned .icon-wrap { background: rgba(0,0,0,0.06); }
-.bubble-card.transfer.received .card-footer, .bubble-card.transfer.returned .card-footer { border-top-color: rgba(0,0,0,0.08); }
-.bubble-card.gift { background: #FF6FA0; color: #fff; }
-.bubble-card.gift .icon-wrap { background: rgba(255,255,255,0.25); }
-.bubble-card.gift .card-footer { border-top: 1px solid rgba(255,255,255,0.25); }
-.bubble-card.gift.claimed { background: #DCDCDC; color: #8a8a8a; }
-.bubble-card.gift.claimed .icon-wrap { background: rgba(0,0,0,0.06); }
-.bubble-card.gift.claimed .card-footer { border-top-color: rgba(0,0,0,0.08); }
-.bubble-card.gift.response { background: #DCDCDC; color: #8a8a8a; }
-.bubble-card.gift.response .icon-wrap { background: rgba(0,0,0,0.06); }
-.bubble-card.gift.response .card-footer { border-top-color: rgba(0,0,0,0.08); }
-/* 原卡片在对方接收/退还后也变灰（非 response 卡） */
-.bubble-card.gift.received, .bubble-card.gift.returned { background: #DCDCDC; color: #8a8a8a; }
-.bubble-card.gift.received .icon-wrap, .bubble-card.gift.returned .icon-wrap { background: rgba(0,0,0,0.06); }
-.bubble-card.gift.received .card-footer, .bubble-card.gift.returned .card-footer { border-top-color: rgba(0,0,0,0.08); }
-/* 一起听卡片：浅色底，主按钮用深色保证可见 */
-.bubble-card.listen { background: #fff; color: #111; }
-.bubble-card.listen .icon-wrap { background: rgba(0,0,0,0.06); color: #111; }
-.bubble-card.listen .card-footer { border-top: 1px solid rgba(0,0,0,0.06); }
-.bubble-card.listen .card-btn { background: #1c1c1e; color: #fff; }
-.bubble-card.listen .card-btn:active { background: #000; }
-.bubble-card.listen .card-btn.return-btn { background: #ececf0; color: #555; }
-.bubble-card.listen .card-btn.return-btn:active { background: #e0e0e5; }
+.bubble-card::before, .bubble-card::after { content: none !important; display: none !important; }
 
-/* 文件 / 手机内容分享卡片：给个底色，别透明 */
-.bubble-card.file { background: #ffffff; color: #111; box-shadow: 0 4px 14px rgba(0,0,0,0.06); }
-.bubble-card.file .icon-wrap { background: rgba(0,0,0,0.06); color: #111; }
-.bubble-card.file .card-title { color: #111; }
-.bubble-card.file .card-sub { color: #999; }
+/* 顶部状态栏 */
+.bubble-card .card-header {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 8px 12px; background: #111111; color: #ffffff;
+}
+.bubble-card .status {
+    display: flex; align-items: center; gap: 6px; min-width: 0;
+    font-size: 12px; font-weight: 500;
+}
+.bubble-card .status svg { width: 13px; height: 13px; flex-shrink: 0; color: #a0a0a0; }
+.bubble-card .status span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bubble-card .time { flex-shrink: 0; font-size: 11px; color: #b0b0b0; }
 
-.bubble-card.couple { background: linear-gradient(135deg, #fff6f8, #f7eef4); color: #6b4b57; box-shadow: 0 6px 18px rgba(201,139,157,0.12); }
-.bubble-card.couple .icon-wrap { background: rgba(201,139,157,0.16); color: #c07d93; }
-.bubble-card.couple .card-title { font-family: "Songti SC","STSong",serif; font-size: 16px; color: #6b4b57; }
-.bubble-card.couple .card-sub { color: #a3858f; }
-.bubble-card.couple .card-footer { border-top: 1px solid rgba(201,139,157,0.18); color: #b2949d; }
-/* 群邀请卡片：白底 + 深色按钮，保证「同意」清晰可见 */
-.bubble-card.invite { background: #fff; color: #111; }
-.bubble-card.invite .icon-wrap { background: rgba(0,0,0,0.06); color: #111; }
-.bubble-card.invite .card-footer { border-top: 1px solid rgba(0,0,0,0.06); }
-.bubble-card.invite .card-btn { background: #1c1c1e; color: #fff; }
-.bubble-card.invite .card-btn:active { background: #000; }
-.bubble-card.invite .card-btn.return-btn { background: #ececf0; color: #555; }
-.bubble-card.invite .card-btn.return-btn:active { background: #e0e0e5; }
-/* 亲属卡卡片：白底 + 紫色主按钮，与红色挂断等区分 */
-.bubble-card.familycard { background: #fff; color: #111; }
-.bubble-card.familycard .icon-wrap { background: rgba(175,82,222,0.14); color: #AF52DE; }
-.bubble-card.familycard .card-title { color: #1c1c1e; }
-.bubble-card.familycard .card-footer { border-top: 1px solid rgba(0,0,0,0.06); }
-.bubble-card.familycard .card-btn { background: #AF52DE; color: #fff; }
-.bubble-card.familycard .card-btn:active { background: #9333c4; }
-.bubble-card.familycard .card-btn { background: #AF52DE; color: #fff; }
-.bubble-card.familycard .card-btn.return-btn { background: #ececf0; color: #555; }
-.bubble-card.familycard .card-btn.return-btn:active { background: #e0e0e5; }
-/* 亲属卡处理结果卡（已接受/已拒绝）：变灰，和转账一致 */
-.bubble-card.familycard.response,
-.bubble-card.familycard.rejected { background: #DCDCDC; color: #8a8a8a; }
-.bubble-card.familycard.response .icon-wrap,
-.bubble-card.familycard.rejected .icon-wrap { background: rgba(0,0,0,0.06); color: #8a8a8a; }
-.bubble-card.familycard.response .card-title,
-.bubble-card.familycard.rejected .card-title { color: #8a8a8a; }
-.bubble-card.familycard.response .card-footer,
-.bubble-card.familycard.rejected .card-footer { border-top-color: rgba(0,0,0,0.08); }
+/* 主内容 */
+.bubble-card .main-section {
+    padding: 12px 12px 10px; text-align: center; border-bottom: 1px solid #f0f0f0;
+}
+.bubble-card .main-icon {
+    width: 38px; height: 38px; margin: 0 auto 6px;
+    display: flex; align-items: center; justify-content: center;
+    background: #f5f5f5; border-radius: 11px; color: #222222;
+}
+.bubble-card .main-icon svg { width: 18px; height: 18px; }
+.bubble-card .main-label { font-size: 10.5px; color: #888888; margin-bottom: 2px; }
+.bubble-card .main-title {
+    font-size: 15px; font-weight: 700; color: #111111; line-height: 1.25;
+    overflow-wrap: anywhere; word-break: break-word;
+}
+.bubble-card .main-sub { margin-top: 3px; font-size: 10.5px; color: #8e8e93; line-height: 1.35; overflow-wrap: anywhere; }
+.bubble-card .amount {
+    font-size: 23px; font-weight: 700; color: #111111; letter-spacing: -0.4px; line-height: 1.15;
+    overflow-wrap: anywhere;
+}
+.bubble-card .amount span { font-size: 14px; font-weight: 500; margin-right: 1px; }
 
-/* 外卖卡片：上方信息，下方路线图 + 预计时间（与位置卡片同款方形） */
-.bubble-card.takeout { padding: 0; background: #fff; color: #111; width: 208px; }
-.tk-bubble-head { padding: 10px 12px 8px; }
-.tk-bubble-food { font-size: 14px; font-weight: 600; color: #1c1c1e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.tk-bubble-shop { font-size: 11px; color: #8e8e93; margin-top: 2px; }
-.tk-bubble-note { font-size: 11px; color: #a0a0a6; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.tk-bubble-map {
-    position: relative; height: 112px; overflow: hidden;
-    background: linear-gradient(135deg, #eef3f7, #e3ecf3 55%, #f2f5f8);
+/* 两列信息 */
+.bubble-card .info-section { padding: 9px 12px 4px; }
+.bubble-card .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px 9px; }
+.bubble-card .info-item { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.bubble-card .icon-box {
+    width: 25px; height: 25px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: #f5f5f5; border-radius: 7px; color: #333333;
 }
-.tk-bubble-route {
-    position: absolute; left: 20%; top: 62%; width: 58%;
-    border-top: 3px dashed #FF8A00; transform: rotate(-24deg); border-radius: 2px;
-}
-.loc-map-pin.tk-pin-start { left: 16%; top: 66%; color: #34c759; }
-.loc-map-pin.tk-pin-end { left: 74%; top: 40%; color: #FF8A00; }
-.loc-map-pin.tk-pin-start svg, .loc-map-pin.tk-pin-end svg {
-    width: 26px; height: 26px; fill: currentColor; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.18));
-}
-.tk-bubble-eta {
-    position: absolute; left: 10px; bottom: 8px;
-    background: rgba(255,255,255,0.96); color: #FF8A00;
-    font-size: 11px; font-weight: 700; padding: 4px 10px;
-    border-radius: 999px; box-shadow: 0 1px 4px rgba(0,0,0,0.12);
-}
-.tk-bubble-btn {
-    display: block; width: calc(100% - 20px); margin: 10px;
-    border: none; border-radius: 10px; background: #FF8A00; color: #fff;
-    font-family: inherit; font-size: 13px; font-weight: 600; padding: 9px 0; cursor: pointer;
-}
-.tk-bubble-btn:active { background: #e07a00; }
-.tk-bubble-status { padding: 0 12px 10px; font-size: 11px; color: #8e8e93; }
-.bubble-card.takeout.response,
-.bubble-card.takeout.accepted,
-.bubble-card.takeout.rejected { background: #DCDCDC; color: #8a8a8a; }
-.bubble-card.takeout.response .icon-wrap,
-.bubble-card.takeout.accepted .icon-wrap,
-.bubble-card.takeout.rejected .icon-wrap { background: rgba(0,0,0,0.06); color: #8a8a8a; }
-.bubble-card.takeout.response .card-footer,
-.bubble-card.takeout.accepted .card-footer,
-.bubble-card.takeout.rejected .card-footer { border-top-color: rgba(0,0,0,0.08); }
-
-/* 定位卡片：上方地点+距离，下方地图，小方形 */
-.bubble-card.location { padding: 0; background: #fff; color: #111; width: 200px; }
-.loc-bubble-head { padding: 10px 12px 8px; }
-.loc-bubble-place {
-    font-size: 14px; font-weight: 600; color: #1c1c1e;
+.bubble-card .icon-box svg { width: 12px; height: 12px; }
+.bubble-card .info-content { min-width: 0; }
+.bubble-card .info-label { font-size: 9px; color: #999999; line-height: 1.1; margin-bottom: 1px; }
+.bubble-card .info-value {
+    font-size: 10.5px; font-weight: 500; color: #111111; line-height: 1.2;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.loc-bubble-dist { font-size: 11px; color: #8e8e93; margin-top: 3px; }
-.loc-bubble-map {
-    position: relative; height: 108px; overflow: hidden;
-    background: linear-gradient(135deg, #e8f1ea, #dbe8f2 55%, #eef3f7);
-}
-.loc-bubble-map .loc-map-pin svg { width: 30px; height: 30px; }
 
-/* 小号好友申请卡片 */
-.card-note { padding: 0 14px 10px; font-size: 12px; color: #8e8e93; line-height: 1.5; word-break: break-word; }
-.bubble-card.call { background: #fff; padding: 10px 12px; display: flex; align-items: center; gap: 8px; }
-.bubble-card.call .icon-wrap { background: rgba(0,122,255,0.1); }
-.bubble-card.call.missed .icon-wrap { background: rgba(255,59,48,0.1); }
-.bubble-card.call .card-title { font-size: 14px; color: #111; }
-.bubble-card.call.missed .card-title { color: #FF3B30; }
-.bubble-card.call .card-sub { font-size: 11px; color: #999; margin-top: 1px; }
+/* 留言 / 文件预览 / 接龙 */
+.bubble-card .message-box {
+    margin: 8px 12px 0; padding: 6px 8px;
+    background: #f8f8f8; border-radius: 8px;
+    font-size: 11px; line-height: 1.4; color: #444444;
+    white-space: pre-wrap; overflow-wrap: anywhere;
+    max-height: 76px; overflow-y: auto;
+}
+.bubble-card .chain-list {
+    margin: 8px 12px 0; padding: 4px 8px; max-height: 120px; overflow-y: auto;
+    background: #f8f8f8; border-radius: 8px;
+}
+.bubble-card .chain-item { padding: 3px 0; font-size: 11px; color: #333; line-height: 1.35; }
+.bubble-card .chain-item .idx { color: #999; margin-right: 4px; }
+.bubble-card .chain-item .chain-name { color: #999; font-size: 10px; }
+.bubble-card .card-image { padding: 0; border-bottom: 1px solid #f0f0f0; background: #f5f5f5; }
+.bubble-card .card-image img { display: block; width: 100%; max-height: 120px; object-fit: cover; }
+
+/* 底部按钮 */
+.bubble-card .card-footer {
+    display: flex; align-items: center; gap: 8px;
+    padding: 9px 12px 11px; border-top: 0; opacity: 1;
+}
+.bubble-card .card-footer.status-only { padding: 8px 12px 10px; }
+.bubble-card .card-footer-text {
+    flex: 1; min-width: 0; display: flex; align-items: center;
+    font-size: 10.5px; line-height: 1.4; color: #8e8e93;
+}
+.bubble-card .card-actions { display: flex; gap: 8px; flex: 1; }
+.bubble-card .card-btn,
+.bubble-card .btn {
+    flex: 1; height: 32px; min-width: 0; padding: 0 8px;
+    display: flex; align-items: center; justify-content: center; gap: 4px;
+    border: none; border-radius: 9px; font-family: inherit;
+    font-size: 12px; font-weight: 600; line-height: 1; cursor: pointer;
+    transition: transform .12s ease, background .12s ease;
+}
+.bubble-card .card-btn:active,
+.bubble-card .btn:active { transform: scale(.97); }
+.bubble-card .btn-primary,
+.bubble-card .card-btn.primary { background: #111111; color: #ffffff; }
+.bubble-card .btn-primary:active,
+.bubble-card .card-btn.primary:active { background: #333333; }
+.bubble-card .btn-secondary,
+.bubble-card .card-btn.secondary,
+.bubble-card .card-btn.return-btn { background: #f5f5f5; color: #333333; }
+.bubble-card .btn-secondary:active,
+.bubble-card .card-btn.secondary:active,
+.bubble-card .card-btn.return-btn:active { background: #e8e8e8; }
+
+/* 已处理 / 已结束状态：统一降低存在感，但保持通用版式 */
+.bubble-card.claimed .card-header,
+.bubble-card.response .card-header,
+.bubble-card.received .card-header,
+.bubble-card.returned .card-header,
+.bubble-card.accepted .card-header,
+.bubble-card.rejected .card-header,
+.bubble-card.opened .card-header { background: #8e8e93; }
+.bubble-card.claimed .main-section,
+.bubble-card.response .main-section,
+.bubble-card.received .main-section,
+.bubble-card.returned .main-section,
+.bubble-card.accepted .main-section,
+.bubble-card.rejected .main-section,
+.bubble-card.opened .main-section { opacity: .82; }
+.bubble-card .card-btn:disabled { opacity: .5; cursor: default; }
 
 .voice-bubble {
     position: relative; height: 28px; border-radius: 18px; min-width: 52px;
     display: flex; align-items: center; padding: 0 10px; gap: 4px;
     cursor: pointer;
 }
-.voice-bubble.right { align-self: flex-end; background: #007aff; color: #fff; flex-direction: row-reverse; }
+.voice-bubble.right { align-self: flex-end; background: #2c2c2e; color: #fff; flex-direction: row-reverse; }
 .voice-bubble.left { align-self: flex-start; background: #dedede; color: #111; }
 .voice-bubble.right::before {
     content: ""; position: absolute; right: -6px; bottom: 5px;
-    width: 17px; height: 17px; background: #007aff;
+    width: 17px; height: 17px; background: #2c2c2e;
     clip-path: polygon(0 0, 100% 100%, 0 100%);
 }
 .voice-bubble.right::after { display: none; }
@@ -721,13 +676,13 @@ body.popup-open .bottom-bar { display: none !important; }
 .voice-btn.active { color: #ff3b30; background: rgba(255,59,48,0.12); }
 .send-btn {
     width: 42px; height: 42px; border: none; border-radius: 50%;
-    background: #007aff; display: flex; align-items: center; justify-content: center;
+    background: #2c2c2e; display: flex; align-items: center; justify-content: center;
     cursor: pointer; flex-shrink: 0; transition: all 0.15s;
-    color: #ffffff; font-size: 17px; box-shadow: 0 4px 16px rgba(0,122,255,0.3);
+    color: #ffffff; font-size: 17px; box-shadow: 0 4px 16px rgba(44,44,46,0.28);
 }
-.send-btn:active { transform: scale(0.88); background: #0055b3; }
+.send-btn:active { transform: scale(0.88); background: #1c1c1e; }
 .send-btn.disabled { background: #8e8e93; box-shadow: none; }
-.send-btn.reply-mode { background: #34c759; box-shadow: 0 4px 16px rgba(52,199,89,0.3); }
+.send-btn.reply-mode { background: #2c2c2e; box-shadow: 0 4px 16px rgba(44,44,46,0.28); }
 
 /* ===== 发送语音气泡弹窗 ===== */
 .voice-sheet-overlay {
@@ -914,7 +869,7 @@ body.popup-open .bottom-bar { display: none !important; }
     text-align: center; margin-bottom: 16px;
     line-height: 1.5;
     word-break: break-all;
-    max-height: 150px;
+    max-height: 120px;
     overflow-y: auto;
 }
 .ios-alert-button {
@@ -1891,17 +1846,4 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .tkv-bub .zh{font-size:11.5px;color:#b09a55;margin-top:2px}
 .tkv-bub{display:flex;flex-direction:column;gap:2px}
 
-/* ͬ���ķ�����Ƭ���ڰ׻ң� */
-.bubble-card.fanfic{
-    background:#fff;
-    border:1px solid #e7e7e7;
-    color:#111;
-}
-.bubble-card.fanfic .card-title{ color:#111; font-family:"Songti SC","Noto Serif SC",Georgia,serif; }
-.bubble-card.fanfic .card-sub{ color:#8a8a8d; }
-.bubble-card.fanfic .card-note{ color:#7b7b7e; }
-.bubble-card.fanfic .card-footer{ border-top:1px solid #eee; color:#8a8a8d; }
-.bubble-card.fanfic .card-btn{
-    background:#111; color:#fff; border-radius:8px; padding:4px 11px;
-    font-size:11px; font-weight:600;
-}
+/* ͬ���ķ�����Ƭ���ڰ׻ң� */

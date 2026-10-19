@@ -861,15 +861,18 @@
 
   // ---- 字体 ----
   function fontFormat(name) {
-    var s = String(name || '').toLowerCase();
-    if (/\.woff2($|\?)/.test(s)) return 'woff2';
-    if (/\.woff($|\?)/.test(s)) return 'woff';
-    if (/\.(otf|tof)($|\?)/.test(s)) return 'opentype';
-    if (/\.ttf($|\?)/.test(s)) return 'truetype';
+    var s = String(name || '').toLowerCase().split(/[?#]/)[0];
+    if (/\.woff2$/.test(s)) return 'woff2';
+    if (/\.woff$/.test(s)) return 'woff';
+    if (/\.(otf|tof)$/.test(s)) return 'opentype';
+    if (/\.ttf$/.test(s)) return 'truetype';
+    if (/\.(ttc|otc)$/.test(s)) return '';
+    if (/\.eot$/.test(s)) return 'embedded-opentype';
+    if (/\.svg$/.test(s)) return 'svg';
     return '';
   }
   async function importFont(file) {
-    var isFont = /font|woff|ttf|otf/i.test(file.mime || '') || /\.(ttf|otf|woff2?|tof)$/i.test(file.name || '');
+    var isFont = /font|woff|ttf|otf|truetype|opentype/i.test(file.mime || '') || /\.(ttf|otf|tof|woff2?|ttc|otc|eot|svg)$/i.test(file.name || '');
     if (isFont) {
       var ab = await dataURLToArrayBuffer(file.data);
       var state = { name: file.name, source: file.name, type: 'file', data: ab, size: 16, cssFamily: '', cssText: '' };

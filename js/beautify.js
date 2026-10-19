@@ -1267,8 +1267,8 @@ const GLOBAL_TEMPLATE_OLD = `/* ===== 全局美化模板 =====
    新版「全局美化」初始模板
    ------------------------------------------------------------
    实际内容见 js/nano-global-template.js（挂载到 window.NANO_GLOBAL_TEMPLATE）。
-   该文件按页面作用域（body.nano-index / .nano-chat / .nano-api /
-   .nano-discover / .nano-more）分区，并附完整 HTML 结构说明与 DIY 配方。
+   现在全局美化只作用于聊天页 chat.html（body.nano-chat）：
+   完整 HTML 结构说明 + chat.html 当前全部 CSS + DIY 配方都在该文件里。
    若该文件未加载，则回退到上面的旧模板 GLOBAL_TEMPLATE_OLD，功能不缺失。
    ============================================================ */
 const GLOBAL_TEMPLATE = (typeof window !== 'undefined' && window.NANO_GLOBAL_TEMPLATE)
@@ -2152,10 +2152,16 @@ function injectChatDemo(doc) {
     '<div class="bubble other">引用后的气泡</div></div></div>',
     '<div class="message-row left"><div class="message-avatar"><span>L</span></div>',
     '<div class="message-content"><div class="bubble-card left transfer">',
-    '<div class="card-main"><div class="icon-wrap"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="9"/></svg></div>',
-    '<div><div class="card-title">转账</div><div class="card-sub">¥ 20.00</div></div></div>',
-    '<div class="card-footer"><span class="card-footer-text">请收款</span>',
-    '<div class="card-actions"><button class="card-btn">领取</button></div></div></div></div></div>',
+    '<div class="card-header"><div class="status"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>转账待领取</span></div><div class="time">14:28</div></div>',
+    '<div class="main-section"><div class="main-label">转账金额</div><div class="amount"><span>¥</span>1,280.00</div></div>',
+    '<div class="info-section"><div class="info-grid">',
+    '<div class="info-item"><div class="icon-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><div class="info-content"><div class="info-label">收款人</div><div class="info-value">我</div></div></div>',
+    '<div class="info-item"><div class="icon-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9h16M4 15h16"/></svg></div><div class="info-content"><div class="info-label">转账说明</div><div class="info-value">转账</div></div></div>',
+    '<div class="info-item"><div class="icon-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="18" height="12" rx="2"/></svg></div><div class="info-content"><div class="info-label">到账方式</div><div class="info-value">实时到账</div></div></div>',
+    '<div class="info-item"><div class="icon-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div><div class="info-content"><div class="info-label">交易时间</div><div class="info-value">14:28</div></div></div>',
+    '</div></div>',
+    '<div class="card-footer"><span class="card-actions"><button class="btn btn-secondary card-btn return-btn" data-act="return">退还</button><button class="btn btn-primary card-btn" data-act="receive">接收</button></span></div>',
+    '</div></div></div>',
     '<div class="message-row recalled"><div class="recall-notice">对方撤回了一条消息</div></div>'
   ].join('');
 }
@@ -2411,12 +2417,62 @@ let fontState = { name: "", source: "", type: "", data: null, size: 16, cssFamil
 let localURL = null;
 
 // ---- 字体配置：序列化后让所有 Nano 页面共享（含文件 base64 / 远程 url） ----
+// 字体代理：优先使用自定义 Cloudflare Worker（在控制台或下方改常量即可）：
+//   window.NANO_CF_FONT_PROXY = 'https://你的worker.workers.dev/?url=';
+// 未设置时自动使用 Cloudflare 公共 CORS 代理 + 其它公共代理兜底。
+const NANO_CF_FONT_PROXY_KEY = "nano_cf_font_proxy";
+function getCfFontProxy() {
+  try {
+    if (typeof window !== "undefined" && window.NANO_CF_FONT_PROXY) return String(window.NANO_CF_FONT_PROXY);
+    const v = localStorage.getItem(NANO_CF_FONT_PROXY_KEY);
+    if (v) return String(v);
+  } catch (e) {}
+  return "";
+}
+function fontProxyList(rawUrl) {
+  const u = String(rawUrl || "").trim();
+  if (!/^https?:/i.test(u)) return [];
+  const enc = encodeURIComponent(u);
+  const list = [];
+  const custom = getCfFontProxy();
+  if (custom) {
+    list.push(custom.indexOf("{url}") !== -1 ? custom.replace("{url}", enc) : custom + enc);
+  }
+  // Cloudflare Workers 公共 CORS 代理（优先）
+  list.push("https://test.cors.workers.dev/?" + u);
+  list.push("https://cors.isomorphic-git.org/" + u);
+  list.push("https://api.allorigins.win/raw?url=" + enc);
+  // 其它公共代理兜底
+  list.push("https://corsproxy.io/?url=" + enc);
+  list.push("https://api.codetabs.com/v1/proxy?quest=" + enc);
+  return list.filter(function (x, i, a) { return x && a.indexOf(x) === i; });
+}
+function normalizeFontUrl(raw) {
+  let u = String(raw || "").trim();
+  if (!u) return u;
+  if (/^\/\//.test(u)) u = "https:" + u;
+  // GitHub blob 页面 → raw 文件
+  const gh = u.match(/^https?:\/\/github\.com\/([^\/]+)\/([^\/]+)\/blob\/([^\/]+)\/(.+)$/i);
+  if (gh) u = "https://raw.githubusercontent.com/" + gh[1] + "/" + gh[2] + "/" + gh[3] + "/" + gh[4];
+  // GitHub 旧式 raw 路径
+  u = u.replace(/^https?:\/\/github\.com\/([^\/]+)\/([^\/]+)\/raw\//i, "https://raw.githubusercontent.com/$1/$2/");
+  return u;
+}
+function isCssFontUrl(u) {
+  const s = String(u || "");
+  return /fonts\.googleapis\.com/i.test(s) || /use\.typekit\.net/i.test(s) ||
+    /fonts\.cdnfonts\.com/i.test(s) || /fontlibrary\.org/i.test(s) ||
+    /\.css(?:[?#]|$)/i.test(s) || /[?&]family=/i.test(s);
+}
 function fontFormatFor(source) {
-  const s = String(source || "").toLowerCase();
-  if (/\.woff2($|[?#])/.test(s)) return "woff2";
-  if (/\.woff($|[?#])/.test(s)) return "woff";
-  if (/\.(otf|tof)($|[?#])/.test(s)) return "opentype";
-  if (/\.ttf($|[?#])/.test(s)) return "truetype";
+  const s = String(source || "").toLowerCase().split(/[?#]/)[0];
+  if (/\.woff2$/.test(s)) return "woff2";
+  if (/\.woff$/.test(s)) return "woff";
+  if (/\.(otf|tof)$/.test(s)) return "opentype";
+  if (/\.ttf$/.test(s)) return "truetype";
+  if (/\.ttc$/.test(s) || /\.otc$/.test(s)) return "";
+  if (/\.eot$/.test(s)) return "embedded-opentype";
+  if (/\.svg$/.test(s)) return "svg";
   // 无扩展名 / CDN 链接：不写 format()，让浏览器自行嗅探（写错反而会导致加载失败）
   return "";
 }
@@ -2435,16 +2491,9 @@ function ensureLocalFontFace(family, src, format) {
     // iOS Safari 对跨域 Web 字体严格执行 CORS，很多直链因为服务器没开 ACAO 而被丢弃；
     // 加上带 CORS 头的代理，能显著提高可用字体 URL 的数量（与 appearance.js 的做法一致）。
     // https 页面里加载 http 字体是「混合内容」会被直接拦掉：自动升级为 https 再试
-    let _s = String(src);
+    let _s = normalizeFontUrl(src);
     if (/^http:\/\//i.test(_s) && location.protocol === "https:") _s = _s.replace(/^http:\/\//i, "https://");
-    const urls = [_s];
-    if (/^https?:/i.test(_s)) {
-      const enc = encodeURIComponent(_s);
-      urls.push("https://api.nano315.online/audio/proxy?url=" + enc);
-      urls.push("https://api.allorigins.win/raw?url=" + enc);
-      urls.push("https://corsproxy.io/?url=" + enc);
-      urls.push("https://api.codetabs.com/v1/proxy?quest=" + enc);
-    }
+    const urls = [_s].concat(fontProxyList(_s));
     const srcList = urls
       .filter(function (u, i, a) { return u && a.indexOf(u) === i; })
       .map(function (u) { return 'url("' + String(u).replace(/"/g, '\\"') + '")' + fmt; })
@@ -2455,7 +2504,7 @@ function ensureLocalFontFace(family, src, format) {
 
 // ---- URL 字体：类型识别 / 校验 / 报错弹窗 ----
 function isFontFileUrl(u) {
-  return /\.(ttf|otf|tof|woff2?|ttc|eot|otc)(?:$|[?#])/i.test(String(u || ""));
+  return /\.(ttf|otf|tof|woff2?|ttc|otc|eot|svg)(?:$|[?#])/i.test(normalizeFontUrl(u));
 }
 function firstFamilyInCss(css) {
   try {
@@ -2582,25 +2631,61 @@ function nanoFontTimeout(promise, ms, label) {
   });
 }
 
-async function loadRemoteFontFace(family, url) {
-  const clean = String(url || "").trim();
-  const cands = [];
-  // Google Fonts CSS -> 解析出字体文件地址
-  if (/fonts\.googleapis\.com\/css/i.test(clean)) {
+// 读取文本（字体 CSS）：直连失败后自动走 Cloudflare / 公共 CORS 代理
+async function fetchTextSmart(raw) {
+  const u = normalizeFontUrl(raw);
+  const cands = [u].concat(fontProxyList(u));
+  let lastErr = null;
+  for (let i = 0; i < cands.length; i++) {
     try {
-      const css = await nanoFontTimeout(fetch(clean, { mode: "cors" }).then(r => r.text()), 12000, "读取 Google Fonts");
-      const m = css.match(/url\((https?:[^)'"]+?\.(?:woff2|woff|ttf|otf)[^)'"]*)\)/i);
+      const res = await nanoFontTimeout(fetch(cands[i], { mode: "cors", credentials: "omit" }), 9000, "读取字体 CSS");
+      if (res && res.ok) {
+        const txt = await res.text();
+        if (txt && /@font-face|font-family\s*:/i.test(txt)) return txt;
+      }
+    } catch (e) { lastErr = e; }
+  }
+  throw lastErr || new Error("无法读取字体 CSS（网络或跨域被拦截）");
+}
+
+// 把 CSS 里的相对字体地址补全，并给每个字体文件追加代理候选
+function rewriteCssFontUrls(css, baseUrl) {
+  function abs(u) {
+    u = String(u || "").trim();
+    if (!u || /^data:|^blob:/i.test(u)) return u;
+    if (/^\/\//.test(u)) u = "https:" + u;
+    if (/^https?:/i.test(u)) return u;
+    try { return new URL(u, baseUrl).href; } catch (e) { return u; }
+  }
+  return String(css || "").replace(/@font-face\s*\{[\s\S]*?\}/gi, function (block) {
+    return block.replace(/url\(\s*(['"]?)([^'")]+)\1\s*\)(\s*format\(\s*(['"]?)([^'")]+)\4\s*\))?/gi,
+      function (m, q, raw, fmtPart, fq, fmt) {
+        const u = abs(raw);
+        if (!/^https?:/i.test(u)) return m;
+        const list = [u].concat(fontProxyList(u));
+        const seen = {};
+        return list.map(function (x) {
+          if (!x || seen[x]) return "";
+          seen[x] = 1;
+          return 'url("' + String(x).replace(/"/g, '\\"') + '")' + (fmt ? ' format("' + fmt + '")' : "");
+        }).filter(Boolean).join(",");
+      });
+  });
+}
+
+async function loadRemoteFontFace(family, url) {
+  const clean = normalizeFontUrl(url);
+  const cands = [];
+  // Google Fonts / 其它字体 CSS -> 解析出字体文件地址
+  if (isCssFontUrl(clean)) {
+    try {
+      const css = await nanoFontTimeout(fetchTextSmart(clean), 14000, "读取字体 CSS");
+      const m = css.match(/url\(\s*['"]?(https?:[^)'"\s]+?\.(?:woff2|woff|ttf|otf|ttc|otc|eot|svg)[^)'"\s]*)/i);
       if (m && m[1]) cands.push(m[1]);
     } catch (e) {}
   }
   cands.push(clean);
-  if (/^https?:/i.test(clean)) {
-    const enc = encodeURIComponent(clean);
-    // 跨域兜底：依次尝试本 App 接口代理 + 公共 CORS 代理（服务端拉取，带宽松 CORS）
-    cands.push("https://api.nano315.online/audio/proxy?url=" + enc);
-    cands.push("https://api.allorigins.win/raw?url=" + enc);
-    cands.push("https://corsproxy.io/?url=" + enc);
-  }
+  if (/^https?:/i.test(clean)) cands.push.apply(cands, fontProxyList(clean));
   const unique = cands.filter(Boolean).filter(function (v, i, a) { return a.indexOf(v) === i; });
   // 并发竞速：谁先成功用谁，避免一个个串行等超时导致「一直连接中」
   let firstErr = null;
@@ -2623,7 +2708,8 @@ async function loadRemoteFontFace(family, url) {
 
 // 单个候选地址：先 fetch→Blob，失败再直接交给 FontFace
 async function loadOneFontFace(family, u) {
-  const ms = /nano315\.online|allorigins|corsproxy/.test(u) ? 8000 : 12000;
+  u = normalizeFontUrl(u);
+  const ms = /workers\.dev|allorigins|corsproxy|isomorphic-git|codetabs|nano315/.test(u) ? 9000 : 14000;
   try {
     const ctrl = (typeof AbortController !== "undefined") ? new AbortController() : null;
     const timer = setTimeout(function () { if (ctrl) ctrl.abort(); }, ms);
@@ -2772,7 +2858,7 @@ document.getElementById("urlApply").onclick = async () => {
     let hint = "";
     if (window.isSecureContext === false) hint = "\n\n提示：当前不是 HTTPS 安全环境，部分手机浏览器会拦截外部字体或接口，请改用 https:// 打开。";
     fontAlert("字体连接失败", (err && err.message ? err.message : String(err)) + hint +
-      "\n\n支持的链接：\n· 字体文件直链：.ttf / .otf / .woff / .woff2\n· Google Fonts 的 CSS 链接\n· 其它 @font-face 字体 CSS 链接\n· 也可直接粘贴 @font-face CSS");
+      "\n\n支持的链接：\n· 字体文件直链：.ttf / .otf / .tof / .woff / .woff2 / .ttc / .otc / .eot / .svg\n· Google Fonts、Fontsource、Typekit、CDN Fonts、Fontlibrary 等字体 CSS\n· 其它 @font-face 字体 CSS 链接\n· GitHub blob 链接会自动转成 raw 直链\n· 也可直接粘贴 @font-face CSS");
   } finally {
     fontConnecting = false;
     hideFontLoading();
@@ -2835,7 +2921,7 @@ function injectGoogleFontLink(url) {
 //   · Google Fonts、字体 CSS 链接 → cssFamily
 //   · 直接粘贴的 @font-face CSS → cssFamily + cssText
 async function prepareRemoteFont(rawUrl) {
-  const u = String(rawUrl || "").trim();
+  const u = normalizeFontUrl(rawUrl);
   if (!u) throw new Error("请输入字体链接");
   // 直接粘贴 @font-face CSS
   if (/@font-face/i.test(u) || (/\{/.test(u) && /font-family\s*:/i.test(u))) {
@@ -2845,18 +2931,32 @@ async function prepareRemoteFont(rawUrl) {
   }
   if (/^data:/i.test(u)) return { cssFamily: "", cssText: "" };
   if (!/^https?:/i.test(u)) throw new Error("请输入 http(s) 或 data: 开头的字体链接，也可直接粘贴 @font-face CSS");
-  // CSS 样式表链接（Google Fonts / 其它字体 CSS）
-  if (!isFontFileUrl(u) && (/fonts\.googleapis\.com/i.test(u) || /\.css(?:[?#]|$)/i.test(u))) {
+  // 没有字体扩展名的链接：先尝试按字体 CSS 读取（支持更多字体站 / 无扩展名 CDN），
+  // 读不到再当作直链字体处理。
+  if (!isFontFileUrl(u)) {
     let cssText = "";
     try {
-      cssText = await nanoFontTimeout(fetch(u, { mode: "cors", credentials: "omit" }).then(r => r.text()), 12000, "读取字体 CSS");
+      cssText = await nanoFontTimeout(fetchTextSmart(u), 30000, "读取字体 CSS");
     } catch (e) {}
-    let fam = googleFontFamily(u) || firstFamilyInCss(cssText);
-    if (!fam) {
-      try { fam = await detectCssFamilyByLink(u); } catch (e) {}
+    if (cssText && /@font-face/i.test(cssText)) {
+      // 补全相对地址 + 给每个字体文件追加 Cloudflare 代理候选，跨域也能加载
+      const rewritten = rewriteCssFontUrls(cssText, u);
+      let fam = googleFontFamily(u) || firstFamilyInCss(rewritten) || firstFamilyInCss(cssText);
+      if (!fam) {
+        try { fam = await detectCssFamilyByLink(u); } catch (e) {}
+      }
+      if (!fam) throw new Error("无法识别该 CSS 链接里的字体名称（可改用字体文件直链）");
+      return { cssFamily: fam, cssText: rewritten };
     }
-    if (!fam) throw new Error("无法识别该 CSS 链接里的字体名称（可改用字体文件直链）");
-    return { cssFamily: fam, cssText: "" };
+    if (isCssFontUrl(u)) {
+      // CSS 拉不到：退回让浏览器直接加载样式表，再用新出现的字体族名识别
+      let fam = googleFontFamily(u);
+      if (!fam) {
+        try { fam = await detectCssFamilyByLink(u); } catch (e) {}
+      }
+      if (!fam) throw new Error("无法识别该 CSS 链接里的字体名称（可改用字体文件直链）");
+      return { cssFamily: fam, cssText: "" };
+    }
   }
   return { cssFamily: "", cssText: "" };
 }
@@ -2893,7 +2993,7 @@ async function applyRemoteFont(url, cssFamily, cssText) {
   await loadRemoteFontFace(uniq, u);
   applyFontToPage(uniq);
   if (!(await verifyFontLoaded(uniq, 6000))) {
-    throw new Error("字体已下载但无法解析，请确认是有效的字体文件（.ttf/.otf/.woff/.woff2）");
+    throw new Error("字体已下载但无法解析，请确认是有效的字体文件（.ttf/.otf/.tof/.woff/.woff2/.ttc/.otc/.eot/.svg）");
   }
 }
 

@@ -1602,7 +1602,7 @@ setTimeout(function () {
         setTimeout(applySafeTopToFrames, 300);
 
         // 构建版本号（改这里即可让所有同源页面刷新缓存）
-        var BUILD = 'nano-2026-10-18-05';
+        var BUILD = 'nano-2026-10-19-02';
 
         // 给同源页面 URL 追加构建版本号，避免浏览器/Service Worker 缓存到旧 HTML
         function pageUrl(u) {
@@ -1623,9 +1623,25 @@ setTimeout(function () {
                 return u + (u.indexOf('?') === -1 ? '?' : '&') + 'nb=' + encodeURIComponent(b);
             } catch (e) { return u; }
         }
-        function openFullscreen(url, title, showBack, source) {
+        function openFullscreen(url, title, showBack, source, skipStack) {
             url = withBuild(url);
             const pageName = baseName(url);
+            try {
+                if (!skipStack && overlayActive && source === 'settings') {
+                    const curBase = frameBase(overlayFrame);
+                    if (curBase && curBase !== pageName) {
+                        let curUrl = overlayFrame.getAttribute('data-loaded-url') || overlayFrame.src || '';
+                        curUrl = String(curUrl).split('#')[0].split('?')[0];
+                        if (curUrl) {
+                            settingsPageStack.push({
+                                url: curUrl,
+                                title: overlayTitle.textContent || '',
+                                source: currentOverlaySource || 'settings'
+                            });
+                        }
+                    }
+                }
+            } catch (e) {}
             // 防止双击同一个入口时连续设置 iframe.src，导致加载被中断成白屏
             try {
                 const now = Date.now();
@@ -1729,6 +1745,18 @@ setTimeout(function () {
         function closeFullscreen() {
             const wasOverlaySource = currentOverlaySource;
             const hadJump = !!pendingJumpMsgId;
+
+            // 从设置里打开的二级页面：返回上一页（设置），不直接回桌面
+            try {
+                if (wasOverlaySource === 'settings' && settingsPageStack.length) {
+                    const prev = settingsPageStack.pop();
+                    if (prev && prev.url) {
+                        openFullscreen(prev.url, prev.title || '', true, prev.source || 'settings', true);
+                        return;
+                    }
+                }
+            } catch (e) {}
+            try { settingsPageStack.length = 0; } catch (e) {}
 
             overlay.classList.remove('active');
             overlay.classList.remove('no-header');
@@ -2317,6 +2345,8 @@ setTimeout(function () {
 
         const refreshState = {};
         const urlSourceMap = {};
+        // 设置 → 储存/备份等二级页面：返回时先回到设置，而不是直接回桌面
+        const settingsPageStack = [];
         // 注意：要 decodeURIComponent。带空格的页面（如 “memory palace.html”）在 iframe 的
         // location.href 里会被编码成 memory%20palace.html，不解码就匹配不到 SELF_SAFE_PAGES /
         // ownNavPages，外壳会误判并给它叠加一层 body 安全区留白（只有记忆宫殿受影响）。
@@ -2916,6 +2946,16 @@ setTimeout(function () {
                 try {
                     const hf = document.getElementById('homeFrame');
                     if (hf && hf.contentWindow) hf.contentWindow.postMessage(data, '*');
+                } catch (e) {}
+                return;
+            }
+
+            if (data.type === 'nanoScheduleReport' || data.type === 'nanoScheduleUpdated') {
+                try {
+                    const frames = document.querySelectorAll('iframe');
+                    for (let i = 0; i < frames.length; i++) {
+                        try { frames[i].contentWindow.postMessage(data, '*'); } catch (e) {}
+                    }
                 } catch (e) {}
                 return;
             }

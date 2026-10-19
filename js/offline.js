@@ -2238,15 +2238,24 @@ function addMessage(role, content, extra = {}) {
 }
 
 async function send() {
-  const text = input.value.trim();
-  if (text) {
-    addMessage('user', text);
-    input.value = '';
-    resizeInput();
-    showToast('已发送');
-    return;
-  }
-  await requestReply();
+  const proceed = async function () {
+    const text = input.value.trim();
+    if (text) {
+      addMessage('user', text);
+      input.value = '';
+      resizeInput();
+      showToast('已发送');
+      return;
+    }
+    await requestReply();
+  };
+  try {
+    if (window.NanoScheduleBridge && window.NanoScheduleBridge.guardSend) {
+      window.NanoScheduleBridge.guardSend(proceed);
+      return;
+    }
+  } catch (e) {}
+  await proceed();
 }
 
 const PENDING_KEY = 'offline_reply_pending_v1_' + (offlineChatId || 'none') + '_' + offlineScene;
@@ -2272,7 +2281,12 @@ async function requestReply() {
       await new Promise(r => setTimeout(r, 1200));
       result = await callMainAPI(history);
     }
-    const reply = typeof result === 'string' ? result : (result?.reply ?? result?.content ?? result?.message ?? '');
+    let reply = typeof result === 'string' ? result : (result?.reply ?? result?.content ?? result?.message ?? '');
+    try {
+      if (!offlineIsGroup && reply && window.NanoScheduleBridge && window.NanoScheduleBridge.applyMarkers) {
+        reply = await window.NanoScheduleBridge.applyMarkers(reply, { charId: offlineChatId, charName: settings.charName });
+      }
+    } catch (e) {}
     if (offlineIsGroup && reply) {
       // 群聊线下：所有角色的互动写在同一个卡片里
       addMessage('assistant', reply, { name: settings.charName, avatar: settings.charAvatar });
@@ -2569,7 +2583,14 @@ async function callMainAPI(history) {
     } catch (e) {}
     let wb = { front: '', middle: '', back: '' };
     try { if (!offlineIsGroup) wb = offGetWorldbookText(); } catch (e) {}
-    const systemPromptStr = wb.front + timeBlock + memBlock + onlineBlock + openingBlock + (offlineIsGroup
+    let scheduleBlock = '';
+    try {
+      if (!offlineIsGroup && window.NanoScheduleBridge && window.NanoScheduleBridge.refreshContext) {
+        scheduleBlock = await window.NanoScheduleBridge.refreshContext({ charId: offlineChatId, charName: settings.charName });
+        if (scheduleBlock) scheduleBlock = scheduleBlock + '\n\n';
+      }
+    } catch (e) {}
+    const systemPromptStr = wb.front + timeBlock + scheduleBlock + memBlock + onlineBlock + openingBlock + (offlineIsGroup
       ? (buildGroupOfflinePrompt() + (rules.length
           ? ('\n\n【额外规则 · 强制遵守】\n' + rules.map((r, i) => `${i + 1}. ${r}`).join('\n'))
           : ''))

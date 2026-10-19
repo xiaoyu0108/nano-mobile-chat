@@ -269,7 +269,20 @@ button, a {
   line-height: 1;
 }
 
-/* 子页面列表：一个连续容器，细分割线，无分区标题 */
+/* 子页面分区标题 */
+.group-title {
+  margin: 6px 6px 8px;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: .08em;
+  color: #8e8e93;
+}
+
+.group-title:not(:first-child) {
+  margin-top: 20px;
+}
+
+/* 子页面列表：一个连续容器，细分割线 */
 .list {
   background: #fff;
   border: 1px solid var(--line);
@@ -349,6 +362,33 @@ label.row:active {
   background: #fff;
   box-shadow: 0 1px 3px rgba(0, 0, 0, .16);
   display: block;
+}
+
+.ball-preview img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+}
+
+/* 桌面设置页左上角装饰 */
+.desk-deco {
+  position: relative;
+  height: 86px;
+  margin: -4px -4px 2px;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.desk-deco svg {
+  position: absolute;
+  left: -6px;
+  top: -16px;
+  width: 236px;
+  height: 128px;
+  color: #111;
+  opacity: .92;
 }
 
 .nudge {

@@ -1,7 +1,7 @@
 (function() {
   'use strict';
 
-  var API_BASE = 'https://api.nano315.online';
+  var API_BASE = (function(){ try { return (localStorage.getItem('nano_music_api_base') || 'https://music.nano315.online').replace(/\/+$/, ''); } catch(e) { return 'https://music.nano315.online'; } })();
 
   var DB_NAME = 'nano_music_db';
   var DB_VERSION = 3;
@@ -71,6 +71,8 @@
   var currentSongIndex = -1;
   var songs = [];
   var audio = null;
+  var netEaseToken = 0;
+  var netEaseOpts = null;
   var progressTimer = null;
   var playMode = 'order';
   var isMultiSelect = false;
@@ -908,13 +910,14 @@
     if (!song) return;
 
     if (song.source === 'netease') {
-      showToast('加载中...');
-      fetchNetEasePlaybackUrl(song, function(url) {
-        startPlayFromQueue(url);
-      }, function(message) {
-        showToast(message);
-        playlistQueueIndex++;
-        playFromPlaylistQueue();
+      showToast('正在播放...');
+      playNetEaseSong(song, {
+        onEnded: onPlaylistQueueEnd,
+        onFatal: function (message) {
+          showToast(message);
+          playlistQueueIndex++;
+          playFromPlaylistQueue();
+        }
       });
       return;
     }
@@ -945,7 +948,116 @@
     });
   }
 
-  function startPlayFromQueue(url) {
+  function playNetEaseSong(song, opts) {
+    opts = opts || {};
+    var myToken = ++netEaseToken;
+    var cookie = '';
+    try { cookie = localStorage.getItem('nano_netease_cookie') || ''; } catch (e) {}
+    var outside = neteaseOutsideUrl(song);
+
+    function fail(msg, isVip) {
+      if (myToken !== netEaseToken) return;
+      if (isVip && !cookie) {
+        pendingVipSong = song;
+        showToast('VIP 歌曲需要网易云登录/会员，正在打开扫码登录...');
+        setTimeout(function () { try { openNeteaseQrLogin(); } catch (e) {} }, 500);
+        return;
+      }
+      if (opts.onFatal) opts.onFatal(msg); else showToast(msg);
+    }
+
+    function tryKuwo(code, isVip) {
+      if (myToken !== netEaseToken) return;
+      showToast('正在尝试酷我音源...');
+      searchKuwo(song, function (kuwoUrl) {
+        if (myToken !== netEaseToken) return;
+        if (!kuwoUrl) {
+          fail(netEasePlaybackErrorText({ isVip: !!isVip, hasCookie: !!cookie }, code), isVip);
+          return;
+        }
+        startPlayNetEase(API_BASE + '/audio/proxy?url=' + encodeURIComponent(kuwoUrl), {
+          isVip: false,
+          hasCookie: !!cookie,
+          fallbackUrl: kuwoUrl,
+          onEnded: opts.onEnded
+        }, true, myToken);
+      });
+    }
+
+    function tryApi(code) {
+      if (myToken !== netEaseToken) return;
+      fetchNetEasePlaybackUrl(song, function (url, item, extra) {
+        if (myToken !== netEaseToken) return;
+        extra = extra || {};
+        if (extra.outside) {
+          if (extra.isVip && !cookie) {
+            fail(netEasePlaybackErrorText(extra, code), true);
+            return;
+          }
+          tryKuwo(code, extra.isVip);
+          return;
+        }
+        extra.fallbackUrl = '';
+        extra.onEnded = opts.onEnded;
+        extra.onError = function (c) {
+          if (extra.isVip && !cookie) fail(netEasePlaybackErrorText(extra, c), true);
+          else tryKuwo(c, extra.isVip);
+        };
+        startPlayNetEase(url, extra, true, myToken);
+      }, function () {
+        if (myToken !== netEaseToken) return;
+        tryKuwo(code, false);
+      });
+    }
+
+    function tryGd(code) {
+      if (myToken !== netEaseToken) return;
+      showToast('正在尝试备用音源...');
+      fetchGdStudioUrl(song, function (gdUrl) {
+        if (myToken !== netEaseToken) return;
+        if (!gdUrl) {
+          tryApi(code);
+          return;
+        }
+        startPlayNetEase(API_BASE + '/audio/proxy?url=' + encodeURIComponent(gdUrl), {
+          isVip: false,
+          hasCookie: !!cookie,
+          fallbackUrl: gdUrl,
+          onEnded: opts.onEnded
+        }, true, myToken);
+      });
+    }
+
+    var fallback = function (code) {
+      if (myToken !== netEaseToken) return;
+      // 外链失败先试 GD（多数歌曲能直接拿到完整网易云音源），再回主 API / 酷我
+      tryGd(code);
+    };
+
+    // 先同步播放官方外链：点击事件里直接 play，避免等 API 回来后被浏览器拦截
+    startPlayNetEase(outside, {
+      isVip: false,
+      hasCookie: !!cookie,
+      outside: true,
+      onEnded: opts.onEnded,
+      onError: fallback
+    }, false, myToken);
+  }
+
+  function netEasePlaybackErrorText(opts, code) {
+    if (opts && opts.isVip) {
+      return opts.hasCookie
+        ? '该 VIP 歌曲当前没有可用音源；登录可能已过期，请重新扫码登录网易云'
+        : '该歌曲是 VIP，请先登录网易云后再播放';
+    }
+    return code === 2 ? '音频网络请求失败，请稍后重试' :
+      code === 3 ? '音频解码失败，可能是资源已失效' :
+      code === 4 ? '该歌曲没有可用音源（可能未上架或受版权限制）' :
+      '该歌曲没有可用音源';
+  }
+
+  function startPlayFromQueue(url, opts) {
+    opts = opts || {};
     if (audio) {
       audio.pause();
       audio.removeAttribute('src');
@@ -967,20 +1079,28 @@
     audio.addEventListener('ended', onPlaylistQueueEnd);
     audio.addEventListener('error', function() {
       var code = audio && audio.error ? audio.error.code : 0;
+      if (opts.fallbackUrl && !opts._triedFallback) {
+        opts._triedFallback = true;
+        audio.src = opts.fallbackUrl;
+        audio.load();
+        audio.play().catch(function(err) { console.error('网易云备用地址播放失败:', err); });
+        return;
+      }
       isPlaying = false;
       updatePlayBtn();
-      showToast(
-        code === 2 ? '代理音频网络请求失败' :
-        code === 3 ? '代理音频解码失败' :
-        code === 4 ? '浏览器无法播放代理音频' :
-        '代理音频无法播放'
-      );
+      showToast(netEasePlaybackErrorText(opts, code));
     });
 
     var playPromise = audio.play();
     if (playPromise && typeof playPromise.catch === 'function') {
       playPromise.catch(function(err) {
         console.error('歌单网易云代理播放失败:', err);
+        if (opts.fallbackUrl && !opts._triedFallback) {
+          opts._triedFallback = true;
+          audio.src = opts.fallbackUrl;
+          audio.load();
+          audio.play().catch(function(e) { console.error('网易云备用地址播放失败:', e); });
+        }
       });
     }
 
@@ -1316,6 +1436,7 @@
   // 播放
   // ============================================================
   function stopPlayback() {
+    netEaseToken++;
     if (audio) { audio.pause(); audio = null; }
     if (progressTimer) { clearInterval(progressTimer); progressTimer = null; }
     isPlaying = false;
@@ -1343,7 +1464,16 @@
       return { url: '', message: '没有找到可用的播放资源' };
     }
     if (!item.url) {
-      return { url: '', message: '该歌曲当前没有可用播放资源' };
+      return { url: '', message: '该歌曲当前没有可用播放资源', item: item };
+    }
+    // 代理接口在拿不到版权资源时会返回 code=404 / br=0 的酷我占位音频，
+    // 这类地址播放会直接报错，必须当作无效并走备用解析。
+    var code = item.code === undefined ? 200 : Number(item.code);
+    var size = Number(item.size) || 0;
+    var invalid = code !== 200 || (Number(item.br) === 0 && size === 0) ||
+      /1325645003\.mp3/i.test(String(item.url)) || (size > 0 && size < 200000);
+    if (invalid) {
+      return { url: '', message: '该歌曲当前没有可用的网易云资源', item: item, invalid: true };
     }
     return {
       url: normalizeNetEaseAudioUrl(item.url),
@@ -1351,6 +1481,170 @@
       item: item,
       message: ''
     };
+  }
+
+  function neteaseOutsideUrl(song) {
+    return 'https://music.163.com/song/media/outer/url?id=' + encodeURIComponent(song.neteaseId) + '.mp3';
+  }
+
+  function isVipItem(item) {
+    if (!item) return false;
+    var reason = item.freeTrialPrivilege && item.freeTrialPrivilege.cannotListenReason;
+    return Number(item.fee) > 0 || Number(reason) === 1;
+  }
+
+  /* ---------- 备用音源：GD Studio 的网易云直链接口 ---------- */
+  var gdBlockedUntil = 0;
+  function fetchGdStudioUrl(song, cb) {
+    var id = song && song.neteaseId;
+    if (!id) { cb(''); return; }
+    if (Date.now() < gdBlockedUntil) { cb(''); return; }
+
+    // 直链有效期约 20 分钟，缓存 10 分钟，减少 50 次/5 分钟的频率限制
+    var cacheKey = 'nano_gd_url_' + id;
+    try {
+      var cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+      if (cached && cached.url && Date.now() - cached.at < 10 * 60 * 1000) {
+        cb(cached.url);
+        return;
+      }
+    } catch (e) {}
+
+    var url = 'https://music-api.gdstudio.xyz/api.php?types=url&source=netease&id=' +
+      encodeURIComponent(id) + '&br=320';
+    fetch(url, { cache: 'no-store' })
+      .then(function (r) {
+        if (r.status === 429 || r.status === 403) {
+          gdBlockedUntil = Date.now() + 60 * 1000;
+          return null;
+        }
+        return r.json();
+      })
+      .then(function (d) {
+        var u = d && d.url ? String(d.url) : '';
+        if (u.indexOf('http://') === 0) u = 'https://' + u.slice(7);
+        if (u) {
+          try { localStorage.setItem(cacheKey, JSON.stringify({ url: u, at: Date.now() })); } catch (e) {}
+        }
+        cb(u);
+      })
+      .catch(function () { cb(''); });
+  }
+
+  /* ---------- 酷我兼容：官方接口无版权/占位时，用酷我搜索同名歌曲 ---------- */
+  var kuwoBusy = false;
+  var kuwoQueue = [];
+
+  function kuwoText(s) {
+    return String(s || '')
+      .replace(/&amp;nbsp;/gi, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&#(\d+);/g, function (_, n) { try { return String.fromCharCode(+n); } catch (e) { return ' '; } })
+      .replace(/&amp;/gi, '&')
+      .replace(/[（）()【】\[\]《》·\-—_\s]/g, '')
+      .toLowerCase();
+  }
+
+  function kuwoCleanup(script, cbName) {
+    try { if (script && script.parentNode) script.parentNode.removeChild(script); } catch (e) {}
+    try { if (cbName) delete window[cbName]; } catch (e) {}
+  }
+
+  function kuwoResolveUrl(musicRid, cb) {
+    var rid = String(musicRid || '').trim();
+    if (!rid) { cb(''); return; }
+    var cbName = '__nanoKuwoUrl_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    var script = document.createElement('script');
+    var done = false;
+    function finish(url) {
+      if (done) return;
+      done = true;
+      kuwoCleanup(script, cbName);
+      cb(url || '');
+    }
+    window[cbName] = function (data) {
+      finish(data && data.code === 200 ? String(data.url || '') : '');
+    };
+    script.onerror = function () { finish(''); };
+    script.src = 'https://antiserver.kuwo.cn/anti.s?type=convert_url3&rid=' +
+      encodeURIComponent(rid) + '&format=mp3&response=jsonp&callback=' + encodeURIComponent(cbName);
+    document.head.appendChild(script);
+    setTimeout(function () { finish(''); }, 8000);
+  }
+
+  function kuwoDoSearch(song, cb) {
+    var key = String(song && song.name || '').trim();
+    if (!key) { cb(''); return; }
+    var artist = String(song.artist || '').split('/')[0].trim();
+    var script = document.createElement('script');
+    var done = false;
+    var targetName = kuwoText(key);
+    var targetArtist = kuwoText(artist);
+    try { window.jsondata = null; if (typeof window.cb !== 'function') window.cb = function () {}; } catch (e) {}
+    function finish(url) {
+      if (done) return;
+      done = true;
+      kuwoCleanup(script);
+      try { window.jsondata = null; } catch (e) {}
+      cb(url || '');
+    }
+    script.onload = function () {
+      var data = null;
+      try { data = window.jsondata; } catch (e) {}
+      var list = (data && data.abslist) || [];
+      var ranked = [];
+      for (var i = 0; i < list.length; i++) {
+        var it = list[i];
+        if (!it || !it.MUSICRID) continue;
+        var nm = kuwoText(it.NAME), ar = kuwoText(it.ARTIST);
+        var score = 0;
+        if (nm === targetName) score += 100;
+        else if (nm && targetName && (nm.indexOf(targetName) !== -1 || targetName.indexOf(nm) !== -1)) score += 60;
+        if (targetArtist && ar && (ar.indexOf(targetArtist) !== -1 || targetArtist.indexOf(ar) !== -1)) score += 45;
+        // 越接近原名的越优先，减少翻唱/串烧
+        if (score >= 45) {
+          score -= Math.min(20, Math.abs(nm.length - targetName.length));
+          ranked.push({ score: score, item: it });
+        }
+      }
+      ranked.sort(function (a, b) { return b.score - a.score; });
+      ranked = ranked.slice(0, 6);
+      if (!ranked.length) { finish(''); return; }
+      var firstPreview = '';
+      (function tryAt(pos) {
+        if (pos >= ranked.length) { finish(firstPreview); return; }
+        kuwoResolveUrl(ranked[pos].item.MUSICRID, function (url) {
+          if (!url) { tryAt(pos + 1); return; }
+          // 酷我 nf/resource 通常是试听片段，优先继续找 trackmedia 完整版
+          if (url.indexOf('/nf/resource/') !== -1 || url.indexOf('/resource/n') !== -1) {
+            if (!firstPreview) firstPreview = url;
+            tryAt(pos + 1);
+            return;
+          }
+          finish(url);
+        });
+      })(0);
+    };
+    script.onerror = function () { finish(''); };
+    // 酷我旧版搜索接口返回 try{var jsondata=...}，可用 script 跨域读取
+    script.src = 'https://search.kuwo.cn/r.s?all=' + encodeURIComponent(key) +
+      '&ft=music&itemset=web_2013&client=kt&pn=0&rn=10&rformat=json&callback=cb&encoding=utf8';
+    document.head.appendChild(script);
+    setTimeout(function () { finish(''); }, 15000);
+  }
+
+  function searchKuwo(song, cb) {
+    kuwoQueue.push({ song: song, cb: cb });
+    if (kuwoBusy) return;
+    kuwoBusy = true;
+    (function next() {
+      var job = kuwoQueue.shift();
+      if (!job) { kuwoBusy = false; return; }
+      kuwoDoSearch(job.song, function (url) {
+        try { job.cb(url); } catch (e) {}
+        setTimeout(next, 120);
+      });
+    })();
   }
 
   function fetchNetEasePlaybackUrl(song, onSuccess, onError) {
@@ -1367,28 +1661,49 @@
       endpoint += '&cookie=' + encodeURIComponent(cookie);
     }
 
+    var outside = neteaseOutsideUrl(song);
+    var useOutside = function(item, reason) {
+      // API 返回占位/无版权资源时，改用网易云官方外链：免费歌可整首，
+      // 部分 VIP 歌也能拿到可播放片段；实在不行由播放器给出提示。
+      onSuccess(outside, item, {
+        fallbackUrl: '',
+        isVip: isVipItem(item),
+        hasCookie: !!cookie,
+        outside: true,
+        reason: reason || ''
+      });
+    };
+
     fetch(endpoint, { cache: 'no-store' })
       .then(function(r) {
         if (!r.ok) throw new Error('HTTP ' + r.status);
         return r.json();
       })
       .then(function(d) {
+        var item = d && d.data && d.data[0];
         var result = getNetEaseUrlFromResponse(d);
         if (!result.url) {
-          onError(result.message);
+          useOutside(item, result.message);
           return;
         }
         var sourceUrl = result.originalUrl || result.url;
         var proxyUrl = API_BASE + '/audio/proxy?url=' + encodeURIComponent(sourceUrl);
-        onSuccess(proxyUrl, result.item);
+        onSuccess(proxyUrl, result.item, {
+          fallbackUrl: outside,
+          isVip: isVipItem(result.item),
+          hasCookie: !!cookie,
+          outside: false
+        });
       })
       .catch(function(err) {
-        onError('获取播放地址失败：' + (err && err.message ? err.message : '网络错误'));
+        // 接口整体不可用时也尝试网易云官方外链，避免所有歌都直接报错
+        useOutside(null, '获取播放地址失败：' + (err && err.message ? err.message : '网络错误'));
       });
   }
 
   function playSong(idx, keepOnlineQueue) {
     if (idx < 0 || idx >= songs.length) return;
+    netEaseToken++;
     // 从「我的」/普通播放进入时，退出在线列表队列，避免播完误跳到每日推荐
     if (!keepOnlineQueue) onlineQueueActive = false;
     currentSongIndex = idx;
@@ -1396,12 +1711,8 @@
     if (!song) return;
 
     if (song.source === 'netease') {
-      showToast('加载中...');
-      fetchNetEasePlaybackUrl(song, function(url) {
-        startPlayNetEase(url);
-      }, function(message) {
-        showToast(message);
-      });
+      showToast('正在播放...');
+      playNetEaseSong(song);
       return;
     }
 
@@ -1434,44 +1745,118 @@
     });
   }
 
-  function startPlayNetEase(url) {
-    if (audio) {
-      audio.pause();
-      audio.removeAttribute('src');
-      audio.load();
-      audio = null;
-    }
+  function startPlayNetEase(url, opts, reuse, token) {
+    opts = opts || {};
+    if (token && token !== netEaseToken) return;
     if (!url) {
       showToast('没有可用的音频地址');
       return;
     }
 
-    audio = new Audio();
-    audio.preload = 'auto';
-    audio.src = url;
+    if (reuse && audio) {
+      // 复用同一个 audio 元素：外层点击已经解锁播放，异步换源不会被浏览器拦截
+      try { audio.pause(); } catch (e) {}
+      audio.removeAttribute('src');
+      audio.load();
+    } else {
+      if (audio) {
+        try { audio.pause(); } catch (e) {}
+        audio.removeAttribute('src');
+        audio.load();
+        audio = null;
+      }
+      audio = new Audio();
+      audio.preload = 'auto';
+    }
+    netEaseOpts = opts;
 
-    audio.addEventListener('timeupdate', updateProgress);
-    audio.addEventListener('loadedmetadata', updateProgress);
-    audio.addEventListener('playing', function() {
+    var stallTimer = null;
+    function clearStall() {
+      if (stallTimer) { clearTimeout(stallTimer); stallTimer = null; }
+    }
+    if (opts.outside) {
+      stallTimer = setTimeout(function () {
+        if (token && token !== netEaseToken) return;
+        if (!audio || opts._triedFallback || !opts.onError) return;
+        opts._triedFallback = true;
+        audio.onerror = null;
+        audio.onloadedmetadata = null;
+        try { audio.pause(); } catch (e) {}
+        opts.onError(0);
+      }, 6500);
+    }
+
+    audio.ontimeupdate = updateProgress;
+    audio.onloadedmetadata = function () {
+      if (token && token !== netEaseToken) return;
+      clearStall();
+      updateProgress();
+      // 外链偶尔会返回几秒的占位音频：自动转 API / 备用源
+      if (opts.outside && isFinite(audio.duration) && audio.duration > 0 && audio.duration < 5 &&
+          opts.onError && !opts._triedFallback) {
+        opts._triedFallback = true;
+        audio.onloadedmetadata = null;
+        try { audio.pause(); } catch (e) {}
+        opts.onError(4);
+      }
+    };
+    audio.onplaying = function () {
+      if (token && token !== netEaseToken) return;
+      clearStall();
       isPlaying = true;
       updatePlayBtn();
-    });
-    audio.addEventListener('ended', onSongEnd);
-    audio.addEventListener('error', function() {
+    };
+    audio.onended = function () {
+      if (token && token !== netEaseToken) return;
+      (opts.onEnded || onSongEnd)();
+    };
+    audio.onerror = function () {
+      if (token && token !== netEaseToken) return;
+      clearStall();
       var code = audio && audio.error ? audio.error.code : 0;
+      if (opts.onError && !opts._triedFallback) {
+        opts._triedFallback = true;
+        audio.onerror = null;
+        opts.onError(code);
+        return;
+      }
+      if (opts.fallbackUrl && !opts._triedFallback) {
+        opts._triedFallback = true;
+        audio.src = opts.fallbackUrl;
+        audio.load();
+        audio.play().catch(function (err) {
+          if (!(err && err.name === 'AbortError')) console.error('网易云备用地址播放失败:', err);
+        });
+        return;
+      }
       isPlaying = false;
       updatePlayBtn();
       if (code === 1) showToast('音频加载已取消');
-      else if (code === 2) showToast('代理音频网络请求失败');
-      else if (code === 3) showToast('代理音频解码失败');
-      else if (code === 4) showToast('浏览器无法播放代理音频');
-      else showToast('代理音频无法播放');
-    });
+      else showToast(netEasePlaybackErrorText(opts, code));
+    };
 
+    audio.src = url;
+    try { audio.load(); } catch (e) {}
     var playPromise = audio.play();
     if (playPromise && typeof playPromise.catch === 'function') {
-      playPromise.catch(function(err) {
-        console.error('网易云代理播放失败:', err);
+      playPromise.catch(function (err) {
+        if (token && token !== netEaseToken) return;
+        clearStall();
+        if (!(err && err.name === 'AbortError')) console.error('网易云代理播放失败:', err);
+        if (opts.onError && !opts._triedFallback) {
+          opts._triedFallback = true;
+          audio.onerror = null;
+          opts.onError(err && err.name === 'NotSupportedError' ? 4 : 0);
+          return;
+        }
+        if (opts.fallbackUrl && !opts._triedFallback) {
+          opts._triedFallback = true;
+          audio.src = opts.fallbackUrl;
+          audio.load();
+          audio.play().catch(function (e) {
+            if (!(e && e.name === 'AbortError')) console.error('网易云备用地址播放失败:', e);
+          });
+        }
       });
     }
 
@@ -1487,10 +1872,10 @@
     var song = songs[currentSongIndex];
     if (song && song.source === 'netease' && !song.lyrics) {
       var cookie = '';
-      try { cookie = localStorage.getItem('nano_netease_cookie') || ''; } catch(e) {}
+      try { cookie = localStorage.getItem('nano_netease_cookie') || ''; } catch (e) {}
       fetch(API_BASE + '/lyric?id=' + song.neteaseId + (cookie ? '&cookie=' + encodeURIComponent(cookie) : ''))
-        .then(function(r) { return r.json(); })
-        .then(function(d) {
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
           if (d.lrc && d.lrc.lyric) {
             song.lyrics = d.lrc.lyric;
             idbPut(STORE_LYRICS, { id: song.id, data: song.lyrics });
@@ -1499,7 +1884,7 @@
             if (soloView === 'lyrics') renderSoloLyrics();
           }
         })
-        .catch(function(err) {
+        .catch(function (err) {
           console.warn('歌词加载失败:', err);
         });
     }
@@ -1626,7 +2011,7 @@
       return;
     }
     if (audio) {
-      if (isPlaying) { audio.pause(); isPlaying = false; }
+      if (isPlaying) { netEaseToken++; audio.pause(); isPlaying = false; }
       else { audio.play(); isPlaying = true; }
       updatePlayBtn();
     } else {
@@ -3002,6 +3387,7 @@
   var neteaseQrTimer = null;
   var neteaseLoggedIn = false;
   var neteaseUserInfo = null;
+  var pendingVipSong = null;
 
   function openNeteaseQrLogin() {
     neteaseQrOverlay.classList.add('show');
@@ -3078,6 +3464,11 @@
               neteaseQrOverlay.classList.remove('show');
               showToast('网易云登录成功');
               renderPlaylists();
+              if (pendingVipSong) {
+                var retrySong = pendingVipSong;
+                pendingVipSong = null;
+                setTimeout(function () { playNetEaseSong(retrySong); }, 300);
+              }
             }, 1200);
           } else {
             neteaseQrStatus.textContent = '未知状态: ' + code;
@@ -3308,27 +3699,32 @@
   // ============================================================
   // Online 搜索
   // ============================================================
-  function doOnlineSearch() {
-    var kw = onlineSearchInput.value.trim();
-    if (!kw) {
-      onlineResultWrap.classList.add('hidden');
-      onlineDefaultContent.classList.remove('hidden');
-      return;
-    }
-    onlineResultList.innerHTML = '<div style="padding:50px 24px;text-align:center;font-size:14px;color:var(--gray-3);">搜索中...</div>';
-    onlineResultWrap.classList.remove('hidden');
-    onlineDefaultContent.classList.add('hidden');
+  function openOnlineSearchPage(kw) {
+    if (!kw) return;
+    onlineQueueType = 'search';
+    onlineListTitle.textContent = '搜索：' + kw;
+    onlineListBody.innerHTML = '<div style="padding:50px 24px;text-align:center;font-size:14px;color:var(--gray-3);">搜索中...</div>';
+    onlineListPage.classList.add('show');
+    onlineResultWrap.classList.add('hidden');
+    onlineDefaultContent.classList.remove('hidden');
+
     fetch(API_BASE + '/search?keywords=' + encodeURIComponent(kw))
       .then(function(r) { return r.json(); })
       .then(function(d) {
         var list = (d.result && d.result.songs) || [];
-        onlineResultTitle.textContent = '搜索结果（' + list.length + '）';
-        if (list.length === 0) {
-          onlineResultList.innerHTML = '<div style="padding:50px 24px;text-align:center;font-size:14px;color:var(--gray-3);">没有找到相关歌曲</div>';
+        var normalized = [];
+        list.forEach(function(raw) {
+          var item = raw.data || raw;
+          if (item && item.id) normalized.push(item);
+        });
+        if (!normalized.length) {
+          onlineListBody.innerHTML = '<div style="padding:50px 24px;text-align:center;font-size:14px;color:var(--gray-3);">没有找到相关歌曲</div>';
           return;
         }
-        onlineResultList.innerHTML = '';
-        list.forEach(function(item) {
+        onlineQueue = normalized.slice();
+        onlineQueueIndex = 0;
+        onlineListBody.innerHTML = '';
+        normalized.forEach(function(item, i) {
           var singer = (item.ar || item.artists || []).map(function(a) { return a.name; }).join(' / ');
           var cover = '';
           if (item.al && item.al.picUrl) cover = item.al.picUrl;
@@ -3336,6 +3732,7 @@
           else if (item.artists && item.artists[0] && item.artists[0].img1v1Url) cover = item.artists[0].img1v1Url;
           var div = document.createElement('div');
           div.className = 'song-item';
+          if (i === 0) div.classList.add('online-list-first');
           div.innerHTML =
             '<div class="song-cover">' +
             (cover ? '<img src="' + cover + '?param=100y100" style="width:100%;height:100%;object-fit:cover;">' : '<svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>') +
@@ -3344,13 +3741,23 @@
             '<div class="song-name">' + item.name + '</div>' +
             '<div class="song-artist">' + (singer || '未知歌手') + '</div>' +
             '</div>';
-          div.addEventListener('click', function() { playFromNetease(item, cover, singer); });
-          onlineResultList.appendChild(div);
+          div.addEventListener('click', function() { playFromOnlineQueue(i); });
+          onlineListBody.appendChild(div);
         });
       })
       .catch(function() {
-        onlineResultList.innerHTML = '<div style="padding:50px 24px;text-align:center;font-size:14px;color:var(--gray-3);">搜索失败，请检查 API 是否可用</div>';
+        onlineListBody.innerHTML = '<div style="padding:50px 24px;text-align:center;font-size:14px;color:var(--gray-3);">搜索失败，请检查 API 是否可用</div>';
       });
+  }
+
+  function doOnlineSearch() {
+    var kw = onlineSearchInput.value.trim();
+    if (!kw) {
+      onlineResultWrap.classList.add('hidden');
+      onlineDefaultContent.classList.remove('hidden');
+      return;
+    }
+    openOnlineSearchPage(kw);
   }
   onlineSearchBtn.addEventListener('click', doOnlineSearch);
   onlineSearchInput.addEventListener('keydown', function(e) {
