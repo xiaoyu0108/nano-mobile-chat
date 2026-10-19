@@ -684,8 +684,7 @@
 
     /* 主页和占位页需要滚动时也能滑到底部 */
     .page > .placeholder-page,
-    .page > .func-list,
-    .page > .profile-header {
+    .page > .func-list {
       padding-bottom: 90px; /* 给内部内容加上底部内边距，防止被 Dock 遮挡 */
     }
 
@@ -721,7 +720,6 @@
       padding-bottom: calc(92px + var(--safe-bottom, 0px));
     }
 
-    .page > .profile-header,
     .page > .func-list {
       padding-bottom: calc(100px + var(--safe-bottom, 0px));
     }
@@ -939,7 +937,7 @@
 
       <div class="profile-header">
         <div class="profile-avatar-wrap">
-          <div class="profile-avatar" id="profile-avatar" style="background:var(--gray-avatar);"></div>
+          <div class="profile-avatar" id="profile-avatar"></div>
         </div>
         <div class="profile-info">
           <div class="profile-stats">
@@ -1515,6 +1513,8 @@
     if (document.activeElement !== bioEl) bioEl.textContent = bio;
 
     av.style.backgroundImage = '';
+    av.style.backgroundSize = 'cover';
+    av.style.backgroundPosition = 'center';
     av.textContent = String(name).charAt(0).toUpperCase();
     if (currentUser) {
       getMaskAvatar(currentUser.id).then(function (url) {

@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<script src="../js/nano-runtime.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>通知</title>
+<link rel="icon" href="../icons/icon-192.png">
+<script>window.__NANO_FONT_ONLY = true;</script>
+<script src="../js/appearance.js"></script>
+<script src="../js/nano-idb.js"></script>
+<link rel="stylesheet" href="../css/settings.css">
+</head>
+<body data-page="notifications">
+<div class="app">
+  <header class="nav">
+    <a class="back" href="settings.html" aria-label="返回">
+      <svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
+    </a>
+    <h1>通知</h1>
+    <div class="spacer"></div>
+  </header>
+
+  <main class="scroll">
+    <section class="list">
+      <label class="row">
+        <span class="row-label">后台保活</span>
+        <span class="switch"><input type="checkbox" id="keepToggle"><i></i></span>
+      </label>
+      <label class="row">
+        <span class="row-label">允许通知</span>
+        <span class="switch"><input type="checkbox" id="notifyToggle"><i></i></span>
+      </label>
+      <label class="row">
+        <span class="row-label">Bark 推送</span>
+        <span class="switch"><input type="checkbox" id="barkToggle"><i></i></span>
+      </label>
+      <div class="subrow" id="barkKeyRow">
+        <input class="text-input" id="barkKeyInput" type="text" placeholder="粘贴 Bark 密钥" autocomplete="off">
+        <button class="mini-btn" id="barkKeySave">保存</button>
+        <button class="mini-btn dark" id="barkKeyTest">测试</button>
+      </div>
+      <div class="row">
+        <span class="row-label">Web Push</span>
+        <span class="row-value" id="webPushStatus">检查中…</span>
+        <button class="mini-btn" id="webPushBtn">开启</button>
+      </div>
+      <div class="row">
+        <span class="row-label">通知声音</span>
+        <select class="select" id="soundSelect"></select>
+        <button class="mini-btn" id="soundPreview">试听</button>
+      </div>
+    </section>
+    <p class="hint" id="barkStatus">Bark 未设置。后台保活、系统通知和 Web Push 都在本页管理。</p>
+  </main>
+</div>
+<div class="toast" id="toast"></div>
+<script src="../js/settings.js"></script>
+</body>
+</html>

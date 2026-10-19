@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<script src="../js/nano-runtime.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>其他</title>
+<link rel="icon" href="../icons/icon-192.png">
+<script>window.__NANO_FONT_ONLY = true;</script>
+<script src="../js/appearance.js"></script>
+<script src="../js/nano-idb.js"></script>
+<link rel="stylesheet" href="../css/settings.css">
+</head>
+<body data-page="other">
+<div class="app">
+  <header class="nav">
+    <a class="back" href="settings.html" aria-label="返回">
+      <svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
+    </a>
+    <h1>其他</h1>
+    <div class="spacer"></div>
+  </header>
+
+  <main class="scroll">
+    <section class="list">
+      <label class="row">
+        <span class="row-label">显示悬浮球</span>
+        <span class="switch"><input type="checkbox" id="ballToggle"><i></i></span>
+      </label>
+      <div class="row">
+        <span class="row-label">悬浮球大小</span>
+        <input class="range" id="ballSize" type="range" min="44" max="72" step="2">
+        <span class="row-value" id="ballSizeValue">52</span>
+      </div>
+      <button class="row" id="interfaceSettings">
+        <span class="row-label">界面与字体</span>
+        <span class="row-value">美化</span>
+        <span class="chev">›</span>
+      </button>
+      <button class="row" id="assistantSettings">
+        <span class="row-label">助手</span>
+        <span class="row-value">纳米设置</span>
+        <span class="chev">›</span>
+      </button>
+      <button class="row" id="otherSettings">
+        <span class="row-label">更多设置</span>
+        <span class="row-value">后台 / 推送</span>
+        <span class="chev">›</span>
+      </button>
+    </section>
+    <p class="hint">悬浮球在主界面和所有功能页都会显示，可直接拖动到合适的位置。</p>
+  </main>
+</div>
+<div class="toast" id="toast"></div>
+<script src="../js/settings.js"></script>
+</body>
+</html>

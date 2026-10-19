@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<script src="../js/nano-runtime.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>储存</title>
+<link rel="icon" href="../icons/icon-192.png">
+<script>window.__NANO_FONT_ONLY = true;</script>
+<script src="../js/appearance.js"></script>
+<script src="../js/nano-idb.js"></script>
+<link rel="stylesheet" href="../css/settings.css">
+</head>
+<body data-page="storage">
+<div class="app">
+  <header class="nav">
+    <a class="back" href="settings.html" aria-label="返回">
+      <svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
+    </a>
+    <h1>储存</h1>
+    <div class="spacer"></div>
+  </header>
+
+  <main class="scroll">
+    <section class="list">
+      <div class="row">
+        <span class="row-label">已用空间</span>
+        <span class="row-value" id="storageUsage">读取中…</span>
+      </div>
+      <button class="row" id="clearCache">
+        <span class="row-label">清理缓存</span>
+        <span class="chev">›</span>
+      </button>
+      <button class="row" id="storagePage">
+        <span class="row-label">存储管理</span>
+        <span class="chev">›</span>
+      </button>
+    </section>
+    <p class="hint">清理缓存只会移除离线资源，不会删除聊天、角色和人设数据。</p>
+  </main>
+</div>
+<div class="toast" id="toast"></div>
+<script src="../js/settings.js"></script>
+</body>
+</html>

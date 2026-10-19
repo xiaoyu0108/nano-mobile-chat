@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<script src="../js/nano-runtime.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>桌面</title>
+<link rel="icon" href="../icons/icon-192.png">
+<script>window.__NANO_FONT_ONLY = true;</script>
+<script src="../js/appearance.js"></script>
+<script src="../js/nano-idb.js"></script>
+<link rel="stylesheet" href="../css/settings.css">
+</head>
+<body data-page="desktop">
+<div class="app">
+  <header class="nav">
+    <a class="back" href="settings.html" aria-label="返回">
+      <svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
+    </a>
+    <h1>桌面</h1>
+    <div class="spacer"></div>
+  </header>
+
+  <main class="scroll">
+    <section class="list">
+      <button class="row" id="rowBg">
+        <span class="row-label">桌面背景</span>
+        <span class="row-value" id="bgValue">默认</span>
+        <span class="chev">›</span>
+      </button>
+      <button class="row" id="rowApps">
+        <span class="row-label">App 图标与名称</span>
+        <span class="row-value" id="appsValue">默认</span>
+        <span class="chev">›</span>
+      </button>
+      <button class="row" id="rowPresets">
+        <span class="row-label">桌面装饰预设</span>
+        <span class="row-value" id="presetsValue">0 个</span>
+        <span class="chev">›</span>
+      </button>
+      <button class="row" id="rowImport">
+        <span class="row-label">导入桌面装饰</span>
+        <span class="chev">›</span>
+      </button>
+      <button class="row" id="rowExport">
+        <span class="row-label">导出桌面装饰</span>
+        <span class="chev">›</span>
+      </button>
+      <button class="row" id="rowReset">
+        <span class="row-label">还原默认桌面</span>
+        <span class="chev">›</span>
+      </button>
+    </section>
+    <p class="hint">桌面装饰包含背景、App 图标与名称、桌面布局和小组件图片。</p>
+  </main>
+</div>
+
+<div class="modal" id="modal">
+  <div class="sheet">
+    <div class="sheet-head">
+      <div class="sheet-title" id="sheetTitle">设置</div>
+      <button class="sheet-close" id="sheetClose" aria-label="关闭">×</button>
+    </div>
+    <div class="sheet-body" id="sheetBody"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<input type="file" id="bgFile" accept="image/*" class="hidden">
+<input type="file" id="iconFile" accept="image/*" class="hidden">
+<input type="file" id="importFile" accept="application/json,.json" class="hidden">
+
+<script src="../js/settings.js"></script>
+</body>
+</html>
