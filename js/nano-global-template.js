@@ -745,17 +745,17 @@ body.nano-chat {
 .nano-chat .dock {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   background: #ffffff;
   border-radius: 999px;
-  padding: 6px 8px;
+  padding: 6px 10px;
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0,0,0,0.04);
   pointer-events: auto;
 }
 
 .nano-chat .dock-btn {
-  width: 52px;
-  height: 52px;
+  width: 56px;
+  height: 54px;
   border: none;
   background: transparent;
   border-radius: 50%;

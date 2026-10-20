@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<script src="../js/nano-runtime.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>提示词</title>
+<link rel="icon" href="../icons/icon-192.png">
+<script>window.__NANO_FONT_ONLY = true;</script>
+<script src="../js/appearance.js"></script>
+<script src="../js/nano-idb.js"></script>
+<link rel="stylesheet" href="../css/settings.css?v=20261020b">
+</head>
+<body data-page="prompts">
+<div class="app">
+  <header class="nav">
+    <a class="back" href="settings.html" aria-label="返回">
+      <svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
+    </a>
+    <h1>提示词</h1>
+    <button class="nav-refresh" type="button" aria-label="刷新" onclick="location.reload()">
+      <svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.34 5.66"/><polyline points="20 4 20 11 13 11"/></svg>
+    </button>
+  </header>
+
+  <main class="scroll">
+    <div id="promptSections"></div>
+    <p class="hint">每个板块只会启用一个提示词。关闭全部开关后，该板块不再注入任何提示词。内置提示词仅提供开关，不展示内容，也无法删除。</p>
+  </main>
+</div>
+
+<div class="modal" id="promptModal">
+  <div class="sheet">
+    <div class="sheet-head">
+      <div class="sheet-title" id="promptSheetTitle">提示词</div>
+      <button class="sheet-close" id="promptSheetClose" aria-label="关闭">×</button>
+    </div>
+    <div class="sheet-body" id="promptSheetBody"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<input type="file" id="promptIconFile" accept=".svg,image/svg+xml" class="hidden">
+
+<script src="../js/nano-prompts.js?v=20261020b"></script>
+<script src="../js/settings.js?v=20261020a"></script>
+<script src="../js/prompts-setting.js?v=20261020b"></script>
+</body>
+</html>

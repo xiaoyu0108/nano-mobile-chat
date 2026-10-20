@@ -78,7 +78,17 @@
     function loadMsgs(){
         try { var raw = localStorage.getItem(MSG_KEY); return raw ? JSON.parse(raw) : []; } catch(e){ return []; }
     }
-    function saveMsgs(){ try { localStorage.setItem(MSG_KEY, JSON.stringify(messages.slice(-400))); } catch(e){} }
+    var __groupListNotifyTimer = null;
+    function notifyGroupListPreview(){
+        try {
+            if (!window.parent || window.parent === window) return;
+            clearTimeout(__groupListNotifyTimer);
+            __groupListNotifyTimer = setTimeout(function(){
+                try { window.parent.postMessage({ type: 'groupsDataUpdated', groupId: chatId }, '*'); } catch(e) {}
+            }, 250);
+        } catch(e) {}
+    }
+    function saveMsgs(){ try { localStorage.setItem(MSG_KEY, JSON.stringify(messages.slice(-400))); } catch(e){} notifyGroupListPreview(); }
 
     var group = loadGroup();
     var settings = loadSettings();
@@ -1350,8 +1360,10 @@
             prompt += '\n' + window.NanoHoliday.buildVagueTimeBlock(new Date()) + '\n';
         }
         try {
-            var __gbp = (localStorage.getItem('nano_builtin_prompt') || '').trim();
-            if (__gbp) prompt += '\n\n【全局内置提示词 · 必须遵守】\n' + __gbp + '\n';
+            var __gbp = (window.NanoPrompts && NanoPrompts.buildBlock)
+                ? NanoPrompts.buildBlock('group')
+                : (localStorage.getItem('nano_builtin_prompt') || '').trim();
+            if (__gbp) prompt += '\n\n' + (String(__gbp).indexOf('【全局内置提示词') === 0 ? __gbp : ('【全局内置提示词 · 必须遵守】\n' + __gbp)) + '\n';
         } catch (e) {}
         prompt += '\n现在开始群聊，做你自己，自然一点。';
         return prompt;
@@ -2124,7 +2136,7 @@
     }
     function sendGroupEmoji(em){
         closeGroupEmojiPanel();
-        pushMsg({ type:'right', senderId:'me', isImage:true, imageData:{ url: em.url, desc: em.name || '表情包' } });
+        pushMsg({ type:'right', senderId:'me', isImage:true, emojiName: em.name || '', imageData:{ url: em.url, desc: em.name || '表情包', emojiName: em.name || '', isEmoji: true } });
         if (messageInput) messageInput.value = '';
         hideGroupEmojiRecommend();
         isWaitingForReply = true;

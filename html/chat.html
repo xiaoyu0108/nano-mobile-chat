@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <script src="../js/nano-runtime.js"></script>
+  <script src="../js/nano-runtime.js?v=20261020b"></script>
   <script src="../js/appearance.js"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <link rel="icon" href="../icons/icon-192.png" />
@@ -637,14 +637,15 @@
       gap: 4px;
       background: #ffffff;
       border-radius: 999px;
-      padding: 6px 8px;
+      padding: 4px 12px;
       box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0,0,0,0.04);
       pointer-events: auto; /* 胶囊本体可点击 */
     }
 
     .dock-btn {
-      width: 52px;
-      height: 52px;
+      position: relative;
+      width: 66px;
+      height: 46px;
       border: none;
       background: transparent;
       border-radius: 50%;
@@ -653,22 +654,48 @@
       justify-content: center;
       cursor: pointer;
       color: #999;
-      transition: all 0.2s;
+      transition: color 0.2s;
     }
 
     .dock-btn svg {
+      position: relative;
+      z-index: 1;
       width: 24px;
       height: 24px;
       fill: currentColor;
     }
 
     .dock-btn.active {
-      background: #111111;
+      background: transparent;
       color: #fff;
     }
 
+    .dock-btn.active::before {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 46px;
+      height: 46px;
+      border-radius: 50%;
+      background: #111111;
+      transform: translate(-50%, -50%);
+    }
+
     .dock-btn:not(.active):active {
+      background: transparent;
+    }
+
+    .dock-btn:not(.active):active::before {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 46px;
+      height: 46px;
+      border-radius: 50%;
       background: rgba(0, 0, 0, 0.06);
+      transform: translate(-50%, -50%);
     }
 
     /* 确保聊天列表可以滑动到最底部 */
@@ -1262,10 +1289,18 @@
 
   function previewText(m) {
     if (!m) return '';
-    if (m.isImage && m.imageData && (m.imageData.isEmoji || m.imageData.emojiName || m.imageData.desc === '表情包')) {
-      return '[表情包：' + (m.imageData.emojiName || m.imageData.desc || '表情') + ']';
+    if (m.isImage) {
+      // 表情包只显示文字预览，绝不把图片本身塞进聊天列表
+      const en = m.emojiName ||
+        (m.imageData && (m.imageData.emojiName || (m.imageData.isEmoji ? m.imageData.desc : ''))) || '';
+      if (en) {
+        let label = String(en).replace(/^表情包[:：]?/, '').trim();
+        if (!label || label === '表情包' || label === '表情') label = '表情';
+        return '[表情包：' + label + ']';
+      }
+      if (m.text && /^\[表情包[:：]/.test(m.text)) return m.text;
+      return '[图片]';
     }
-    if (m.isImage) return '[图片]';
     if (m.isCard) {
       const t = m.cardData && m.cardData.cardType;
       if (t === 'transfer') return '[转账]';
@@ -1276,6 +1311,27 @@
     if (m.isVoice) return '[语音]';
     const text = String(m.text || '');
     return text.length > 20 ? text.slice(0, 20) + '...' : text;
+  }
+
+  function messageSortTs(m) {
+    if (!m) return 0;
+    const ts = m.ts || m.timestamp || m.createdAt;
+    if (ts) {
+      const n = new Date(ts).getTime();
+      if (!isNaN(n)) return n;
+    }
+    if (m.time) {
+      const hm = String(m.time).match(/^(\d{1,2}):(\d{2})$/);
+      if (hm) {
+        const d = new Date();
+        d.setHours(Number(hm[1]), Number(hm[2]), 0, 0);
+        if (d.getTime() > Date.now() + 60000) d.setDate(d.getDate() - 1);
+        return d.getTime();
+      }
+      const n2 = new Date(m.time).getTime();
+      if (!isNaN(n2)) return n2;
+    }
+    return 0;
   }
 
   function timeText(m) {
@@ -1314,6 +1370,19 @@
     const pinned = getPinnedIds();
     let list = [];
     if (currentUser) {
+      // 修复导入备份后的“孤儿角色”：bindUser 为空 / 指向已不存在的人设时，
+      // 自动归到当前人设，避免角色库有数据但聊天页永远不显示。
+      const maskIds = {};
+      (maskData.masks || []).forEach(function (m) { if (m && m.id != null) maskIds[String(m.id)] = 1; });
+      const orphans = allChars.filter(function (c) {
+        return c && !c.isNpc && (!c.bindUser || !maskIds[String(c.bindUser)]);
+      });
+      if (orphans.length) {
+        orphans.forEach(function (c) { c.bindUser = currentUser.id; });
+        orphans.forEach(function (c) {
+          try { dbPut('nano_characters_db', 1, 'characters', c, [{ name: 'characters', keyPath: 'id' }]); } catch (e) {}
+        });
+      }
       list = allChars.filter(function (c) {
         return String(c.bindUser) === String(currentUser.id) || !!c.nanoAssistant;
       });
@@ -1329,11 +1398,13 @@
         avatar: c.avatar || '',
         msg: last ? ((last.type === 'right' ? '我：' : '') + previewText(last)) : (c.setting ? String(c.setting).slice(0, 20) + '...' : '点击开始对话'),
         time: timeText(last),
+        lastTs: messageSortTs(last),
         pinned: pinned.indexOf(id) !== -1
       };
     }));
     rows.sort(function (a, b) {
       if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+      if ((b.lastTs || 0) !== (a.lastTs || 0)) return (b.lastTs || 0) - (a.lastTs || 0);
       return String(a.name).localeCompare(String(b.name), 'zh-CN');
     });
     friendsData = rows;
@@ -1378,10 +1449,12 @@
         avatar: g.avatar || '',
         msg: last ? groupPreview(last, g) : '点击进入群聊',
         time: timeText(last),
+        lastTs: messageSortTs(last),
         pinned: pinned.indexOf(String(g.id)) !== -1
       };
     }).sort(function (a, b) {
       if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+      if ((b.lastTs || 0) !== (a.lastTs || 0)) return (b.lastTs || 0) - (a.lastTs || 0);
       return String(b.id).localeCompare(String(a.id));
     });
   }

@@ -689,8 +689,10 @@
         prompt += '【设定优先级】世界书 > 角色人设 > 对方设定 > 长期记忆 > 通用聊天习惯；相互冲突时，以优先级更高的为准，世界书里的世界观、关系、称呼、尺度必须照做。\n';
         prompt += '【记忆完整性 · 重中之重】记忆必须完善、完整，绝不能随时失忆；线上、线下以及各类 App（朋友圈、短信、电话、群聊等）的记忆大多互通，聊过的事、说过的话、发生过的关系都要记得并自然承接。记忆宫殿是调节记忆的地方，要主动读取其中较重要的、分门别类的记忆线索，让它们真正影响你的回应。\n';
         try {
-            const __gbp = (localStorage.getItem('nano_builtin_prompt') || '').trim();
-            if (__gbp) prompt += '\n【全局内置提示词 · 必须遵守】\n' + __gbp + '\n';
+            const __gbp = (window.NanoPrompts && NanoPrompts.buildBlock)
+                ? NanoPrompts.buildBlock('online')
+                : (localStorage.getItem('nano_builtin_prompt') || '').trim();
+            if (__gbp) prompt += '\n' + (String(__gbp).indexOf('【全局内置提示词') === 0 ? __gbp : ('【全局内置提示词 · 必须遵守】\n' + __gbp)) + '\n';
         } catch (e) {}
         prompt += '【阅读规则】\n';
         prompt += '对话记录按时间顺序从上往下：最早的话在最上面，最新的一句话在最后。回复前先从头读到尾，不许倒着读。\n';
@@ -1047,6 +1049,10 @@
         } catch (e) {}
 
         if (coupleAnnivNotice) prompt += '\n' + coupleAnnivNotice + '\n';
+        if (__emojiNames.length) {
+            prompt += '\n【可用表情包 · 记得用】' + __emojiNames.slice(0, 16).join('、') + '。\n' +
+                '合适的时候（开心、无语、委屈、调侃、害羞、生气、赞同等）用 [emoji:名称] 单独一行发一张，名称必须和上面完全一致；不要只发文字，也不要解释表情。\n';
+        }
         prompt += '\n【回复前自检】1) 这段话像不像【角色人设】里的人会说的？2) 有没有违背或漏掉【世界书】里相关设定？3) 有没有用到最近的【长期记忆】？4) 有没有在不合适的场合主动开黄腔或油腻？有就收住；但对方主动推进的成年人亲密话题不要回避、不要说教、不要过度敏感。答不上来就重新组织，再输出。\n';
         prompt += '\n现在开始和' + user + '对话。做你自己，自然一点。';
         prompt += ' 再次强调：每一轮回复都必须输出 [heart:此刻印象||心声独白]，两段都要写内容，不可省略；若有「附加板块」，也要在每个板块的 [section:名]...[/section] 里写全。';
@@ -1220,6 +1226,17 @@
         return 'chat_messages_' + chatId;
     }
 
+    let __chatListNotifyTimer = null;
+    function notifyChatListPreview() {
+        try {
+            if (!window.parent || window.parent === window) return;
+            clearTimeout(__chatListNotifyTimer);
+            __chatListNotifyTimer = setTimeout(function () {
+                try { window.parent.postMessage({ type: 'contactsDataUpdated' }, '*'); } catch (e) {}
+            }, 250);
+        } catch (e) {}
+    }
+
     function saveMessages() {
         try {
             if (typeof localforage !== 'undefined') {
@@ -1338,6 +1355,7 @@
         } catch (e) {
             console.error('[存储] 保存失败:', e);
         }
+        notifyChatListPreview();
         syncMessagesToMemory();
     }
 
@@ -5888,6 +5906,12 @@
     // 供系统提示词同步读取：已有表情包名称列表
     function getEmojiNamesForPrompt() {
         try {
+            // 表情页每次保存都会同步写一份“名称清单”（不含图片），优先用它：
+            // 这样刚用照片添加的表情包，即使当前聊天页还没重新读 IDB，角色也能立刻看到。
+            try {
+                const cachedFirst = JSON.parse(localStorage.getItem('nano_emoji_names') || '[]');
+                if (Array.isArray(cachedFirst) && cachedFirst.length) return cachedFirst.map(String);
+            } catch (e0) {}
             let data = emojiData;
             // 聊天页刚打开 / 刚上传完表情时，异步缓存可能还没回来；
             // 表情页保存时已同步写过 localStorage，这里用同步备份兜底。
@@ -10253,7 +10277,7 @@ if (data.type === 'NANO_VOICE_CALL_CARD' || data.type === 'NANO_VIDEO_CALL_CARD'
     // ===== 启动 =====
     (async function init() {
         // 预载表情包数据，让角色能知道自己可以调用哪些表情
-        try { getEmojiData(); } catch (e) {}
+        try { await getEmojiData(); } catch (e) {}
         await loadAllCharactersFromDB();
         setupCharacter();
 

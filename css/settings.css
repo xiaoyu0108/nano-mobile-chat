@@ -54,29 +54,36 @@ button, a {
   flex: none;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: calc(10px + var(--safe-top)) 14px 10px;
+  gap: 10px;
+  padding: calc(14px + var(--safe-top)) 20px 12px;
   background: var(--bg);
+  border-bottom: 1px solid var(--line);
   z-index: 5;
 }
 
-.nav .back {
+.nav .back,
+.nav .nav-refresh {
   width: 36px;
   height: 36px;
   border-radius: 50%;
   display: grid;
   place-items: center;
   flex: none;
+  background: #f6f6f7;
   color: var(--ink);
+  border: 0;
+  padding: 0;
 }
 
-.nav .back:active {
-  background: #f3f3f3;
+.nav .back:active,
+.nav .nav-refresh:active {
+  background: #ededee;
 }
 
-.nav .back svg {
-  width: 21px;
-  height: 21px;
+.nav .back svg,
+.nav .nav-refresh svg {
+  width: 18px;
+  height: 18px;
   fill: none;
   stroke: currentColor;
   stroke-width: 2;
@@ -87,22 +94,24 @@ button, a {
 .nav h1 {
   flex: 1;
   min-width: 0;
-  text-align: center;
-  font-size: 18px;
-  font-weight: 650;
-  letter-spacing: -.2px;
+  text-align: left;
+  font-size: 24px;
+  font-weight: 750;
+  letter-spacing: -.04em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .nav .spacer {
-  width: 36px;
-  flex: none;
+  display: none;
 }
 
 .scroll {
   flex: 1;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  padding: 4px 16px calc(30px + var(--safe-bottom));
+  padding: 16px 20px calc(36px + var(--safe-bottom));
 }
 
 /* 主页面装饰卡片：不可点击 */
@@ -209,8 +218,8 @@ button, a {
   text-align: left;
   padding: 16px;
   background: #fff;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border: 1px solid #e8e8ea;
+  border-radius: 16px;
   transition: background .14s, transform .14s;
 }
 
@@ -271,36 +280,37 @@ button, a {
 
 /* 子页面分区标题 */
 .group-title {
-  margin: 6px 6px 8px;
-  font-size: 12px;
-  font-weight: 650;
-  letter-spacing: .08em;
+  margin: 2px 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
   color: #8e8e93;
 }
 
 .group-title:not(:first-child) {
-  margin-top: 20px;
+  margin-top: 22px;
 }
 
 /* 子页面列表：一个连续容器，细分割线 */
 .list {
   background: #fff;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border: 1px solid #e8e8ea;
+  border-radius: 16px;
   overflow: hidden;
-  margin-bottom: 14px;
+  margin-bottom: 18px;
 }
 
 .row {
   display: flex;
   align-items: center;
   gap: 12px;
-  min-height: 54px;
+  min-height: 58px;
   width: 100%;
-  padding: 10px 16px;
+  padding: 14px 16px;
   text-align: left;
   background: #fff;
-  border-bottom: 1px solid #f2f2f2;
+  border-bottom: 1px solid #f5f5f6;
 }
 
 .row:last-child {
@@ -310,6 +320,26 @@ button, a {
 button.row:active,
 label.row:active {
   background: #fafafa;
+}
+
+.row-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: #f5f5f6;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+
+.row-icon svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: #111;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .row-label {
@@ -370,25 +400,6 @@ label.row:active {
   border-radius: 50%;
   object-fit: cover;
   display: block;
-}
-
-/* 桌面设置页左上角装饰 */
-.desk-deco {
-  position: relative;
-  height: 86px;
-  margin: -4px -4px 2px;
-  pointer-events: none;
-  overflow: hidden;
-}
-
-.desk-deco svg {
-  position: absolute;
-  left: -6px;
-  top: -16px;
-  width: 236px;
-  height: 128px;
-  color: #111;
-  opacity: .92;
 }
 
 .nudge {
@@ -541,6 +552,164 @@ label.row:active {
   line-height: 1.5;
 }
 
+/* 提示词设置 */
+.prompt-row[data-id] {
+  cursor: pointer;
+}
+
+.prompt-row[data-id]:active {
+  background: #fafafa;
+}
+
+.prompt-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  background: #f5f5f6;
+  display: grid;
+  place-items: center;
+  flex: none;
+  overflow: hidden;
+}
+
+.prompt-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.prompt-icon svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: #111;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.prompt-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.prompt-name {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -.01em;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.prompt-sub {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.45;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.add-prompt-row {
+  gap: 10px;
+  color: #6b6b70;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.prompt-add-plus {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  background: #f5f5f6;
+  display: grid;
+  place-items: center;
+  font-size: 20px;
+  font-weight: 400;
+  color: #8e8e93;
+  flex: none;
+}
+
+.prompt-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 2px 0 4px;
+}
+
+.prompt-detail {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 14px;
+  line-height: 1.65;
+  color: #333;
+  background: #f7f7f7;
+  border-radius: 12px;
+  padding: 14px;
+  max-height: 46vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.prompt-form-icon {
+  display: flex;
+  justify-content: center;
+  padding: 4px 0 2px;
+}
+
+.prompt-form-icon .prompt-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 18px;
+}
+
+.prompt-form-icon .prompt-icon svg {
+  width: 26px;
+  height: 26px;
+}
+
+.prompt-icon-actions {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.prompt-form-label {
+  margin: 8px 2px 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.prompt-name-input {
+  width: 100%;
+}
+
+.prompt-textarea {
+  width: 100%;
+  min-height: 168px;
+  max-height: 46vh;
+  resize: vertical;
+  border: 1px solid #ededed;
+  border-radius: 12px;
+  padding: 12px;
+  background: #f8f8f8;
+  outline: none;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.prompt-textarea:focus {
+  background: #fff;
+  border-color: #d8d8d8;
+}
+
 .hint {
   margin: 2px 4px 20px;
   font-size: 12px;
@@ -651,6 +820,24 @@ label.row:active {
   overflow: hidden;
 }
 
+.app-preview-custom {
+  width: 42px;
+  height: 42px;
+  object-fit: contain;
+  display: block;
+  flex: none;
+}
+
+.app-preview-custom.edit {
+  width: 78px;
+  height: 78px;
+}
+
+.edit-icon-box {
+  display: grid;
+  place-items: center;
+}
+
 .app-preview img {
   width: 100%;
   height: 100%;
@@ -732,6 +919,11 @@ label.row:active {
   font-size: 30px;
 }
 
+.edit-preview .app-preview-custom {
+  width: 78px;
+  height: 78px;
+}
+
 .edit-name {
   width: 100%;
   height: 44px;
@@ -779,8 +971,9 @@ label.row:active {
   display: none !important;
 }
 
-@media (max-width: 360px) {
-  .scroll { padding-left: 12px; padding-right: 12px; }
+@media (max-width: 390px) {
+  .nav { padding-left: 16px; padding-right: 16px; }
+  .scroll { padding-left: 16px; padding-right: 16px; }
   .row { padding-left: 13px; padding-right: 13px; }
   .card { padding: 14px; }
 }

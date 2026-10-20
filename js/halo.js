@@ -3361,10 +3361,14 @@ const HaloData = (() => {
     if (!cfg.main.key) throw new Error('主 API 缺少 Key');
 
     const url = toV1Base(resolveApiHost(cfg.main.url)) + '/chat/completions';
+    let chatMessages = messages;
+    try {
+      if (window.NanoPrompts && NanoPrompts.inject) chatMessages = NanoPrompts.inject(messages, 'social', { keepFormat: true });
+    } catch (e) {}
     const body = {
       model: cfg.main.model,
       temperature: options.temperature ?? cfg.main.temp ?? 0.8,
-      messages,
+      messages: chatMessages,
       stream: false,
       ...(options.extra || {}),
     };

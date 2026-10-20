@@ -473,7 +473,7 @@ const APP_ICONS = {
     var rows = APPS.map(function (a) {
       var c = custom[a.id] || {};
       var name = c.name || a.name;
-      var preview = c.icon ? '<span class="app-preview"><img src="' + esc(c.icon) + '" alt=""></span>' : '<span class="app-preview">' + appIconHtml(a.icon) + '</span>';
+      var preview = c.icon ? '<img class="app-preview-custom" src="' + esc(c.icon) + '" alt="">' : '<span class="app-preview">' + appIconHtml(a.icon) + '</span>';
       return '<button class="list-row" data-app="' + a.id + '">' + preview +
         '<span class="list-main"><span class="list-name">' + esc(name) + '</span><span class="list-sub">' + esc(c.name || c.icon ? '已自定义' : '默认') + '</span></span>' +
         '<span class="chev">›</span></button>';
@@ -491,7 +491,7 @@ const APP_ICONS = {
     pendingIcon = (custom[id] && custom[id].icon) || '';
     var name = (custom[id] && custom[id].name) || a.name;
     openSheet('编辑 ' + a.name,
-      '<div class="edit-preview"><span class="app-preview" id="editPreview">' + (pendingIcon ? '<img src="' + esc(pendingIcon) + '" alt="">' : appIconHtml(a.icon)) + '</span>' +
+      '<div class="edit-preview"><span class="edit-icon-box" id="editIconBox">' + (pendingIcon ? '<img class="app-preview-custom edit" src="' + esc(pendingIcon) + '" alt="">' : '<span class="app-preview">' + appIconHtml(a.icon) + '</span>') + '</span>' +
       '<button class="mini-btn" id="pickIcon">选择图标</button></div>' +
       '<input class="edit-name" id="editName" maxlength="12" value="' + esc(name) + '" placeholder="App 名称">' +
       '<button class="sheet-btn" id="saveApp">保存</button>' +
@@ -967,8 +967,8 @@ const APP_ICONS = {
       if (!f) return;
       resizeImage(f, 320, 'image/png').then(function (url) {
         pendingIcon = url;
-        var p = $('editPreview');
-        if (p) p.innerHTML = '<img src="' + esc(url) + '" alt="">';
+        var p = $('editIconBox');
+        if (p) p.innerHTML = '<img class="app-preview-custom edit" src="' + esc(url) + '" alt="">';
       }).catch(function () { toast('图标处理失败'); });
       e.target.value = '';
     });

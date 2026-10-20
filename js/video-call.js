@@ -311,6 +311,9 @@
                 p += (window.NanoReroll && NanoReroll.block) ? NanoReroll.block(rr) : ('\n\n【本次重roll必须修正】' + rr);
             }
         } catch (e) {}
+        try {
+            if (window.NanoPrompts && NanoPrompts.appendTo) p = NanoPrompts.appendTo(p, 'social');
+        } catch (e) {}
         return p;
     }
 

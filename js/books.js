@@ -1240,7 +1240,10 @@ async function callMainAPI(){
     }
   } catch (e) {}
   const history = buildHistoryMessages();
-  const messages = [{role:'system',content:sys}, ...history];
+  let messages = [{role:'system',content:sys}, ...history];
+  try {
+    if (window.NanoPrompts && NanoPrompts.inject) messages = NanoPrompts.inject(messages, 'social');
+  } catch (e) {}
   markedForNextReply='';   // 标记段落只让角色读一次，后续消息正常聊天
 
   const res = await fetch(url,{

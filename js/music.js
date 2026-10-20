@@ -2841,6 +2841,9 @@
         }
       } catch (e) {}
       var msgs = [{ role: 'system', content: sys }].concat(duoHistory.slice(-16));
+      try {
+        if (window.NanoPrompts && NanoPrompts.inject) msgs = NanoPrompts.inject(msgs, 'social');
+      } catch (e) {}
       var raw = await callDuoAi(msgs);
       var directive = handleDuoDirectives(raw);
       var reply = String(directive.text || '').trim().replace(/^["「]|["」]$/g, '') || '……';

@@ -140,12 +140,37 @@
         return d;
     }
 
+    // 只缓存“名称 / 最近添加时间”，不含 base64 图片，避免 localStorage 被撑爆。
+    // 聊天页构建提示词时同步读取这份缓存，角色才能知道用户用照片添加了哪些表情包。
+    function saveEmojiNameCache(d) {
+        try {
+            var names = [];
+            var groups = (d && d.emojiGroups) || [];
+            groups.forEach(function (g) {
+                (g.emojis || []).forEach(function (e) {
+                    if (!e || !e.name) return;
+                    names.push({ name: String(e.name), at: Number(e.addedAt) || 0, id: String(e.id || "") });
+                });
+            });
+            names.sort(function (a, b) { return (b.at - a.at) || String(b.id).localeCompare(String(a.id)); });
+            var seen = {};
+            var out = [];
+            names.forEach(function (x) {
+                if (seen[x.name]) return;
+                seen[x.name] = 1;
+                out.push(x.name);
+            });
+            localStorage.setItem("nano_emoji_names", JSON.stringify(out));
+        } catch (e) {}
+    }
+
     function saveData(data) {
         // 先保存到 localStorage（备份）
         try {
             localStorage.setItem(EMOJI_KEY, JSON.stringify(data));
             if (localStorage.getItem(EMOJI_LEGACY_KEY) !== null) localStorage.removeItem(EMOJI_LEGACY_KEY);
         } catch(e) {}
+        saveEmojiNameCache(data);
         
         // 再保存到 IndexedDB
         return idbSet(EMOJI_STORE, EMOJI_KEY, data)
@@ -212,6 +237,7 @@
                 localStorage.setItem(EMOJI_KEY, JSON.stringify(data));
                 if (localStorage.getItem(EMOJI_LEGACY_KEY) !== null) localStorage.removeItem(EMOJI_LEGACY_KEY);
             } catch(e) {}
+            saveEmojiNameCache(data);
             idbSet(EMOJI_STORE, EMOJI_KEY, data).catch(function() {});
         }
     }

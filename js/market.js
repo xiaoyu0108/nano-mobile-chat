@@ -837,7 +837,7 @@
       isNpc: false, nanoAssistant: false, greetings: card.greetings, worldbookBindings: []
     };
     await new Promise(function (res, rej) {
-      var req = indexedDB.open('nano_characters_db', 1);
+      var req = indexedDB.open('nano_characters_db');
       req.onupgradeneeded = function (e) { var d = e.target.result; if (!d.objectStoreNames.contains('characters')) d.createObjectStore('characters', { keyPath: 'id' }); };
       req.onsuccess = function () {
         var d = req.result;

@@ -118,6 +118,19 @@ function downloadBlob(blob, filename) {
     }
 }
 
+// 导入完成后通知所有已打开页面重新读取 IDB / localStorage：
+// 否则聊天页仍拿着导入前的角色列表，看起来就像“备份里没有 char”。
+function notifyRestore() {
+    try {
+        if (window.parent && window.parent !== window) {
+            ['currentMaskChanged', 'homeDataUpdated', 'contactsDataUpdated', 'groupsDataUpdated', 'nanoEmojiUpdated'].forEach(function (type) {
+                try { window.parent.postMessage({ type: type }, '*'); } catch (e) {}
+            });
+        }
+        window.dispatchEvent(new CustomEvent('nanoRestoreComplete'));
+    } catch (e) {}
+}
+
 function timestampName(prefix, ext) {
     const d = new Date();
     const p = (n) => String(n).padStart(2, '0');
@@ -142,14 +155,56 @@ function openDatabase(name, version) {
     });
 }
 
+// Safari / 部分 WebView 没有 indexedDB.databases()：用已知库名兜底，
+// 否则「全站备份」会漏掉角色库、聊天记录库，导入后自然看不到 char。
+const NANO_KNOWN_DBS = [
+    'nano_characters_db', 'nano_api_db', 'nano_worldbook_db', 'nano_vector_memory_db',
+    'nano_mask_db', 'MaskAvatarDB', 'nano_music_db', 'nano_wallet_db',
+    'NanoCoupleSpaceV10', 'NanoMomentsDB', 'NanoMomentsCoverDB', 'nano_imessage_db',
+    'nano_ins_db', 'NanoVoiceDB', 'BeautifyAppDB', 'MeetSettingsDB', 'nano_app_storage',
+    'localforage', 'NanoMarketDB', 'nano_user_db', 'nano_appstore_db', 'nano_groups_db',
+    'nano_chat_menu_db', 'BookReaderDB', 'nano_halo_db', 'voice_call_records_db',
+    'NanoAvatarBarDB', 'nano_discover_db', 'check_phone_db'
+];
+
 async function listDatabases() {
-    if (!indexedDB || !indexedDB.databases) return [];
-    try {
-        const dbs = await indexedDB.databases();
-        return dbs.map((d) => ({ name: d.name, version: d.version })).filter((d) => d.name);
-    } catch {
-        return [];
+    if (!indexedDB) return [];
+    if (indexedDB.databases) {
+        try {
+            const dbs = await indexedDB.databases();
+            const out = (dbs || []).map((d) => ({ name: d.name, version: d.version })).filter((d) => d.name);
+            if (out.length) return out;
+        } catch {}
     }
+    // 没有 databases() 时逐个探测：只导出真实存在的库，避免顺手创建空库
+    const found = [];
+    for (const name of NANO_KNOWN_DBS) {
+        const info = await probeDatabase(name);
+        if (info) found.push(info);
+    }
+    return found;
+}
+
+function probeDatabase(name) {
+    return new Promise((resolve) => {
+        let created = false;
+        let req;
+        try { req = indexedDB.open(name); } catch (e) { resolve(null); return; }
+        req.onupgradeneeded = function () { created = true; };
+        req.onsuccess = function () {
+            const db = req.result;
+            const version = db.version;
+            try { db.close(); } catch (e) {}
+            if (created) {
+                try { indexedDB.deleteDatabase(name); } catch (e) {}
+                resolve(null);
+            } else {
+                resolve({ name: name, version: version });
+            }
+        };
+        req.onerror = function () { resolve(null); };
+        req.onblocked = function () { resolve(null); };
+    });
 }
 
 function getAllRecords(store) {
@@ -596,6 +651,7 @@ async function importFromJson(data, onProgress) {
     // 忽略备份里的 Service Worker 缓存（可再生），导入更快、也不清掉当前缓存
 
     _prog('整理数据…', 98);
+    notifyRestore();
 }
 
 /** 旧备份没有 schema 时：从记录里推断 keyPath（值里与 key 相等的字段） */
@@ -816,6 +872,7 @@ async function importFromZip(file, onProgress) {
     // 忽略备份里的 Service Worker 缓存（可再生的静态资源），导入更快、也不会清掉当前缓存
 
     if (typeof onProgress === 'function') onProgress('整理数据…');
+    notifyRestore();
 }
 
 // ================= 页面交互 =================

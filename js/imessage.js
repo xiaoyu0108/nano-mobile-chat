@@ -231,7 +231,10 @@ const CORE_POLICY = '\n【核心准则 · 每次都要遵守】\n'
   + '1. 关于性的中庸之道：性是爱情的调味剂。情侣之间可以偶尔有一点荤话、些许隐晦的调情与暧昧，但绝不能一直开黄腔，不把开黄腔当成情趣；正常聊天大部分与性无关，只偶尔隐晦地调情，必须少量，不能显得低俗油腻。中庸乃最优解。若对方（你聊天的人）的人设是朋友、亲人等非情侣关系，则绝对禁止任何性相关荤话。\n'
   + '2. 【世界书】【记忆库】【记忆宫殿】【人设】都是必读项，可自主读取其中较重要的内容，输出时必须遵守；你就是{{char}}，一个活生生的人。记忆是重中之重，必须完善、完整，角色不能随时失忆；线上、线下以及各类 App 的记忆大多互通。记忆宫殿是调节角色记忆的地方，能让角色更好地记住重要的东西，分门别类的记忆线索也更利于角色查找、读取记忆。\n';
 function readGlobalBuiltinPrompt() {
-  try { return (localStorage.getItem('nano_builtin_prompt') || '').trim(); } catch (e) { return ''; }
+  try {
+    if (window.NanoPrompts && NanoPrompts.activeText) return String(NanoPrompts.activeText('social') || '').trim();
+    return (localStorage.getItem('nano_builtin_prompt') || '').trim();
+  } catch (e) { return ''; }
 }
 
 /* ---------------- 用户 / 角色 ---------------- */

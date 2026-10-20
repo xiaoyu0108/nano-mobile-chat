@@ -370,6 +370,9 @@ function buildChatEndpoint(rawUrl){
 
 async function callAPI(api, sys, user){
   const endpoint = buildChatEndpoint(api.url);
+  try {
+    if (window.NanoPrompts && NanoPrompts.appendTo) sys = NanoPrompts.appendTo(sys, 'social', { keepFormat: true });
+  } catch (e) {}
   const body = {
     model: api.model,
     messages: [
@@ -2921,9 +2924,13 @@ async function genMulti(api, char, ids){
   const ctx = await buildCharContext(char);
   const user = buildMultiPrompt(ids, char, ctx);
   const endpoint = buildChatEndpoint(api.url);
+  let __sysJson = SYS_JSON;
+  try {
+    if (window.NanoPrompts && NanoPrompts.appendTo) __sysJson = NanoPrompts.appendTo(__sysJson, 'social', { keepFormat: true });
+  } catch (e) {}
   const body = {
     model: api.model,
-    messages: [{role:"system", content:SYS_JSON},{role:"user", content:user}],
+    messages: [{role:"system", content:__sysJson},{role:"user", content:user}],
     temperature: api.temp,
     max_tokens: Math.max(16384, Number(api.maxTokens) || 32768),
     presence_penalty: 0.4,
