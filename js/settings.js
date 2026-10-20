@@ -7,38 +7,38 @@
     { id: 'chat', name: '聊天', icon: 'chat' }, { id: 'api', name: 'API', icon: 'api' }, { id: 'couple', name: '情侣空间', icon: 'couple' },
     { id: 'halo', name: 'Halo', icon: 'halo' }, { id: 'instagram', name: 'Instagram', icon: 'instagram' }, { id: 'together', name: 'Books', icon: 'together' },
     { id: 'music', name: '音乐', icon: 'music' }, { id: 'memory', name: '记忆宫殿', icon: 'memory' }, { id: 'imessage', name: 'iMessage', icon: 'imessage' },
-    { id: 'peek', name: '窥屏', icon: 'peek' }, { id: 'market', name: '共享集市', icon: 'market' }, { id: 'shop', name: '商城', icon: 'shop' },
+    { id: 'qa', name: '问答邮箱', icon: 'qa' }, { id: 'peek', name: '窥屏', icon: 'peek' }, { id: 'market', name: '共享集市', icon: 'market' }, { id: 'shop', name: '商城', icon: 'shop' },
     { id: 'schedule', name: '日程', icon: 'schedule' }, { id: 'mcp', name: 'MCP', icon: 'mcp' }, { id: 'tide', name: '月潮', icon: 'tide' },
     { id: 'fanfic', name: '同人文', icon: 'fanfic' }, { id: 'store', name: '应用商店', icon: 'store' }, { id: 'book', name: '世界书', icon: 'book' },
     { id: 'beauty', name: '美化', icon: 'beauty' }, { id: 'phone', name: '查手机', icon: 'phone' }, { id: 'settings', name: '设置', icon: 'settings' }
   ];
 
-const S1='<g fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">';
 const APP_ICONS = {
  chat:'<path d="M5 4h14a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3h-7l-5.5 3.5V17A3 3 0 0 1 3 14V7a3 3 0 0 1 2-3Zm2.5 5a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5Zm4.5 0a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5Zm4.5 0a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5Z"/>',
- /* API：代码括号 + 斜杠（原图标是乱码） */
- api:S1+'<path d="M8 7l-5 5 5 5"/><path d="M16 7l5 5-5 5"/><path d="M13.6 4.8l-3.2 14.4"/></g>',
+ /* API：代码括号 + 斜杠 */
+ api:'<path d="M8.7 7.3 4 12l4.7 4.7 1.4-1.4L6.8 12l3.3-3.3-1.4-1.4Zm6.6 0-1.4 1.4 3.3 3.3-3.3 3.3 1.4 1.4L20 12l-4.7-4.7ZM13.9 4h-2.2l-2 16h2.2l2-16Z"/>',
  couple:'<path d="M12 21s-8.5-5.2-9.8-10.4C1.1 6.1 6.7 2.5 10.4 6L12 7.7 13.6 6c3.7-3.5 9.3.1 8.2 4.6C20.5 15.8 12 21 12 21Z"/>',
  halo:'<path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2Zm0 3a7 7 0 0 1 6.9 6H14a2 2 0 0 0-4 0H5.1A7 7 0 0 1 12 5Zm0 14a7 7 0 0 1-6.9-6H10a2 2 0 0 0 4 0h4.9a7 7 0 0 1-6.9 6Z"/>',
  instagram:'<path d="M7 2h10a5 5 0 0 1 5 5v10a5 5 0 0 1-5 5H7a5 5 0 0 1-5-5V7a5 5 0 0 1 5-5Zm0 3a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2H7Zm5 2a5 5 0 1 1 0 10 5 5 0 0 1 0-10Zm0 3a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm5.5-4a1.2 1.2 0 1 1 0 2.4 1.2 1.2 0 0 1 0-2.4Z"/>',
  /* 一起看 = 一起看书：翻开的书 */
  together:'<path fill-rule="evenodd" d="M2.5 5.4C5.8 4.8 9.2 5.3 11.2 6.9v12.4C9.2 17.9 5.8 17.5 2.5 18.1ZM5 9.4h4.6v1.5H5ZM5 12.4h4.6v1.5H5ZM21.5 5.4C18.2 4.8 14.8 5.3 12.8 6.9v12.4c2-1.4 5.4-1.8 8.7-1.2ZM14.4 9.4H19v1.5h-4.6ZM14.4 12.4H19v1.5h-4.6Z"/>',
  music:'<path d="M19 3v12.2a4 4 0 1 1-2-3.5V7l-8 2v9.2a4 4 0 1 1-2-3.5V6l12-3Z"/>',
- memory:'<g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4"/><path d="M17.599 6.5a3 3 0 0 0 .399-1.375"/><path d="M6.003 5.125A3 3 0 0 0 6.401 6.5"/><path d="M3.477 10.896a4 4 0 0 1 .585-.396"/><path d="M19.938 10.5a4 4 0 0 1 .585.396"/><path d="M6 18a4 4 0 0 1-1.967-.516"/><path d="M19.967 17.484A4 4 0 0 1 18 18"/></g>',
+ memory:'<g transform="scale(.046875)"><path d="M184 0c30.9 0 56 25.1 56 56V456c0 30.9-25.1 56-56 56c-28.9 0-52.7-21.9-55.7-50.1c-5.2 1.4-10.7 2.1-16.3 2.1c-35.3 0-64-28.7-64-64c0-7.4 1.3-14.6 3.6-21.2C21.4 367.4 0 338.2 0 304c0-31.9 18.7-59.5 45.8-72.3C37.1 220.8 32 207 32 192c0-30.7 21.6-56.3 50.4-62.6C80.8 123.9 80 118 80 112c0-29.9 20.6-55.1 48.3-62.1C131.3 21.9 155.1 0 184 0zM328 0c28.9 0 52.6 21.9 55.7 49.9c27.8 7 48.3 32.1 48.3 62.1c0 6-.8 11.9-2.4 17.4c28.8 6.2 50.4 31.9 50.4 62.6c0 15-5.1 28.8-13.8 39.7C493.3 244.5 512 272.1 512 304c0 34.2-21.4 63.4-51.6 74.8c2.3 6.6 3.6 13.8 3.6 21.2c0 35.3-28.7 64-64 64c-5.6 0-11.1-.7-16.3-2.1c-3 28.2-26.8 50.1-55.7 50.1c-30.9 0-56-25.1-56-56V56c0-30.9 25.1-56 56-56z"/></g>',
  imessage:'<path d="M4 3h16a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2h-5l-4 4v-4H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm2 5v2h12V8H6Zm0 4v2h8v-2H6Z"/>',
  peek:'<path d="M12 5c-5.5 0-9.5 5.5-10 7 1.5 3 5 7 10 7s8.5-4 10-7c-.5-1.5-4.5-7-10-7Zm0 11a4 4 0 1 1 0-8 4 4 0 0 1 0 8Zm0-2a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"/>',
  market:'<path d="M4 3h16l2 5v2a3 3 0 0 1-2 2.8V21H4v-8.2A3 3 0 0 1 2 10V8l2-5Zm1.4 2L4.2 8h15.6l-1.2-3H5.4ZM6 13v6h12v-6H6Zm2 1h8v2H8v-2Z"/>',
- mcp:'<g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/></g>',
+ mcp:'<path d="M16 7V3h-2v4h-4V3H8v4H6v3c0 2.21 1.79 4 4 4h1v6h2v-6h1c2.21 0 4-1.79 4-4V7h-2Z"/>',
  tide:'<path d="M2 8c2.5 0 2.5-2 5-2s2.5 2 5 2 2.5-2 5-2 2.5 2 5 2v3c-2.5 0-2.5-2-5-2s-2.5 2-5 2-2.5-2-5-2-2.5 2-5 2V8Zm0 7c2.5 0 2.5-2 5-2s2.5 2 5 2 2.5-2 5-2 2.5 2 5 2v3c-2.5 0-2.5-2-5-2s-2.5 2-5 2-2.5-2-5-2-2.5 2-5 2v-3Z"/>',
- fanfic:'<g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></g>',
+ fanfic:'<path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25ZM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.996.996 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83Z"/>',
  store:'<path d="M12 2 3 6v5c0 5.5 3.8 9.8 9 11 5.2-1.2 9-5.5 9-11V6l-9-4Zm0 3.2 6 2.7V11c0 4-2.5 7.4-6 8.6-3.5-1.2-6-4.6-6-8.6V7.9l6-2.7Zm-1 3.3v3H8v2h3v3h2v-3h3v-2h-3v-3h-2Z"/>',
- /* 世界书：合上的书 + 圆环（区别于「一起看」） */
- book:'<g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></g>',
+ /* 世界书：地球 */
+ book:'<path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm6.9 6h-3.1a15.7 15.7 0 0 0-1.4-4.1A8 8 0 0 1 18.9 8ZM12 4c.8 1.2 1.4 2.5 1.8 4h-3.6c.4-1.5 1-2.8 1.8-4ZM4.3 14a8.2 8.2 0 0 1 0-4h3.3a17 17 0 0 0 0 4H4.3Zm.8 2h3.1c.3 1.5.8 2.9 1.4 4.1A8 8 0 0 1 5.1 16Zm3.1-8H5.1a8 8 0 0 1 4.5-4.1A15.7 15.7 0 0 0 8.2 8ZM12 20c-.8-1.2-1.4-2.5-1.8-4h3.6c-.4 1.5-1 2.8-1.8 4Zm2.2-6H9.8a15 15 0 0 1 0-4h4.4a15 15 0 0 1 0 4Zm.4 6.1c.6-1.2 1.1-2.6 1.4-4.1h3.1a8 8 0 0 1-4.5 4.1ZM16.7 14a17 17 0 0 0 0-4h3.3a8.2 8.2 0 0 1 0 4h-3.3Z"/>',
  beauty:'<path d="M12 2 14.4 8.6 21 11l-6.6 2.4L12 20l-2.4-6.6L3 11l6.6-2.4L12 2Zm7 13 .9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15Z"/>',
  settings:'<path d="M19.4 13a7.8 7.8 0 0 0 0-2l2-1.5-2-3.5-2.4 1a7.4 7.4 0 0 0-1.7-1L15 3h-6l-.4 3a7.4 7.4 0 0 0-1.7 1l-2.4-1-2 3.5 2 1.5a7.8 7.8 0 0 0 0 2l-2 1.5 2 3.5 2.4-1a7.4 7.4 0 0 0 1.7 1L9 21h6l.4-3a7.4 7.4 0 0 0 1.7-1l2.4 1 2-3.5-2.1-1.5ZM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z"/>',
  phone:'<path d="M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm0 3v13h10V5H7Zm4 15h2v1h-2v-1Z"/>',
  schedule:'<path fill-rule="evenodd" d="M7 2h2v2h6V2h2v2h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2V2ZM5 9v11h14V9H5Zm3 3h3v3H8Zm5 0h3v3h-3Z"/>',
- shop:'<path d="M4.3 8h15.4l1 11.6a2.4 2.4 0 0 1-2.4 2.6H5.7a2.4 2.4 0 0 1-2.4-2.6Z"/><path d="M8.5 10.5V7a3.5 3.5 0 0 1 7 0v3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'
+ shop:'<path d="M18 6h-2a4 4 0 0 0-8 0H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2Zm-6-2a2 2 0 0 1 2 2h-4a2 2 0 0 1 2-2Zm6 16H6V8h2v2h2V8h4v2h2V8h2v12Z"/>',
+ qa:'<path d="M11.6 3C7.96 3 5 5.96 5 9.6h3.2c0-1.88 1.52-3.4 3.4-3.4s3.4 1.52 3.4 3.4c0 1.3-.74 2.43-1.83 2.99-1.84.94-3.37 2.87-3.37 5.11V19h3.2v-1.3c0-.96.55-1.83 1.42-2.27 2.02-1.03 3.38-3.12 3.38-5.83C17.6 5.96 14.64 3 11.6 3ZM9.8 20.4h3.2V24H9.8z"/>'
 };
 
   function appIconHtml(name) {
@@ -302,8 +302,9 @@ const APP_ICONS = {
 
   /* ================= 内置通知栏外观 ================= */
   var NOTIFY_STYLE_KEY = 'nano_app_notify_style';
+  var notifyCssAuto = false;
   function readNotifyStyle() {
-    var out = { glass: 'frosted', avatar: 'circle', shape: 'pill', template: 'default', css: '' };
+    var out = { glass: 'frosted', avatar: 'circle', shape: 'pill', template: 'default', css: '', cleared: false };
     try {
       var o = JSON.parse(localStorage.getItem(NOTIFY_STYLE_KEY) || '{}') || {};
       if (o.glass === 'liquid') out.glass = 'liquid';
@@ -311,20 +312,56 @@ const APP_ICONS = {
       if (o.shape === 'rounded') out.shape = 'rounded';
       if (['default', 'graypink', 'night', 'mint', 'sunset', 'clear'].indexOf(o.template) >= 0) out.template = o.template;
       out.css = String(o.css || '');
+      out.cleared = !!o.cleared;
     } catch (e) {}
     return out;
+  }
+  // 从当前通知栏样式表里收集初始模板，填进可编辑输入框；清空后不会偷偷回填
+  function collectNotifyTemplateCss() {
+    var doc = document;
+    try {
+      if (window.parent && window.parent !== window && window.parent.document) doc = window.parent.document;
+    } catch (e) {}
+    var out = [];
+    function walk(rules) {
+      for (var i = 0; i < rules.length; i++) {
+        var r = rules[i];
+        try {
+          if (r.type === 1) {
+            if (String(r.selectorText || '').indexOf('.app-notify') > -1) out.push(r.cssText);
+          } else if (r.type === 4 && r.cssRules) {
+            var inner = [];
+            for (var j = 0; j < r.cssRules.length; j++) {
+              var rr = r.cssRules[j];
+              if (rr.type === 1 && String(rr.selectorText || '').indexOf('.app-notify') > -1) inner.push(rr.cssText);
+            }
+            if (inner.length) out.push('@media ' + (r.conditionText || '') + '{\n' + inner.join('\n') + '\n}');
+          }
+        } catch (e) {}
+      }
+    }
+    try {
+      for (var s = 0; s < doc.styleSheets.length; s++) {
+        try { if (doc.styleSheets[s].cssRules) walk(doc.styleSheets[s].cssRules); } catch (e) {}
+      }
+    } catch (e) {}
+    return out.length ? '/* 内置通知栏初始模板（可直接修改；清空后使用内置样式） */\n' + out.join('\n') : '';
   }
   function writeNotifyStyle(s) {
     try { localStorage.setItem(NOTIFY_STYLE_KEY, JSON.stringify(s)); } catch (e) {}
     post({ type: 'notifyStyleChanged', style: s });
   }
   function notifyStyleFromUI() {
+    var css = ($('notifyCss') && $('notifyCss').value) || '';
+    var empty = !css.trim();
+    if (notifyCssAuto && !empty) css = '';
     return {
       glass: ($('notifyGlass') && $('notifyGlass').value) || 'frosted',
       avatar: ($('notifyAvatarShape') && $('notifyAvatarShape').value) || 'circle',
       shape: ($('notifyShape') && $('notifyShape').value) || 'pill',
       template: ($('notifyTemplate') && $('notifyTemplate').value) || 'default',
-      css: ($('notifyCss') && $('notifyCss').value) || ''
+      css: css,
+      cleared: empty
     };
   }
   function renderNotifyStyle() {
@@ -333,7 +370,10 @@ const APP_ICONS = {
     if ($('notifyAvatarShape')) $('notifyAvatarShape').value = s.avatar;
     if ($('notifyShape')) $('notifyShape').value = s.shape;
     if ($('notifyTemplate')) $('notifyTemplate').value = s.template;
-    if ($('notifyCss')) $('notifyCss').value = s.css;
+    if ($('notifyCss')) {
+      notifyCssAuto = !s.css && !s.cleared;
+      $('notifyCss').value = s.css || (s.cleared ? '' : collectNotifyTemplateCss());
+    }
   }
   function previewNotifyStyle() {
     var s = notifyStyleFromUI();
@@ -519,12 +559,26 @@ const APP_ICONS = {
     });
   }
 
+  function globalIconMode() {
+    return custom.__iconMode === 'free' ? 'free' : 'fill';
+  }
+  function toggleGlobalIconMode() {
+    custom.__iconMode = globalIconMode() === 'free' ? 'fill' : 'free';
+    saveCustomBoth(custom).then(function () { notifyHome(false); });
+    renderValues();
+    openAppsSheet();
+    toast(custom.__iconMode === 'free' ? '全部 App：不保留外部包裹器' : '全部 App：保留白色包裹器');
+  }
+
   function openAppsSheet() {
-    var rows = APPS.map(function (a) {
+    var gmode = globalIconMode();
+    var rows = '<button class="sheet-btn grey" id="toggleIconWrap">外部包裹器：' +
+      (gmode === 'free' ? '全部不保留（按图片轮廓）' : '全部保留（白色包裹）') + ' · 点击切换</button>' +
+      APPS.map(function (a) {
       var c = custom[a.id] || {};
       var name = c.name || a.name;
       var preview = c.icon
-        ? (c.iconMode !== 'free'
+        ? ((custom.__iconMode || c.iconMode || 'fill') !== 'free'
           ? '<span class="app-preview-wrap"><img class="app-preview-custom fill" src="' + esc(c.icon) + '" alt=""></span>'
           : '<img class="app-preview-custom" src="' + esc(c.icon) + '" alt="">')
         : '<span class="app-preview">' + appIconHtml(a.icon) + '</span>';
@@ -533,6 +587,8 @@ const APP_ICONS = {
         '<span class="chev">›</span></button>';
     }).join('');
     openSheet('App 图标与名称', rows);
+    var toggle = $('toggleIconWrap');
+    if (toggle) toggle.addEventListener('click', toggleGlobalIconMode);
     $('sheetBody').querySelectorAll('[data-app]').forEach(function (row) {
       row.addEventListener('click', function () { openAppEditor(row.dataset.app); });
     });
@@ -543,15 +599,11 @@ const APP_ICONS = {
     if (!a) return;
     editingApp = id;
     pendingIcon = (custom[id] && custom[id].icon) || '';
-    pendingIconMode = (custom[id] && custom[id].iconMode) || 'fill';
+    pendingIconMode = custom.__iconMode || (custom[id] && custom[id].iconMode) || 'fill';
     var name = (custom[id] && custom[id].name) || a.name;
     openSheet('编辑 ' + a.name,
       '<div class="edit-preview"><span class="edit-icon-box" id="editIconBox">' + (pendingIcon ? '<img class="app-preview-custom edit' + (pendingIconMode === 'fill' ? ' fill' : '') + '" src="' + esc(pendingIcon) + '" alt="">' : '<span class="app-preview">' + appIconHtml(a.icon) + '</span>') + '</span>' +
       '<button class="mini-btn" id="pickIcon">选择图标</button></div>' +
-      '<div class="icon-mode">' +
-        '<label><input type="radio" name="iconMode" value="free"' + (pendingIconMode === 'free' ? ' checked' : '') + '> 无视外部包裹器（以上传图片形状为准）</label>' +
-        '<label><input type="radio" name="iconMode" value="fill"' + (pendingIconMode === 'fill' ? ' checked' : '') + '> 保留包裹器（照片填充，不改变外轮廓）</label>' +
-      '</div>' +
       '<input class="edit-name" id="editName" maxlength="12" value="' + esc(name) + '" placeholder="App 名称">' +
       '<button class="sheet-btn" id="saveApp">保存</button>' +
       '<button class="sheet-btn grey" id="resetApp">恢复默认</button>',
@@ -559,22 +611,12 @@ const APP_ICONS = {
     );
     var pick = $('pickIcon');
     if (pick) pick.addEventListener('click', function () { $('iconFile').click(); });
-    $('sheetBody').querySelectorAll('input[name="iconMode"]').forEach(function (r) {
-      r.addEventListener('change', function () {
-        if (!r.checked) return;
-        pendingIconMode = r.value;
-        var box = $('editIconBox');
-        if (box && pendingIcon) {
-          box.innerHTML = '<img class="app-preview-custom edit' + (pendingIconMode === 'fill' ? ' fill' : '') + '" src="' + esc(pendingIcon) + '" alt="">';
-        }
-      });
-    });
     var save = $('saveApp');
     if (save) save.addEventListener('click', function () {
       var v = ($('editName').value || '').trim() || a.name;
       var patch = {};
       if (v !== a.name) patch.name = v;
-      if (pendingIcon) { patch.icon = pendingIcon; patch.iconMode = pendingIconMode; }
+      if (pendingIcon) { patch.icon = pendingIcon; }
       if (Object.keys(patch).length) custom[id] = patch; else delete custom[id];
       saveCustomBoth(custom).then(function () { notifyHome(false); });
       renderValues();
@@ -1152,16 +1194,34 @@ const APP_ICONS = {
     });
     var notifyCssTimer = null;
     on('notifyCss', 'input', function () {
+      notifyCssAuto = false;
       clearTimeout(notifyCssTimer);
       notifyCssTimer = setTimeout(function () { writeNotifyStyle(notifyStyleFromUI()); }, 180);
     });
-    on('notifyCss', 'change', function () { writeNotifyStyle(notifyStyleFromUI()); });
+    on('notifyCss', 'change', function () { notifyCssAuto = false; writeNotifyStyle(notifyStyleFromUI()); });
+    on('notifyTemplateFill', 'click', function () {
+      var ta = $('notifyCss');
+      if (!ta) return;
+      ta.value = collectNotifyTemplateCss();
+      notifyCssAuto = true;
+      writeNotifyStyle(notifyStyleFromUI());
+      toast('已填入初始模板，可直接修改');
+    });
+    on('notifyCssClear', 'click', function () {
+      var ta = $('notifyCss');
+      if (!ta) return;
+      ta.value = '';
+      notifyCssAuto = false;
+      writeNotifyStyle(notifyStyleFromUI());
+      toast('已清空输入框');
+    });
     on('notifyPreview', 'click', previewNotifyStyle);
     on('notifyStyleReset', 'click', function () {
-      var def = { glass: 'frosted', avatar: 'circle', shape: 'pill', template: 'default', css: '' };
+      var def = { glass: 'frosted', avatar: 'circle', shape: 'pill', template: 'default', css: '', cleared: false };
       writeNotifyStyle(def);
+      notifyCssAuto = false;
       renderNotifyStyle();
-      toast('已恢复默认通知栏样式');
+      toast('已恢复初始模板');
     });
 
     on('clearCache', 'click', function () {

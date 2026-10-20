@@ -9,7 +9,7 @@
 <script>window.__NANO_FONT_ONLY = true;</script>
 <script src="../js/appearance.js"></script>
 <script src="../js/nano-idb.js"></script>
-<link rel="stylesheet" href="../css/settings.css?v=20261020j">
+<link rel="stylesheet" href="../css/settings.css?v=20261020k">
 </head>
 <body data-page="notifications">
 <div class="app">
@@ -26,14 +26,17 @@
   <main class="scroll">
     <section class="list">
       <label class="row">
+        <svg class="row-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></svg>
         <span class="row-label">后台保活</span>
         <span class="switch"><input type="checkbox" id="keepToggle"><i></i></span>
       </label>
       <label class="row">
+        <svg class="row-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2Zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5S10.5 3.17 10.5 4v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2Z"/></svg>
         <span class="row-label">允许通知</span>
         <span class="switch"><input type="checkbox" id="notifyToggle"><i></i></span>
       </label>
       <label class="row">
+        <svg class="row-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.01 21 23 12 2.01 3 2 10l15 2-15 2v7Z"/></svg>
         <span class="row-label">Bark 推送 <em class="row-tag">iPhone 专用</em></span>
         <span class="switch"><input type="checkbox" id="barkToggle"><i></i></span>
       </label>
@@ -43,16 +46,19 @@
         <button class="mini-btn dark" id="barkKeyTest">测试</button>
       </div>
       <label class="row">
+        <svg class="row-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 18H6a4 4 0 0 1-.8-7.9A6 6 0 0 1 17 9a4.5 4.5 0 0 1 2 9Z"/></svg>
         <span class="row-label">Web Push</span>
         <span class="row-value" id="webPushStatus">检查中…</span>
         <span class="switch"><input type="checkbox" id="webPushToggle"><i></i></span>
       </label>
       <div class="row">
+        <svg class="row-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9v6h4l5 5V4L7 9H3Zm13.5 3a4.5 4.5 0 0 0-2.5-4.03v8.05A4.47 4.47 0 0 0 16.5 12Z"/></svg>
         <span class="row-label">通知声音</span>
         <select class="select" id="soundSelect"></select>
         <button class="mini-btn" id="soundPreview">试听</button>
       </div>
       <div class="row">
+        <svg class="row-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V6l10-2v12.2a4 4 0 1 1-2-3.5V8l-6 1.2v8.6A4 4 0 1 1 9 18Z"/></svg>
         <span class="row-label">上传 MP3 铃声</span>
         <span class="row-value" id="customSoundName">未上传</span>
         <button class="mini-btn" id="uploadSoundBtn">选择</button>
@@ -61,6 +67,7 @@
     <div class="group-title">内置通知栏</div>
     <section class="list">
       <div class="row" data-static>
+        <svg class="row-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 14.4 8.6 21 11l-6.6 2.4L12 20l-2.4-6.6L3 11l6.6-2.4L12 2Zm7 13 .9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15Z"/></svg>
         <span class="row-label">玻璃质感</span>
         <select class="select" id="notifyGlass">
           <option value="frosted">毛玻璃</option>
@@ -68,6 +75,7 @@
         </select>
       </div>
       <div class="row" data-static>
+        <svg class="row-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4Zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4Z"/></svg>
         <span class="row-label">头像形状</span>
         <select class="select" id="notifyAvatarShape">
           <option value="circle">圆形头像</option>
@@ -75,6 +83,7 @@
         </select>
       </div>
       <div class="row" data-static>
+        <svg class="row-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z"/></svg>
         <span class="row-label">通知条形状</span>
         <select class="select" id="notifyShape">
           <option value="pill">圆形胶囊</option>
@@ -82,9 +91,10 @@
         </select>
       </div>
       <div class="row" data-static>
+        <svg class="row-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h8v8H3V3Zm10 0h8v8h-8V3ZM3 13h8v8H3v-8Zm10 0h8v8h-8v-8Z"/></svg>
         <span class="row-label">内置模板</span>
         <select class="select" id="notifyTemplate">
-          <option value="default">默认</option>
+          <option value="default">初始模板</option>
           <option value="graypink">灰粉</option>
           <option value="night">暗夜</option>
           <option value="mint">薄荷</option>
@@ -93,12 +103,17 @@
         </select>
       </div>
       <div data-static style="padding:2px 16px 12px">
-        <textarea id="notifyCss" placeholder="自定义 CSS，例如：.app-notify{ ... }" spellcheck="false" style="width:100%;height:84px;box-sizing:border-box;border:1px solid #ededed;border-radius:12px;background:#fafafa;padding:10px 12px;font:12px/1.45 ui-monospace,Menlo,Consolas,monospace;color:#333;resize:none;outline:none"></textarea>
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+          <button class="mini-btn" id="notifyTemplateFill" type="button">填入初始模板</button>
+          <button class="mini-btn grey" id="notifyCssClear" type="button">清空输入框</button>
+        </div>
+        <textarea id="notifyCss" placeholder="自定义 CSS，例如：.app-notify{ ... }" spellcheck="false" style="width:100%;height:220px;box-sizing:border-box;border:1px solid #ededed;border-radius:12px;background:#fafafa;padding:10px 12px;font:12px/1.45 ui-monospace,Menlo,Consolas,monospace;color:#333;resize:vertical;outline:none"></textarea>
       </div>
       <div class="row" data-static>
+        <svg class="row-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5c-5.5 0-9.5 5.5-10 7 1.5 3 5 7 10 7s8.5-4 10-7c-.5-1.5-4.5-7-10-7Zm0 11a4 4 0 1 1 0-8 4 4 0 0 1 0 8Zm0-2a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"/></svg>
         <span class="row-label">预览</span>
         <button class="mini-btn dark" id="notifyPreview">弹出预览</button>
-        <button class="mini-btn" id="notifyStyleReset">恢复默认</button>
+        <button class="mini-btn" id="notifyStyleReset">恢复初始模板</button>
       </div>
     </section>
     <p class="hint" id="barkStatus">Bark 未设置。后台保活、系统通知和 Web Push 都在本页管理。</p>
@@ -106,6 +121,6 @@
 </div>
 <div class="toast" id="toast"></div>
 <input type="file" id="soundFile" accept="audio/mpeg,audio/mp3,audio/*" class="hidden">
-<script src="../js/settings.js?v=20261020k"></script>
+<script src="../js/settings.js?v=20261020o"></script>
 </body>
 </html>

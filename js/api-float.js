@@ -903,7 +903,7 @@
             }
             var _r = window.NANO_ROOT || '';
             if (!window.NANO_GLOBAL_TEMPLATE) load(_r + 'js/nano-global-template.js');
-            if (!window.NANO_CHAT_TEMPLATE) load(_r + 'js/nano-chat-template.js?v=20261004p');
+            if (!window.NANO_CHAT_TEMPLATE) load(_r + 'js/nano-chat-template.js?v=20261020b');
             finish();
         });
         return beautyTemplatesReady;

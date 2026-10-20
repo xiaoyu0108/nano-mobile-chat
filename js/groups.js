@@ -2663,13 +2663,26 @@
     // ========== 开红包 ==========
     var openRpOverlay = $('openRpOverlay');
     var currentRpId = null;
+    function paintGroupPopupAvatar(el){
+        if (!el) return;
+        el.innerHTML = '';
+        if (group.avatar) {
+            var img = document.createElement('img');
+            img.src = group.avatar;
+            img.alt = '';
+            img.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;border-radius:inherit;';
+            el.appendChild(img);
+        } else {
+            el.textContent = String(group.name || '群').charAt(0);
+        }
+    }
     function openRedPacketOpen(rpId){
         var msg = messages.find(function(x){ return x.cardData && x.cardData.rpId === rpId; });
         if (!msg) return;
         currentRpId = rpId;
         var sender = getMember(msg.senderId) || { name: '群友', initial: '群' };
         $('openRpSender').textContent = (sender.nick || sender.name) + ' 发出的红包';
-        $('openRpAvatar').textContent = sender.initial || '群';
+        paintGroupPopupAvatar($('openRpAvatar'));
         $('openRpWish').textContent = msg.cardData.title || '恭喜发财';
         $('openRpBtn').textContent = '開';
         $('openRpBtn').classList.remove('opened');
@@ -2726,7 +2739,7 @@
         var cd = msg.cardData;
         var sender = getMember(msg.senderId) || { name: '群友', initial: '群' };
         $('rpDetailSender').textContent = (sender.nick || sender.name) + ' 发出的红包';
-        $('rpDetailAvatar').textContent = sender.initial || '群';
+        paintGroupPopupAvatar($('rpDetailAvatar'));
         $('rpDetailWish').textContent = cd.title || '恭喜发财';
         $('rpDetailMyAmount').textContent = (cd.myAmount || 0).toFixed(2);
         var claims = cd.claims || [];

@@ -1,7 +1,7 @@
 <style>
  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
  html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent;font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif}
- .card{position:relative;height:100%;border-radius:18px;background:rgba(246,248,252,calc(.20 * var(--wo,1)));border:1px solid rgba(255,255,255,calc(.55 * var(--wo,1)));padding:0 12px;display:flex;align-items:center;gap:10px;overflow:hidden}
+ .card{position:relative;height:100%;border-radius:18px;background:rgba(255,255,255,calc(.78 * var(--wo,1)));border:1px solid rgba(238,242,246,calc(var(--wo,1)));padding:0 12px;display:flex;align-items:center;gap:10px;overflow:hidden;backdrop-filter:blur(calc(9px * var(--wo,1))) saturate(145%);-webkit-backdrop-filter:blur(calc(9px * var(--wo,1))) saturate(145%)}
  .slot{position:relative;flex:none;background:#e4e4e4;overflow:hidden;cursor:pointer;display:flex;align-items:center;justify-content:center}
  .slot img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:none}
  .slot.has img{display:block}.slot.has .ph{display:none}

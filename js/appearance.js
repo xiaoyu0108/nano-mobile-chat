@@ -308,10 +308,23 @@
     // 补一层兼容布局，让之前保存的美化继续按长方形显示。
     function legacyCardCompatCss(css) {
         var s = String(css || '');
-        if (!/\.bubble-card[^{}]*\.(card-main|icon-wrap)/.test(s)) return '';
-        return '.bubble-card .main-section.card-main{display:flex;flex-direction:row;align-items:center;text-align:left;gap:10px;padding:12px;border-bottom:0;}' +
-            '.bubble-card .main-text{display:flex;flex-direction:column;flex:1;min-width:0;align-items:flex-start;gap:2px;}' +
-            '.bubble-card .main-icon,.bubble-card .icon-wrap{margin:0;flex-shrink:0;}';
+        // 只给「旧版长方形卡片」补结构：必须有 .card-main/.card-title/.card-sub，
+        // 且没有新版 .card-header。新版初始模板不动，保持黑灰状态栏样式。
+        if (!/\.bubble-card[^{}]*\.(card-main|card-title|card-sub)/.test(s)) return '';
+        if (/\.bubble-card[^{}]*\.card-header/.test(s)) return '';
+        var inGroups = !!(document.body && document.body.classList.contains('nano-groups'));
+        var hasChatScope = /\.nano-chat-inner\b/.test(s);
+        var hasGroupsScope = /\.nano-groups\b/.test(s);
+        if (inGroups && hasChatScope && !hasGroupsScope) return '';
+        if (!inGroups && hasGroupsScope && !hasChatScope) return '';
+        var scope = inGroups ? '.nano-groups ' : '.nano-chat-inner ';
+        return scope + '.bubble-card{box-shadow:var(--card-shadow,none);border:var(--card-border,0);}' +
+            scope + '.bubble-card .card-header{display:none!important;}' +
+            scope + '.bubble-card .info-section{display:none!important;}' +
+            scope + '.bubble-card .main-section.card-main{display:flex;flex-direction:row;align-items:center;text-align:left;gap:10px;padding:12px;border-bottom:0;}' +
+            scope + '.bubble-card .main-text{display:flex;flex-direction:column;flex:1;min-width:0;align-items:flex-start;gap:2px;}' +
+            scope + '.bubble-card .main-icon,' + scope + '.bubble-card .icon-wrap{margin:0;flex-shrink:0;}' +
+            scope + '.bubble-card .message-box.card-note{background:transparent;margin:0;padding:0 14px 10px;max-height:none;border-radius:0;font-size:12px;color:inherit;opacity:.8;}';
     }
 
     function applyChatCss(css) {

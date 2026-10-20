@@ -148,6 +148,37 @@
         var u = readJSON(UNREAD_KEY, {});
         if (u[chatId]) { delete u[chatId]; writeJSON(UNREAD_KEY, u); }
     }
+    // 只接收本设备实际存在的角色；已被删除/不属于当前设备的长按消息直接丢弃并 ack
+    function existingCharIds() {
+        return new Promise(function (resolve) {
+            try {
+                var req = indexedDB.open('nano_characters_db', 1);
+                req.onupgradeneeded = function (e) {
+                    var db = e.target.result;
+                    if (!db.objectStoreNames.contains('characters')) db.createObjectStore('characters', { keyPath: 'id' });
+                };
+                req.onsuccess = function () {
+                    try {
+                        var db = req.result;
+                        if (!db.objectStoreNames.contains('characters')) { try { db.close(); } catch (e) {} resolve(null); return; }
+                        var rq = db.transaction('characters', 'readonly').objectStore('characters').getAll();
+                        rq.onsuccess = function () {
+                            var ids = {}, mask = currentMaskId();
+                            (rq.result || []).forEach(function (c) {
+                                if (!c || !c.id) return;
+                                if (mask !== 'default' && c.bindUser && String(c.bindUser) !== String(mask)) return;
+                                ids[String(c.id)] = 1;
+                            });
+                            try { db.close(); } catch (e) {}
+                            resolve(ids);
+                        };
+                        rq.onerror = function () { try { db.close(); } catch (e) {} resolve(null); };
+                    } catch (e) { resolve(null); }
+                };
+                req.onerror = function () { resolve(null); };
+            } catch (e) { resolve(null); }
+        });
+    }
 
     function putMoment(post) {
         return new Promise(function (resolve) {
@@ -204,6 +235,7 @@
         } catch (e) { return; }
         finally { busy = false; }
 
+        var charIds = await existingCharIds();
         // 只有「真正写进本地 / 真正插进当前聊天」的条目才 ack。
         // 之前无条件 ack 全部，任何一步失败都会出现「通知有、点进去没有」的假消息。
         var handledMsgIds = [], handledMomentIds = [], liveIds = [];
@@ -216,6 +248,7 @@
             var canLive = !!(openChat && window.__nanoShell && window.__nanoShell.postToChat && chatReadyFor(openChat));
             messages.forEach(function (m) {
                 if (!m || !m.id || !m.chatId) { if (m && m.id) handledMsgIds.push(m.id); return; }
+                if (charIds && !charIds[String(m.chatId)]) { handledMsgIds.push(m.id); return; }
                 var bubbles = Array.isArray(m.bubbles) ? m.bubbles.slice() : [];
                 if (!bubbles.length && m.text) bubbles = [m.text];
                 bubbles = splitBubbles(bubbles);

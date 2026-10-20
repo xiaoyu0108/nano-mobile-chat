@@ -361,6 +361,14 @@ label.row:active {
   min-width: 0;
   font-size: 15.5px;
 }
+.row-ic {
+  width: 19px;
+  height: 19px;
+  flex: none;
+  fill: currentColor;
+  opacity: .68;
+  margin-right: -2px;
+}
 
 .row-tag {
   font-style: normal;
