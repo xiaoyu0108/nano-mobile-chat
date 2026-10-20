@@ -30,6 +30,20 @@
     return '<svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z"/><path d="M8 8h8M8 12h5"/></svg>';
   }
 
+  // 四个板块使用不同 SVG；用户自己导入的 SVG 图标保持原样，不替换
+  function catIconSvg(catId) {
+    if (catId === 'offline') {
+      return '<svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9h13v-9"/><path d="M9.5 19v-5h5v5"/></svg>';
+    }
+    if (catId === 'online') {
+      return '<svg viewBox="0 0 24 24"><rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M10 5h4"/><circle cx="12" cy="18" r="1"/><path d="M9 9h6M9 12.5h4"/></svg>';
+    }
+    if (catId === 'group') {
+      return '<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3.5 19c0-3 2.5-5 5.5-5s5.5 2 5.5 5"/><circle cx="17.5" cy="9" r="2.2"/><path d="M15.5 14.2c2.8-.4 5 1.4 5 4.3"/></svg>';
+    }
+    return '<svg viewBox="0 0 24 24"><path d="M12 3.2l1.6 4.1 4.2 1.6-4.2 1.6L12 14.6l-1.6-4.1-4.2-1.6 4.2-1.6Z"/><path d="M18.5 14.5l.9 2.2 2.2.9-2.2.9-.9 2.2-.9-2.2-2.2-.9 2.2-.9Z"/><path d="M5 15l.7 1.8 1.8.7-1.8.7L5 20l-.7-1.8-1.8-.7 1.8-.7Z"/></svg>';
+  }
+
   function iconHtml(icon) {
     return icon
       ? '<span class="prompt-icon"><img src="' + esc(icon) + '" alt=""></span>'
@@ -49,7 +63,7 @@
       var item = data.cats[cat.id] || { active: 'builtin', custom: [] };
       var rows = '';
       rows += '<div class="row prompt-row" data-cat="' + cat.id + '" data-builtin="1">' +
-        '<span class="prompt-icon">' + iconSvg() + '</span>' +
+        '<span class="prompt-icon">' + catIconSvg(cat.id) + '</span>' +
         '<span class="prompt-main"><span class="prompt-name">内置提示词</span>' +
         '<span class="prompt-sub">官方内置 · 不可查看或删除</span></span>' +
         '<span class="switch"><input type="checkbox" data-toggle="builtin" data-cat="' + cat.id + '"' + (item.active === 'builtin' ? ' checked' : '') + '><i></i></span>' +
@@ -63,8 +77,8 @@
           '</div>';
       }).join('');
       rows += '<button class="row add-prompt-row" type="button" data-add="' + cat.id + '">' +
-        '<span class="prompt-add-plus">+</span><span>添加提示词</span></button>';
-      return '<div class="group-title">' + esc(cat.name) + ' · ' + esc(cat.sub) + '</div>' +
+        '<span class="prompt-add-plus">' + catIconSvg(cat.id) + '</span><span>添加提示词</span></button>';
+      return '<div class="group-title"><span class="prompt-cat-icon">' + catIconSvg(cat.id) + '</span>' + esc(cat.name) + ' · ' + esc(cat.sub) + '</div>' +
         '<section class="list prompt-card">' + rows + '</section>';
     }).join('');
   }
@@ -118,6 +132,113 @@
     });
   }
 
+  function readAsText(file) {
+    return new Promise(function (resolve, reject) {
+      var r = new FileReader();
+      r.onload = function () { resolve(String(r.result || '')); };
+      r.onerror = function () { reject(new Error('文件读取失败')); };
+      r.readAsText(file);
+    });
+  }
+
+  function jsonToPromptText(raw) {
+    var d;
+    try { d = JSON.parse(raw); } catch (e) { return raw; }
+    var keys = ['content', 'prompt', 'system', 'text', 'value', 'body'];
+    function walk(v, depth) {
+      if (typeof v === 'string') return v;
+      if (!v || depth > 6) return '';
+      if (Array.isArray(v)) {
+        return v.map(function (x) { return walk(x, depth + 1); }).filter(Boolean).join('\n\n');
+      }
+      if (typeof v === 'object') {
+        for (var i = 0; i < keys.length; i++) {
+          if (typeof v[keys[i]] === 'string' && v[keys[i]].trim()) return v[keys[i]];
+        }
+        var out = [];
+        Object.keys(v).forEach(function (k) {
+          var s = walk(v[k], depth + 1);
+          if (s) out.push(s);
+        });
+        return out.join('\n\n');
+      }
+      return '';
+    }
+    return walk(d, 0) || raw;
+  }
+
+  function docxXmlToText(xml) {
+    return String(xml || '')
+      .replace(/<w:tab[^>]*\/>/gi, '\t')
+      .replace(/<w:br[^>]*\/>/gi, '\n')
+      .replace(/<\/w:p>/gi, '\n')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&apos;/g, "'")
+      .replace(/\u00a0/g, ' ')
+      .replace(/[ \t]+\n/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  }
+
+  async function readDocxText(file) {
+    if (typeof DecompressionStream === 'undefined') throw new Error('当前浏览器不支持解压 docx，请另存为 txt');
+    var buf = await file.arrayBuffer();
+    var dv = new DataView(buf);
+    var off = 0;
+    while (off + 30 <= buf.byteLength) {
+      if (dv.getUint32(off, true) !== 0x04034b50) break;
+      var flags = dv.getUint16(off + 6, true);
+      var method = dv.getUint16(off + 8, true);
+      var csize = dv.getUint32(off + 18, true);
+      var nlen = dv.getUint16(off + 26, true);
+      var elen = dv.getUint16(off + 28, true);
+      var name = new TextDecoder('utf-8').decode(new Uint8Array(buf, off + 30, nlen));
+      var start = off + 30 + nlen + elen;
+      var data = new Uint8Array(buf, start, csize);
+      if (name === 'word/document.xml') {
+        if (method === 8) {
+          var stream = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+          data = new Uint8Array(await new Response(stream).arrayBuffer());
+        }
+        return docxXmlToText(new TextDecoder('utf-8').decode(data));
+      }
+      off = start + csize;
+      if (!csize && (flags & 0x08)) {
+        // 数据描述符：向后寻找下一个 local header
+        var p = start;
+        while (p + 4 <= buf.byteLength) {
+          if (dv.getUint32(p, true) === 0x04034b50) break;
+          p++;
+        }
+        off = p;
+      }
+    }
+    throw new Error('docx 中没有找到正文');
+  }
+
+  function readLegacyDocText(buf) {
+    function score(s) {
+      var m = s.match(/[\u4e00-\u9fff]/g);
+      return m ? m.length : 0;
+    }
+    var u8 = new TextDecoder('utf-8').decode(buf).replace(/[^\x09\x0a\x0d\x20-\x7e\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]/g, ' ');
+    var u16 = new TextDecoder('utf-16le').decode(buf).replace(/[^\x09\x0a\x0d\x20-\x7e\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]/g, ' ');
+    var best = score(u16) > score(u8) ? u16 : u8;
+    best = best.replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+    if (best.length < 8) throw new Error('无法读取这个 .doc，请另存为 docx 或 txt');
+    return best;
+  }
+
+  async function readPromptFile(file) {
+    var name = String(file.name || '').toLowerCase();
+    if (/\.docx$/.test(name)) return readDocxText(file);
+    if (/\.doc$/.test(name)) return readLegacyDocText(await file.arrayBuffer());
+    var text = await readAsText(file);
+    if (/\.json$/.test(name)) return jsonToPromptText(text);
+    return text;
+  }
+
   function openEditor(catId, id) {
     var data = NP.read();
     var cat = data.cats[catId];
@@ -130,6 +251,8 @@
       '<div class="prompt-icon-actions">' +
         '<button class="mini-btn" type="button" id="promptPickIcon">导入 SVG 图标</button>' +
         '<button class="mini-btn" type="button" id="promptClearIcon">清除图标</button>' +
+        '<button class="mini-btn" type="button" id="promptImportBtn" style="display:inline-flex;align-items:center;gap:6px"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M5 20h14"/></svg>导入提示词文件</button>' +
+        '<input type="file" id="promptImportFile" accept=".txt,.md,.markdown,.json,.doc,.docx,.rtf,text/plain,application/json,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" style="display:none">' +
       '</div>' +
       '<div class="prompt-form-label">名称</div>' +
       '<input class="text-input prompt-name-input" id="promptNameInput" maxlength="40" placeholder="例如：温柔克制版" value="' + esc(p ? p.name : '') + '">' +
@@ -151,6 +274,34 @@
       var box = $('promptIconPreview');
       if (box) box.innerHTML = iconHtml('');
     });
+    var importBtn = $('promptImportBtn');
+    var importFile = $('promptImportFile');
+    if (importBtn && importFile) {
+      importBtn.addEventListener('click', function () { importFile.click(); });
+      importFile.addEventListener('change', async function () {
+        var f = importFile.files && importFile.files[0];
+        if (!f) return;
+        if (f.size > 8 * 1024 * 1024) { toast('文件不能超过 8MB'); importFile.value = ''; return; }
+        try {
+          var text = String(await readPromptFile(f) || '').trim();
+          if (!text) { toast('文件里没有可导入的文字'); importFile.value = ''; return; }
+          var ta = $('promptContentInput');
+          if (ta) {
+            var cur = String(ta.value || '').trim();
+            ta.value = cur ? (cur + '\n\n' + text) : text;
+            ta.scrollTop = ta.scrollHeight;
+          }
+          var nameInput = $('promptNameInput');
+          if (nameInput && !String(nameInput.value || '').trim()) {
+            nameInput.value = String(f.name || '').replace(/\.[^.]+$/, '').slice(0, 40);
+          }
+          toast('已导入 ' + f.name);
+        } catch (e) {
+          toast((e && e.message) || '导入失败');
+        }
+        importFile.value = '';
+      });
+    }
     $('promptSaveBtn').addEventListener('click', function () {
       var name = String($('promptNameInput').value || '').trim() || '未命名提示词';
       var content = String($('promptContentInput').value || '').trim();

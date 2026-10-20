@@ -152,15 +152,27 @@ function memTags(it){
   if(it&&Array.isArray(it.tags))it.tags.forEach(t=>{if(t&&arr.indexOf(t)===-1)arr.push(t);});
   return arr.slice(0,10);
 }
+function guessMemoryImportance(it){
+  const type=String((it&&it.type)||'');
+  const text=String((it&&(it.content||it.text))||'');
+  const all=type+' '+text;
+  if(/约定|承诺|答应|表白|分手|和好|吵架|纪念日|生日|求婚|结婚|秘密|禁忌|第一次/.test(all))return 5;
+  if(/重要事件|情感|关系|家人|朋友|身世|过往|愿望|梦想|共同经历/.test(type))return 4;
+  if(/偏好|口味|习惯|作息|喜欢|讨厌|不吃|过敏|口头禅/.test(all))return 2;
+  if(text.length>120)return 4;
+  return 3;
+}
 function mapItemToMem(it){
+  const rawImp=(it&&it.importance);
+  const numImp=typeof rawImp==='number'?rawImp:parseInt(rawImp,10);
   return {
     id:it.id||uid(),
     room:roomOfType(it.type),
     text:it.content||it.text||'',
     tags:memTags(it),
     date:it.date||it.time||'',
-    mood:it.mood||'平淡',
-    imp:(typeof it.importance==='number')?it.importance:3,
+    mood:it.mood||'骞虫贰',
+    imp:(Number.isFinite(numImp)&&numImp>0)?Math.max(1,Math.min(5,numImp)):guessMemoryImportance(it),
     _type:it.type||roomOf(it.room).name,
     _raw:it
   };

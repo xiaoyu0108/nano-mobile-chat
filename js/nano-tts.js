@@ -86,8 +86,9 @@
                 ttsKey: cfg.key || '',
                 ttsModel: cfg.modelValue || cfg.modelText || '',
                 ttsGroupId: cfg.groupId || '',
+                ttsMinimaxRegion: cfg.region || 'auto',
                 ttsType: cfg.type || 'openai',
-                ttsVoice: '' // 用预设里的 model 当音色，不继承全局声音
+                ttsVoice: cfg.voice || cfg.voiceId || '' // 音色 ID 与语音模型分开存
             };
         });
     }
@@ -122,7 +123,10 @@
         var base = toV1(cfg.ttsUrl);
         var type = cfg.ttsType || 'openai';
         if (type === 'minimax') {
-            var mmUrl = base + '/t2a_v2' + (cfg.ttsGroupId ? ('?GroupId=' + encodeURIComponent(cfg.ttsGroupId)) : '');
+            // MiniMax 国内版 / 海外版域名都兼容；当前域名失败时自动尝试另一个
+            var mmBases = [base];
+            var mmAlt = /minimaxi\.com/i.test(base) ? 'https://api.minimax.chat/v1' : 'https://api.minimaxi.com/v1';
+            if (mmAlt !== base) mmBases.push(mmAlt);
             var mmBody = {
                 model: cfg.ttsModel,
                 text: text,
@@ -130,17 +134,31 @@
                 voice_setting: { voice_id: cfg.ttsVoice || cfg.ttsModel, speed: 1, vol: 1, pitch: 0 },
                 audio_setting: { sample_rate: 32000, bitrate: 128000, format: 'mp3' }
             };
-            var mmResp = await fetch(mmUrl, {
-                method: 'POST',
-                headers: { 'Authorization': 'Bearer ' + cfg.ttsKey, 'Content-Type': 'application/json' },
-                body: JSON.stringify(mmBody)
-            });
-            if (!mmResp.ok) {
-                var mmMsg = 'HTTP ' + mmResp.status;
-                try { var mmData = await mmResp.json(); mmMsg = (mmData.base_resp && mmData.base_resp.status_msg) || (mmData.error && mmData.error.message) || mmMsg; } catch (e) {}
-                throw new Error(mmMsg);
+            var mmJson = null, mmLastErr = null;
+            for (var mi = 0; mi < mmBases.length && !mmJson; mi++) {
+                var mmBase = mmBases[mi];
+                var mmUrl = mmBase + '/t2a_v2' + (cfg.ttsGroupId ? ('?GroupId=' + encodeURIComponent(cfg.ttsGroupId)) : '');
+                try {
+                    var mmResp = await fetch(mmUrl, {
+                        method: 'POST',
+                        headers: { 'Authorization': 'Bearer ' + cfg.ttsKey, 'Content-Type': 'application/json' },
+                        body: JSON.stringify(mmBody)
+                    });
+                    if (!mmResp.ok) {
+                        var mmMsg = 'HTTP ' + mmResp.status;
+                        try { var mmData = await mmResp.json(); mmMsg = (mmData.base_resp && mmData.base_resp.status_msg) || (mmData.error && mmData.error.message) || mmMsg; } catch (e) {}
+                        var mmErr = new Error(mmMsg);
+                        mmErr.status = mmResp.status;
+                        throw mmErr;
+                    }
+                    mmJson = await mmResp.json();
+                } catch (e) {
+                    mmLastErr = e;
+                    // 鉴权失败通常是 Key 与区域不匹配，换域名也不会成功；404/网络错误才继续尝试
+                    if (e && e.status && e.status >= 400 && e.status < 500 && e.status !== 404) break;
+                }
             }
-            var mmJson = await mmResp.json();
+            if (!mmJson) throw mmLastErr || new Error('MiniMax 请求失败');
             var audioHex = mmJson && mmJson.data && mmJson.data.audio;
             if (audioHex) {
                 var bytes = hexToBytes(audioHex);
@@ -153,19 +171,28 @@
             throw new Error('TTS 未返回音频');
         }
         if (type === 'fishaudio') {
-            // Fish Audio：POST {host}/v1/tts，reference_id 即所选音色（模型）id
+            // Fish Audio：model 是语音模型（如 s2.1-pro-free），reference_id 是用户手填的音色 ID
             var fishRoot = base.replace(/\/v1$/i, '');
+            var fishVoice = String(cfg.ttsVoice || '').trim();
+            var fishModel = String(cfg.ttsModel || '').trim();
+            var fishHeaders = { 'Authorization': 'Bearer ' + cfg.ttsKey, 'Content-Type': 'application/json' };
+            if (fishVoice && fishModel) {
+                fishHeaders['model'] = fishModel;
+                fishBody.model = fishModel;
+            }
+            var fishBody = {
+                text: text,
+                format: 'mp3',
+                mp3_bitrate: 128,
+                chunk_length: 200,
+                normalize: true
+            };
+            var fishRef = fishVoice || fishModel;
+            if (fishRef) fishBody.reference_id = fishRef;
             var fishResp = await fetch(fishRoot + '/v1/tts', {
                 method: 'POST',
-                headers: { 'Authorization': 'Bearer ' + cfg.ttsKey, 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    text: text,
-                    reference_id: cfg.ttsVoice || cfg.ttsModel,
-                    format: 'mp3',
-                    mp3_bitrate: 128,
-                    chunk_length: 200,
-                    normalize: true
-                })
+                headers: fishHeaders,
+                body: JSON.stringify(fishBody)
             });
             if (!fishResp.ok) {
                 var fMsg = 'HTTP ' + fishResp.status;
@@ -237,7 +264,7 @@
         if (!t) return false;
         var cfg = await getConfig();
         if (opts.config) cfg = Object.assign({}, cfg, opts.config);
-        if (!isConfigured(cfg)) { console.warn('[TTS] 未配置：需要 地址 + Key +（音色/模型 或 声音 ID）'); return false; }
+        if (!isConfigured(cfg)) { console.warn('[TTS] 未配置：需要 地址 + Key + 语音模型（Fish Audio / MiniMax 还需手动填写音色 ID）'); return false; }
         var blob = await synth(t, cfg);
         return await playBlob(blob);
     }
@@ -248,7 +275,7 @@
         var t = String(text == null ? '' : text).trim() || '这是一段语音测试。';
         var cfg = await getConfig();
         if (opts.config) cfg = Object.assign({}, cfg, opts.config);
-        if (!isConfigured(cfg)) throw new Error('配置不完整：需要 地址 + Key +（音色/模型 或 声音 ID）');
+        if (!isConfigured(cfg)) throw new Error('配置不完整：需要 地址 + Key + 语音模型（Fish Audio / MiniMax 还需手动填写音色 ID）');
         var blob = await synth(t, cfg);
         return await playBlob(blob);
     }

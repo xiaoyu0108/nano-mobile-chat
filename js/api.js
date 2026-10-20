@@ -242,6 +242,7 @@
             ttsUrl: normUrl((document.getElementById('ttsUrl') || {}).value),
             ttsKey: (document.getElementById('ttsKey') || {}).value || '',
             ttsGroupId: (document.getElementById('ttsGroupId') || {}).value || '',
+            ttsMinimaxRegion: (document.getElementById('ttsMinimaxRegion') || {}).value || 'auto',
             ttsVoice: (document.getElementById('ttsVoice') || {}).value || '',
             ttsType: (document.getElementById('ttsType') || {}).value || 'openai',
             ttsPreset: (document.getElementById('ttsPreset') || {}).value || '',
@@ -261,16 +262,25 @@
         type = type || 'openai';
         var urlEl = document.getElementById('ttsUrl');
         var groupWrap = document.getElementById('ttsGroupWrap');
+        var regionWrap = document.getElementById('ttsMinimaxRegionWrap');
+        var regionEl = document.getElementById('ttsMinimaxRegion');
         var fetchBtn = document.getElementById('ttsFetch');
+        var region = regionEl ? (regionEl.value || 'auto') : 'auto';
+        var mmCn = 'https://api.minimax.chat/v1';
+        var mmGlobal = 'https://api.minimaxi.com/v1';
+        var mmUrl = region === 'global' ? mmGlobal : mmCn;
+        if (region === 'auto' && urlEl) {
+            mmUrl = /minimaxi\.com/i.test(urlEl.value || '') ? mmGlobal : mmCn;
+        }
         var defUrl = {
             openai: 'https://api.openai.com/v1',
-            minimax: 'https://api.minimax.chat/v1',
+            minimax: mmUrl,
             fishaudio: 'https://api.fish.audio',
             custom: ''
         }[type] || '';
         var ph = {
             openai: 'https://api.openai.com/v1',
-            minimax: 'https://api.minimax.chat/v1',
+            minimax: mmUrl,
             fishaudio: 'https://api.fish.audio',
             custom: 'https://api.example.com/v1'
         }[type] || 'https://api.example.com/v1';
@@ -281,9 +291,9 @@
             if (defUrl && (forceUrl || !cur || isDefault)) urlEl.value = defUrl;
         }
         if (groupWrap) groupWrap.style.display = (type === 'minimax') ? '' : 'none';
+        if (regionWrap) regionWrap.style.display = (type === 'minimax') ? '' : 'none';
         if (fetchBtn) {
-            var label = (type === 'minimax') ? '拉取音色' : '拉取模型';
-            fetchBtn.innerHTML = '<i class="fas fa-cloud-download-alt"></i> ' + label;
+            fetchBtn.innerHTML = '<i class="fas fa-cloud-download-alt"></i> 拉取模型';
         }
     }
 
@@ -300,6 +310,7 @@
         setVal('subUrl', data.subUrl); setVal('subKey', data.subKey); setVal('subPreset', data.subPreset); setVal('subModelSelect', data.subModel);
         setVal('imgUrl', data.imgUrl); setVal('imgKey', data.imgKey); setVal('imgPreset', data.imgPreset); setVal('imgModelSelect', data.imgModel);
         setVal('ttsUrl', data.ttsUrl); setVal('ttsKey', data.ttsKey); setVal('ttsGroupId', data.ttsGroupId);
+        setVal('ttsMinimaxRegion', data.ttsMinimaxRegion || 'auto');
         setVal('ttsVoice', data.ttsVoice);
         setVal('ttsType', data.ttsType); setVal('ttsPreset', data.ttsPreset); setVal('ttsModelSelect', data.ttsModel);
 
@@ -422,7 +433,7 @@
     }
 
     // ===== 修改预设 =====
-    function setupEditPreset(prefix, btnId, nameId, presetId, urlId, keyId, modelSelectId) {
+    function setupEditPreset(prefix, btnId, nameId, presetId, urlId, keyId, modelSelectId, extraGetter) {
         document.getElementById(btnId).addEventListener('click', function () {
             var presetName = document.getElementById(presetId).value;
             if (!presetName) { showModal('请先选择一个要修改的预设'); return; }
@@ -438,6 +449,7 @@
                 modelText: selectedOption ? selectedOption.text : ''
             };
             if (!config.modelValue && config.modelText) config.modelValue = config.modelText;
+            if (extraGetter) Object.assign(config, extraGetter());
 
             if (newName !== presetName) {
                 var preset = document.getElementById(presetId);
@@ -586,6 +598,29 @@
         select._saveFullOptions = saveFullOptions;
     }
 
+    // ===== TTS 语音模型（拉取的是「模型」，音色 ID 由用户自己填写） =====
+    var TTS_BUILTIN_MODELS = {
+        fishaudio: [
+            { id: 's2.1-pro-free', name: 'S2.1 Pro Free（免费）' },
+            { id: 's2.1-pro', name: 'S2.1 Pro' },
+            { id: 's2-pro', name: 'S2 Pro' },
+            { id: 's1', name: 'S1' }
+        ],
+        minimax: [
+            { id: 'speech-2.6-hd', name: 'Speech 2.6 HD' },
+            { id: 'speech-2.6-turbo', name: 'Speech 2.6 Turbo' },
+            { id: 'speech-2.5-hd-preview', name: 'Speech 2.5 HD Preview' },
+            { id: 'speech-2.5-turbo-preview', name: 'Speech 2.5 Turbo Preview' },
+            { id: 'speech-02-hd', name: 'Speech 02 HD' },
+            { id: 'speech-02-turbo', name: 'Speech 02 Turbo' },
+            { id: 'speech-01-hd', name: 'Speech 01 HD' },
+            { id: 'speech-01-turbo', name: 'Speech 01 Turbo' }
+        ]
+    };
+    function builtinTtsModels(type) {
+        return (TTS_BUILTIN_MODELS[type] || []).map(function (m) { return { id: m.id, name: m.name }; });
+    }
+
     // ===== 拉取 =====
     async function fetchModels(url, key, modelSelectId, statusId, wrapId, extra) {
         extra = extra || {};
@@ -609,38 +644,9 @@
 
             var models = [];
 
-            if (extra.type === 'minimax') {
-                // MiniMax 音色列表
-                var groupId = extra.groupId || '';
-                var mmResp = await fetch(baseUrl + '/get_voice?GroupId=' + encodeURIComponent(groupId), {
-                    method: 'GET',
-                    headers: { 'Authorization': 'Bearer ' + cleanKeyStr, 'Content-Type': 'application/json' }
-                });
-                if (!mmResp.ok) throw new Error('HTTP ' + mmResp.status);
-                var mmData = await mmResp.json();
-                var voiceList = (mmData.voice_list || mmData.data || []);
-                models = voiceList.map(function (v) {
-                    var id = v.voice_id || v.id || v.name;
-                    return { id: id, name: v.voice_name || v.name || id };
-                });
-            } else if (extra.type === 'fishaudio') {
-                // Fish Audio 音色（模型）列表：GET {host}/model
-                var fishRoot = baseUrl.replace(/\/v1$/i, '');
-                var fishResp = await fetch(fishRoot + '/model?page_size=100', {
-                    method: 'GET',
-                    headers: { 'Authorization': 'Bearer ' + cleanKeyStr, 'Content-Type': 'application/json' }
-                });
-                if (!fishResp.ok) {
-                    var fishErr = 'HTTP ' + fishResp.status;
-                    try { var fishData0 = await fishResp.json(); fishErr = fishData0.message || (fishData0.error && fishData0.error.message) || fishErr; } catch (e) {}
-                    throw new Error(fishErr);
-                }
-                var fishData = await fishResp.json();
-                var fishItems = fishData.items || fishData.data || [];
-                models = fishItems.map(function (v) {
-                    var id = v._id || v.id || v.model_id || v.title;
-                    return { id: id, name: v.title || v.name || id };
-                });
+            if (extra.type === 'minimax' || extra.type === 'fishaudio') {
+                // TTS：拉取的是语音模型（不是用户音色）；音色 ID 在下面手动填写
+                models = builtinTtsModels(extra.type);
             } else {
                 // 通用 /models
                 var response = await fetch(baseUrl + '/models', {
@@ -670,11 +676,17 @@
                 select.appendChild(opt);
                 modelList.push({ value: m.id, text: m.name });
             });
+            // 语音模型直接默认选中第一个（例如 Fish Audio S2.1 Pro Free），避免拉取后仍是空模型
+            if ((extra.type === 'minimax' || extra.type === 'fishaudio') && models.length) {
+                select.value = models[0].id;
+            }
             select.disabled = false;
             await saveFullModelList(modelSelectId, modelList);
             await saveModelList(modelSelectId);
             status.className = 'status-msg success';
-            status.textContent = '拉取成功！共 ' + models.length + ' 项';
+            status.textContent = (extra.type === 'minimax' || extra.type === 'fishaudio')
+                ? ('拉取成功！共 ' + models.length + ' 个语音模型（音色 ID 请手动填写）')
+                : ('拉取成功！共 ' + models.length + ' 项');
             await saveAllToStorage();
             updateConnectionStatus(statusIdMap[modelSelectId], urlMap[modelSelectId], keyMap[modelSelectId], modelSelectId);
 
@@ -883,6 +895,9 @@
             if (cfg) {
                 if (cfg.groupId !== undefined) document.getElementById('ttsGroupId').value = cfg.groupId;
                 if (cfg.type) document.getElementById('ttsType').value = cfg.type;
+                if (cfg.region !== undefined) document.getElementById('ttsMinimaxRegion').value = cfg.region;
+                if (cfg.voice !== undefined) document.getElementById('ttsVoice').value = cfg.voice;
+                await saveAllToStorage();
             }
         });
 
@@ -891,6 +906,13 @@
         if (ttsTypeSel) {
             ttsTypeSel.addEventListener('change', function () {
                 applyTtsTypeUI(this.value, true);
+                saveAllToStorage();
+            });
+        }
+        var ttsRegionSel = document.getElementById('ttsMinimaxRegion');
+        if (ttsRegionSel) {
+            ttsRegionSel.addEventListener('change', function () {
+                applyTtsTypeUI(document.getElementById('ttsType').value, true);
                 saveAllToStorage();
             });
         }
@@ -926,14 +948,26 @@
         setupSavePreset('sub_', 'subSavePreset', 'subPresetName', 'subPreset', 'subUrl', 'subKey', 'subModelSelect');
         setupSavePreset('img_', 'imgSavePreset', 'imgPresetName', 'imgPreset', 'imgUrl', 'imgKey', 'imgModelSelect');
         setupSavePreset('tts_', 'ttsSavePreset', 'ttsPresetName', 'ttsPreset', 'ttsUrl', 'ttsKey', 'ttsModelSelect', function () {
-            return { groupId: document.getElementById('ttsGroupId').value, type: document.getElementById('ttsType').value };
+            return {
+                groupId: document.getElementById('ttsGroupId').value,
+                type: document.getElementById('ttsType').value,
+                region: document.getElementById('ttsMinimaxRegion').value,
+                voice: document.getElementById('ttsVoice').value
+            };
         });
 
         // 修改预设
         setupEditPreset('main_', 'mainEditPreset', 'mainPresetName', 'mainPreset', 'mainUrl', 'mainKey', 'mainModelSelect');
         setupEditPreset('sub_', 'subEditPreset', 'subPresetName', 'subPreset', 'subUrl', 'subKey', 'subModelSelect');
         setupEditPreset('img_', 'imgEditPreset', 'imgPresetName', 'imgPreset', 'imgUrl', 'imgKey', 'imgModelSelect');
-        setupEditPreset('tts_', 'ttsEditPreset', 'ttsPresetName', 'ttsPreset', 'ttsUrl', 'ttsKey', 'ttsModelSelect');
+        setupEditPreset('tts_', 'ttsEditPreset', 'ttsPresetName', 'ttsPreset', 'ttsUrl', 'ttsKey', 'ttsModelSelect', function () {
+            return {
+                groupId: document.getElementById('ttsGroupId').value,
+                type: document.getElementById('ttsType').value,
+                region: document.getElementById('ttsMinimaxRegion').value,
+                voice: document.getElementById('ttsVoice').value
+            };
+        });
 
         // 删除预设
         document.getElementById('mainDeletePreset').addEventListener('click', function () { deletePreset('main_', 'mainPreset'); });
@@ -946,7 +980,12 @@
         setupSave('subSave', 'sub_', 'subPreset', 'subUrl', 'subKey', 'subModelSelect');
         setupSave('imgSave', 'img_', 'imgPreset', 'imgUrl', 'imgKey', 'imgModelSelect');
         setupSave('ttsSave', 'tts_', 'ttsPreset', 'ttsUrl', 'ttsKey', 'ttsModelSelect', function () {
-            return { groupId: document.getElementById('ttsGroupId').value, type: document.getElementById('ttsType').value };
+            return {
+                groupId: document.getElementById('ttsGroupId').value,
+                type: document.getElementById('ttsType').value,
+                region: document.getElementById('ttsMinimaxRegion').value,
+                voice: document.getElementById('ttsVoice').value
+            };
         });
 
         // 提示词预设

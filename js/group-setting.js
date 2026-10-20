@@ -589,11 +589,15 @@
                             group.members.push({ id:'npc_' + Date.now() + '_' + i, name:nm, nick:nm, initial:nm.charAt(0), avatar:'', bg:memberBg(group.members.length), role:'成员', title:'', level:1, msgCount:0, isNpc:true, setting:st });
                             // 群 NPC 主动加我：写进 Meet 好友申请（绑定当前人设，不串 user）
                             try {
-                                var _own = ''; try { var _mdd = JSON.parse(localStorage.getItem('nano_mask_data') || 'null'); if (_mdd && _mdd.currentMaskId != null) _own = String(_mdd.currentMaskId); } catch (e0) {}
-                                var _all = []; try { _all = JSON.parse(localStorage.getItem('nano_friend_requests') || '[]') || []; } catch (e0) {}
-                                if (!_all.some(function (x) { return x && x.status === 'pending' && x.source === 'groupnpc' && x.name === nm; })) {
-                                    _all.push({ id: 'fr_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6), owner: _own, name: nm, avatar: '', source: 'groupnpc', app: 'group', setting: st, requestNote: '在群聊里加你', ts: Date.now(), status: 'pending' });
-                                    try { localStorage.setItem('nano_friend_requests', JSON.stringify(_all.slice(-400))); } catch (e0) {}
+                                if (window.NanoFriend && window.NanoFriend.add) {
+                                    window.NanoFriend.add({ name: nm, avatar: '', source: 'groupnpc', app: 'group', setting: st, requestNote: '在群聊「' + (group.name || '群聊') + '」里加你' });
+                                } else {
+                                    var _own = 'default'; try { var _mdd = JSON.parse(localStorage.getItem('nano_mask_data') || 'null'); if (_mdd) { if (_mdd.currentMaskId != null && _mdd.currentMaskId !== '') _own = String(_mdd.currentMaskId); else if (Array.isArray(_mdd.masks) && _mdd.masks.length) _own = String(_mdd.masks[0].id || 'default'); } } catch (e0) {}
+                                    var _all = []; try { _all = JSON.parse(localStorage.getItem('nano_friend_requests') || '[]') || []; } catch (e0) {}
+                                    if (!_all.some(function (x) { return x && x.status === 'pending' && x.source === 'groupnpc' && x.name === nm; })) {
+                                        _all.push({ id: 'fr_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6), owner: _own, name: nm, avatar: '', source: 'groupnpc', app: 'group', setting: st, requestNote: '在群聊里加你', ts: Date.now(), status: 'pending' });
+                                        try { localStorage.setItem('nano_friend_requests', JSON.stringify(_all.slice(-400))); } catch (e0) {}
+                                    }
                                 }
                             } catch (e0) {}
                             added++;

@@ -342,9 +342,10 @@
         setTimeout(function () {
             if (!pendingAck[id]) return;         // 已被某个 frame 认领
             delete pendingAck[id];
-            // autoMoment（自动朋友圈）：只有在某个 frame 真正调用 API 生成并写入朋友圈后才算完成。
-            // 没有任何 frame 认领时，绝不能谎报「发了条新动态」——改为稍后重试。
-            if (task.owner === 'autoMoment') {
+            // 自动朋友圈 / 自动消息：只有在某个 frame 真正调用 API 生成并写入后
+            // 才算完成。没有任何 frame 认领时，绝不能谎报「有新消息/新动态」——
+            // 否则就会出现「通知有内容，点进去却是空的」的假消息。改为稍后重试。
+            if (task.owner === 'autoMoment' || task.owner === 'autoMsg') {
                 fireDue(task, false);
                 var tries = Number(task._retries) || 0;
                 if (tries < 3) {
@@ -358,8 +359,7 @@
                 }
                 return;
             }
-            // 其他 generate 任务：退化为一条系统通知，保证不静默丢推送
-            notifyTask({ id: id, title: task.title || 'Nano', body: task.body || '到点了', target: task.target, channel: task.channel });
+            // 其他 generate 任务：没有 frame 生成就绝不弹通知（避免假消息），只派发事件
             fireDue(task, false);
         }, ACK_WAIT_MS);
     }

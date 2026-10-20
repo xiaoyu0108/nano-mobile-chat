@@ -8,7 +8,7 @@
    “后台回复”依赖页面常驻 + 音频保活；真正的“关闭也能收到”需要服务端配合（见 push 事件）。 */
 'use strict';
 
-var CACHE = 'nano-static-v206';
+var CACHE = 'nano-static-v212';
 var STATIC_RE = /\.(css|js|png|jpg|jpeg|webp|svg|gif|ico|woff2?|ttf|mp3)$/i;
 var HTML_FRESH_MS = 0;                // 0：每次打开都联网取最新 HTML（断网/超时再用缓存）
 var NET_TIMEOUT_MS = 1500;            // 有缓存时，网络最多等 1.5 秒，超时先上缓存
@@ -118,24 +118,48 @@ self.addEventListener('push', function (event) {
             catch (e) { data.body = event.data.text ? event.data.text() : data.body; }
         }
     } catch (e) {}
-    event.waitUntil(
-        self.registration.showNotification(data.title || 'Nano', (function () {
+    event.waitUntil((async function () {
+        // App 正在前台：交给内置胶囊通知栏，不再弹一条重复的系统通知。
+        // 点击胶囊时页面会再拉一次 /auto/pending，保证通知内容真的能落进聊天/朋友圈。
+        try {
+            var list = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+            for (var i = 0; i < list.length; i++) {
+                var c = list[i];
+                if (c && c.visibilityState === 'visible') {
+                    try {
+                        c.postMessage({
+                            type: 'appNotify',
+                            title: data.title || 'Nano',
+                            body: data.body || '',
+                            app: data.channel || '',
+                            avatar: data.icon || '',
+                            name: data.name || data.title || '',
+                            target: data.target || '',
+                            fromPush: true
+                        });
+                        return;
+                    } catch (e) {}
+                }
+            }
+        } catch (e) {}
+        return self.registration.showNotification(data.title || 'Nano', (function () {
             var o = {
                 body: data.body || '',
                 tag: data.tag || ('nano-push-' + Date.now()),
                 icon: data.icon || 'icons/icon-192.png',
                 badge: data.badge || 'icons/icon-192.png',
-                silent: false,
-                renotify: true,
+                silent: data.silent === true,
+                renotify: data.renotify !== false,
                 vibrate: [90, 50, 90],
-                data: { target: data.target || '' }
+                timestamp: Number(data.ts) || Date.now(),
+                data: { target: data.target || '', name: data.name || data.title || '' }
             };
             if (data.reply && String(data.target || '').indexOf('ss-reply:') === 0) {
                 o.actions = [{ action: 'reply', type: 'text', title: '回复', placeholder: '回复 TA…' }];
             }
             return o;
-        })())
-    );
+        })());
+    })());
 });
 
 self.addEventListener('notificationclick', function (event) {

@@ -132,6 +132,8 @@ img{display:block;max-width:100%}
 .navitem:active{background:#f0f0f2}
 
 /* 阅读�?*/
+#libraryPage{background:#fff}
+#libraryPage .home-content{background:#fff}
 #readerPage{background:#fff;transition:background .25s,color .25s}
 #readerPage.bg-white{background:#fff;color:#202124}
 #readerPage.bg-gray{background:#e8e8e8;color:#202124}
@@ -157,16 +159,33 @@ img{display:block;max-width:100%}
 .reader-body .page-panel{
   position:absolute;inset:0;
   padding:8px 26px 140px;
-  overflow-y:auto;-webkit-overflow-scrolling:touch;
+  overflow:hidden;
   line-height:1.9;font-size:17px;
   transition:transform .35s cubic-bezier(.32,.72,0,1),opacity .35s;
   will-change:transform,opacity;
 }
+/* 左右翻页：只按屏幕分页，禁止竖向滚动 */
+#readerPage.pager-page .reader-body{touch-action:none}
+#readerPage.pager-page .page-panel{overflow:hidden !important}
+/* 上下滚动：整章连续滚动，不做分页 */
+#readerPage.pager-scroll .reader-body{overflow:hidden}
+.scroll-reader{
+  position:absolute;inset:0;z-index:1;
+  padding:8px 26px 140px;
+  overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;
+  line-height:1.9;font-size:17px;
+  transition:color .25s;
+}
+.scroll-reader h2{font-size:22px;line-height:1.35;margin:4px 0 22px;font-weight:700;letter-spacing:-.4px}
+.scroll-reader p{margin:0 0 1em;text-indent:2em;text-align:justify;letter-spacing:-.1px}
 .reader-body .page-panel.current{transform:translateX(0);opacity:1;z-index:2}
 .reader-body .page-panel.prev{transform:translateX(-100%);opacity:.3;z-index:1;pointer-events:none}
 .reader-body .page-panel.next{transform:translateX(100%);opacity:.3;z-index:1;pointer-events:none}
 .reader-body .page-panel h2{font-size:22px;line-height:1.35;margin:4px 0 22px;font-weight:700;letter-spacing:-.4px}
 .reader-body .page-panel p{margin:0 0 1em;text-indent:2em;text-align:justify;letter-spacing:-.1px}
+/* 隐藏的测量容器必须和真实页面用同一套段落样式，否则分页会偏 */
+.reader-measure h2{font-size:22px;line-height:1.35;margin:4px 0 22px;font-weight:700;letter-spacing:-.4px}
+.reader-measure p{margin:0 0 1em;text-indent:2em;text-align:justify;letter-spacing:-.1px}
 
 .brightness-overlay{
   position:absolute;inset:0;pointer-events:none;

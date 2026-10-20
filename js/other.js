@@ -159,6 +159,12 @@
         webPushBtn.addEventListener('click', async function () {
             var NP = getNanoPush();
             if (!NP) { setWebPushStatus('推送模块未加载'); return; }
+            // 先在点击手势里要权限：安卓上延迟到 fetch 之后会丢失用户手势
+            try {
+                if ('Notification' in window && Notification.permission === 'default') {
+                    await Notification.requestPermission();
+                }
+            } catch (e) {}
             var endpoint = '';
             try { endpoint = (localStorage.getItem('nano_push_endpoint') || '').trim(); } catch (e) {}
             if (!endpoint) endpoint = 'https://nanopush.nano315.online';
@@ -179,20 +185,21 @@
             NP.setup(endpoint, key, token);
             setWebPushStatus('等待通知权限…');
             try {
-                // 某些安卓浏览器只在顶层页面弹权限框；这里先直接在点击手势里请求一次。
-                if ('Notification' in window && Notification.permission === 'default') {
-                    try { await Notification.requestPermission(); } catch (e) {}
-                }
                 if ('Notification' in window && Notification.permission !== 'granted') {
                     setWebPushStatus('通知权限未开启：请在浏览器/系统设置里允许 Nano 的通知，然后重试');
                     return;
                 }
-                await NP.enable();
+                await NP.enable(true);
                 try { localStorage.setItem('nano_notify_enabled', '1'); } catch (e) {}
                 setWebPushStatus('已开启 ✓ 关闭 App 也能收到');
                 if (webPushBtn) webPushBtn.textContent = '重新订阅';
             } catch (e) {
-                setWebPushStatus(e && e.message ? e.message : '开启失败');
+                var msg = e && e.message ? e.message : '开启失败';
+                var ua = String(navigator.userAgent || '');
+                if (/Android/i.test(ua) && /push service|registration failed/i.test(msg)) {
+                    msg += '（安卓需 Chrome/Edge + Google Play 服务；国产浏览器或无 GMS 的设备无法建立 Web Push）';
+                }
+                setWebPushStatus(msg);
             }
         });
     }

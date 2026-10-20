@@ -2,6 +2,23 @@
 (function () {
     'use strict';
 
+    // 应用根目录：nano-notify.js 同时被 index.html 和 html/ 下的 iframe 引用，
+    // 不能用 location.href 猜（会被解析成 /html/）。用脚本自身地址向上退一级。
+    var NANO_ROOT = (function () {
+        try {
+            if (window.NANO_ROOT) return window.NANO_ROOT;
+            var cur = document.currentScript;
+            if (!cur) {
+                var ss = document.getElementsByTagName('script');
+                for (var i = ss.length - 1; i >= 0; i--) {
+                    if (ss[i] && /nano-notify\.js/.test(ss[i].src || '')) { cur = ss[i]; break; }
+                }
+            }
+            if (cur && cur.src) return new URL('../', cur.src).href;
+        } catch (e) {}
+        return new URL('../', location.href).href;
+    })();
+
     // ===== 一次性清理：早期把 base64 图片（头像/bg/聊天图片）写进了 localStorage，
     // 会把配额（约 5MB）塞满，导致之后所有设置（通知开关、Bark 密钥等）都写不进去。
     // 这里清掉可安全重建的部分，腾出空间。=====
@@ -90,7 +107,7 @@
         { id: 'chat', name: '私聊' },
         { id: 'group', name: '群聊' },
         { id: 'music', name: '一起听' },
-        { id: 'books', name: '一起看' },
+        { id: 'books', name: 'Books' },
         { id: 'ins', name: 'Instagram' },
         { id: 'halo', name: 'Halo' },
         { id: 'moment', name: '朋友圈 / 自动发帖' }
@@ -323,7 +340,7 @@
         var q = ['group=' + encodeURIComponent(opts.group || 'Nano'), 'level=' + encodeURIComponent(opts.level || barkLevel())];
         var target = opts.target || '';
         if (target) {
-            try { q.push('url=' + encodeURIComponent(location.origin + location.pathname + '?open=' + encodeURIComponent(target))); } catch (e) {}
+            try { q.push('url=' + encodeURIComponent(NANO_ROOT + 'index.html?open=' + encodeURIComponent(target))); } catch (e) {}
         }
         // 有头像就用头像当图标；Bark 需要可访问的 http 图片，data: 头像则退回 Nano 图标
         try {
@@ -343,7 +360,7 @@
     }
 
     function nanoIconUrl() {
-        try { return (window.NANO_ROOT || new URL('../', location.href).href) + 'icons/icon-192.png'; } catch (e) { return ''; }
+        try { return NANO_ROOT + 'icons/icon-192.png'; } catch (e) { return ''; }
     }
 
     function notify(title, body, opts) {

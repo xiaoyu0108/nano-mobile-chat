@@ -51,8 +51,11 @@
       reminderDays: 3,
       reminderEnabled: true,
       permissions: [],
+      permissionsByUser: {},
       records: [],
       lastNotified: '',
+      lastCardMonth: '',
+      lastCardChar: '',
       updatedAt: 0
     };
   }
@@ -66,6 +69,11 @@
       d.reminderDays = clamp(raw.reminderDays, 0, 14, 3);
       d.reminderEnabled = raw.reminderEnabled !== false;
       d.permissions = Array.isArray(raw.permissions) ? raw.permissions.map(String).filter(Boolean) : [];
+      d.permissionsByUser = (raw.permissionsByUser && typeof raw.permissionsByUser === 'object') ? raw.permissionsByUser : {};
+      Object.keys(d.permissionsByUser).forEach(function (k) {
+        var arr = d.permissionsByUser[k];
+        d.permissionsByUser[k] = Array.isArray(arr) ? arr.map(String).filter(Boolean) : [];
+      });
       d.records = Array.isArray(raw.records) ? raw.records.filter(function (r) {
         return r && parse(r.start);
       }).map(function (r) {
@@ -75,6 +83,8 @@
         return { start: start, end: end };
       }).sort(function (a, b) { return a.start < b.start ? -1 : 1; }) : [];
       d.lastNotified = String(raw.lastNotified || '');
+      d.lastCardMonth = String(raw.lastCardMonth || '');
+      d.lastCardChar = String(raw.lastCardChar || '');
       d.updatedAt = Number(raw.updatedAt) || 0;
     }
     return d;
@@ -83,13 +93,24 @@
   function load() {
     try {
       var raw = localStorage.getItem(KEY);
-      return normalize(raw ? JSON.parse(raw) : null);
+      var d = normalize(raw ? JSON.parse(raw) : null);
+      var uid = currentUserId() || 'default';
+      if (!d.permissionsByUser[uid] && d.permissions.length) {
+        // 旧数据：把当前权限归到当前 user 名下
+        d.permissionsByUser[uid] = d.permissions.slice();
+      }
+      d.permissions = (d.permissionsByUser[uid] || []).slice();
+      return d;
     } catch (e) { return defaults(); }
   }
 
   var lastSaved = null;
   function save(data) {
     var d = normalize(data);
+    // 周期/设置是全局的；只有角色权限按 user 分开存，切换 user 不会清空另一个 user 的授权
+    var uid = currentUserId() || 'default';
+    d.permissionsByUser = d.permissionsByUser || {};
+    d.permissionsByUser[uid] = (d.permissions || []).map(String).filter(Boolean);
     d.updatedAt = Date.now();
     lastSaved = d;
     try { localStorage.setItem(KEY, JSON.stringify(d)); } catch (e) {}
@@ -303,23 +324,75 @@
     syncTimer = setTimeout(function () { syncWorker(lastSaved || d); }, 500);
   }
 
+  function currentChatId() {
+    try {
+      var m = /[?&]chat=([^&]+)/.exec(location.search || '');
+      return m ? decodeURIComponent(m[1]) : '';
+    } catch (e) { return ''; }
+  }
+
+  function deliverCycleCard(d, st) {
+    var ids = (d.permissions || []).map(String).filter(Boolean);
+    if (!ids.length) return null;
+    var cur = currentChatId();
+    var charId = cur && ids.indexOf(cur) > -1 ? cur : ids[0];
+    var month = st.today.slice(0, 7);
+    var sub = st.daysUntil === 0 ? '预计今天来' : ('预计还有 ' + st.daysUntil + ' 天');
+    var cardData = {
+      cardType: 'cycle',
+      title: '经期提醒',
+      sub: sub,
+      date: niceDate(st.nextStart),
+      cycle: st.cycleLength + ' 天周期',
+      note: '这几天可能会累，记得提前休息、备好用品',
+      footer: '提前照顾好自己'
+    };
+    var card = { id: 'cycle_' + month + '_' + charId, chatId: charId, cardData: cardData, ts: Date.now() };
+    try {
+      if (cur && String(cur) === String(charId) && window.__chat && window.__chat.addMessage) {
+        var now = new Date();
+        window.__chat.addMessage('left', '', pad(now.getHours()) + ':' + pad(now.getMinutes()), null, false, true, cardData);
+      } else {
+        var q = {};
+        try { q = JSON.parse(localStorage.getItem('nano_pending_cycle_cards') || '{}') || {}; } catch (e) { q = {}; }
+        q[charId] = card;
+        localStorage.setItem('nano_pending_cycle_cards', JSON.stringify(q));
+      }
+      return card;
+    } catch (e) { return null; }
+  }
+
   function checkSystemReminder() {
     var d = load();
     if (!d.onboarded || !d.reminderEnabled) return false;
     var st = stats(d);
     if (st.daysUntil < 0 || st.daysUntil > d.reminderDays) return false;
-    if (d.lastNotified === st.today) return false;
+    var did = false;
+    var month = st.today.slice(0, 7);
+    // 一个月最多一张卡片，由一个月度 char 发一次
+    if (String(d.lastCardMonth || '') !== month) {
+      var card = deliverCycleCard(d, st);
+      if (card) {
+        d.lastCardMonth = month;
+        d.lastCardChar = String(card.chatId || '');
+        save(d);
+        did = true;
+      }
+    }
+    if (d.lastNotified === st.today) return did;
     var canNotify = true;
     try { canNotify = ('Notification' in window) && Notification.permission === 'granted'; } catch (e) { canNotify = false; }
-    if (!canNotify) return false;
-    d.lastNotified = st.today;
-    save(d);
-    try {
-      if (window.NanoNotify) {
-        window.NanoNotify.notify('月潮', st.daysUntil === 0 ? '预计今天来经期，记得照顾好自己。' : ('预计还有 ' + st.daysUntil + ' 天来经期，提前准备一下。'), { target: 'cycle', channel: 'cycle' });
-      }
-    } catch (e) {}
-    return true;
+    if (canNotify) {
+      d.lastNotified = st.today;
+      save(d);
+      try {
+        if (window.NanoNotify) {
+          window.NanoNotify.notify('月潮', st.daysUntil === 0 ? '预计今天来经期，记得照顾好自己。' : ('预计还有 ' + st.daysUntil + ' 天来经期，提前准备一下。'), { target: 'cycle', channel: 'cycle' });
+        }
+      } catch (e) {}
+      did = true;
+    }
+    return did;
   }
 
   window.NanoCycle = {

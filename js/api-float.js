@@ -32,6 +32,26 @@
         tts: { label: 'TTS', prefix: 'tts_', listKey: 'tts', selectId: 'ttsModelSelect', fields: { url: 'ttsUrl', key: 'ttsKey', model: 'ttsModel', preset: 'ttsPreset' } }
     };
 
+    // TTS 拉取的是语音模型；音色 ID 由用户在 API 页手动填写
+    var TTS_MODELS = {
+        fishaudio: [
+            { value: 's2.1-pro-free', text: 'S2.1 Pro Free（免费）' },
+            { value: 's2.1-pro', text: 'S2.1 Pro' },
+            { value: 's2-pro', text: 'S2 Pro' },
+            { value: 's1', text: 'S1' }
+        ],
+        minimax: [
+            { value: 'speech-2.6-hd', text: 'Speech 2.6 HD' },
+            { value: 'speech-2.6-turbo', text: 'Speech 2.6 Turbo' },
+            { value: 'speech-2.5-hd-preview', text: 'Speech 2.5 HD Preview' },
+            { value: 'speech-2.5-turbo-preview', text: 'Speech 2.5 Turbo Preview' },
+            { value: 'speech-02-hd', text: 'Speech 02 HD' },
+            { value: 'speech-02-turbo', text: 'Speech 02 Turbo' },
+            { value: 'speech-01-hd', text: 'Speech 01 HD' },
+            { value: 'speech-01-turbo', text: 'Speech 01 Turbo' }
+        ]
+    };
+
     var DEFAULT_SETTINGS = { enabled: true, size: 52, icon: 'classic', x: null, y: null };
 
     // ---------- IndexedDB（与 api.js 同库同表） ----------
@@ -709,6 +729,16 @@
             cfg[c.fields.key] = working.key;
             cfg[c.fields.model] = working.model;
             cfg[c.fields.preset] = working.preset;
+            if (activeCat === 'tts' && working.preset) {
+                return idbGet(PRESET_DATA_KEY).then(function (all) {
+                    var d = (all && all[c.prefix + working.preset]) || {};
+                    if (d.type) cfg.ttsType = d.type;
+                    if (d.groupId !== undefined) cfg.ttsGroupId = d.groupId;
+                    if (d.region !== undefined) cfg.ttsMinimaxRegion = d.region;
+                    if (d.voice !== undefined) cfg.ttsVoice = d.voice;
+                    return idbSet(CONFIG_KEY, cfg);
+                });
+            }
             return idbSet(CONFIG_KEY, cfg);
         }).then(function () {
             // 同步「分配」：让各功能按所选预设读取（无预设时回退到当前配置）
@@ -753,42 +783,39 @@
         pullBtn.classList.add('ab-spin');
         statusEl.textContent = '正在拉取…';
 
+        function saveModels(models) {
+            return idbGet(MODEL_LIST_KEY).then(function (all) {
+                all = all || {};
+                all[c.selectId] = models;
+                return idbSet(MODEL_LIST_KEY, all).then(function () {
+                    modelCache = models.slice();
+                    renderModels(models, working.model || models[0].value);
+                    working.model = modelEl.value;
+                    flash('拉取成功 · ' + models.length + ' 个');
+                });
+            });
+        }
+
         idbGet(CONFIG_KEY).then(function (cfg) {
             cfg = cfg || {};
             var type = activeCat === 'tts' ? (cfg.ttsType || 'openai') : '';
-            var groupId = activeCat === 'tts' ? (cfg.ttsGroupId || '') : '';
-            var p;
-            if (type === 'minimax') {
-                p = fetch(baseV1(url) + '/get_voice?GroupId=' + encodeURIComponent(groupId), { headers: { 'Authorization': 'Bearer ' + key } });
-            } else if (type === 'fishaudio') {
-                var fishRoot = cleanUrl(url).replace(/\/v1$/i, '');
-                p = fetch(fishRoot + '/model?page_size=100', { headers: { 'Authorization': 'Bearer ' + key } });
-            } else {
-                p = fetch(baseV1(url) + '/models', { headers: { 'Authorization': 'Bearer ' + key } });
+            if (type === 'minimax' || type === 'fishaudio') {
+                var builtin = (TTS_MODELS[type] || []).slice();
+                if (!builtin.length) throw new Error('没有可用的语音模型');
+                return saveModels(builtin);
             }
+            var p = fetch(baseV1(url) + '/models', { headers: { 'Authorization': 'Bearer ' + key } });
             return p.then(function (resp) {
                 if (!resp.ok) throw new Error('HTTP ' + resp.status);
                 return resp.json();
             }).then(function (data) {
-                var raw;
-                if (type === 'minimax') raw = data.voice_list || data.data || [];
-                else if (type === 'fishaudio') raw = data.items || data.data || [];
-                else raw = data.data || data.models || [];
+                var raw = data.data || data.models || [];
                 var models = (raw || []).map(function (m) {
-                    var name = m.voice_id || m._id || m.id || m.name || m;
-                    return { value: name, text: m.voice_name || m.title || m.name || name };
+                    var name = m.id || m.name || m;
+                    return { value: name, text: name };
                 }).filter(function (m) { return m.value; });
                 if (!models.length) throw new Error('未找到模型');
-                return idbGet(MODEL_LIST_KEY).then(function (all) {
-                    all = all || {};
-                    all[c.selectId] = models;
-                    return idbSet(MODEL_LIST_KEY, all).then(function () {
-                        modelCache = models.slice();
-                        renderModels(models, working.model || models[0].value);
-                        working.model = modelEl.value;
-                        flash('拉取成功 · ' + models.length + ' 个');
-                    });
-                });
+                return saveModels(models);
             });
         }).catch(function (e) {
             flash('拉取失败：' + (e && e.message ? e.message : e));

@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <script src="../js/nano-runtime.js?v=20261020b"></script>
+  <script src="../js/group-store.js"></script>
   <script src="../js/appearance.js"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <link rel="icon" href="../icons/icon-192.png" />
@@ -626,6 +627,7 @@
       bottom: calc(16px + var(--safe-bottom));
       left: 50%;
       transform: translateX(-50%);
+      width: min(336px, calc(100% - 32px));
       z-index: 100;
       /* 关键：包裹层不拦截事件，透明穿透 */
       pointer-events: none;
@@ -634,17 +636,22 @@
     .dock {
       display: flex;
       align-items: center;
-      gap: 4px;
+      justify-content: space-between;
+      gap: 2px;
+      width: 100%;
+      box-sizing: border-box;
       background: #ffffff;
       border-radius: 999px;
-      padding: 4px 12px;
+      padding: 4px 10px;
       box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0,0,0,0.04);
       pointer-events: auto; /* 胶囊本体可点击 */
     }
 
     .dock-btn {
       position: relative;
-      width: 66px;
+      flex: 1;
+      min-width: 0;
+      width: auto;
       height: 46px;
       border: none;
       background: transparent;
@@ -800,6 +807,66 @@
       font-size: 20px;
       line-height: 1;
       color: #555;
+    }
+
+    .group-avatar-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 2px 2px 4px;
+    }
+
+    .group-avatar-preview {
+      width: 58px;
+      height: 58px;
+      border-radius: 18px;
+      background: #f0f0f2 center/cover no-repeat;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #8e8e93;
+      font-size: 18px;
+      font-weight: 600;
+      flex-shrink: 0;
+      overflow: hidden;
+    }
+
+    .group-avatar-preview img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .group-avatar-actions {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .group-avatar-pick {
+      height: 36px;
+      border: 0;
+      border-radius: 11px;
+      background: #f2f2f3;
+      color: #111;
+      font-size: 13px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+
+    .group-avatar-reset {
+      align-self: flex-start;
+      border: 0;
+      background: transparent;
+      color: #8e8e93;
+      font-size: 12px;
+      padding: 0;
+      cursor: pointer;
     }
 
     .group-name-input {
@@ -1065,6 +1132,14 @@
           <span>新建群聊</span>
           <button type="button" id="groupClose" aria-label="关闭">×</button>
         </div>
+        <div class="group-avatar-row">
+          <div class="group-avatar-preview" id="groupAvatarPreview">群</div>
+          <div class="group-avatar-actions">
+            <label class="group-avatar-pick" for="groupAvatarInput">设置群头像</label>
+            <input type="file" id="groupAvatarInput" accept="image/*" hidden />
+            <button type="button" class="group-avatar-reset" id="groupAvatarReset">恢复默认</button>
+          </div>
+        </div>
         <input class="group-name-input" id="groupNameInput" type="text" placeholder="群聊名称" maxlength="24" />
         <div class="group-members" id="groupMembers"></div>
         <button class="group-create-btn" id="groupCreateBtn" type="button">创建群聊</button>
@@ -1094,6 +1169,7 @@
   let currentTab = 'friends';
   let searchKw = '';
   let activePage = 'chat';
+  let groupAvatarTemp = '';
 
   const $ = function (id) { return document.getElementById(id); };
 
@@ -1123,13 +1199,19 @@
     } catch (e) {}
   }
 
+  let returnTab = '';
+
   function takeReturnPage() {
+    returnTab = '';
     try {
       const raw = sessionStorage.getItem(ACTIVE_PAGE_KEY);
       if (!raw) return 'chat';
       sessionStorage.removeItem(ACTIVE_PAGE_KEY);
       const d = JSON.parse(raw);
-      if (d && Date.now() - d.at < 120000 && (d.page === 'profile' || d.page === 'chat')) return d.page;
+      if (!d || Date.now() - d.at >= 120000) return 'chat';
+      if (d.page === 'groups') { returnTab = 'groups'; return 'chat'; }
+      if (d.tab === 'groups') returnTab = 'groups';
+      if (d.page === 'profile' || d.page === 'chat') return d.page;
     } catch (e) {}
     return 'chat';
   }
@@ -1566,8 +1648,9 @@
     post({ type: 'currentMaskChanged', maskId: id, data: maskData });
     post({ type: 'homeDataUpdated', data: maskData });
     renderAvatarSwitcher();
+    loadGroups();
     loadFriends().then(function () {
-      if (currentTab === 'friends') renderCurrent();
+      renderCurrent();
       renderProfile();
     });
   }
@@ -1732,12 +1815,27 @@
   }
 
   /* ================= 建群 ================= */
+  function renderGroupAvatarPreview() {
+    const el = $('groupAvatarPreview');
+    if (!el) return;
+    if (groupAvatarTemp) el.innerHTML = '<img src="' + escAttr(groupAvatarTemp) + '" alt="">';
+    else el.textContent = '群';
+  }
+
+  function resetGroupAvatar() {
+    groupAvatarTemp = '';
+    const file = $('groupAvatarInput');
+    if (file) { try { file.value = ''; } catch (e) {} }
+    renderGroupAvatarPreview();
+  }
+
   async function openGroupModal() {
     const mask = $('groupMask');
     const input = $('groupNameInput');
     const box = $('groupMembers');
     if (!mask || !box) return;
     input.value = '';
+    resetGroupAvatar();
     box.innerHTML = '<div class="group-empty">正在读取角色…</div>';
     mask.classList.add('show');
 
@@ -1787,7 +1885,7 @@
     const group = {
       id: 'g' + Date.now(),
       name: name,
-      avatar: '',
+      avatar: groupAvatarTemp || '',
       members: selected,
       memberNames: memberNames,
       createdBy: current ? current.id : null,
@@ -1822,23 +1920,15 @@
       localStorage.setItem(GROUP_DATA_PREFIX + group.id, JSON.stringify({
         name: name,
         notice: '',
-        avatar: '',
+        avatar: groupAvatarTemp || '',
         ownerId: 'me',
         members: memberObjects
       }));
     } catch (e) {}
 
     closeGroupModal();
-    currentTab = 'groups';
-    document.querySelectorAll('.tabs .tab').forEach(function (t) {
-      t.classList.toggle('active', t.dataset.tab === 'groups');
-    });
-    const lf = $('list-friends');
-    const lg = $('list-groups');
-    if (lf) lf.style.display = 'none';
-    if (lg) lg.style.display = 'block';
     loadGroups();
-    renderCurrent();
+    activateTab('groups');
     renderProfile();
     post({ type: 'groupChatCreated', group: group });
     post({ type: 'groupsDataUpdated', groupId: group.id });
@@ -1854,6 +1944,18 @@
       p.classList.toggle('active', p.id === 'page-' + page);
     });
     if (page === 'profile') renderProfile();
+  }
+
+  function activateTab(tab) {
+    currentTab = tab === 'groups' ? 'groups' : 'friends';
+    document.querySelectorAll('.tabs .tab').forEach(function (t) {
+      t.classList.toggle('active', t.dataset.tab === currentTab);
+    });
+    const lf = $('list-friends');
+    const lg = $('list-groups');
+    if (lf) lf.style.display = currentTab === 'friends' ? 'block' : 'none';
+    if (lg) lg.style.display = currentTab === 'groups' ? 'block' : 'none';
+    renderCurrent();
   }
 
   function bindStatic() {
@@ -1876,6 +1978,28 @@
 
     const groupClose = $('groupClose');
     if (groupClose) groupClose.addEventListener('click', closeGroupModal);
+
+    const groupAvatarInput = $('groupAvatarInput');
+    if (groupAvatarInput) {
+      groupAvatarInput.addEventListener('change', function () {
+        const file = this.files && this.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = function (ev) {
+          groupAvatarTemp = ev.target.result || '';
+          renderGroupAvatarPreview();
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+    const groupAvatarReset = $('groupAvatarReset');
+    if (groupAvatarReset) groupAvatarReset.addEventListener('click', resetGroupAvatar);
+    const groupAvatarPreview = $('groupAvatarPreview');
+    if (groupAvatarPreview) {
+      groupAvatarPreview.addEventListener('click', function () {
+        try { $('groupAvatarInput').click(); } catch (e) {}
+      });
+    }
     const groupMask = $('groupMask');
     if (groupMask) {
       groupMask.addEventListener('click', function (e) {
@@ -1887,14 +2011,7 @@
 
     document.querySelectorAll('.tabs .tab').forEach(function (tab) {
       tab.addEventListener('click', function () {
-        document.querySelectorAll('.tabs .tab').forEach(function (t) { t.classList.remove('active'); });
-        tab.classList.add('active');
-        currentTab = tab.dataset.tab;
-        const lf = $('list-friends');
-        const lg = $('list-groups');
-        if (lf) lf.style.display = currentTab === 'friends' ? 'block' : 'none';
-        if (lg) lg.style.display = currentTab === 'groups' ? 'block' : 'none';
-        renderCurrent();
+        activateTab(tab.dataset.tab);
       });
     });
 
@@ -1995,7 +2112,8 @@
         }
         currentUser = resolveCurrentUser();
         renderAvatarSwitcher();
-        loadFriends().then(function () { if (currentTab === 'friends') renderCurrent(); renderProfile(); });
+        loadGroups();
+        loadFriends().then(function () { renderCurrent(); renderProfile(); });
       }
       if (d.type === 'groupsDataUpdated' || d.type === 'groupChatCreated') {
         loadGroups();
@@ -2012,7 +2130,7 @@
 
     window.addEventListener('storage', function (e) {
       if (!e.key) return;
-      if (e.key === GROUP_KEY || e.key.indexOf(GROUP_MSG_PREFIX) === 0) {
+      if (e.key.indexOf(GROUP_KEY) === 0 || e.key.indexOf(GROUP_MSG_PREFIX) === 0 || e.key.indexOf(GROUP_DATA_PREFIX) === 0) {
         loadGroups();
         if (currentTab === 'groups') renderCurrent();
       }
@@ -2020,7 +2138,8 @@
         maskData = loadMaskLocal() || maskData;
         currentUser = resolveCurrentUser();
         renderAvatarSwitcher();
-        loadFriends().then(function () { if (currentTab === 'friends') renderCurrent(); renderProfile(); });
+        loadGroups();
+        loadFriends().then(function () { renderCurrent(); renderProfile(); });
       }
     });
   }
@@ -2028,6 +2147,8 @@
   async function loadAll() {
     try { maskData = await loadMaskData(); } catch (e) { maskData = { masks: [], currentMaskId: null }; }
     currentUser = resolveCurrentUser();
+    // 确保 group-store 能同步读到当前 user，按 user 隔离群聊数据
+    try { if (currentUser) saveMaskData(); } catch (e) {}
     await loadFriends();
     loadGroups();
     renderAvatarSwitcher();
@@ -2039,6 +2160,7 @@
     bindStatic();
     loadAll().then(function () {
       activatePage(takeReturnPage());
+      if (returnTab) activateTab(returnTab);
     }).catch(function () {
       activatePage('chat');
     });

@@ -271,18 +271,7 @@
     try {
       chars = window.NanoUserScope ? await NanoUserScope.loadChars() : [];
     } catch (e) { chars = []; }
-    // 清掉不属于当前 user 的旧权限，避免切换 user 后残留
-    try {
-      var visible = {};
-      chars.forEach(function (c) { visible[String(c.id)] = 1; });
-      var oldPerms = (data.permissions || []).map(String);
-      var nextPerms = oldPerms.filter(function (id) { return !!visible[id]; });
-      if (nextPerms.length !== oldPerms.length) {
-        var next = NC.load();
-        next.permissions = nextPerms;
-        data = NC.save(next);
-      }
-    } catch (e) {}
+    // 角色权限按 user 分别存储；这里只显示当前 user 绑定的角色，不删除其他 user 的授权
     renderPermSummary();
     if (permDraft) renderCharSheet();
   }

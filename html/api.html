@@ -312,13 +312,21 @@
                                     <button class="eye-btn" data-target="ttsKey" type="button"><i class="fas fa-eye"></i></button>
                                 </div>
                             </div>
+                            <div class="form-group" id="ttsMinimaxRegionWrap" style="display:none">
+                                <label class="form-label">MiniMax 区域 <span class="hint">(国内 / 海外账号都能用)</span></label>
+                                <select class="form-control" id="ttsMinimaxRegion">
+                                    <option value="auto">自动（按当前地址）</option>
+                                    <option value="cn">国内版 api.minimax.chat</option>
+                                    <option value="global">海外版 api.minimaxi.com</option>
+                                </select>
+                            </div>
                             <div class="form-group" id="ttsGroupWrap" style="display:none">
                                 <label class="form-label">GroupId <span class="hint">(仅 MiniMax 需要)</span></label>
                                 <input class="form-control" id="ttsGroupId" placeholder="MiniMax GroupId..." />
                             </div>
                             <div class="form-group">
-                                <label class="form-label">声音 ID <span class="hint">(可选。Fish Audio 可直接填公开模型的 id 作为 reference_id；留空则用上面选择的音色)</span></label>
-                                <input class="form-control" id="ttsVoice" placeholder="例如 Fish Audio 公开模型 id / voice_id" />
+                                <label class="form-label">音色 ID <span class="hint">(手动填写。Fish Audio 填 reference_id / voice id；MiniMax 填 voice_id；OpenAI 填 voice 名)</span></label>
+                                <input class="form-control" id="ttsVoice" placeholder="手动填写音色 ID，例如 Fish Audio 的 reference_id" />
                             </div>
                             <div class="form-row">
                                 <div class="form-group" style="flex:2;">
@@ -335,11 +343,11 @@
                                 </div>
                             </div>
                             <div class="btn-group">
-                                <button class="btn btn-primary" id="ttsFetch"><i class="fas fa-cloud-download-alt"></i> 拉取音色</button>
+                                <button class="btn btn-primary" id="ttsFetch"><i class="fas fa-cloud-download-alt"></i> 拉取模型</button>
                                 <button class="btn" id="ttsSave"><i class="fas fa-save"></i> 保存配置</button>
                             </div>
                             <div class="model-select-wrap" id="ttsModelWrap">
-                                <label class="form-label">选择音色 / 模型</label>
+                                <label class="form-label">选择语音模型</label>
                                 <div class="model-search-row">
                                     <input class="form-control" id="ttsModelSearch" placeholder="搜索..." />
                                     <button class="btn btn-xs" id="ttsModelSearchBtn">搜索</button>
@@ -369,9 +377,9 @@
         </div>
     </div>
 
-    <script src="../js/nano-tts.js"></script>
-<script src="../js/api.js?v=20261018c"></script>
-<script src="../js/api-float.js"></script>
+    <script src="../js/nano-tts.js?v=20261020k"></script>
+    <script src="../js/api.js?v=20261020k"></script>
+    <script src="../js/api-float.js?v=20261020k"></script>
 <script src="../js/nano-own-back.js"></script>
 <script src="../swipe-back.js"></script>
 </body>

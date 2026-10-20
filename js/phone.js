@@ -2323,7 +2323,7 @@ const SETTINGS_APPS = [
   {id:"game",name:"游戏"},{id:"mail",name:"邮箱"},{id:"settings",name:"设置"},
   {id:"video",name:"视频"},{id:"diary",name:"日记"},{id:"private",name:"私密"},
   {id:"health",name:"健康"},{id:"chat",name:"聊天"},
-  {id:"doubao",name:"豆包"},{id:"taobao",name:"淘宝"},{id:"store",name:"商城"},{id:"mapcal",name:"地图日程"},
+  {id:"doubao",name:"豆包"},{id:"taobao",name:"淘宝"},{id:"mapcal",name:"地图日程"},
   {id:"album",name:"相册"},{id:"memo",name:"备忘录"},{id:"browser",name:"浏览器"}
 ];
 
@@ -2437,6 +2437,7 @@ async function openSettings(){
   for(let i = 0; i < SETTINGS_APPS.length; i++){
     const a = SETTINGS_APPS[i];
     const custom = await dataGet(`icon_${currentChar.id}_${a.id}`);
+    const iconMode = (await dataGet(`iconmode_${currentChar.id}_${a.id}`)) || "fill";
     const row = document.createElement("div");
     row.className = "st-icon-row";
     const curIcon = document.querySelector(`#phoneHome [data-app="${CSS.escape(a.id)}"] .icon`);
@@ -2445,6 +2446,10 @@ async function openSettings(){
         ${custom ? "" : (curIcon ? curIcon.innerHTML : "")}
       </div>
       <div class="st-icon-name">${escHtml(a.name)}</div>
+      ${custom ? `<select class="st-icon-mode" data-mode-for="${a.id}">
+        <option value="free"${iconMode === "free" ? " selected" : ""}>自由形状</option>
+        <option value="fill"${iconMode === "fill" ? " selected" : ""}>填充包裹器</option>
+      </select>` : ""}
       ${custom ? `<button class="st-mini-btn" data-reset="${a.id}">重置</button>` : ""}
       <button class="st-pick-btn" data-pick="${a.id}">更换</button>`;
     iconList.appendChild(row);
@@ -2462,8 +2467,15 @@ async function openSettings(){
   iconList.querySelectorAll("[data-reset]").forEach(btn => {
     btn.onclick = async () => {
       await dataSet(`icon_${currentChar.id}_${btn.dataset.reset}`, "");
+      await dataSet(`iconmode_${currentChar.id}_${btn.dataset.reset}`, "");
       await applyIcons(currentChar.id);
       openSettings();
+    };
+  });
+  iconList.querySelectorAll("[data-mode-for]").forEach(sel => {
+    sel.onchange = async () => {
+      await dataSet(`iconmode_${currentChar.id}_${sel.dataset.modeFor}`, sel.value);
+      await applyIcons(currentChar.id);
     };
   });
 
@@ -2700,6 +2712,23 @@ async function renderChars(){
     b.onclick = () => enterChar(c, id);
     charList.appendChild(b);
   });
+  // 通知点击直接进入某个角色的手机：phone.html?char=<角色id>
+  try {
+    const want = String(new URLSearchParams(location.search).get('char') || '').trim();
+    if (want) {
+      const hit = list.find((c, i) => String(c.id || c.charId || c.uid || c.name || ('char_' + i)) === want);
+      if (hit) {
+        const id = String(hit.id || hit.charId || hit.uid || hit.name || '');
+        enterChar(hit, id);
+        try {
+          const u = new URL(location.href);
+          u.searchParams.delete('char');
+          const qs = u.searchParams.toString();
+          history.replaceState(null, '', u.pathname + (qs ? ('?' + qs) : '') + u.hash);
+        } catch (e) {}
+      }
+    }
+  } catch (e) {}
 }
 
 async function applyWallpaper(charId){
@@ -2708,17 +2737,29 @@ async function applyWallpaper(charId){
 }
 async function applyIcons(charId){
   document.querySelectorAll("#phoneHome .icon-box").forEach(box => {
-    box.classList.remove("has-custom");
+    box.classList.remove("has-custom", "mode-free", "mode-fill");
     box.style.backgroundImage = "";
+    box.querySelectorAll(".phone-custom-img").forEach(img => img.remove());
   });
   const els = [...document.querySelectorAll("#phoneHome .app[data-app], #phoneHome .dock-slot[data-app]")];
   for(const el of els){
-    const url = await dataGet(`icon_${charId}_${el.dataset.app}`);
+    const appId = el.dataset.app;
+    const url = await dataGet(`icon_${charId}_${appId}`);
     if(url && url.length > 10){
       const box = el.querySelector(".icon-box");
       if(box){
-        box.classList.add("has-custom");
-        box.style.backgroundImage = `url("${url}")`;
+        const mode = (await dataGet(`iconmode_${charId}_${appId}`)) || "fill";
+        box.classList.add("has-custom", mode === "free" ? "mode-free" : "mode-fill");
+        if(mode === "free"){
+          box.style.backgroundImage = "";
+          const img = document.createElement("img");
+          img.className = "phone-custom-img";
+          img.src = url;
+          img.alt = "";
+          box.appendChild(img);
+        }else{
+          box.style.backgroundImage = `url("${url}")`;
+        }
       }
     }
   }

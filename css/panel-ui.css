@@ -668,9 +668,16 @@ body.panel-wallet .app {
     background: #fff !important;
     border-radius: 18px !important;
 }
+.panel-wallet .modal-card {
+    background: #fff !important;
+}
 .panel-wallet .modal-card .btn-confirm {
-    background: var(--m-ink) !important;
-    color: #fff !important;
+    background: #fff !important;
+    color: var(--m-ink) !important;
+    font-weight: 650 !important;
+}
+.panel-wallet .modal-card .btn-confirm:active {
+    background: #f7f7f8 !important;
 }
 .panel-wallet .modal-card .btn-cancel {
     background: var(--m-fill) !important;

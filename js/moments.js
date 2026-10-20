@@ -80,11 +80,26 @@
 
     function loadMomentsData(callback) {
         if (db) {
-            dbGetAll(function (items) { normalizeMaskScoped(items, callback); });
+            dbGetAll(function (items) {
+                // 后台推送暂存的朋友圈会先写 localStorage；这里合并 srv_ 开头的条目，
+                // 避免「通知说发了动态，打开朋友圈却没有」。
+                try {
+                    var raw = localStorage.getItem(MOMENTS_STORAGE_KEY);
+                    var local = raw ? JSON.parse(raw) : [];
+                    if (Array.isArray(local) && local.length) {
+                        var seen = {};
+                        (items || []).forEach(function (x) { if (x && x.id) seen[x.id] = 1; });
+                        local.forEach(function (x) {
+                            if (x && x.id && String(x.id).indexOf('srv_') === 0 && !seen[x.id]) items.push(x);
+                        });
+                    }
+                } catch (e) {}
+                normalizeMaskScoped(items, callback);
+            });
         } else {
             try {
-                var raw = localStorage.getItem(MOMENTS_STORAGE_KEY);
-                if (raw) { normalizeMaskScoped(JSON.parse(raw), callback); return; }
+                var raw2 = localStorage.getItem(MOMENTS_STORAGE_KEY);
+                if (raw2) { normalizeMaskScoped(JSON.parse(raw2), callback); return; }
             } catch (e) {}
             normalizeMaskScoped([], callback);
         }
@@ -120,14 +135,12 @@
 
     function removeMoment(id) {
         if (db) { dbDelete(id, function () {}); }
-        else {
-            try {
-                var raw = localStorage.getItem(MOMENTS_STORAGE_KEY);
-                var arr = raw ? JSON.parse(raw) : [];
-                arr = arr.filter(function (m) { return m.id !== id; });
-                localStorage.setItem(MOMENTS_STORAGE_KEY, JSON.stringify(arr));
-            } catch(e) {}
-        }
+        try {
+            var raw = localStorage.getItem(MOMENTS_STORAGE_KEY);
+            var arr = raw ? JSON.parse(raw) : [];
+            arr = (arr || []).filter(function (m) { return m && m.id !== id; });
+            localStorage.setItem(MOMENTS_STORAGE_KEY, JSON.stringify(arr));
+        } catch(e) {}
     }
 
     // ===== 读取用户/角色数据（人设面具优先 nano_mask_data） =====
@@ -1800,7 +1813,7 @@
         } finally {
             hideMomentsLoading();
             window.__momentsGenerating = false;
-            try { if (window.parent !== window) window.parent.postMessage({ type: 'NANO_GEN_NOTIFY', title: '朋友圈已更新', body: '新动态生成完成' }, '*'); } catch (e) {}
+            try { if (window.parent !== window) window.parent.postMessage({ type: 'NANO_GEN_NOTIFY', title: '朋友圈已更新', body: '新动态生成完成', target: 'moments', avatar: (item && item.avatar) || '', name: (item && item.name) || '朋友圈' }, '*'); } catch (e) {}
         }
     };
 

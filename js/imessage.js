@@ -465,7 +465,21 @@ function startPendingWatch() {
 }
 function notifyApp(title, body, opts) {
   opts = opts || {};
-  // iMessage 只走系统通知，不再经过内置通知栏
+  // 统一走内置通知栏（前台）/ 系统通知 + Bark（后台）
+  try {
+    const nn = window.NanoNotify || (window.parent && window.parent.NanoNotify);
+    if (nn && nn.notify) {
+      nn.notify(title || 'iMessage', body, {
+        target: opts.target || 'imessage',
+        channel: 'imessage',
+        avatar: opts.avatar || opts.icon || '',
+        icon: opts.icon || '',
+        name: opts.name || title || 'iMessage',
+        group: opts.group || 'iMessage'
+      });
+      return;
+    }
+  } catch (e) {}
   try {
     if (!('Notification' in window)) return;
     const payload = {
@@ -1351,7 +1365,7 @@ async function applyRefreshRaw(raw, picks) {
     const last = chat.history[chat.history.length - 1];
     chat.preview = last.text; chat.lastTime = last.time; chat.sortTime = last.ts; chat.unread = (chat.unread || 0) + msgs.length;
     await saveChat(chat);
-    notifyApp(ch.name, msgs[0].text || lines[0], { icon: ch.avatar, group: ch.name }); charNotified = true;
+        notifyApp(ch.name, msgs[0].text || lines[0], { icon: ch.avatar, avatar: ch.avatar, name: ch.name, group: ch.name }); charNotified = true;
     added++;
     try { maybeSummarize(ch.id, ch.name, chat.history); } catch (e) {}
   }
@@ -1412,7 +1426,7 @@ async function maybeAltProbe() {
     const _dd = new Date();
     localStorage.setItem('nano_imessage_altprobe_day_' + currentNs(), _dd.getFullYear() + '-' + (_dd.getMonth() + 1) + '-' + _dd.getDate());
     localStorage.setItem('nano_imessage_altprobe_char_' + currentNs() + '_' + ch.id, String(Date.now()));
-    notifyApp(name, list[0].text || lines[0], { group: name });
+      notifyApp(name, list[0].text || lines[0], { name: name, group: name });
     if (state.current && state.current.id === chat.id) { state.messages = chat.history; renderMessages(); renderBanner(chat); }
     else renderList();
     return list.length;

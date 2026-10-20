@@ -161,13 +161,24 @@
       '3. 双方关系与情感：相处模式、称呼、亲昵方式、暧昧或默契的细节。\n' +
       '4. ' + charName + '自己的态度：喜欢/讨厌的歌或书、说过的话、答应过的事。\n' +
       '5. 其他值得长期记住的细节。\n\n' +
-      '格式：每条独立一行，以【类型】开头，例如：\n' +
-      '【共同经历】' + charName + '和' + userName + '一起听了《某首歌》，' + userName + '说这让他想起高中。\n' +
-      '【' + userName + '偏好】' + userName + '喜欢民谣和慢歌，不太听电子乐。\n\n' +
+      '格式：每条独立一行，以【类型|重要度】开头，重要度 1~5，例如：\n' +
+      '【共同经历|4】' + charName + '和' + userName + '一起听了《某首歌》，' + userName + '说这让他想起高中。\n' +
+      '【' + userName + '偏好|2】' + userName + '喜欢民谣和慢歌，不太听电子乐。\n\n' +
+      '重要度必须由「' + charName + '」自己判断，不能全部写 3：5=刻骨铭心/改变关系，4=重要且长期影响，3=稳定信息，2=轻量偏好，1=可记可不记。\n\n' +
       '要求：\n' +
       '- 记忆是长期使用的，越具体越详细越好，保留歌名、书名、名字、地点等细节。\n' +
       '- 每条 40~120 字，宁可写多不要写少。\n' +
-      '- 只输出有实质内容的记忆，不要泛泛而谈。';
+      '- 只输出有实质内容的记忆，不要泛泛而谈。\n' +
+      '- 同一批记忆的重要度要有高有低，不要全部都是 3。';
+  }
+
+  function guessImportance(type, content) {
+    var t = String(type || '') + ' ' + String(content || '');
+    if (/约定|承诺|答应|表白|分手|和好|吵架|纪念日|生日|求婚|结婚|秘密|禁忌|第一次/.test(t)) return 5;
+    if (/重要|情感|关系|家人|朋友|身世|过往|愿望|梦想|共同经历/.test(String(type || ''))) return 4;
+    if (/偏好|口味|习惯|作息|喜欢|讨厌|不吃|过敏|口头禅/.test(t)) return 2;
+    if (String(content || '').length > 120) return 4;
+    return 3;
   }
 
   function parseSummary(summary, charName, charId) {
@@ -175,14 +186,22 @@
     String(summary || '').split('\n').forEach(function (line) {
       line = line.trim();
       if (!line) return;
-      var type = '其他', content = line;
+      var type = '其他', content = line, importance = 0;
       var m = line.match(/^【(.+?)】/);
-      if (m) { type = m[1]; content = line.replace(/^【.+?】/, '').trim(); }
+      if (m) {
+        var tag = m[1].trim();
+        content = line.replace(/^【.+?】/, '').trim();
+        var im = tag.match(/^(.*?)[｜|:：]\s*([1-5])\s*$/);
+        if (im) { type = im[1].trim() || '其他'; importance = parseInt(im[2], 10) || 0; }
+        else type = tag;
+      }
       if (!content) return;
+      if (!importance) importance = guessImportance(type, content);
       items.push({
         id: 'mem_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
         type: type,
         content: content,
+        importance: importance,
         embedding: null,
         hasVector: false,
         date: new Date().toISOString(),

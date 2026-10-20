@@ -1,0 +1,33 @@
+name = "nano-push"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+preview_urls = false
+workers_dev = true
+
+# 自定义域名：国内直接走自己的域名，比 workers.dev 更容易访问
+# （自动签发证书、自动建 DNS，且不受主域名是否代理影响）
+routes = [
+  { pattern = "nanopush.nano315.online", custom_domain = true },
+  { pattern = "music.nano315.online", custom_domain = true }
+]
+
+kv_namespaces = [
+  { binding = "PUSH_KV", id = "2bd6299b03c442bd81cbf023ec6cfb92" }
+]
+
+[triggers]
+crons = ["*/5 * * * *"]
+
+# 定时提醒（北京时间，必须是 5 分钟的整数倍），到点会发 Bark 通知
+[vars]
+REMIND_TIMES = "09:00,12:30,20:00,23:00"
+REMIND_TEXT = "有人想你了，点开看看～"
+
+# ── 屏幕速聊（iOS 快捷指令）──
+# 敏感项用 secret 设置，不要写进本文件（会进版本库）：
+#   wrangler secret put PEEK_TOKEN      # 与 ios-setting 页面生成的「令牌」一致
+#   wrangler secret put PEEK_API_KEY    # 你的主模型 API Key（只存在服务端）
+# 非敏感的地址/模型也可以放这里：
+# [vars]
+# PEEK_API_URL = "https://api.openai.com/v1"
+# PEEK_MODEL = "gpt-4o-mini"

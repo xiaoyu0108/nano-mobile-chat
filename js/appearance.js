@@ -303,11 +303,22 @@
         } catch (e) {}
     }
 
+    // 旧版卡片美化（.card-main / .icon-wrap / .card-title / .card-sub）是按
+    // 「图标 + 文字横向长方形」写的；新初始模板默认竖向居中。检测到旧选择器时
+    // 补一层兼容布局，让之前保存的美化继续按长方形显示。
+    function legacyCardCompatCss(css) {
+        var s = String(css || '');
+        if (!/\.bubble-card[^{}]*\.(card-main|icon-wrap)/.test(s)) return '';
+        return '.bubble-card .main-section.card-main{display:flex;flex-direction:row;align-items:center;text-align:left;gap:10px;padding:12px;border-bottom:0;}' +
+            '.bubble-card .main-text{display:flex;flex-direction:column;flex:1;min-width:0;align-items:flex-start;gap:2px;}' +
+            '.bubble-card .main-icon,.bubble-card .icon-wrap{margin:0;flex-shrink:0;}';
+    }
+
     function applyChatCss(css) {
         // 聊天 CSS 仅作用于单聊/群聊内页（额外的聊天专用覆盖）
         if (!isChatInterior) return;
         applyStyle('nano-beautify-chat', css || '');
-        applyStyle('nano-beautify-chat-fix', CHAT_STRUCT_FIX);
+        applyStyle('nano-beautify-chat-fix', CHAT_STRUCT_FIX + legacyCardCompatCss(css));
         applyStyle('nano-chat-float', NANO_CHAT_FLOAT_CSS);
         reorderChatLayers();
         // 头像样式始终放最后，保证头像框不被聊天/全局 CSS 盖掉

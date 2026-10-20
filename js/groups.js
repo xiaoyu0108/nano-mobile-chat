@@ -221,6 +221,17 @@
     var quoteText = $('quoteText');
     var sendBtn = $('sendBtn');
 
+    // 点输入框上方的消息区：收起键盘，让底栏重新贴回屏幕底部
+    try {
+        messageScroll.addEventListener('click', function () {
+            if (!document.documentElement.classList.contains('keyboard-open')) return;
+            var ae = document.activeElement;
+            if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) {
+                try { ae.blur(); } catch (e) {}
+            }
+        });
+    } catch (e) {}
+
     var currentQuote = null;
     var isWaitingForReply = false;
     var groupCollapseExpanded = 0;
@@ -462,6 +473,12 @@
         var cls = 'bubble-card ' + type + ' ' + (cd.cardType || '');
         if (cd.opened) cls += ' opened';
         card.className = cls;
+        // 任意 DIY：卡片数据可以直接指定宽度/最小高度
+        try {
+            var __cssSize = function (v) { v = String(v); return /^\d+(\.\d+)?$/.test(v) ? v + 'px' : v; };
+            if (cd.width || cd.cardWidth) card.style.setProperty('--card-width', __cssSize(cd.width || cd.cardWidth));
+            if (cd.height || cd.cardHeight) card.style.setProperty('--card-min-height', __cssSize(cd.height || cd.cardHeight));
+        } catch (e) {}
         if (window.NanoCardUI && window.NanoCardUI.build) {
             var _who = getMember(m.senderId) || {};
             try {
@@ -482,8 +499,10 @@
         if (cd.cardType === 'redpacket') {
             iconSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M3 10h18"/><circle cx="12" cy="14" r="2"/></svg>';
             title = cd.title || '恭喜发财，大吉大利';
-            sub = cd.opened ? '已领取' : ('红包' + (cd.count ? (' · ' + cd.count + ' 个') : ''));
-            footer = cd.opened ? '已拆开' : '点击领取';
+            var _rpCount = Math.max(1, parseInt(cd.count, 10) || 1);
+            var _rpClaims = (cd.claims || []).length;
+            sub = _rpClaims >= _rpCount ? '红包已领完' : ('红包 ' + _rpCount + ' 个 · 已领 ' + _rpClaims);
+            footer = cd.opened ? '已拆开' : (_rpClaims >= _rpCount ? '已领完' : '点击领取');
         } else if (cd.cardType === 'notice') {
             iconSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>';
             title = '群公告';
@@ -491,7 +510,8 @@
             var confirmed = cd.confirmed || {};
             var count = Object.keys(confirmed).length + 1;
             footer = count + '/' + (group.members.length + 1) + ' 已确认';
-            if (!confirmed['me']) extra = '<button class="card-btn" data-notice="' + cd.noticeId + '">确认</button>';
+            if (type === 'right') extra = '<button class="card-btn confirmed">由你发布</button>';
+            else if (!confirmed['me']) extra = '<button class="card-btn" data-notice="' + cd.noticeId + '">确认</button>';
             else extra = '<button class="card-btn confirmed">已确认</button>';
         } else if (cd.cardType === 'chain') {
             iconSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>';
@@ -502,7 +522,8 @@
                 chain.map(function(it, idx){
                     return '<div class="chain-item"><span class="idx">' + (idx+1) + '.</span>' + (it.text || '') + ' <span style="color:#8e8e93;font-size:11px;">— ' + (it.name || '') + '</span></div>';
                 }).join('') +
-                '</div><div class="chain-footer"><button class="chain-btn" data-chain="' + cd.chainId + '">我要接龙</button></div>';
+                '</div>' +
+                (type === 'right' ? '' : '<div class="chain-footer"><button class="chain-btn" data-chain="' + cd.chainId + '">我要接龙</button></div>');
         }
         var mainHtml = '<div class="card-main"><div class="icon-wrap">' + iconSvg + '</div><div style="flex:1;min-width:0;"><div class="card-title">' + title + '</div><div class="card-sub">' + sub + '</div></div></div>';
         if (cd.cardType === 'chain') card.innerHTML = mainHtml + extra;
@@ -632,7 +653,9 @@
                     var who = getMember(m.senderId);
                     var whoName = who ? (who.nick || who.name) : (group.name || '群聊');
                     var prev = m.text || (m.isImage ? '[图片]' : (m.isVoice ? '[语音]' : (m.isCard ? '[卡片消息]' : '发来一条消息')));
-                    window.NanoBadge.incoming(chatId, (group.name || '群聊') + ' · ' + whoName, prev, { target: 'group:' + chatId, channel: 'group' });
+                    var nTitle = (group.name || '群聊') + ' · ' + whoName + (who && who.title ? (' · ' + who.title) : '');
+                    var nAvatar = (who && who.avatar) || group.avatar || '';
+                    window.NanoBadge.incoming(chatId, nTitle, prev, { target: 'group:' + chatId, channel: 'group', avatar: nAvatar, icon: nAvatar, name: nTitle });
                 }
             }
         } catch (e) {}
@@ -661,6 +684,10 @@
                         var store = tx.objectStore('wallet_data');
                         var r = store.get('wallet_data__' + uid);
                         r.onsuccess = function(){
+                            if (r.result && r.result.value && Array.isArray(r.result.value.cards) && r.result.value.cards.length) {
+                                resolve(r.result.value.cards.reduce(function (sum, c) { return sum + (Number(c.balance) || 0); }, 0));
+                                return;
+                            }
                             if (r.result && typeof r.result.value.balance === 'number') { resolve(r.result.value.balance); return; }
                             try {
                                 var r2 = store.get('wallet_data');
@@ -694,12 +721,22 @@
                     g.onsuccess = function(){
                         var rec = g.result;
                         var d = (rec && rec.value) ? rec.value : { balance: 5000, transactions: [] };
-                        d.balance = Math.round(((d.balance || 0) + delta) * 100) / 100;
+                        var __cards = Array.isArray(d.cards) ? d.cards : [];
+                        var __card = __cards.filter(function (c) { return String(c.id) === String(d.activeCardId); })[0] || __cards[0];
+                        if (__card) {
+                            __card.balance = Math.round((Number(__card.balance || 0) + delta) * 100) / 100;
+                            d.balance = __card.balance;
+                        } else {
+                            d.balance = Math.round(((d.balance || 0) + delta) * 100) / 100;
+                        }
                         d.transactions = Array.isArray(d.transactions) ? d.transactions : [];
                         d.transactions.unshift({
                             id: 'tx_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
                             type: delta >= 0 ? 'income' : 'expense',
                             amount: Math.abs(delta),
+                            cardId: __card ? __card.id : '',
+                            cardLast4: __card ? String(__card.cardNumber || '').slice(-4) : '',
+                            bankName: __card ? (__card.bankName || '') : '',
                             desc: desc,
                             time: new Date().toLocaleString('zh-CN')
                         });
@@ -1318,10 +1355,12 @@
         prompt += '8. 角色之间才是群聊的主体：大部分消息应该是群友彼此在聊（互相接话、吐槽、抬杠、八卦、聊各自的生活和近况），不要每句都围着用户转、更不要每句都 @ 用户。用户经常只是旁观或偶尔插一句，群聊照常热闹进行；角色之间可以有自己的小话题、内部梗和日常，不必事事以用户为中心。\n';
 
         prompt += '\n【可选功能标签 · 需要时才用，一条消息里最多一个，可偶尔自然触发】\n';
-        prompt += '- 发群红包：[redpacket:金额|祝福语|个数]  例：[redpacket:66|恭喜发财]、[redpacket:20|手气最佳|3]（个数可省略；省略时系统可能让红包数量少于群人数，制造“有人没抢到”的效果）。要发红包时把它放在你这轮的最后一行，方便对方决定要不要抢。\n';
+        prompt += '- 发群红包：[redpacket:金额|祝福语|个数]  例：[redpacket:66|恭喜发财]、[redpacket:20|手气最佳|3]（个数可省略；省略时按群人数发，不会自动减少）。要发红包时把它放在你这轮的最后一行，方便对方决定要不要抢。\n';
         prompt += '- 发起群接龙：[chain:标题|补充说明]  例：[chain:周六聚餐|老地方]\n';
         prompt += '- 发群公告：[notice:公告内容]  例：[notice:本周五晚八点开会]\n';
-        prompt += '- 改自己的群昵称：[nickname:新昵称] 例：[nickname:小喵]；改自己的群头衔：[title:新头衔] 例：[title:交互喵]；改别人的：[nickname:角色名|新昵称]。换昵称/头衔要看你自己的性格：活泼、爱玩、情绪化、文艺的角色偶尔会换（大约每几十条消息一次，凑气氛时改）；稳重、高冷、正经的角色几乎不换。不要频繁改，也不要在同一轮又改昵称又改头衔。\n';
+        prompt += '- 改自己的群昵称：[nickname:新昵称] 例：[nickname:小喵]；改自己的群头衔：[title:新头衔] 例：[title:交互喵]；改别人的：[nickname:角色名|新昵称]、[title:角色名|新头衔]。\n';
+        prompt += '  【群头衔 ≠ 群名】群头衔只是显示在自己 Lv 等级后面的个人小标签（例如「摸鱼达人」「夜猫子」「嘴硬心软」），不是整个群的名字；群名用 [groupname:新群名]，只有群主/管理员才会改，普通成员绝不要用 groupname。\n';
+        prompt += '  换昵称/头衔的频率由角色性格自己决定：活泼、爱玩、情绪化、文艺的角色偶尔会换（大约每几十条消息一次，凑气氛时改）；稳重、高冷、正经的角色几乎不换。不要频繁改，也不要在同一轮又改昵称又改头衔。\n';
         prompt += '- 改群名：[groupname:新群名]  例：[groupname:摸鱼小分队]\n';
         prompt += '- 发语音：[voice:秒数|语音内容]  例：[voice:4|我晚点到]\n';
         prompt += (settings.allowImage === false ? '' : '- 发图片：[image:画面描述]  例：[image:一只在窗台打盹的橘猫]\n');
@@ -1383,8 +1422,10 @@
             if (cd.cardType === 'redpacket') {
                 var claims = cd.claims || [];
                 var names = claims.map(function(c){ return c.name + ' ' + (parseFloat(c.amount) || 0).toFixed(2) + '元'; }).join('、');
-                return who + '发了一个群红包（' + cd.amount + '元，祝福：' + (cd.title || '恭喜发财') + '）' +
-                    (names ? ('，已领取：' + names) : '，还没人领取');
+                var rpTotal = Math.max(1, parseInt(cd.count, 10) || 1);
+                var rpLeft = Math.max(0, rpTotal - claims.length);
+                return who + '发了一个群红包（' + cd.amount + '元，共 ' + rpTotal + ' 个，祝福：' + (cd.title || '恭喜发财') + '）' +
+                    (names ? ('，已领取：' + names) : '，还没人领取') + (rpLeft > 0 ? ('，还剩 ' + rpLeft + ' 个没人领') : '，已经领完');
             }
             if (cd.cardType === 'chain') {
                 var items = (cd.chain || []).map(function(x){ return x.name + '：' + x.text; }).join('；');
@@ -1579,39 +1620,135 @@
     function requestFriendFromGroup(member){
         if (!member) return;
         var name = member.nick || member.name || '群友';
+        var note = '在群聊「' + (group.name || '群聊') + '」里加你';
         try {
-            var owner = '';
-            try {
-                var md = JSON.parse(localStorage.getItem('nano_mask_data') || localStorage.getItem('nano_home_data') || 'null');
-                if (md) { if (md.currentMaskId != null) owner = String(md.currentMaskId); else if (Array.isArray(md.masks) && md.masks.length) owner = String(md.masks[0].id || ''); }
-            } catch (e0) {}
-            var all = []; try { all = JSON.parse(localStorage.getItem('nano_friend_requests') || '[]') || []; } catch (e0) {}
-            if (all.some(function (x) { return x && x.status === 'pending' && x.source === 'groupnpc' && x.name === name; })) {
-                pushTip(name + ' 已经在等你同意好友申请了');
-                return;
+            if (window.NanoFriend && window.NanoFriend.add) {
+                var pending = window.NanoFriend.list().some(function (x) { return x && String(x.name) === String(name); });
+                if (pending) { pushTip(name + ' 已经在等你同意好友申请了'); return; }
+                window.NanoFriend.add({
+                    name: name, avatar: member.avatar || '', source: 'groupnpc', app: 'group',
+                    setting: member.setting || member.role || ('在群聊「' + (group.name || '') + '」里认识的朋友。' + (member.title ? ('头衔：' + member.title) : '')),
+                    requestNote: note
+                });
+            } else {
+                var owner = 'default';
+                try {
+                    var md = JSON.parse(localStorage.getItem('nano_mask_data') || localStorage.getItem('nano_home_data') || 'null');
+                    if (md) {
+                        if (md.currentMaskId != null && md.currentMaskId !== '') owner = String(md.currentMaskId);
+                        else if (Array.isArray(md.masks) && md.masks.length) owner = String(md.masks[0].id || 'default');
+                    }
+                } catch (e0) {}
+                var all = []; try { all = JSON.parse(localStorage.getItem('nano_friend_requests') || '[]') || []; } catch (e0) {}
+                if (all.some(function (x) { return x && x.status === 'pending' && x.source === 'groupnpc' && x.name === name; })) {
+                    pushTip(name + ' 已经在等你同意好友申请了');
+                    return;
+                }
+                all.push({
+                    id: 'fr_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6),
+                    owner: owner, name: name, avatar: member.avatar || '', source: 'groupnpc', app: 'group',
+                    setting: member.setting || member.role || '', requestNote: note, ts: Date.now(), status: 'pending'
+                });
+                localStorage.setItem('nano_friend_requests', JSON.stringify(all.slice(-400)));
+                try { if (window.parent !== window) window.parent.postMessage({ type: 'homeDataUpdated' }, '*'); } catch (e0) {}
             }
-            all.push({
-                id: 'fr_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6),
-                owner: owner, name: name, avatar: member.avatar || '', source: 'groupnpc', app: 'group',
-                setting: member.setting || member.role || '', requestNote: '在群聊里加你', ts: Date.now(), status: 'pending'
-            });
-            localStorage.setItem('nano_friend_requests', JSON.stringify(all.slice(-400)));
-            try { if (window.parent !== window) window.parent.postMessage({ type: 'homeDataUpdated' }, '*'); } catch (e0) {}
         } catch (e0) {}
         pushTip(name + ' 申请加你好友，去 Meet 同意');
     }
 
+    // 检查角色库里是否已经有这个人（接受好友申请后会用新 id 建角色，所以按名字查）
+    function hasFriendByName(name, cb){
+        var done = false;
+        var finish = function (v) { if (done) return; done = true; try { cb(!!v); } catch (e) {} };
+        try {
+            var req = indexedDB.open('nano_characters_db', 1);
+            req.onupgradeneeded = function(e){ try { var db=e.target.result; if(!db.objectStoreNames.contains('characters')) db.createObjectStore('characters',{keyPath:'id'}); }catch(e2){} };
+            req.onsuccess = function(e){
+                try {
+                    var db = e.target.result;
+                    var g = db.transaction('characters','readonly').objectStore('characters').getAll();
+                    g.onsuccess = function(){ var list = g.result || []; finish(list.some(function(c){ return c && c.name === name; })); };
+                    g.onerror = function(){ finish(false); };
+                } catch(e2){ finish(false); }
+            };
+            req.onerror = function(){ finish(false); };
+            setTimeout(function(){ finish(false); }, 1500);
+        } catch(e){ finish(false); }
+    }
+
+    // 群 NPC 随机主动加用户好友（概率 + 冷却，避免刷屏）
+    function maybeRequestFriendFromGroup(){
+        try {
+            if (!group.members || !group.members.length) return;
+            var stateKey = 'group_friend_req_' + chatId;
+            var state = {};
+            try { state = JSON.parse(localStorage.getItem(stateKey) || '{}') || {}; } catch (e) {}
+            var now = Date.now();
+            if (state.__last && now - state.__last < 60 * 60 * 1000) return;
+            var pendingNames = {};
+            try {
+                var reqs = JSON.parse(localStorage.getItem('nano_friend_requests') || '[]') || [];
+                reqs.forEach(function (r) { if (r && r.status === 'pending') pendingNames[r.name] = true; });
+            } catch (e) {}
+            var pool = group.members.filter(function (m) {
+                if (!m || !(m.nick || m.name)) return false;
+                if (pendingNames[m.nick || m.name]) return false;
+                var last = Number(state[m.id] || 0);
+                return !last || (now - last > 6 * 60 * 60 * 1000);
+            });
+            if (!pool.length) return;
+            if (Math.random() > 0.1) return;
+            var who = pool[Math.floor(Math.random() * pool.length)];
+            var nm = who.nick || who.name;
+            hasFriendByName(nm, function (exists) {
+                if (exists) return;
+                state[who.id] = now;
+                state.__last = now;
+                try { localStorage.setItem(stateKey, JSON.stringify(state)); } catch (e) {}
+                requestFriendFromGroup(who);
+            });
+        } catch (e) {}
+    }
+
+    function refreshMemberIdentityDom(memberId){
+        try {
+            var who = getMember(memberId);
+            if (!who) return;
+            var lv = who.level || 1;
+            var rows = messageContainer.querySelectorAll('.message-row');
+            for (var i = 0; i < rows.length; i++) {
+                var row = rows[i];
+                var msg = messages.find(function(x){ return x.id === row.dataset.id; });
+                if (!msg || msg.senderId !== memberId) continue;
+                var badge = row.querySelector('.msg-name-line .n-badge');
+                if (badge) {
+                    badge.style.background = levelColor(lv);
+                    badge.textContent = 'Lv' + lv;
+                    if (who.title) {
+                        var ti = document.createElement('span');
+                        ti.className = 'n-title-inner';
+                        ti.textContent = who.title;
+                        badge.appendChild(ti);
+                    }
+                }
+                var nameEl = row.querySelector('.msg-name-line .n-name');
+                if (nameEl) nameEl.textContent = who.nick || who.name || '';
+            }
+        } catch (e) {}
+    }
     function applyNicknameChange(member, payload){
         var parts = String(payload||'').split('|');
         var target = member, name = payload, selfChange = parts.length < 2;
         if (!selfChange) { name = parts[1].trim(); target = matchGroupMember(parts[0].trim()) || member; }
         // 自发改自己的昵称要冷却，避免刷屏（性格频率由提示词控制）
-        if (selfChange && target && target.__nickAt && (messages.length - target.__nickAt) < 25) return;
+        if (selfChange && target && target.__nickAt && (messages.length - target.__nickAt) < 10) return;
         if (target && name && String(name).trim()) {
             var old = target.nick || target.name;
             target.nick = String(name).trim();
+            target.initial = target.nick.charAt(0);
             if (selfChange) target.__nickAt = messages.length;
             saveGroup(group); renderMessages();
+            refreshMemberIdentityDom(target.id);
             notifyGroupChange((member.nick||member.name) + ' 把 ' + old + ' 的群昵称改成了 ' + target.nick);
         }
     }
@@ -1619,17 +1756,22 @@
         var parts = String(payload||'').split('|');
         var target = member, title = payload, selfChange = parts.length < 2;
         if (!selfChange) { title = parts[1].trim(); target = matchGroupMember(parts[0].trim()) || member; }
-        if (selfChange && target && target.__titleAt && (messages.length - target.__titleAt) < 25) return;
+        if (selfChange && target && target.__titleAt && (messages.length - target.__titleAt) < 10) return;
         if (target) {
             target.title = String(title||'').trim();
             if (selfChange) target.__titleAt = messages.length;
             saveGroup(group); renderMessages();
+            // 立刻刷新当前屏幕上所有该成员消息的等级/头衔，避免要等下一轮回复才更新
+            refreshMemberIdentityDom(target.id);
             notifyGroupChange((member.nick||member.name) + ' 把 ' + (target.nick||target.name) + ' 的群头衔改成了 ' + (target.title || '无'));
         }
     }
     function applyGroupNameChange(member, payload){
         var name = String(payload||'').trim();
         if (!name) return;
+        // 群名只能由群主/管理员改，普通成员误用 [groupname] 时直接忽略（避免和群头衔混淆）
+        var canRename = member && (member.id === 'me' || member.id === group.ownerId || /群主|管理员/.test(String(member.role || '')));
+        if (!canRename) return;
         var old = group.name || '群聊';
         group.name = name; saveGroup(group); renderHeader();
         notifyGroupChange((member.nick||member.name) + ' 把群名从「' + old + '」改成了「' + name + '」');
@@ -1643,10 +1785,8 @@
             var wish = (parts[1] || '恭喜发财').trim();
             var totalSlots = Math.max(1, group.members.length + 1);
             var explicit = parseInt(parts[2]);
-            var count;
-            if (explicit > 0) count = Math.min(explicit, totalSlots);
-            else if (totalSlots > 2 && Math.random() < 0.4) count = 1 + Math.floor(Math.random() * (totalSlots - 1));
-            else count = totalSlots;
+            // 红包个数由发送者决定；省略时按群总人数（含用户）一人一个，不自动缩减
+            var count = explicit > 0 ? Math.min(explicit, 999) : totalSlots;
             var rpId = 'rp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5);
             pushMsg({ type:'left', senderId:member.id, isCard:true, cardData:{ cardType:'redpacket', rpId:rpId, amount:amt.toFixed(2), title:wish, count:count, opened:false, claims:[] } });
             // 不立刻替其他角色分配：等用户点“回复”时再抢，用户也能自己决定要不要抢
@@ -1704,29 +1844,35 @@
         var pool = group.members.filter(function(m){ return !alreadyNames[m.nick || m.name]; });
         for (var i = pool.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var t = pool[i]; pool[i] = pool[j]; pool[j] = t; }
         var recipients = pool.slice(0, Math.min(slotsLeft, pool.length));
-        if (!recipients.length) { pushTip(senderName + ' 发出的红包暂时无人领取'); return; }
+        if (!recipients.length) return;
+        var fillAll = (existing.length + recipients.length) >= totalCount;
         var remain = Math.max(0, Math.round((total - alreadySum) * 100) / 100);
+        var avgShare = total / totalCount;
         var claims = existing;
         var tips = [];
         recipients.forEach(function(m, idx){
             var remainCount = recipients.length - idx;
             var take;
-            if (remainCount === 1) take = remain;
+            if (remainCount === 1 && fillAll) take = remain;
             else {
                 var maxTake = remain - (remainCount - 1) * 0.01;
-                take = Math.round((0.01 + Math.random() * (maxTake - 0.01)) * 100) / 100;
-                if (take < 0.01) take = 0.01;
-                if (take > maxTake) take = maxTake;
+                if (remainCount === 1) maxTake = Math.min(remain, Math.max(0.01, avgShare * 1.4));
+                var target = avgShare * (0.45 + Math.random() * 0.9);
+                take = Math.min(maxTake, Math.max(0.01, Math.round(target * 100) / 100));
             }
-            remain = Math.round((remain - take) * 100) / 100;
+            remain = Math.max(0, Math.round((remain - take) * 100) / 100);
             claims.push({ name:m.nick||m.name, amount:take, time:nowTime(), bg:m.bg, initial:m.initial });
             tips.push((m.nick||m.name) + ' 领取了 ' + senderName + ' 的红包 ' + take.toFixed(2) + ' 元');
         });
         cd.claims = claims;
         saveMsgs();
-        var best = claims[0];
-        claims.forEach(function(c){ if (c.amount > best.amount) best = c; });
-        tips.push(best.name + ' 手气最佳，抢到 ' + best.amount.toFixed(2) + ' 元');
+        if (claims.length < totalCount) {
+            tips.push('红包还剩 ' + (totalCount - claims.length) + ' 个没人领取');
+        } else {
+            var best = claims[0];
+            claims.forEach(function(c){ if (c.amount > best.amount) best = c; });
+            tips.push(best.name + ' 手气最佳，抢到 ' + best.amount.toFixed(2) + ' 元');
+        }
         // 先算好，等 API 回复后再统一显示（先金额提示，再角色互动）
         pendingClaimTips = pendingClaimTips.concat(tips);
     }
@@ -1815,6 +1961,8 @@
         deferredRedPackets.forEach(function(d, di){
             setTimeout(function(){ handleGroupTag(d.member, d.tag, d.timeStr); }, baseDelay + di * 300);
         });
+        // 群 NPC 有机会在自然聊天后主动加用户好友（会出现在 Meet 的好友申请里）
+        setTimeout(function(){ try { maybeRequestFriendFromGroup(); } catch (e) {} }, baseDelay + 900);
         return baseDelay + deferredRedPackets.length * 300 + 200;
     }
 
@@ -1877,7 +2025,7 @@
             window.addEventListener('message', onMsg);
             if (window.parent !== window) {
                 try {
-                    window.parent.postMessage({ type:'groupApiFetch', token:payload.token, url:payload.url, method:payload.method, headers:payload.headers, body:payload.body }, '*');
+                    window.parent.postMessage({ type:'groupApiFetch', token:payload.token, groupId:chatId, groupName:group.name || '群聊', url:payload.url, method:payload.method, headers:payload.headers, body:payload.body }, '*');
                 } catch(e){ finish({ ok:false, status:0, error:'无法请求' }); return; }
                 // 兜底轮询：父页面刷新丢消息时，结果仍会写到 localStorage
                 var tries = 0;
@@ -2435,7 +2583,7 @@
                 var chainId = 'chain_' + Date.now();
                 pushMsg({
                     type:'right', senderId:'me', isCard: true,
-                    cardData: { cardType: 'chain', chainId: chainId, title: title, desc: desc, chain: [{ name: currentUser.nick || currentUser.name, text: '我参与' }] }
+                    cardData: { cardType: 'chain', chainId: chainId, title: title, desc: desc, chain: [] }
                 });
                 pendingChain = chainId;
             }
@@ -2473,9 +2621,10 @@
         $('rpAmount').value = '0';
         $('rpWish').value = '恭喜发财';
         $('rpDisplay').textContent = '0.00';
-        var maxCount = Math.max(1, group.members.length);
-        $('rpCount').value = String(maxCount);
-        $('rpCount').max = String(maxCount);
+        // 默认按群总人数（含自己）一人一个；个数由用户自己改，不做系统内置缩减
+        var totalPeople = Math.max(1, group.members.length + 1);
+        $('rpCount').value = String(totalPeople);
+        $('rpCount').max = '999';
         rpOverlay.classList.add('active');
     }
     $('rpBack').addEventListener('click', function(){ rpOverlay.classList.remove('active'); });
@@ -2490,9 +2639,14 @@
         if (bal <= 0) { showAlert('提示','钱包余额为 0，无法发红包'); return; }
         var wish = $('rpWish').value.trim() || '恭喜发财';
         var count = parseInt($('rpCount').value) || 1;
-        var maxCount = Math.max(1, group.members.length);
         if (count < 1) count = 1;
-        if (count > maxCount) count = maxCount;
+        if (count > 999) count = 999;
+        if (window.NanoPay && NanoPay.payInteractively) {
+            var paid = await NanoPay.payInteractively(amt, '群红包：' + wish, { title: '发红包' });
+            if (!paid) return;
+        } else {
+            walletAdd(-amt, '群红包：' + wish);
+        }
         var rpId = 'rp_' + Date.now();
         pushMsg({
             type:'right', senderId:'me', isCard: true,
@@ -2502,7 +2656,6 @@
             }
         });
         rpOverlay.classList.remove('active');
-        walletAdd(-amt, '群红包：' + wish);
         // 点击回复后，AI 会先做出反应，成员随后领取（见 runPendingFeatureReactions）
         pendingRedPacket.push(rpId);
     });
@@ -2535,7 +2688,7 @@
         var cd = msg.cardData;
         var total = parseFloat(cd.amount) || 0;
         var claims = cd.claims || [];
-        var count = cd.count || Math.max(1, group.members.length);
+        var count = cd.count || Math.max(1, group.members.length + 1);
         if (claims.length >= count) {
             openRpOverlay.classList.remove('active');
             showAlert('提示', '红包已被领完');
@@ -2549,9 +2702,8 @@
         if (remainCount === 1) take = remain;
         else {
             var maxTake = remain - (remainCount - 1) * 0.01;
-            take = Math.round((0.01 + Math.random() * (maxTake - 0.01)) * 100) / 100;
-            if (take < 0.01) take = 0.01;
-            if (take > maxTake) take = maxTake;
+            var avg = remain / remainCount;
+            take = Math.min(maxTake, Math.max(0.01, Math.round((avg * (0.5 + Math.random() * 0.8)) * 100) / 100));
         }
         claims.push({ name: currentUser.nick || currentUser.name, amount: take, time: nowTime(), bg: currentUser.bg, initial: currentUser.initial, isMe: true });
         cd.claims = claims;
@@ -2579,7 +2731,9 @@
         $('rpDetailMyAmount').textContent = (cd.myAmount || 0).toFixed(2);
         var claims = cd.claims || [];
         var totalAmt = parseFloat(cd.amount) || 0;
-        $('rpDetailSummary').textContent = '共 ' + totalAmt.toFixed(2) + ' 元 · ' + claims.length + '/' + Math.max(1, cd.count || claims.length) + ' 个红包，刚刚被抢光';
+        var rpTotalCount = Math.max(1, parseInt(cd.count, 10) || 1);
+        var rpDone = claims.length >= rpTotalCount;
+        $('rpDetailSummary').textContent = '共 ' + totalAmt.toFixed(2) + ' 元 · ' + claims.length + '/' + rpTotalCount + ' 个红包' + (rpDone ? '，已抢光' : '，还剩 ' + (rpTotalCount - claims.length) + ' 个');
         var list = $('rpDetailList');
         list.innerHTML = '';
         var maxAmount = 0, maxIdx = -1;
@@ -2830,7 +2984,8 @@ messageContainer.addEventListener('click', function(e){
             if (!row) return;
             var msg = messages.find(function(m){ return m.id === row.dataset.id; });
             if (!msg || !msg.cardData) return;
-            if (msg.senderId === 'me' || msg.cardData.opened) openRpDetail(msg.cardData.rpId);
+            // 自己发的红包也可以抢（群里所有人都能抢，发送者不例外）
+            if (msg.cardData.opened) openRpDetail(msg.cardData.rpId);
             else openRedPacketOpen(msg.cardData.rpId);
             return;
         }
@@ -2885,14 +3040,16 @@ messageContainer.addEventListener('click', function(e){
 
     // ========== 监听变化 ==========
     window.addEventListener('storage', function(e){
-        if (e.key === GROUP_KEY) { __lastGroupRaw = e.newValue || ''; group = loadGroup(); renderHeader(); renderMessages(); }
-        if (e.key === MSG_KEY) { messages = loadMsgs(); renderMessages(); }
-        if (e.key === SETTINGS_KEY) {
+        // group-store 会把群聊键按 user 加后缀；这里同时接受旧键和当前 user 的作用域键
+        function keyIs(base){ try { return e.key === base || (window.GroupStore && e.key === window.GroupStore.scopeKey(base)); } catch (err) { return e.key === base; } }
+        if (keyIs(GROUP_KEY)) { __lastGroupRaw = e.newValue || ''; group = loadGroup(); renderHeader(); renderMessages(); }
+        if (keyIs(MSG_KEY)) { messages = loadMsgs(); renderMessages(); }
+        if (keyIs(SETTINGS_KEY)) {
             settings = loadSettings();
             currentUser.title = settings.myTitle || '群主';
             renderMessages();
         }
-        if (e.key === BG_KEY) applyBackground();
+        if (keyIs(BG_KEY)) applyBackground();
     });
     document.addEventListener('visibilitychange', function(){
         if (!document.hidden) {
@@ -2902,6 +3059,20 @@ messageContainer.addEventListener('click', function(e){
             renderHeader(); applyBackground();
             resolveIdentities().then(function(){ renderHeader(); renderMessages(); });
         }
+    });
+    // 群聊页常驻后台：从别的页面回来时恢复阅读状态并刷新数据
+    window.addEventListener('message', function(e){
+        var d = e && e.data;
+        if (!d || (d.type !== 'nanoOverlayOpen' && d.type !== 'nanoOverlayReopen')) return;
+        if (d.type === 'nanoOverlayOpen' && d.chatId && d.chatId !== chatId) return;
+        pageLeaving = false;
+        group = loadGroup();
+        settings = loadSettings();
+        messages = loadMsgs();
+        currentUser.title = settings.myTitle || '群主';
+        try { if (window.NanoBadge) window.NanoBadge.setContext(chatId); } catch (err) {}
+        renderHeader(); applyBackground();
+        resolveIdentities().then(function(){ renderHeader(); renderMessages(); });
     });
 
     // 兜底轮询：群设置在别的页面改了成员/资料，这里也能及时刷新（storage 事件有时收不到）
@@ -2955,13 +3126,22 @@ messageContainer.addEventListener('click', function(e){
 /* iOS 键盘：收缩群聊容器，让输入栏位于键盘（含附属栏）上方；父页面也会 postMessage 同步 */
 (function () {
     var parentKb = 0, localKb = 0, kbBaseH = 0;
+    var parentVh = 0, localVh = 0;
+    var isAndroid = /Android/i.test(navigator.userAgent || '');
     function apply() {
         var kb = Math.max(parentKb, localKb);
-        document.documentElement.style.setProperty('--nano-kb', kb + 'px');
-        document.documentElement.classList.toggle('keyboard-open', kb > 0.5);
+        // 安卓布局视口已缩小时不再重复减键盘高度，避免底栏和键盘之间空一条
+        var layoutKb = Math.max(0, Math.round(kbBaseH - (window.innerHeight || 0)));
+        var eff = isAndroid ? Math.max(0, kb - Math.min(kb, layoutKb)) : kb;
+        var vh = parentVh || localVh;
+        document.documentElement.style.setProperty('--nano-kb', eff + 'px');
+        if (eff > 0.5 && vh > 0) document.documentElement.style.setProperty('--nano-vv-height', vh + 'px');
+        else document.documentElement.style.removeProperty('--nano-vv-height');
+        document.documentElement.classList.toggle('keyboard-open', eff > 0.5);
     }
     function computeLocalKb(vv) {
         kbBaseH = Math.max(kbBaseH, window.innerHeight || 0, vv.height || 0);
+        localVh = Math.max(0, Math.round(vv.height || 0));
         return Math.max(0, Math.round(kbBaseH - vv.height - vv.offsetTop));
     }
     try {
@@ -2975,7 +3155,11 @@ messageContainer.addEventListener('click', function(e){
     } catch (e) {}
     window.addEventListener('message', function (e) {
         var d = e.data;
-        if (d && d.type === 'nanoKeyboard') { parentKb = Math.max(0, Math.round(Number(d.kb) || 0)); apply(); }
+        if (d && d.type === 'nanoKeyboard') {
+            parentKb = Math.max(0, Math.round(Number(d.kb) || 0));
+            parentVh = Math.max(0, Math.round(Number(d.vh) || 0));
+            apply();
+        }
     });
     function isField(t) { return t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable); }
     function requery() {

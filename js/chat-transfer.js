@@ -48,6 +48,11 @@
                         var store = tx.objectStore('wallet_data');
                         var r = store.get('wallet_data__' + uid);
                         r.onsuccess = function() {
+                            if (r.result && r.result.value && Array.isArray(r.result.value.cards) && r.result.value.cards.length) {
+                                var wd = r.result.value;
+                                resolve(wd.cards.reduce(function (sum, c) { return sum + (Number(c.balance) || 0); }, 0));
+                                return;
+                            }
                             if (r.result && typeof r.result.value.balance === 'number') { resolve(r.result.value.balance); return; }
                             try {
                                 var r2 = store.get('wallet_data');
@@ -88,7 +93,18 @@
         };
         // 支付方式：我的银行卡（默认）/ 亲密付（走对方亲属卡，对方会知道这笔支出）
         var source = transferSource ? transferSource.value : 'bank';
+        if (source !== 'family') {
+            if (!window.NanoPay) { window.__chat.showAlert('提示', '支付模块未加载'); return; }
+            var auth = await NanoPay.payInteractively(parseFloat(amount), '转账给 ' + (window.__chat.displayName || '对方'), { authorizeOnly: true, title: '转账' });
+            if (!auth) return;
+            cardData.paidCardId = auth.cardId;
+            cardData.paidBank = auth.card ? (auth.card.bankName || '') : '';
+        }
         if (source === 'family') {
+            if (window.NanoPay) {
+                var pwdOk = await NanoPay.ensurePassword('亲密付');
+                if (!pwdOk) return;
+            }
             var fc = getActiveCharCard();
             if (!fc) { window.__chat.showAlert('提示', '没有可用的亲密付（对方亲属卡）'); return; }
             var S = window.NanoFamilyCardStore;

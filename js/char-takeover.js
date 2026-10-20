@@ -665,6 +665,20 @@
                 notice: opts.notice || '',
                 startedAt: TK.startedAt
             });
+            // 查手机完成：通知点进去直接到「查手机」页面（不是只弹一条空通知）
+            try {
+                var topWin = (window.parent && window.parent !== window) ? window.parent : window;
+                var payload = {
+                    type: 'NANO_GEN_NOTIFY',
+                    title: (info.name || 'TA') + ' 查完手机了',
+                    body: '共看了 ' + TK.log.length + ' 个页面，点这里进入查手机',
+                    avatar: info.avatar || '',
+                    name: (info.name || 'TA') + ' · 查手机',
+                    target: 'phone:' + String(info.id || '')
+                };
+                if (topWin.__nanoAppNotify) topWin.__nanoAppNotify(payload.title, payload.body, 'phone', payload);
+                else if (topWin !== window) topWin.postMessage(payload, '*');
+            } catch (e) {}
         } catch (e) {}
     }
 

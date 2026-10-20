@@ -42,12 +42,29 @@
             { id: 'p7', name: '胶片相机', desc: '一次性胶卷相机。', price: 219, cat: 'gift', type: 'shop' },
             { id: 'p8', name: '羊毛围巾', desc: '柔软亲肤，纯色。', price: 199, cat: 'gift', type: 'shop' },
             { id: 'p9', name: '手账本套装', desc: '方格内页，含贴纸。', price: 59, cat: 'stationery', type: 'shop' },
+            { id: 'p10', name: '无线蓝牙音箱', desc: '小巧低音，浴室也能放。', price: 299, cat: 'digital', type: 'shop' },
+            { id: 'p11', name: '冷萃咖啡壶', desc: '玻璃壶身，冷萃一晚刚好。', price: 229, cat: 'home', type: 'shop' },
+            { id: 'p12', name: '香氛沐浴礼盒', desc: '雪松与白麝香，留香很久。', price: 259, cat: 'beauty', type: 'shop' },
+            { id: 'p13', name: '钢笔礼盒', desc: '磨砂笔身，附墨水和卡片。', price: 189, cat: 'stationery', type: 'shop' },
+            { id: 'p14', name: '拍立得相纸', desc: '二十张装，白边。', price: 69, cat: 'gift', type: 'shop' },
+            { id: 'p15', name: '真丝眼罩', desc: '遮光柔软，适合长途飞行。', price: 99, cat: 'gift', type: 'shop' },
+            { id: 'p16', name: '桌面加湿器', desc: '静音喷雾，小夜灯。', price: 139, cat: 'home', type: 'shop' },
+            { id: 'p17', name: '拍立得相机', desc: '即拍即得，带自拍镜。', price: 499, cat: 'digital', type: 'shop' },
+            { id: 'p18', name: '香根草香水', desc: '干净木质调，三十毫升。', price: 359, cat: 'beauty', type: 'shop' },
             { id: 'f1', name: '牛肉饭', desc: '现炒牛肉，米饭免费加。', price: 32, cat: 'meal', type: 'food' },
             { id: 'f2', name: '鸡胸沙拉', desc: '低脂高蛋白，油醋汁。', price: 28, cat: 'meal', type: 'food' },
             { id: 'f3', name: '冰拿铁', desc: '双份浓缩，少冰。', price: 22, cat: 'coffee', type: 'food' },
             { id: 'f4', name: '黄油可颂', desc: '现烤，外酥内软。', price: 16, cat: 'dessert', type: 'food' },
             { id: 'f5', name: '提拉米苏', desc: '马斯卡彭，微苦可可。', price: 26, cat: 'dessert', type: 'food' },
-            { id: 'f6', name: '关东煮拼盘', desc: '六串组合，微辣汤底。', price: 24, cat: 'night', type: 'food' }
+            { id: 'f6', name: '关东煮拼盘', desc: '六串组合，微辣汤底。', price: 24, cat: 'night', type: 'food' },
+            { id: 'f7', name: '麻辣烫', desc: '自选十样，微辣。', price: 35, cat: 'meal', type: 'food' },
+            { id: 'f8', name: '寿司拼盘', desc: '三文鱼与甜虾，十二贯。', price: 58, cat: 'meal', type: 'food' },
+            { id: 'f9', name: '生椰拿铁', desc: '椰乳清甜，少糖。', price: 22, cat: 'coffee', type: 'food' },
+            { id: 'f10', name: '芝士蛋糕', desc: '厚切，冷藏后更好吃。', price: 32, cat: 'dessert', type: 'food' },
+            { id: 'f11', name: '烧烤拼盘', desc: '十串荤素搭配，孜然味。', price: 68, cat: 'night', type: 'food' },
+            { id: 'f12', name: '小笼包', desc: '一笼八只，鲜肉汤汁。', price: 18, cat: 'meal', type: 'food' },
+            { id: 'f13', name: '水果茶', desc: '当季水果，少冰。', price: 20, cat: 'coffee', type: 'food' },
+            { id: 'f14', name: '炸鸡桶', desc: '半只鸡，配两种蘸酱。', price: 49, cat: 'night', type: 'food' }
         ];
     }
 
@@ -154,9 +171,18 @@
         state.cart = Array.isArray(data.cart) ? data.cart : [];
         state.orders = Array.isArray(data.orders) ? data.orders : [];
         state.inventory = Array.isArray(data.inventory) ? data.inventory : [];
+        // 老用户也补上新增的默认商品（自定义商品 id 以 custom_ 开头，不受影响）
+        var addedDefault = false;
+        seedProducts().forEach(function (p) {
+            if (!state.products.some(function (x) { return x && x.id === p.id; })) {
+                state.products.push(p);
+                addedDefault = true;
+            }
+        });
         state.cart.forEach(function (c) {
             if (state.selected[c.productId] === undefined) state.selected[c.productId] = true;
         });
+        if (addedDefault) saveData();
         return Promise.resolve();
     }
     function saveData() {
@@ -491,6 +517,7 @@
             payMethod: opts.payMethod || 'own',
             familyCardId: '',
             payerCharId: chars.length ? chars[0].id : '',
+            cardId: (wallet && wallet.activeCardId) || '',
             note: ''
         };
         if (checkoutCtx.payMethod === 'char' && !chars.length) checkoutCtx.payMethod = 'own';
@@ -508,10 +535,19 @@
         }).join('');
 
         var payHtml = '';
+        var myCards = (wallet && Array.isArray(wallet.cards)) ? wallet.cards : [];
+        var activeCard = myCards.filter(function (c) { return String(c.id) === String(ctx.cardId || (wallet && wallet.activeCardId)); })[0] || myCards[0];
+        var cardOptions = myCards.map(function (c) {
+            var last = String(c.cardNumber || '').slice(-4);
+            return '<option value="' + esc(c.id) + '"' + (activeCard && String(c.id) === String(activeCard.id) ? ' selected' : '') + '>' +
+                esc(c.bankName || '银行卡') + (last ? (' · 尾号 ' + last) : '') + ' · ¥' + Number(c.balance || 0).toFixed(2) + '</option>';
+        }).join('');
         payHtml += '<label class="pay-option' + (ctx.payMethod === 'own' ? ' active' : '') + '" data-pay="own">' +
             '<span class="pay-radio"></span>' +
-            '<span class="pay-main"><span class="pay-name">我的银行卡</span><span class="pay-sub">余额 ' + money(wallet ? wallet.balance : 0) +
-            (paySettings.hasPassword ? (paySettings.freePay ? ' · 免密支付' : ' · 需支付密码') : ' · 未设置密码') + '</span></span>' +
+            '<span class="pay-main"><span class="pay-name">我的银行卡</span><span class="pay-sub">余额 ' + money(activeCard ? activeCard.balance : (wallet ? wallet.balance : 0)) +
+            (paySettings.hasPassword ? (paySettings.freePay ? ' · 免密支付' : ' · 需支付密码') : ' · 未设置密码') + '</span>' +
+            (myCards.length > 1 ? '<select class="select" id="coCard" style="margin-top:8px;">' + cardOptions + '</select>' : '') +
+            '</span>' +
             '<span class="pay-amount">' + money(ctx.total) + '</span></label>';
 
         familyCards.forEach(function (c) {
@@ -555,6 +591,13 @@
         if (note) note.addEventListener('input', function () { ctx.note = this.value; });
         var payer = $('coPayer');
         if (payer) payer.addEventListener('change', function () { ctx.payerCharId = this.value; });
+        var coCard = $('coCard');
+        if (coCard) coCard.addEventListener('change', function () {
+            ctx.cardId = this.value;
+            var c = myCards.filter(function (x) { return String(x.id) === String(ctx.cardId); })[0];
+            var sub = this.closest('.pay-option') && this.closest('.pay-option').querySelector('.pay-sub');
+            if (c && sub) sub.firstChild.nodeValue = '余额 ' + money(c.balance) + (paySettings.hasPassword ? (paySettings.freePay ? ' · 免密支付' : ' · 需支付密码') : ' · 未设置密码');
+        });
         var payList = $('payList');
         if (payList) payList.addEventListener('click', function (e) {
             var opt = e.target.closest('.pay-option[data-pay]');
@@ -573,7 +616,9 @@
             return '不能让收礼人代付';
         }
         if (ctx.payMethod === 'own') {
-            if ((Number(wallet ? wallet.balance : 0) || 0) < ctx.total) return '银行卡余额不足';
+            var myCards = (wallet && Array.isArray(wallet.cards)) ? wallet.cards : [];
+            var card = myCards.filter(function (c) { return String(c.id) === String(ctx.cardId || (wallet && wallet.activeCardId)); })[0] || myCards[0];
+            if ((Number(card ? card.balance : (wallet ? wallet.balance : 0)) || 0) < ctx.total) return '银行卡余额不足';
         } else if (ctx.payMethod === 'family') {
             var card = null;
             familyCards.forEach(function (c) { if (c.id === ctx.familyCardId) card = c; });
@@ -667,8 +712,9 @@
 
             var paymentLabel = '';
             if (ctx.payMethod === 'own') {
-                await NanoPay.pay(ctx.total, desc, { password: ctx._password || '' });
-                paymentLabel = '我的银行卡';
+                var auth = await NanoPay.pay(ctx.total, desc, { password: ctx._password || '', cardId: ctx.cardId });
+                var paidCard = auth && auth.card;
+                paymentLabel = paidCard ? ((paidCard.bankName || '我的银行卡') + (paidCard.cardNumber ? (' · 尾号 ' + String(paidCard.cardNumber).slice(-4)) : '')) : '我的银行卡';
             } else {
                 var card = null;
                 familyCards.forEach(function (c) { if (c.id === ctx.familyCardId) card = c; });
@@ -692,6 +738,7 @@
 
             sendStoreCards(ctx, paymentLabel, recipientName);
             closeSheet();
+            try { await refreshContext(); } catch (e) {}
             renderBadge();
             if (state.tab === 'cart') renderCart();
             if (state.tab === 'orders') renderOrders();
@@ -956,45 +1003,6 @@
         });
     }
 
-    // ===== 角色主动发商城消息（不调用 API） =====
-    async function maybeCharStoreEvent() {
-        var key = 'nano_mall_char_event_at__' + uid();
-        var last = 0;
-        try { last = parseInt(localStorage.getItem(key), 10) || 0; } catch (e) {}
-        if (Date.now() - last < 18 * 3600 * 1000) return;
-        if (!chars.length || !state.products.length) return;
-        var candidates = chars.filter(function (c) { return charWalletBalance(c.id) > 50; });
-        if (!candidates.length) return;
-        var c = candidates[Math.floor(Math.random() * candidates.length)];
-        var roll = Math.random();
-        var kind = roll < 0.5 ? 'share' : 'pay';
-        var product = state.products[Math.floor(Math.random() * state.products.length)];
-        var requestId = 'req_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5);
-        var items = [{ name: product.name, price: Number(product.price), qty: 1, image: product.image || '', cat: product.cat }];
-        var isShare = kind === 'share';
-        state.orders.unshift(makeOrder(requestId, items, product.price, isShare ? '待你决定' : '待你付款', isShare ? '你帮 TA 买' : '你帮 TA 代付', { fromChar: c.name, recipient: c.name }));
-        await saveData();
-        queueCard(c.id, {
-            card: {
-                cardType: 'store',
-                storeKind: isShare ? 'char_share' : 'char_pay_request',
-                direction: 'user',
-                title: isShare ? 'TA 想买这个' : 'TA 想让你代付',
-                sub: product.name,
-                amount: money(product.price),
-                total: Number(product.price),
-                items: items,
-                requestId: requestId,
-                status: 'pending',
-                from: 'char'
-            },
-            side: 'left',
-            notice: c.name + ' 给你发了一条商城消息'
-        });
-        try { localStorage.setItem(key, String(Date.now())); } catch (e) {}
-        toast(c.name + ' 在私聊给你发了商城消息');
-    }
-
     // ===== 事件 =====
     function bind() {
         $('backBtn').addEventListener('click', function () {
@@ -1191,7 +1199,8 @@
         setTab('shop');
         refreshContext().then(function () {
             renderMe();
-            maybeCharStoreEvent();
+            // 不再内置「角色主动发商城代付/心愿卡」：这类卡片必须由角色在正常回复里
+            // 自然带入，且不能额外调用一次 API；商城页打开时静默加载即可。
         }).catch(function () {});
         withTimeout(loadUserProfile(), 1600, { name: userName(), avatar: '' }).then(function (p) {
             userProfile = p || { name: userName(), avatar: '' };

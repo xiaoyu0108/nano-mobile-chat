@@ -631,6 +631,16 @@
     // ============================================================
     // 执行总结
     // ============================================================
+    // 模型没给重要度时的兜底：按内容/类型粗略分级，避免整库清一色 3 星
+    function guessMemoryImportance(type, content) {
+        const t = String(type || '') + ' ' + String(content || '');
+        if (/约定|承诺|答应|表白|分手|和好|吵架|纪念日|生日|求婚|结婚|秘密|禁忌|第一次/.test(t)) return 5;
+        if (/重要事件|情感|关系|家人|朋友|身世|过往|愿望|梦想/.test(String(type || ''))) return 4;
+        if (/偏好|口味|习惯|作息|喜欢|讨厌|不吃|过敏|口头禅/.test(t)) return 2;
+        if (String(content || '').length > 120) return 4;
+        return 3;
+    }
+
     async function performSummary(messages, isAuto) {
         if (isProcessing) return;
         if (IS_GROUP) return performGroupSummary(messages, isAuto);
@@ -677,7 +687,7 @@
             updateToastProgress('提取关键信息...', 30);
 
             const summary = await callLlm([
-                { role: 'system', content: `你是记忆提取助手，从角色与用户的聊天记录中提取值得长期记住的信息，用于构建向量记忆库。
+                { role: 'system', content: `你是「${charName}」的记忆提取助手，要以 ${charName} 本人的视角，从 TA 和「${currentUser}」的聊天记录中提取值得长期记住的信息，用于构建向量记忆库。
 
 必须重点提取、尽量详细记录：
 1. 重要事件：双方经历的大事，如约定、见面、纪念日、吵架和好、项目进展等。
@@ -688,15 +698,23 @@
 6. 情感状态与承诺：说过的重要的话、答应过的事、情绪变化。
 7. 其他值得记住的细节。
 
-格式：每条独立一行，以【类型】开头，如：
-【重要事件】${charName}和${currentUser}约定下周在长沙见面，${charName}住在岳麓区，${currentUser}住在五一广场附近。
-【${currentUser}偏好】${currentUser}喜欢喝冰美式，不吃香菜，习惯凌晨一点睡。
-【地理位置】${charName}在长沙，${currentUser}在上海，两人是异地恋，隔着大约900公里。
+格式：每条独立一行，以【类型|重要度】开头，重要度用 1~5 表示：
+【重要事件|5】${charName}和${currentUser}约定下周在长沙见面，${charName}住在岳麓区，${currentUser}住在五一广场附近。
+【${currentUser}偏好|2】${currentUser}喜欢喝冰美式，不吃香菜，习惯凌晨一点睡。
+【地理位置|3】${charName}在长沙，${currentUser}在上海，两人是异地恋，隔着大约900公里。
+
+重要度必须由你根据这条记忆对你们关系的长期影响自己判断，不能全部写 3：
+- 5 = 刻骨铭心 / 改变关系走向（重大约定、表白、分手、和好、秘密、禁忌）
+- 4 = 重要且会反复影响相处（关系定位、家人朋友、长期承诺、重大习惯）
+- 3 = 值得记住的稳定信息（城市、工作、日常安排）
+- 2 = 轻量偏好 / 小习惯 / 口味
+- 1 = 可记可不记的细节
 
 要求：
 - 记忆是长期使用的，越具体越详细越好，保留名字、地点、数字，不要模糊概括。
 - 每条记忆60-150字，宁可写多不要写少。
-- 只输出有实质内容的记忆，不要泛泛而谈。` },
+- 只输出有实质内容的记忆，不要泛泛而谈。
+- 同一批记忆的重要度要有高有低，不要整批都是 3。` },
                 { role: 'user', content: chatText }
             ]);
 
@@ -713,10 +731,17 @@
             for (let i = 0; i < lines.length; i++) {
                 const line = lines[i].trim();
                 if (!line) continue;
-                let type = '其他', content = line;
+                let type = '其他', content = line, importance = 0;
                 const match = line.match(/^【(.+?)】/);
-                if (match) { type = match[1]; content = line.replace(/^【.+?】/, '').trim(); }
+                if (match) {
+                    let tag = match[1].trim();
+                    content = line.replace(/^【.+?】/, '').trim();
+                    const im = tag.match(/^(.*?)[｜|:：]\s*([1-5])\s*$/);
+                    if (im) { type = im[1].trim() || '其他'; importance = parseInt(im[2], 10) || 0; }
+                    else type = tag;
+                }
                 if (!content) continue;
+                if (!importance) importance = guessMemoryImportance(type, content);
 
                 let embedding = null;
                 if (hasVector) {
@@ -729,7 +754,7 @@
 
                 items.push({
                     id: 'mem_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
-                    type, content,
+                    type, content, importance,
                     embedding: embedding || null,
                     hasVector: !!embedding,
                     date: new Date().toISOString(),
@@ -835,13 +860,15 @@
             '3. 群内发生的事件：约定、聚会、冲突、玩笑梗、红包/接龙/公告等。\n' +
             '4. 其他群成员与 ' + mName + ' 或用户之间的关系、互动。\n' +
             '5. 其他值得长期记住的细节。\n\n' +
-            '格式：每条独立一行，以【类型】开头，例如：\n' +
-            '【重要事件】在「' + info.name + '」里，' + u + '提议周末聚餐，' + mName + '答应了。\n' +
-            '【' + u + '偏好】' + u + '喜欢喝冰美式，不吃香菜，习惯凌晨一点睡。\n\n' +
+            '格式：每条独立一行，以【类型|重要度】开头，重要度 1~5，例如：\n' +
+            '【重要事件|5】在「' + info.name + '」里，' + u + '提议周末聚餐，' + mName + '答应了。\n' +
+            '【' + u + '偏好|2】' + u + '喜欢喝冰美式，不吃香菜，习惯凌晨一点睡。\n\n' +
+            '重要度必须由「' + mName + '」自己判断，不能全部写 3：5=改变关系/刻骨铭心，4=重要且长期影响，3=稳定信息，2=轻量偏好，1=可记可不记。\n\n' +
             '要求：\n' +
             '- 越具体越详细越好，保留名字、地点、数字，不要模糊概括。\n' +
             '- 每条 40~120 字，宁可写多不要写少。\n' +
-            '- 只写「' + mName + '」真正会记住、在意的事，不要泛泛而谈。';
+            '- 只写「' + mName + '」真正会记住、在意的事，不要泛泛而谈。\n' +
+            '- 同一批记忆的重要度要有高有低，不要全部都是 3。';
     }
 
     async function performGroupSummary(messages, isAuto) {
@@ -897,10 +924,17 @@
                 for (let i = 0; i < lines.length; i++) {
                     const line = lines[i].trim();
                     if (!line) continue;
-                    let type = '其他', content = line;
+                    let type = '其他', content = line, importance = 0;
                     const match = line.match(/^【(.+?)】/);
-                    if (match) { type = match[1]; content = line.replace(/^【.+?】/, '').trim(); }
+                    if (match) {
+                        let tag = match[1].trim();
+                        content = line.replace(/^【.+?】/, '').trim();
+                        const im = tag.match(/^(.*?)[｜|:：]\s*([1-5])\s*$/);
+                        if (im) { type = im[1].trim() || '其他'; importance = parseInt(im[2], 10) || 0; }
+                        else type = tag;
+                    }
                     if (!content) continue;
+                    if (!importance) importance = guessMemoryImportance(type, content);
 
                     let embedding = null;
                     if (hasVector) {
@@ -908,7 +942,7 @@
                     }
                     items.push({
                         id: 'mem_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
-                        type, content,
+                        type, content, importance,
                         embedding: embedding || null,
                         hasVector: !!embedding,
                         date: new Date().toISOString(),

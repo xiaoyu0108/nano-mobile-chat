@@ -5,7 +5,7 @@
   function on(id, ev, fn) { var el = $(id); if (el) el.addEventListener(ev, fn); }
   var APPS = [
     { id: 'chat', name: '聊天', icon: 'chat' }, { id: 'api', name: 'API', icon: 'api' }, { id: 'couple', name: '情侣空间', icon: 'couple' },
-    { id: 'halo', name: 'Halo', icon: 'halo' }, { id: 'instagram', name: 'Instagram', icon: 'instagram' }, { id: 'together', name: '一起看', icon: 'together' },
+    { id: 'halo', name: 'Halo', icon: 'halo' }, { id: 'instagram', name: 'Instagram', icon: 'instagram' }, { id: 'together', name: 'Books', icon: 'together' },
     { id: 'music', name: '音乐', icon: 'music' }, { id: 'memory', name: '记忆宫殿', icon: 'memory' }, { id: 'imessage', name: 'iMessage', icon: 'imessage' },
     { id: 'peek', name: '窥屏', icon: 'peek' }, { id: 'market', name: '共享集市', icon: 'market' }, { id: 'shop', name: '商城', icon: 'shop' },
     { id: 'schedule', name: '日程', icon: 'schedule' }, { id: 'mcp', name: 'MCP', icon: 'mcp' }, { id: 'tide', name: '月潮', icon: 'tide' },
@@ -58,6 +58,7 @@ const APP_ICONS = {
   var custom = {};
   var presets = [];
   var pendingIcon = '';
+  var pendingIconMode = 'fill';
   var pendingAvatar = '';
   var editingApp = '';
   var maskData = { masks: [], currentMaskId: null };
@@ -299,6 +300,54 @@ const APP_ICONS = {
     }
   }
 
+  /* ================= 内置通知栏外观 ================= */
+  var NOTIFY_STYLE_KEY = 'nano_app_notify_style';
+  function readNotifyStyle() {
+    var out = { glass: 'frosted', avatar: 'circle', shape: 'pill', template: 'default', css: '' };
+    try {
+      var o = JSON.parse(localStorage.getItem(NOTIFY_STYLE_KEY) || '{}') || {};
+      if (o.glass === 'liquid') out.glass = 'liquid';
+      if (o.avatar === 'square') out.avatar = 'square';
+      if (o.shape === 'rounded') out.shape = 'rounded';
+      if (['default', 'graypink', 'night', 'mint', 'sunset', 'clear'].indexOf(o.template) >= 0) out.template = o.template;
+      out.css = String(o.css || '');
+    } catch (e) {}
+    return out;
+  }
+  function writeNotifyStyle(s) {
+    try { localStorage.setItem(NOTIFY_STYLE_KEY, JSON.stringify(s)); } catch (e) {}
+    post({ type: 'notifyStyleChanged', style: s });
+  }
+  function notifyStyleFromUI() {
+    return {
+      glass: ($('notifyGlass') && $('notifyGlass').value) || 'frosted',
+      avatar: ($('notifyAvatarShape') && $('notifyAvatarShape').value) || 'circle',
+      shape: ($('notifyShape') && $('notifyShape').value) || 'pill',
+      template: ($('notifyTemplate') && $('notifyTemplate').value) || 'default',
+      css: ($('notifyCss') && $('notifyCss').value) || ''
+    };
+  }
+  function renderNotifyStyle() {
+    var s = readNotifyStyle();
+    if ($('notifyGlass')) $('notifyGlass').value = s.glass;
+    if ($('notifyAvatarShape')) $('notifyAvatarShape').value = s.avatar;
+    if ($('notifyShape')) $('notifyShape').value = s.shape;
+    if ($('notifyTemplate')) $('notifyTemplate').value = s.template;
+    if ($('notifyCss')) $('notifyCss').value = s.css;
+  }
+  function previewNotifyStyle() {
+    var s = notifyStyleFromUI();
+    writeNotifyStyle(s);
+    var avatar = (currentUser && currentUser.avatar) || '';
+    var ok = post({ type: 'notifyPreview', title: '通知预览', body: '毛玻璃、头像与胶囊形状会实时生效', name: '通知预览', avatar: avatar });
+    if (!ok) {
+      try {
+        if (window.parent && window.parent.__nanoAppNotify) window.parent.__nanoAppNotify('通知预览', '毛玻璃、头像与胶囊形状会实时生效', 'preview', { name: '通知预览', avatar: avatar, target: '' });
+      } catch (e) {}
+    }
+    toast('已保存并预览');
+  }
+
   function renderValues() {
     var bgv = $('bgValue');
     if (bgv) bgv.textContent = bg && bg.type === 'image' ? '自定义图片' : (bg && bg.type === 'color' ? '纯色' : '默认');
@@ -377,6 +426,7 @@ const APP_ICONS = {
     if (row) row.classList.toggle('show', !!(bark && bark.checked));
     loadCustomSoundThenFill();
     refreshPush();
+    renderNotifyStyle();
   }
 
   function loadCustomSoundThenFill() {
@@ -473,7 +523,11 @@ const APP_ICONS = {
     var rows = APPS.map(function (a) {
       var c = custom[a.id] || {};
       var name = c.name || a.name;
-      var preview = c.icon ? '<img class="app-preview-custom" src="' + esc(c.icon) + '" alt="">' : '<span class="app-preview">' + appIconHtml(a.icon) + '</span>';
+      var preview = c.icon
+        ? (c.iconMode !== 'free'
+          ? '<span class="app-preview-wrap"><img class="app-preview-custom fill" src="' + esc(c.icon) + '" alt=""></span>'
+          : '<img class="app-preview-custom" src="' + esc(c.icon) + '" alt="">')
+        : '<span class="app-preview">' + appIconHtml(a.icon) + '</span>';
       return '<button class="list-row" data-app="' + a.id + '">' + preview +
         '<span class="list-main"><span class="list-name">' + esc(name) + '</span><span class="list-sub">' + esc(c.name || c.icon ? '已自定义' : '默认') + '</span></span>' +
         '<span class="chev">›</span></button>';
@@ -489,10 +543,15 @@ const APP_ICONS = {
     if (!a) return;
     editingApp = id;
     pendingIcon = (custom[id] && custom[id].icon) || '';
+    pendingIconMode = (custom[id] && custom[id].iconMode) || 'fill';
     var name = (custom[id] && custom[id].name) || a.name;
     openSheet('编辑 ' + a.name,
-      '<div class="edit-preview"><span class="edit-icon-box" id="editIconBox">' + (pendingIcon ? '<img class="app-preview-custom edit" src="' + esc(pendingIcon) + '" alt="">' : '<span class="app-preview">' + appIconHtml(a.icon) + '</span>') + '</span>' +
+      '<div class="edit-preview"><span class="edit-icon-box" id="editIconBox">' + (pendingIcon ? '<img class="app-preview-custom edit' + (pendingIconMode === 'fill' ? ' fill' : '') + '" src="' + esc(pendingIcon) + '" alt="">' : '<span class="app-preview">' + appIconHtml(a.icon) + '</span>') + '</span>' +
       '<button class="mini-btn" id="pickIcon">选择图标</button></div>' +
+      '<div class="icon-mode">' +
+        '<label><input type="radio" name="iconMode" value="free"' + (pendingIconMode === 'free' ? ' checked' : '') + '> 无视外部包裹器（以上传图片形状为准）</label>' +
+        '<label><input type="radio" name="iconMode" value="fill"' + (pendingIconMode === 'fill' ? ' checked' : '') + '> 保留包裹器（照片填充，不改变外轮廓）</label>' +
+      '</div>' +
       '<input class="edit-name" id="editName" maxlength="12" value="' + esc(name) + '" placeholder="App 名称">' +
       '<button class="sheet-btn" id="saveApp">保存</button>' +
       '<button class="sheet-btn grey" id="resetApp">恢复默认</button>',
@@ -500,12 +559,22 @@ const APP_ICONS = {
     );
     var pick = $('pickIcon');
     if (pick) pick.addEventListener('click', function () { $('iconFile').click(); });
+    $('sheetBody').querySelectorAll('input[name="iconMode"]').forEach(function (r) {
+      r.addEventListener('change', function () {
+        if (!r.checked) return;
+        pendingIconMode = r.value;
+        var box = $('editIconBox');
+        if (box && pendingIcon) {
+          box.innerHTML = '<img class="app-preview-custom edit' + (pendingIconMode === 'fill' ? ' fill' : '') + '" src="' + esc(pendingIcon) + '" alt="">';
+        }
+      });
+    });
     var save = $('saveApp');
     if (save) save.addEventListener('click', function () {
       var v = ($('editName').value || '').trim() || a.name;
       var patch = {};
       if (v !== a.name) patch.name = v;
-      if (pendingIcon) patch.icon = pendingIcon;
+      if (pendingIcon) { patch.icon = pendingIcon; patch.iconMode = pendingIconMode; }
       if (Object.keys(patch).length) custom[id] = patch; else delete custom[id];
       saveCustomBoth(custom).then(function () { notifyHome(false); });
       renderValues();
@@ -732,6 +801,13 @@ const APP_ICONS = {
 
   async function enablePush() {
     if (!NP) { toast('推送模块未加载'); return false; }
+    // 安卓 Chrome 必须在用户手势里请求通知权限；放到 fetch 之后会丢失手势，
+    // 表现为订阅失败（registration failed / push service error）。
+    try {
+      if ('Notification' in window && Notification.permission === 'default') {
+        await Notification.requestPermission();
+      }
+    } catch (e) {}
     var endpoint = '';
     try { endpoint = (localStorage.getItem('nano_push_endpoint') || '').trim(); } catch (e) {}
     if (!endpoint) endpoint = 'https://nanopush.nano315.online';
@@ -749,7 +825,7 @@ const APP_ICONS = {
     if (!key) { toast('服务端未返回 VAPID 公钥'); return false; }
     try {
       NP.setup(endpoint, key, token);
-      await NP.enable();
+      await NP.enable(true);
       localStorage.setItem('nano_notify_enabled', '1');
       refreshNotify();
       toast('Web Push 已开启');
@@ -968,7 +1044,7 @@ const APP_ICONS = {
       resizeImage(f, 320, 'image/png').then(function (url) {
         pendingIcon = url;
         var p = $('editIconBox');
-        if (p) p.innerHTML = '<img class="app-preview-custom edit" src="' + esc(url) + '" alt="">';
+        if (p) p.innerHTML = '<img class="app-preview-custom edit' + (pendingIconMode === 'fill' ? ' fill' : '') + '" src="' + esc(url) + '" alt="">';
       }).catch(function () { toast('图标处理失败'); });
       e.target.value = '';
     });
@@ -1071,6 +1147,23 @@ const APP_ICONS = {
       if (NN && NN.playSound) { try { NN.playSound($('soundSelect').value); } catch (e) {} }
     });
 
+    ['notifyGlass', 'notifyAvatarShape', 'notifyShape', 'notifyTemplate'].forEach(function (id) {
+      on(id, 'change', function () { writeNotifyStyle(notifyStyleFromUI()); });
+    });
+    var notifyCssTimer = null;
+    on('notifyCss', 'input', function () {
+      clearTimeout(notifyCssTimer);
+      notifyCssTimer = setTimeout(function () { writeNotifyStyle(notifyStyleFromUI()); }, 180);
+    });
+    on('notifyCss', 'change', function () { writeNotifyStyle(notifyStyleFromUI()); });
+    on('notifyPreview', 'click', previewNotifyStyle);
+    on('notifyStyleReset', 'click', function () {
+      var def = { glass: 'frosted', avatar: 'circle', shape: 'pill', template: 'default', css: '' };
+      writeNotifyStyle(def);
+      renderNotifyStyle();
+      toast('已恢复默认通知栏样式');
+    });
+
     on('clearCache', 'click', function () {
       if (!window.caches) { toast('当前环境不支持'); return; }
       caches.keys().then(function (keys) {
@@ -1161,8 +1254,26 @@ const APP_ICONS = {
     } catch (err) {}
   });
 
+  function upgradeRowChevrons() {
+    var page = document.body.getAttribute('data-page') || '';
+    if (page !== 'notifications' && page !== 'other') return;
+    var svg = '<svg viewBox="0 0 8 13" width="8" height="13" aria-hidden="true"><path d="M1 1.5L6.5 6.5L1 11.5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    Array.prototype.forEach.call(document.querySelectorAll('.row'), function (row) {
+      if (row.classList.contains('subrow') || row.classList.contains('group-title')) return;
+      if (row.hasAttribute('data-static')) return;
+      var chev = row.querySelector('.chev');
+      if (chev) { chev.innerHTML = svg; chev.classList.add('svg-chev'); return; }
+      if (row.querySelector('.row-svg-chev')) return;
+      var span = document.createElement('span');
+      span.className = 'row-svg-chev';
+      span.innerHTML = svg;
+      row.appendChild(span);
+    });
+  }
+
   function init() {
     bind();
+    upgradeRowChevrons();
     initInterface();
     initAssistant();
     requestPersistStorage();

@@ -756,3 +756,14 @@ main{padding:18px 20px 116px}
   .topbar .brand small{display:none}
   .folder-meta small{display:none}
 }
+
+/* 纯白底色 */
+html,
+body,
+.app,
+main,
+.page,
+.detail-page,
+.detail-content {
+  background: #ffffff !important;
+}

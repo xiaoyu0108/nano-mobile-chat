@@ -158,6 +158,7 @@ body:not(.fullscreen-active) .content{padding-bottom:68px}
 .comment-main{flex:1;min-width:0}
 .comment-user{font-size:13px;font-weight:650;line-height:18px}
 .comment-text{font-size:13px;line-height:19px;margin-top:2px}
+.reply-mention{color:#6b7cff;font-weight:650}
 .comment-meta{display:flex;align-items:center;gap:13px;margin-top:5px;font-size:10px;color:#999}
 .reply-btn{color:var(--muted);font-weight:600}
 .reply-list{margin-top:7px;border-left:2px solid var(--line);padding-left:12px}

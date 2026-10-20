@@ -854,9 +854,31 @@
                 try { __bal = Number(NanoFamilyCardStore.readCharWallet(chatId).balance) || 0; } catch (e) {}
                 prompt += '\n【商城请求 - 必须表态】\n';
                 prompt += '对方（' + (currentUserName || '用户') + '）通过商城给你发来一个' + (__sc.storeKind === 'pay_request' ? '代付请求' : '代购请求') + '：' + (__sc.sub || '商品') + '，金额 ¥' + __st.toFixed(2) + '。\n';
-                prompt += '你的银行卡余额约 ¥' + __bal.toFixed(2) + '。接受会真的从你的银行卡扣款；余额不足、不想花这笔钱或不愿意时，就拒绝。\n';
+                prompt += '这是「对方让你付款」，不是你在给对方买东西。你的银行卡余额约 ¥' + __bal.toFixed(2) + '。接受会真的从你的银行卡扣款；余额不足、不想花这笔钱或不愿意时，就拒绝。\n';
                 prompt += '在本轮回复里明确表态，标记独占一行：愿意就输出 [store:accept]，拒绝就输出 [store:decline]。只输出一个标记。\n';
                 prompt += '只有存在这条待处理商城请求时才输出标记，普通聊天绝对不要输出。\n';
+            }
+        } catch (e) {}
+
+        // 商城：角色自己以前主动发出的请求（旧版本遗留）。让角色知道这是「自己让用户付款」，
+        // 绝不能误以为是自己买给用户的，也不要输出 [store:accept]/[store:decline]（那只用于用户发来的请求）。
+        try {
+            const __myStore = [];
+            for (let i = 0; i < messages.length; i++) {
+                const m = messages[i];
+                if (!m || m.recalled || !m.isCard || !m.cardData || m.cardData.cardType !== 'store') continue;
+                const cd = m.cardData;
+                if ((cd.status || 'pending') !== 'pending') continue;
+                if (m.type !== 'left') continue;
+                if (cd.storeKind === 'char_gift') continue;
+                if (cd.from !== 'char' && cd.direction !== 'user') continue;
+                __myStore.push(cd);
+            }
+            if (__myStore.length) {
+                const cd = __myStore[__myStore.length - 1];
+                prompt += '\n【你之前发起的商城请求 - 请保持认知正确】\n';
+                prompt += '你之前主动向对方提出过：' + (cd.sub || cd.title || '一件商品') + '（¥' + storeCardTotal(cd).toFixed(2) + '）。这是「你让对方向你付款/帮你下单」，不是你在给对方买东西，也不是你送对方的礼物。\n';
+                prompt += '不要把它说成“我给你买了/送你的”，也不要再重复发一次；等对方处理即可。只有对方发来的商城请求才需要 [store:accept]/[store:decline]，你自己发起的请求绝对不要输出这两个标记。\n';
             }
         } catch (e) {}
 
@@ -1439,7 +1461,11 @@
             if (m.isCard && m.cardData) {
                 const cd = m.cardData;
                 if (cd.cardType === 'store') {
-                    t = '[商城]' + (cd.title || '') + ' ' + (cd.sub || '') + (cd.amount ? (' ' + cd.amount) : '') +
+                    const kind = cd.storeKind || 'pay_request';
+                    const role = (kind === 'char_gift') ? '你送给用户'
+                        : ((kind === 'char_share' || kind === 'char_pay_request') ? '你让用户帮你付款/下单'
+                            : '用户向你发起');
+                    t = '[商城·' + role + ']' + (cd.title || '') + ' ' + (cd.sub || '') + (cd.amount ? (' ' + cd.amount) : '') +
                         (cd.status ? (' 状态：' + cd.status) : '') + (cd.note ? (' 备注：' + cd.note) : '');
                 } else {
                     t = '[' + (cd.cardType || '卡片') + ']' + (cd.title || cd.text || cd.amount || '');
@@ -2623,7 +2649,14 @@
 
     // 译文显示模式：true=独立气泡（在原文气泡外），false=与原文同一气泡
     function translationSeparate() {
-        try { return localStorage.getItem('nano_trans_separate') !== '0'; } catch (e) { return true; }
+        try {
+            // 模板可直接固定模式：模板 JS 里写 window.NANO_TRANSLATION_SEPARATE = 1/0，
+            // 或给 body 加 data-nano-trans-separate="1/0"；优先级高于聊天设置按钮。
+            if (typeof window.NANO_TRANSLATION_SEPARATE !== 'undefined') return !!window.NANO_TRANSLATION_SEPARATE;
+            var attr = document.body && document.body.getAttribute('data-nano-trans-separate');
+            if (attr === '1' || attr === '0') return attr === '1';
+            return localStorage.getItem('nano_trans_separate') !== '0';
+        } catch (e) { return true; }
     }
     // 设置页改模式时（跨文档）重渲染
     window.addEventListener('storage', function (e) {
@@ -2707,6 +2740,12 @@
                 ((cardData.status === 'received' || cardData.status === 'returned' || cardData.status === 'accepted' || cardData.status === 'rejected') ? ' ' + cardData.status : '') +
                 (cardData.missed ? ' missed' : '');
             card.className = 'bubble-card ' + type + ' ' + (cardData.cardType || '') + extraClass;
+            // 任意 DIY：卡片数据可以直接指定宽度/最小高度
+            try {
+                var __cssSize = function (v) { v = String(v); return /^\d+(\.\d+)?$/.test(v) ? v + 'px' : v; };
+                if (cardData.width || cardData.cardWidth) card.style.setProperty('--card-width', __cssSize(cardData.width || cardData.cardWidth));
+                if (cardData.height || cardData.cardHeight) card.style.setProperty('--card-min-height', __cssSize(cardData.height || cardData.cardHeight));
+            } catch (e) {}
             if (cardData.cardType === 'call' && cardData.callId) card.dataset.callid = cardData.callId;
             try { card.innerHTML = buildCardHTML(cardData, type, time); } catch (err) { card.innerHTML = ''; }
             content.appendChild(card);
@@ -3409,10 +3448,14 @@
                 } else if (type === 'left' && !recalled && !isNanoChat) {
                     const __preview = text || (isImage ? '[图片]' : (isVoice ? '[语音]' : (isCard ? '[卡片消息]' : '发来一条消息')));
                     const __title = (characterData && characterData.name) || displayName || '新消息';
-                    window.NanoBadge.incoming(chatId, __title, __preview, { target: 'chat:' + chatId });
+                    window.NanoBadge.incoming(chatId, __title, __preview, { target: 'chat:' + chatId, avatar: (characterData && characterData.avatar) || '', name: __title });
                 }
             }
         } catch (e) {}
+        // 用户发了新消息：把最近上下文同步给 Worker，保证之后的后台主动消息强相关
+        if (type === 'right' && !isCard && !isImage && !isVoice) {
+            try { scheduleAutoPushSync(3000); } catch (e) {}
+        }
         return row;
     }
 
@@ -3560,8 +3603,8 @@
     }
 
     function claimCard(msg) {
+        // 只标记已处理，不改写 title/sub，避免把「转账/礼物名称」替换成状态词
         msg.cardData.claimed = true;
-        msg.cardData.title = msg.cardData.cardType === 'transfer' ? '已收下' : '已查收';
         msg.cardData.footer = msg.cardData.cardType === 'transfer' ? '已收下' : '已查收';
     }
 
@@ -3573,13 +3616,31 @@
         const h = String(now.getHours()).padStart(2, '0');
         const m = String(now.getMinutes()).padStart(2, '0');
         const timeStr = h + ':' + m;
+        // 原卡是谁发起的，响应卡就沿用谁；否则灰色响应卡会把「收款人/送礼人」弄反。
+        const originalFromChar = msg.type === 'left';
+        const senderName = originalFromChar ? (displayName || 'TA') : (currentUserName || '我');
+        const recipientName = originalFromChar ? (currentUserName || '我') : (displayName || 'TA');
         const respCard = {
             cardType: cd.cardType,
             amount: cd.amount,
+            total: cd.total,
             title: cd.title,
-            sub: cd.cardType === 'gift' ? (status === 'received' ? '已查收' : '已退还') : cd.sub,
+            sub: cd.cardType === 'gift' ? (status === 'received' ? '已查收' : '已退还') : (cd.sub || ''),
             status: status,
-            response: true
+            response: true,
+            time: timeStr,
+            senderName: senderName,
+            recipientName: recipientName,
+            fromName: cd.fromName || senderName,
+            toName: recipientName,
+            giftType: cd.giftType,
+            items: Array.isArray(cd.items) ? cd.items : undefined,
+            storeKind: cd.storeKind,
+            requestId: cd.requestId,
+            familyId: cd.familyId,
+            direction: cd.direction,
+            from: cd.from,
+            note: cd.note
         };
         addMessage(opposite, '', timeStr, null, false, true, respCard);
     }
@@ -3924,69 +3985,6 @@
         card.querySelector('#storePwdOk').addEventListener('click', ok);
         input.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); ok(); } });
     }
-    // 角色主动在商城给用户买礼物（进入聊天时触发，每天最多一次，不调用 API）
-    function maybeCharStoreGift() {
-        try {
-            if (!characterData || characterData.nanoAssistant) return;
-            for (var mi = 0; mi < messages.length; mi++) {
-                var mm = messages[mi];
-                if (mm && mm.isCard && mm.cardData && mm.cardData.cardType === 'store' &&
-                    mm.cardData.storeKind === 'char_gift' && (mm.cardData.status || 'pending') === 'pending') return;
-            }
-            var key = 'nano_store_char_gift_at__' + mallUidValue();
-            var last = 0;
-            try { last = parseInt(localStorage.getItem(key), 10) || 0; } catch (e) {}
-            if (Date.now() - last < 22 * 3600 * 1000) return;
-            var d = mallReadDataValue();
-            if (!Array.isArray(d.products) || !d.products.length) return;
-            var w = null;
-            try { w = NanoFamilyCardStore.readCharWallet(chatId); } catch (e) { return; }
-            var bal = Number(w.balance) || 0;
-            var pool = d.products.filter(function (p) { return Number(p.price) <= bal * 0.35; });
-            if (!pool.length) pool = d.products.filter(function (p) { return Number(p.price) <= bal; });
-            if (!pool.length) return;
-            var product = pool[Math.floor(Math.random() * pool.length)];
-            var name = (characterData && characterData.name) || displayName || 'TA';
-            var requestId = 'req_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5);
-            var items = [{ name: product.name, price: Number(product.price), qty: 1, image: product.image || '', cat: product.cat }];
-            try { NanoFamilyCardStore.charSpend(chatId, '商城礼物 · 送给 ' + (currentUserName || '用户'), product.price); } catch (e) {}
-            d.orders = Array.isArray(d.orders) ? d.orders : [];
-            d.orders.unshift({
-                id: 'S' + Date.now().toString().slice(-9),
-                requestId: requestId,
-                items: items,
-                total: Number(product.price) || 0,
-                time: new Date().toISOString(),
-                status: '待确认',
-                payment: 'TA 的银行卡',
-                recipient: currentUserName || '我',
-                gift: true,
-                fromChar: name
-            });
-            if (d.orders.length > 100) d.orders = d.orders.slice(0, 100);
-            mallWriteDataValue(d);
-            addMessage('left', '', nowHHMM(), null, false, true, {
-                cardType: 'store',
-                storeKind: 'char_gift',
-                direction: 'user',
-                title: 'TA 送你的礼物',
-                sub: product.name,
-                amount: '¥' + (Number(product.price) || 0).toFixed(2),
-                total: Number(product.price) || 0,
-                items: items,
-                requestId: requestId,
-                status: 'pending',
-                from: 'char',
-                fromName: name
-            });
-            try { localStorage.setItem(key, String(Date.now())); } catch (e) {}
-            addSystemNotice(name + ' 在商城给你买了一份礼物');
-            renderMessages();
-            saveMessages();
-            scrollToBottom();
-        } catch (e) {}
-    }
-
     function settleStoreFromReplyText(rawText) {
         let body = String(rawText || '');
         const decisions = [];
@@ -4106,20 +4104,30 @@
     }
 
     // delta>0 收入（银行+），delta<0 支出（银行−）
-    function recordBankFlow(delta, desc) {
+    function recordBankFlow(delta, desc, cardId) {
         delta = Math.round((Number(delta) || 0) * 100) / 100;
         if (!delta) return Promise.resolve();
         return readWalletRecord().then(function(wd) {
             if (!wd) {
                 wd = { balance: 5000, cardNumber: '', bankName: '', transactions: [] };
             }
-            wd.balance = Math.round(((typeof wd.balance === 'number' ? wd.balance : 0) + delta) * 100) / 100;
+            var __cards = Array.isArray(wd.cards) ? wd.cards : [];
+            var __card = __cards.filter(function (c) { return String(c.id) === String(wd.activeCardId || (cardId || '')); })[0] || __cards[0];
+            if (__card) {
+                __card.balance = Math.round((Number(__card.balance || 0) + delta) * 100) / 100;
+                wd.balance = __card.balance;
+            } else {
+                wd.balance = Math.round(((typeof wd.balance === 'number' ? wd.balance : 0) + delta) * 100) / 100;
+            }
             wd.transactions = wd.transactions || [];
             wd.transactions.unshift({
                 id: 'tx_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
                 type: delta >= 0 ? 'income' : 'expense',
                 amount: Math.abs(delta),
                 desc: desc || (delta >= 0 ? '收到转账' : '转账'),
+                cardId: __card ? __card.id : '',
+                cardLast4: __card ? String(__card.cardNumber || '').slice(-4) : '',
+                bankName: __card ? (__card.bankName || '') : '',
                 time: new Date().toISOString()
             });
             if (wd.transactions.length > 500) wd.transactions = wd.transactions.slice(0, 500);
@@ -4154,7 +4162,7 @@
             const S = window.NanoFamilyCardStore;
             if (msg.type === 'right') {
                 // 我发给对方，对方收下 → 我付 → 银行−；同时计入对方的银行流水（收入）
-                recordBankFlow(-amt, '转账给' + who);
+                recordBankFlow(-amt, '转账给' + who, msg.cardData.paidCardId || '');
                 try { if (S) S.charIncome(chatId, '收到 ' + (currentUserName || '用户') + ' 的转账', amt); } catch (e) {}
             } else {
                 // 对方发给我，我收下 → 我收 → 银行+；同时计入对方的银行流水（支出）
@@ -4936,7 +4944,12 @@
             body = secMain.text;
             if (heart && secMain.sections.length) heart = heartWithSections({ subject: heart.subject, thought: heart.thought, sections: secMain.sections });
             const cleaned = (extractTagsFromText(body).cleanedText || '').trim();
-            const bubbles = String(cleaned).split(/\n+/).map(function (s) { return s.trim(); }).filter(Boolean).slice(0, 3);
+            let bubbles = String(cleaned).split(/\n+/).map(function (s) { return s.trim(); }).filter(Boolean).slice(0, 3);
+            // 模型只给一整段时按句子拆成多条气泡；外文「原文||翻译」格式不拆
+            if (bubbles.length === 1 && bubbles[0].indexOf('||') < 0 && bubbles[0].length > 16) {
+                const parts = bubbles[0].split(/(?<=[。！？!?…])/).map(function (s) { return s.trim(); }).filter(Boolean);
+                if (parts.length > 1) bubbles = parts.slice(0, 3);
+            }
             if (!bubbles.length) return null;
             return { bubbles: bubbles, heart: heart, think: think, cotOn: cotOn };
         } catch (e) { return null; } finally { suppressApiAlerts = false; }
@@ -4962,6 +4975,22 @@
     let lastAutoMsgRunAt = 0;      // 去重：本地定时器与外壳广播同时到点时不重复生成
     let lastAutoMomentRunAt = 0;
     function autoMsgTaskId() { return 'nano_auto_msg:' + chatId; }
+    // 本机兜底也遵守「后台最多 3 个 char」：一小时窗口内已有 3 个不同角色主动发过，就不再插队
+    function localAutoBudgetOk() {
+        try {
+            const now = Date.now();
+            const key = 'nano_auto_msg_budget';
+            let arr = [];
+            try { arr = JSON.parse(localStorage.getItem(key) || '[]'); } catch (e) { arr = []; }
+            arr = (Array.isArray(arr) ? arr : []).filter(function (x) {
+                return x && x.at && now - x.at < 60 * 60 * 1000 && String(x.chatId) !== String(chatId);
+            });
+            if (arr.length >= 3) return false;
+            arr.push({ chatId: String(chatId), at: now });
+            localStorage.setItem(key, JSON.stringify(arr.slice(-8)));
+            return true;
+        } catch (e) { return true; }
+    }
     // 真正执行一次主动发消息（本地定时器到点、或外壳统一调度到点都会走到这里）
     function runScheduledAutoMsg() {
         // 已交给 Worker 无后台推送：本机不再生成，避免重复主动消息。
@@ -4982,6 +5011,7 @@
                 try { localStorage.removeItem(callKey); } catch (e) {}
             }
         } catch (e) {}
+        if (!localAutoBudgetOk()) { scheduleNextAutoMsg(); return; }
         lastAutoMsgRunAt = Date.now();
         if (autoMsgTimer) { clearTimeout(autoMsgTimer); autoMsgTimer = null; }
         try { if (window.NanoKeepAlive && NanoKeepAlive.cancel) NanoKeepAlive.cancel(autoMsgTaskId()); } catch (e) {}
@@ -5001,6 +5031,19 @@
                     if (bsep > -1) {
                         btrans = btext.slice(bsep + 2).trim() || null;
                         btext = btext.slice(0, bsep).trim();
+                    }
+                    if (!btrans && (isForeignChar() || isCantoneseChar())) {
+                        try { btrans = await translateToZh(btext); } catch (e) {}
+                    }
+                    if (btrans) {
+                        const os = btext.split(/(?<=[。！？!?…\.])\s*/).map(function (x) { return x.trim(); }).filter(Boolean);
+                        const ts = btrans.split(/(?<=[。！？!?…\.])\s*/).map(function (x) { return x.trim(); }).filter(Boolean);
+                        if (os.length > 1) {
+                            for (let j = 0; j < os.length; j++) {
+                                addMessage('left', os[j], nowHHMM(), null, false, false, null, null, ts[j] || btrans, null);
+                            }
+                            continue;
+                        }
                     }
                     addMessage('left', btext, nowHHMM(), null, false, false, null, null, btrans, null);
                 }
@@ -5285,7 +5328,8 @@
         try {
             const batch = await generateAutoMomentBatch();
             if (!batch || !batch.items || !batch.items.length) return;
-            const arr = batch.items, authors = batch.authors;
+            // 后台一次最多 3 个角色发动态，避免刷屏
+            const arr = batch.items.slice(0, 3), authors = batch.authors;
             const allowMomentImage = getChatSetting('allowMomentImage', false);
             const nowMs = Date.now();
             const authorNames = authors.map(function (a) { return a.name; });
@@ -5365,7 +5409,7 @@
             if (window.parent === window) {
                 try { if (window.NanoNotify) window.NanoNotify.notify('朋友圈', who + ' 等更新了朋友圈（' + arr.length + ' 条新动态）', { target: 'moments', channel: 'moment', avatar: String((arr[0] && arr[0].avatar) || ''), name: who }); } catch (e) {}
             } else {
-                try { window.parent.postMessage({ type: 'NANO_GEN_NOTIFY', title: '朋友圈已更新', body: who + ' 等发了 ' + arr.length + ' 条新动态', avatar: String((arr[0] && arr[0].avatar) || ''), name: who }, '*'); } catch (e) {}
+                try { window.parent.postMessage({ type: 'NANO_GEN_NOTIFY', title: '朋友圈已更新', body: who + ' 等发了 ' + arr.length + ' 条新动态', avatar: String((arr[0] && arr[0].avatar) || ''), name: who, target: 'moments' }, '*'); } catch (e) {}
             }
         } finally { isProcessingApi = false; }
     }
@@ -5410,7 +5454,7 @@
             if (window.parent === window) {
                 try { if (window.NanoNotify) window.NanoNotify.notify(displayName || '朋友圈', (displayName || '') + ' 发了条朋友圈：' + String(post.text).slice(0, 50), { target: 'moments', channel: 'moment', avatar: String(post.avatar || avatarSrc || ''), name: displayName || '朋友圈' }); } catch (e) {}
             } else {
-                try { window.parent.postMessage({ type: 'NANO_GEN_NOTIFY', title: '朋友圈已更新', body: (displayName || '') + '：' + String(post.text).slice(0, 40), avatar: String(post.avatar || avatarSrc || ''), name: displayName || '朋友圈' }, '*'); } catch (e) {}
+                try { window.parent.postMessage({ type: 'NANO_GEN_NOTIFY', title: '朋友圈已更新', body: (displayName || '') + '：' + String(post.text).slice(0, 40), avatar: String(post.avatar || avatarSrc || ''), name: displayName || '朋友圈', target: 'moments' }, '*'); } catch (e) {}
             }
         } finally { isProcessingApi = false; }
     }
@@ -5447,7 +5491,7 @@
             await saveMomentPost(post);
             recordAutoMomentTime();
             try { if (window.parent !== window) window.parent.postMessage({ type: 'momentsDataUpdated' }, '*'); } catch (e) {}
-            try { if (window.parent !== window) window.parent.postMessage({ type: 'NANO_GEN_NOTIFY', title: '新照片', body: (displayName || '') + '：' + cap.slice(0, 40), avatar: String(post.avatar || avatarSrc || ''), name: displayName || '朋友圈' }, '*'); } catch (e) {}
+            try { if (window.parent !== window) window.parent.postMessage({ type: 'NANO_GEN_NOTIFY', title: '新照片', body: (displayName || '') + '：' + cap.slice(0, 40), avatar: String(post.avatar || avatarSrc || ''), name: displayName || '朋友圈', target: 'moments' }, '*'); } catch (e) {}
         } finally { isProcessingApi = false; }
     }
 
@@ -5480,7 +5524,7 @@
             bumpChatPhotoCount();
             recordAutoMomentTime();
             try { notifyCharMessage('[照片] ' + (capText || prompt).slice(0, 40)); } catch (e) {}
-            try { if (window.parent !== window) window.parent.postMessage({ type: 'NANO_GEN_NOTIFY', title: '收到新照片', body: (displayName || '') + ' 发来一张照片', avatar: String(avatarSrc || ''), name: displayName || 'TA' }, '*'); } catch (e) {}
+            try { if (window.parent !== window) window.parent.postMessage({ type: 'NANO_GEN_NOTIFY', title: '收到新照片', body: (displayName || '') + ' 发来一张照片', avatar: String(avatarSrc || ''), name: displayName || 'TA', target: 'chat:' + chatId }, '*'); } catch (e) {}
         } finally { isProcessingApi = false; }
     }
 
@@ -6171,24 +6215,36 @@
             if (cd.cardType === 'transfer') {
                 const amount = cd.amount || '';
                 const note = cd.title ? '（备注：' + cd.title + '）' : '';
+                const fromMe = m.type === 'left';
                 if (isResp) {
-                    if (status === 'received') return who + '已接收这笔转账' + amount + note;
-                    if (status === 'returned') return who + '退还了这笔转账' + amount + note;
-                    return who + '对这笔转账作出回应' + amount + note;
+                    if (status === 'received') return fromMe ? ('你已接收用户发来的转账' + amount + note) : ('用户已接收你发出的转账' + amount + note);
+                    if (status === 'returned') return fromMe ? ('你已退还用户发来的转账' + amount + note) : ('用户已退还你发出的转账' + amount + note);
+                    return (fromMe ? '你' : '用户') + '对这笔转账作出回应' + amount + note;
                 }
-                if (status === 'received') return who + (m.type === 'right' ? '发来的那笔转账已被接收' : '发出的转账已被接收') + '：' + amount + note;
-                if (status === 'returned') return who + (m.type === 'right' ? '发来的那笔转账已被退还' : '发出的转账已被退还') + '：' + amount + note;
-                return who + (m.type === 'right' ? '发来一笔转账' : '给对方转账') + '：' + amount + note;
+                if (status === 'received') return fromMe ? ('用户已接收你发出的转账：' + amount + note) : ('你已接收用户发来的转账：' + amount + note);
+                if (status === 'returned') return fromMe ? ('用户已退还你发出的转账：' + amount + note) : ('你已退还用户发来的转账：' + amount + note);
+                return fromMe ? ('你给用户发了一笔转账：' + amount + note) : ('用户给你发来一笔转账：' + amount + note);
             } else if (cd.cardType === 'gift') {
                 const name = cd.title || '';
+                const fromMe = m.type === 'left';
                 if (isResp) {
-                    if (status === 'received') return who + '已查收这份礼物：' + name;
-                    if (status === 'returned') return who + '退还了这份礼物' + name;
-                    return who + '对这份礼物作出回复：' + name;
+                    if (status === 'received') return fromMe ? ('你已查收用户送来的礼物：' + name) : ('用户已查收你送出的礼物：' + name);
+                    if (status === 'returned') return fromMe ? ('你退还了用户送来的礼物：' + name) : ('用户退还了你送出的礼物：' + name);
+                    return (fromMe ? '你' : '用户') + '对这份礼物作出回复：' + name;
                 }
-                if (status === 'received') return who + (m.type === 'right' ? '送出的礼物已被查收' : '收到的礼物已查收') + '：' + name;
-                if (status === 'returned') return who + (m.type === 'right' ? '送出的礼物已被退还' : '收到的礼物已退还') + '：' + name;
-                return who + (m.type === 'right' ? '赠送了礼物' : '送了礼物') + '：' + name;
+                if (status === 'received') return fromMe ? ('用户已查收你送出的礼物：' + name) : ('你已查收用户送来的礼物：' + name);
+                if (status === 'returned') return fromMe ? ('用户退还了你送出的礼物：' + name) : ('你退还了用户送来的礼物：' + name);
+                return fromMe ? ('你送给用户一份礼物：' + name) : ('用户送给你一份礼物：' + name);
+            } else if (cd.cardType === 'store') {
+                const kind = cd.storeKind || 'pay_request';
+                const items = Array.isArray(cd.items) ? cd.items.map(function (it) { return it && it.name ? it.name : ''; }).filter(Boolean).join('、') : '';
+                const title = cd.title || items || '商城订单';
+                const amount = cd.amount || '';
+                const stText = status === 'accepted' ? '（已同意/已支付）' : (status === 'declined' ? '（已拒绝）' : (status === 'returned' ? '（已退回）' : '（待处理）'));
+                if (kind === 'char_gift') return '你之前在商城给用户买了一份礼物：' + title + (amount ? (' ' + amount) : '') + stText + '。这是你送用户的，不是用户送你。';
+                if (kind === 'char_share' || kind === 'char_pay_request') return '你之前主动向用户提出想买「' + title + '」' + (amount ? ('（' + amount + '）') : '') + stText + '。这是你让用户帮你付款/下单，不是你在给用户买东西。';
+                if (kind === 'pay_request' || kind === 'product_share') return '用户通过商城向你发来一个' + (kind === 'pay_request' ? '代付请求' : '商品分享') + '：' + title + (amount ? (' ' + amount) : '') + stText + '。' + (status === 'pending' ? '需要你在本轮决定是否接受。' : '');
+                return '一张商城卡片：' + title + (amount ? (' ' + amount) : '') + stText;
             } else if (cd.cardType === 'call') {
                 const kind = cd.video ? '视频通话' : '语音通话';
                 if (cd.missed) return who + ' 的' + kind + '未被接听';
@@ -8299,6 +8355,15 @@
     function autoPushTokenOnly() {
         try { return localStorage.getItem('nano_push_token') || ''; } catch (e) { return ''; }
     }
+    function autoDeviceId() {
+        var id = '';
+        try { id = localStorage.getItem('nano_device_id') || ''; } catch (e) {}
+        if (!id) {
+            id = 'dev_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+            try { localStorage.setItem('nano_device_id', id); } catch (e) {}
+        }
+        return id || 'default';
+    }
     function readAutoPushGlobals() {
         // 主动消息/朋友圈开关是「按聊天」存的；服务端只能有一套全局配置，
         // 所以扫描所有聊天：任意一个开启就继续，间隔优先用当前聊天，否则用第一个开启的。
@@ -8344,9 +8409,12 @@
         return out;
     }
 
+    let lastAutoPushConfigAt = 0;
     async function syncAutoPushConfig(opts) {
         if (autoPushSyncing) return;
         if (!allCharacters || !allCharacters.length) return;
+        // 普通上下文同步最多 10 分钟一次，避免每次聊天/切前后台都写 KV；开关变动(reset)立即同步
+        if (!(opts && opts.reset) && Date.now() - lastAutoPushConfigAt < 10 * 60 * 1000) return;
         autoPushSyncing = true;
         try {
             const globals = readAutoPushGlobals();
@@ -8355,14 +8423,42 @@
             let cfg = null;
             try { cfg = await getApiConfig(); } catch (e) { cfg = null; }
             let curUser = currentUser;
+            let hasMaskData = false;
             try {
                 const hd = JSON.parse(localStorage.getItem('nano_mask_data') || 'null');
                 if (hd) {
+                    hasMaskData = true;
                     const list = Array.isArray(hd.masks) ? hd.masks : [];
                     curUser = list.find(function (m) { return m && String(m.id) === String(hd.currentMaskId); }) || list[0] || curUser;
                 }
             } catch (e) {}
-            const uid = curUser ? String(curUser.id) : '';
+            // 只有确实存在面具数据时才用面具 id；否则用稳定设备 id，保证和 bridge / 订阅用同一个 key
+            let uid = (hasMaskData && curUser) ? String(curUser.id) : '';
+            if (!uid) {
+                try {
+                    uid = localStorage.getItem('nano_auto_user_id') || '';
+                    if (!uid) {
+                        uid = 'u_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+                        localStorage.setItem('nano_auto_user_id', uid);
+                    }
+                } catch (e) { uid = 'default'; }
+            }
+            // 后台生成必须接得上最近聊天：把每个角色最近 6 条有效消息一起同步给 Worker。
+            const recentFor = function (cid) {
+                try {
+                    const raw = localStorage.getItem('chat_messages_' + cid);
+                    const arr = raw ? JSON.parse(raw) : [];
+                    if (!Array.isArray(arr)) return [];
+                    return arr.filter(function (m) {
+                        return m && !m.recalled && m.text && !m.isCard && !m.isImage && !m.isVoice;
+                    }).slice(-6).map(function (m) {
+                        return {
+                            who: m.type === 'right' ? 'user' : 'char',
+                            text: String(m.text).replace(/\s+/g, ' ').trim().slice(0, 160)
+                        };
+                    }).filter(function (x) { return x.text; });
+                } catch (e) { return []; }
+            };
             const candidates = allCharacters.filter(function (c) {
                 if (!c || !c.id || !c.name || c.nanoAssistant) return false;
                 return !uid || !c.bindUser || String(c.bindUser) === uid;
@@ -8393,12 +8489,14 @@
                     nationality: nat,
                     language: String(c.language || ''),
                     foreign: foreign,
-                    cycle: cyc || null
+                    cycle: cyc || null,
+                    recent: recentFor(String(c.id))
                 };
             });
             const canSend = chars.length > 0;
             const payload = {
                 token: autoPushToken(),
+                deviceId: autoDeviceId(),
                 enabled: canSend && (msgEnabled || momentEnabled),
                 msgEnabled: canSend && msgEnabled,
                 momentEnabled: canSend && momentEnabled,
@@ -8420,9 +8518,13 @@
             });
             const data = await resp.json().catch(function () { return {}; });
             if (!resp.ok || !data.ok) throw new Error('auto config failed');
+            lastAutoPushConfigAt = Date.now();
             window.__serverAutoPushActive = !!data.enabled;
             // 让外壳里的「上线补发」知道服务端已经在定时发，避免两边各发一次
-            try { localStorage.setItem('nano_server_auto_push', data.enabled ? '1' : '0'); } catch (e) {}
+            try {
+                localStorage.setItem('nano_server_auto_push', data.enabled ? '1' : '0');
+                localStorage.setItem('nano_server_auto_push_at', String(Date.now()));
+            } catch (e) {}
             if (window.__serverAutoPushActive) {
                 // 交给服务端后，停掉本机的定时生成，避免重复主动消息。
                 if (autoMsgTimer) { clearTimeout(autoMsgTimer); autoMsgTimer = null; }
@@ -8435,7 +8537,16 @@
                 } catch (e) {}
             }
         } catch (e) {
-            // 服务端不可用时回退到本机定时器，保证至少还能主动发消息。
+            // 刚刚还在由服务端定时发送（30 分钟内有成功记录）时，网络抖动不要立刻切回本机，
+            // 否则服务端和本机会各发一次，表现为「char 一直发」。
+            let lastOk = 0;
+            try { lastOk = parseInt(localStorage.getItem('nano_server_auto_push_at') || '0', 10) || 0; } catch (e2) {}
+            if (lastOk && Date.now() - lastOk < 30 * 60 * 1000 &&
+                (localStorage.getItem('nano_server_auto_push') === '1')) {
+                window.__serverAutoPushActive = true;
+                return;
+            }
+            // 服务端确实不可用时才回退到本机定时器，保证至少还能主动发消息。
             window.__serverAutoPushActive = false;
             try { localStorage.setItem('nano_server_auto_push', '0'); } catch (e2) {}
             try { if (getChatSetting('autoMsg', false)) scheduleNextAutoMsg(); } catch (e2) {}
@@ -8446,17 +8557,23 @@
     }
 
     let lastAutoPushSyncAt = 0;
+    let autoPushSyncTimer = null;
     function scheduleAutoPushSync(delay) {
         try {
+            // 聊天后同步最近上下文即可；30 秒内多次触发只发一次，避免频繁请求 Worker。
+            if (autoPushSyncTimer || Date.now() - lastAutoPushSyncAt < 30000) return;
             const wait = Math.max(0, Number(delay) || 0);
-            setTimeout(function () { syncAutoPushConfig(); }, wait);
+            autoPushSyncTimer = setTimeout(function () {
+                autoPushSyncTimer = null;
+                lastAutoPushSyncAt = Date.now();
+                syncAutoPushConfig();
+            }, wait);
         } catch (e) {}
     }
     document.addEventListener('visibilitychange', function () {
         if (document.visibilityState !== 'visible') return;
         try { if (window.NanoCycle) NanoCycle.checkSystemReminder(); } catch (e) {}
         if (Date.now() - lastAutoPushSyncAt < 60000) return;
-        lastAutoPushSyncAt = Date.now();
         scheduleAutoPushSync(800);
     });
 
@@ -8687,6 +8804,13 @@
     });
 
     messageScroll.addEventListener('click', function(e) {
+        // 点输入框上方的消息区：收起键盘，让底栏重新贴回屏幕底部
+        if (document.documentElement.classList.contains('keyboard-open')) {
+            const ae = document.activeElement;
+            if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) {
+                try { ae.blur(); } catch (err) {}
+            }
+        }
         const actionBtn = e.target.closest('.card-btn[data-act], .tk-bubble-btn[data-act]');
         if (actionBtn) {
             const row = actionBtn.closest('.message-row');
@@ -9676,7 +9800,7 @@ if (callCard) {
     }
 
     // ===== 角色接管手机：由外壳让角色"亲自"发一条消息（左气泡） =====
-    function makeCharSaidMsg(text) {
+    function makeCharSaidMsg(text, think, forcedId) {
         const now = new Date();
         const h = String(now.getHours()).padStart(2, '0');
         const m = String(now.getMinutes()).padStart(2, '0');
@@ -9689,29 +9813,56 @@ if (callCard) {
             body = body.slice(0, sep).trim();
         }
         return {
-            id: 'say_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+            id: forcedId || ('say_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7)),
             type: 'left', text: body, time: h + ':' + m, status: null, recalled: false,
             isCard: false, cardData: null, isVoice: false, voiceData: null, isImage: false, imageData: null,
-            quote: null, transcript: null, translation: translation, favorite: false, turn: null, ts: Date.now()
+            quote: null, transcript: null, translation: translation, favorite: false, turn: null, ts: Date.now(),
+            think: think || null
         };
     }
-    function addCharSaid(text, heart) {
+    function addCharSaid(text, heart, think, forcedId) {
         const t = String(text || '').trim();
         if (!t) return false;
-        const msg = makeCharSaidMsg(t);
+        const msg = makeCharSaidMsg(t, think, forcedId);
         if (heart && (heart.subject || heart.thought || (Array.isArray(heart.sections) && heart.sections.length))) msg.heart = heartWithSections(heart);
         messages.push(msg);
         try { renderMessages(); saveMessages(); scrollToBottom(); } catch (e) {}
+        // 外国人 / 粤语主动消息：模型偶尔忘记写「原文||翻译」，这里补一次翻译，保证有译文气泡
+        if (!msg.translation && (isForeignChar() || isCantoneseChar())) {
+            translateToZh(msg.text).then(function (tr) {
+                if (!tr) return;
+                var m = messages.filter(function (x) { return x && x.id === msg.id; })[0];
+                if (!m || m.translation) return;
+                m.translation = tr;
+                try { renderMessages(); saveMessages(); } catch (e) {}
+            }).catch(function () {});
+        }
         return true;
     }
     function handleCharSay(data) {
         if (!data || !data.text) return;
         if (data.chatId && String(data.chatId) !== String(chatId)) return;
+        // 同一条后台消息可能既走了实时插入、又被 pending 补发：用 id 去重
+        if (data.id && messages.some(function (m) { return m && String(m.id) === String(data.id); })) return;
         if (!isStorageReady) {
-            try { sessionStorage.setItem('nano_pending_char_say', JSON.stringify({ chatId: chatId, text: String(data.text), heart: data.heart || null, ts: Date.now() })); } catch (e) {}
+            try { sessionStorage.setItem('nano_pending_char_say', JSON.stringify({ chatId: chatId, text: String(data.text), heart: data.heart || null, think: data.think || '', id: data.id || '', ts: Date.now() })); } catch (e) {}
             return;
         }
-        addCharSaid(data.text, data.heart);
+        addCharSaid(data.text, data.heart, data.think, data.id);
+    }
+    function consumePendingCycleCard() {
+        try {
+            var key = 'nano_pending_cycle_cards';
+            var q = JSON.parse(localStorage.getItem(key) || '{}') || {};
+            var card = q[String(chatId || '')];
+            if (!card) return;
+            delete q[String(chatId || '')];
+            try { localStorage.setItem(key, JSON.stringify(q)); } catch (e) {}
+            var cd = card.cardData || card;
+            if (!cd || cd.cardType !== 'cycle') return;
+            var now = new Date();
+            addMessage('left', '', String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0'), null, false, true, cd);
+        } catch (e) {}
     }
     function consumePendingCharSay() {
         // 屏幕共享暂存的点评（可能多条）：进入该角色私聊时补发，保证点评落在私聊里
@@ -9733,7 +9884,13 @@ if (callCard) {
                 try { localStorage.setItem('nano_auto_pending_msgs', JSON.stringify(autoMap)); } catch (e) {}
                 autoList.forEach(function (item) {
                     var bubbles = (item && Array.isArray(item.bubbles)) ? item.bubbles : [item && item.text];
-                    bubbles.forEach(function (t) { if (t) addCharSaid(String(t)); });
+                    bubbles.forEach(function (t, bi) {
+                        if (!t) return;
+                        var h = (bi === 0 && item && item.heart) ? item.heart : null;
+                        var th = (bi === 0 && item && item.think) ? String(item.think) : '';
+                        var mid = (item && item.id) ? (bi === 0 ? String(item.id) : (String(item.id) + '_' + bi)) : '';
+                        addCharSaid(String(t), h, th, mid);
+                    });
                 });
             }
         } catch (e) {}
@@ -9742,7 +9899,7 @@ if (callCard) {
         if (!p || !p.text) return;
         if (String(p.chatId || '') !== String(chatId || '')) return;
         try { sessionStorage.removeItem('nano_pending_char_say'); } catch (e) {}
-        addCharSaid(p.text, p.heart || null);
+        addCharSaid(p.text, p.heart || null, p.think || '', p.id || '');
     }
 
     // ===== 角色接管手机：把整次「翻看」放进一张卡片 =====
@@ -10297,6 +10454,8 @@ if (data.type === 'NANO_VOICE_CALL_CARD' || data.type === 'NANO_VIDEO_CALL_CARD'
                 saveMessages();
             }
             isStorageReady = true;
+            window.__nanoChatReady = true;
+            window.__nanoChatReadyChat = String(chatId || '');
             if (jumpMsgId) {
                 setTimeout(function() { jumpToMessage(jumpMsgId); }, 100);
             }
@@ -10316,16 +10475,18 @@ if (data.type === 'NANO_VOICE_CALL_CARD' || data.type === 'NANO_VIDEO_CALL_CARD'
             try { consumePendingCoupleShare(); } catch (e) {}
             // 角色接管手机：进入该角色的聊天时补发角色消息
             try { consumePendingCharSay(); } catch (e) {}
+            // 月潮：每月一次的经期提醒卡片
+            try { consumePendingCycleCard(); } catch (e) {}
             // 角色接管手机：进入该角色的聊天时补挂查看卡片
             try { consumePendingTakeoverCard(); } catch (e) {}
             // 查手机：把用户分享的手机内容补挂进来
             try { consumePendingPhoneShare(); } catch (e) {}
             // 同人文：把用户分享的故事卡片补挂进来
             try { consumePendingFanficCard(); } catch (e) {}
-            // 商城：把礼物 / 代付卡片补挂进来
+            // 商城：把用户主动发出的礼物 / 代付 / 分享卡片补挂进来。
+            // 不再内置「角色自动买礼物 / 自动发代付申请」：卡片必须来自用户操作，
+            // 或角色在正常回复正文里自然带入，绝不额外发起一次 API 调用。
             try { consumePendingStoreCards(); } catch (e) {}
-            // 商城：角色偶尔主动给你买一份礼物（每天最多一次，不调用 API）
-            try { maybeCharStoreGift(); } catch (e) {}
             // 日程报备：把到点生成的照片和备注补成卡片
             try { setTimeout(function () { deliverScheduleReports(); }, 1800); } catch (e) {}
             // 纪念日：加载进角色记忆，并检查今天是否有到期的纪念日（由角色自动发卡）

@@ -456,33 +456,66 @@
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(0, 0, 0, 0.06);
         }
 
-        /* 统一内置通知栏：椭圆形透明白玻璃，左侧头像 + 昵称 + 具体信息 */
+        /* 统一内置通知栏：胶囊形强毛玻璃，左侧头像 + 昵称 + 具体信息
+           点击整条通知直接进入对应页面；不再有「去看看 / 点击查看」按钮 */
         .app-notify {
             position: absolute;
             left: 50%;
             top: calc(8px + var(--safe-inset-top));
-            transform: translate(-50%, -150%) scale(0.96);
+            transform: translate(-50%, -150%) scale(0.94);
             z-index: 100000;
             width: min(92vw, 430px);
             display: flex;
             align-items: center;
-            gap: 12px;
-            padding: 9px 16px 9px 10px;
-            border-radius: 26px;
-            background: rgba(255, 255, 255, 0.58);
+            gap: 11px;
+            padding: 8px 18px 8px 8px;
+            border-radius: 999px;
+            background:
+                radial-gradient(120% 90% at 12% -10%, rgba(255, 255, 255, 0.72), transparent 52%),
+                radial-gradient(90% 80% at 100% 110%, rgba(255, 255, 255, 0.38), transparent 58%),
+                linear-gradient(135deg, rgba(255, 255, 255, 0.48) 0%, rgba(255, 255, 255, 0.24) 48%, rgba(255, 255, 255, 0.42) 100%);
             color: #111;
-            border: 1px solid rgba(255, 255, 255, 0.75);
+            border: 1px solid rgba(255, 255, 255, 0.72);
             box-shadow:
-                0 12px 34px rgba(0, 0, 0, 0.12),
-                0 2px 8px rgba(0, 0, 0, 0.05),
-                inset 0 1px 0 rgba(255, 255, 255, 0.85);
-            backdrop-filter: blur(30px) saturate(180%);
-            -webkit-backdrop-filter: blur(30px) saturate(180%);
-            transition: transform 0.32s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.32s;
+                0 18px 46px rgba(0, 0, 0, 0.18),
+                0 4px 14px rgba(0, 0, 0, 0.08),
+                inset 0 1px 0 rgba(255, 255, 255, 0.98),
+                inset 0 -1px 0 rgba(255, 255, 255, 0.30);
+            backdrop-filter: blur(46px) saturate(235%) brightness(1.06);
+            -webkit-backdrop-filter: blur(46px) saturate(235%) brightness(1.06);
+            transition: transform 0.34s cubic-bezier(0.18, 0.9, 0.22, 1), opacity 0.28s;
             opacity: 0;
             cursor: pointer;
+            overflow: hidden;
+            isolation: isolate;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .app-notify::before {
+            content: '';
+            position: absolute;
+            left: 7%;
+            right: 7%;
+            top: 1px;
+            height: 46%;
+            border-radius: 999px;
+            pointer-events: none;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0));
+            filter: blur(1px);
+            z-index: -1;
+        }
+        .app-notify::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: inherit;
+            pointer-events: none;
+            background:
+                radial-gradient(80% 120% at 16% 0%, rgba(255, 255, 255, 0.30), transparent 55%),
+                linear-gradient(180deg, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0) 46%);
+            z-index: -1;
         }
         .app-notify.show { transform: translate(-50%, 0) scale(1); opacity: 1; }
+        .app-notify:active { transform: translate(-50%, 0) scale(0.985); }
         .app-notify .an-avatar {
             width: 40px;
             height: 40px;
@@ -492,11 +525,13 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            background: rgba(0, 0, 0, 0.055);
+            background: rgba(255, 255, 255, 0.42);
             color: #1c1c1e;
             font-size: 15px;
             font-weight: 700;
-            box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.65);
+            box-shadow:
+                inset 0 0 0 1px rgba(255, 255, 255, 0.72),
+                0 2px 8px rgba(0, 0, 0, 0.10);
         }
         .app-notify .an-avatar img {
             width: 100%;
@@ -510,49 +545,103 @@
             flex: 1;
             display: flex;
             flex-direction: column;
-            gap: 2px;
+            gap: 1px;
         }
         .app-notify .an-title {
-            font-size: 13px;
+            font-size: 13.5px;
             font-weight: 700;
-            color: #111;
+            color: #0b0b0c;
             letter-spacing: -0.01em;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
         }
         .app-notify .an-body {
-            font-size: 12px;
-            color: #555;
-            line-height: 1.38;
+            font-size: 12.5px;
+            color: rgba(32, 32, 36, 0.72);
+            line-height: 1.35;
             display: -webkit-box;
             -webkit-line-clamp: 2;
             -webkit-box-orient: vertical;
             overflow: hidden;
         }
-        .app-notify .an-actions { margin-top: 4px; }
-        .app-notify .an-action {
-            display: inline-block;
-            padding: 4px 11px;
-            border-radius: 999px;
-            background: rgba(0, 0, 0, 0.065);
-            color: #111;
-            font-size: 11px;
-            font-weight: 600;
-        }
-        .app-notify .an-action:active { background: rgba(0, 0, 0, 0.12); }
-        /* 旧 pink 样式统一收进白玻璃，不再出现粉色横幅 */
+        /* 旧 pink 样式统一收进毛玻璃，不再出现粉色横幅 */
         .app-notify.pink {
-            background: rgba(255, 255, 255, 0.58);
+            background:
+                linear-gradient(135deg, rgba(255, 255, 255, 0.56) 0%, rgba(255, 255, 255, 0.30) 48%, rgba(255, 255, 255, 0.46) 100%);
             color: #111;
-            box-shadow:
-                0 12px 34px rgba(0, 0, 0, 0.12),
-                0 2px 8px rgba(0, 0, 0, 0.05),
-                inset 0 1px 0 rgba(255, 255, 255, 0.85);
         }
-        .app-notify.pink .an-title { color: #111; }
-        .app-notify.pink .an-body { color: #555; }
-        .app-notify.pink .an-action { background: rgba(0, 0, 0, 0.065); color: #111; }
+        .app-notify.pink .an-title { color: #0b0b0c; }
+        .app-notify.pink .an-body { color: rgba(32, 32, 36, 0.72); }
+
+        /* ===== 内置通知栏外观：毛玻璃 / 液态玻璃 · 头像与胶囊形状 · 内置模板 ===== */
+        .app-notify.ns-glass-liquid {
+            background:
+                radial-gradient(120% 100% at 10% -30%, rgba(255, 255, 255, 0.98), transparent 46%),
+                radial-gradient(90% 90% at 100% 120%, rgba(255, 255, 255, 0.62), transparent 56%),
+                linear-gradient(120deg, rgba(255, 255, 255, 0.30), rgba(255, 255, 255, 0.12) 42%, rgba(255, 255, 255, 0.38));
+            border-color: rgba(255, 255, 255, 0.88);
+            box-shadow:
+                0 22px 58px rgba(0, 0, 0, 0.22),
+                0 4px 16px rgba(0, 0, 0, 0.08),
+                inset 0 2px 1px rgba(255, 255, 255, 1),
+                inset 0 -2px 2px rgba(255, 255, 255, 0.46);
+            backdrop-filter: blur(30px) saturate(290%) brightness(1.16);
+            -webkit-backdrop-filter: blur(30px) saturate(290%) brightness(1.16);
+        }
+        .app-notify.ns-shape-pill { border-radius: 999px; }
+        .app-notify.ns-shape-pill::before,
+        .app-notify.ns-shape-pill::after { border-radius: 999px; }
+        .app-notify.ns-shape-rounded { border-radius: 24px; }
+        .app-notify.ns-shape-rounded::before,
+        .app-notify.ns-shape-rounded::after { border-radius: 24px; }
+        .app-notify.ns-avatar-square .an-avatar { border-radius: 13px; }
+        .app-notify.ns-avatar-square .an-avatar img { border-radius: 13px; }
+        .app-notify[data-theme="graypink"] {
+            background:
+                radial-gradient(120% 90% at 12% -10%, rgba(255, 255, 255, 0.82), transparent 52%),
+                linear-gradient(135deg, rgba(241, 230, 232, 0.92), rgba(249, 213, 224, 0.66) 52%, rgba(245, 232, 235, 0.90));
+            border-color: rgba(255, 255, 255, 0.82);
+            color: #4d4345;
+        }
+        .app-notify[data-theme="graypink"] .an-title { color: #3f3537; }
+        .app-notify[data-theme="graypink"] .an-body { color: rgba(77, 67, 69, 0.72); }
+        .app-notify[data-theme="night"] {
+            background:
+                radial-gradient(120% 100% at 12% -10%, rgba(255, 255, 255, 0.20), transparent 52%),
+                linear-gradient(135deg, rgba(28, 28, 32, 0.88), rgba(12, 12, 15, 0.70));
+            border-color: rgba(255, 255, 255, 0.20);
+            color: #fff;
+            box-shadow: 0 18px 46px rgba(0, 0, 0, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.20);
+        }
+        .app-notify[data-theme="night"] .an-title { color: #fff; }
+        .app-notify[data-theme="night"] .an-body { color: rgba(255, 255, 255, 0.70); }
+        .app-notify[data-theme="night"] .an-avatar { background: rgba(255, 255, 255, 0.16); color: #fff; }
+        .app-notify[data-theme="mint"] {
+            background:
+                radial-gradient(120% 90% at 12% -10%, rgba(255, 255, 255, 0.86), transparent 52%),
+                linear-gradient(135deg, rgba(224, 245, 238, 0.92), rgba(201, 235, 224, 0.62) 52%, rgba(226, 244, 238, 0.90));
+            border-color: rgba(255, 255, 255, 0.82);
+            color: #24443b;
+        }
+        .app-notify[data-theme="mint"] .an-title { color: #1f3d35; }
+        .app-notify[data-theme="mint"] .an-body { color: rgba(36, 68, 59, 0.72); }
+        .app-notify[data-theme="sunset"] {
+            background:
+                radial-gradient(120% 90% at 12% -10%, rgba(255, 255, 255, 0.88), transparent 52%),
+                linear-gradient(135deg, rgba(255, 235, 222, 0.94), rgba(255, 206, 188, 0.64) 52%, rgba(255, 236, 225, 0.90));
+            border-color: rgba(255, 255, 255, 0.84);
+            color: #5a3b2d;
+        }
+        .app-notify[data-theme="sunset"] .an-title { color: #4d3226; }
+        .app-notify[data-theme="sunset"] .an-body { color: rgba(90, 59, 45, 0.72); }
+        .app-notify[data-theme="clear"] {
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.08) 52%, rgba(255, 255, 255, 0.20));
+            border-color: rgba(255, 255, 255, 0.46);
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.60);
+            backdrop-filter: blur(38px) saturate(220%) brightness(1.08);
+            -webkit-backdrop-filter: blur(38px) saturate(220%) brightness(1.08);
+        }
 
         .music-float-ball {
             position: absolute;
@@ -1429,10 +1518,23 @@ setTimeout(function () {
             const bBusy = overlayFrameB ? hasActiveRefreshForFrame(overlayFrameB) : false;
             if (aBusy && !bBusy && overlayFrameB) { overlayFrame = overlayFrameB; return; }
             if (bBusy && !aBusy) { overlayFrame = overlayFrameA; return; }
+            // 群聊页常驻：从群聊打开别的页面时用另一个帧，别把还在后台生成的群聊销毁
+            const other = (overlayFrame === overlayFrameA) ? overlayFrameB : overlayFrameA;
+            if (frameBase(overlayFrame) === 'groups.html' && other && !hasActiveRefreshForFrame(other)) {
+                overlayFrame = other;
+            }
         }
         function hideOtherGenericFrame() {
             const other = (overlayFrame === overlayFrameA) ? overlayFrameB : overlayFrameA;
-            if (other) other.style.display = 'none';
+            if (other) {
+                other.style.display = 'none';
+                // 群聊帧留在后台生成：标记为前台已关闭，完成时要走通知栏
+                try {
+                    if (frameBase(other) === 'groups.html' && other.contentWindow) {
+                        other.contentWindow.postMessage({ type: 'nanoOverlayClosed' }, '*');
+                    }
+                } catch (e) {}
+            }
         }
         function showOverlayFrame() {
             overlayFrame.style.display = 'block';
@@ -1875,11 +1977,27 @@ setTimeout(function () {
                 }
             } catch (e) {}
 
-            // 从聊天列表进入群聊：返回时回到聊天列表
+            // 从聊天列表进入群聊：返回时回到聊天列表；群聊帧留在后台继续生成和收通知
             try {
                 if (wasOverlaySource === 'chat' && frameBase(overlayFrame) === 'groups.html') {
-                    overlayFrame.src = withBuild('chat.html');
-                    showOverlayFrame();
+                    const groupFrame = overlayFrame;
+                    groupFrame.style.display = 'none';
+                    const chatFrame = (groupFrame === overlayFrameA) ? overlayFrameB : overlayFrameA;
+                    const chatUrl = withBuild('chat.html');
+                    if (chatFrame) {
+                        overlayFrame = chatFrame;
+                        if (frameBase(chatFrame) === 'chat.html') {
+                            try { chatFrame.contentWindow.postMessage({ type: 'nanoChatGoHome' }, '*'); } catch (e) {}
+                            chatFrame.setAttribute('data-loaded-url', chatUrl);
+                        } else {
+                            chatFrame.setAttribute('data-loaded-url', chatUrl);
+                            chatFrame.src = chatUrl;
+                        }
+                        showOverlayFrame();
+                    } else {
+                        groupFrame.src = chatUrl;
+                        showOverlayFrame();
+                    }
                     overlay.classList.add('active');
                     overlay.classList.add('no-header');
                     overlayActive = true;
@@ -1891,12 +2009,21 @@ setTimeout(function () {
             } catch (e) {}
 
             if (wasOverlaySource === 'groups' && lastGroupUrl) {
-                overlayFrame.style.display = 'block';
+                const liveGroupFrame = (frameBase(overlayFrameA) === 'groups.html') ? overlayFrameA
+                    : ((overlayFrameB && frameBase(overlayFrameB) === 'groups.html') ? overlayFrameB : null);
+                if (liveGroupFrame) {
+                    overlayFrame = liveGroupFrame;
+                    try { overlayFrame.contentWindow.postMessage({ type: 'nanoOverlayReopen' }, '*'); } catch (e) {}
+                    overlayFrame.style.display = 'block';
+                    hideOtherGenericFrame();
+                } else {
+                    overlayFrame.style.display = 'block';
+                    overlayFrame.src = withBuild(lastGroupUrl);
+                }
                 chatInnerFrame.style.display = 'none';
                 voiceCallFrame.style.display = 'none';
                 musicFrame.style.display = 'none';
                 isMusicFrameActive = false;
-                overlayFrame.src = withBuild(lastGroupUrl);
                 overlay.classList.add('no-header');
                 overlayTitle.textContent = '';
                 overlayBack.classList.add('hidden');
@@ -1999,6 +2126,23 @@ setTimeout(function () {
                 bottomBar.classList.add('hidden');
                 appContent.style.paddingTop = '0';
                 appContent.style.paddingBottom = '0';
+                return;
+            }
+
+            // 群聊从通知/首页直接打开：关闭时也把群聊页留在后台，生成和通知不中断
+            if (frameBase(overlayFrame) === 'groups.html') {
+                overlayFrame.style.display = 'none';
+                overlayActive = false;
+                currentOverlaySource = null;
+                isChatInnerActive = false;
+                restoreBottomBar();
+                if (currentPage !== 'chat') {
+                    switchPage('chat');
+                } else {
+                    topBar.classList.remove('hidden');
+                    appContent.style.paddingTop = '0';
+                }
+                try { document.body.classList.remove('nano-overlay-open'); } catch (e) {}
                 return;
             }
 
@@ -2222,6 +2366,52 @@ setTimeout(function () {
         }
 
         let appNotifyTimer = null;
+        var NOTIFY_STYLE_KEY = 'nano_app_notify_style';
+        function readNotifyStyle() {
+            try {
+                var raw = JSON.parse(localStorage.getItem(NOTIFY_STYLE_KEY) || '{}') || {};
+                return {
+                    glass: raw.glass === 'liquid' ? 'liquid' : 'frosted',
+                    avatar: raw.avatar === 'square' ? 'square' : 'circle',
+                    shape: raw.shape === 'rounded' ? 'rounded' : 'pill',
+                    template: ['default', 'graypink', 'night', 'mint', 'sunset', 'clear'].indexOf(raw.template) >= 0 ? raw.template : 'default',
+                    css: String(raw.css || '')
+                };
+            } catch (e) {
+                return { glass: 'frosted', avatar: 'circle', shape: 'pill', template: 'default', css: '' };
+            }
+        }
+        function injectNotifyCustomCss(css) {
+            try {
+                var st = document.getElementById('nanoAppNotifyCustomCss');
+                if (!st) {
+                    st = document.createElement('style');
+                    st.id = 'nanoAppNotifyCustomCss';
+                    document.head.appendChild(st);
+                }
+                st.textContent = String(css || '');
+            } catch (e) {}
+        }
+        function applyNotifyStyle(el) {
+            if (!el) return;
+            var st = readNotifyStyle();
+            el.className = 'app-notify';
+            el.classList.add('ns-glass-' + st.glass);
+            el.classList.add('ns-avatar-' + st.avatar);
+            el.classList.add('ns-shape-' + st.shape);
+            el.setAttribute('data-theme', st.template);
+            injectNotifyCustomCss(st.css);
+        }
+        try {
+            window.addEventListener('storage', function (e) {
+                if (e && e.key && e.key !== NOTIFY_STYLE_KEY) return;
+                var el = document.getElementById('appNotify');
+                if (!el) return;
+                var was = el.classList.contains('show');
+                applyNotifyStyle(el);
+                if (was) el.classList.add('show');
+            });
+        } catch (e) {}
         function escapeNotifyHtml(s) {
             return String(s == null ? '' : s)
                 .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -2239,10 +2429,17 @@ setTimeout(function () {
                 el.id = 'appNotify';
                 el.className = 'app-notify';
                 el.addEventListener('click', function () {
-                    if (el._target) { try { openNotifyTarget(el._target); } catch (e) {} hideAppNotify(); return; }
-                    if (el._action && el._action.url) { openAppFromNotify(el._action); hideAppNotify(); return; }
+                    // 点通知后立刻补拉服务端 pending：保证进去就能看到通知里说的那条消息/动态
+                    var pullSoon = function () {
+                        setTimeout(function () {
+                            try { if (window.AutoPushBridge) AutoPushBridge.pull(true); } catch (e) {}
+                        }, 900);
+                    };
+                    if (el._target) { try { openNotifyTarget(el._target); } catch (e) {} hideAppNotify(); pullSoon(); return; }
+                    if (el._action && el._action.url) { openAppFromNotify(el._action); hideAppNotify(); pullSoon(); return; }
                     if (el._app === 'music') openMusicFromBall();
                     hideAppNotify();
+                    pullSoon();
                 });
                 document.body.appendChild(el);
             }
@@ -2256,8 +2453,9 @@ setTimeout(function () {
 
             el._app = app || '';
             el._action = (opts.action && opts.url) ? { label: opts.action, url: opts.url, title: opts.title || '' } : null;
-            el._target = opts.target || '';
-            el.classList.remove('pink');
+            // 整条胶囊可点：优先 target；没有 target 时用 action.url 兜底
+            el._target = opts.target || ((opts.action && opts.url) || '') || '';
+            applyNotifyStyle(el);
 
             // 头像：优先 opts.avatar；其次 icon（仅当它是图片地址）；否则用昵称首字
             const avatarUrl = String(opts.avatar || '');
@@ -2271,10 +2469,21 @@ setTimeout(function () {
             el.innerHTML = avatarHtml +
                 '<div class="an-main"><div class="an-title">' + escapeNotifyHtml(notifyName) + '</div>' +
                 '<div class="an-body">' + escapeNotifyHtml(body) + '</div>' +
-                (el._action ? '<div class="an-actions"><span class="an-action">' + escapeNotifyHtml(el._action.label) + '</span></div>' : '') +
-                (!el._action && el._target ? '<div class="an-actions"><span class="an-action">点击查看</span></div>' : '') +
                 '</div>';
             el.classList.add('show');
+            // 服务端推送只带名字，不带 dataURL 头像；从本地角色库补真实头像
+            if (!usableAvatar && window.NanoUserScope) {
+                const tm = String(el._target || '').match(/^(?:chat|phone|takeover):(.+)$/);
+                if (tm) {
+                    NanoUserScope.loadChars().then(function (chars) {
+                        var cid = decodeURIComponent(tm[1]);
+                        var c = (chars || []).filter(function (x) { return String(x.id) === String(cid); })[0];
+                        if (!c || !c.avatar || !el.classList.contains('show')) return;
+                        var box = el.querySelector('.an-avatar');
+                        if (box) box.innerHTML = '<img src="' + escapeNotifyHtml(c.avatar) + '" alt="">';
+                    }).catch(function () {});
+                }
+            }
             // 切到后台 / 锁屏时，同步弹一条系统通知，避免只在内页提示而看不到
             try {
                 if (window.NanoNotify && document.hidden) {
@@ -2288,9 +2497,19 @@ setTimeout(function () {
                 }
             } catch (e) {}
             clearTimeout(appNotifyTimer);
-            appNotifyTimer = setTimeout(hideAppNotify, (el._action || el._target) ? 9000 : 5200);
+            appNotifyTimer = setTimeout(hideAppNotify, el._target ? 7000 : 5200);
         }
         window.__nanoAppNotify = showAppNotify;
+        // pending 拉下来后再把真实头像补到正在显示的通知胶囊上（服务端推送本身不带 dataURL 头像）
+        window.__nanoUpdateNotifyAvatar = function (target, avatar) {
+            try {
+                var el = document.getElementById('appNotify');
+                if (!el || !el.classList.contains('show') || !avatar) return;
+                if (String(el._target || '') !== String(target || '')) return;
+                var box = el.querySelector('.an-avatar');
+                if (box) box.innerHTML = '<img src="' + escapeNotifyHtml(avatar) + '" alt="">';
+            } catch (e) {}
+        };
 
         // ===== 供「角色接管手机」等外部模块使用的安全壳接口 =====
         window.__nanoShell = {
@@ -2444,14 +2663,14 @@ setTimeout(function () {
             const label = meta.label ? (' · ' + meta.label) : '';
             if (data.phase === 'fail') {
                 showAppNotify(name + label + '刷新失败', data.body || '生成失败，请稍后重试。', meta.id,
-                    { action: '去看看', url: meta.url, title: meta.title });
+                    { target: meta.url || '', title: meta.title });
                 return;
             }
             if (data.phase === 'success') {
                 if (meta.chat) return;
                 if (isAppForeground(meta.url)) return;
-                showAppNotify(name + label + '刷新成功', data.body || '内容已更新，点「去看看」查看。', meta.id,
-                    { action: '去看看', url: meta.url, title: meta.title });
+                showAppNotify(name + label + '刷新成功', data.body || '内容已更新，点通知查看。', meta.id,
+                    { target: meta.url || '', title: meta.title });
             }
         }
         function openAppFromNotify(action) {
@@ -2486,6 +2705,21 @@ setTimeout(function () {
             if (target === 'halo') { openFullscreen('halo.html', 'Halo', false, 'discover'); return; }
             if (target === 'music') { openMusicFromBall(); return; }
             if (target === 'books') { openFullscreen('books.html', 'Books', false, 'discover'); return; }
+            if (target === 'imessage') { openFullscreen('imessage.html', 'iMessage', false, 'more'); return; }
+            if (target === 'meet') { openFullscreen('meet.html', 'Meet', false, 'more'); return; }
+            if (target === 'offline') { openFullscreen('offline.html', '线下', false, 'more'); return; }
+            if (target === 'wallet' || target === 'money') { openFullscreen('wallet.html', '钱包', false, 'more'); return; }
+            // 查手机：支持 phone 以及 phone:<角色id>，进入后自动打开该角色的手机
+            if (target === 'phone' || target.indexOf('phone:') === 0) {
+                const pid = target.indexOf('phone:') === 0 ? target.slice(6) : '';
+                openFullscreen('phone.html' + (pid ? ('?char=' + encodeURIComponent(pid)) : ''), '查手机', false, 'more');
+                return;
+            }
+            // 角色接管手机完成：target 用 takeover:<角色id>，与查手机同一落点
+            if (target.indexOf('takeover:') === 0) {
+                openFullscreen('phone.html?char=' + encodeURIComponent(target.slice(9)), '查手机', false, 'more');
+                return;
+            }
             if (target.indexOf('chat:') === 0) {
                 const chatId = target.slice(5);
                 let info = null;
@@ -2512,6 +2746,10 @@ setTimeout(function () {
                 try { if (window.__nanoShell) window.__nanoShell.postToChat({ type: 'NANO_SYS_NOTICE', text: '已进入线下' }); } catch (e) {}
                 openFullscreen('offline.html?chat=' + encodeURIComponent(oid), '线下聊天', false, 'main');
                 return;
+            }
+            // 页面路径 / 链接兜底：刷新通知等直接打开对应页面
+            if (/^(https?:|\.?\/)?[^\s]+\.html?(?:[?#]|$)/i.test(target)) {
+                openAppFromNotify({ url: target, title: '' });
             }
         }
 
@@ -2942,6 +3180,25 @@ setTimeout(function () {
                 try { openNanoApp(data.id, data.name); } catch (e) {}
                 return;
             }
+            if (data.type === 'notifyStyleChanged' || data.type === 'notifyPreview') {
+                try {
+                    if (data.type === 'notifyStyleChanged') {
+                        var stEl = document.getElementById('appNotify');
+                        if (stEl) {
+                            var wasShown = stEl.classList.contains('show');
+                            applyNotifyStyle(stEl);
+                            if (wasShown) stEl.classList.add('show');
+                        }
+                        return;
+                    }
+                    showAppNotify(data.title || '通知预览', data.body || '毛玻璃 · 圆形头像 · 胶囊通知', 'preview', {
+                        name: data.name || '通知预览',
+                        avatar: data.avatar || '',
+                        target: ''
+                    });
+                } catch (e) {}
+                return;
+            }
             if (data.type === 'nanoDesktopChanged') {
                 try {
                     const hf = document.getElementById('homeFrame');
@@ -2971,7 +3228,7 @@ setTimeout(function () {
                 const storeResult = function(result) {
                     try { localStorage.setItem(resultKey, JSON.stringify(result)); } catch (e) {}
                     delete groupApiInFlight[token];
-                    [overlayFrame, chatInnerFrame].forEach(function(fr) {
+                    [overlayFrameA, overlayFrameB, chatInnerFrame].forEach(function(fr) {
                         try { if (fr && fr.contentWindow) fr.contentWindow.postMessage({ type: doneType, token: token }, '*'); } catch (e) {}
                     });
                 };
@@ -3235,14 +3492,27 @@ setTimeout(function () {
             if (data.type === 'appNotify') {
                 // 所有应用通知统一走内置玻璃通知栏（头像 + 昵称 + 具体信息）
                 try {
+                    let target = data.target || '';
+                    if (!target && data.app) {
+                        const a = String(data.app);
+                        if (a === 'imessage' || a === 'chat') target = data.chatId ? ('chat:' + data.chatId) : 'imessage';
+                        else if (a === 'moments' || a === 'moment' || a === 'ins' || a === 'halo' || a === 'music' || a === 'books') target = a === 'moment' ? 'moments' : a;
+                        else if (a === 'phone') target = data.chatId ? ('phone:' + data.chatId) : 'phone';
+                    }
                     showAppNotify(data.title || 'Nano', data.body || '', data.app || '', {
                         icon: data.icon || '',
                         avatar: data.avatar || '',
                         name: data.name || data.title || '',
-                        target: data.target || '',
+                        target: target,
                         action: data.action || '',
                         url: data.url || ''
                     });
+                    // 前台收到服务端推送：立刻拉 pending，让通知内容同步进聊天/朋友圈
+                    if (data.fromPush) {
+                        setTimeout(function () {
+                            try { if (window.AutoPushBridge) AutoPushBridge.pull(true); } catch (e) {}
+                        }, 400);
+                    }
                 } catch (e) {}
                 return;
             }
@@ -3486,10 +3756,23 @@ setTimeout(function () {
             // 生成类 / 主动消息通知：统一走内置玻璃通知栏
             if (data.type === 'NANO_GEN_NOTIFY') {
                 try {
+                    let target = data.target || '';
+                    if (!target) {
+                        const t = String(data.title || '') + ' ' + String(data.app || '') + ' ' + String(data.channel || '');
+                        if (data.chatId) target = 'chat:' + data.chatId;
+                        else if (/朋友圈|动态|moments/i.test(t)) target = 'moments';
+                        else if (/查手机|接管手机|手机查看/i.test(t)) target = 'phone';
+                        else if (/ins|instagram/i.test(data.app || '')) target = 'ins';
+                        else if (/halo/i.test(data.app || '')) target = 'halo';
+                        else if (/music|一起听/i.test(data.app || '')) target = 'music';
+                        else if (/books|一起看/i.test(data.app || '')) target = 'books';
+                        else if (/钱包|wallet|余额|收款/i.test(t)) target = 'wallet';
+                        else if (/线下|offline/i.test(t)) target = 'offline';
+                    }
                     showAppNotify(data.title || 'Nano', data.body || '', data.channel || data.app || '', {
                         avatar: data.avatar || data.icon || '',
                         name: data.name || data.title || '',
-                        target: data.target || '',
+                        target: target,
                         action: data.action || '',
                         url: data.url || ''
                     });
@@ -3833,15 +4116,16 @@ setTimeout(function () {
 </script>
     <script src="js/api-float.js?v=20261013a"></script>
 <script src="js/mem-link.js?v=20261006a"></script>
-<script src="js/aux-memory.js"></script>
-<script src="js/nano-notify.js?v=20261018b"></script>
-<script src="js/nano-push.js"></script>
+<script src="js/aux-memory.js?v=20261020j"></script>
+<script src="js/user-scope.js?v=20261020j"></script>
+<script src="js/nano-notify.js?v=20261020j"></script>
+<script src="js/nano-push.js?v=20261020j"></script>
 <script src="swipe-back.js"></script>
 <script src="js/keep-alive.js?v=20261013b"></script>
-<script src="js/char-takeover.js?v=20261009a"></script>
+<script src="js/char-takeover.js?v=20261020c"></script>
 <script src="js/screen-share.js?v=20261013e"></script>
 <script src="js/ios-bridge.js?v=20261018a"></script>
-<script src="js/auto-push-bridge.js?v=20261017d"></script>
+<script src="js/auto-push-bridge.js?v=20261020j"></script>
 <script src="js/online-catchup.js?v=20261018c"></script>
 </div>
     <!-- 小号试探：居中弹窗（不暴露是谁）-->

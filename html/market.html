@@ -5,7 +5,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>共享集市</title>
-<link rel="stylesheet" href="../css/market.css?v=20261018a">
+<link rel="stylesheet" href="../css/market.css?v=20261020c">
 </head>
 <body>
 
@@ -78,7 +78,7 @@
     <section class="page" id="page-upload">
       <div class="page-header">
         <h1>发布资源</h1>
-        <p>填写资源信息、上传图片与文件，即可分享给集市里的所有人。</p>
+        <p>填写资源信息即可发布；图片和文件都是可选的，纯文字、纯文件也可以分享。</p>
       </div>
       <form id="uploadForm">
         <div class="form-group">
@@ -89,12 +89,20 @@
           <label class="form-label">资源分类</label>
           <select class="form-select" id="resourceCategory" required></select>
         </div>
+        <div class="form-group" id="promptPartGroup" hidden>
+          <label class="form-label">提示词板块</label>
+          <select class="form-select" id="promptPart"></select>
+        </div>
+        <div class="form-group" id="otherTypeGroup" hidden>
+          <label class="form-label">其他类型</label>
+          <select class="form-select" id="otherType"></select>
+        </div>
         <div class="form-group">
           <label class="form-label">资源介绍</label>
           <textarea class="form-textarea" id="resourceDesc" maxlength="2000" placeholder="介绍资源特点、适用范围、导入方式等"></textarea>
         </div>
         <div class="form-group">
-          <label class="form-label">预览图片（可多张）</label>
+          <label class="form-label">预览图片（可选，可多张）</label>
           <label class="upload-zone" for="imageInput">
             <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
             <strong>点击上传图片</strong>
@@ -104,11 +112,11 @@
           <div class="upload-image-grid" id="imagePreviewGrid"></div>
         </div>
         <div class="form-group">
-          <label class="form-label">资源文件（可多个）</label>
+          <label class="form-label">资源文件（可选，可多个）</label>
           <label class="upload-zone" for="resourceFile">
             <svg viewBox="0 0 24 24"><path d="M12 16V4m-5 5 5-5 5 5"/><path d="M4 16v4h16v-4"/></svg>
             <strong id="fileLabel">点击选择文件</strong>
-            <span>美化CSS / 世界书 / 表情包 / 角色卡 / 字体 / 音乐 等</span>
+            <span>美化 / 世界书 / 角色卡 / 音乐 / 小组件 / 提示词 / 线下文件 / APP HTML</span>
             <input id="resourceFile" type="file" multiple>
           </label>
           <div class="upload-file-list" id="uploadFileList"></div>
@@ -220,6 +228,8 @@
 <div class="toast" id="toast"></div>
 
 <script src="../js/appearance.js?v=20261018a"></script>
-<script src="../js/market.js?v=20261020b"></script>
+<script src="../js/nano-idb.js?v=20261020b"></script>
+<script src="../js/nano-prompts.js?v=20261020b"></script>
+<script src="../js/market.js?v=20261020c"></script>
 </body>
 </html>

@@ -436,81 +436,81 @@ function splitChapters(text){
   return arr;
 }
 
-/* ==================== 分页 ==================== */
-function paginateChapter(text, container){
+/* ==================== 分页 / 连续滚动 ==================== */
+function pageContentHtml(content, first, title){
+  return (first ? `<h2>${escapeHtml(title||'')}</h2>` : '') +
+    String(content||'').split('\n').map(p=>`<p>${escapeHtml(p)}</p>`).join('');
+}
+
+// 按“阅读区真实可用高度”分页：页首标题也计入高度，保证每一页都不需要上下滚动。
+function paginateChapter(text, container, title){
   const w=container.clientWidth;
   const h=container.clientHeight;
-  if(!w||!h) return [text];
+  if(!w||!h) return [String(text||'')];
 
   const measure=document.createElement('div');
+  measure.className='reader-measure';
   measure.style.cssText=`
-    position:absolute;visibility:hidden;pointer-events:none;
-    width:${w}px;padding:8px 26px 0 26px;
+    position:absolute;visibility:hidden;pointer-events:none;left:-9999px;top:0;
+    width:${w}px;height:${h}px;padding:8px 26px 140px;box-sizing:border-box;
     line-height:${container.style.lineHeight||'1.9'};
     font-size:${container.style.fontSize||'17px'};
     font-family:inherit;
   `;
   document.body.appendChild(measure);
 
-  const paras=text.split(/\n+/).filter(Boolean);
-  const tokens=[];
-  paras.forEach(p=>{
-    const ss=p.split(/(?<=[。！？!?\.])\s*/).filter(s=>s.trim());
-    if(ss.length<=1) tokens.push({type:'p',text:p});
-    else ss.forEach(s=>tokens.push({type:'s',text:s}));
-  });
-
+  const paras=String(text||'').split(/\n+/).map(s=>s.trim()).filter(Boolean);
   const pages=[];
-  let current='';
-  function fits(html){ measure.innerHTML=html; return measure.scrollHeight<=h; }
-
   let buffer='';
-  for(let i=0;i<tokens.length;i++){
-    const tk=tokens[i];
-    if(tk.type==='s') buffer += (buffer?'':'') + tk.text;
-    else buffer = buffer ? buffer+'\n'+tk.text : tk.text;
+  let firstPage=true;
+  function fits(content){
+    measure.innerHTML=pageContentHtml(content, firstPage, title);
+    return measure.scrollHeight <= measure.clientHeight + 1;
+  }
+  function flush(){
+    if(buffer){ pages.push(buffer); buffer=''; firstPage=false; }
+  }
 
-    const testHtml = current
-      ? `<p>${escapeHtml(current)}</p><p>${escapeHtml(buffer)}</p>`
-      : `<p>${escapeHtml(buffer)}</p>`;
+  for(const p of paras){
+    const candidate=buffer ? buffer+'\n'+p : p;
+    if(fits(candidate)){ buffer=candidate; continue; }
+    if(buffer) flush();
+    if(fits(p)){ buffer=p; continue; }
 
-    if(fits(testHtml)){
-      const isLast=(i===tokens.length-1);
-      const nextIsP=(i+1<tokens.length && tokens[i+1].type==='p');
-      const endsSentence=/[。！？!?\.]$/.test(buffer);
-      if(isLast || nextIsP || endsSentence){
-        current = current ? current+'\n'+buffer : buffer;
-        buffer='';
+    // 单段太长：按字符二分查找能放下的最大前缀，绝不把整段硬塞进一页
+    let rest=p;
+    while(rest){
+      let lo=1, hi=rest.length, best=0;
+      while(lo<=hi){
+        const mid=(lo+hi)>>1;
+        if(fits(rest.slice(0,mid))){ best=mid; lo=mid+1; }
+        else hi=mid-1;
       }
-    }else{
-      if(current) pages.push(current);
-      if(fits(`<p>${escapeHtml(buffer)}</p>`)){
-        current=buffer; buffer='';
-      }else{
-        const chunkSize=Math.max(1, Math.floor(buffer.length * (h / measure.scrollHeight)));
-        const chunks=buffer.match(new RegExp(`.{1,${chunkSize}}`,'g'))||[buffer];
-        chunks.forEach((c,idx)=>{
-          if(idx===chunks.length-1) current=c;
-          else pages.push(c);
-        });
-        buffer='';
+      if(best<=0){
+        // 极端小屏：先让标题单独占一页，再重新量正文
+        if(firstPage){ pages.push(''); firstPage=false; continue; }
+        best=1;
       }
+      buffer=rest.slice(0,best);
+      rest=rest.slice(best);
+      if(rest) flush(); else break;
     }
   }
-  if(buffer) current = current ? current+'\n'+buffer : buffer;
-  if(current) pages.push(current);
+  flush();
 
   document.body.removeChild(measure);
-  if(!pages.length) return [text];
-  return pages;
+  return pages.length ? pages : [String(text||'')];
 }
 
 /* ==================== 打开图书 ==================== */
 function openBook(id){
   currentBook=books.find(x=>x.id===id);
   if(!currentBook) return;
-  currentChapter=currentBook.lastChapter||0;
-  currentPage=0;
+  const maxChapter=Math.max(0,(currentBook.chapters||[]).length-1);
+  currentChapter=Math.max(0,Math.min(maxChapter,Number(currentBook.lastChapter)||0));
+  const saved=(currentBook.readPos&&currentBook.readPos[currentChapter])||{};
+  currentPage=Math.max(0,Number(saved.page)||0);
+  pendingModeRatio=null;
   markedText='';
   document.getElementById('readerTitle').textContent=currentBook.title;
   showPage('readerPage');
@@ -521,34 +521,143 @@ function openBook(id){
   });
 }
 
+let pendingModeRatio=null;
+let forceChapterTop=false;
+let readerStyleRendering=false;
+function saveReadingPosition(){
+  if(!currentBook) return;
+  const map=currentBook.readPos=currentBook.readPos||{};
+  let ratio=0;
+  if(pagerMode==='scroll'){
+    const sc=document.getElementById('scrollReader');
+    const max=sc?Math.max(0,sc.scrollHeight-sc.clientHeight):0;
+    ratio=max?Math.max(0,Math.min(1,sc.scrollTop/max)):0;
+  }else{
+    ratio=totalPages>1?currentPage/(totalPages-1):0;
+  }
+  map[currentChapter]={page:currentPage,ratio:ratio,ts:Date.now()};
+  currentBook.lastChapter=currentChapter;
+  try{ bPut(STORE_BOOKS,currentBook).catch(function(){}); }catch(e){}
+}
+
+function updatePageIndicator(){
+  const el=document.getElementById('pageIndicator');
+  if(!el) return;
+  if(!currentBook){ el.textContent=''; return; }
+  if(pagerMode==='scroll'){
+    const sc=document.getElementById('scrollReader');
+    const max=sc?Math.max(1,sc.scrollHeight-sc.clientHeight):1;
+    const pct=sc?Math.round((sc.scrollTop/max)*100):0;
+    el.textContent=(currentChapter+1)+'/'+(currentBook.chapters||[]).length+' 章 · '+pct+'%';
+  }else{
+    el.textContent=(currentPage+1)+' / '+totalPages;
+  }
+}
+
+function renderScrollReader(text){
+  const body=document.getElementById('readerBody');
+  const overlay=document.getElementById('brightnessOverlay');
+  const sc=document.createElement('div');
+  sc.className='scroll-reader';
+  sc.id='scrollReader';
+  const title=currentBook.title+' · 第 '+(currentChapter+1)+' 章';
+  sc.innerHTML=`<h2>${escapeHtml(title)}</h2>`+
+    String(text||'').split('\n').map(p=>`<p>${escapeHtml(p)}</p>`).join('');
+  sc.style.fontSize=body.style.fontSize||'17px';
+  sc.style.lineHeight=body.style.lineHeight||'1.9';
+  body.insertBefore(sc,overlay);
+
+  const saved=(currentBook.readPos&&currentBook.readPos[currentChapter])||{};
+  const ratio=forceChapterTop ? 0 : Math.max(0,Math.min(1,Number(saved.ratio)||0));
+  forceChapterTop=false;
+  requestAnimationFrame(()=>{
+    const max=Math.max(0,sc.scrollHeight-sc.clientHeight);
+    sc.scrollTop=Math.round(max*ratio);
+    updatePageIndicator();
+  });
+  sc._userScrolled=false;
+  sc.addEventListener('touchstart',function(){ sc._userScrolled=true; },{passive:true});
+  sc.addEventListener('wheel',function(){ sc._userScrolled=true; },{passive:true});
+  sc.addEventListener('pointerdown',function(){ sc._userScrolled=true; },{passive:true});
+  sc.addEventListener('scroll',()=>{
+    updatePageIndicator();
+    clearTimeout(sc._saveTimer);
+    sc._saveTimer=setTimeout(saveReadingPosition,300);
+    if(!sc._userScrolled || sc._advancing) return;
+    var max=sc.scrollHeight-sc.clientHeight;
+    if(max>40 && sc.scrollTop+sc.clientHeight>=sc.scrollHeight-2 && currentBook && currentChapter<currentBook.chapters.length-1){
+      sc._advancing=true;
+      saveReadingPosition();
+      setTimeout(function(){
+        if(!document.body.contains(sc)) return;
+        currentChapter++;
+        currentPage=0;
+        forceChapterTop=true;
+        currentBook.readPos=currentBook.readPos||{};
+        currentBook.readPos[currentChapter]={page:0,ratio:0,ts:Date.now()};
+        currentBook.lastChapter=currentChapter;
+        try{ bPut(STORE_BOOKS,currentBook).catch(function(){}); }catch(e){}
+        renderReader(); renderDrawer();
+        toast('第 '+(currentChapter+1)+' 章');
+      },450);
+    }
+  },{passive:true});
+}
+
 function renderReader(){
   if(!currentBook) return;
   const body=document.getElementById('readerBody');
   const overlay=document.getElementById('brightnessOverlay');
+  const reader=document.getElementById('readerPage');
   body.innerHTML='';
   body.appendChild(overlay);
+  // 先套用当前字号/行距，再分页；否则会按默认 17px 量高度，页面就会溢出。
+  try{
+    const fsEl=document.getElementById('fontSize');
+    const lhEl=document.getElementById('lineHeight');
+    if(fsEl) body.style.fontSize=(parseFloat(fsEl.value)||17)+'px';
+    if(lhEl) body.style.lineHeight=lhEl.value||'1.9';
+  }catch(e){}
+  reader.classList.toggle('pager-page',pagerMode==='page');
+  reader.classList.toggle('pager-scroll',pagerMode==='scroll');
 
   const chapterText=currentBook.chapters[currentChapter]||'';
 
+  if(pagerMode==='scroll'){
+    chapterPages=[];
+    totalPages=1;
+    currentPage=0;
+    pendingModeRatio=null;
+    renderScrollReader(chapterText);
+    applyReaderStyle(false);
+    updateTimeBar();
+    return;
+  }
+
   const measurer=document.createElement('div');
   measurer.style.cssText=`
-    position:absolute;visibility:hidden;pointer-events:none;
-    left:0;top:0;width:100%;height:100%;
-    padding:8px 26px 140px;
+    position:absolute;visibility:hidden;pointer-events:none;left:-9999px;top:0;
+    width:${body.clientWidth}px;height:${body.clientHeight}px;
     line-height:${body.style.lineHeight||'1.9'};
     font-size:${body.style.fontSize||'17px'};
   `;
   document.body.appendChild(measurer);
-  const pages=paginateChapter(chapterText, measurer);
+  const title=currentBook.title+' · 第 '+(currentChapter+1)+' 章';
+  const pages=paginateChapter(chapterText, measurer, title);
   document.body.removeChild(measurer);
+  forceChapterTop=false;
 
   chapterPages=pages;
   totalPages=pages.length;
+  if(pendingModeRatio!=null){
+    currentPage=Math.round(pendingModeRatio*Math.max(0,totalPages-1));
+    pendingModeRatio=null;
+  }
   if(currentPage>=totalPages) currentPage=totalPages-1;
   if(currentPage<0) currentPage=0;
 
   renderPagePanels(currentPage);
-  applyReaderStyle();
+  applyReaderStyle(false);
   updateTimeBar();
   updatePageIndicator();
   bindSwipe();
@@ -586,12 +695,13 @@ function goToPage(i, dir){
   const body=document.getElementById('readerBody');
   const oldC=body.querySelector('.page-panel.current');
   const np=body.querySelector(`.page-panel[data-index="${i}"]`);
-  if(!np){ currentPage=i; renderPagePanels(i); return; }
+  if(!np){ currentPage=i; renderPagePanels(i); updatePageIndicator(); saveReadingPosition(); return; }
   if(oldC){ oldC.classList.remove('current'); oldC.classList.add(dir>0?'prev':'next'); }
   np.classList.remove('prev','next');
   np.classList.add('current');
   currentPage=i;
   updatePageIndicator();
+  saveReadingPosition();
 }
 
 function nextPage(){
@@ -599,8 +709,11 @@ function nextPage(){
   else{
     if(currentBook && currentChapter<currentBook.chapters.length-1){
       currentChapter++; currentPage=0;
+      forceChapterTop=true;
+      currentBook.readPos=currentBook.readPos||{};
+      currentBook.readPos[currentChapter]={page:0,ratio:0,ts:Date.now()};
       currentBook.lastChapter=currentChapter;
-      bPut(STORE_BOOKS,currentBook);
+      try{ bPut(STORE_BOOKS,currentBook).catch(function(){}); }catch(e){}
       renderReader(); renderDrawer();
       toast('第 '+(currentChapter+1)+' 章');
     }else toast('已经是最后一页了');
@@ -612,7 +725,8 @@ function prevPage(){
     if(currentBook && currentChapter>0){
       currentChapter--;
       currentBook.lastChapter=currentChapter;
-      bPut(STORE_BOOKS,currentBook);
+      currentPage=0;
+      try{ bPut(STORE_BOOKS,currentBook).catch(function(){}); }catch(e){}
       renderReader(); renderDrawer();
       requestAnimationFrame(()=>{ if(totalPages>1) goToPage(totalPages-1, -1); });
       toast('第 '+(currentChapter+1)+' 章');
@@ -621,33 +735,36 @@ function prevPage(){
 }
 
 let swipeState={x:0,y:0,active:false};
+let suppressTapUntil=0;
 function bindSwipe(){
   const body=document.getElementById('readerBody');
   if(body._swipeBound) return;
   body._swipeBound=true;
   body.addEventListener('touchstart',e=>{
-    const cur=e.target.closest('.page-panel.current');
-    if(cur && cur.scrollTop>0) return;
+    if(pagerMode!=='page'){ swipeState.active=false; return; }
     const p=e.touches[0];
     swipeState.x=p.clientX; swipeState.y=p.clientY; swipeState.active=true;
   },{passive:true});
   body.addEventListener('touchend',e=>{
-    if(!swipeState.active) return;
+    if(pagerMode!=='page' || !swipeState.active) return;
     swipeState.active=false;
     const p=e.changedTouches[0];
     const dx=p.clientX-swipeState.x, dy=p.clientY-swipeState.y;
     if(Math.abs(dx)>40 && Math.abs(dx)>Math.abs(dy)){
+      suppressTapUntil=Date.now()+350;
       if(dx<0) nextPage(); else prevPage();
     }
   },{passive:true});
 }
 
 function onReaderTap(e){
+  if(Date.now()<suppressTapUntil) return;
   if(e.target.closest('.reader-dock')) return;
   if(e.target.closest('.reader-topbar')) return;
   if(e.target.closest('.chat-window')||e.target.closest('.float-ball')) return;
   if(e.target.closest('.mark-toolbar')) return;
-  const w=window.innerWidth, x=e.clientX;
+  const rect=document.getElementById('readerBody').getBoundingClientRect();
+  const w=rect.width, x=e.clientX-rect.left;
   if(pagerMode==='page'){
     if(x<w*0.28){ prevPage(); return; }
     if(x>w*0.72){ nextPage(); return; }
@@ -670,14 +787,21 @@ function changeChapter(n){
   if(next<0){ toast('已经是第一章'); return; }
   if(next>=currentBook.chapters.length){ toast('已经是最后一章'); return; }
   currentChapter=next; currentPage=0;
+  forceChapterTop=n>0;
+  if(n>0){ currentBook.readPos=currentBook.readPos||{}; currentBook.readPos[currentChapter]={page:0,ratio:0,ts:Date.now()}; }
   currentBook.lastChapter=currentChapter;
-  bPut(STORE_BOOKS,currentBook);
+  try{ bPut(STORE_BOOKS,currentBook).catch(function(){}); }catch(e){}
   renderReader(); renderDrawer();
   toast('第 '+(currentChapter+1)+' 章');
 }
 function jumpChapter(i){
-  currentChapter=i; currentPage=0;
-  if(currentBook){ currentBook.lastChapter=i; bPut(STORE_BOOKS,currentBook); }
+  currentChapter=i;
+  const saved=(currentBook&&currentBook.readPos&&currentBook.readPos[i])||{};
+  currentPage=Math.max(0,Number(saved.page)||0);
+  if(currentBook){
+    currentBook.lastChapter=i;
+    try{ bPut(STORE_BOOKS,currentBook).catch(function(){}); }catch(e){}
+  }
   renderReader(); closeDrawer();
 }
 function renderDrawer(){
@@ -775,7 +899,7 @@ function toggleTogether(){
     btn.classList.add('on');
     updateBallAvatar();
     updateBallVisibility();
-    toast('一起看模式');
+    toast('Books 模式');
   }else{
     t.style.display='block'; s.style.display='none';
     btn.classList.remove('on');
@@ -968,7 +1092,7 @@ function renderChars(){
 function showCharPicker(){
   const body=document.getElementById('chatWindowBody');
   document.getElementById('cwName').textContent='选择角色';
-  document.getElementById('cwSub').textContent='选择一个 Char 一起看';
+  document.getElementById('cwSub').textContent='选择一个 Char 一起阅读';
   document.getElementById('cwAvatar').textContent='选';
   const chars = runtime.characters || [];
   if(!chars.length){
@@ -1000,7 +1124,7 @@ async function pickChar(c){
     ? `<img src="${escapeHtml(c.avatar)}" alt="">`
     : escapeHtml((c.name||'?')[0]);
   document.getElementById('cwName').textContent = currentCharName;
-  document.getElementById('cwSub').textContent='正在一起看';
+  document.getElementById('cwSub').textContent='正在一起阅读';
   updateBallAvatar();
   document.getElementById('chatWindowBody').innerHTML='';
   addTimeDivider();
@@ -1362,7 +1486,7 @@ async function replyFromChar(){
         pushAux('char', segs[si]);
         if(si<segs.length-1) await new Promise(r=>setTimeout(r,380));
       }
-      try{ if(window.NanoNotify) window.NanoNotify.notify(currentCharName||'一起看', String(reply).slice(0,60), { target:'books', channel:'books' }); }catch(e){}
+      try{ if(window.NanoNotify) window.NanoNotify.notify(currentCharName||'一起看', String(reply).slice(0,60), { target:'books', channel:'books', avatar:(currentChar&&currentChar.avatar)||'', name:currentCharName||'一起看' }); }catch(e){}
     }else{
       addMsg('char', currentCharName, currentChar.avatar, null, '（没有生成内容）', '');
     }
@@ -1423,27 +1547,49 @@ function applyBrightness(v){
   if(overlay) overlay.style.opacity=(100-val)/100;
   const body=document.getElementById('readerBody');
   if(body) body.dataset.brightness=val;
-  document.querySelectorAll('.page-panel').forEach(p=>{
+  document.querySelectorAll('.page-panel,.scroll-reader').forEach(p=>{
     p.style.filter=`brightness(${val}%)`;
   });
   saveReaderSetting();
 }
-function applyReaderStyle(){
+function applyReaderStyle(reflow){
   const fs=document.getElementById('fontSize').value+'px';
   const lh=document.getElementById('lineHeight').value;
   const body=document.getElementById('readerBody');
   if(body){ body.style.fontSize=fs; body.style.lineHeight=lh; }
-  document.querySelectorAll('.page-panel').forEach(p=>{
+  document.querySelectorAll('.page-panel,.scroll-reader').forEach(p=>{
     p.style.fontSize=fs; p.style.lineHeight=lh;
   });
   saveReaderSetting();
+  // 字号/行距变了必须重新分页，否则旧分页会溢出并被裁掉
+  if(reflow!==false && currentBook && !readerStyleRendering){
+    readerStyleRendering=true;
+    try{ renderReader(); }finally{ readerStyleRendering=false; }
+  }
 }
 function setPagerMode(mode){
+  if(currentBook){
+    const map=currentBook.readPos=currentBook.readPos||{};
+    const saved=map[currentChapter]||{};
+    if(pagerMode==='scroll'){
+      const sc=document.getElementById('scrollReader');
+      const max=sc?Math.max(0,sc.scrollHeight-sc.clientHeight):0;
+      saved.ratio=max?Math.max(0,Math.min(1,sc.scrollTop/max)):0;
+      saved.page=currentPage;
+    }else{
+      saved.page=currentPage;
+      saved.ratio=totalPages>1?currentPage/(totalPages-1):0;
+    }
+    map[currentChapter]=saved;
+    pendingModeRatio=Math.max(0,Math.min(1,Number(saved.ratio)||0));
+    currentPage=0;
+    try{ bPut(STORE_BOOKS,currentBook).catch(function(){}); }catch(e){}
+  }
   pagerMode=mode;
   document.querySelectorAll('#pagerToggle button').forEach(b=>{
     b.classList.toggle('active', b.dataset.mode===mode);
   });
-  if(currentBook){ currentPage=0; renderReader(); }
+  if(currentBook) renderReader();
   saveReaderSetting();
 }
 function saveReaderSetting(){
@@ -1643,15 +1789,17 @@ function showPage(id){
   document.getElementById(id).classList.add('active');
   if(id==='profilePage') loadStats().then(renderStats);
   if(id!=='readerPage'){
+    if(currentBook) saveReadingPosition();
     stopReadingTimer();
     document.getElementById('chatWindow').classList.remove('show');
   }else startReadingTimer();
   updateBallVisibility();
 }
-function backFromReader(){ showPage('libraryPage'); }
+function backFromReader(){ saveReadingPosition(); showPage('libraryPage'); }
 
 /* 顶栏「书库」点击：退出图书功能，返回 discover 页面 */
 function backToDiscover(){
+  try{ saveReadingPosition(); }catch(e){}
   flushAux();
   togetherMode=false;
   folded=false;
@@ -1697,8 +1845,8 @@ function backToDiscover(){
   }catch(e){ console.warn(e); }
 })();
 
-window.addEventListener('beforeunload',()=>{ try{ flushAux(); }catch(e){} stopReadingTimer(); });
-window.addEventListener('pagehide',()=>{ try{ flushAux(); }catch(e){} stopReadingTimer(); });
+window.addEventListener('beforeunload',()=>{ try{ saveReadingPosition(); }catch(e){} try{ flushAux(); }catch(e){} stopReadingTimer(); });
+window.addEventListener('pagehide',()=>{ try{ saveReadingPosition(); }catch(e){} try{ flushAux(); }catch(e){} stopReadingTimer(); });
 
 let resizeTimer=null;
 window.addEventListener('resize',()=>{

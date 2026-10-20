@@ -199,6 +199,31 @@ input,textarea{font-family:inherit}
   box-shadow:0 4px 14px rgba(0,0,0,.10);
 }
 .icon-box.has-custom .icon{display:none}
+/* 自定义图标模式：自由形状 = 去掉包裹器，按图片自身轮廓显示 */
+.icon-box.mode-free{
+  background:transparent !important;
+  box-shadow:none !important;
+  border-radius:0 !important;
+  backdrop-filter:none !important;
+  -webkit-backdrop-filter:none !important;
+}
+.icon-box.mode-free .phone-custom-img{
+  width:100%;
+  height:100%;
+  object-fit:contain;
+  display:block;
+}
+.icon-box.mode-fill .phone-custom-img{display:none}
+.st-icon-mode{
+  max-width:88px;
+  border:0;
+  background:#f2f2f7;
+  border-radius:8px;
+  font-size:11px;
+  color:#555;
+  padding:5px 4px;
+  outline:none;
+}
 
 .app-name{
   font-size:clamp(11px,2.6vw,13px);

@@ -57,6 +57,32 @@
         return s.length > n ? s.slice(0, n) + '…' : s;
     }
 
+    // 允许卡片数据直接换图标：iconSvg（内联 SVG）/ icon（URL，或内联 SVG）
+    function iconHtml(name, cd) {
+        var custom = cd && (cd.iconSvg || cd.svg || cd.icon);
+        if (custom) {
+            var s = String(custom).trim();
+            if (/^<svg[\s>]/i.test(s)) return s;
+            if (/^(https?:|data:image|blob:|\/|\.\/|\.\.\/)/i.test(s)) return '<img src="' + esc(s) + '" alt="">';
+        }
+        return icon(name);
+    }
+
+    // 统一推导「谁发起 / 谁收下」。旧数据没有 direction 时按气泡方向兜底，
+    // 响应卡会沿用原卡的 direction，所以灰色卡片不会把收款人/送礼人弄反。
+    function rolesOf(cd, side, me, other) {
+        var origin = '';
+        if (cd && cd.from === 'char') origin = 'char';
+        else if (cd && cd.from === 'user') origin = 'user';
+        else if (cd && (cd.storeKind === 'char_gift' || cd.storeKind === 'char_share' || cd.storeKind === 'char_pay_request')) origin = 'char';
+        else if (cd && cd.direction === 'user') origin = 'char';
+        else if (cd && cd.direction === 'char') origin = 'user';
+        else origin = side === 'left' ? 'char' : 'user';
+        var sender = (cd && (cd.senderName || cd.fromName)) || (origin === 'char' ? other : me);
+        var recipient = (cd && (cd.recipientName || cd.toName)) || (origin === 'char' ? me : other);
+        return { origin: origin, sender: sender, recipient: recipient };
+    }
+
     function money(v) {
         var s = String(v == null ? '' : v).trim();
         var m = s.match(/^([¥$€£])\s*(.*)$/);
@@ -71,23 +97,53 @@
             '</div>';
     }
 
-    function mainAmount(label, amount) {
+    var currentCard = null;
+
+    function mainAmount(label, amount, iconName, cd) {
+        cd = cd || currentCard;
+        // 金额卡默认不带图标（与初始模板一致）；数据里给了 iconSvg/icon 时才渲染
+        var hasCustomIcon = !!(cd && (cd.iconSvg || cd.svg || cd.icon));
         return '<div class="main-section card-main">' +
-            '<div class="main-label">' + esc(label || '金额') + '</div>' +
-            '<div class="amount">' + money(amount) + '</div>' +
-            '</div>';
+            (iconName || hasCustomIcon ? '<div class="main-icon icon-wrap">' + iconHtml(iconName || 'wallet', cd) + '</div>' : '') +
+            '<div class="main-text card-main-text">' +
+            '<div class="main-label card-title">' + esc(label || '金额') + '</div>' +
+            '<div class="amount card-sub">' + money(amount) + '</div>' +
+            '</div></div>';
     }
 
-    function mainTitle(iconName, label, title, sub) {
+    function mainTitle(iconName, label, title, sub, cd) {
+        cd = cd || currentCard;
         return '<div class="main-section card-main">' +
-            '<div class="main-icon icon-wrap">' + icon(iconName) + '</div>' +
+            '<div class="main-icon icon-wrap">' + iconHtml(iconName, cd) + '</div>' +
+            '<div class="main-text card-main-text">' +
             '<div class="main-label">' + esc(label || '') + '</div>' +
             '<div class="main-title card-title">' + esc(title || '') + '</div>' +
             (sub ? '<div class="main-sub card-sub">' + esc(sub) + '</div>' : '') +
-            '</div>';
+            '</div></div>';
     }
 
-    function info(items) {
+    function normalizeItems(custom) {
+        if (!Array.isArray(custom)) return null;
+        var out = [];
+        custom.forEach(function (it) {
+            if (!it) return;
+            if (Array.isArray(it)) out.push([it[0], it[1], it[2]]);
+            else if (typeof it === 'object') out.push([it.label || it.name || it.key, it.value == null ? it.text : it.value, it.icon || it.svg]);
+        });
+        return out;
+    }
+
+    // 卡片数据里的 info / fields / rows 可完全替换四条目，满足任意 DIY；
+    // 不传时仍使用各卡片自己的默认条目，旧美化选择器不受影响。
+    // hideInfo:true（或 info:[]）可以隐藏整块信息区。
+    function info(items, cd) {
+        cd = cd || currentCard;
+        if (cd && (cd.hideInfo === true || cd.info === false || cd.fields === false || cd.rows === false)) return '';
+        var custom = cd && normalizeItems(cd.info || cd.fields || cd.rows);
+        if (custom) items = custom;
+        else if (cd && (Array.isArray(cd.extraInfo) || Array.isArray(cd.extraFields))) {
+            items = (items || []).concat(cd.extraInfo || cd.extraFields || []);
+        }
         var rows = [];
         (items || []).forEach(function (it) {
             if (!it) return;
@@ -127,7 +183,8 @@
     }
 
     function build(cardData, opts) {
-        var cd = cardData || {};
+        var cd = Object.assign({}, cardData || {});
+        currentCard = cd;
         opts = opts || {};
         var side = opts.side === 'right' ? 'right' : 'left';
         var me = opts.meName || '我';
@@ -135,6 +192,14 @@
         var time = opts.time || '';
         var type = cd.cardType || '';
         var st = cd.status || 'pending';
+        var roles = rolesOf(cd, side, me, other);
+        var items = Array.isArray(cd.items) ? cd.items : [];
+        var itemText = items.map(function (it) { return ((it && it.name) || '商品') + (it && it.qty > 1 ? (' ×' + it.qty) : ''); }).join('、');
+        // 自动补全：旧消息缺金额/标题/副标题时，用 total、items、title 兜底，避免卡片空白或串内容
+        if (!cd.amount && cd.total != null && Number(cd.total)) cd.amount = '¥' + Number(cd.total).toFixed(2);
+        if (!cd.title && itemText) cd.title = itemText;
+        if (!cd.sub && itemText && itemText !== cd.title) cd.sub = itemText;
+        if (!cd.time) cd.time = time;
         var html = '';
 
         if (type === 'transfer') {
@@ -142,49 +207,55 @@
             var isResponse = !!cd.response;
             var headText = '转账待领取';
             var headIcon = 'clock';
-            if (isResponse && st === 'received') { headText = '对方已收下'; headIcon = 'checkCircle'; }
-            else if (isResponse && st === 'returned') { headText = '对方已退还'; headIcon = 'x'; }
-            else if (st === 'received') { headText = '已接收'; headIcon = 'checkCircle'; }
-            else if (st === 'returned') { headText = '已退还'; headIcon = 'x'; }
+            if (isResponse && st === 'received') { headText = side === 'right' ? '你已收下' : '对方已收下'; headIcon = 'checkCircle'; }
+            else if (isResponse && st === 'returned') { headText = side === 'right' ? '你已退还' : '对方已退还'; headIcon = 'x'; }
+            else if (st === 'received') { headText = side === 'right' ? '对方已收款' : '已收款'; headIcon = 'checkCircle'; }
+            else if (st === 'returned') { headText = side === 'right' ? '对方已退还' : '已退还'; headIcon = 'x'; }
             else if (side === 'right') { headText = '转账已发出'; headIcon = 'clock'; }
             var foot = '';
-            if (isResponse && st === 'received') foot = statusFoot('对方已收下这笔转账');
-            else if (isResponse && st === 'returned') foot = statusFoot('对方已退还这笔转账');
-            else if (st === 'received') foot = statusFoot('这笔转账已收款');
-            else if (st === 'returned') foot = statusFoot('这笔转账已退还');
+            if (isResponse && st === 'received') foot = statusFoot(side === 'right' ? '你已收下这笔转账' : '对方已收下这笔转账');
+            else if (isResponse && st === 'returned') foot = statusFoot(side === 'right' ? '你已退还这笔转账' : '对方已退还这笔转账');
+            else if (st === 'received') foot = statusFoot(side === 'right' ? '对方已收款' : '这笔转账已收款');
+            else if (st === 'returned') foot = statusFoot(side === 'right' ? '对方已退还' : '这笔转账已退还');
             else if (side === 'right') foot = statusFoot('等待对方接收');
             else foot = actions([['退还', 'return', false], ['接收', 'receive', true]]);
             html = header(headIcon, headText, time) +
-                mainAmount('转账金额', amount) +
+                mainAmount('转账金额', amount, null, cd) +
                 info([
-                    ['收款人', side === 'left' ? me : other, 'user'],
+                    ['转账人', roles.sender, 'user'],
+                    ['收款人', roles.recipient, 'user'],
                     ['转账说明', cd.title || '转账', 'hash'],
-                    ['到账方式', '实时到账', 'wallet'],
-                    ['交易时间', time || '刚刚', 'clock']
-                ]) + foot;
+                    ['交易时间', cd.time || '刚刚', 'clock']
+                ], cd) + foot;
         } else if (type === 'gift') {
-            var gHead = st === 'received' ? '礼物已查收' : (st === 'returned' ? '礼物已退还' : (side === 'left' ? '礼物待查收' : '礼物已送出'));
+            var gHead = st === 'received' ? (side === 'right' && !cd.response ? '对方已查收' : '礼物已查收')
+                : (st === 'returned' ? (side === 'right' && !cd.response ? '对方已退还' : '礼物已退还')
+                    : (side === 'left' ? '礼物待查收' : '礼物已送出'));
+            if (st === 'received' && cd.response) gHead = side === 'right' ? '你已查收' : '对方已查收';
+            if (st === 'returned' && cd.response) gHead = side === 'right' ? '你已退还' : '对方已退还';
             var gIcon = st === 'pending' ? (side === 'left' ? 'gift' : 'clock') : 'checkCircle';
             if (st === 'returned') gIcon = 'x';
             var gFoot = '';
-            if (st === 'received') gFoot = statusFoot('对方已查收这份礼物');
-            else if (st === 'returned') gFoot = statusFoot('这份礼物已退还');
+            if (st === 'received') gFoot = statusFoot(side === 'left' && cd.response ? '你已查收这份礼物' : (side === 'right' && cd.response ? '对方已查收这份礼物' : '这份礼物已查收'));
+            else if (st === 'returned') gFoot = statusFoot(side === 'left' && cd.response ? '你已退还这份礼物' : (side === 'right' && cd.response ? '对方已退还这份礼物' : '这份礼物已退还'));
             else if (side === 'right') gFoot = statusFoot('等待对方查收');
             else gFoot = actions([['退还', 'return', false], ['接受', 'receive', true]]);
             html = header(gIcon, gHead, time) +
-                mainTitle('gift', side === 'left' ? '收到一份礼物' : '送出一份礼物', cd.title || '礼物', cd.sub || '') +
+                mainTitle('gift', side === 'left' ? '收到一份礼物' : '送出一份礼物', cd.title || '礼物', cd.sub || '', cd) +
                 info([
-                    ['送礼人', side === 'left' ? other : me, 'user'],
-                    ['发送时间', time || '刚刚', 'calendar'],
-                    ['礼物类型', cd.giftType || '心意礼物', 'gift'],
-                    ['礼物状态', st === 'received' ? '已查收' : (st === 'returned' ? '已退还' : '待查收'), 'box']
-                ]) + gFoot;
+                    ['送礼人', roles.sender, 'user'],
+                    ['收礼人', roles.recipient, 'user'],
+                    ['发送时间', cd.time || '刚刚', 'calendar'],
+                    ['礼物类型', cd.giftType || '心意礼物', 'gift']
+                ], cd) + gFoot;
         } else if (type === 'store') {
             var kind = cd.storeKind || 'pay_request';
-            var dir = cd.direction || (kind.indexOf('char_') === 0 ? 'user' : 'char');
-            var items = Array.isArray(cd.items) ? cd.items : [];
-            var itemText = items.map(function (it) { return (it.name || '商品') + (it.qty > 1 ? (' ×' + it.qty) : ''); }).join('、');
-            var sHead = st === 'accepted' ? '订单已确认' : (st === 'declined' ? '订单已拒绝' : (st === 'returned' ? '订单已退回' : (dir === 'user' ? '订单待处理' : '订单进行中')));
+            var origin = roles.origin;
+            var orderBy = origin === 'char' ? other : me;
+            var forWhom = (origin === 'char' && kind !== 'char_gift') ? other : me;
+            var sHead = st === 'accepted'
+                ? (kind === 'char_gift' ? '礼物已确认' : (origin === 'char' ? '你已帮 TA 付款' : '订单已确认'))
+                : (st === 'declined' ? '订单已拒绝' : (st === 'returned' ? '订单已退回' : (origin === 'char' ? '订单待处理' : '订单进行中')));
             var sIcon = st === 'accepted' ? 'checkCircle' : (st === 'declined' || st === 'returned' ? 'x' : 'clock');
             var sFoot = '';
             if (st === 'accepted') {
@@ -192,24 +263,24 @@
                 else if (kind === 'char_share' || kind === 'char_pay_request') sFoot = statusFoot('你已帮 TA 付款');
                 else sFoot = statusFoot('TA 已' + (kind === 'pay_request' ? '代付' : '买给你'));
             } else if (st === 'declined') {
-                sFoot = statusFoot(dir === 'user' ? '你已拒绝' : 'TA 拒绝了');
+                sFoot = statusFoot(origin === 'char' ? '你已拒绝' : 'TA 拒绝了');
             } else if (st === 'returned') {
                 sFoot = statusFoot('已退回');
-            } else if (dir === 'user') {
+            } else if (origin === 'char') {
                 if (kind === 'char_gift') sFoot = actions([['拒收', 'store-gift-reject', false], ['确认收货', 'store-gift-confirm', true]]);
                 else if (kind === 'char_share') sFoot = actions([['拒绝', 'store-reject-char', false], ['帮他买', 'store-buy-char', true]]);
                 else sFoot = actions([['拒绝', 'store-reject-char', false], ['帮他付', 'store-pay-char', true]]);
             } else {
                 sFoot = statusFoot(kind === 'pay_request' ? '等待 TA 代付（点右下角回复）' : '等待 TA 决定（点右下角回复）');
             }
-            var sMain = cd.amount ? mainAmount('订单金额', cd.amount) : mainTitle('bag', '商城订单', cd.title || '商城', itemText || cd.sub || '');
+            var sMain = cd.amount ? mainAmount('订单金额', cd.amount, null, cd) : mainTitle('bag', '商城订单', cd.title || '商城', itemText || cd.sub || '', cd);
             html = header(sIcon, sHead, time) + sMain +
                 info([
-                    ['商品', cd.title || itemText || '商城订单', 'bag'],
-                    ['下单人', dir === 'user' ? me : other, 'user'],
-                    ['订单金额', cd.amount || '待确认', 'wallet'],
-                    ['订单状态', st === 'accepted' ? '已确认' : (st === 'declined' ? '已拒绝' : (st === 'returned' ? '已退回' : '待处理')), 'receipt']
-                ]) + note(cd.sub && cd.sub !== cd.title ? cd.sub : '') + sFoot;
+                    ['商品', itemText || cd.title || '商城订单', 'bag'],
+                    ['下单人', orderBy, 'user'],
+                    ['收件人', forWhom, 'user'],
+                    ['订单金额', cd.amount || '待确认', 'wallet']
+                ], cd) + note(cd.sub && cd.sub !== itemText ? cd.sub : '') + sFoot;
         } else if (type === 'familycard') {
             var lim = Number(cd.limit || 0);
             var used = Number(cd.spent || 0);
@@ -240,7 +311,7 @@
             else if (st === 'rejected') tFoot = statusFoot('已取消');
             else if (tDir === 'char') tFoot = actions([['取消', 'takeout-reject', false], ['确认外卖', 'takeout-accept', true]]);
             else tFoot = statusFoot('等待对方确认');
-            var tMain = price > 0 ? mainAmount('订单金额', '¥' + price.toFixed(2)) : mainTitle('utensil', '外卖订单', cd.food || '外卖', cd.shop || '');
+            var tMain = price > 0 ? mainAmount('订单金额', '¥' + price.toFixed(2), null, cd) : mainTitle('utensil', '外卖订单', cd.food || '外卖', cd.shop || '', cd);
             html = header(tIcon, tHead, time) + tMain +
                 info([
                     ['店铺', cd.shop || '外卖', 'store'],
@@ -401,30 +472,36 @@
                     ['记录时间', time || '刚刚', 'calendar']
                 ]) + note(cd.note || '') + statusFoot('点击查看图片与备注');
         } else if (type === 'redpacket') {
-            var rpHead = cd.opened ? '红包已领取' : (side === 'right' ? '红包已发出' : '收到一个红包');
-            html = header(cd.opened ? 'checkCircle' : 'redpacket', rpHead, time) +
-                mainTitle('redpacket', cd.opened ? '已拆开' : '恭喜发财，大吉大利', cd.title || '恭喜发财，大吉大利', cd.count ? (cd.count + ' 个红包') : '红包') +
+            var rpCount = Math.max(1, parseInt(cd.count, 10) || 1);
+            var rpClaims = Array.isArray(cd.claims) ? cd.claims.length : 0;
+            var rpDone = rpClaims >= rpCount;
+            var rpStatus = rpDone ? ('已领完 ' + rpClaims + '/' + rpCount) : (rpClaims ? ('已领取 ' + rpClaims + '/' + rpCount) : ('待领取 0/' + rpCount));
+            var rpHead = rpDone ? '红包已领完' : (cd.opened ? '红包已领取' : (side === 'right' ? '红包已发出' : '收到一个红包'));
+            html = header(rpDone ? 'checkCircle' : 'redpacket', rpHead, time) +
+                mainTitle('redpacket', cd.opened ? '已拆开' : (rpDone ? '红包已领完' : '恭喜发财，大吉大利'), cd.title || '恭喜发财，大吉大利', rpCount + ' 个红包') +
                 info([
                     ['红包类型', '拼手气红包', 'redpacket'],
-                    ['红包个数', cd.count ? (cd.count + ' 个') : '1 个', 'hash'],
+                    ['红包个数', rpCount + ' 个', 'hash'],
                     ['发送人', side === 'left' ? other : me, 'user'],
-                    ['红包状态', cd.opened ? '已领取' : '待领取', 'box']
-                ]) + statusFoot(cd.opened ? '已拆开' : '点击领取');
+                    ['红包状态', rpStatus, 'box']
+                ]) + statusFoot(cd.opened ? '已拆开' : (rpDone ? '已领完' : '点击领取'));
         } else if (type === 'notice') {
             var confirmed = cd.confirmed || {};
             var count = Object.keys(confirmed).length + 1;
             var total = opts.groupMemberCount ? (opts.groupMemberCount + 1) : count;
             var isMe = !!confirmed['me'];
-            var nFoot = isMe
-                ? statusFoot('已确认 · ' + count + '/' + total)
-                : actions([['确认', '', true, 'data-notice="' + esc(cd.noticeId || '') + '"']]);
+            var nFoot = side === 'right'
+                ? statusFoot('由你发布 · ' + count + '/' + total)
+                : (isMe
+                    ? statusFoot('已确认 · ' + count + '/' + total)
+                    : actions([['确认', '', true, 'data-notice="' + esc(cd.noticeId || '') + '"']]));
             html = header('bell', '群公告', time) +
                 mainTitle('bell', '群公告', '群公告', (cd.text || '').slice(0, 24)) +
                 info([
                     ['发布人', side === 'left' ? other : me, 'user'],
                     ['已确认', count + '/' + total, 'users'],
                     ['发布时间', time || '刚刚', 'clock'],
-                    ['公告状态', isMe ? '已确认' : '待确认', 'box']
+                    ['公告状态', side === 'right' ? '已发布' : (isMe ? '已确认' : '待确认'), 'box']
                 ]) + note(cd.text || '') + nFoot;
         } else if (type === 'chain') {
             var chain = Array.isArray(cd.chain) ? cd.chain : [];
@@ -435,13 +512,21 @@
                 }).join('') + '</div>'
                 : '';
             html = header('list', '群接龙', time) +
-                mainTitle('list', '群接龙', cd.title || '群接龙', cd.desc || '点击下方按钮参与接龙') +
+                mainTitle('list', '群接龙', cd.title || '群接龙', cd.desc || (side === 'right' ? '等待群友接龙' : '点击下方按钮参与接龙')) +
                 info([
                     ['发起人', side === 'left' ? other : me, 'user'],
                     ['参与人数', chain.length + ' 人', 'users'],
                     ['接龙状态', '进行中', 'box'],
                     ['发起时间', time || '刚刚', 'clock']
-                ]) + chainHtml + actions([['我要接龙', '', true, 'data-chain="' + esc(cd.chainId || '') + '"']]);
+                ]) + chainHtml + (side === 'right' ? statusFoot('由你发起') : actions([['我要接龙', '', true, 'data-chain="' + esc(cd.chainId || '') + '"']]));
+        } else if (type === 'cycle') {
+            html = header('calendar', cd.title || '经期提醒', time) +
+                mainTitle('calendar', '经期提醒', cd.sub || '', cd.date || '', cd) +
+                info([
+                    ['预计', cd.date || '—', 'calendar'],
+                    ['周期', cd.cycle || '—', 'clock'],
+                    ['提醒', cd.note || '记得照顾好自己', 'heart']
+                ]) + statusFoot(cd.footer || '');
         } else {
             html = header('box', cd.title || '卡片', time) +
                 mainTitle('box', '卡片消息', cd.title || '卡片', cd.sub || '') +

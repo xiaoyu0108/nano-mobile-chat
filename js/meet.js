@@ -489,6 +489,9 @@
     }
 
     window.addEventListener('nanoFriendRequestsChanged', renderList);
+    // 其他页面（例如群聊 NPC）新增好友申请时，Meet 开着也能实时出现
+    window.addEventListener('storage', function (e) { if (!e || !e.key || e.key === 'nano_friend_requests') renderList(); });
+    window.addEventListener('message', function (e) { if (e && e.data && e.data.type === 'homeDataUpdated') renderList(); });
     renderWechat();
     renderList();
     try { if (window.parent !== window) window.parent.postMessage({ type: 'pageLoaded', page: 'meet' }, '*'); } catch (e) {}

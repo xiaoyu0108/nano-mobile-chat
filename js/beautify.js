@@ -1558,10 +1558,12 @@ const CHAT_TEMPLATE_OLD = `/* ===== 聊天美化模板 ===== */
 }
 .bubble-card.right { align-self: flex-end; }
 .bubble-card.left { align-self: flex-start; }
-.bubble-card .card-main { display: flex; align-items: center; gap: 10px; padding: 12px; }
+.bubble-card .card-main { display: flex; flex-direction: row; align-items: center; text-align: left; gap: 10px; padding: 12px; border-bottom: 0; }
+.bubble-card .main-text { display: flex; flex-direction: column; flex: 1; min-width: 0; align-items: flex-start; gap: 2px; }
 .bubble-card .icon-wrap {
   width: 36px;
   height: 36px;
+  margin: 0;
   border-radius: 50%;
   display: flex;
   align-items: center;

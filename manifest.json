@@ -1,6 +1,8 @@
 {
   "name": "纳米",
   "short_name": "纳米",
+  "id": "./index.html",
+  "gcm_sender_id": "103953800507",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

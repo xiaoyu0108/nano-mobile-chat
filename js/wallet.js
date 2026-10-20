@@ -135,6 +135,8 @@
             balance: 5000,
             cardNumber: '',
             bankName: '',
+            cards: [],
+            activeCardId: '',
             transactions: []
         };
     }
@@ -144,6 +146,30 @@
         data.cardNumber = data.cardNumber || '';
         data.bankName = data.bankName || '';
         data.transactions = Array.isArray(data.transactions) ? data.transactions : [];
+        if (!Array.isArray(data.cards) || !data.cards.length) {
+            data.cards = [{
+                id: 'card_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6),
+                bankId: data.bankId || 'gray',
+                bankName: data.bankName || '',
+                cardNumber: data.cardNumber || '',
+                balance: data.balance
+            }];
+        }
+        data.cards = data.cards.map(function (c, i) {
+            c = (c && typeof c === 'object') ? c : {};
+            if (!c.id) c.id = 'card_' + Date.now() + '_' + i;
+            c.bankId = c.bankId || 'gray';
+            c.bankName = c.bankName || '';
+            c.cardNumber = c.cardNumber || '';
+            if (typeof c.balance !== 'number') c.balance = 0;
+            return c;
+        });
+        var active = data.cards.filter(function (c) { return String(c.id) === String(data.activeCardId); })[0] || data.cards[0];
+        data.activeCardId = active.id;
+        data.balance = active.balance;
+        data.bankId = active.bankId;
+        data.bankName = active.bankName;
+        data.cardNumber = active.cardNumber;
         return data;
     }
 
@@ -410,13 +436,21 @@
     // ============================================================
     // 银行卡操作（与 chat-inner 互通）
     // ============================================================
+    function activeOwnCard(data) {
+        return (data.cards || []).filter(function (c) { return String(c.id) === String(data.activeCardId); })[0] || (data.cards || [])[0] || null;
+    }
+
     function addWalletTransaction(type, amount, desc) {
         return getWalletData().then(function(data) {
+            var card = activeOwnCard(data);
             var tx = {
                 id: generateId(),
                 type: type,
                 amount: Math.round(amount * 100) / 100,
                 desc: desc || '',
+                cardId: card ? card.id : '',
+                cardLast4: card ? String(card.cardNumber || '').slice(-4) : '',
+                bankName: card ? (card.bankName || '') : '',
                 time: new Date().toISOString()
             };
             data.transactions = data.transactions || [];
@@ -431,12 +465,21 @@
 
     function updateWalletBalance(delta, desc) {
         return getWalletData().then(function(data) {
-            data.balance = Math.round((data.balance + delta) * 100) / 100;
+            var card = activeOwnCard(data);
+            if (card) {
+                card.balance = Math.round((Number(card.balance || 0) + delta) * 100) / 100;
+                data.balance = card.balance;
+            } else {
+                data.balance = Math.round((data.balance + delta) * 100) / 100;
+            }
             var type = delta >= 0 ? 'income' : 'expense';
             var tx = {
                 id: generateId(),
                 type: type,
                 amount: Math.abs(delta),
+                cardId: card ? card.id : '',
+                cardLast4: card ? String(card.cardNumber || '').slice(-4) : '',
+                bankName: card ? (card.bankName || '') : '',
                 desc: desc || (delta >= 0 ? '充值' : '支出'),
                 time: new Date().toISOString()
             };
@@ -511,6 +554,12 @@
 
     function bankOf(id) { try { return (window.NanoBank && NanoBank.get(id)) || null; } catch (e) { return null; } }
 
+    function persistActiveCard() {
+        var c = _cards[_activeCard];
+        if (!c || c.kind !== 'own' || !c.id || !window.NanoPay) return;
+        try { NanoPay.setActiveCard(c.id).catch(function () {}); } catch (e) {}
+    }
+
     function renderBankStack() {
         if (!bankStackEl) return;
         var n = _cards.length;
@@ -569,6 +618,7 @@
                 var idx = Number(el.getAttribute('data-idx'));
                 if (idx === _activeCard) return;
                 _activeCard = idx;
+                persistActiveCard();
                 renderBankStack();
                 renderWalletTx();
                 syncRechargeBtn();
@@ -582,11 +632,14 @@
         if (rb) rb.style.display = ((_cards[_activeCard] || {}).kind === 'family') ? 'none' : '';
         var eb = document.getElementById('editCardBtn');
         if (eb) eb.style.display = ((_cards[_activeCard] || {}).kind === 'family') ? 'none' : '';
+        var ab = document.getElementById('addCardBtn');
+        if (ab) ab.style.display = '';
     }
 
     // ===== 更换银行卡：选择归属银行（决定颜色）+ 卡号 =====
-    function openBankEditor() {
-        var own = _cards[0];
+    function openBankEditor(isNew) {
+        var own = isNew ? { id: '', bankId: 'gray', bankName: '', cardNumber: '', balance: 0 } : _cards[_activeCard];
+        if (!own || own.kind === 'family') own = _cards.filter(function (c) { return c.kind === 'own'; })[0];
         if (!own) return;
         var banks = (window.NanoBank && NanoBank.list) || [];
         var cur = own.bankId || 'gray';
@@ -609,6 +662,8 @@
             '<button id="bkSave" style="width:100%;height:48px;margin-top:18px;border:0;border-radius:12px;background:#007aff;color:#fff;font-size:16px;font-weight:600;cursor:pointer">保存</button>' +
             '</div>';
         document.body.appendChild(ov);
+        var titleEl = ov.querySelector('b');
+        if (titleEl) titleEl.textContent = isNew ? '添加银行卡' : '更换银行卡';
         var sel = cur;
         Array.prototype.forEach.call(ov.querySelectorAll('.bk-opt'), function (btn) {
             btn.addEventListener('click', function () {
@@ -623,16 +678,31 @@
         ov.addEventListener('click', function (e) { if (e.target === ov) close(); });
         ov.querySelector('#bkSave').addEventListener('click', function () {
             var num = (ov.querySelector('#bkNum').value || '').replace(/\s/g, '').trim();
+            var bankName = (window.NanoBank && NanoBank.get(sel).name) || '我的银行卡';
+            if (window.NanoPay && isNew) {
+                NanoPay.addCard({ bankId: sel, bankName: bankName, cardNumber: num, balance: 0 }).then(function () {
+                    close(); renderWallet(); showToast('银行卡已添加');
+                }).catch(function (e) { showToast((e && e.message) || '添加失败'); });
+                return;
+            }
+            if (window.NanoPay && own.id) {
+                NanoPay.updateCard(own.id, { bankId: sel, bankName: bankName, cardNumber: num }).then(function () {
+                    close(); renderWallet(); showToast('银行卡已更新');
+                }).catch(function (e) { showToast((e && e.message) || '更新失败'); });
+                return;
+            }
             getWalletData().then(function (data) {
                 data.bankId = sel;
-                data.bankName = (window.NanoBank && NanoBank.get(sel).name) || '我的银行卡';
+                data.bankName = bankName;
                 data.cardNumber = num;
                 return saveWalletData(data);
             }).then(function () { close(); renderWallet(); showToast('银行卡已更新'); });
         });
     }
     var editCardBtn = document.getElementById('editCardBtn');
-    if (editCardBtn) editCardBtn.addEventListener('click', function (e) { e.stopPropagation(); openBankEditor(); });
+    if (editCardBtn) editCardBtn.addEventListener('click', function (e) { e.stopPropagation(); openBankEditor(false); });
+    var addCardBtn = document.getElementById('addCardBtn');
+    if (addCardBtn) addCardBtn.addEventListener('click', function (e) { e.stopPropagation(); openBankEditor(true); });
 
     // 上下滑动切换银行卡
     var _swipeStartY = 0;
@@ -646,6 +716,7 @@
             _justSwiped = true;
             setTimeout(function () { _justSwiped = false; }, 350);
             _activeCard = (_activeCard + (dy < 0 ? 1 : -1) + _cards.length) % _cards.length;
+            persistActiveCard();
             renderBankStack();
             renderWalletTx();
         }, { passive: true });
@@ -653,10 +724,28 @@
 
     function renderWallet() {
         getWalletData().then(function (data) {
-            var own = { kind: 'own', balance: data.balance, bankId: data.bankId, bankName: data.bankName, cardNumber: data.cardNumber, txs: data.transactions || [] };
+            var txs = data.transactions || [];
+            var firstId = (data.cards && data.cards[0]) ? data.cards[0].id : '';
+            var ownCards = (data.cards || []).map(function (c) {
+                return {
+                    kind: 'own', id: c.id, balance: Number(c.balance) || 0,
+                    bankId: c.bankId, bankName: c.bankName, cardNumber: c.cardNumber,
+                    txs: txs.filter(function (t) { return String(t.cardId || firstId) === String(c.id); })
+                };
+            });
             var fams = loadFamilyCards().map(function (c) { return { kind: 'family', raw: c, _chatId: c._chatId }; });
-            _cards = [own].concat(fams);
-            if (_activeCard >= _cards.length) _activeCard = 0;
+            var prev = _cards[_activeCard];
+            _cards = ownCards.concat(fams);
+            if (prev && prev.id) {
+                var keep = -1;
+                _cards.some(function (c, i) { if (String(c.id) === String(prev.id)) { keep = i; return true; } return false; });
+                if (keep >= 0) _activeCard = keep;
+                else if (_activeCard >= _cards.length) _activeCard = 0;
+            } else {
+                var ai = -1;
+                _cards.some(function (c, i) { if (c.kind === 'own' && String(c.id) === String(data.activeCardId)) { ai = i; return true; } return false; });
+                _activeCard = ai >= 0 ? ai : 0;
+            }
             renderBankStack();
             renderWalletTx();
         });

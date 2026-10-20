@@ -1091,7 +1091,12 @@ document.getElementById('importFile').addEventListener('change', async function(
       text = await file.text();
       const data = JSON.parse(text);
       let imported = null;
-      if (Array.isArray(data)) {
+      let replaceAll = false;
+      if (data && data.kind === 'nano-offline-rules' && Array.isArray(data.groups)) {
+        // 规则备份：按导出时的规则组 / 子规则恢复，不重新拆分。
+        imported = data.groups.map(normalizeGroup);
+        replaceAll = true;
+      } else if (Array.isArray(data)) {
         // 判断是「规则组数组」还是「扁平规则数组」：整体带 rules/children 才算规则组，
         // 否则把每一项当一条规则合并进同一个组，避免被拆成几百个组。
         const looksLikeGroups = data.length > 0 && data.every(g => g && typeof g === 'object' && (Array.isArray(g.rules) || Array.isArray(g.children)));
@@ -1109,11 +1114,16 @@ document.getElementById('importFile').addEventListener('change', async function(
       }
 
       if (Array.isArray(imported) && imported.length) {
-        ruleGroups = ruleGroups.concat(imported);
+        if (replaceAll && !confirm('检测到规则备份，导入会覆盖当前全部规则组并恢复原始分组，继续？')) {
+          e.target.value = '';
+          return;
+        }
+        ruleGroups = replaceAll ? imported : ruleGroups.concat(imported);
         saveRules();
         renderRules();
         updateSummary();
-        showToast(`导入成功：${imported.length} 个规则组`);
+        const total = imported.reduce((n, g) => n + (g.rules || []).length, 0);
+        showToast(replaceAll ? `已恢复 ${imported.length} 个规则组 / ${total} 条规则` : `导入成功：${imported.length} 个规则组`);
       } else {
         showToast('JSON 格式错误：需要规则数组或规则组');
       }
@@ -1155,7 +1165,13 @@ document.getElementById('importFile').addEventListener('change', async function(
 
 document.getElementById('exportBtn').onclick = function() {
   if (!ruleGroups.length) { showToast('没有可导出的内容'); return; }
-  const data = JSON.stringify(ruleGroups, null, 2);
+  const payload = {
+    kind: 'nano-offline-rules',
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    groups: ruleGroups
+  };
+  const data = JSON.stringify(payload, null, 2);
   const filename = 'rules-backup-' + new Date().toISOString().slice(0, 10) + '.json';
   if (window.NanoExport) { window.NanoExport.file({ name: filename, text: data }); return; }
   const blob = new Blob([data], { type: 'application/json' });

@@ -32,7 +32,9 @@
     { name: '角色卡',   desc: '角色卡设定文件', key: 'character' },
     { name: '字体',     desc: '美化页全局字体', key: 'font' },
     { name: '音乐',     desc: '音乐App音频文件', key: 'music' },
-    { name: '其他',     desc: 'HTML软件等杂项', key: 'other' }
+    { name: '小组件',   desc: '桌面小组件与代码', key: 'widget' },
+    { name: '提示词',   desc: '线下 / 线上 / 群聊 / 社交', key: 'prompt' },
+    { name: '其他',     desc: '线下文件与 APP HTML', key: 'other' }
   ];
 
   var catSvgs = {
@@ -45,6 +47,8 @@
     character: '<svg viewBox="0 0 24 24"><circle cx="12" cy="7.5" r="3.5"/><path d="M5 21v-2a7 7 0 0 1 14 0v2"/><path d="M3 4v4M1 6h4M21 4v4M19 6h4"/></svg>',
     font: '<svg viewBox="0 0 24 24"><path d="M5 19 12 4l7 15"/><path d="M8 13h8"/></svg>',
     music: '<svg viewBox="0 0 24 24"><path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/></svg>',
+    widget: '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="5" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="10" width="8" height="11" rx="2"/></svg>',
+    prompt: '<svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z"/><path d="M8 8h8M8 12h5"/></svg>',
     other: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>'
   };
 
@@ -60,6 +64,27 @@
     close: '<svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>',
     trash: '<svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>'
   };
+
+  var PROMPT_PARTS = [
+    { key: 'offline', name: '线下' },
+    { key: 'online', name: '线上' },
+    { key: 'group', name: '群聊' },
+    { key: 'social', name: '社交软件' }
+  ];
+  var OTHER_TYPES = [
+    { key: 'file', name: '普通文件' },
+    { key: 'offline-rules', name: '线下规则' },
+    { key: 'offline-style', name: '线下文风' },
+    { key: 'app-html', name: 'APP HTML' }
+  ];
+  function promptPartName(key) {
+    for (var i = 0; i < PROMPT_PARTS.length; i++) if (PROMPT_PARTS[i].key === key) return PROMPT_PARTS[i].name;
+    return '线下';
+  }
+  function otherTypeName(key) {
+    for (var i = 0; i < OTHER_TYPES.length; i++) if (OTHER_TYPES[i].key === key) return OTHER_TYPES[i].name;
+    return '普通文件';
+  }
 
   var $ = function (id) { return document.getElementById(id); };
   function esc(s) {
@@ -238,6 +263,7 @@
       author: it.author, avatar: it.avatar || '', date: it.date, created: it.created,
       cover: (it.images && it.images[0]) || '', imageCount: (it.images || []).length,
       fileCount: (it.files || []).length,
+      promptPart: it.promptPart || '', otherType: it.otherType || '',
       likes: it.likes || 0, downloads: it.downloads || 0, imports: it.imports || 0
     };
   }
@@ -266,21 +292,43 @@
     $('resourceCategory').innerHTML = CATEGORIES.map(function (c) {
       return '<option value="' + c.key + '">' + esc(c.name) + ' — ' + esc(c.desc) + '</option>';
     }).join('');
+    if ($('promptPart')) {
+      $('promptPart').innerHTML = PROMPT_PARTS.map(function (p) {
+        return '<option value="' + p.key + '">' + esc(p.name) + '</option>';
+      }).join('');
+    }
+    if ($('otherType')) {
+      $('otherType').innerHTML = OTHER_TYPES.map(function (p) {
+        return '<option value="' + p.key + '">' + esc(p.name) + '</option>';
+      }).join('');
+    }
+    syncSubGroups();
+  }
+
+  function syncSubGroups() {
+    var cat = $('resourceCategory') ? $('resourceCategory').value : '';
+    if ($('promptPartGroup')) $('promptPartGroup').hidden = cat !== 'prompt';
+    if ($('otherTypeGroup')) $('otherTypeGroup').hidden = cat !== 'other';
   }
 
   function makePostCard(p) {
     var cover = p.cover ? '<img src="' + esc(p.cover) + '" alt="" style="width:100%;height:130px;object-fit:cover;border-radius:12px;margin-bottom:12px">' : '';
+    var fileBadge = p.fileCount > 1 ? (p.fileCount + 'F') : (p.fileCount ? fileExt((p.title || 'FILE')) : (p.imageCount ? 'IMG' : 'TXT'));
+    var fileTitle = p.fileCount ? (p.fileCount + ' 个文件') : (p.imageCount ? '仅图片分享' : '纯文字分享');
+    var fileSub = [p.imageCount ? (p.imageCount + ' 张图片') : '', p.fileCount ? (p.fileCount + ' 个文件') : ''].filter(Boolean).join(' · ') || '无附件';
     return '<article class="post" data-post="' + p.id + '">'
       + '<div class="post-head">' + avatarHTML(p.avatar, p.author)
       + '<div class="post-head-info"><div class="author">' + esc(p.author) + '</div><div class="date">' + esc(p.date) + '</div></div>'
-      + '<span class="post-tag">' + esc(catName(p.category)) + '</span></div>'
+      + '<span class="post-tag">' + esc(catName(p.category))
+      + (p.category === 'prompt' ? (' · ' + esc(promptPartName(p.promptPart))) : (p.category === 'other' ? (' · ' + esc(otherTypeName(p.otherType))) : ''))
+      + '</span></div>'
       + cover
       + '<h3>' + esc(p.title) + '</h3>'
       + '<p class="post-excerpt">' + esc(p.desc || '发布者暂未填写详细介绍。') + '</p>'
       + '<div class="post-file">'
-      + '<div class="file-badge">' + (p.fileCount > 1 ? p.fileCount + 'F' : fileExt((p.title || 'FILE'))) + '</div>'
-      + '<div class="file-info"><strong>' + (p.fileCount ? p.fileCount + ' 个文件' : '仅图片分享') + '</strong>'
-      + '<small>' + (p.imageCount ? p.imageCount + ' 张图片 · ' : '') + (p.fileCount || 0) + ' 个文件</small></div>'
+      + '<div class="file-badge">' + esc(fileBadge) + '</div>'
+      + '<div class="file-info"><strong>' + esc(fileTitle) + '</strong>'
+      + '<small>' + esc(fileSub) + '</small></div>'
       + '<span style="color:#ccc;font-size:18px;margin-left:auto;">›</span></div>'
       + '<div class="post-foot">'
       + '<span class="post-stat">' + ICONS.like + (p.likes || 0) + '</span>'
@@ -334,7 +382,8 @@
 
   var OPEN_IMPORT = {
     online: '聊天美化', global: '全局美化', offline: '线下美化', thought: '心声美化',
-    lore: '世界书', sticker: '表情包', character: '角色卡', font: '字体', music: '音乐'
+    lore: '世界书', sticker: '表情包', character: '角色卡', font: '字体', music: '音乐',
+    widget: '桌面小组件', prompt: '提示词'
   };
 
   function renderDetail(p) {
@@ -360,11 +409,21 @@
       }).join('') + '</div>' : '';
 
     var target = OPEN_IMPORT[p.category] ? ('导入后将写入：<b>' + OPEN_IMPORT[p.category] + '</b>') : '该类资源可下载后自行使用';
+    if (p.category === 'prompt') {
+      target = '导入后将写入：<b>提示词 · ' + promptPartName(p.promptPart) + '</b>';
+    } else if (p.category === 'other') {
+      if (p.otherType === 'offline-rules') target = '导入后将写入：<b>线下规则区</b>（保留原始分组）';
+      else if (p.otherType === 'offline-style') target = '导入后将写入：<b>线下文风</b>';
+      else if (p.otherType === 'app-html') target = '导入后将写入：<b>AppStore</b>';
+      else target = '该类资源可下载后自行使用';
+    }
 
     $('detailContent').innerHTML =
       '<div class="detail-author">' + avatarHTML(p.avatar, p.author)
       + '<div class="detail-author-info"><div class="name">' + esc(p.author) + '</div>'
-      + '<div class="meta">' + esc(p.date) + ' · ' + esc(catName(p.category)) + '</div></div></div>'
+      + '<div class="meta">' + esc(p.date) + ' · ' + esc(catName(p.category))
+      + (p.category === 'prompt' ? (' · ' + esc(promptPartName(p.promptPart))) : (p.category === 'other' ? (' · ' + esc(otherTypeName(p.otherType))) : ''))
+      + '</div></div></div>'
       + '<h1 class="detail-title">' + esc(p.title) + '</h1>'
       + '<div class="detail-desc">' + esc(p.desc || '发布者暂未填写详细介绍。') + '</div>'
       + ((p.tags && p.tags.length) ? '<div class="detail-tags">' + p.tags.map(function (t) { return '<span class="detail-tag">' + esc(t) + '</span>'; }).join('') + '</div>' : '')
@@ -946,6 +1005,287 @@
     postToShell({ type: 'nanoMusicUpdated' });
   }
 
+  // ---- 桌面小组件 ----
+  async function importWidget(file, post) {
+    var text = await dataURLToText(file.data);
+    var items = [];
+    var rawName = String((post && post.title) || file.name || '集市小组件').replace(/\.[^.]+$/, '');
+    function addItem(name, code, w, h) {
+      code = String(code || '').trim();
+      if (!code) return;
+      items.push({
+        name: String(name || rawName).slice(0, 20),
+        code: code,
+        w: Math.max(1, Math.min(4, parseInt(w, 10) || 2)),
+        h: Math.max(0.3, Math.min(6, Number(h) || 2))
+      });
+    }
+    var parsed = null;
+    try { parsed = JSON.parse(text); } catch (e) {}
+    if (Array.isArray(parsed)) {
+      parsed.forEach(function (it) {
+        if (!it) return;
+        if (typeof it === 'string') addItem(rawName, it);
+        else addItem(it.name || it.title || rawName, it.code || it.html || it.content || '', it.w, it.h);
+      });
+    } else if (parsed && typeof parsed === 'object') {
+      var arr = Array.isArray(parsed.widgets) ? parsed.widgets : null;
+      if (arr) arr.forEach(function (it) { if (it) addItem(it.name || it.title || rawName, it.code || it.html || it.content || '', it.w, it.h); });
+      else addItem(parsed.name || rawName, parsed.code || parsed.html || parsed.content || '', parsed.w, parsed.h);
+    }
+    if (!items.length) addItem(rawName, text, 2, 2);
+    if (!items.length) throw new Error('没有可导入的小组件');
+
+    var layout = window.NanoIDB ? await NanoIDB.get('nano_widget_layout_v1') : null;
+    if (!layout || !Array.isArray(layout.pages)) {
+      layout = { ver: 4, rows: 0, dock: ['chat', 'api', 'imessage', 'settings'], lib: [], pages: [[]] };
+    }
+    if (!Array.isArray(layout.lib)) layout.lib = [];
+    items.forEach(function (it, i) {
+      layout.lib.push({
+        id: 'w' + Date.now().toString(36) + i + rand(3),
+        name: it.name, code: it.code, live: false, w: it.w, h: it.h
+      });
+    });
+    if (!window.NanoIDB) throw new Error('桌面存储模块未加载');
+    var saved = await NanoIDB.set('nano_widget_layout_v1', layout);
+    if (!saved) throw new Error('写入桌面小组件失败');
+    postToShell({ type: 'nanoDesktopChanged', layout: true });
+  }
+
+  // ---- 提示词 ----
+  async function importPrompt(file, post) {
+    if (!window.NanoPrompts) throw new Error('提示词模块未加载');
+    var text = await dataURLToText(file.data);
+    var part = (post && post.promptPart) || 'offline';
+    var data = NanoPrompts.read();
+    var cat = data.cats[part];
+    if (!cat) throw new Error('提示词板块不存在');
+    var baseName = String((post && post.title) || file.name || '集市提示词').replace(/\.[^.]+$/, '');
+    var list = [];
+    function push(name, content) {
+      content = String(content == null ? '' : content).trim();
+      if (!content) return;
+      list.push({ id: NanoPrompts.newId(), name: String(name || baseName).slice(0, 40), content: content, icon: '', at: Date.now() });
+    }
+    var parsed = null;
+    try { parsed = JSON.parse(text); } catch (e) {}
+    if (Array.isArray(parsed)) {
+      parsed.forEach(function (it, i) {
+        if (typeof it === 'string') push(baseName + (i ? ' ' + (i + 1) : ''), it);
+        else if (it && typeof it === 'object') push(it.name || it.title || (baseName + (i ? ' ' + (i + 1) : '')), it.content || it.text || '');
+      });
+    } else if (parsed && typeof parsed === 'object') {
+      if (Array.isArray(parsed.prompts)) {
+        parsed.prompts.forEach(function (it, i) {
+          if (!it) return;
+          if (typeof it === 'string') push(baseName + (i ? ' ' + (i + 1) : ''), it);
+          else push(it.name || it.title || (baseName + (i ? ' ' + (i + 1) : '')), it.content || it.text || '');
+        });
+      } else if (typeof parsed.content === 'string' || typeof parsed.text === 'string') {
+        push(parsed.name || parsed.title || baseName, parsed.content || parsed.text);
+      } else if (typeof parsed[part] === 'string') {
+        push(parsed.name || baseName, parsed[part]);
+      } else {
+        push(baseName, text);
+      }
+    } else {
+      push(baseName, text);
+    }
+    if (!list.length) throw new Error('提示词为空');
+    cat.custom = cat.custom.concat(list);
+    NanoPrompts.write(data);
+    postToShell({ type: 'nanoPromptsUpdated' });
+  }
+
+  // ---- 线下规则 / 文风 / APP HTML ----
+  function openMeetSettingsDB() {
+    return new Promise(function (res, rej) {
+      var req = indexedDB.open('MeetSettingsDB', 2);
+      req.onupgradeneeded = function (e) {
+        var d = e.target.result;
+        if (!d.objectStoreNames.contains('settings')) d.createObjectStore('settings', { keyPath: 'id' });
+        if (!d.objectStoreNames.contains('rules')) d.createObjectStore('rules', { keyPath: 'id' });
+        if (!d.objectStoreNames.contains('stylePresets')) d.createObjectStore('stylePresets', { keyPath: 'id' });
+        if (!d.objectStoreNames.contains('cssPresets')) d.createObjectStore('cssPresets', { keyPath: 'id' });
+        if (!d.objectStoreNames.contains('cotPresets')) d.createObjectStore('cotPresets', { keyPath: 'id' });
+        if (!d.objectStoreNames.contains('messages')) d.createObjectStore('messages', { keyPath: 'id' });
+      };
+      req.onsuccess = function () { res(req.result); };
+      req.onerror = function () { rej(req.error); };
+    });
+  }
+  function meetGet(db, store, key) {
+    return new Promise(function (res) {
+      try {
+        var r = db.transaction(store, 'readonly').objectStore(store).get(key);
+        r.onsuccess = function () { res(r.result || null); };
+        r.onerror = function () { res(null); };
+      } catch (e) { res(null); }
+    });
+  }
+  function meetPut(db, store, value) {
+    return new Promise(function (res, rej) {
+      try {
+        var tx = db.transaction(store, 'readwrite');
+        tx.objectStore(store).put(value);
+        tx.oncomplete = function () { res(); };
+        tx.onerror = function () { rej(tx.error); };
+      } catch (e) { rej(e); }
+    });
+  }
+  function importRuleChild(src, index) {
+    var o = (src && typeof src === 'object') ? src : { content: src };
+    var content = String(o.content != null ? o.content : (o.text != null ? o.text : '')).trim();
+    return {
+      id: 'r_' + Date.now().toString(36) + '_' + index + rand(3),
+      name: String(o.name || o.title || content.slice(0, 20) || '规则').slice(0, 40),
+      content: content,
+      enabled: o.enabled !== false
+    };
+  }
+  function importRuleGroup(src, index, fallbackName) {
+    var o = (src && typeof src === 'object') ? src : { name: fallbackName, content: src };
+    var raw = Array.isArray(o.rules) ? o.rules : (Array.isArray(o.children) ? o.children : null);
+    var children = raw
+      ? raw.map(importRuleChild).filter(function (c) { return c.content || c.name; })
+      : ((o.content != null || o.text != null) ? [importRuleChild(o, 0)] : []);
+    return {
+      id: 'g_' + Date.now().toString(36) + '_' + index + rand(3),
+      name: String(o.name || o.title || fallbackName || '导入规则'),
+      enabled: o.enabled !== false,
+      expanded: o.expanded !== false,
+      rules: children
+    };
+  }
+  function splitRuleParagraphs(text) {
+    var norm = String(text || '').replace(/\r\n?/g, '\n');
+    var paras = norm.split(/\n\s*\n+/).map(function (p) { return p.trim(); }).filter(Boolean);
+    if (paras.length) return paras;
+    return norm.trim() ? [norm.trim()] : [];
+  }
+  function parseRuleBackup(text, fallbackName) {
+    var parsed = null;
+    try { parsed = JSON.parse(text); } catch (e) {}
+    if (parsed && parsed.kind === 'nano-offline-rules' && Array.isArray(parsed.groups)) {
+      return { backup: true, groups: parsed.groups.map(function (g, i) { return importRuleGroup(g, i, fallbackName); }).filter(function (g) { return g.rules.length; }) };
+    }
+    if (Array.isArray(parsed)) {
+      var looksLikeGroups = parsed.length > 0 && parsed.every(function (g) {
+        return g && typeof g === 'object' && (Array.isArray(g.rules) || Array.isArray(g.children));
+      });
+      if (looksLikeGroups) {
+        return { backup: false, groups: parsed.map(function (g, i) { return importRuleGroup(g, i, fallbackName); }).filter(function (g) { return g.rules.length; }) };
+      }
+      var flat = parsed.map(importRuleChild).filter(function (c) { return c.content || c.name; });
+      return {
+        backup: false,
+        groups: flat.length ? [{
+          id: 'g_' + Date.now().toString(36) + rand(3),
+          name: fallbackName || '导入规则', enabled: true, expanded: true, rules: flat
+        }] : []
+      };
+    }
+    if (parsed && typeof parsed === 'object') {
+      if (Array.isArray(parsed.groups)) {
+        return { backup: false, groups: parsed.groups.map(function (g, i) { return importRuleGroup(g, i, fallbackName); }).filter(function (g) { return g.rules.length; }) };
+      }
+      if (Array.isArray(parsed.rules)) return { backup: false, groups: [importRuleGroup(parsed, 0, fallbackName)] };
+      return { backup: false, groups: [importRuleGroup(parsed, 0, fallbackName)] };
+    }
+    var paras = splitRuleParagraphs(text);
+    var rules = paras.map(function (p, i) { return importRuleChild({ content: p }, i); });
+    return {
+      backup: false,
+      groups: rules.length ? [{
+        id: 'g_' + Date.now().toString(36) + rand(3),
+        name: fallbackName || '导入规则', enabled: true, expanded: true, rules: rules
+      }] : []
+    };
+  }
+  async function importOfflineRules(file, post) {
+    var text = await dataURLToText(file.data);
+    var fallbackName = String((post && post.title) || file.name || '导入规则').replace(/\.[^.]+$/, '');
+    var parsed = parseRuleBackup(text, fallbackName);
+    if (!parsed.groups.length) throw new Error('没有可导入的规则');
+    if (parsed.backup && !confirm('检测到线下规则备份，导入会覆盖当前全部规则组并恢复原始分组，继续？')) {
+      var cancelled = new Error('cancelled'); cancelled.silent = true; throw cancelled;
+    }
+    var db = await openMeetSettingsDB();
+    var current = await meetGet(db, 'rules', 'main_rules');
+    var groups = (current && Array.isArray(current.groups)) ? current.groups : [];
+    groups = parsed.backup ? parsed.groups : groups.concat(parsed.groups);
+    await meetPut(db, 'rules', { id: 'main_rules', groups: groups });
+    try { db.close(); } catch (e) {}
+    postToShell({ type: 'offlineSettingsChanged' });
+  }
+  async function importOfflineStyle(file, post) {
+    var text = await dataURLToText(file.data);
+    var content = String(text || '').trim();
+    try {
+      var parsed = JSON.parse(text);
+      if (parsed && typeof parsed === 'object') {
+        content = String(parsed.style != null ? parsed.style : (parsed.content != null ? parsed.content : (parsed.text != null ? parsed.text : content))).trim();
+      }
+    } catch (e) {}
+    if (!content) throw new Error('文风内容为空');
+    var name = String((post && post.title) || file.name || '集市文风').replace(/\.[^.]+$/, '');
+    var db = await openMeetSettingsDB();
+    var rec = await meetGet(db, 'settings', 'main_settings') || {
+      id: 'main_settings', style: '', cot: '', wordCount: '', person: 'auto', predictUser: 'forbid',
+      customCSS: '', bgImage: '', autoSummary: true, memThreshold: 5, nsfw: false, maxTokens: '',
+      timeAware: true, builtinBody: false, statusBars: []
+    };
+    rec.style = content;
+    await meetPut(db, 'settings', rec);
+    var presetRec = await meetGet(db, 'stylePresets', 'style_presets') || { id: 'style_presets', presets: [] };
+    if (!Array.isArray(presetRec.presets)) presetRec.presets = [];
+    presetRec.presets.push({ name: name, content: content });
+    await meetPut(db, 'stylePresets', presetRec);
+    try { db.close(); } catch (e) {}
+    postToShell({ type: 'offlineSettingsChanged' });
+  }
+  function importAppHtml(file, post) {
+    return dataURLToText(file.data).then(function (html) {
+      var m = String(html).match(/<script[^>]*id=["']nano-manifest["'][^>]*>([\s\S]*?)<\/script>/i);
+      if (!m) throw new Error('缺少 nano-manifest');
+      var manifest = null;
+      try { manifest = JSON.parse(m[1]); } catch (e) {}
+      if (!manifest || !manifest.id) throw new Error('清单缺少 id');
+      var app = {
+        id: String(manifest.id),
+        name: manifest.name || manifest.id,
+        icon: manifest.icon || '',
+        color: manifest.color || '',
+        desc: manifest.desc || '',
+        version: manifest.version || '1.0.0',
+        permissions: manifest.permissions || [],
+        html: String(html),
+        installedAt: Date.now()
+      };
+      return new Promise(function (res, rej) {
+        var req = indexedDB.open('nano_appstore_db', 2);
+        req.onupgradeneeded = function (e) {
+          var d = e.target.result;
+          if (!d.objectStoreNames.contains('apps')) d.createObjectStore('apps', { keyPath: 'id' });
+          if (!d.objectStoreNames.contains('appdata')) d.createObjectStore('appdata', { keyPath: 'key' });
+        };
+        req.onsuccess = function () {
+          var d = req.result;
+          try {
+            var tx = d.transaction('apps', 'readwrite');
+            tx.objectStore('apps').put(app);
+            tx.oncomplete = function () { d.close(); res(); };
+            tx.onerror = function () { d.close(); rej(tx.error); };
+          } catch (e) { try { d.close(); } catch (e2) {} rej(e); }
+        };
+        req.onerror = function () { rej(req.error); };
+      }).then(function () {
+        postToShell({ type: 'nanoAppManifestChanged', app: app });
+      });
+    });
+  }
+
   var IMPORT_HANDLERS = {
     online: runBeautify.bind(null, 'online'),
     global: runBeautify.bind(null, 'global'),
@@ -955,7 +1295,9 @@
     sticker: importEmoji,
     character: importCharacter,
     font: importFont,
-    music: importMusic
+    music: importMusic,
+    widget: importWidget,
+    prompt: importPrompt
   };
 
   async function importResource(p, index) {
@@ -963,6 +1305,11 @@
     var f = files[index];
     if (!f || !f.data) { toast('这份资源没有可导入的文件'); return; }
     var handler = IMPORT_HANDLERS[p.category];
+    if (p.category === 'other') {
+      if (p.otherType === 'offline-rules') handler = importOfflineRules;
+      else if (p.otherType === 'offline-style') handler = importOfflineStyle;
+      else if (p.otherType === 'app-html') handler = importAppHtml;
+    }
     if (!handler) { downloadFile(p, index); toast('「' + catName(p.category) + '」请下载后自行使用'); return; }
     try {
       await handler(f, p);
@@ -972,8 +1319,12 @@
       // 通知外壳广播给美化 / 储存等页面，让它们立刻重新读取最新预设与占用。
       postToShell({ type: 'marketResourceImported', category: p.category || '' });
       renderHome(); updateProfile();
-      toast('已导入到「' + (OPEN_IMPORT[p.category] || catName(p.category)) + '」并生效');
+      var targetName = OPEN_IMPORT[p.category] || catName(p.category);
+      if (p.category === 'prompt') targetName = '提示词 · ' + promptPartName(p.promptPart);
+      if (p.category === 'other') targetName = otherTypeName(p.otherType);
+      toast('已导入到「' + targetName + '」并生效');
     } catch (e) {
+      if (e && e.silent) return;
       console.warn('[market] import failed', e);
       toast('导入失败：' + (e && e.message ? e.message : '文件格式不支持'));
     }
@@ -1008,10 +1359,13 @@
       var f = draftFiles[j];
       files.push({ name: f.name, size: f.size, mime: f.type || 'application/octet-stream', data: await blobToDataURL(f) });
     }
+    var category = $('resourceCategory').value;
     return {
       id: 'p' + Date.now() + rand(4),
       title: $('resourceTitle').value.trim(),
-      category: $('resourceCategory').value,
+      category: category,
+      promptPart: category === 'prompt' ? ($('promptPart') ? $('promptPart').value : 'offline') : '',
+      otherType: category === 'other' ? ($('otherType') ? $('otherType').value : 'file') : '',
       desc: $('resourceDesc').value.trim(),
       tags: $('resourceTags').value.split(/[,，、]/).map(function (s) { return s.trim(); }).filter(Boolean),
       images: images, cover: cover, files: files,
@@ -1047,7 +1401,7 @@
       feed.unshift(summary);
       $('uploadForm').reset();
       draftImages = []; draftFiles = [];
-      renderImagePreviews(); renderFilePreviews();
+      renderImagePreviews(); renderFilePreviews(); syncSubGroups();
       renderHome();
       showPage('page-profile');
       toast('发布成功');
@@ -1166,8 +1520,9 @@
   });
   $('clearUpload').onclick = function () {
     $('uploadForm').reset(); draftImages = []; draftFiles = [];
-    renderImagePreviews(); renderFilePreviews();
+    renderImagePreviews(); renderFilePreviews(); syncSubGroups();
   };
+  if ($('resourceCategory')) $('resourceCategory').addEventListener('change', syncSubGroups);
   $('uploadForm').addEventListener('submit', function (e) { e.preventDefault(); submitForm(); });
 
   // 详情交互
@@ -1227,7 +1582,7 @@
   }
 
   async function boot() {
-    renderFolders();
+    try { renderFolders(); } catch (e) { console.warn('[market] renderFolders failed', e); }
     loadOwned();
     try { var u = JSON.parse(localStorage.getItem('market_user') || 'null'); if (u) user = Object.assign(user, u); } catch (e) {}
     try {

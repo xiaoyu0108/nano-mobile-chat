@@ -2232,7 +2232,7 @@ function addMessage(role, content, extra = {}) {
       if (role === 'user') {
         window.NanoBadge.activity(offlineChatId);
       } else if (role === 'assistant' || role === 'char') {
-        window.NanoBadge.incoming(offlineChatId, settings.charName || '新消息', cleanContent || '发来一条消息', { target: 'offline:' + offlineChatId });
+                window.NanoBadge.incoming(offlineChatId, settings.charName || '新消息', cleanContent || '发来一条消息', { target: 'offline:' + offlineChatId, avatar: settings.charAvatar || '', name: settings.charName || '线下' });
       }
     }
   } catch (e) {}
@@ -2297,6 +2297,20 @@ async function requestReply() {
     } else {
       addMessage('assistant', reply || '（API 没有返回内容）');
     }
+    try {
+      if (window.parent !== window) {
+        var offName = settings.charName || (offlineIsGroup ? '线下群聊' : '线下聊天');
+        var offAvatar = settings.charAvatar || '';
+        window.parent.postMessage({
+          type: 'NANO_GEN_NOTIFY',
+          title: offlineIsGroup ? '线下群聊' : '线下聊天',
+          body: String(reply || '新的回复').replace(/\s+/g, ' ').slice(0, 60),
+          avatar: offAvatar,
+          name: offName,
+          target: offlineChatId ? ('offline:' + offlineChatId) : 'offline'
+        }, '*');
+      }
+    } catch (e) {}
   } catch (err) {
     console.error(err);
     if (err && err.aborted) {
@@ -3315,7 +3329,8 @@ async function offExtractViaMain(chatText) {
     + '- 只保留有长期价值的关键点，合并同类，删掉寒暄、日常口水话和没有后续影响的小事；\n'
     + '- 每条具体、像人记住的一件事实，40~160 字，写清人物、经过与影响；\n'
     + '- 最多 5 条，宁缺毋滥；确实没有值得记的就什么都不要输出；\n'
-    + '- 一行一条，不要编号、不要解释、不要照抄对话原文。\n\n对话：\n' + chatText;
+    + '- 一行一条，格式：【类型|重要度】内容；重要度 1~5 由你判断，不能全部写 3：5=刻骨铭心/改变关系，4=重要且长期影响，3=稳定信息，2=轻量偏好，1=可记可不记；\n'
+    + '- 不要编号、不要解释、不要照抄对话原文。\n\n对话：\n' + chatText;
   const resp = await fetch(url + '/chat/completions', {
     method: 'POST',
     headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json' },
@@ -3327,6 +3342,14 @@ async function offExtractViaMain(chatText) {
 }
 // 线下记忆：把总结出的条目转成记忆卡。总结只调用一次主模型；
 // 向量化允许多次调用（Embedding 模型通常免费），这里逐条向量化，兼容性更好。
+function offGuessImportance(type, content) {
+  const t = String(type || '') + ' ' + String(content || '');
+  if (/约定|承诺|答应|表白|分手|和好|吵架|纪念日|生日|求婚|结婚|秘密|禁忌|第一次/.test(t)) return 5;
+  if (/重要|情感|关系|家人|朋友|身世|过往|愿望|梦想/.test(String(type || ''))) return 4;
+  if (/偏好|口味|习惯|作息|喜欢|讨厌|不吃|过敏|口头禅/.test(t)) return 2;
+  if (String(content || '').length > 120) return 4;
+  return 3;
+}
 async function offBuildMemoryEntries(summary, chatId) {
   let items = String(summary || '').split('\n').map(l => l.trim()).map(l => l.replace(/^[-*\d.\s、)]+/, '')).filter(l => l && l.length >= 6);
   const seen = {};
@@ -3337,8 +3360,18 @@ async function offBuildMemoryEntries(summary, chatId) {
     return true;
   }).slice(0, 6);
   if (!items.length) return [];
-  return await Promise.all(items.map(async function (t) {
-    const entry = { id: 'om' + Date.now() + '-' + Math.random().toString(36).slice(2, 6), time: new Date().toLocaleString('zh-CN'), type: '长期记忆', chatId: chatId, content: t, embedding: null, hasVector: false };
+  return await Promise.all(items.map(async function (raw) {
+    let t = raw, type = '长期记忆', importance = 0;
+    const m = t.match(/^【(.+?)】/);
+    if (m) {
+      let tag = m[1].trim();
+      t = t.replace(/^【.+?】/, '').trim();
+      const im = tag.match(/^(.*?)[｜|:：]\s*([1-5])\s*$/);
+      if (im) { type = im[1].trim() || '长期记忆'; importance = parseInt(im[2], 10) || 0; }
+      else type = tag || '长期记忆';
+    }
+    if (!importance) importance = offGuessImportance(type, t);
+    const entry = { id: 'om' + Date.now() + '-' + Math.random().toString(36).slice(2, 6), time: new Date().toLocaleString('zh-CN'), type: type, importance: importance, chatId: chatId, content: t, embedding: null, hasVector: false };
     try {
       const emb = await offEmbed(t);
       if (emb && emb.length) { entry.embedding = emb; entry.hasVector = true; }

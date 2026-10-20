@@ -27,6 +27,13 @@
             if (localStorage.getItem(ENABLE_KEY) === '0') return false;
             // 服务端已经在按间隔主动发消息时，不再额外做「上线补发」，避免重复扣 API
             if (localStorage.getItem('nano_server_auto_push') === '1') return false;
+            // 本机已经为某个角色开启了定时主动消息：交给它只发一次，
+            // 否则「上线补发 + 本机定时」会各发一条，看起来像 char 一直发。
+            for (var i = 0; i < localStorage.length; i++) {
+                var k = localStorage.key(i) || '';
+                if (k.indexOf('chat_setting_autoMsg_') !== 0) continue;
+                try { if (JSON.parse(localStorage.getItem(k))) return false; } catch (e) {}
+            }
             return true;
         } catch (e) { return true; }
     }

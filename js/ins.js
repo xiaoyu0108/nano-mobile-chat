@@ -505,6 +505,9 @@ function escapeHtml(s) {
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
+function formatCommentText(text) {
+  return escapeHtml(text).replace(/^((?:回复|@)\s*[^：:\s]{1,20}\s*[：:])/, '<span class="reply-mention">$1</span>');
+}
 
 // 顶栏下方的好友栏：展示好友（角色）的头像 + 名字
 function renderStories() {
@@ -716,7 +719,7 @@ function renderDetail() {
             ${avatarHTML(r.user, 'sm', '', true)}
             <div style="flex:1">
               <div class="comment-user">${r.user}</div>
-              <div class="comment-text">${r.text}</div>
+              <div class="comment-text">${formatCommentText(r.text)}</div>
               <div class="comment-meta"><span>刚刚</span><button class="reply-btn" onclick="setReplyToReply(${c.id},${ri})">回复</button></div>
             </div>
           </div>`).join('')}</div>`;
@@ -725,7 +728,7 @@ function renderDetail() {
         ${avatarHTML(c.user, '', '', true)}
         <div class="comment-main">
           <div class="comment-user">${c.user}</div>
-          <div class="comment-text">${c.text}</div>
+          <div class="comment-text">${formatCommentText(c.text)}</div>
           <div class="comment-meta"><span>刚刚</span><button class="reply-btn" onclick="setReply(${c.id})">回复</button></div>
           ${repliesHTML}
         </div>
@@ -1238,8 +1241,7 @@ function pickStrangers(n, exclude) {
 
 // 可选择的角色：优先当前绑定的 char，没有绑定时退回全部已知角色（含 NPC）
 function getSelectableChars() {
-  const bound = (currentUserChars || []).filter(c => c && c.name && !c.isNpc);
-  if (bound.length) return bound;
+  // 群聊 NPC / 小号也绑定在当前 user 上，必须出现在 Ins 生成选项里
   return (currentUserChars || []).filter(c => c && c.name);
 }
 
@@ -3063,7 +3065,7 @@ async function requestChatReply(chatId, isResume) {
     saveInsChatState();
     if (currentChatUser && currentChatUser.id === chatId) renderChatBody();
     renderDMList();
-    notifyInsDone('Instagram', '「' + info.name + '」回复了你');
+    notifyInsDone('Instagram', '「' + info.name + '」回复了你', { avatar: info.avatar || '', name: info.name || 'Instagram' });
   }
 }
 
@@ -3456,9 +3458,10 @@ window.addEventListener('pagehide', function () { saveInsChatState(); });
 document.addEventListener('visibilitychange', function () { if (document.hidden) saveInsChatState(); });
 
 // 后台生成完成 -> 通知父页面弹出“已完成”提示
-function notifyInsDone(title, body) {
+function notifyInsDone(title, body, opts) {
   if (!insBackground) return;
-  try { if (window.NanoNotify) window.NanoNotify.notify(title, body, { target: 'ins', channel: 'ins' }); } catch (e) {}
+  opts = opts || {};
+  try { if (window.NanoNotify) window.NanoNotify.notify(title, body, { target: 'ins', channel: 'ins', avatar: opts.avatar || '', name: opts.name || title }); } catch (e) {}
 }
 
 // 暴露给 HTML 内联 onclick

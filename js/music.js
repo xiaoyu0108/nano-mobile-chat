@@ -3,6 +3,17 @@
 
   var API_BASE = (function(){ try { return (localStorage.getItem('nano_music_api_base') || 'https://music.nano315.online').replace(/\/+$/, ''); } catch(e) { return 'https://music.nano315.online'; } })();
 
+  // 网易云封面经常返回 http://，在 HTTPS 页面会被浏览器当成混合内容拦截；
+  // 统一升到 https，并只追加一次 param，避免出现 ...?x=1?param=100y100 这种坏地址。
+  function normalizeCover(url, size) {
+    var u = String(url || '').trim();
+    if (!u) return '';
+    if (u.indexOf('//') === 0) u = 'https:' + u;
+    else if (/^http:\/\//i.test(u)) u = u.replace(/^http:\/\//i, 'https://');
+    if (!size || /^(data:|blob:)/i.test(u) || /[?&]param=/.test(u)) return u;
+    return u + (u.indexOf('?') > -1 ? '&' : '?') + 'param=' + size;
+  }
+
   var DB_NAME = 'nano_music_db';
   var DB_VERSION = 3;
   var STORE_MUSIC = 'music_data';
@@ -471,7 +482,8 @@
   // 歌曲列表
   // ============================================================
   function getSongCoverHtml(song) {
-    if (song.cover) return '<img src="' + song.cover + '" alt="">';
+    var cover = normalizeCover(song && song.cover);
+    if (cover) return '<img src="' + cover + '" alt="" referrerpolicy="no-referrer">';
     return '<svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>';
   }
 
@@ -771,9 +783,10 @@
         var firstSong = findSongById(pl.songIds[0]);
         if (firstSong && firstSong.cover) cover = firstSong.cover;
       }
+      cover = normalizeCover(cover);
       item.innerHTML =
         '<div class="playlist-item-cover">' +
-        (cover ? '<img src="' + cover + '" alt="">' : '<svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>') +
+        (cover ? '<img src="' + cover + '" alt="" referrerpolicy="no-referrer">' : '<svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>') +
         '</div>' +
         '<div class="playlist-item-info">' +
         '<div class="playlist-item-name">' + pl.name + '</div>' +
@@ -832,8 +845,9 @@
       var s = findSongById(pl.songIds[0]);
       if (s && s.cover) cover = s.cover;
     }
+    cover = normalizeCover(cover);
     playlistDetailCover.innerHTML = cover
-      ? '<img src="' + cover + '" alt="">'
+      ? '<img src="' + cover + '" alt="" referrerpolicy="no-referrer">'
       : '<svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>';
 
     playlistDetailBody.innerHTML = '';
@@ -1979,17 +1993,18 @@
     ballExpandArtist.textContent = song.artist || '未知歌手';
 
     if (song.cover) {
-      discImg.src = song.cover;
+      var nowCover = normalizeCover(song.cover);
+      discImg.src = nowCover;
       discImg.style.display = 'block';
       discPlaceholder.style.display = 'none';
-      soloDiscImg.src = song.cover;
+      soloDiscImg.src = nowCover;
       soloDiscImg.style.display = 'block';
       soloDiscPlaceholder.style.display = 'none';
-      miniCoverImg.src = song.cover;
+      miniCoverImg.src = nowCover;
       miniCoverImg.style.display = 'block';
-      onlineMiniCoverImg.src = song.cover;
+      onlineMiniCoverImg.src = nowCover;
       onlineMiniCoverImg.style.display = 'block';
-      ballCover.src = song.cover;
+      ballCover.src = nowCover;
       ballCover.style.display = 'block';
       ballPlaceholder.style.display = 'none';
     } else {
@@ -3206,7 +3221,7 @@
     if (currentSongIndex >= 0 && currentSongIndex < songs.length) {
       var song = songs[currentSongIndex];
       if (song.cover) {
-        ballCover.src = song.cover;
+        ballCover.src = normalizeCover(song.cover);
         ballCover.style.display = 'block';
         ballPlaceholder.style.display = 'none';
         postMusicBallState();
@@ -3599,14 +3614,16 @@
           var cover = '';
           if (item.al && item.al.picUrl) cover = item.al.picUrl;
           else if (item.album && item.album.picUrl) cover = item.album.picUrl;
+          else if (item.picUrl) cover = item.picUrl;
           else if (item.artists && item.artists[0] && item.artists[0].img1v1Url) cover = item.artists[0].img1v1Url;
+          cover = normalizeCover(cover, '100y100');
 
           var div = document.createElement('div');
           div.className = 'song-item';
           if (i === 0) div.classList.add('online-list-first');
           div.innerHTML =
             '<div class="song-cover">' +
-            (cover ? '<img src="' + cover + '?param=100y100" style="width:100%;height:100%;object-fit:cover;">' : '<svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>') +
+            (cover ? '<img src="' + cover + '" referrerpolicy="no-referrer" loading="lazy" style="width:100%;height:100%;object-fit:cover;">' : '<svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>') +
             '</div>' +
             '<div class="song-info">' +
             '<div class="song-name">' + item.name + '</div>' +
@@ -3640,6 +3657,8 @@
       var cover = '';
       if (item.al && item.al.picUrl) cover = item.al.picUrl;
       else if (item.album && item.album.picUrl) cover = item.album.picUrl;
+      else if (item.picUrl) cover = item.picUrl;
+      cover = normalizeCover(cover, '300y300');
       var songObj = {
         id: 'netease_' + item.id,
         source: 'netease',
@@ -3655,6 +3674,15 @@
       saveSongsToStorage();
       renderSongs();
       existing = songs.length - 1;
+    } else {
+      // 已有记录：补上/更新专辑封面，修掉旧数据“永远不是专辑封面”的问题
+      var fixSinger = (item.ar || item.artists || []).map(function(a) { return a.name; }).join(' / ');
+      var fixCover = normalizeCover((item.al && item.al.picUrl) || (item.album && item.album.picUrl) || item.picUrl || '', '300y300');
+      if (fixCover) songs[existing].cover = fixCover;
+      if (fixSinger) songs[existing].artist = fixSinger;
+      if (item.name) songs[existing].name = item.name;
+      saveSongsToStorage();
+      renderSongs();
     }
     onlineQueueActive = true;
     playSong(existing, true);
@@ -3732,13 +3760,15 @@
           var cover = '';
           if (item.al && item.al.picUrl) cover = item.al.picUrl;
           else if (item.album && item.album.picUrl) cover = item.album.picUrl;
+          else if (item.picUrl) cover = item.picUrl;
           else if (item.artists && item.artists[0] && item.artists[0].img1v1Url) cover = item.artists[0].img1v1Url;
+          cover = normalizeCover(cover, '100y100');
           var div = document.createElement('div');
           div.className = 'song-item';
           if (i === 0) div.classList.add('online-list-first');
           div.innerHTML =
             '<div class="song-cover">' +
-            (cover ? '<img src="' + cover + '?param=100y100" style="width:100%;height:100%;object-fit:cover;">' : '<svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>') +
+            (cover ? '<img src="' + cover + '" referrerpolicy="no-referrer" loading="lazy" style="width:100%;height:100%;object-fit:cover;">' : '<svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>') +
             '</div>' +
             '<div class="song-info">' +
             '<div class="song-name">' + item.name + '</div>' +
@@ -3773,7 +3803,17 @@
     for (var i = 0; i < songs.length; i++) {
       if (songs[i].source === 'netease' && songs[i].neteaseId === neteaseId) { existing = i; break; }
     }
-    if (existing >= 0) { playSong(existing); return; }
+    if (existing >= 0) {
+      // 旧记录可能没有封面，点搜索结果时补上专辑封面，避免一直显示占位图
+      var oldCover = normalizeCover(cover, '300y300');
+      if (oldCover) songs[existing].cover = oldCover;
+      if (item.name) songs[existing].name = item.name;
+      if (singer) songs[existing].artist = singer;
+      saveSongsToStorage();
+      renderSongs();
+      playSong(existing);
+      return;
+    }
     var songObj = {
       id: 'netease_' + neteaseId,
       source: 'netease',
@@ -3781,7 +3821,7 @@
       neteaseId: neteaseId,
       name: item.name,
       artist: singer || '未知歌手',
-      cover: cover || '',
+      cover: normalizeCover(cover, '300y300'),
       lyrics: '',
       fileType: 'audio/mpeg'
     };
