@@ -754,8 +754,11 @@ body.nano-chat {
 }
 
 .nano-chat .dock-btn {
-  width: 56px;
-  height: 54px;
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  height: 46px;
   border: none;
   background: transparent;
   border-radius: 50%;
@@ -764,22 +767,49 @@ body.nano-chat {
   justify-content: center;
   cursor: pointer;
   color: #999;
-  transition: all 0.2s;
+  transition: color 0.2s;
 }
 
 .nano-chat .dock-btn svg {
+  position: relative;
+  z-index: 1;
   width: 24px;
   height: 24px;
   fill: currentColor;
 }
 
+/* 选中态用固定 46×46 的圆形高光，不跟着按钮宽度拉伸成椭圆 */
 .nano-chat .dock-btn.active {
-  background: #111111;
+  background: transparent;
   color: #fff;
 }
 
+.nano-chat .dock-btn.active::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: #111111;
+  transform: translate(-50%, -50%);
+}
+
 .nano-chat .dock-btn:not(.active):active {
+  background: transparent;
+}
+
+.nano-chat .dock-btn:not(.active):active::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
   background: rgba(0, 0, 0, 0.06);
+  transform: translate(-50%, -50%);
 }
 
 .nano-chat .list-area {

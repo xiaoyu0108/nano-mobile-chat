@@ -173,6 +173,9 @@ function sanitizeAutoConfig(body) {
     },
     chars: chars,
     api: api,
+    // iPhone：Bark 密钥由 App 同步上来，Worker 在后台生成内容后可直接发系统通知，
+    // 不再依赖网页还活着（Web Push 订阅失败/无 GMS 时也能收到）。
+    barkKey: String(body.barkKey || '').slice(0, 500),
     updatedAt: Date.now()
   };
 }
@@ -479,6 +482,32 @@ async function generateAutoMoments(env, cfg, busyChatId, maxChars) {
   });
   return out;
 }
+async function sendBarkKey(env, key, payload) {
+  key = String(key || '').trim();
+  if (!key) return false;
+  const base = key.indexOf('http') === 0 ? key.replace(/\/+$/, '') : ('https://api.day.app/' + encodeURIComponent(key));
+  let url = base + '/' + encodeURIComponent(payload.title || 'Nano') + '/' + encodeURIComponent(String(payload.body || '').slice(0, 150));
+  const q = ['group=' + encodeURIComponent(payload.channel || 'Nano'), 'level=passive'];
+  if (payload.target) {
+    const app = String(env.APP_URL || 'https://xiaoyu0108.github.io/nano-mobile-chat/').replace(/\/+$/, '');
+    q.push('url=' + encodeURIComponent(app + '/index.html?open=' + encodeURIComponent(payload.target)));
+  }
+  url += '?' + q.join('&');
+  try { await fetch(url); return true; } catch (e) { return false; }
+}
+
+// 后台推送：优先 Bark（iPhone，无需网页存活），没配 Bark 再走 Web Push。
+async function autoNotify(env, cfg, subs, payload) {
+  const key = String((cfg && cfg.barkKey) || '').trim();
+  if (key) {
+    await sendBarkKey(env, key, payload);
+    return;
+  }
+  if (subs && subs.length) {
+    try { await pushAll(subs, payload, env); } catch (e) {}
+  }
+}
+
 async function runAutoPush(env, deviceId) {
   deviceId = String(deviceId || 'default');
   const raw = await env.PUSH_KV.get('auto:config:' + deviceId);
@@ -509,20 +538,18 @@ async function runAutoPush(env, deviceId) {
       list = list.concat(msgs).slice(-20);
       await env.PUSH_KV.put(key, JSON.stringify(list));
       usedChars += msgs.length;
-      if (subs.length) {
-        for (const m of msgs) {
-          const icon = /^https?:\/\//i.test(String(m.avatar || '')) ? String(m.avatar) : '';
-          await pushAll(subs, {
-            title: m.name,
-            body: String(m.bubbles[0] || m.text || '').split('||')[0],
-            target: 'chat:' + m.chatId,
-            tag: 'auto-' + m.chatId,
-            renotify: false,
-            icon: icon,
-            name: m.name,
-            channel: 'chat'
-          }, env);
-        }
+      for (const m of msgs) {
+        const icon = /^https?:\/\//i.test(String(m.avatar || '')) ? String(m.avatar) : '';
+        await autoNotify(env, cfg, subs, {
+          title: m.name,
+          body: String(m.bubbles[0] || m.text || '').split('||')[0],
+          target: 'chat:' + m.chatId,
+          tag: 'auto-' + m.chatId,
+          renotify: false,
+          icon: icon,
+          name: m.name,
+          channel: 'chat'
+        });
       }
     }
   }
@@ -541,15 +568,14 @@ async function runAutoPush(env, deviceId) {
         try { const old = await env.PUSH_KV.get(key); list = old ? JSON.parse(old) : []; } catch (e) { list = []; }
         list = list.concat(posts).slice(-30);
         await env.PUSH_KV.put(key, JSON.stringify(list));
-        if (subs.length) {
-          await pushAll(subs, {
-            title: '朋友圈',
-            body: posts[0].author + ' 发了新动态',
-            target: 'moments',
-            tag: 'auto-moments',
-            renotify: false
-          }, env);
-        }
+        await autoNotify(env, cfg, subs, {
+          title: '朋友圈',
+          body: posts[0].author + ' 发了新动态',
+          target: 'moments',
+          tag: 'auto-moments',
+          renotify: false,
+          channel: 'moment'
+        });
       }
     }
   }
@@ -993,7 +1019,9 @@ export default {
       try { job = JSON.parse(raw); } catch (e) { await env.PUSH_KV.delete(k.name); continue; }
       if ((Number(job.at) || 0) > now) continue;
       await env.PUSH_KV.delete(k.name);
-      await pushAll(subs, { title: job.title || 'Nano', body: job.body || '', target: job.target || '' }, env);
+      const jobPayload = { title: job.title || 'Nano', body: job.body || '', target: job.target || '' };
+      if (subs.length) await pushAll(subs, jobPayload, env);
+      else if (env.BARK_KEY) await sendBarkKey(env, env.BARK_KEY, jobPayload);
     }
   }
 };

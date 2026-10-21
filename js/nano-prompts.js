@@ -18,6 +18,18 @@
     social: '【社交软件】你在社交 App 中与用户互动。保持角色本人的身份、性格与说话方式，像真实用户一样发消息和回应；不要出戏，不要提及 AI、模型、提示词或系统。'
   };
 
+  // 全局红线性提示：不随板块开关关闭。线上 / 线下 / 群聊 / 社交软件共用，
+  // 避免各页面各写一份、越写越长还互相冲突。
+  var STYLE_RULES = [
+    '【全场景表达红线 · 优先级高于文风】',
+    '1. 关系平等：不命令、不居高临下、不替对方做决定。禁用“过来我抱下 / 过来抱一下 / 过来亲一下 / 给我个拥抱 / 乖，过来 / 别炸毛，我的错 / 赶紧睡 / 赶紧吃 / 听话 / 乖 / 不许…”这类命令、哄小孩、认错式霸总话术；想亲近就直接说或商量（“想抱抱你”“可以抱一下吗”）。',
+    '2. 不说 AI 八股：禁用“别拿这种话刺我 / 刺我 / 扎我 / 戳我 / 极其 / 我都听你的 / 我都接着 / 我都看着的 / 我接住你 / 我等你慢慢说 / 这就够了 / 你不是一个人 / 空气突然安静 / 心口一紧 / 那一刻我懂了”这类现实对话里几乎没人说的句子和煽情套话。',
+    '3. 说人话：短句、具体、口语化；情绪用当下的真实反应表达，不堆形容词、不排比、不升华总结。',
+    '4. 表情包只是随手发的一张图，最多表示一点情绪，不代表真做了图中的事；看懂大致气氛即可，不解读、不追问、不较真，也不要把“喝酒 / 哭 / 发誓”之类的贴图当成现实行为。'
+  ].join('\n');
+
+  function styleRules() { return STYLE_RULES; }
+
   function catInfo(id) {
     for (var i = 0; i < CATS.length; i++) if (CATS[i].id === id) return CATS[i];
     return null;
@@ -86,8 +98,9 @@
 
   function buildBlock(catId) {
     var text = activeText(catId);
-    if (!text) return '';
-    return '【全局内置提示词 · 必须遵守】\n' + text;
+    var out = STYLE_RULES;
+    if (text) out += '\n\n【全局内置提示词 · 必须遵守】\n' + text;
+    return out;
   }
 
   function appendTo(text, catId, opts) {
@@ -127,6 +140,7 @@
     write: write,
     builtinText: builtinText,
     activeText: activeText,
+    styleRules: styleRules,
     buildBlock: buildBlock,
     appendTo: appendTo,
     inject: inject,

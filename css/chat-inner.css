@@ -33,19 +33,75 @@ html, body {
     background-position: center center;
     background-repeat: no-repeat;
 }
+/* ===== 分享链接卡片（小红书 / 抖音 / 淘宝等后台解析） ===== */
+.link-preview {
+    display: flex;
+    gap: 10px;
+    align-items: stretch;
+    width: min(268px, 72vw);
+    margin-top: 6px;
+    padding: 8px;
+    border-radius: 14px;
+    background: rgba(255,255,255,0.92);
+    border: 0.5px solid rgba(0,0,0,0.06);
+    box-shadow: 0 4px 14px rgba(0,0,0,0.06);
+    cursor: pointer;
+    overflow: hidden;
+    text-align: left;
+    transition: transform .12s ease, background .12s ease;
+}
+.link-preview:active { transform: scale(.985); background: #f7f7f8; }
+.link-preview.right { align-self: flex-end; }
+.link-preview.left { align-self: flex-start; }
+.link-preview-thumb {
+    width: 64px;
+    height: 64px;
+    flex: 0 0 64px;
+    border-radius: 10px;
+    overflow: hidden;
+    background: #f2f2f4;
+}
+.link-preview-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.link-preview-body { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 3px; }
+.link-preview-site { font-size: 10.5px; font-weight: 600; color: #8e8e93; letter-spacing: .2px; }
+.link-preview-title {
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.35;
+    color: #1c1c1e;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+.link-preview-desc {
+    font-size: 11px;
+    line-height: 1.4;
+    color: #8e8e93;
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+.link-preview.no-thumb { width: min(268px, 72vw); }
+.link-preview.no-thumb .link-preview-body { padding: 2px 2px; }
+
 /* 键盘弹出：整体收缩到键盘上方，输入栏不被遮住。
    --nano-kb-chat 由 chat_inner.html 计算：安卓布局视口已经缩小时不再重复减键盘高度。 */
 html.keyboard-open .chat-container {
-    /* 优先按可视视口高度对齐（键盘/悬浮工具栏上沿）；旧浏览器回退到键盘高度估算 */
+    /* 优先按可视视口高度对齐（键盘/悬浮工具栏上沿）；旧浏览器回退到键盘高度估算。
+       --nano-kb-chat 在 chat_inner.html 里按「布局视口底边 - 可视视口底边」计算，
+       iOS / 安卓布局视口是否随键盘缩放都能得到正确高度，不会在输入框和键盘之间留空。 */
     height: var(--nano-vv-height, calc(100% - var(--nano-kb-chat, var(--nano-kb, 0px))));
+    --chat-bottom-extra: 2px;
     transition: none;
 }
 html.keyboard-open body.nano-chat-inner .bottom-bar {
-    /* 键盘已经盖住 Home 指示条，安全区不再需要，否则会在输入栏和键盘之间留白 */
-    padding-bottom: 4px !important;
+    /* 键盘已经盖住 Home 指示条：输入栏直接贴着键盘上沿，不留安全区空白 */
+    padding-bottom: 0 !important;
 }
 html.nano-android.keyboard-open body.nano-chat-inner .bottom-bar {
-    padding-bottom: 2px !important;
+    padding-bottom: 0 !important;
 }
 .topbar {
     position: relative; z-index: 30; width: 100%; flex-shrink: 0;

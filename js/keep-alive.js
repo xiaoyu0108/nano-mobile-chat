@@ -98,7 +98,10 @@
         return 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
     }
 
-    // 生成一段完全静音的 WAV：占住音频会话但不发出任何声音（避免 20Hz 低音被听成嗡嗡/震动声）
+    // 生成一段「听不见但不完全静音」的 WAV：占住音频会话，锁屏/切后台后页面不被系统挂起。
+    // 注意：纯静音（全部 128）在 iOS 上可能被判定为无音频播放，后台很快被挂起，
+    // 表现为「到点没有 Bark / 推送，回到页面才补弹内置通知」。这里保留 20Hz 极低音、
+    // 幅度压到 ±12（8bit PCM），手机扬声器基本发不出来，但音频会话是真实活跃的。
     function wavUrl() {
         if (audioUrl) return audioUrl;
         try {
@@ -110,8 +113,11 @@
             put(12, 'fmt '); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
             dv.setUint32(24, rate, true); dv.setUint32(28, rate, true); dv.setUint16(32, 1, true); dv.setUint16(34, 8, true);
             put(36, 'data'); dv.setUint32(40, n, true);
-            // 8bit PCM 静音 = 128；整段恒定 128，完全没有声音与振动
-            for (var j = 0; j < n; j++) dv.setUint8(44 + j, 128);
+            var amp = 12, freq = 20;
+            for (var j = 0; j < n; j++) {
+                var v = 128 + Math.round(amp * Math.sin(2 * Math.PI * freq * (j / rate)));
+                dv.setUint8(44 + j, Math.max(0, Math.min(255, v)));
+            }
             audioUrl = URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
         } catch (e) { audioUrl = ''; }
         return audioUrl;

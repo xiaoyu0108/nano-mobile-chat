@@ -56,11 +56,10 @@
         if (keepToggle.checked) applyKeepAlive(true);
         keepToggle.addEventListener('change', function () {
             applyKeepAlive(this.checked);
-            // 保活与 Bark 都是后台推送方案，二选一即可
-            if (this.checked && barkToggle && window.NanoNotify) {
-                try { NanoNotify.setBarkEnabled(false); } catch (e) {}
-                barkToggle.checked = false;
-                setBarkStatus('已切换为音频保活，Bark 推送已关闭');
+            // 保活和 Bark 是互补的：保活让本地定时任务继续跑，Bark 负责后台/锁屏系统通知，
+            // 两者可以同时开启；服务端主动消息已开启时本机定时器会自动让位，不会重复推送。
+            if (this.checked && barkToggle) {
+                setBarkStatus('音频保活已开启；Bark 可同时开启作为后台系统通知');
             }
         });
     }
@@ -90,11 +89,9 @@
         barkToggle.addEventListener('change', function () {
             NanoNotify.setBarkEnabled(this.checked);
             setBarkStatus(this.checked ? 'Bark 推送已开启' : 'Bark 推送已关闭，不会再向 Bark 推送');
-            // 保活与 Bark 都是后台推送方案，二选一即可
+            // 不再强制关闭音频保活：两者一起用，后台定时与系统通知都更稳。
             if (this.checked && keepToggle) {
-                applyKeepAlive(false);
-                keepToggle.checked = false;
-                setBarkStatus('Bark 推送已开启（已自动关闭音频保活）');
+                setBarkStatus('Bark 推送已开启（音频保活可同时保留）');
             }
         });
     }

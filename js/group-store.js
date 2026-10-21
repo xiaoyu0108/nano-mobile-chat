@@ -11,6 +11,8 @@
     var STORE = 'kv';
     var SCOPE_MARK = '__u__';
     var SCOPE_OWNER_KEY = 'nano_group_scope_owner';
+    var UID_SESSION_KEY = 'nano_current_mask_id';
+    var activeUid = '';
 
     function isScopedGroupKey(k) {
         return typeof k === 'string' && k.indexOf(SCOPE_MARK) !== -1;
@@ -29,18 +31,75 @@
         return isBaseGroupKey(k);
     }
 
+    // 从面具数据里取当前 user id；currentMaskId 缺失时退回第一个面具。
+    function uidFromMaskData(d) {
+        if (!d || !Array.isArray(d.masks) || !d.masks.length) return '';
+        if (d.currentMaskId != null && d.currentMaskId !== '') return String(d.currentMaskId);
+        var first = d.masks[0];
+        return first && first.id != null ? String(first.id) : '';
+    }
+
     // 读当前 user（面具）ID。必须用原生 getItem，避免下面的作用域补丁递归。
+    // localStorage 被聊天图片/头像写满时，nano_mask_data 可能只剩在 IndexedDB 里；
+    // 此时旧逻辑会退化成 'default'，导致所有面具共用同一份群聊。这里加多层兜底：
+    // 页面显式 setCurrentUid → localStorage 面具数据 → 轻量 sessionStorage → IndexedDB 异步补写。
     var rawGetItem = null;
     function currentUid() {
+        if (activeUid) return activeUid;
         try {
             var get = rawGetItem || (rawGetItem = localStorage.getItem.bind(localStorage));
-            var raw = get('nano_mask_data') || get('nano_home_data') || get('peach_home_data');
-            if (raw) {
-                var d = JSON.parse(raw);
-                if (d && d.currentMaskId != null && d.currentMaskId !== '') return String(d.currentMaskId);
+            var keys = ['nano_mask_data', 'nano_home_data', 'peach_home_data'];
+            for (var i = 0; i < keys.length; i++) {
+                var raw = get(keys[i]);
+                if (!raw) continue;
+                var uid = uidFromMaskData(JSON.parse(raw));
+                if (uid) { activeUid = uid; return uid; }
             }
         } catch (e) {}
+        try {
+            var sid = sessionStorage.getItem(UID_SESSION_KEY);
+            if (sid) { activeUid = String(sid); return activeUid; }
+        } catch (e) {}
         return 'default';
+    }
+
+    function setCurrentUid(uid) {
+        uid = (uid == null ? '' : String(uid)).trim();
+        if (!uid) return '';
+        activeUid = uid;
+        try { sessionStorage.setItem(UID_SESSION_KEY, uid); } catch (e) {}
+        return uid;
+    }
+
+    // 面具数据只存在 IndexedDB 时，异步把 uid 补进缓存，后续群列表/群消息立即按正确 user 读取。
+    function hydrateUidFromMaskDB() {
+        try {
+            var req = indexedDB.open('nano_mask_db', 1);
+            req.onupgradeneeded = function (e) {
+                var db = e.target.result;
+                if (!db.objectStoreNames.contains('mask_data')) db.createObjectStore('mask_data', { keyPath: 'key' });
+            };
+            req.onsuccess = function () {
+                var db = req.result;
+                try {
+                    if (!db.objectStoreNames.contains('mask_data')) { db.close(); return; }
+                    var rq = db.transaction('mask_data', 'readonly').objectStore('mask_data').get('data');
+                    rq.onsuccess = function () {
+                        try {
+                            var row = rq.result;
+                            var uid = uidFromMaskData(row && row.value);
+                            if (uid && !activeUid) {
+                                activeUid = uid;
+                                try { sessionStorage.setItem(UID_SESSION_KEY, uid); } catch (e) {}
+                            }
+                        } catch (e) {}
+                        try { db.close(); } catch (e) {}
+                    };
+                    rq.onerror = function () { try { db.close(); } catch (e) {} };
+                } catch (e) { try { db.close(); } catch (e2) {} }
+            };
+            req.onerror = function () {};
+        } catch (e) {}
     }
 
     function scopedKey(k, uid) {
@@ -197,6 +256,13 @@
                             if (rawGetItem(k) !== null) return;
                             if (rawGetItem(scopedKey(k, uid)) !== null) return;
                         }
+                        // 别的 user 命名空间的群数据不要写进当前页面的 localStorage
+                        if (isScopedGroupKey(k)) {
+                            var tail = k.slice(k.indexOf(SCOPE_MARK) + SCOPE_MARK.length);
+                            var rowUid = tail;
+                            try { rowUid = decodeURIComponent(tail); } catch (e2) { rowUid = tail; }
+                            if (String(rowUid) !== String(uid)) return;
+                        }
                         if (rawGetItem(k) === null) {
                             if (rawSetItem) rawSetItem(k, row.value);
                             else localStorage.setItem(k, row.value);
@@ -209,12 +275,36 @@
     }
 
     // 立即启动一次回填并挂上写入镜像（不阻塞页面脚本）
-    try { ready(); patchStorage(); } catch (e) {}
+    try { ready(); patchStorage(); hydrateUidFromMaskDB(); } catch (e) {}
+
+    // 其它页面切换面具时，失效缓存并重新从面具数据取 uid
+    try {
+        window.addEventListener('storage', function (e) {
+            if (!e || !e.key) return;
+            if (e.key === 'nano_mask_data' || e.key === 'nano_home_data' || e.key === 'peach_home_data') {
+                activeUid = '';
+                try {
+                    var d = JSON.parse(e.newValue || 'null');
+                    var uid = uidFromMaskData(d);
+                    if (uid) activeUid = uid;
+                } catch (err) {}
+            }
+        });
+    } catch (e) {}
+
+    // 群成员按创建者 user 记录；旧群没有 ownerUid 时不做过滤，保持兼容。
+    function groupBelongsToCurrentUser(g) {
+        if (!g || typeof g !== 'object') return false;
+        if (!g.ownerUid) return true;
+        return String(g.ownerUid) === String(currentUid());
+    }
 
     window.GroupStore = {
         ready: ready,
         isGroupKey: isGroupKey,
         currentUid: currentUid,
+        setCurrentUid: setCurrentUid,
+        groupBelongsToCurrentUser: groupBelongsToCurrentUser,
         scopeKey: function (k) { return isBaseGroupKey(k) ? scopedKey(k, currentUid()) : k; },
         set: function (k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
         remove: function (k) { try { localStorage.removeItem(k); } catch (e) {} }

@@ -572,8 +572,17 @@ const APP_ICONS = {
 
   function openAppsSheet() {
     var gmode = globalIconMode();
-    var rows = '<button class="sheet-btn grey" id="toggleIconWrap">外部包裹器：' +
-      (gmode === 'free' ? '全部不保留（按图片轮廓）' : '全部保留（白色包裹）') + ' · 点击切换</button>' +
+    var wrapOn = gmode !== 'free';
+    var rows = '<button class="icon-wrap-toggle' + (wrapOn ? ' on' : '') + '" id="toggleIconWrap" type="button" role="switch" aria-checked="' + (wrapOn ? 'true' : 'false') + '">' +
+      '<span class="iw-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+        '<rect x="3.5" y="3.5" width="12" height="12" rx="3.5"/>' +
+        '<rect x="8.5" y="8.5" width="12" height="12" rx="3.5" fill="currentColor" stroke="none" opacity=".16"/>' +
+        '<rect x="8.5" y="8.5" width="12" height="12" rx="3.5"/>' +
+      '</svg></span>' +
+      '<span class="iw-main"><span class="iw-title">外部包裹器</span>' +
+      '<span class="iw-sub">' + (wrapOn ? '自定义图标套一层白色圆角底' : '按图片自身轮廓显示，不加底') + '</span></span>' +
+      '<span class="iw-pill"><span class="iw-dot"></span><span class="iw-state">' + (wrapOn ? '保留' : '不保留') + '</span></span>' +
+      '</button>' +
       APPS.map(function (a) {
       var c = custom[a.id] || {};
       var name = c.name || a.name;

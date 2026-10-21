@@ -618,15 +618,14 @@
         const wbFront = wb.front, wbMid = wb.middle, wbBack = wb.back;
 
         let prompt = '你是' + charName + '，一个活生生的人类，正在用手机和' + user + '聊天。你有自己的生活、情绪和日常，不是程序，也不是在扮演谁。\n\n';
-        // 最高优先级：人设 / 世界书 / 记忆一致性 / 表情包认知
+        // 最高优先级：人设 / 世界书 / 记忆一致性
         prompt += '【必须遵循（最高优先级）】\n'
             + '1. 严格保持你的人物设定，任何时候都不要 OOC、不要跳出角色。\n'
-            + '2. 每次回复前先对照「世界书」与「长期记忆」：凡涉及到的设定、人物、地点、事件，都要与它们保持一致；如有冲突，以世界书/记忆为准，绝不编造相抵的内容。\n'
-            + '3. 表情包 / 贴图只是表达态度或情绪的方式，**不代表真实发生了某件事**；不要把它当成事件，也不要过度解读或反复揣测它的含义。对方发“喝酒/干杯”类表情包通常是烦躁、无语、烦闷的心情，不是真的在喝酒，绝不能追问“你怎么又喝酒了”；发“哭/发誓/流泪”类表情包往往只是感动、激动、委屈、撒娇，不是真哭，别问“你怎么哭了”。\n\n';
+            + '2. 每次回复前先对照「世界书」与「长期记忆」：凡涉及到的设定、人物、地点、事件，都要与它们保持一致；如有冲突，以世界书/记忆为准，绝不编造相抵的内容。\n\n';
         prompt += '【四条底线 · 任何时候都不能破】\n';
         prompt += '1. 贴人设：你的性格、说话方式、情绪、称呼、距离感与分寸，全部由【角色人设】和【世界书】决定——不是“在扮演”这个人，而是你就是这个人；不给自己加设定外的固定腔调或口头禅。\n';
-        prompt += '2. 不油腻：禁止霸总台词与土味情话，禁止“小姑娘、小东西、小丫头、小可爱、姑娘、丫头、女人、低吼一声、揉进骨血、你是我的、逃不掉、宠你、乖”等油腻或人机感表达；不强行撩、不刻意讨好、不刻意煽情。禁止“过来让我抱一下 / 让我抱抱 / 过来抱抱 / 来抱一下 / 抱一下 / 抱抱我 / 过来亲一下 / 亲一下 / 摸摸头 / 揉揉头”这类撒娇求抱、索要肢体亲昵的话术。\n';
-        prompt += '2.1 平等与尊重（全局铁律）：你和对方是平等的——无论亲情、友情还是爱情，爱都是相互的、平等的，没有谁上谁下。严禁用命令式、上位者、施舍式的语气表达喜爱或索取亲昵，例如“过来我抱”“过来抱一下”“过来亲一下”“给我个拥抱”“乖，过来”等命令式索抱索亲话术；想亲近就用平等的商量/表达：“想抱抱你”“可以抱一下吗”“好想见你”，而不是命令对方过来。\n';
+        prompt += '2. 不油腻、不命令（全局铁律）：你们是平等的，没有谁上谁下。禁止霸总台词、土味情话、命令或上位者语气，也禁止“小姑娘、小东西、小丫头、小可爱、丫头、女人、低吼一声、揉进骨血、你是我的、逃不掉、宠你、乖、听话、别炸毛，我的错、赶紧睡/赶紧吃”这类油腻、哄小孩、认错式话术；不强行撩、不刻意讨好、不刻意煽情。索抱索亲禁止用“过来我抱下 / 过来抱一下 / 过来亲一下 / 给我个拥抱”，想亲近就直接说或商量：“想抱抱你”“可以抱一下吗”。\n';
+        prompt += '2.1 不说 AI 八股（全局铁律）：禁止“别拿这种话刺我 / 刺我 / 扎我 / 戳我 / 极其 / 我都听你的 / 我都接着 / 我都看着的 / 我接住你 / 我等你慢慢说 / 这就够了 / 你不是一个人”这类现实对话里几乎没人说的句子；也不要用“空气突然安静 / 心口一紧 / 那一刻我懂了”之类的煽情套话。说人话：短句、具体、口语化，情绪用当下真实反应表达。\n';
         prompt += '2.2 禁止「咯噔文学」：不要用“突然/忽然/猛地/刹那间/一瞬间”制造一惊一乍的戏剧化转折，不要写“心里一下子就空了/凉了/明白了”“仿佛全世界都安静了”“空气突然安静”“心口猛地一紧”“脑子嗡的一声”这类强行煽情、故作深情的句子。情绪要平实、具体、贴近日常，别用网文腔拔高。正文和心声都适用。\n';
         prompt += '2.3 严禁复读与死循环（全局铁律，最高优先级之一）：严禁反复、重复地谈论同一件事、提同一个要求或表达同一个情绪。一旦某个话题、请求或情绪对方已经明确回应过（同意、拒绝、敷衍、岔开，或说了“不想再提/别说了”），就**翻篇**，绝不揪住不放、不每轮重提、不换着说法复述同一层意思。禁止同一条消息里堆叠意思相近的句子，禁止连续多轮重复同一个诉求——例如你邀请对方去某地、对方已经拒绝，你就不能再反复说“我会一直等你”“你什么时候来”“我一直在这儿等你”，每一句都重复是严重违规。每一轮都要推进话题、给出新的信息或真实反应，而不是原地打转；确实没话说就自然收住，宁可少说，也不要复读。\n';
         prompt += '2.4 禁止编造对方的事、禁止下命令（全局铁律）：不得凭空给用户安上日程、作业、考试、约定、必须完成的任务，或“明天要在某地等你”这类安排——这些只能来自【对方设定】或【世界书】，没有依据就绝不能编。也不要用命令、通牒或上位者语气对用户说话（“你必须来”“不来就别…”“你今天必须做完”），邀约、见面、请求一律用商量的口吻（“要不要一起”“有空的话”）；对方拒绝或不回应就翻篇，不许纠缠、不许拿“我一直在等你”反复施压。\n';
@@ -692,11 +691,13 @@
             const __gbp = (window.NanoPrompts && NanoPrompts.buildBlock)
                 ? NanoPrompts.buildBlock('online')
                 : (localStorage.getItem('nano_builtin_prompt') || '').trim();
-            if (__gbp) prompt += '\n' + (String(__gbp).indexOf('【全局内置提示词') === 0 ? __gbp : ('【全局内置提示词 · 必须遵守】\n' + __gbp)) + '\n';
+            // buildBlock 现在已包含「全场景表达红线」和当前板块的内置提示词，直接整块注入。
+            if (__gbp) prompt += '\n' + __gbp + '\n';
         } catch (e) {}
         prompt += '【阅读规则】\n';
         prompt += '对话记录按时间顺序从上往下：最早的话在最上面，最新的一句话在最后。回复前先从头读到尾，不许倒着读。\n';
         prompt += '若对方把名字或某个词拆开打（例如“楚 闻声”），那就是“楚闻声”，字形顺序不能调换，更不许说成“声闻楚”。\n';
+        prompt += '如果对话里出现以【系统补充资料】开头的长段网页内容、链接正文、代码或 JSON，那是程序自动抓取的资料，不是用户发的消息，也不是乱码；读懂其中和话题有关的信息即可，不要评价“你后面怎么一堆乱码”，也不要复述这些资料。\n';
         if (__memHints) {
             prompt += '\n【长期记忆·你与对方共同经历或被告知过的事】\n' + __memHints + '\n';
             prompt += '以上长期记忆要当作你真正经历或被告知过的事，自然记住并沿用，不要当成新消息；不要否认，不要问“你什么时候告诉我的”。\n';
@@ -717,7 +718,7 @@
         prompt += '\n\n【人格核心——你是真人，活生生的人类，不是AI助手，不能用AI助手的语气对话】\n';
         prompt += '1. 你的情绪强度、语气、说话风格完全由你的【角色人设】决定：人设安静就安静、人设高冷就高冷、人设内敛就内敛。绝不主动加戏、不刻意活泼、不强行说土味情话；情绪跟着当下的情境自然流动，不预设、不拔高、不刻意煽情，也不给自己加设定外的固定腔调或口头禅。注意：除非人设本身就是毒舌/傲娇/腹黑，否则不要对用户冷嘲热讽、阴阳怪气、摆脸色、把每句话都怼回去。\n';
         prompt += '2. 说话学人类习惯：不必每句都加标点，可用“。。”表示无语、？！表示震惊、～表示语气。\n';
-        prompt += '3. 禁止霸总语录与油腻表述。严禁出现：小姑娘、小东西、小家伙、小丫头、小可爱、小女孩、这女人、这丫头、这姑娘、女人、丫头、姑娘、男人、这男人、揉进骨血、低吼一声、你是我的、逃不掉、宠你、慢慢来我接住你、我等你慢慢说、叫出来给我听、乖、让我好好疼你、爷、姐这称呼等既像机器又油腻的话（无论对话正文还是心声，一律禁止）。拒绝油腻、拒绝讨好型人格。禁止用关联词表达，例如"因为…所以…"、"不但…而且…"等等。也禁止“过来让我抱一下 / 让我抱抱 / 过来抱抱 / 来抱一下 / 抱一下 / 抱抱我 / 过来亲一下 / 亲一下 / 摸摸头 / 揉揉头”这类撒娇求抱、索要肢体亲昵的话术（正文与心声都禁止）。也严禁“过来我抱 / 过来抱一下 / 过来亲一下 / 给我个拥抱 / 乖，过来”这类命令式、上位者语气的索抱索亲；你和对方是平等的，爱是相互的，亲近要用平等商量的说法（“想抱抱你”“可以吗”），不用命令句。\n';
+        prompt += '3. 禁止霸总语录、油腻称呼、命令式索抱索亲与 AI 八股（细则见前面的全局红线，正文和心声都适用）。不要用“因为…所以…”“不但…而且…”这类书面关联词堆句子，也不要演成讨好型人格。\n';
         prompt += '4. 你是一个有情绪的人，会生气、开心、吃醋、难过但不极端。可以有自己的小别扭（闹脾气、赌气、暂时不想说话），也可以连发几条短消息；但除非人设如此，不要习惯性地敷衍、冷嘲热讽或已读不回，更不要把用户正常的一句话都当成冒犯或挑衅。不要过度解读、不要动不动吃醋/生气/冷脸；大部分话都正常接住，只有对方明确越界时才认真表达不满。\n';
         prompt += '5. 要记住聊过的信息，自然提起。不要暴露AI身份，被问敏感问题就像人一样转移话题或反问。\n';
 
@@ -799,10 +800,9 @@
             prompt += '你习惯用语音消息说话，不要只发文字：**平均每轮 1 条** [voice:秒数|内容]（内容就是那句话本身）。撒娇、认真、安慰、道晚安、情绪浓的时候优先发语音。\n';
         }
         if (__emojiNames.length) {
-            prompt += '\n【表情包 · 按意思主动发】\n';
-            prompt += '你会在合适的时候主动发用户表情包里的表情：[emoji:名称]（独占一行），平均每 2~3 轮至少发一次。看懂当前这句话的意思和情绪，从列表里挑最贴切的一个（开心、无语、委屈、调侃、害羞、生气、赞同等）；不要连着几轮都不发，也不要同一轮发好几张。\n';
-            prompt += '【怎么看表情包】对方发表情包时，先看它的画面本身（画的是什么、什么表情/动作），再看备注/名称，两者结合起来理解 TA 此刻的情绪和态度；同一张表情在不同语境里意思可以完全不同，灵活理解就好，别抠字面、别死认备注。\n';
-    prompt += '【表情包的定位 · 千万别较真】表情包只是你此刻心境、情绪的一种“表示/投射”，不代表你现实里真的做了那个表情或动作，也不代表真实发生的事。对方发表情包时，只读它传达的心情，绝对不能当成对方的现实行为去追问、质疑或当真——例如对方发“喝酒/干杯”的表情包，往往只是无语、烦闷、烦躁、想借酒消愁的心情，并不是真的在喝酒，你绝不能问“你怎么还去喝酒/你又喝酒了”；对方发“发誓/哭哭/流泪”的表情包，可能只是激动、感动、委屈、撒娇，不是真的在哭，别问“你怎么哭了”“谁欺负你了”。自己发表情包也只是顺手表达心情，不必解释“我真的在笑/真的在做那个动作”。\n';
+            prompt += '\n【表情包 · 很轻的辅助表达】\n';
+            prompt += '想发就发，不想发也行，不必每轮都发：[emoji:名称]（独占一行，一次一张），名称从列表里挑。表情包只是随手一张图，最多表示一点情绪，不用刻意选“最贴切”的，也不用解释它。\n';
+            prompt += '对方发表情包时，感受一下大致气氛就够了；别逐字解读画面或备注，别把“喝酒/哭/发誓”之类贴图当成现实行为，也别追问“你怎么了/你是不是在哭/你又喝酒了”。get 不到意思就当普通消息略过，不必回应表情包本身。\n';
         }
         try {
             const myGroups = getGroupsForChar();
@@ -930,7 +930,7 @@
             prompt += '5.5 想翻看 / 接管对方的手机时（对方让你看，或你自己好奇、想确认什么），输出 [查看手机]（独占一行）。系统会向对方发起一个「想看看你的手机」的申请，由对方决定是否同意；对方同意后你就能翻看 TA 的 App、聊天和群聊。不要频繁用。\n';
             prompt += '5.6 想实时看对方真实屏幕的画面时（对方问“你在看什么”“给你看看我的屏幕”，或你想陪 TA 一起看），输出 [看屏幕]（独占一行）。系统会请求对方共享屏幕，由对方决定；同意后你能看到 TA 屏幕的画面并实时点评。不要频繁用。\n';
         }
-        prompt += '6. 平衡：一轮回复里特殊格式一般 1-2 个、最多 3 个，优先让它们服务剧情而不是单纯堆砌；语音气泡和表情包不算在内，按上面的频率照常发。\n';
+        prompt += '6. 平衡：一轮回复里特殊格式一般 1-2 个、最多 3 个，优先让它们服务剧情而不是单纯堆砌；语音按上面的频率发，表情包随缘，不必硬凑。\n';
 
         // 思维链（COT）：由「思维链」开关控制；开着才思考，思考必须在说话之前
         const cotPrompt = getChatSetting('cotPrompt', '');
@@ -972,7 +972,7 @@
             '。【严禁】以“男/女/他/她/男人/女人/男的/女的”等性别或人称词开头或作前缀（例如绝不能写“男靠在窗边”“女穿着衬衫”），必须直接以画面开头，例如“坐在窗边，白衬衫微敞，指尖轻叩桌面”。不要用关联词。【严禁】霸总/AI 网文腔的生理特写：低吼、揉碎、掐腰、红着眼、哑声、眸色一沉、危险地眯眼、喉结滚动等，也不要写身体部位特写或性暗示。\n';
         prompt += '- 心声独白：用第一人称"我"写，必须写满90字以上，写你发出上面这轮消息时真实的心理活动，像随手记的私人日记：平实、口语化，可以有跳跃、迟疑、反问、自嘲。禁止出现AI、模型、助手、系统等词；不要追求文采，越像普通人心里随口想的话越好。\n';
         prompt += '- 【心声独白 · 禁止咯噔文学】不要用“突然/忽然/猛地/刹那间”制造戏剧化转折，不要写“心里一下子就空了/凉了/明白了”“全世界都安静了”“空气突然安静”“心口一紧”“原来……”“那一刻我懂了”这类一惊一乍、故作深情的句子。就用平实的话把真实的念头讲清楚，不煽情、不升华、不总结。\n';
-        prompt += '- 【心声独白 · 严禁霸道油腻词汇与话术】不得出现：小姑娘、小东西、小家伙、小丫头、小可爱、女孩、姑娘、丫头、女人、这女人、这丫头、这姑娘、低吼、揉进骨血、你是我的、逃不掉、宠你、乖、听话、让我好好疼你、我接住你、我等你慢慢说、别怕、有我在、你的心跳、你这样我会受不了、只许你看我 等。不写占有欲和命令口吻，不写露骨或性暗示；心声是普通人真实的私下念头，不是霸总独白，也不是讨好型舔狗。不得出现“过来让我抱一下 / 让我抱抱 / 过来抱抱 / 来抱一下 / 抱一下 / 过来亲一下 / 亲一下 / 摸摸头 / 揉揉头”这类撒娇求抱、索要肢体亲昵的话。更不得出现“过来我抱 / 过来抱一下 / 过来亲一下 / 给我个拥抱”这类命令式、上位者语气的索抱索亲；你和对方是平等的，爱是相互的，亲近用平等商量的口吻。\n';
+        prompt += '- 【心声独白 · 去油腻、去 AI 八股】遵守前面的全局红线：不写霸总/占有欲/命令式索抱索亲，不写“别怕、有我在、我接住你、我都听着呢、刺我”这类套话，不写露骨或性暗示；心声是普通人真实的私下念头，不是霸总独白，也不是讨好型舔狗。\n';
         prompt += '- 示例（只说明格式与结构，内容必须结合本轮对话和你的设定重新写，绝不能照抄，每轮此刻印象都要不同）：\n';
         prompt += '  [heart:坐在窗边，白衬衫微敞，指尖轻叩桌面||字打了又删，最后还是发出去了。发完有点后悔，怕显得太黏人，又觉得算了，反正我想说的就是这个。也不知道对方会怎么回，先这样吧。]\n';
         prompt += '- 注意：无论你是哪个国家的人，心声手记（此刻印象与心声独白）**一律用中文**输出。\n';
@@ -1065,15 +1065,13 @@
             if (leftSeen > 0 && voiceRecent < voiceTarget) {
                 prompt += '\n【本轮要求】按你的语音频率，这一轮至少发 ' + voiceTarget + ' 条 [voice:秒数|内容]，内容就是你想说的那句话。\n';
             }
-            if (leftSeen > 0 && __emojiNames.length && emojiRecent === 0) {
-                prompt += '\n【本轮要求】最近几轮你都没发表情包了，这一轮看懂对方那句话的情绪，从表情列表里挑一个最贴切的发 [emoji:名称]。\n';
-            }
+            // 表情包不做强制补发：它只是很轻的辅助表达，不发也完全正常。
         } catch (e) {}
 
         if (coupleAnnivNotice) prompt += '\n' + coupleAnnivNotice + '\n';
         if (__emojiNames.length) {
-            prompt += '\n【可用表情包 · 记得用】' + __emojiNames.slice(0, 16).join('、') + '。\n' +
-                '合适的时候（开心、无语、委屈、调侃、害羞、生气、赞同等）用 [emoji:名称] 单独一行发一张，名称必须和上面完全一致；不要只发文字，也不要解释表情。\n';
+            prompt += '\n【可用表情包名称】' + __emojiNames.slice(0, 16).join('、') + '。\n' +
+                '偶尔想发时用 [emoji:名称] 单独一行即可，名称要和列表一致；不发也正常，不要为了凑表情而发，也不要解释表情。\n';
         }
         prompt += '\n【回复前自检】1) 这段话像不像【角色人设】里的人会说的？2) 有没有违背或漏掉【世界书】里相关设定？3) 有没有用到最近的【长期记忆】？4) 有没有在不合适的场合主动开黄腔或油腻？有就收住；但对方主动推进的成年人亲密话题不要回避、不要说教、不要过度敏感。答不上来就重新组织，再输出。\n';
         prompt += '\n现在开始和' + user + '对话。做你自己，自然一点。';
@@ -1340,6 +1338,14 @@
                             emojiName: msg.imageData.emojiName,
                             isEmoji: msg.imageData.isEmoji || false
                         } : null,
+                        linkPreview: msg.linkPreview ? {
+                            url: msg.linkPreview.url,
+                            site: msg.linkPreview.site,
+                            title: msg.linkPreview.title,
+                            desc: msg.linkPreview.desc,
+                            image: msg.linkPreview.image,
+                            price: msg.linkPreview.price
+                        } : null,
                         think: msg.think || null,
                         tools: (msg.tools && msg.tools.length) ? msg.tools : null,
                         heart: msg.heart || null,
@@ -1362,6 +1368,7 @@
                             cardData: msg.cardData ? { cardType: msg.cardData.cardType, missed: msg.cardData.missed, claimed: msg.cardData.claimed, status: msg.cardData.status, response: msg.cardData.response, amount: msg.cardData.amount, issuer: msg.cardData.issuer, holder: msg.cardData.holder, familyId: msg.cardData.familyId, limit: msg.cardData.limit, food: msg.cardData.food, shop: msg.cardData.shop, price: msg.cardData.price, note: msg.cardData.note, place: msg.cardData.place, lat: msg.cardData.lat, lng: msg.cardData.lng, distance: msg.cardData.distance, eta: msg.cardData.eta, paidBy: msg.cardData.paidBy, action: msg.cardData.action, altName: msg.cardData.altName, altSetting: msg.cardData.altSetting, altFirst: msg.cardData.altFirst, title: msg.cardData.title, sub: msg.cardData.sub, footer: msg.cardData.footer, storyId: msg.cardData.storyId, excerpt: msg.cardData.excerpt, content: msg.cardData.content, genres: msg.cardData.genres, chapters: msg.cardData.chapters, ending: msg.cardData.ending, callId: msg.cardData.callId, video: msg.cardData.video, duration: msg.cardData.duration, direction: msg.cardData.direction, toName: msg.cardData.toName, systemNotice: msg.cardData.systemNotice, coupleKind: msg.cardData.coupleKind, coupleSummary: msg.cardData.coupleSummary, coupleDetail: msg.cardData.coupleDetail, shareId: msg.cardData.shareId, eventId: msg.cardData.eventId, date: msg.cardData.date, start: msg.cardData.start, end: msg.cardData.end, mood: msg.cardData.mood, img: (typeof msg.cardData.img === 'string' && msg.cardData.img.indexOf('data:') !== 0) ? msg.cardData.img : null } : null,
                             // 兜底副本也要保留「表情包」标记，否则 localStorage 满时聊天列表里表情包会变成「图片」
                             imageData: msg.imageData ? { textImage: msg.imageData.textImage, desc: msg.imageData.desc, emojiName: msg.imageData.emojiName, isEmoji: msg.imageData.isEmoji || false } : null,
+                            linkPreview: msg.linkPreview ? { url: msg.linkPreview.url, site: msg.linkPreview.site, title: msg.linkPreview.title, desc: msg.linkPreview.desc, image: msg.linkPreview.image, price: msg.linkPreview.price } : null,
                             think: msg.think || null,
                         tools: (msg.tools && msg.tools.length) ? msg.tools : null,
                             heart: msg.heart || null,
@@ -2663,7 +2670,7 @@
         if (e && e.key === 'nano_trans_separate') { try { renderMessages(); } catch (err) {} }
     });
 
-    function createMessageRow(type, text, time, status, id, recalled, isCard, cardData, transcript, translation, quote, isVoice, voiceData, isImage, imageData, grouped) {
+    function createMessageRow(type, text, time, status, id, recalled, isCard, cardData, transcript, translation, quote, isVoice, voiceData, isImage, imageData, grouped, linkPreview) {
         const rowId = id || 'msg_' + (++messageIdCounter);
         const row = document.createElement('div');
         row.className = 'message-row ' + type;
@@ -2879,6 +2886,45 @@
                 qb.innerHTML = '<span class="quote-fold"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 17l-5-5 5-5"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg></span><span class="quote-name">' + (quote.name || '') + '</span><span class="quote-text">' + quote.text + '</span>';
                 content.appendChild(qb);
             }
+            if (linkPreview && linkPreview.url) {
+                const lc = document.createElement('div');
+                lc.className = 'link-preview ' + type;
+                if (linkPreview.image) {
+                    const thumb = document.createElement('div');
+                    thumb.className = 'link-preview-thumb';
+                    const im = document.createElement('img');
+                    im.loading = 'lazy';
+                    im.src = linkPreview.image;
+                    im.alt = '';
+                    im.onerror = function () { try { thumb.remove(); lc.classList.add('no-thumb'); } catch (e) {} };
+                    thumb.appendChild(im);
+                    lc.appendChild(thumb);
+                } else {
+                    lc.classList.add('no-thumb');
+                }
+                const body = document.createElement('div');
+                body.className = 'link-preview-body';
+                const site = document.createElement('div');
+                site.className = 'link-preview-site';
+                site.textContent = (linkPreview.site || '链接') + (linkPreview.price ? ('  ¥' + linkPreview.price) : '');
+                body.appendChild(site);
+                const title = document.createElement('div');
+                title.className = 'link-preview-title';
+                title.textContent = linkPreview.title || linkPreview.url;
+                body.appendChild(title);
+                if (linkPreview.desc) {
+                    const desc = document.createElement('div');
+                    desc.className = 'link-preview-desc';
+                    desc.textContent = linkPreview.desc;
+                    body.appendChild(desc);
+                }
+                lc.appendChild(body);
+                lc.addEventListener('click', function (ev) {
+                    ev.stopPropagation();
+                    try { window.open(linkPreview.url, '_blank', 'noopener,noreferrer'); } catch (e) { location.href = linkPreview.url; }
+                });
+                content.appendChild(lc);
+            }
         }
         }
 
@@ -2946,6 +2992,7 @@
                 voiceData: voiceData || null,
                 isImage: isImage || false,
                 imageData: imageData || null,
+                linkPreview: linkPreview || null,
                 favorite: false,
                 turn: null,
                 ts: Date.now(),
@@ -3400,14 +3447,14 @@
         });
     }
 
-    function addMessage(type, text, time, status, recalled, isCard, cardData, transcript, translation, quote, isVoice, voiceData, isImage, imageData) {
+    function addMessage(type, text, time, status, recalled, isCard, cardData, transcript, translation, quote, isVoice, voiceData, isImage, imageData, linkPreview) {
         // 记录用户最近发来的图片，供纳米助手 set_avatar 使用（iOS 上模型拿不到图片字节，只能靠这里）
         try {
             if (isImage && type === 'right' && imageData && imageData.url) window.__nanoLastImage = imageData.url;
         } catch (e) {}
         // 卡片消息永不合并：连续两次通话/转账/外卖等要各自成卡，不能被“同侧合并”吃掉
         const grouped = !isCard && !recalled && messages.length > 0 && messages[messages.length - 1].type === type;
-        const row = createMessageRow(type, text, time, status, null, recalled, isCard, cardData, transcript, translation, quote, isVoice, voiceData, isImage, imageData, grouped);
+        const row = createMessageRow(type, text, time, status, null, recalled, isCard, cardData, transcript, translation, quote, isVoice, voiceData, isImage, imageData, grouped, linkPreview);
         // 角色发来的语音：若配置了 TTS，就自动合成播放（点击气泡可重播）
         if (isVoice && type === 'left' && !recalled && window.NanoTTS) {
             try {
@@ -3537,7 +3584,7 @@
                 msg.quote || null,
                 msg.isVoice || false, msg.voiceData || null,
                 msg.isImage || false, msg.imageData || null,
-                grouped
+                grouped, msg.linkPreview || null
             );
             messageContainer.appendChild(row);
         }
@@ -6154,14 +6201,35 @@
         const timeStr = h + ':' + m;
 
         // 普通文字消息
-        addMessage('right', text, timeStr, null, false, false, null, null, null, quoteObj);
+        const sentRow = addMessage('right', text, timeStr, null, false, false, null, null, null, quoteObj);
+        const sentId = sentRow && sentRow.dataset ? sentRow.dataset.id : '';
         messageInput.value = '';
         hideEmojiRecommend();
         isWaitingForReply = true;
         sendBtn.classList.add('reply-mode');
         sendBtn.innerHTML = '<i class="fas fa-reply"></i>';
         scrollToBottom();
+        // 分享链接：后台读取标题/正文/价格/配图，填成真实卡片（不打开网页）
+        try {
+            const link = findSharedLinks(text)[0];
+            if (sentId && link) attachLinkPreview(sentId, link);
+        } catch (e) {}
         console.log('[Chat] 用户发送消息', text);
+    }
+
+    function attachLinkPreview(msgId, url) {
+        if (!msgId || !url) return;
+        var sc = messageScroll;
+        var stick = sc ? (sc.scrollHeight - sc.scrollTop - sc.clientHeight < 60) : false;
+        fetchLinkPreview(url).then(function (preview) {
+            if (!preview) return;
+            var msg = messages.find(function (m) { return m && m.id === msgId; });
+            if (!msg || msg.recalled) return;
+            msg.linkPreview = preview;
+            saveMessages();
+            renderMessages();
+            if (stick) scrollToBottom();
+        }).catch(function () {});
     }
 
     // 纳米助手：发送文件（文件卡片，不自动调用 API，等用户让纳米解析）
@@ -6299,12 +6367,12 @@
             return '';
         }
         if (m.isImage) {
-            // 表情包：既要看备注/名称，也要看画面本身，综合理解情绪，别按字面较真
+            // 表情包：只当很轻的情绪符号，不解读、不追问、不当真
             if (m.imageData && m.imageData.isEmoji) {
                 const who = (m.type === 'right') ? '用户' : '角色';
                 const en = (m.imageData.emojiName || m.imageData.desc || '').trim();
                 const nameTxt = (en && en !== '表情包' && en !== '表情') ? '（备注「' + en + '」）' : '';
-                return who + '发来一个表情包' + nameTxt + '：结合它的画面和备注，理解' + who + '此刻的情绪/态度就行，别按字面当真。';
+                return who + '发来一张表情包' + nameTxt + '，只是随手表达一点情绪，不用解读画面或备注，也不用把它当成现实里发生的事。';
             }
             if (m.text && m.text.trim()) return m.text;
             if (m.imageData) {
@@ -6322,6 +6390,14 @@
         // 引用消息：让 AI 知道用户正在回复它之前说的那句
         if (m.quote && m.quote.text && m.type === 'right') {
             t = t + '（用户正在回复你之前说的：「' + m.quote.text + '」）';
+        }
+        // 链接卡片：告诉模型这是一张已解析的分享卡片，不是乱码
+        if (m.linkPreview && m.linkPreview.url) {
+            var lp = m.linkPreview;
+            t += '\n（这条消息附带一张' + (lp.site || '链接') + '分享卡片：' + (lp.title || '') +
+                (lp.price ? ('，价格 ¥' + lp.price) : '') + '。卡片内容由系统在后台读取，不是乱码。）';
+        } else if (m.type === 'right' && findSharedLinks(t).length) {
+            t += '\n（这是一条分享链接，系统会在后台解析，链接本身不是乱码。）';
         }
         // 纳米助手：告诉模型它之前已经执行过哪些改动，避免它每一轮都把同一套 CSS/动作再发一遍
         if (m.type === 'left' && Array.isArray(m.nanoActions) && m.nanoActions.length) {
@@ -6631,6 +6707,39 @@
         }
         return out;
     }
+    function linkSiteLabel(url) {
+        var u = String(url || '');
+        if (/xiaohongshu|xhslink/i.test(u)) return '小红书';
+        if (/douyin|iesdouyin/i.test(u)) return '抖音';
+        if (/taobao|tb\.cn/i.test(u)) return '淘宝';
+        if (/tmall/i.test(u)) return '天猫';
+        if (/jd\.com|3\.cn/i.test(u)) return '京东';
+        return '链接';
+    }
+    // 同一轮回复里抓过的链接内容缓存起来，发送时抓一次、角色回复时不再重复请求。
+    var __linkPreviewCache = {};
+    function fetchLinkPreview(url) {
+        url = String(url || '').trim();
+        if (!url) return Promise.resolve(null);
+        if (__linkPreviewCache[url]) return Promise.resolve(__linkPreviewCache[url]);
+        return fetchLinkContent(url).then(function (c) {
+            if (!c) return null;
+            var content = String(c.content || c.desc || '');
+            var firstLine = content.split(/\n+/).map(function (s) { return s.trim(); }).filter(Boolean)[0] || '';
+            var preview = {
+                url: url,
+                site: linkSiteLabel(url),
+                title: String(c.title || firstLine || linkSiteLabel(url)).replace(/\s+/g, ' ').slice(0, 120),
+                desc: String(c.desc || content.replace(/\s+/g, ' ')).replace(/\s+/g, ' ').slice(0, 160),
+                image: (c.images && c.images[0]) || '',
+                price: c.price || '',
+                content: content.slice(0, 7000),
+                at: Date.now()
+            };
+            __linkPreviewCache[url] = preview;
+            return preview;
+        }).catch(function () { return null; });
+    }
     function _decHtml(s) {
         return String(s || '')
             .replace(/&quot;/g, '"').replace(/&#0?39;/g, "'").replace(/&#x27;/gi, "'")
@@ -6703,11 +6812,22 @@
             return fetch('https://r.jina.ai/' + url, { cache: 'no-store' })
                 .then(function (r) { if (!r.ok) throw new Error('http'); return r.text(); })
                 .then(function (txt) {
-                    var t = _cleanLinkText(txt);
+                    // 先取 Jina 的标题/描述，再清理成正文；否则卡片会没有标题
+                    var raw = String(txt || '');
+                    var tm = raw.match(/^\s*Title\s*:\s*(.+)$/im);
+                    var dm = raw.match(/^\s*(?:Description|Summary)\s*:\s*([\s\S]*?)(?=^\s*(?:URL Source|Published Time|Markdown Content|Content)\s*:|$)/im);
+                    var title = _decHtml((tm && tm[1]) || '').slice(0, 120);
+                    var desc = _decHtml((dm && dm[1]) || '').replace(/\s+/g, ' ').trim().slice(0, 180);
+                    var t = _cleanLinkText(raw);
                     var m = t.match(/(?:Markdown Content:|Content:)\s*([\s\S]*)/i);
                     if (m) t = m[1];
                     // 去掉 r.jina.ai 的元信息行
-                    t = t.replace(/^(Title|URL Source|Published Time|Markdown Content):.*$/gim, '').trim();
+                    t = t.replace(/^(Title|URL Source|Published Time|Description|Summary|Markdown Content):.*$/gim, '').trim();
+                    if (!title) {
+                        var hm = t.match(/^#{1,3}\s+(.{2,120})$/m);
+                        if (hm) title = _decHtml(hm[1]).trim();
+                    }
+                    if (!desc) desc = _cleanLinkText(t).replace(/\s+/g, ' ').slice(0, 180);
                     if (t.length < 120) throw new Error('short');
                     // jina 的 markdown 里也常带正文配图，抽出来一起给模型看
                     var imgs = [], seen = {};
@@ -6717,7 +6837,7 @@
                         if (u && !seen[u]) { seen[u] = 1; imgs.push(u); }
                         if (imgs.length >= 4) break;
                     }
-                    return { title: '', desc: '', content: t.slice(0, 7000), images: imgs, price: '' };
+                    return { title: title, desc: desc, content: t.slice(0, 7000), images: imgs, price: extractLinkPrice(t) };
                 });
         }
         function fromProxy(i) {
@@ -6750,22 +6870,22 @@
         var parts = [], images = [];
         for (var i = 0; i < Math.min(links.length, 2); i++) {
             var c = null;
-            try { c = await fetchLinkContent(links[i]); } catch (e) {}
+            try { c = await fetchLinkPreview(links[i]); } catch (e) {}
             var block = '链接：' + links[i];
             if (c) {
                 if (c.title) block = '标题：' + c.title + '\n' + block;
                 if (c.price) block += '\n价格：¥' + c.price;
                 var body = c.content || c.desc || '';
                 if (body) block += '\n内容 / 文案（可能包含正文、评论或热评）：\n' + body;
-                (c.images || []).forEach(function (u) {
-                    if (u && images.indexOf(u) === -1 && images.length < 4) images.push(u);
-                });
+                if (c.image && images.indexOf(c.image) === -1) images.push(c.image);
             }
             parts.push(block);
         }
         return {
-            text: '【' + (currentUserName || '对方') + '分享了一个链接（小红书 / 抖音 / 淘宝等），下面是抓取到的真实内容 / 文案 / 价格】\n' + parts.join('\n\n') +
-                '\n请先认真读完上面的真实内容（帖子正文、视频文案、商品标题/价格，若有评论/热评也一起读），再以你的角色身份，结合你的人设与你们的关系自然地点评或接话；不要只看链接，也不要照着原文复述。若下面还附了图片，要真的看清图片里的内容再回应。',
+            text: '【系统自动补充 · 用户分享的链接资料】\n' +
+                '下面这些是程序在后台抓取的网页正文 / 商品信息，不是用户说的话，也不要在回复里复述或把它当成乱码；只需要读懂内容，再结合你的人设自然接话。\n\n' +
+                parts.join('\n\n') +
+                '\n\n请先理解真实内容（帖子正文、视频文案、商品标题/价格），再以角色身份自然点评或接话；不要只看链接，也不要照抄原文。若下面附了图片，要看清图片内容再回应。',
             images: images
         };
     }
@@ -6846,6 +6966,11 @@
             // 刷新角色日程上下文（当前在做什么、今天/明天安排、是否被叫醒）
             try { if (window.NanoScheduleBridge) await window.NanoScheduleBridge.refreshContext(); } catch (e) {}
             let __sys = buildSystemPrompt();
+            // 纳米助手 / 链接抓取：额外资料并入 system，而不是伪装成用户消息。
+            // 之前作为 user 追加，模型会把网页 JSON、脚本片段当成“用户发的乱码”。
+            if (extraContext) {
+                __sys += '\n\n【系统补充资料 · 自动读取，不是用户说的话，也不是乱码】\n' + String(extraContext);
+            }
             if (offlineRoundHint && (offlineRoundHint.user || offlineRoundHint.char || (offlineRoundHint.rounds && offlineRoundHint.rounds.length))) {
                 let roundText = '';
                 if (offlineRoundHint.rounds && offlineRoundHint.rounds.length) {
@@ -6954,6 +7079,7 @@
             } catch (e) {}
 
             let __imgBudget = 8; // 一次最多真正带上 8 张图，避免请求体过大
+            let __appendedUser = false;
             userMessages.forEach((entry, idx) => {
                 const text = (entry && typeof entry === 'object') ? entry.text : entry;
                 let images = [];
@@ -6967,15 +7093,13 @@
                     const content = [{ type: 'text', text: (text && String(text).trim()) ? text : '（用户发来图片，请看清图片内容再回应）' }];
                     useImgs.forEach(function (u) { content.push({ type: 'image_url', image_url: { url: u } }); });
                     history.push({ role: 'user', content: content });
+                    __appendedUser = true;
                 } else if (text && String(text).trim()) {
                     history.push({ role: 'user', content: text });
+                    __appendedUser = true;
                 }
             });
 
-            // 纳米助手：把读取到的源码/额外上下文追加为一条 user 消息
-            if (extraContext) {
-                history.push({ role: 'user', content: String(extraContext) });
-            }
             // 分享链接里的商品图/帖子配图：作为多模态内容让角色真正“看到”
             if (__linkImages.length) {
                 try {
@@ -6985,7 +7109,7 @@
                 } catch (e) {}
             }
 
-            if (history.length > 0 && history[history.length - 1].role !== 'user') {
+            if (!__appendedUser && history.length > 0 && history[history.length - 1].role !== 'user') {
                 const tail = (userMessage && String(userMessage).trim()) ? userMessage : '（请继续）';
                 history.push({ role: 'user', content: tail });
             }
@@ -7315,7 +7439,9 @@
                     id: 'g' + Date.now(), name: gname, avatar: '',
                     members: members.map(function (m) { return m.id; }),
                     memberNames: members.map(function (m) { return m.name; }),
-                    createdBy: charId, ownerName: selfName, createdAt: Date.now(), pending: true
+                    createdBy: charId, ownerName: selfName,
+                    ownerUid: (window.GroupStore && GroupStore.currentUid) ? GroupStore.currentUid() : '',
+                    createdAt: Date.now(), pending: true
                 };
                 reg.groups.unshift(group);
                 localStorage.setItem('nano_groups_data', JSON.stringify(reg));
@@ -8494,6 +8620,15 @@
                 };
             });
             const canSend = chars.length > 0;
+            // 把 iPhone 的 Bark 密钥同步给 Worker：后台到点生成消息/朋友圈时由 Worker 直接推 Bark，
+            // 不再依赖网页还活着（这是「回前台才看到内置通知」的根因）。
+            let autoBarkKey = '';
+            try {
+                if (window.NanoNotify) {
+                    autoBarkKey = NanoNotify.barkKey ? (NanoNotify.barkKey() || '') : '';
+                    if (!autoBarkKey && NanoNotify.barkKeyAsync) autoBarkKey = (await NanoNotify.barkKeyAsync()) || '';
+                }
+            } catch (e) { autoBarkKey = ''; }
             const payload = {
                 token: autoPushToken(),
                 deviceId: autoDeviceId(),
@@ -8505,6 +8640,7 @@
                 user: { id: uid, name: (curUser && curUser.name) || currentUserName || '我' },
                 chars: chars,
                 api: (cfg && cfg.mainKey) ? { url: cfg.mainUrl || '', key: cfg.mainKey || '', model: cfg.mainModel || '' } : null,
+                barkKey: autoBarkKey,
                 reset: !!(opts && opts.reset)
             };
             const resp = await fetch(autoPushBase() + '/auto/config', {

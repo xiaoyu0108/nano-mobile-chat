@@ -43,7 +43,14 @@
             var data = JSON.parse(raw);
             var arr = data && data.groups;
             if (!Array.isArray(arr)) return null;
-            for (var i = 0; i < arr.length; i++) { if (arr[i] && arr[i].id === chatId) return arr[i]; }
+            for (var i = 0; i < arr.length; i++) {
+                if (!arr[i] || arr[i].id !== chatId) continue;
+                try {
+                    if (arr[i].ownerUid && window.GroupStore && GroupStore.currentUid &&
+                        String(arr[i].ownerUid) !== String(GroupStore.currentUid())) return null;
+                } catch (e) {}
+                return arr[i];
+            }
         } catch(e){}
         return null;
     }
@@ -1402,7 +1409,7 @@
             var __gbp = (window.NanoPrompts && NanoPrompts.buildBlock)
                 ? NanoPrompts.buildBlock('group')
                 : (localStorage.getItem('nano_builtin_prompt') || '').trim();
-            if (__gbp) prompt += '\n\n' + (String(__gbp).indexOf('【全局内置提示词') === 0 ? __gbp : ('【全局内置提示词 · 必须遵守】\n' + __gbp)) + '\n';
+            if (__gbp) prompt += '\n\n' + __gbp + '\n';
         } catch (e) {}
         prompt += '\n现在开始群聊，做你自己，自然一点。';
         return prompt;
@@ -1413,7 +1420,10 @@
         if (m.isTip) return m.text || '';
         if (m.isImage) {
             var d = (m.imageData && m.imageData.desc) || '';
-            return d ? ('用户发了一个表情包/图片：' + d) : (m.text || '（一张图片）');
+            if (m.imageData && m.imageData.isEmoji) {
+                return d ? ('用户发来一张表情包（' + d + '），只是随手表达一点情绪，不用解读或追问') : '用户发来一张表情包，只是随手表达一点情绪，不用解读或追问';
+            }
+            return d ? ('用户发了一张图片：' + d) : (m.text || '（一张图片）');
         }
         if (m.isCard && m.cardData) {
             var cd = m.cardData;
@@ -3138,24 +3148,29 @@ messageContainer.addEventListener('click', function(e){
 
 /* iOS 键盘：收缩群聊容器，让输入栏位于键盘（含附属栏）上方；父页面也会 postMessage 同步 */
 (function () {
-    var parentKb = 0, localKb = 0, kbBaseH = 0;
+    var parentKb = 0, localKb = 0, kbBaseH = 0, localOpen = false;
     var parentVh = 0, localVh = 0;
     var isAndroid = /Android/i.test(navigator.userAgent || '');
     function apply() {
-        var kb = Math.max(parentKb, localKb);
-        // 安卓布局视口已缩小时不再重复减键盘高度，避免底栏和键盘之间空一条
-        var layoutKb = Math.max(0, Math.round(kbBaseH - (window.innerHeight || 0)));
-        var eff = isAndroid ? Math.max(0, kb - Math.min(kb, layoutKb)) : kb;
+        // kb 用「布局视口底边 - 可视视口底边」计算：布局视口有没有随键盘缩小都不会重复扣，
+        // 输入栏因此始终紧贴键盘上沿（iOS 悬浮键盘 / 安卓 WebView 都适用）。
+        var kb = window.visualViewport ? localKb : Math.max(parentKb, localKb);
+        var opened = window.visualViewport ? localOpen : (Math.max(parentKb, localKb) > 0.5);
         var vh = parentVh || localVh;
-        document.documentElement.style.setProperty('--nano-kb', eff + 'px');
-        if (eff > 0.5 && vh > 0) document.documentElement.style.setProperty('--nano-vv-height', vh + 'px');
+        document.documentElement.style.setProperty('--nano-kb', kb + 'px');
+        if (opened && kb > 0.5 && vh > 0) document.documentElement.style.setProperty('--nano-vv-height', vh + 'px');
         else document.documentElement.style.removeProperty('--nano-vv-height');
-        document.documentElement.classList.toggle('keyboard-open', eff > 0.5);
+        document.documentElement.classList.toggle('keyboard-open', opened);
     }
     function computeLocalKb(vv) {
-        kbBaseH = Math.max(kbBaseH, window.innerHeight || 0, vv.height || 0);
-        localVh = Math.max(0, Math.round(vv.height || 0));
-        return Math.max(0, Math.round(kbBaseH - vv.height - vv.offsetTop));
+        var layoutH = 0;
+        try { layoutH = document.documentElement.clientHeight || 0; } catch (e) {}
+        if (!layoutH) layoutH = window.innerHeight || 0;
+        kbBaseH = Math.max(kbBaseH, layoutH, window.innerHeight || 0, vv.height || 0);
+        var visibleBottom = Math.round((vv.offsetTop || 0) + (vv.height || 0));
+        localVh = Math.max(0, visibleBottom);
+        localOpen = (kbBaseH - visibleBottom) > 60;
+        return Math.max(0, Math.round(layoutH - visibleBottom));
     }
     try {
         if (window.visualViewport) {

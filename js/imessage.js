@@ -232,7 +232,7 @@ const CORE_POLICY = '\n【核心准则 · 每次都要遵守】\n'
   + '2. 【世界书】【记忆库】【记忆宫殿】【人设】都是必读项，可自主读取其中较重要的内容，输出时必须遵守；你就是{{char}}，一个活生生的人。记忆是重中之重，必须完善、完整，角色不能随时失忆；线上、线下以及各类 App 的记忆大多互通。记忆宫殿是调节角色记忆的地方，能让角色更好地记住重要的东西，分门别类的记忆线索也更利于角色查找、读取记忆。\n';
 function readGlobalBuiltinPrompt() {
   try {
-    if (window.NanoPrompts && NanoPrompts.activeText) return String(NanoPrompts.activeText('social') || '').trim();
+    if (window.NanoPrompts && NanoPrompts.buildBlock) return String(NanoPrompts.buildBlock('social') || '').trim();
     return (localStorage.getItem('nano_builtin_prompt') || '').trim();
   } catch (e) { return ''; }
 }
@@ -1077,7 +1077,7 @@ async function genCharReply(c) {
   if (getSetting(c.charId, 'blocked', false)) sys += '【状态】用户把你在线上聊天里拉黑了，但这里是 iMessage，你们仍能正常聊天。你可以主动一点，试着沟通、解释或挽回。\n';
   if (getSetting(c.charId, 'charBlocked', false)) sys += '【状态】你之前关掉了线上聊天（拉黑了用户）。你可以决定是否加回：愿意就单独输出一行 [加回我]，否则输出 [继续拉黑]。\n';
   sys += '【加回微信】如果你愿意重新在微信/Meet 里把 TA 加为好友（会把好友申请发到 TA 的 Meet），单独输出一行 [加好友]。\n';
-  sys += '【表情包】用户可能发来 [表情包：名称]，那代表用户发了一张该含义的表情包，只表达当下的心情/态度（例如“喝酒”=烦躁无语、“哭哭”=感动委屈），不代表用户真的去做了什么；按心情自然回应即可，绝对不要当真去追问“你怎么又喝酒了/你怎么哭了”。（不需要自己也发表情标签）。\n';
+  sys += '【表情包】用户可能发来 [表情包：名称]。它只是随手一张图，最多表示一点模糊的情绪；看懂大致气氛就行，不要逐字解读、不要当成用户真的去做了什么，也不用追问或刻意提起。（不需要自己也发表情标签）。\n';
   sys += '【短信风格】像真人连发消息那样：把想说的话自然拆成 2-5 条短消息，每条独立成行，每条约 5-25 字；不要把一整段塞进一条，也不要只蹦几个字让意思不完整。\n';
   sys += '【务必完整】每条消息都要是一句完整的话，不要说到一半就断掉；整体意思要表达完。';
   try {
@@ -1198,7 +1198,7 @@ async function charContextText(ch, msgs) {
   }
   s += CORE_POLICY;
   const gbp = readGlobalBuiltinPrompt();
-  if (gbp) s += '\n【全局内置提示词 · 必须遵守】\n' + gbp + '\n';
+  if (gbp) s += '\n' + gbp + '\n';
   return s;
 }
 async function genAliasReply(c) {
@@ -1216,13 +1216,13 @@ async function genAliasReply(c) {
   if (wb.middle) sys += wb.middle;
   if (c.aliasSetting) sys += '【对方（' + alias + '）的公开信息】\n' + String(c.aliasSetting).slice(0, 1000) + '\n';
   if (wb.back) sys += wb.back;
-  sys += '【表情包】对方可能发来 [表情包：名称]，按该含义理解即可。\n';
+  sys += '【表情包】对方可能发来 [表情包：名称]。它只是随手一张图，最多表示一点情绪，看懂大致气氛就行，不要解读、追问或当成现实发生的事。\n';
   if (foreign) sys += '【语言】你的母语是' + charLanguage(ch) + '，必须用母语输出正文，绝对不能只用英文或中文；每行用「母语原文||中文翻译」格式，原文和中文都写完整。\n';
   sys += '【要求】按你本人的性格与这个陌生人聊天：可以好奇、试探、戒备或礼貌；绝对不要表现出你认识对方。'
     + '回复拆成 2-4 条短消息、每条独立成行（每条约 5-25 字），像真人连发，不要标签旁白。';
   sys += CORE_POLICY;
   const gbp = readGlobalBuiltinPrompt();
-  if (gbp) sys += '\n【全局内置提示词 · 必须遵守】\n' + gbp + '\n';
+  if (gbp) sys += '\n' + gbp + '\n';
   const history = [{ role: 'system', content: sys }].concat(historyForApi(16, c.history));
   const raw = await callApi(history, { maxTokens: 400, temperature: 0.9 }, { kind: 'reply', chatId: c.id });
   if (!raw) return null;
@@ -1257,7 +1257,7 @@ async function genStrangerReply(c) {
   const userName = u.name || '用户';
   const uSetting = String(u.setting || u.persona || '').trim();
   const sys = '你是「' + c.name + '」。' + (setting ? ('你的身份/意图：' + setting + '。') : '')
-    + '对方可能发来 [表情包：名称]，按该含义理解即可。你在给「' + userName + '」发短信。'
+    + '对方可能发来 [表情包：名称]，那只是随手一张图，感受一下大致情绪即可，别解读或当真。你在给「' + userName + '」发短信。'
     + (uSetting ? ('对方的设定：' + uSetting.slice(0, 500) + '。') : '')
     + '称呼对方时只能用「' + userName + '」或「你好 / 您」；不知道名字就不要乱称呼，绝对禁止编造或叫错对方的名字。'
     + '按这个身份继续对话，拆成 1-3 条短消息、每条独立成行（每条约 5-30 字）。不要输出多余说明。';

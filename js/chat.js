@@ -1040,6 +1040,7 @@
             memberNames: memberNames,
             createdBy: currentUser ? currentUser.id : null,
             createdByName: currentUser ? currentUser.name : '未知',
+            ownerUid: currentUser ? String(currentUser.id) : '',
             createdAt: Date.now()
         };
         groups.push(newGroup);

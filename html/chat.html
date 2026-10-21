@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <script src="../js/nano-runtime.js?v=20261020b"></script>
-  <script src="../js/group-store.js"></script>
+  <script src="../js/group-store.js?v=20261021a"></script>
   <script src="../js/appearance.js"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <link rel="icon" href="../icons/icon-192.png" />
@@ -1522,7 +1522,13 @@
       groups = raw ? (JSON.parse(raw).groups || []) : [];
     } catch (e) {}
     const pinned = getPinnedIds();
-    groupsData = groups.filter(function (g) { return g && !g.pending; }).map(function (g) {
+    groupsData = groups.filter(function (g) {
+      if (!g || g.pending) return false;
+      try {
+        if (window.GroupStore && GroupStore.groupBelongsToCurrentUser && !GroupStore.groupBelongsToCurrentUser(g)) return false;
+      } catch (e) {}
+      return true;
+    }).map(function (g) {
       const last = getGroupLastMessage(g.id);
       return {
         id: String(g.id),
@@ -1644,6 +1650,7 @@
     if (String(maskData.currentMaskId) === String(id)) return;
     maskData.currentMaskId = id;
     currentUser = resolveCurrentUser();
+    try { if (window.GroupStore && GroupStore.setCurrentUid) GroupStore.setCurrentUid(currentUser ? currentUser.id : id); } catch (e) {}
     saveMaskData();
     post({ type: 'currentMaskChanged', maskId: id, data: maskData });
     post({ type: 'homeDataUpdated', data: maskData });
@@ -1890,6 +1897,7 @@
       memberNames: memberNames,
       createdBy: current ? current.id : null,
       createdByName: current ? current.name : '未知',
+      ownerUid: current ? String(current.id) : '',
       createdAt: Date.now()
     };
 
@@ -2137,6 +2145,7 @@
       if (e.key === HOME_KEY) {
         maskData = loadMaskLocal() || maskData;
         currentUser = resolveCurrentUser();
+        try { if (window.GroupStore && GroupStore.setCurrentUid) GroupStore.setCurrentUid(currentUser ? currentUser.id : maskData.currentMaskId); } catch (e) {}
         renderAvatarSwitcher();
         loadGroups();
         loadFriends().then(function () { renderCurrent(); renderProfile(); });
@@ -2148,6 +2157,7 @@
     try { maskData = await loadMaskData(); } catch (e) { maskData = { masks: [], currentMaskId: null }; }
     currentUser = resolveCurrentUser();
     // 确保 group-store 能同步读到当前 user，按 user 隔离群聊数据
+    try { if (window.GroupStore && GroupStore.setCurrentUid) GroupStore.setCurrentUid(currentUser ? currentUser.id : maskData.currentMaskId); } catch (e) {}
     try { if (currentUser) saveMaskData(); } catch (e) {}
     await loadFriends();
     loadGroups();

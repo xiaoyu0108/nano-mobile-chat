@@ -538,7 +538,7 @@ html.keyboard-open .chat-container {
 }
 html.keyboard-open body.nano-groups .bottom-bar {
     /* 键盘弹出时去掉底部安全区，输入栏紧贴键盘/悬浮工具栏 */
-    padding-bottom: 2px !important;
+    padding-bottom: 0 !important;
 }
 .bottom-bar > * { pointer-events: auto; }
 .more-btn {

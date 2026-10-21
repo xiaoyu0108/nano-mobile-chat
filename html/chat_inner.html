@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>聊天</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" media="print" onload="this.media='all'">
-    <link rel="stylesheet" href="../css/chat-inner.css?v=20261020c">
+    <link rel="stylesheet" href="../css/chat-inner.css?v=20261021a">
     <link rel="stylesheet" href="../css/heart.css?v=20261006a">
     <link rel="preconnect" href="https://cdn.jsdelivr.net">
     <link rel="dns-prefetch" href="https://unpkg.com">
@@ -16,8 +16,8 @@
 <script src="../js/reroll-reason.js?v=20261018a"></script>
 <script src="../js/cycle-store.js?v=20261020j"></script>
 <script src="../js/nano-badge.js"></script>
-    <script src="../js/keep-alive.js?v=20261006a"></script>
-<script src="../js/group-store.js"></script>
+    <script src="../js/keep-alive.js?v=20261021a"></script>
+<script src="../js/group-store.js?v=20261021a"></script>
 </head>
 <body class="nano-chat-inner">
 <div class="chat-container" id="app">
@@ -468,8 +468,8 @@
 <script src="../js/nano-mcp-chat.js?v=20261016c"></script>
 <script src="../js/schedule-bridge.js?v=20261019d"></script>
         <script src="../js/nano-card-ui.js?v=20261020l"></script>
-    <script src="../js/nano-prompts.js?v=20261020b"></script>
-    <script src="../js/chat-core.js?v=20261020k"></script>
+    <script src="../js/nano-prompts.js?v=20261021a"></script>
+    <script src="../js/chat-core.js?v=20261021a"></script>
     <script src="../js/roleplay-prompt.js?v=20261013c"></script>
 <script src="../js/chat-transfer.js?v=20261020j"></script>
 <script src="../js/chat-gift.js"></script>
@@ -651,28 +651,50 @@
 <script src="../js/avatar-frame.js?v=20261010a"></script>
 <script src="../swipe-back.js"></script>
 <script>
-// iOS 键盘：收缩聊天容器，让输入栏位于键盘上方（父页面也会 postMessage 同步）
+// iOS / 安卓键盘：收缩聊天容器，让输入栏紧贴键盘上沿（父页面也会 postMessage 同步）
 (function () {
-  var parentKb = 0, localKb = 0, kbBaseH = 0;
+  var parentKb = 0, localKb = 0, localBottom = 0, localOpen = false, kbBaseH = 0;
   var isAndroid = /Android/i.test(navigator.userAgent || '');
   function apply() {
-    // 安卓部分 WebView 在键盘弹出时会把布局视口一起缩短：此时 100% 已经等于
-    // 键盘上沿，再减一次键盘高度就会出现「底栏和键盘之间一条空白」。
-    // iOS 保持原来的行为，不做改动。
-    try { if (window.visualViewport) localKb = computeLocalKb(window.visualViewport); } catch (e) {}
-    var kb = Math.max(parentKb, localKb);
-    var layoutKb = Math.max(0, Math.round(kbBaseH - (window.innerHeight || 0)));
-    var effectiveKb = isAndroid ? Math.max(0, kb - Math.min(kb, layoutKb)) : kb;
+    // 关键：键盘高度 = 布局视口底边 - 可视视口底边。
+    // · 布局视口不随键盘缩小时：结果就是键盘高度，100% - kb = 键盘上沿；
+    // · 安卓/部分 WebView 布局视口也跟着缩小时：结果自然接近 0，不会再重复减一次，
+    //   从而避免输入框被抬得过高、和键盘之间出现一条空白。
+    // 有 visualViewport 时以它为准；没有时才用父页面同步的估算值。
+    var kb = window.visualViewport ? localKb : parentKb;
+    var opened = window.visualViewport ? localOpen : (parentKb > 0.5);
     document.documentElement.style.setProperty('--nano-kb', kb + 'px');
-    document.documentElement.style.setProperty('--nano-kb-chat', effectiveKb + 'px');
-    document.documentElement.classList.toggle('keyboard-open', kb > 0.5);
+    document.documentElement.style.setProperty('--nano-kb-chat', kb + 'px');
+    if (opened && kb > 0.5) {
+      // 目标高度 = 键盘/悬浮栏上沿。再和 body 的实际高度取较小值：
+      // 有些 WebView 的 body 100% 会自己跟着键盘缩小，这时直接用 body 高度，
+      // 不再重复扣一次键盘高度（否则输入框会被抬得过高、和键盘之间留白）。
+      var target = localBottom;
+      try {
+        var bodyH = document.body ? Math.round(document.body.getBoundingClientRect().height) : 0;
+        if (bodyH > 0 && bodyH < target) target = bodyH;
+      } catch (e) {}
+      if (target > 0) document.documentElement.style.setProperty('--nano-vv-height', target + 'px');
+    } else {
+      // 布局视口已经自己缩到键盘上沿时，不要再设高度；100% 正好贴住键盘。
+      document.documentElement.style.removeProperty('--nano-vv-height');
+    }
+    document.documentElement.classList.toggle('keyboard-open', opened);
     document.documentElement.classList.toggle('nano-android', isAndroid);
   }
-  // iOS 弹键盘时 window.innerHeight 会一起变小，必须用「无键盘基准高度」相减，
-  // 否则算出来是 0，输入栏就被键盘压住（安卓 innerHeight 不变所以原本正常）。
   function computeLocalKb(vv) {
-    kbBaseH = Math.max(kbBaseH, window.innerHeight || 0, vv.height || 0);
-    return Math.max(0, Math.round(kbBaseH - vv.height - vv.offsetTop));
+    var layoutH = 0;
+    try { layoutH = document.documentElement.clientHeight || 0; } catch (e) {}
+    if (!layoutH) layoutH = window.innerHeight || 0;
+    // 记录无键盘基准高度：即使布局视口跟着键盘缩小，也能判断「键盘确实弹出了」，
+    // 从而去掉底部安全区留白（否则输入框和键盘之间会多出 34px 左右）。
+    kbBaseH = Math.max(kbBaseH, layoutH, window.innerHeight || 0, vv.height || 0);
+    // body 是 position:fixed + height:100%，它对齐的是布局视口底边；
+    // 可视视口底边则要考虑 offsetTop（iOS 因聚焦输入框产生的页面偏移）。
+    var visibleBottom = Math.round((vv.offsetTop || 0) + (vv.height || 0));
+    localBottom = visibleBottom;
+    localOpen = (kbBaseH - visibleBottom) > 60;
+    return Math.max(0, Math.round(layoutH - visibleBottom));
   }
   try {
     if (window.visualViewport) {
