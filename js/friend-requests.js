@@ -40,6 +40,8 @@
             source: req.source || 'other',      // alt | groupnpc | ins | halo | other
             app: req.app || '',
             setting: String(req.setting || '').slice(0, 4000),
+            language: String(req.language || req.lang || '').slice(0, 40),
+            nationality: String(req.nationality || '').slice(0, 40),
             originId: req.originId || '',
             altOriginId: req.altOriginId || '',
             requestNote: String(req.requestNote || '').slice(0, 200),
@@ -78,10 +80,11 @@
                         var charRec = {
                             id: 'fr_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6),
                             name: rec.name, avatar: rec.avatar || '', gender: '未知', nationality: '未知',
-                            setting: rec.setting || '', isNpc: true, bindUser: String(rec.owner || ownerNs())
+                            setting: rec.setting || '', isNpc: true, bindUser: String(rec.owner || ownerNs()),
+                            language: rec.language || '', nationality: rec.nationality || '未知'
                         };
-                        // 小号试探：标明是小号并记录大号 id，方便记忆库互通
-                        if (rec.source === 'alt') {
+                        // 小号试探 / Q&A 小号：标明是小号并记录大号 id，方便记忆库互通
+                        if (rec.source === 'alt' || rec.altOriginId) {
                             charRec.isAltProbe = true;
                             charRec.altOriginId = rec.altOriginId || '';
                         }

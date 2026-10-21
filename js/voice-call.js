@@ -28,8 +28,8 @@
     const hangupWrapper = document.getElementById('hangupWrapper');
     const speakerBtn = document.getElementById('speakerBtn');
     const recordBtn = document.getElementById('recordBtn');
-    // 免提：开启且配置了 TTS 时，用配置的语音模型把角色的话读出来；关闭则静音。
-    let speakerOn = true;
+    // 语音朗读：开启时把角色的话接 TTS 读出来；关闭则纯文字。设置会记住。
+    let speakerOn = (function(){try{return localStorage.getItem('nano_call_tts')!=='0'}catch(e){return true}})();
 
     // ===== 从 URL 获取参数（与 chat_inner 的人设同步） =====
     const urlParams = new URLSearchParams(window.location.search);
@@ -1258,23 +1258,17 @@ init();
         try { hangupBtn.click(); return true; } catch (e) { return false; }
     };
 
-    // ===== 免提按钮：切换角色语音播报（配置了 TTS 才有效，未配置则无语音）=====
+    // ===== 喇叭按钮：开启 = 角色说话有声音（TTS）；关闭 = 纯文字 =====
     if (speakerBtn) {
         speakerBtn.classList.toggle('active', speakerOn);
+        speakerBtn.title = speakerOn ? '语音朗读：开' : '语音朗读：关';
         speakerBtn.addEventListener('click', function() {
             speakerOn = !speakerOn;
+            try { localStorage.setItem('nano_call_tts', speakerOn ? '1' : '0'); } catch (e) {}
             speakerBtn.classList.toggle('active', speakerOn);
-            if (speakerOn) {
-                try {
-                    if (window.NanoTTS && window.NanoTTS.isConfigured) {
-                        window.NanoTTS.isConfigured(function(ok) {
-                            if (!ok) showToast('未配置语音模型，免提无语音');
-                        });
-                    }
-                } catch (e) {}
-            } else {
-                try { if (window.NanoTTS) window.NanoTTS.stop(); } catch (e) {}
-            }
+            speakerBtn.title = speakerOn ? '语音朗读：开' : '语音朗读：关';
+            if (speakerOn) showToast('语音朗读已开启');
+            else { try { if (window.NanoTTS) window.NanoTTS.stop(); } catch (e) {} showToast('语音朗读已关闭，纯文字'); }
         });
     }
 

@@ -16,6 +16,23 @@
     // new URL('../') 会跑到站点根目录，SW 注册 404，安卓订阅就会失败。
     var DEFAULT_SW = (window.NANO_ROOT || new URL('./', location.href).href) + 'sw.js';
 
+    // 站点身份：同一套 Worker 被 Nano / 纳米 / 其它部署共用时，用它隔离订阅与自动推送。
+    // 算法必须和 sw.js 的 appIdFromRoot 完全一致，否则 SW 会丢弃自己的推送。
+    function appId() {
+        var s = '';
+        try {
+            var root = window.NANO_ROOT || new URL('./', location.href).href;
+            var u = new URL(root, location.href);
+            s = u.origin + u.pathname.replace(/\/+$/, '');
+        } catch (e) { s = String(location.origin || '') + String(location.pathname || ''); }
+        var h = 2166136261;
+        for (var i = 0; i < s.length; i++) {
+            h ^= s.charCodeAt(i);
+            h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
+        }
+        return 'app_' + h.toString(36);
+    }
+
     function readConfig() {
         var endpoint = '', vapid = '', token = '';
         try {
@@ -166,6 +183,7 @@
                 subscription: sub.toJSON ? sub.toJSON() : sub,
                 userId: currentAutoUserId(),
                 deviceId: autoDeviceId(),
+                appId: appId(),
                 ua: navigator.userAgent,
                 platform: platform().android ? 'android' : (platform().ios ? 'ios' : 'other'),
                 ts: Date.now()
@@ -199,12 +217,23 @@
         if (!cfg.endpoint) return Promise.reject(new Error('未配置推送服务器'));
         var list = (Array.isArray(items) ? items : [items]).filter(function (it) { return it && it.at; });
         if (!list.length) return Promise.resolve({ ok: true, count: 0 });
-        return postJSON(cfg.endpoint + '/schedule', { items: list });
+        var bark = '';
+        try { if (window.NanoNotify && NanoNotify.barkKey) bark = NanoNotify.barkKey() || ''; } catch (e) {}
+        // 每条预约都绑定站点 / 设备 / 用户，服务端只投递给对应订阅，避免多开互相串。
+        list = list.map(function (it) {
+            return Object.assign({}, it, {
+                appId: appId(),
+                deviceId: autoDeviceId(),
+                userId: currentAutoUserId(),
+                barkKey: it.barkKey || bark
+            });
+        });
+        return postJSON(cfg.endpoint + '/schedule', { appId: appId(), deviceId: autoDeviceId(), userId: currentAutoUserId(), items: list });
     }
 
     function status() {
         var cfg = readConfig();
-        var out = { configured: !!(cfg.endpoint && cfg.vapid), endpoint: cfg.endpoint, permission: (typeof Notification !== 'undefined' ? Notification.permission : 'unsupported'), subscribed: false };
+        var out = { configured: !!(cfg.endpoint && cfg.vapid), endpoint: cfg.endpoint, permission: (typeof Notification !== 'undefined' ? Notification.permission : 'unsupported'), subscribed: false, appId: appId(), deviceId: autoDeviceId(), userId: currentAutoUserId() };
         if (!swSupported()) return Promise.resolve(out);
         return navigator.serviceWorker.getRegistration().then(function (reg) {
             if (!reg) return out;
@@ -219,7 +248,11 @@
             var cfg = readConfig();
             if (!cfg.endpoint || !cfg.vapid) return Promise.resolve(false);
             var last = parseInt(localStorage.getItem('nano_push_meta_sync_at') || '0', 10) || 0;
-            if (Date.now() - last < 12 * 3600 * 1000) return Promise.resolve(false);
+            var identity = appId() + '|' + autoDeviceId() + '|' + currentAutoUserId();
+            var lastIdentity = localStorage.getItem('nano_push_meta_identity') || '';
+            // 切换面具 / 站点、或升级到带 appId 的版本后必须立刻重写订阅元数据，
+            // 否则服务端仍会按旧身份把它当成别的用户/别的站点推送。
+            if (lastIdentity === identity && Date.now() - last < 10 * 60 * 1000) return Promise.resolve(false);
             return registerSW().then(function (reg) {
                 return reg.pushManager.getSubscription();
             }).then(function (sub) {
@@ -232,7 +265,10 @@
                     platform: platform().android ? 'android' : (platform().ios ? 'ios' : 'other'),
                     ts: Date.now()
                 }).then(function () {
-                    try { localStorage.setItem('nano_push_meta_sync_at', String(Date.now())); } catch (e) {}
+                    try {
+                        localStorage.setItem('nano_push_meta_sync_at', String(Date.now()));
+                        localStorage.setItem('nano_push_meta_identity', identity);
+                    } catch (e) {}
                     return true;
                 });
             }).catch(function () { return false; });
@@ -246,6 +282,9 @@
         disable: disable,
         schedule: schedule,
         status: status,
+        appId: appId,
+        deviceId: autoDeviceId,
+        userId: currentAutoUserId,
         config: readConfig
     };
     try { setTimeout(function () { refreshSubscription(); }, 1600); } catch (e) {}

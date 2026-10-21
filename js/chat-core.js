@@ -1326,7 +1326,7 @@
                             mood: msg.cardData.mood,
                             img: (typeof msg.cardData.img === 'string' && msg.cardData.img.indexOf('data:') !== 0) ? msg.cardData.img : null
                         } : null,
-                        voiceData: msg.voiceData ? { duration: msg.voiceData.duration } : null,
+                        voiceData: msg.voiceData ? { duration: msg.voiceData.duration, ttsText: msg.voiceData.ttsText || '' } : null,
                         transcript: msg.transcript || null,
                         translation: msg.translation || null,
                         imageData: msg.imageData ? {
@@ -1366,6 +1366,9 @@
                             isCard: msg.isCard || false,
                             isVoice: msg.isVoice || false,
                             cardData: msg.cardData ? { cardType: msg.cardData.cardType, missed: msg.cardData.missed, claimed: msg.cardData.claimed, status: msg.cardData.status, response: msg.cardData.response, amount: msg.cardData.amount, issuer: msg.cardData.issuer, holder: msg.cardData.holder, familyId: msg.cardData.familyId, limit: msg.cardData.limit, food: msg.cardData.food, shop: msg.cardData.shop, price: msg.cardData.price, note: msg.cardData.note, place: msg.cardData.place, lat: msg.cardData.lat, lng: msg.cardData.lng, distance: msg.cardData.distance, eta: msg.cardData.eta, paidBy: msg.cardData.paidBy, action: msg.cardData.action, altName: msg.cardData.altName, altSetting: msg.cardData.altSetting, altFirst: msg.cardData.altFirst, title: msg.cardData.title, sub: msg.cardData.sub, footer: msg.cardData.footer, storyId: msg.cardData.storyId, excerpt: msg.cardData.excerpt, content: msg.cardData.content, genres: msg.cardData.genres, chapters: msg.cardData.chapters, ending: msg.cardData.ending, callId: msg.cardData.callId, video: msg.cardData.video, duration: msg.cardData.duration, direction: msg.cardData.direction, toName: msg.cardData.toName, systemNotice: msg.cardData.systemNotice, coupleKind: msg.cardData.coupleKind, coupleSummary: msg.cardData.coupleSummary, coupleDetail: msg.cardData.coupleDetail, shareId: msg.cardData.shareId, eventId: msg.cardData.eventId, date: msg.cardData.date, start: msg.cardData.start, end: msg.cardData.end, mood: msg.cardData.mood, img: (typeof msg.cardData.img === 'string' && msg.cardData.img.indexOf('data:') !== 0) ? msg.cardData.img : null } : null,
+                            voiceData: msg.voiceData ? { duration: msg.voiceData.duration, ttsText: msg.voiceData.ttsText || '' } : null,
+                            transcript: msg.transcript || null,
+                            translation: msg.translation || null,
                             // 兜底副本也要保留「表情包」标记，否则 localStorage 满时聊天列表里表情包会变成「图片」
                             imageData: msg.imageData ? { textImage: msg.imageData.textImage, desc: msg.imageData.desc, emojiName: msg.imageData.emojiName, isEmoji: msg.imageData.isEmoji || false } : null,
                             linkPreview: msg.linkPreview ? { url: msg.linkPreview.url, site: msg.linkPreview.site, title: msg.linkPreview.title, desc: msg.linkPreview.desc, image: msg.linkPreview.image, price: msg.linkPreview.price } : null,
@@ -2059,8 +2062,9 @@
         try { presetName = String(getChatSetting('ttsPreset', '') || '').trim(); } catch (e) {}
         var runGlobal = function () {
             window.NanoTTS.isConfigured(function (ok) {
-                if (!ok) { na(); return; }
-                window.NanoTTS.speak(text).then(function () { done(true); }, function () { done(false); });
+                // 没配置远端 TTS 时不再只放动画：用浏览器语音兜底，让语音气泡真的有声音。
+                if (!ok && !(window.NanoTTS.canSpeakNative && window.NanoTTS.canSpeakNative())) { na(); return; }
+                window.NanoTTS.speak(text).then(function (r) { if (r === false) na(); else done(true); }, function () { na(); });
             });
         };
         if (presetName && window.NanoTTS.getPresetConfig) {
@@ -6212,19 +6216,49 @@
         // 分享链接：后台读取标题/正文/价格/配图，填成真实卡片（不打开网页）
         try {
             const link = findSharedLinks(text)[0];
-            if (sentId && link) attachLinkPreview(sentId, link);
+            if (sentId && link) attachLinkPreview(sentId, link, text);
         } catch (e) {}
         console.log('[Chat] 用户发送消息', text);
     }
 
-    function attachLinkPreview(msgId, url) {
+    // 分享文案里往往自带标题（【标题 - 作者 | 小红书】），抓不到网页时也用它做卡片标题。
+    function guessLinkTitle(text, url) {
+        var s = String(text || '').replace(String(url || ''), ' ');
+        var m = s.match(/【([^】]{2,100})】/);
+        if (m && m[1]) return m[1].replace(/\s*[-|｜].*$/, '').trim().slice(0, 90);
+        s = s.replace(/https?:\/\/\S+/g, ' ')
+            .replace(/#[^#\s]+#?/g, ' ')
+            .replace(/^(分享|复制|打开|看看|来自|链接)[:：\s]*/,'')
+            .replace(/\s+/g, ' ').trim();
+        return s.slice(0, 90);
+    }
+    function attachLinkPreview(msgId, url, sourceText) {
         if (!msgId || !url) return;
         var sc = messageScroll;
         var stick = sc ? (sc.scrollHeight - sc.scrollTop - sc.clientHeight < 60) : false;
+        // 先立即放一张「基础卡片」：即使 r.jina.ai / 代理在国内被墙、超时或反爬，
+        // 也绝不会退化成一条纯文字链接；抓到详情后再原地升级标题/图片/正文。
+        var msg0 = messages.find(function (m) { return m && m.id === msgId; });
+        if (msg0 && !msg0.recalled && !msg0.linkPreview) {
+            msg0.linkPreview = {
+                url: url,
+                site: linkSiteLabel(url),
+                title: guessLinkTitle(sourceText, url) || linkSiteLabel(url),
+                desc: '',
+                image: '',
+                price: '',
+                at: Date.now()
+            };
+            saveMessages();
+            renderMessages();
+            if (stick) scrollToBottom();
+        }
         fetchLinkPreview(url).then(function (preview) {
             if (!preview) return;
             var msg = messages.find(function (m) { return m && m.id === msgId; });
             if (!msg || msg.recalled) return;
+            // 抓取结果缺标题时，保留分享文案里的标题
+            if (!preview.title && msg.linkPreview && msg.linkPreview.title) preview.title = msg.linkPreview.title;
             msg.linkPreview = preview;
             saveMessages();
             renderMessages();
@@ -8454,7 +8488,7 @@
             fetch(base.replace(/\/+$/, '') + '/peek/persona', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ token: token, chatId: cid, system: sys })
+                body: JSON.stringify({ token: token, appId: autoAppId(), deviceId: autoDeviceId(), userId: getCurrentMaskId(), chatId: cid, system: sys })
             }).catch(function () {});
         } catch (e) {}
     }
@@ -8468,6 +8502,21 @@
         try { b = (localStorage.getItem('nano_push_endpoint') || '').trim(); } catch (e) {}
         if (!b) b = 'https://nanopush.nano315.online';
         return b.replace(/\/+$/, '');
+    }
+    // 与 nano-push.js / auto-push-bridge.js / sw.js 一致：按站点根目录区分部署。
+    function autoAppId() {
+        var s = '';
+        try {
+            var root = window.NANO_ROOT || new URL('./', location.href).href;
+            var u = new URL(root, location.href);
+            s = u.origin + u.pathname.replace(/\/+$/, '');
+        } catch (e) { s = String(location.origin || '') + String(location.pathname || ''); }
+        var h = 2166136261;
+        for (var i = 0; i < s.length; i++) {
+            h ^= s.charCodeAt(i);
+            h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
+        }
+        return 'app_' + h.toString(36);
     }
     function autoPushToken() {
         var t = '';
@@ -8631,7 +8680,9 @@
             } catch (e) { autoBarkKey = ''; }
             const payload = {
                 token: autoPushToken(),
+                appId: autoAppId(),
                 deviceId: autoDeviceId(),
+                userId: uid,
                 enabled: canSend && (msgEnabled || momentEnabled),
                 msgEnabled: canSend && msgEnabled,
                 momentEnabled: canSend && momentEnabled,
@@ -8656,6 +8707,11 @@
             if (!resp.ok || !data.ok) throw new Error('auto config failed');
             lastAutoPushConfigAt = Date.now();
             window.__serverAutoPushActive = !!data.enabled;
+            // 当前面具/站点变了就立刻把订阅元数据同步过去，避免服务端还按旧 userId 推送。
+            try {
+                var NP = window.NanoPush || (window.parent && window.parent.NanoPush);
+                if (NP && NP.refreshSubscription) NP.refreshSubscription();
+            } catch (e) {}
             // 让外壳里的「上线补发」知道服务端已经在定时发，避免两边各发一次
             try {
                 localStorage.setItem('nano_server_auto_push', data.enabled ? '1' : '0');

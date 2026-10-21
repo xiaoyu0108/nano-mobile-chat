@@ -559,7 +559,7 @@
                 };
                 if (speakText && window.NanoTTS) {
                     window.NanoTTS.isConfigured(function(ok){
-                        if (!ok) { setTimeout(finish, dur); return; }
+                        if (!ok && !(window.NanoTTS.canSpeakNative && window.NanoTTS.canSpeakNative())) { setTimeout(finish, dur); return; }
                         window.NanoTTS.speak(speakText).then(finish).catch(finish);
                     });
                 } else {

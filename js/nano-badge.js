@@ -92,6 +92,10 @@
         document.addEventListener('visibilitychange', function () {
             setForeground(!document.hidden);
         });
+        // 保活音频会让 PWA 在后台仍保持 visible，光靠 visibilitychange 不够。
+        // 失焦时也视为后台，保证主动消息会走系统通知 / Bark 而不是被内嵌通知吞掉。
+        window.addEventListener('blur', function () { setForeground(false); });
+        window.addEventListener('focus', function () { if (!document.hidden) setForeground(true); });
     }
 
     window.addEventListener('message', function (e) {

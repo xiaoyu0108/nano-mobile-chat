@@ -121,7 +121,8 @@
 
     async function synth(text, cfg) {
         var base = toV1(cfg.ttsUrl);
-        var type = cfg.ttsType || 'openai';
+        var type = String(cfg.ttsType || 'openai').toLowerCase();
+        if (type.indexOf('fish') === 0) type = 'fishaudio';
         if (type === 'minimax') {
             // MiniMax 国内版 / 海外版域名都兼容；当前域名失败时自动尝试另一个
             var mmBases = [base];
@@ -171,15 +172,13 @@
             throw new Error('TTS 未返回音频');
         }
         if (type === 'fishaudio') {
-            // Fish Audio：model 是语音模型（如 s2.1-pro-free），reference_id 是用户手填的音色 ID
-            var fishRoot = base.replace(/\/v1$/i, '');
+            // Fish Audio：model 是语音模型（如 s2.1-pro-free），reference_id 是用户手填的音色 ID。
+            // 注意：必须先声明 fishBody，再写 fishBody.model；旧代码顺序反了会抛
+            // “Cannot set properties of undefined”，语音气泡点击后完全没有声音。
+            var fishRoot = base.replace(/\/v1\/tts$/i, '').replace(/\/tts$/i, '').replace(/\/v1$/i, '');
             var fishVoice = String(cfg.ttsVoice || '').trim();
             var fishModel = String(cfg.ttsModel || '').trim();
             var fishHeaders = { 'Authorization': 'Bearer ' + cfg.ttsKey, 'Content-Type': 'application/json' };
-            if (fishVoice && fishModel) {
-                fishHeaders['model'] = fishModel;
-                fishBody.model = fishModel;
-            }
             var fishBody = {
                 text: text,
                 format: 'mp3',
@@ -187,6 +186,10 @@
                 chunk_length: 200,
                 normalize: true
             };
+            if (fishModel) {
+                fishHeaders['model'] = fishModel;
+                fishBody.model = fishModel;
+            }
             var fishRef = fishVoice || fishModel;
             if (fishRef) fishBody.reference_id = fishRef;
             var fishResp = await fetch(fishRoot + '/v1/tts', {
@@ -199,7 +202,15 @@
                 try { var fData = await fishResp.json(); fMsg = fData.message || (fData.error && fData.error.message) || fMsg; } catch (e) {}
                 throw new Error(fMsg);
             }
-            return await fishResp.blob();
+            // Fish Audio 在参数/音色错误时有时仍返回 200 + JSON，直接当音频播放会静默失败。
+            var fType = String(fishResp.headers.get('content-type') || '').toLowerCase();
+            if (fType.indexOf('json') > -1) {
+                var fJson = await fishResp.json().catch(function () { return {}; });
+                throw new Error(fJson.message || (fJson.error && fJson.error.message) || 'Fish Audio 未返回音频');
+            }
+            var fBlob = await fishResp.blob();
+            if (!fBlob || !fBlob.size) throw new Error('Fish Audio 返回了空音频');
+            return fBlob;
         }
         // openai / custom
         var body = {
@@ -256,6 +267,42 @@
             try { URL.revokeObjectURL(currentUrl); } catch (e) {}
             currentUrl = '';
         }
+        try {
+            if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+        } catch (e) {}
+    }
+
+    function hasNativeVoice() {
+        return !!(window.speechSynthesis && typeof window.SpeechSynthesisUtterance === 'function');
+    }
+
+    // 没有配置远端 TTS / 远端失败时的兜底：用浏览器自带语音真正读出声音，
+    // 避免只有「语音波形动画」而没有声音的假语音气泡。
+    function speakNative(text, opts) {
+        opts = opts || {};
+        return new Promise(function (resolve, reject) {
+            if (!hasNativeVoice()) { reject(new Error('当前浏览器不支持语音合成')); return; }
+            try {
+                window.speechSynthesis.cancel();
+                var u = new SpeechSynthesisUtterance(String(text));
+                var autoLang = 'zh-CN';
+                if (/[\uac00-\ud7af]/.test(String(text))) autoLang = 'ko-KR';
+                else if (/[\u3040-\u30ff]/.test(String(text))) autoLang = 'ja-JP';
+                else if (!/[\u4e00-\u9fff]/.test(String(text)) && /[a-zA-Z]/.test(String(text))) autoLang = 'en-US';
+                u.lang = opts.lang || autoLang;
+                u.rate = typeof opts.rate === 'number' ? opts.rate : 1;
+                u.pitch = typeof opts.pitch === 'number' ? opts.pitch : 1;
+                try {
+                    var voices = window.speechSynthesis.getVoices() || [];
+                    var want = String(u.lang).toLowerCase().slice(0, 2);
+                    var v = voices.find(function (x) { return String(x.lang || '').toLowerCase().indexOf(want) === 0; });
+                    if (v) u.voice = v;
+                } catch (e) {}
+                u.onend = function () { resolve(true); };
+                u.onerror = function (e) { reject(new Error((e && e.error) || '语音播放失败')); };
+                window.speechSynthesis.speak(u);
+            } catch (e) { reject(e); }
+        });
     }
 
     async function speak(text, opts) {
@@ -264,9 +311,23 @@
         if (!t) return false;
         var cfg = await getConfig();
         if (opts.config) cfg = Object.assign({}, cfg, opts.config);
-        if (!isConfigured(cfg)) { console.warn('[TTS] 未配置：需要 地址 + Key + 语音模型（Fish Audio / MiniMax 还需手动填写音色 ID）'); return false; }
-        var blob = await synth(t, cfg);
-        return await playBlob(blob);
+        if (!isConfigured(cfg)) {
+            if (opts.browserFallback === false) {
+                console.warn('[TTS] 未配置：需要 地址 + Key + 语音模型（Fish Audio / MiniMax 还需手动填写音色 ID）');
+                return false;
+            }
+            try { await speakNative(t, opts); return true; }
+            catch (e) { console.warn('[TTS] 浏览器语音不可用：', e && e.message ? e.message : e); return false; }
+        }
+        try {
+            var blob = await synth(t, cfg);
+            return await playBlob(blob);
+        } catch (e) {
+            if (opts.browserFallback === false) throw e;
+            console.warn('[TTS] 远端合成失败，改用浏览器语音：', e && e.message ? e.message : e);
+            try { await speakNative(t, opts); return true; }
+            catch (e2) { return false; }
+        }
     }
 
     // 试听/诊断用：配置不完整或接口报错时直接抛错，方便在界面上看到原因
@@ -282,8 +343,10 @@
 
     window.NanoTTS = {
         speak: function (text, opts) { return speak(text, opts).catch(function (e) { console.warn('[TTS] 失败:', e && e.message ? e.message : e); return false; }); },
+        speakNative: function (text, opts) { return speakNative(text, opts).catch(function () { return false; }); },
         preview: function (text, opts) { return preview(text, opts); },
         stop: stop,
+        canSpeakNative: hasNativeVoice,
         isConfigured: function (cb) {
             getConfig().then(function (cfg) { try { cb(isConfigured(cfg)); } catch (e) {} });
         },

@@ -298,6 +298,29 @@
     } catch (e) {}
     return '';
   }
+  function appId() {
+    var s = '';
+    try {
+      var root = window.NANO_ROOT || new URL('./', location.href).href;
+      var u = new URL(root, location.href);
+      s = u.origin + u.pathname.replace(/\/+$/, '');
+    } catch (e) { s = String(location.origin || '') + String(location.pathname || ''); }
+    var h = 2166136261;
+    for (var i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
+    }
+    return 'app_' + h.toString(36);
+  }
+  function deviceId() {
+    var id = '';
+    try { id = localStorage.getItem('nano_device_id') || ''; } catch (e) {}
+    if (!id) {
+      id = 'dev_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+      try { localStorage.setItem('nano_device_id', id); } catch (e) {}
+    }
+    return id || 'default';
+  }
 
   function syncWorker(d) {
     try {
@@ -314,7 +337,7 @@
           'X-Push-Token': localStorage.getItem('nano_push_token') || '',
           'X-Peek-Token': localStorage.getItem('nano_peek_token') || ''
         },
-        body: JSON.stringify({ token: token, userId: uid, cycles: cycles })
+        body: JSON.stringify({ token: token, appId: appId(), deviceId: deviceId(), userId: uid, cycles: cycles })
       }).catch(function () {});
     } catch (e) {}
   }

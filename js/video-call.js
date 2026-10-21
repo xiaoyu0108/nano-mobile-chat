@@ -47,7 +47,7 @@
     var timer = null;
     var cameraOn = false;
     var facingMode = 'user';
-    var speakerOn = true;
+    var speakerOn = (function(){try{return localStorage.getItem('nano_call_tts')!=='0'}catch(e){return true}})();
     var mediaStream = null;
     var charAvatar = '';
     var userAvatar = '';
@@ -630,10 +630,15 @@
     cameraBtn.addEventListener('click', function () { if (cameraOn) stopCamera(); else startCamera(); });
     flipBtn.addEventListener('click', function () { facingMode = facingMode === 'user' ? 'environment' : 'user'; stopCamera(); startCamera(); });
 
+    speakerBtn.classList.toggle('active', speakerOn);
+    speakerBtn.title = speakerOn ? '语音朗读：开' : '语音朗读：关';
     speakerBtn.addEventListener('click', function () {
         speakerOn = !speakerOn;
+        try { localStorage.setItem('nano_call_tts', speakerOn ? '1' : '0'); } catch (e) {}
         speakerBtn.classList.toggle('active', speakerOn);
-        if (!speakerOn) { try { if (window.NanoTTS) window.NanoTTS.stop(); } catch (e) {} }
+        speakerBtn.title = speakerOn ? '语音朗读：开' : '语音朗读：关';
+        if (!speakerOn) { try { if (window.NanoTTS) window.NanoTTS.stop(); } catch (e) {} toast('语音朗读已关闭，纯文字'); }
+        else toast('语音朗读已开启');
     });
 
     bgBtn.addEventListener('click', function (e) { e.stopPropagation(); bgPanel.classList.toggle('active'); });

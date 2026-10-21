@@ -12,6 +12,34 @@ function subId(endpoint) {
   return 'sub:' + btoa(endpoint).replace(/[^a-zA-Z0-9]/g, '').slice(-48);
 }
 
+// ===== 隔离维度：appId（站点/部署）+ deviceId（设备/浏览器）+ userId（人设/用户）=====
+// 客户端 NanoScope/nano-push 会用「站点根目录的哈希」生成 appId，旧客户端没有 appId 时记为 legacy。
+function cleanPart(v, fallback, max) {
+  const s = String(v == null ? '' : v).replace(/[^a-zA-Z0-9_.-]/g, '').slice(0, max || 80);
+  return s || fallback;
+}
+function cleanAppId(v) { return cleanPart(v, 'legacy', 48); }
+function cleanDeviceId(v) { return cleanPart(v, 'default', 80); }
+// userId 可能来自用户自定义面具（含中文/空格），只去掉会破坏 KV key 结构的冒号。
+function cleanUserId(v) {
+  const s = String(v == null ? '' : v).replace(/:/g, '_').slice(0, 80);
+  return s || 'default';
+}
+function autoScope(appId, deviceId, userId) {
+  return cleanAppId(appId) + ':' + cleanDeviceId(deviceId) + ':' + cleanUserId(userId);
+}
+function autoKey(kind, appId, deviceId, userId) {
+  return 'auto2:' + kind + ':' + autoScope(appId, deviceId, userId);
+}
+function autoActiveKey(appId, deviceId) {
+  return 'auto2:active:' + cleanAppId(appId) + ':' + cleanDeviceId(deviceId);
+}
+function peekBase(appId, chatId) {
+  const a = cleanAppId(appId);
+  const c = String(chatId || 'default');
+  return a === 'legacy' ? ('peek:' + c) : ('peek2:' + a + ':' + c);
+}
+
 // ===== VAPID：优先用 secrets；没配置就自动生成一对存进 KV，用户不需要自己生成 =====
 function b64urlEncode(bytes) {
   let s = '';
@@ -95,11 +123,17 @@ function modelEndpoint(raw) {
   return s + '/chat/completions';
 }
 
-async function peekTurns(env, chatId) {
-  try { const raw = await env.PUSH_KV.get('peek:' + chatId); return raw ? JSON.parse(raw) : []; } catch (e) { return []; }
+async function peekTurns(env, chatId, appId) {
+  try {
+    const raw = await env.PUSH_KV.get(peekBase(appId, chatId));
+    if (raw) return JSON.parse(raw);
+    // 兼容旧键：只在没有 appId 时才回退，避免新站点读到旧 Nano 的暂存轮次
+    if (cleanAppId(appId) !== 'legacy') return [];
+    return [];
+  } catch (e) { return []; }
 }
-async function peekSave(env, chatId, turns) {
-  try { await env.PUSH_KV.put('peek:' + chatId, JSON.stringify(turns.slice(-40)), { expirationTtl: 60 * 60 * 24 * 7 }); } catch (e) {}
+async function peekSave(env, chatId, turns, appId) {
+  try { await env.PUSH_KV.put(peekBase(appId, chatId), JSON.stringify(turns.slice(-40)), { expirationTtl: 60 * 60 * 24 * 7 }); } catch (e) {}
 }
 
 // ===== 无后台主动消息 / 朋友圈 =====
@@ -493,34 +527,55 @@ async function sendBarkKey(env, key, payload) {
     q.push('url=' + encodeURIComponent(app + '/index.html?open=' + encodeURIComponent(payload.target)));
   }
   url += '?' + q.join('&');
-  try { await fetch(url); return true; } catch (e) { return false; }
+  try {
+    const resp = await fetch(url);
+    if (!resp || !resp.ok) return false;
+    // Bark 正常返回 { code: 200 }；非 200 视为失败，交给 Web Push 兜底。
+    try {
+      const data = await resp.json();
+      if (data && data.code != null && Number(data.code) !== 200) return false;
+    } catch (e) {}
+    return true;
+  } catch (e) { return false; }
 }
 
-// 后台推送：优先 Bark（iPhone，无需网页存活），没配 Bark 再走 Web Push。
+// 后台推送：有 Web Push 订阅时优先推订阅；全部失败/没有订阅时再回退 Bark。
+// 旧逻辑只要填了 Bark 就再也不走 Web Push，Bark 密钥失效时会表现为「完全收不到」。
 async function autoNotify(env, cfg, subs, payload) {
-  const key = String((cfg && cfg.barkKey) || '').trim();
-  if (key) {
-    await sendBarkKey(env, key, payload);
-    return;
-  }
+  let sent = 0;
   if (subs && subs.length) {
-    try { await pushAll(subs, payload, env); } catch (e) {}
+    try { sent = await pushAll(subs, payload, env); } catch (e) { sent = 0; }
+  }
+  const key = String((cfg && cfg.barkKey) || '').trim();
+  if (!sent && key) {
+    await sendBarkKey(env, key, payload);
   }
 }
 
-async function runAutoPush(env, deviceId) {
-  deviceId = String(deviceId || 'default');
-  const raw = await env.PUSH_KV.get('auto:config:' + deviceId);
+async function runAutoPush(env, appId, deviceId, userId) {
+  appId = cleanAppId(appId);
+  deviceId = cleanDeviceId(deviceId);
+  userId = cleanUserId(userId);
+  const raw = await env.PUSH_KV.get(autoKey('config', appId, deviceId, userId));
   if (!raw) return;
   let cfg;
   try { cfg = JSON.parse(raw); } catch (e) { return; }
   if (!cfg || !cfg.enabled) return;
+  // 同一台设备可能切换了面具：只跑当前活跃用户，避免 A 的推送弹到 B 当前页面。
+  try {
+    const activeRaw = await env.PUSH_KV.get(autoActiveKey(appId, deviceId));
+    if (activeRaw) {
+      let active = '';
+      try { active = String((JSON.parse(activeRaw) || {}).userId || ''); } catch (e) { active = ''; }
+      if (active && active !== userId) return;
+    }
+  } catch (e) {}
   let state = {};
-  try { const s = await env.PUSH_KV.get('auto:state:' + deviceId); state = s ? JSON.parse(s) : {}; } catch (e) { state = {}; }
+  try { const s = await env.PUSH_KV.get(autoKey('state', appId, deviceId, userId)); state = s ? JSON.parse(s) : {}; } catch (e) { state = {}; }
   const now = Date.now();
-  const subs = await getSubs(env, cfg.user.id, deviceId);
+  const subs = await getSubs(env, userId, deviceId, appId);
   let busyChatId = '';
-  try { busyChatId = String(await env.PUSH_KV.get('auto:call:' + cfg.user.id) || ''); } catch (e) {}
+  try { busyChatId = String(await env.PUSH_KV.get('auto2:call:' + cleanAppId(appId) + ':' + userId) || ''); } catch (e) {}
   let dirty = false;
   let usedChars = 0;
   if (cfg.msgEnabled && now >= (Number(state.nextMsgAt) || 0)) {
@@ -532,7 +587,7 @@ async function runAutoPush(env, deviceId) {
     try { msgs = await generateAutoMessages(env, cfg, busyChatId, state.lastMsgChar); } catch (e) { msgs = []; }
     if (msgs.length) {
       state.lastMsgChar = String(msgs[0].chatId || '');
-      const key = 'auto:msg:' + deviceId;
+      const key = autoKey('msg', appId, deviceId, userId);
       let list = [];
       try { const old = await env.PUSH_KV.get(key); list = old ? JSON.parse(old) : []; } catch (e) { list = []; }
       list = list.concat(msgs).slice(-20);
@@ -548,7 +603,8 @@ async function runAutoPush(env, deviceId) {
           renotify: false,
           icon: icon,
           name: m.name,
-          channel: 'chat'
+          channel: 'chat',
+          appId: appId
         });
       }
     }
@@ -563,7 +619,7 @@ async function runAutoPush(env, deviceId) {
       let posts = [];
       try { posts = await generateAutoMoments(env, cfg, busyChatId, remain); } catch (e) { posts = []; }
       if (posts.length) {
-        const key = 'auto:moments:' + deviceId;
+        const key = autoKey('moments', appId, deviceId, userId);
         let list = [];
         try { const old = await env.PUSH_KV.get(key); list = old ? JSON.parse(old) : []; } catch (e) { list = []; }
         list = list.concat(posts).slice(-30);
@@ -574,12 +630,13 @@ async function runAutoPush(env, deviceId) {
           target: 'moments',
           tag: 'auto-moments',
           renotify: false,
-          channel: 'moment'
+          channel: 'moment',
+          appId: appId
         });
       }
     }
   }
-  if (dirty) await env.PUSH_KV.put('auto:state:' + deviceId, JSON.stringify(state));
+  if (dirty) await env.PUSH_KV.put(autoKey('state', appId, deviceId, userId), JSON.stringify(state));
 }
 
 // 用服务端保存的 key 调主模型（Key 不出服务器），支持纯文本与「截图 + 文本」
@@ -660,8 +717,10 @@ export default {
       const subscription = body.subscription;
       if (!subscription || !subscription.endpoint) return json({ ok: false, error: 'no subscription' }, 400);
       // 记下这个订阅属于哪个用户/面具，避免 A 的推送弹到 B 的设备上
-      subscription.userId = String(body.userId || 'default');
-      subscription.deviceId = String(body.deviceId || 'default');
+      subscription.userId = cleanUserId(body.userId);
+      subscription.deviceId = cleanDeviceId(body.deviceId);
+      // 旧客户端没有 appId：标记为 legacy，新站点不会再把推送发给它
+      subscription.appId = cleanAppId(body.appId);
       subscription.ua = String(body.ua || '');
       subscription.platform = String(body.platform || '');
       await env.PUSH_KV.put(subId(subscription.endpoint), JSON.stringify(subscription));
@@ -673,12 +732,22 @@ export default {
       if (!tokenOk(request, env)) return json({ ok: false, error: 'unauthorized' }, 401);
       const body = await request.json();
       const items = Array.isArray(body.items) ? body.items : [];
+      const appId = cleanAppId(body.appId);
+      const deviceId = cleanDeviceId(body.deviceId);
+      const userId = cleanUserId(body.userId);
+      let count = 0;
       for (const it of items) {
         if (!it || !it.at) continue;
-        const id = 'job:' + Number(it.at) + ':' + Math.random().toString(36).slice(2, 8);
-        await env.PUSH_KV.put(id, JSON.stringify(it));
+        const job = Object.assign({}, it, {
+          appId: cleanAppId(it.appId || appId),
+          deviceId: cleanDeviceId(it.deviceId || deviceId),
+          userId: cleanUserId(it.userId || userId)
+        });
+        const id = 'job:' + Number(job.at) + ':' + Math.random().toString(36).slice(2, 8);
+        await env.PUSH_KV.put(id, JSON.stringify(job));
+        count++;
       }
-      return json({ ok: true, count: items.length });
+      return json({ ok: true, count: count });
     }
 
     // 3) 取消订阅
@@ -701,29 +770,40 @@ export default {
       try { body = await request.json(); } catch (e) {}
       if (!peekOk(request, env, body)) return json({ ok: false, error: 'unauthorized' }, 401);
       const chatId = String(body.chatId || 'default');
+      // 速聊也要限定到「哪个站点的哪台设备/哪个用户」，否则旧 Nano 也会收到纳米的窥屏回复。
+      let owner = {};
+      try {
+        const rawOwner = await env.PUSH_KV.get('peek2:owner:' + chatId);
+        if (rawOwner) owner = JSON.parse(rawOwner) || {};
+      } catch (e) { owner = {}; }
+      const appId = cleanAppId(body.appId || owner.appId || 'legacy');
       let system = String(body.system || '');
       // 快捷指令没带 system 时，用 App 最近同步过来的人设（谁当前在用就用谁的）
       if (!system) {
         try {
-          system = (await env.PUSH_KV.get('peek:persona:' + chatId)) || (await env.PUSH_KV.get('peek:persona:latest')) || '';
+          system = (await env.PUSH_KV.get(peekBase(appId, 'persona:' + chatId)))
+            || (await env.PUSH_KV.get(peekBase(appId, 'persona:latest')))
+            || '';
         } catch (e) {}
       }
       const text = String(body.text || '').trim();
       const image = String(body.image || '').trim();
       if (!text && !image) return json({ ok: false, error: 'empty' }, 400);
-      const history = await peekTurns(env, chatId);
+      const history = await peekTurns(env, chatId, appId);
       let reply = null;
       try { reply = await peekModel(env, system, text, image, history); } catch (e) {}
       if (!reply) return json({ ok: false, error: 'model' }, 502);
       history.push({ user: text || '[图片]', char: reply, ts: Date.now() });
-      await peekSave(env, chatId, history);
-      // 顺手把这条点评用 Web Push 推到已订阅的主屏 App：
-      // 点通知会打开你「添加到主屏幕」的那个 Nano（sw.js 的 notificationclick），而不是 Safari。
-      // 需要配置 VAPID_SUBJECT / VAPID_PUBLIC / VAPID_PRIVATE，且 App 已 NanoPush.enable()，否则自动跳过。
+      await peekSave(env, chatId, history, appId);
+      // 只推给这条聊天所属的 App / 设备 / 用户；找不到归属就不广播，避免串到别的 Nano。
       try {
-        var __subs = await getSubs(env);
-        if (__subs.length) {
-          await pushAll(__subs, { title: '窥屏', body: String(reply).slice(0, 120), target: 'chat:' + chatId, tag: 'peek-' + chatId }, env);
+        const targetUser = owner.userId || body.userId || '';
+        const targetDevice = owner.deviceId || body.deviceId || '';
+        const subs = (targetUser || targetDevice)
+          ? await getSubs(env, targetUser || null, targetDevice || null, appId)
+          : [];
+        if (subs.length) {
+          await pushAll(subs, { title: '窥屏', body: String(reply).slice(0, 120), target: 'chat:' + chatId, tag: 'peek-' + chatId, appId: appId }, env);
         }
       } catch (e) {}
       return json({ ok: true, reply: reply });
@@ -737,10 +817,18 @@ export default {
       const system = String(body.system || '').trim();
       if (!system) return json({ ok: false, error: 'empty' }, 400);
       const chatId = String(body.chatId || 'latest');
+      const appId = cleanAppId(body.appId);
       const ttl = 60 * 60 * 24 * 30;
       try {
-        await env.PUSH_KV.put('peek:persona:' + chatId, system, { expirationTtl: ttl });
-        await env.PUSH_KV.put('peek:persona:latest', system, { expirationTtl: ttl });
+        await env.PUSH_KV.put(peekBase(appId, 'persona:' + chatId), system, { expirationTtl: ttl });
+        await env.PUSH_KV.put(peekBase(appId, 'persona:latest'), system, { expirationTtl: ttl });
+        // 记住这条聊天属于哪台设备/哪个用户，/peek 推送时只发给它
+        await env.PUSH_KV.put('peek2:owner:' + chatId, JSON.stringify({
+          appId: appId,
+          deviceId: cleanDeviceId(body.deviceId),
+          userId: cleanUserId(body.userId),
+          at: Date.now()
+        }), { expirationTtl: ttl });
       } catch (e) {}
       return json({ ok: true });
     }
@@ -751,9 +839,11 @@ export default {
       if (request.method === 'POST') { try { body = await request.json(); } catch (e) {} }
       if (!peekOk(request, env, body)) return json({ ok: false, error: 'unauthorized' }, 401);
       let chatId = String((body && body.chatId) || '');
+      let appId = String((body && body.appId) || '');
       if (!chatId) { try { chatId = new URL(request.url).searchParams.get('chatId') || ''; } catch (e) {} }
+      if (!appId) { try { appId = new URL(request.url).searchParams.get('appId') || ''; } catch (e) {} }
       if (!chatId) return json({ ok: false, error: 'no chatId' }, 400);
-      const turns = await peekTurns(env, chatId);
+      const turns = await peekTurns(env, chatId, appId);
       return json({ ok: true, turns: turns });
     }
 
@@ -763,7 +853,7 @@ export default {
       try { body = await request.json(); } catch (e) {}
       if (!peekOk(request, env, body)) return json({ ok: false, error: 'unauthorized' }, 401);
       const chatId = String(body.chatId || '');
-      if (chatId) await peekSave(env, chatId, []);
+      if (chatId) await peekSave(env, chatId, [], body.appId);
       return json({ ok: true });
     }
 
@@ -774,15 +864,33 @@ export default {
       try { body = await request.json(); } catch (e) {}
       if (!autoOk(request, env, body)) return json({ ok: false, error: 'unauthorized' }, 401);
       const cfg = sanitizeAutoConfig(body);
-      // 每台设备独立配置：手机和电脑可以各自有完全不同的 char 列表
-      const deviceId = String(body.deviceId || 'default').slice(0, 80);
-      await env.PUSH_KV.put('auto:config:' + deviceId, JSON.stringify(cfg));
+      // 每台设备 + 每个用户（面具）独立配置：手机和电脑、同一设备的多个用户互不影响
+      const appId = cleanAppId(body.appId);
+      const deviceId = cleanDeviceId(body.deviceId);
+      const userId = cleanUserId(cfg.user.id || body.userId);
+      const cfgKey = autoKey('config', appId, deviceId, userId);
+      await env.PUSH_KV.put(cfgKey, JSON.stringify(cfg));
+      try {
+        await env.PUSH_KV.put(autoActiveKey(appId, deviceId), JSON.stringify({
+          userId: userId,
+          appId: appId,
+          deviceId: deviceId,
+          at: Date.now()
+        }), { expirationTtl: 60 * 60 * 24 * 7 });
+      } catch (e) {}
       const now = Date.now();
+      const stateKey = autoKey('state', appId, deviceId, userId);
       let state = {};
-      try { const s = await env.PUSH_KV.get('auto:state:' + deviceId); state = s ? JSON.parse(s) : {}; } catch (e) { state = {}; }
+      try { const s = await env.PUSH_KV.get(stateKey); state = s ? JSON.parse(s) : {}; } catch (e) { state = {}; }
+      const reset = !!body.reset;
       if (cfg.msgEnabled) {
-        if (!state.nextMsgAt || state.msgMins !== cfg.intervalMinutes || body.reset) {
-          state.nextMsgAt = now + cfg.intervalMinutes * 60 * 1000;
+        const intervalMs = cfg.intervalMinutes * 60 * 1000;
+        if (!state.nextMsgAt || reset) {
+          state.nextMsgAt = now + intervalMs;
+        } else if (state.msgMins && state.msgMins !== cfg.intervalMinutes) {
+          // 改间隔时只把下一次时间「收短」到新间隔内，绝不因为切聊天/重复同步而无限顺延。
+          state.nextMsgAt = Math.min(Number(state.nextMsgAt) || 0, now + intervalMs);
+          if (state.nextMsgAt < now + 60 * 1000) state.nextMsgAt = now + 60 * 1000;
         }
         state.msgMins = cfg.intervalMinutes;
       } else {
@@ -790,16 +898,20 @@ export default {
         state.msgMins = cfg.intervalMinutes;
       }
       if (cfg.momentEnabled) {
-        if (!state.nextMomentAt || state.momentHours !== cfg.momentIntervalHours || body.reset) {
-          state.nextMomentAt = now + cfg.momentIntervalHours * 3600 * 1000;
+        const intervalMs = cfg.momentIntervalHours * 3600 * 1000;
+        if (!state.nextMomentAt || reset) {
+          state.nextMomentAt = now + intervalMs;
+        } else if (state.momentHours && state.momentHours !== cfg.momentIntervalHours) {
+          state.nextMomentAt = Math.min(Number(state.nextMomentAt) || 0, now + intervalMs);
+          if (state.nextMomentAt < now + 60 * 1000) state.nextMomentAt = now + 60 * 1000;
         }
         state.momentHours = cfg.momentIntervalHours;
       } else {
         state.nextMomentAt = 0;
         state.momentHours = cfg.momentIntervalHours;
       }
-      await env.PUSH_KV.put('auto:state:' + deviceId, JSON.stringify(state));
-      return json({ ok: true, enabled: cfg.enabled, deviceId: deviceId, nextMsgAt: state.nextMsgAt || 0, nextMomentAt: state.nextMomentAt || 0 });
+      await env.PUSH_KV.put(stateKey, JSON.stringify(state));
+      return json({ ok: true, enabled: cfg.enabled, appId: appId, deviceId: deviceId, userId: userId, nextMsgAt: state.nextMsgAt || 0, nextMomentAt: state.nextMomentAt || 0 });
     }
 
     // POST /auto/cycle  只更新角色的月潮权限数据，不动其它主动消息配置
@@ -809,7 +921,9 @@ export default {
       if (!autoOk(request, env, body)) return json({ ok: false, error: 'unauthorized' }, 401);
       try {
         const cycles = body.cycles && typeof body.cycles === 'object' ? body.cycles : {};
-        const { keys } = await env.PUSH_KV.list({ prefix: 'auto:config:' });
+        // 只更新当前站点/设备/用户的配置，避免改月潮时把别人配置一起改掉。
+        const scopePrefix = autoKey('config', body.appId, body.deviceId, body.userId);
+        const { keys } = await env.PUSH_KV.list({ prefix: scopePrefix });
         for (const k of keys) {
           const raw = await env.PUSH_KV.get(k.name);
           if (!raw) continue;
@@ -835,12 +949,14 @@ export default {
       let body = {};
       try { body = await request.json(); } catch (e) {}
       if (!autoOk(request, env, body)) return json({ ok: false, error: 'unauthorized' }, 401);
-      const userId = String(body.userId || 'default');
+      const appId = cleanAppId(body.appId);
+      const userId = cleanUserId(body.userId);
       const chatId = String(body.chatId || '');
       const active = !!body.active && !!chatId;
+      const key = 'auto2:call:' + appId + ':' + userId;
       try {
-        if (active) await env.PUSH_KV.put('auto:call:' + userId, chatId, { expirationTtl: 60 * 60 * 3 });
-        else await env.PUSH_KV.delete('auto:call:' + userId);
+        if (active) await env.PUSH_KV.put(key, chatId, { expirationTtl: 60 * 60 * 3 });
+        else await env.PUSH_KV.delete(key);
       } catch (e) {}
       return json({ ok: true });
     }
@@ -848,13 +964,18 @@ export default {
     // GET /auto/pending?userId=  拉取服务端生成、还没合并进 App 的消息/朋友圈
     if (pathname === '/auto/pending') {
       if (!autoOk(request, env, null)) return json({ ok: false, error: 'unauthorized' }, 401);
-      const userId = String(new URL(request.url).searchParams.get('userId') || 'default');
-      const deviceId = String(new URL(request.url).searchParams.get('deviceId') || '');
-      const suffix = deviceId || userId;
+      const sp = new URL(request.url).searchParams;
+      const appId = cleanAppId(sp.get('appId'));
+      const userId = cleanUserId(sp.get('userId'));
+      const deviceId = cleanDeviceId(sp.get('deviceId'));
+      // 标记这台设备当前活跃的是哪个用户，服务端只给活跃用户生成/推送
+      try {
+        await env.PUSH_KV.put(autoActiveKey(appId, deviceId), JSON.stringify({ userId: userId, appId: appId, deviceId: deviceId, at: Date.now() }), { expirationTtl: 60 * 60 * 24 * 7 });
+      } catch (e) {}
       let messages = [], moments = [];
-      try { const raw = await env.PUSH_KV.get('auto:msg:' + suffix); messages = raw ? JSON.parse(raw) : []; } catch (e) {}
-      try { const raw = await env.PUSH_KV.get('auto:moments:' + suffix); moments = raw ? JSON.parse(raw) : []; } catch (e) {}
-      return json({ ok: true, messages: messages, moments: moments });
+      try { const raw = await env.PUSH_KV.get(autoKey('msg', appId, deviceId, userId)); messages = raw ? JSON.parse(raw) : []; } catch (e) {}
+      try { const raw = await env.PUSH_KV.get(autoKey('moments', appId, deviceId, userId)); moments = raw ? JSON.parse(raw) : []; } catch (e) {}
+      return json({ ok: true, appId: appId, messages: messages, moments: moments });
     }
 
     // POST /auto/ack  合并完成后删除已拉取的条目
@@ -862,14 +983,14 @@ export default {
       let body = {};
       try { body = await request.json(); } catch (e) {}
       if (!autoOk(request, env, body)) return json({ ok: false, error: 'unauthorized' }, 401);
-      const userId = String(body.userId || 'default');
-      const deviceId = String(body.deviceId || '');
-      const suffix = deviceId || userId;
+      const appId = cleanAppId(body.appId);
+      const userId = cleanUserId(body.userId);
+      const deviceId = cleanDeviceId(body.deviceId);
       const mIds = Array.isArray(body.messageIds) ? body.messageIds : [];
       const pIds = Array.isArray(body.momentIds) ? body.momentIds : [];
       if (mIds.length) {
         try {
-          const key = 'auto:msg:' + suffix;
+          const key = autoKey('msg', appId, deviceId, userId);
           const raw = await env.PUSH_KV.get(key);
           const list = raw ? JSON.parse(raw) : [];
           await env.PUSH_KV.put(key, JSON.stringify(list.filter(function (x) { return x && mIds.indexOf(x.id) < 0; })));
@@ -877,7 +998,7 @@ export default {
       }
       if (pIds.length) {
         try {
-          const key = 'auto:moments:' + suffix;
+          const key = autoKey('moments', appId, deviceId, userId);
           const raw = await env.PUSH_KV.get(key);
           const list = raw ? JSON.parse(raw) : [];
           await env.PUSH_KV.put(key, JSON.stringify(list.filter(function (x) { return x && pIds.indexOf(x.id) < 0; })));
@@ -999,19 +1120,30 @@ export default {
   // 每 5 分钟触发：到点给 Bark 发提醒 + 处理 KV 里的预约任务
   async scheduled(event, env, ctx) {
     try { await sendBarkReminder(env); } catch (e) {}
-    // 无后台主动消息 / 朋友圈：每台设备单独跑自己的配置
+    // 无后台主动消息 / 朋友圈：每台设备 + 每个用户单独跑自己的配置。
+    // 旧前缀 auto:config: 不再执行，避免旧 Nano 和新纳米同时给同一台手机发消息。
     try {
-      const { keys } = await env.PUSH_KV.list({ prefix: 'auto:config:' });
+      const { keys } = await env.PUSH_KV.list({ prefix: 'auto2:config:' });
       for (const k of keys) {
-        const deviceId = k.name.slice('auto:config:'.length);
-        try { await runAutoPush(env, deviceId); } catch (e) {}
+        const parts = k.name.slice('auto2:config:'.length).split(':');
+        const appId = parts[0] || 'legacy';
+        const deviceId = parts[1] || 'default';
+        const userId = parts[2] || 'default';
+        try { await runAutoPush(env, appId, deviceId, userId); } catch (e) {}
       }
     } catch (e) {}
 
     const now = Date.now();
     const { keys } = await env.PUSH_KV.list({ prefix: 'job:' });
     if (!keys.length) return;
-    const subs = await getSubs(env);
+    const subsCache = {};
+    async function jobSubs(job) {
+      // 旧客户端预约的任务没有 appId：只允许投给 legacy 订阅，绝不广播到新纳米。
+      const jobApp = job.appId ? cleanAppId(job.appId) : 'legacy';
+      const k = jobApp + '|' + cleanDeviceId(job.deviceId) + '|' + cleanUserId(job.userId);
+      if (!subsCache[k]) subsCache[k] = await getSubs(env, job.userId || null, job.deviceId || null, jobApp);
+      return subsCache[k];
+    }
     for (const k of keys) {
       const raw = await env.PUSH_KV.get(k.name);
       if (!raw) continue;
@@ -1019,9 +1151,16 @@ export default {
       try { job = JSON.parse(raw); } catch (e) { await env.PUSH_KV.delete(k.name); continue; }
       if ((Number(job.at) || 0) > now) continue;
       await env.PUSH_KV.delete(k.name);
-      const jobPayload = { title: job.title || 'Nano', body: job.body || '', target: job.target || '' };
-      if (subs.length) await pushAll(subs, jobPayload, env);
-      else if (env.BARK_KEY) await sendBarkKey(env, env.BARK_KEY, jobPayload);
+      const jobPayload = { title: job.title || 'Nano', body: job.body || '', target: job.target || '', appId: cleanAppId(job.appId) };
+      let subs = await jobSubs(job);
+      let sent = 0;
+      if (subs.length) { try { sent = await pushAll(subs, jobPayload, env); } catch (e) { sent = 0; } }
+      // 对应设备/站点没有 Web Push 订阅时，才回退到这条预约自带的 Bark 密钥。
+      // 旧任务没有 appId 时才使用全局 BARK_KEY，避免旧配置把消息发到别人手机。
+      if (!sent) {
+        if (job.barkKey) await sendBarkKey(env, job.barkKey, jobPayload);
+        else if (!job.appId && env.BARK_KEY) await sendBarkKey(env, env.BARK_KEY, jobPayload);
+      }
     }
   }
 };
@@ -1042,18 +1181,25 @@ async function sendBarkReminder(env) {
   try { await fetch(url); } catch (e) {}
 }
 
-async function getSubs(env, userId, deviceId) {
+async function getSubs(env, userId, deviceId, appId) {
   const { keys } = await env.PUSH_KV.list({ prefix: 'sub:' });
   const out = [];
+  const wantApp = appId ? cleanAppId(appId) : '';
+  const wantUser = userId ? cleanUserId(userId) : '';
+  const wantDevice = deviceId ? cleanDeviceId(deviceId) : '';
   for (const k of keys) {
     const v = await env.PUSH_KV.get(k.name);
     if (!v) continue;
     try {
       const s = JSON.parse(v);
       if (!s || !s.endpoint) continue;
-      // 订阅按设备隔离：电脑和手机各推各的 char，绝不串设备
-      if (deviceId && String(s.deviceId || '') !== String(deviceId)) continue;
-      if (userId && s.userId && String(s.userId) !== 'default' && String(s.userId) !== String(userId)) continue;
+      // 站点隔离：纳米 / 旧 Nano / 其它部署绝不互相收推送。
+      const subApp = cleanAppId(s.appId);
+      if (wantApp && subApp !== wantApp) continue;
+      // 设备隔离：电脑和手机各推各的 char，绝不串设备。
+      if (wantDevice && cleanDeviceId(s.deviceId) !== wantDevice) continue;
+      // 用户隔离：只推给完全相同的 userId（不再把 default 当万能匹配）。
+      if (wantUser && cleanUserId(s.userId) !== wantUser) continue;
       out.push(s);
     } catch (e) {}
   }
@@ -1062,7 +1208,8 @@ async function getSubs(env, userId, deviceId) {
 
 async function pushAll(subs, payload, env) {
   const vapid = await ensureVapid(env);
-  if (!vapid) return;
+  if (!vapid) return 0;
+  let sent = 0;
   for (const sub of subs) {
     if (!sub || !sub.endpoint) continue;
     try {
@@ -1072,12 +1219,14 @@ async function pushAll(subs, payload, env) {
         { subject: vapid.subject, publicKey: vapid.publicKey, privateKey: vapid.privateKey }
       );
       const resp = await fetch(sub.endpoint, init);
+      if (resp && resp.ok) sent++;
       // 订阅已失效（卸载/清数据/换浏览器）：删除，避免每次都失败
       if (resp && (resp.status === 404 || resp.status === 410)) {
         try { await env.PUSH_KV.delete(subId(sub.endpoint)); } catch (e) {}
       }
     } catch (e) { /* 单个失败不影响其他 */ }
   }
+  return sent;
 }
 
 async function sendAll(env, payload) {

@@ -8,10 +8,27 @@
    “后台回复”依赖页面常驻 + 音频保活；真正的“关闭也能收到”需要服务端配合（见 push 事件）。 */
 'use strict';
 
-var CACHE = 'nano-static-v213';
+var CACHE = 'nano-static-v218';
 var STATIC_RE = /\.(css|js|png|jpg|jpeg|webp|svg|gif|ico|woff2?|ttf|mp3)$/i;
 var HTML_FRESH_MS = 0;                // 0：每次打开都联网取最新 HTML（断网/超时再用缓存）
 var NET_TIMEOUT_MS = 1500;            // 有缓存时，网络最多等 1.5 秒，超时先上缓存
+
+// 与客户端 NanoScope.appId 使用同一套算法：用「站点根目录」区分不同部署。
+// 例如 /nano-mobile-chat/ 和 /nano/ 会得到不同 appId，旧 Nano 的推送不会弹到新纳米。
+function appIdFromRoot(root) {
+    var s = '';
+    try {
+        var u = new URL(root, self.location.href);
+        s = u.origin + u.pathname.replace(/\/+$/, '');
+    } catch (e) { s = String(root || self.location.href); }
+    var h = 2166136261;
+    for (var i = 0; i < s.length; i++) {
+        h ^= s.charCodeAt(i);
+        h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
+    }
+    return 'app_' + h.toString(36);
+}
+var APP_ID = appIdFromRoot(self.registration.scope);
 
 self.addEventListener('install', function (event) {
     self.skipWaiting();
@@ -118,14 +135,22 @@ self.addEventListener('push', function (event) {
             catch (e) { data.body = event.data.text ? event.data.text() : data.body; }
         }
     } catch (e) {}
+    // 服务端如果误把别的站点/别的用户的消息发到这个订阅，直接丢弃。
+    // appId 是站点根目录的哈希，不包含用户隐私；旧推送没有 appId 时按旧逻辑放行。
+    if (data.appId && data.appId !== APP_ID) {
+        event.waitUntil(Promise.resolve());
+        return;
+    }
     event.waitUntil((async function () {
-        // App 正在前台：交给内置胶囊通知栏，不再弹一条重复的系统通知。
-        // 点击胶囊时页面会再拉一次 /auto/pending，保证通知内容真的能落进聊天/朋友圈。
+        // 只有「真正在前台且窗口有焦点」时才交给内置胶囊通知栏。
+        // 不能用 visibilityState === 'visible'：开启保活音频后，PWA 退到后台仍可能被判定为
+        // visible，结果系统通知被吞掉，表现就是「切后台没有推送，回到 App 才看到」。
         try {
             var list = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
             for (var i = 0; i < list.length; i++) {
                 var c = list[i];
-                if (c && c.visibilityState === 'visible') {
+                var focused = (typeof c.focused === 'boolean') ? c.focused : (c.visibilityState === 'visible');
+                if (c && focused) {
                     try {
                         c.postMessage({
                             type: 'appNotify',
@@ -152,7 +177,7 @@ self.addEventListener('push', function (event) {
                 renotify: data.renotify !== false,
                 vibrate: [90, 50, 90],
                 timestamp: Number(data.ts) || Date.now(),
-                data: { target: data.target || '', name: data.name || data.title || '' }
+                data: { target: data.target || '', name: data.name || data.title || '', appId: data.appId || APP_ID }
             };
             if (data.reply && String(data.target || '').indexOf('ss-reply:') === 0) {
                 o.actions = [{ action: 'reply', type: 'text', title: '回复', placeholder: '回复 TA…' }];

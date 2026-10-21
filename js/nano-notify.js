@@ -363,6 +363,20 @@
         try { return NANO_ROOT + 'icons/icon-192.png'; } catch (e) { return ''; }
     }
 
+    // 是否「真的在前台」。只看 document.hidden 不够：开启保活音频后，PWA 切到后台
+    // 仍可能保持 visible，导致通知被当成前台胶囊吞掉（表现为后台收不到系统提醒）。
+    function isForeground() {
+        try {
+            if (document.hidden) return false;
+            var topDoc = null;
+            try { topDoc = (window.top && window.top !== window) ? window.top.document : null; } catch (e) { topDoc = null; }
+            if (topDoc && topDoc.hidden) return false;
+            var d = topDoc || document;
+            if (typeof d.hasFocus === 'function') return d.hasFocus();
+            return !document.hidden;
+        } catch (e) { return !document.hidden; }
+    }
+
     function notify(title, body, opts) {
         opts = opts || {};
         if (!enabled() && !opts.force) return;
@@ -379,7 +393,7 @@
         playSound(soundFor(opts));
         // 前台统一走内置通知栏：头像 + 昵称 + 具体信息（后台仍走系统通知 / Bark）
         try {
-            if (!document.hidden) {
+            if (isForeground()) {
                 var inAppPayload = {
                     type: 'appNotify',
                     title: title,
@@ -420,7 +434,7 @@
         // Bark：应用退到后台/锁屏时，通过苹果推送弹真正的系统通知（国内可用）
         var barkSent = false;
         try {
-            var hidden = (typeof document !== 'undefined') && (document.hidden || document.visibilityState === 'hidden');
+            var hidden = !isForeground();
             if (barkEnabled() && barkKey() && (hidden || opts.force || opts.bark)) {
                 var bopts = Object.assign({}, opts, { icon: icon, group: opts.group || title || 'Nano' });
                 barkPush(title, body, bopts);

@@ -13,7 +13,7 @@
         el.__t = setTimeout(function () { el.classList.remove('show'); }, 1700);
     }
 
-    var SRC_LABEL = { alt: '小号试探', groupnpc: '群聊好友', ins: 'Instagram', halo: 'Halo', other: '好友申请' };
+    var SRC_LABEL = { alt: '小号试探', groupnpc: '群聊好友', ins: 'Instagram', halo: 'Halo', qa: 'Q&A', other: '好友申请' };
 
     function renderWechat() {
         var el = $('ktWechat');

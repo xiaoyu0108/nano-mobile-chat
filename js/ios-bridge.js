@@ -24,6 +24,29 @@
     var PARAMS = ['nanoScreen', 'nanoScreenReply', 'nanoChat', 'nanoName'];
 
     function enc(s) { return encodeURIComponent(String(s == null ? '' : s)); }
+    function appId() {
+        var s = '';
+        try {
+            var root = window.NANO_ROOT || new URL('./', location.href).href;
+            var u = new URL(root, location.href);
+            s = u.origin + u.pathname.replace(/\/+$/, '');
+        } catch (e) { s = String(location.origin || '') + String(location.pathname || ''); }
+        var h = 2166136261;
+        for (var i = 0; i < s.length; i++) {
+            h ^= s.charCodeAt(i);
+            h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
+        }
+        return 'app_' + h.toString(36);
+    }
+    function deviceId() {
+        var id = '';
+        try { id = localStorage.getItem('nano_device_id') || ''; } catch (e) {}
+        if (!id) {
+            id = 'dev_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+            try { localStorage.setItem('nano_device_id', id); } catch (e) {}
+        }
+        return id || 'default';
+    }
     function loadPending() { try { var a = JSON.parse(localStorage.getItem(PENDING_KEY) || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
     function savePending(list) { try { localStorage.setItem(PENDING_KEY, JSON.stringify((list || []).slice(-20))); } catch (e) {} }
 
@@ -165,7 +188,7 @@
         var sh = window.__nanoShell;
         if (!sh) return;
         var r;
-        try { r = await fetch(base + '/peek/pending?chatId=' + enc(chat) + '&token=' + enc(token), { cache: 'no-store' }); } catch (e) { return; }
+        try { r = await fetch(base + '/peek/pending?chatId=' + enc(chat) + '&appId=' + enc(appId()) + '&token=' + enc(token), { cache: 'no-store' }); } catch (e) { return; }
         if (!r.ok) return;
         var data = null;
         try { data = await r.json(); } catch (e) {}
@@ -187,7 +210,7 @@
         try {
             await fetch(base + '/peek/ack', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ chatId: String(chat), token: token })
+                body: JSON.stringify({ chatId: String(chat), appId: appId(), deviceId: deviceId(), token: token })
             });
         } catch (e) {}
     }

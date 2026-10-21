@@ -9,6 +9,37 @@
 
     function $(id) { return document.getElementById(id); }
     function enc(s) { return encodeURIComponent(String(s == null ? '' : s)); }
+    function appId() {
+        var s = '';
+        try {
+            var root = window.NANO_ROOT || new URL('./', location.href).href;
+            var u = new URL(root, location.href);
+            s = u.origin + u.pathname.replace(/\/+$/, '');
+        } catch (e) { s = String(location.origin || '') + String(location.pathname || ''); }
+        var h = 2166136261;
+        for (var i = 0; i < s.length; i++) {
+            h ^= s.charCodeAt(i);
+            h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
+        }
+        return 'app_' + h.toString(36);
+    }
+    function deviceId() {
+        var id = '';
+        try { id = localStorage.getItem('nano_device_id') || ''; } catch (e) {}
+        if (!id) {
+            id = 'dev_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+            try { localStorage.setItem('nano_device_id', id); } catch (e) {}
+        }
+        return id || 'default';
+    }
+    function currentUserId() {
+        try {
+            var hd = JSON.parse(localStorage.getItem('nano_mask_data') || 'null');
+            if (hd && hd.currentMaskId) return String(hd.currentMaskId);
+            if (hd && Array.isArray(hd.masks) && hd.masks[0] && hd.masks[0].id) return String(hd.masks[0].id);
+        } catch (e) {}
+        return 'default';
+    }
     function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
     function maskKey(k) {
         k = String(k || '');
@@ -245,7 +276,7 @@
             fetch(base + '/peek/persona', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ token: getPeekToken(), chatId: String(selectedId || ''), system: sys })
+                body: JSON.stringify({ token: getPeekToken(), appId: appId(), deviceId: deviceId(), userId: currentUserId(), chatId: String(selectedId || ''), system: sys })
             }).catch(function () {});
         } catch (e) {}
     }

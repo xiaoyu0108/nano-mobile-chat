@@ -1046,7 +1046,7 @@
 
 
 <div class="home-shell pre-splash" id="homeShell">
-    <iframe id="homeFrame" src="html/home.html?v=20261020w" title="纳米桌面"></iframe>
+    <iframe id="homeFrame" src="html/home.html?v=20261021a" title="纳米桌面"></iframe>
 </div>
 <div class="app hidden-shell" id="legacyShell" aria-hidden="true">
   <div class="app-container">
@@ -1677,7 +1677,7 @@ setTimeout(function () {
             'books.html', 'couple-spaces.html', 'halo.html', 'offline.html', 'offline-setting.html',
             'heart-setting.html', 'market.html', 'mcp.html', 'settings.html', 'settings-desktop.html', 'settings-notifications.html', 'settings-prompts.html', 'settings-other.html', 'schedule.html',
             'phone.html', 'assistant.html', 'nano-setting.html', 'family-card.html', 'wallet.html', 'appstore.html',
-            'cycle.html', 'fanfic.html', 'fanfic-create.html', 'fanfic-read.html', 'imessage.html', 'memory palace.html', 'app-host.html', 'meet.html', 'mall.html'];
+            'cycle.html', 'fanfic.html', 'fanfic-create.html', 'fanfic-read.html', 'imessage.html', 'memory palace.html', 'app-host.html', 'meet.html', 'mall.html', 'qa.html'];
         // 其余页面（发现/更多/API/moments/ins/…）兜底：内容整体让到灵动岛下面
         function applySafeFallback(f) {
             try {
@@ -1721,7 +1721,7 @@ setTimeout(function () {
         setTimeout(applySafeTopToFrames, 300);
 
         // 构建版本号（改这里即可让所有同源页面刷新缓存）
-        var BUILD = 'nano-2026-10-19-02';
+        var BUILD = 'nano-2026-10-21-04';
 
         // 给同源页面 URL 追加构建版本号，避免浏览器/Service Worker 缓存到旧 HTML
         function pageUrl(u) {
@@ -1828,7 +1828,7 @@ setTimeout(function () {
                 showOverlayFrame();
                 // 同一个页面且已加载过 → 直接复用（切换更快）；正在后台生成 → 也必须复用（否则中断生成）
                 reuseOrLoadOverlayFrame(url);
-                const ownNavPages = ['chat.html', 'api.html', 'more.html', 'settings.html', 'settings-desktop.html', 'settings-notifications.html', 'settings-prompts.html', 'settings-other.html', 'beautify.html', 'schedule.html', 'worldbook.html', 'emoji.html', 'favorite.html', 'offline.html', 'offline-setting.html', 'moments.html', 'groups.html', 'group-setting.html', 'other.html', 'storage.html', 'backup.html', 'phone.html', 'ins.html', 'couple-spaces.html', 'halo.html', 'books.html', 'mask.html', 'character.html', 'inner-setting.html', 'nano-setting.html', 'ios-setting.html', 'assistant.html', 'family-card.html', 'wallet.html', 'appstore.html', 'cycle.html', 'fanfic.html', 'fanfic-create.html', 'fanfic-read.html', 'market.html', 'mcp.html', 'heart-setting.html', 'imessage.html', 'memory palace.html', 'app-host.html', 'meet.html', 'mall.html'];
+                const ownNavPages = ['chat.html', 'api.html', 'more.html', 'settings.html', 'settings-desktop.html', 'settings-notifications.html', 'settings-prompts.html', 'settings-other.html', 'beautify.html', 'schedule.html', 'worldbook.html', 'emoji.html', 'favorite.html', 'offline.html', 'offline-setting.html', 'moments.html', 'groups.html', 'group-setting.html', 'other.html', 'storage.html', 'backup.html', 'phone.html', 'ins.html', 'couple-spaces.html', 'halo.html', 'books.html', 'mask.html', 'character.html', 'inner-setting.html', 'nano-setting.html', 'ios-setting.html', 'assistant.html', 'family-card.html', 'wallet.html', 'appstore.html', 'cycle.html', 'fanfic.html', 'fanfic-create.html', 'fanfic-read.html', 'market.html', 'mcp.html', 'heart-setting.html', 'imessage.html', 'memory palace.html', 'app-host.html', 'meet.html', 'mall.html', 'qa.html'];
                 const hasOwnNav = ownNavPages.indexOf(pageName) !== -1;
                 const noOuterHeader = hasOwnNav || pageName === 'mall.html' || (showBack === false && !(title || ''));
                 if (noOuterHeader) {
@@ -3179,7 +3179,7 @@ setTimeout(function () {
             schedule: 'schedule.html', mcp: 'mcp.html', tide: 'cycle.html', fanfic: 'fanfic.html',
             store: 'appstore.html', book: 'worldbook.html', beauty: 'beautify.html', phone: 'phone.html',
             settings: 'settings.html', friend: 'character.html', album: 'moments.html',
-            editprofile: 'mask.html', send: 'chat.html'
+            editprofile: 'mask.html', send: 'chat.html', qa: 'qa.html'
         };
         function openNanoApp(id, name) {
             const u = APP_ROUTES[id];
@@ -4051,7 +4051,7 @@ setTimeout(function () {
                 'moments.html', 'halo.html', 'books.html', 'character.html', 'mask.html', 'favorite.html',
                 'emoji.html', 'worldbook.html', 'memory.html', 'phone.html', 'offline.html',
                 'offline-setting.html', 'couple-spaces.html', 'voice-call.html', 'video-call.html', 'api.html', 'cycle.html', 'fanfic.html', 'fanfic-create.html', 'fanfic-read.html',
-                'discover.html', 'more.html'];
+                'discover.html', 'more.html', 'qa.html'];
             var i = 0;
             function next() {
                 if (i >= pages.length) return;
@@ -4135,14 +4135,14 @@ setTimeout(function () {
 <script src="js/mem-link.js?v=20261006a"></script>
 <script src="js/aux-memory.js?v=20261020j"></script>
 <script src="js/user-scope.js?v=20261020j"></script>
-<script src="js/nano-notify.js?v=20261020j"></script>
-<script src="js/nano-push.js?v=20261020j"></script>
+<script src="js/nano-notify.js?v=20261021b"></script>
+<script src="js/nano-push.js?v=20261021b"></script>
 <script src="swipe-back.js"></script>
 <script src="js/keep-alive.js?v=20261021a"></script>
 <script src="js/char-takeover.js?v=20261020c"></script>
 <script src="js/screen-share.js?v=20261013e"></script>
-<script src="js/ios-bridge.js?v=20261018a"></script>
-<script src="js/auto-push-bridge.js?v=20261020k"></script>
+<script src="js/ios-bridge.js?v=20261021b"></script>
+<script src="js/auto-push-bridge.js?v=20261021b"></script>
 <script src="js/online-catchup.js?v=20261018c"></script>
 </div>
     <!-- 小号试探：居中弹窗（不暴露是谁）-->

@@ -24,6 +24,21 @@
         try { localStorage.setItem(key, JSON.stringify(value)); return true; } catch (e) { return false; }
     }
     function enc(s) { return encodeURIComponent(String(s == null ? '' : s)); }
+    // 与 nano-push.js / sw.js 完全一致的站点身份，用于隔离不同部署的 pending。
+    function appId() {
+        var s = '';
+        try {
+            var root = window.NANO_ROOT || new URL('./', location.href).href;
+            var u = new URL(root, location.href);
+            s = u.origin + u.pathname.replace(/\/+$/, '');
+        } catch (e) { s = String(location.origin || '') + String(location.pathname || ''); }
+        var h = 2166136261;
+        for (var i = 0; i < s.length; i++) {
+            h ^= s.charCodeAt(i);
+            h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
+        }
+        return 'app_' + h.toString(36);
+    }
     // 与 chat-core 使用同一个稳定 userId：没有面具时也绝不退化成空字符串，
     // 否则服务端按 default 存 pending，客户端却永远拉不到（点开通知没有内容）。
     function autoUserId() {
@@ -223,7 +238,7 @@
         lastPull = Date.now();
         var messages = [], moments = [];
         try {
-            var url = baseUrl() + '/auto/pending?userId=' + enc(uid) + '&deviceId=' + enc(autoDeviceId()) + '&token=' + enc(token());
+            var url = baseUrl() + '/auto/pending?userId=' + enc(uid) + '&deviceId=' + enc(autoDeviceId()) + '&appId=' + enc(appId()) + '&token=' + enc(token());
             var resp = await fetch(url, {
                 cache: 'no-store',
                 headers: { 'X-Push-Token': pushToken(), 'X-Peek-Token': peekToken() }
@@ -313,7 +328,7 @@
                         'X-Push-Token': pushToken(),
                         'X-Peek-Token': peekToken()
                     },
-                    body: JSON.stringify({ token: token(), userId: uid, deviceId: autoDeviceId(), messageIds: handledMsgIds, momentIds: handledMomentIds })
+                    body: JSON.stringify({ token: token(), userId: uid, deviceId: autoDeviceId(), appId: appId(), messageIds: handledMsgIds, momentIds: handledMomentIds })
                 });
             } catch (e) {}
         }
@@ -335,7 +350,7 @@
                 'X-Push-Token': pushToken(),
                 'X-Peek-Token': peekToken()
             },
-            body: JSON.stringify({ token: token(), userId: uid, chatId: String(chatId), active: !!active })
+            body: JSON.stringify({ token: token(), userId: uid, deviceId: autoDeviceId(), appId: appId(), chatId: String(chatId), active: !!active })
         }).catch(function () {});
     }
 
@@ -345,7 +360,7 @@
         setCallState(d.chatId || '', !!d.active);
     });
 
-    window.AutoPushBridge = { pull: pull, setCallState: setCallState };
+    window.AutoPushBridge = { pull: pull, setCallState: setCallState, appId: appId };
 
     // App 启动 / 回前台 / 点通知打开时都补拉一次
     setTimeout(function () { pull(true); }, 3000);

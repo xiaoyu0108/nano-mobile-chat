@@ -1742,8 +1742,21 @@ function pickRandom(arr, n) {
   return out;
 }
 
-async function buildIncomingDM(name, setting, recent) {
-  const sys = '你正在扮演一个真实的人，在社交 App 上给好友发私信。贴合人设与关系，口语化、自然，像真人发微信。' + ADULT_PLATFORM_NOTE;
+async function buildIncomingDM(name, setting, recent, charId) {
+  let sys = '你正在扮演一个真实的人，在社交 App 上给好友发私信。贴合人设与关系，口语化、自然，像真人发微信。' + ADULT_PLATFORM_NOTE;
+  // 与线上私聊 / Halo / iMessage 共用同一份长期记忆和世界书
+  try {
+    if (window.NanoMemLink && charId) {
+      const list = await window.NanoMemLink.readList(charId);
+      const mem = (list || []).filter(x => x && !x.groupId && (x.content || x.text)).slice(-24)
+        .map(x => (x.type ? '【' + x.type + '】' : '') + (x.content || x.text)).join('\n');
+      if (mem) sys += '\n【长期记忆 · 你与对方共同经历 / 已知的事】\n' + mem;
+    }
+    if (charId) {
+      const wb = loadWorldbookText([charId]);
+      if (wb) sys += '\n【世界书】\n' + wb;
+    }
+  } catch (e) {}
   let emojiNames = [];
   try { emojiNames = await getInsEmojiNames(); } catch (e) {}
   let emojiHint = '';
@@ -1775,7 +1788,7 @@ async function refreshFriendDMs(silent) {
     const recent = hist.filter(m => m.type !== 'post').slice(-6)
       .map(m => (m.from === 'out' ? userProfile.name : f.name) + '：' + (m.text || ''))
       .filter(Boolean).join('\n');
-    const text = await buildIncomingDM(f.name, char.setting || '', recent);
+    const text = await buildIncomingDM(f.name, char.setting || '', recent, char.id || f.id);
     let preview = await deliverIncoming(f.id, text);
     const st = await maybePushSticker(f.id, 0.4);
     if (st) preview = st;
@@ -3081,6 +3094,21 @@ async function generateChatReply(id, info) {
     (userPersonaBlock() ? (userPersonaBlock() + '\n') : '') +
     `你正在和「${userProfile.name}」私信聊天。请像真人发微信一样回复：可以一次发 1~3 条短消息，每条独占一行（每行会显示成一条独立消息）；口语化、自然，不要引号、不要旁白。如果对方分享了帖子，要读懂帖子内容并自然回应。`;
 
+  // 与线上私聊共用记忆库 / 世界书：贴人设、不失忆
+  try {
+    const cid = u.contactId || u.charId || u.id;
+    if (window.NanoMemLink && cid) {
+      const list = await window.NanoMemLink.readList(cid);
+      const mem = (list || []).filter(x => x && !x.groupId && (x.content || x.text)).slice(-28)
+        .map(x => (x.type ? '【' + x.type + '】' : '') + (x.content || x.text)).join('\n');
+      if (mem) sys += '\n\n【长期记忆 · 你与对方共同经历 / 已知的事】\n' + mem + '\n以上记忆要当作你真正经历过的事，自然沿用，不要否认，不要问“你什么时候告诉我的”。';
+    }
+    if (cid) {
+      const wb = loadWorldbookText([cid]);
+      if (wb) sys += '\n\n【世界书】\n' + wb;
+    }
+  } catch (e) {}
+
   let emojiNames = [];
   try { emojiNames = await getInsEmojiNames(); } catch (e) {}
   if (emojiNames.length) {
@@ -3114,6 +3142,19 @@ async function generateChatReply(id, info) {
   }
   if (refused) throw new Error(refused);
   await deliverIncoming(id, (reply || '').trim() || '……');
+  // 写回共享长期记忆：Instagram 私信也会被线上私聊 / Halo / iMessage 记住
+  try {
+    const cid = u.contactId || u.charId || u.id;
+    if (cid && window.NanoMemLink && window.NanoMemLink.append) {
+      const mine = (chatHistories[id] || []).filter(m => m.from === 'out' && m.text).slice(-1)[0] || {};
+      const said = String(mine.text || '').trim();
+      await window.NanoMemLink.append(cid, [{
+        id: 'ins_' + Date.now().toString(36), type: 'Instagram私信', chatId: String(cid),
+        content: (said ? ('在 Instagram 私信里，' + userProfile.name + '说：' + said + '；') : '在 Instagram 私信里，') + '你回复：' + String(reply || '').slice(0, 180),
+        ts: Date.now()
+      }]);
+    }
+  } catch (e) {}
 }
 
 // 引用：在输入框上方显示一个独立引用条，发送后变成引用气泡
