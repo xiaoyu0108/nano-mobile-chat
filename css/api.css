@@ -178,7 +178,7 @@ body {
     display: block;
 }
 
-/* ===== 温度调节（iOS 风格滑杆�?===== */
+/* 注释已清理（原文件编码损坏） */
 .temp-val {
     float: right;
     color: #007aff;
@@ -702,7 +702,7 @@ html body .nano-api .key-input-wrap .form-control {
     transform: scale(0.97);
 }
 
-/* 滑动白块指示�?*/
+/* 注释已清理（原文件编码损坏） */
 .tab-indicator {
     position: absolute;
     top: 4px;
@@ -720,7 +720,7 @@ html body .nano-api .key-input-wrap .form-control {
 .tab-panel { display: none; }
 .tab-panel.active { display: block; }
 
-/* ===== 预设�?===== */
+/* 注释已清理（原文件编码损坏） */
 .preset-row {
     display: flex;
     gap: 6px;
@@ -729,7 +729,7 @@ html body .nano-api .key-input-wrap .form-control {
 .preset-row .form-control { flex: 1; height: 30px; padding: 2px 10px; font-size: 13px; border-radius: 6px; }
 .preset-row .btn { flex-shrink: 0; background: #ff3b30; color: #fff; border: none; padding: 2px 10px; border-radius: 6px; font-size: 11px; height: 26px; }
 
-/* ===== 模型搜索�?===== */
+/* 注释已清理（原文件编码损坏） */
 .model-search-row {
     display: flex;
     gap: 6px;
@@ -739,7 +739,7 @@ html body .nano-api .key-input-wrap .form-control {
 .model-search-row .btn { flex-shrink: 0; height: 24px; font-size: 10px; padding: 1px 6px; }
 .model-select { height: 42px; font-size: 12px; padding: 2px 6px; border-radius: 4px; }
 
-/* ===== 分配�?===== */
+/* 注释已清理（原文件编码损坏） */
 .assign-tip {
     font-size: 12px;
     color: #8e8e93;
@@ -764,7 +764,7 @@ html body .nano-api .key-input-wrap .form-control {
     margin-bottom: 0;
 }
 
-/* 统一小尺寸输入（原文件里散落�?inline style 保留即可，这里做兜底�?*/
+/* 注释已清理（原文件编码损坏） */
 .form-label .hint { color: #8e8e93; font-weight: 400; font-size: 12px; }
 
 /* 密钥输入：用假圆点遮挡，但不触发系统安全键盘 */

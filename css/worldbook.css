@@ -1,4 +1,4 @@
-/* ===== worldbook.css - 世界书样�?===== */
+/* 注释已清理（原文件编码损坏） */
 /* 隐藏数字输入框的上下调节按钮 */
 input[type=number]::-webkit-outer-spin-button,
 input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none !important; margin: 0 !important; }
@@ -39,7 +39,7 @@ body {
     pointer-events: none !important;
 }
 
-/* 导航�?*/
+/* 注释已清理（原文件编码损坏） */
 .navbar {
     background: rgba(255, 255, 255, 0.96);
     backdrop-filter: saturate(180%) blur(20px);
@@ -100,7 +100,7 @@ body {
     font-weight: 500;
 }
 
-/* 搜索�?*/
+/* 注释已清理（原文件编码损坏） */
 .search-bar {
     padding: 10px 16px;
     background: #ffffff;
@@ -126,7 +126,7 @@ body {
     color: #8E8E93;
 }
 
-/* 内容�?*/
+/* 注释已清理（原文件编码损坏） */
 .content {
     flex: 1;
     overflow-y: auto;
@@ -142,7 +142,7 @@ body {
     gap: 20px 8px;
 }
 
-/* 文件�?*/
+/* 注释已清理（原文件编码损坏） */
 .folder-item {
     display: flex;
     flex-direction: column;
@@ -325,7 +325,7 @@ body {
     text-align: center;
 }
 
-/* 多�?*/
+/* 注释已清理（原文件编码损坏） */
 .file-item.multi .check,
 .folder-item.multi .check {
     position: absolute;
@@ -482,7 +482,7 @@ body {
     color: #fff;
 }
 
-/* 编辑�?*/
+/* 注释已清理（原文件编码损坏） */
 .page {
     position: absolute;
     inset: 0;
@@ -605,7 +605,7 @@ body {
     width: 0;
 }
 
-/* �?世界书编辑页：整页一起上下滑动（顶栏表单 + 搜索 + 条目区） */
+/* 注释已清理（原文件编码损坏） */
 #editPage {
     overflow-y: auto;
     overflow-x: hidden;
@@ -1025,7 +1025,7 @@ select.form-control {
     display: none;
 }
 
-/* 内页顶栏：留出灵动岛�?-safe-top 由主框架注入�?*/
+/* 注释已清理（原文件编码损坏） */
 .navbar { padding-top: calc(10px + var(--safe-top, 0px)); }
 
 /* ============================================================

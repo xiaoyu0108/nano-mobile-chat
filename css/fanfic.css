@@ -320,14 +320,14 @@ a { color: inherit; text-decoration: none; }
   .ff-p p { font-size: 16px; }
 }
 
-/* 章节标题里的章节名 */
+/* 娉ㄩ噴宸叉竻鐞嗭紙鍘熸枃浠剁紪鐮佹崯鍧忥級 */
 .ff-chapter-title span{
   font-size:.64em;
   font-weight:500;
   color:#707074;
   letter-spacing:0;
 }
-/* 评论区互动 */
+/* 娉ㄩ噴宸叉竻鐞嗭紙鍘熸枃浠剁紪鐮佹崯鍧忥級 */
 .ff-comments-head{
   display:flex;align-items:center;justify-content:space-between;gap:10px;
   margin-bottom:12px;
@@ -369,7 +369,7 @@ a { color: inherit; text-decoration: none; }
   background:#111;color:#fff;font-size:10px;font-weight:600;
 }
 .ff-comments-head .ff-comments-title{margin-bottom:0}
-/* 生成进度条 */
+/* 娉ㄩ噴宸叉竻鐞嗭紙鍘熸枃浠剁紪鐮佹崯鍧忥級 */
 .ff-loading-bar{
   width:180px;max-width:62vw;height:3px;border-radius:99px;
   background:#ececec;overflow:hidden;margin-top:2px;
@@ -379,7 +379,7 @@ a { color: inherit; text-decoration: none; }
   background:#111;transition:width .35s ease;
 }
 
-/* 段评气泡、章评折叠、放大评论区 */
+/* 娉ㄩ噴宸叉竻鐞嗭紙鍘熸枃浠剁紪鐮佹崯鍧忥級 */
 .ff-p-actions{display:flex;justify-content:flex-end;margin-top:5px}
 .ff-bubble-btn{
   display:inline-flex;align-items:center;gap:4px;
@@ -415,7 +415,7 @@ a { color: inherit; text-decoration: none; }
 .ff-reply-form button{height:36px;font-size:11px}
 .ff-chapter-comment{font-size:13px;line-height:1.7}
 
-/* 主页自定义库 */
+/* 娉ㄩ噴宸叉竻鐞嗭紙鍘熸枃浠剁紪鐮佹崯鍧忥級 */
 .ff-head-links{display:flex;align-items:center;gap:12px}
 .ff-modal{
   position:fixed;inset:0;z-index:2000;background:rgba(20,20,22,.34);

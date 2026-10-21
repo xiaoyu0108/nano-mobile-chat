@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<script src="../js/nano-runtime.js"></script>
+<script src="../js/nano-runtime.js?v=20261021c"></script>
 <meta charset="UTF-8">
 <script src="../js/nano-idb.js"></script>
 <script>window.__NANO_FONT_ONLY = true;</script>
@@ -520,6 +520,8 @@ const iconPaths = {
  imessage:'<path d="M4 3h16a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2h-5l-4 4v-4H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm2 5v2h12V8H6Zm0 4v2h8v-2H6Z"/>',
  peek:'<path d="M12 5c-5.5 0-9.5 5.5-10 7 1.5 3 5 7 10 7s8.5-4 10-7c-.5-1.5-4.5-7-10-7Zm0 11a4 4 0 1 1 0-8 4 4 0 0 1 0 8Zm0-2a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"/>',
  qa:'<path d="M11.6 3C7.96 3 5 5.96 5 9.6h3.2c0-1.88 1.52-3.4 3.4-3.4s3.4 1.52 3.4 3.4c0 1.3-.74 2.43-1.83 2.99-1.84.94-3.37 2.87-3.37 5.11V19h3.2v-1.3c0-.96.55-1.83 1.42-2.27 2.02-1.03 3.38-3.12 3.38-5.83C17.6 5.96 14.64 3 11.6 3ZM9.8 20.4h3.2V24H9.8z"/>',
+ pomodoro:'<path d="M12 4a8 8 0 1 0 8 8 8 8 0 0 0-8-8Zm0 3a5 5 0 1 1-5 5 5 5 0 0 1 5-5Zm-1 1.5V13l3.5 2 1-1.7L13 12V8.5ZM9 1h6v2H9z"/>',
+ nano:'<path d="M5 3h4.2l5.6 9.2V3H19v18h-4.2l-5.6-9.2V21H5V3Z"/>',
  market:'<path d="M4 3h16l2 5v2a3 3 0 0 1-2 2.8V21H4v-8.2A3 3 0 0 1 2 10V8l2-5Zm1.4 2L4.2 8h15.6l-1.2-3H5.4ZM6 13v6h12v-6H6Zm2 1h8v2H8v-2Z"/>',
  mcp:'<path d="M16 7V3h-2v4h-4V3H8v4H6v3c0 2.21 1.79 4 4 4h1v6h2v-6h1c2.21 0 4-1.79 4-4V7h-2Z"/>',
  tide:'<path d="M2 8c2.5 0 2.5-2 5-2s2.5 2 5 2 2.5-2 5-2 2.5 2 5 2v3c-2.5 0-2.5-2-5-2s-2.5 2-5 2-2.5-2-5-2-2.5 2-5 2V8Zm0 7c2.5 0 2.5-2 5-2s2.5 2 5 2 2.5-2 5-2 2.5 2 5 2v3c-2.5 0-2.5-2-5-2s-2.5 2-5 2-2.5-2-5-2-2.5 2-5 2v-3Z"/>',
@@ -537,7 +539,7 @@ const APPS=[
  {id:'chat',name:'聊天',icon:'chat'},{id:'api',name:'API',icon:'api'},{id:'couple',name:'情侣空间',icon:'couple'},
  {id:'halo',name:'Halo',icon:'halo'},{id:'instagram',name:'Instagram',icon:'instagram'},{id:'together',name:'Books',icon:'together'},
  {id:'music',name:'音乐',icon:'music'},{id:'memory',name:'记忆宫殿',icon:'memory'},{id:'imessage',name:'iMessage',icon:'imessage'},
- {id:'qa',name:'Q&A',icon:'qa'},{id:'peek',name:'窥屏',icon:'peek'},{id:'market',name:'共享集市',icon:'market'},{id:'shop',name:'商城',icon:'shop'},{id:'schedule',name:'日程',icon:'schedule'},{id:'mcp',name:'MCP',icon:'mcp'},
+ {id:'qa',name:'Q&A',icon:'qa'},{id:'pomodoro',name:'番茄钟',icon:'pomodoro'},{id:'nano',name:'Nano',icon:'nano'},{id:'peek',name:'窥屏',icon:'peek'},{id:'market',name:'共享集市',icon:'market'},{id:'shop',name:'商城',icon:'shop'},{id:'schedule',name:'日程',icon:'schedule'},{id:'mcp',name:'MCP',icon:'mcp'},
  {id:'tide',name:'月潮',icon:'tide'},{id:'fanfic',name:'同人文',icon:'fanfic'},{id:'store',name:'应用商店',icon:'store'},
  {id:'book',name:'世界书',icon:'book'},{id:'beauty',name:'美化',icon:'beauty'},{id:'phone',name:'查手机',icon:'phone'},
  {id:'settings',name:'设置',icon:'settings'}
@@ -877,12 +879,14 @@ function defaultState(){
   row(2,['fanfic','store','book','beauty'],0,2);
   put(2,bt('strip1-note'),0,3);
   put(2,bt('gray-pink'),0,4);
-  /* 第4页：窥屏 + Q&A */
-  put(3,APPITEM.peek,0,0);put(3,APPITEM.qa,1,0);
-  put(3,wd('bubbles'),2,0);
+  /* 第4页：窥屏 + Q&A + 番茄钟 */
+  put(3,APPITEM.peek,0,0);put(3,APPITEM.qa,1,0);put(3,APPITEM.pomodoro,2,0);put(3,APPITEM.nano,3,0);
   put(3,wd('online'),0,1);
   put(3,wd('photo',2,1),2,2);
   put(3,wd('music'),0,3);
+  /* 第5页：对话小组件 + Nano 助手 */
+  S.pages.push([]);
+  put(4,wd('bubbles'),0,0);
 }
 function compactPages(list){
   (list||S.pages).forEach(items=>{
@@ -1014,6 +1018,26 @@ async function loadState(){
           peekPage.push(market);
         }
       }
+    }
+  }
+  /* 新增番茄钟：尽量放在 Q&A 右侧 */
+  {
+    const pomo=S.pages.flat().find(o=>o.id==='pomodoro');
+    const qa=S.pages.flat().find(o=>o.id==='qa');
+    const pg=qa&&S.pages.find(p=>p.includes(qa));
+    if(pomo&&qa&&pg&&pg.includes(pomo)){
+      const spot=findSpot(pg.filter(o=>o!==pomo),1,1,qa.c+1,qa.r,pomo.id);
+      if(spot){pomo.c=spot.c;pomo.r=spot.r}
+    }
+  }
+  /* Nano 独立 App：尽量放在番茄钟右侧 */
+  {
+    const nano=S.pages.flat().find(o=>o.id==='nano');
+    const pomo=S.pages.flat().find(o=>o.id==='pomodoro');
+    const pg=pomo&&S.pages.find(p=>p.includes(pomo));
+    if(nano&&pomo&&pg&&pg.includes(nano)){
+      const spot=findSpot(pg.filter(o=>o!==nano),1,1,pomo.c+1,pomo.r,nano.id);
+      if(spot){nano.c=spot.c;nano.r=spot.r}
     }
   }
   S.pages.forEach(pg=>pg.forEach(migrateWidgetCopy));

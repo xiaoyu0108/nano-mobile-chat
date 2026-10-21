@@ -169,7 +169,7 @@ body::-webkit-scrollbar {
     letter-spacing: 0.2px;
 }
 
-/* ===== iOS风格列表�?===== */
+/* 注释已清理（原文件编码损坏） */
 .list-group {
     background-color: #FFFFFF;
     border-radius: 10px;
@@ -239,7 +239,7 @@ body::-webkit-scrollbar {
     height: 10px;
 }
 
-/* ===== iOS 开�?===== */
+/* 注释已清理（原文件编码损坏） */
 .ios-switch {
     appearance: none;
     width: 44px;
@@ -430,7 +430,7 @@ input[type="file"] {
     padding: 8px 0;
 }
 
-/* ===== 下拉选择�?===== */
+/* 注释已清理（原文件编码损坏） */
 .item-right select {
     font-size: 13px;
     color: var(--text-secondary);
@@ -468,7 +468,7 @@ input[type="file"] {
     background-color: #F2F2F7;
 }
 
-/* ===== 思维链预设弹窗：下拉/输入更大，操作按钮更�?===== */
+/* 注释已清理（原文件编码损坏） */
 .cot-modal { width: 342px; }
 .cot-modal .modal-body { padding: 10px 16px 16px 16px; }
 .cot-row {

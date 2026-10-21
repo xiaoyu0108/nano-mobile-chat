@@ -11,6 +11,11 @@ const json = (o, s = 200) =>
 function subId(endpoint) {
   return 'sub:' + btoa(endpoint).replace(/[^a-zA-Z0-9]/g, '').slice(-48);
 }
+// 新订阅按 app/device/user 分层存：getSubs 只 list 当前作用域，
+// 不再每次 list 全站所有订阅再逐条 get（老实现用户一多就读写爆量）。
+function subKey(endpoint, appId, deviceId, userId) {
+  return 'sub2:' + cleanAppId(appId) + ':' + cleanDeviceId(deviceId) + ':' + cleanUserId(userId) + ':' + subId(endpoint).slice(4);
+}
 
 // ===== 隔离维度：appId（站点/部署）+ deviceId（设备/浏览器）+ userId（人设/用户）=====
 // 客户端 NanoScope/nano-push 会用「站点根目录的哈希」生成 appId，旧客户端没有 appId 时记为 legacy。
@@ -33,6 +38,40 @@ function autoKey(kind, appId, deviceId, userId) {
 }
 function autoActiveKey(appId, deviceId) {
   return 'auto2:active:' + cleanAppId(appId) + ':' + cleanDeviceId(deviceId);
+}
+// 内存缓存：/auto/pending 每次回前台都会调，不能每次都写一次 KV。
+// 同一 isolate 内 10 分钟内重复请求直接跳过；跨 isolate 最坏也只是多写一次。
+const ACTIVE_CACHE = new Map();
+async function touchActive(env, appId, deviceId, userId, force) {
+  appId = cleanAppId(appId); deviceId = cleanDeviceId(deviceId); userId = cleanUserId(userId);
+  const cacheKey = appId + ':' + deviceId;
+  const now = Date.now();
+  const hit = ACTIVE_CACHE.get(cacheKey);
+  if (!force && hit && hit.userId === userId && now - hit.checkedAt < 10 * 60 * 1000) return;
+  try {
+    const key = autoActiveKey(appId, deviceId);
+    const raw = await env.PUSH_KV.get(key);
+    if (raw && !force) {
+      let old = {};
+      try { old = JSON.parse(raw) || {}; } catch (e) { old = {}; }
+      // 同一用户且 6 小时内刚写过：只更新内存缓存，不再写 KV。
+      if (String(old.userId || '') === userId && now - (Number(old.at) || 0) < 6 * 3600 * 1000) {
+        ACTIVE_CACHE.set(cacheKey, { userId: userId, checkedAt: now });
+        return;
+      }
+    }
+    await env.PUSH_KV.put(key, JSON.stringify({
+      userId: userId, appId: appId, deviceId: deviceId, at: now
+    }), { expirationTtl: 60 * 60 * 24 * 7 });
+    ACTIVE_CACHE.set(cacheKey, { userId: userId, checkedAt: now });
+  } catch (e) {}
+}
+function autoConfigSig(cfg) {
+  try {
+    const c = Object.assign({}, cfg || {});
+    delete c.updatedAt;
+    return JSON.stringify(c);
+  } catch (e) { return ''; }
 }
 function peekBase(appId, chatId) {
   const a = cleanAppId(appId);
@@ -516,12 +555,22 @@ async function generateAutoMoments(env, cfg, busyChatId, maxChars) {
   });
   return out;
 }
+function pushText(v, fallback) {
+  let s = '';
+  if (v && typeof v === 'object') s = v.body || v.text || v.message || v.content || v.title || '';
+  else s = (v == null ? '' : v);
+  s = String(s || '').split('||')[0].trim();
+  return s || String(fallback || '');
+}
 async function sendBarkKey(env, key, payload) {
   key = String(key || '').trim();
   if (!key) return false;
   const base = key.indexOf('http') === 0 ? key.replace(/\/+$/, '') : ('https://api.day.app/' + encodeURIComponent(key));
-  let url = base + '/' + encodeURIComponent(payload.title || 'Nano') + '/' + encodeURIComponent(String(payload.body || '').slice(0, 150));
-  const q = ['group=' + encodeURIComponent(payload.channel || 'Nano'), 'level=passive'];
+  const title = pushText(payload.title, 'Nano');
+  const body = pushText(payload.body, '你有一条新消息').slice(0, 150);
+  let url = base + '/' + encodeURIComponent(title) + '/' + encodeURIComponent(body);
+  // active 才会在锁屏/后台弹横幅；sound=none 关掉提示音（避免保活时又响又震）
+  const q = ['group=' + encodeURIComponent(payload.channel || 'Nano'), 'level=active', 'sound=none'];
   if (payload.target) {
     const app = String(env.APP_URL || 'https://xiaoyu0108.github.io/nano-mobile-chat/').replace(/\/+$/, '');
     q.push('url=' + encodeURIComponent(app + '/index.html?open=' + encodeURIComponent(payload.target)));
@@ -573,7 +622,14 @@ async function runAutoPush(env, appId, deviceId, userId) {
   let state = {};
   try { const s = await env.PUSH_KV.get(autoKey('state', appId, deviceId, userId)); state = s ? JSON.parse(s) : {}; } catch (e) { state = {}; }
   const now = Date.now();
-  const subs = await getSubs(env, userId, deviceId, appId);
+  // 订阅只在真的要发消息/朋友圈时才查：cron 每 5 分钟跑一次，
+  // 如果每轮都 list 一次订阅，用户一多就会把 KV 的「list 次数」额度打满。
+  let subsCache = null;
+  async function subsOnce() {
+    if (subsCache) return subsCache;
+    subsCache = await getSubs(env, userId, deviceId, appId);
+    return subsCache;
+  }
   let busyChatId = '';
   try { busyChatId = String(await env.PUSH_KV.get('auto2:call:' + cleanAppId(appId) + ':' + userId) || ''); } catch (e) {}
   let dirty = false;
@@ -593,11 +649,12 @@ async function runAutoPush(env, appId, deviceId, userId) {
       list = list.concat(msgs).slice(-20);
       await env.PUSH_KV.put(key, JSON.stringify(list));
       usedChars += msgs.length;
+      const subs = await subsOnce();
       for (const m of msgs) {
         const icon = /^https?:\/\//i.test(String(m.avatar || '')) ? String(m.avatar) : '';
         await autoNotify(env, cfg, subs, {
-          title: m.name,
-          body: String(m.bubbles[0] || m.text || '').split('||')[0],
+          title: pushText(m.name, 'TA'),
+          body: pushText(m.bubbles && m.bubbles[0] || m.text, '你有一条新消息'),
           target: 'chat:' + m.chatId,
           tag: 'auto-' + m.chatId,
           renotify: false,
@@ -624,9 +681,10 @@ async function runAutoPush(env, appId, deviceId, userId) {
         try { const old = await env.PUSH_KV.get(key); list = old ? JSON.parse(old) : []; } catch (e) { list = []; }
         list = list.concat(posts).slice(-30);
         await env.PUSH_KV.put(key, JSON.stringify(list));
+        const subs = await subsOnce();
         await autoNotify(env, cfg, subs, {
           title: '朋友圈',
-          body: posts[0].author + ' 发了新动态',
+          body: pushText(posts[0] && (posts[0].author + ' 发了新动态'), '朋友圈有新动态'),
           target: 'moments',
           tag: 'auto-moments',
           renotify: false,
@@ -672,6 +730,274 @@ async function peekModel(env, system, text, image, history) {
   return c ? String(c).trim() : null;
 }
 
+// ===== 分享链接解析（服务端抓取，绕开浏览器 CORS；只允许常见分享站点，避免变成开放代理） =====
+const LINK_HOST_RE = /(^|\.)(xiaohongshu\.com|xhslink\.[a-z.]+|xhs\.cn|douyin\.com|iesdouyin\.com|taobao\.com|tmall\.com|tb\.cn|jd\.com|3\.cn|bilibili\.com|b23\.tv|weibo\.com|weibo\.cn)$/i;
+function linkHostAllowed(host) {
+  return LINK_HOST_RE.test(String(host || '').toLowerCase());
+}
+function linkDecodeHtml(s) {
+  return String(s || '')
+    .replace(/&quot;/g, '"').replace(/&#0?39;/g, "'").replace(/&#x27;/gi, "'")
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ')
+    .replace(/\\u([\dA-Fa-f]{4})/g, function (_, h) { try { return String.fromCharCode(parseInt(h, 16)); } catch (e) { return ''; } })
+    .replace(/\s+/g, ' ').trim();
+}
+function linkAbsImg(u) {
+  u = linkDecodeHtml(String(u || '')).replace(/\\\//g, '/').replace(/&amp;/g, '&');
+  if (!u) return '';
+  if (u.indexOf('//') === 0) u = 'https:' + u;
+  if (/^http:\/\//i.test(u)) u = 'https://' + u.slice(7);
+  if (!/^https?:\/\//i.test(u)) return '';
+  return u;
+}
+function linkCleanText(s) {
+  return String(s || '')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+}
+function parseLinkPage(html) {
+  html = String(html || '');
+  function pick(re) { const m = html.match(re); return m ? m[1] : ''; }
+  function jsonField(name) {
+    const m = html.match(new RegExp('"' + name + '"\\s*:\\s*"([^"]{2,})"', 'i'));
+    return m ? linkDecodeHtml(String(m[1]).replace(/\\n/g, ' ')) : '';
+  }
+  const docTitle = pick(/<meta[^>]+(?:property|name)=["'](?:og:title|twitter:title)["'][^>]*content=["']([\s\S]*?)["']/i)
+    || pick(/<meta[^>]+content=["']([\s\S]*?)["'][^>]*(?:property|name)=["'](?:og:title|twitter:title)["']/i)
+    || pick(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  const jsonTitle = jsonField('title') || jsonField('noteTitle') || jsonField('displayTitle');
+  // 小红书/抖音的 <title> 往往只是站点名（如「小红书」），真正标题在页面 JSON 的 title 里。
+  let title = docTitle;
+  if (!title || /^(小红书|抖音|快手|微博|哔哩哔哩|B站)/i.test(linkDecodeHtml(title))) {
+    title = jsonTitle || title;
+  }
+  let desc = pick(/<meta[^>]+(?:property|name)=["'](?:og:description|description|twitter:description)["'][^>]*content=["']([\s\S]*?)["']/i)
+    || pick(/<meta[^>]+content=["']([\s\S]*?)["'][^>]*(?:property|name)=["'](?:og:description|description|twitter:description)["']/i)
+    || jsonField('desc')
+    || jsonField('description');
+  const imgs = [];
+  const seen = {};
+  function addImg(u) {
+    u = linkAbsImg(u);
+    if (!u || seen[u]) return;
+    seen[u] = 1;
+    if (imgs.length < 6) imgs.push(u);
+  }
+  let re = /<meta[^>]+(?:property|name)=["'](?:og:image(?::secure_url)?|twitter:image)["'][^>]*content=["']([^"']+)["']/gi, m;
+  while ((m = re.exec(html))) addImg(m[1]);
+  re = /<meta[^>]+content=["']([^"']+)["'][^>]*(?:property|name)=["'](?:og:image(?::secure_url)?|twitter:image)["']/gi;
+  while ((m = re.exec(html))) addImg(m[1]);
+  // 小红书笔记图：imageList 里 H5_DTL 的 url（比作者头像更适合做卡片缩略图）
+  re = /"imageScene"\s*:\s*"H5_DTL"[\s\S]{0,240}?"url"\s*:\s*"([^"]+)"/gi;
+  while ((m = re.exec(html))) addImg(m[1]);
+  re = /"(?:picUrl|imageUrl|image|img|pic|pics|images)"\s*:\s*"([^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/gi;
+  while ((m = re.exec(html))) addImg(m[1]);
+  const visible = linkCleanText(html.replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<style[\s\S]*?<\/style>/gi, ' '));
+  let price = '';
+  const pm = html.match(/"(?:price|priceText|priceShow|salePrice|promotionPrice)"\s*:\s*"?\s*[¥￥]?\s*([\d.]+)/i)
+    || html.match(/[¥￥]\s*([\d.]+)/);
+  if (pm && pm[1]) price = pm[1];
+  title = linkDecodeHtml(title).slice(0, 120);
+  desc = linkDecodeHtml(desc).replace(/\s+/g, ' ').slice(0, 180);
+  const body = [jsonTitle, desc, jsonField('desc'), visible].filter(Boolean).join('\n').slice(0, 7000);
+  return { title: title, desc: desc, content: body, images: imgs, price: price };
+}
+function linkLooksBlocked(finalUrl, data) {
+  if (/website-login|captcha|verify|\/login|signin/i.test(String(finalUrl || ''))) return true;
+  const title = String((data && data.title) || '');
+  const content = String((data && data.content) || '');
+  if (/^(小红书|抖音|快手|微博|哔哩哔哩|B站)\s*$/i.test(title) && content.replace(/\s+/g, '').length < 50) return true;
+  if (/滑动验证|请登录|安全验证|访问异常|captcha|想了解些什么|登录后|扫码登录|登录小红书/i.test(content)) return true;
+  return false;
+}
+// 小红书短链被跳到登录/滑块页时，redirectPath 里仍然带着笔记 id 和 xsec_token。
+// 用 /explore/<id> 再试一次，部分机房 IP 能直接拿到公开笔记页。
+function xhsDirectUrls(finalUrl) {
+  const out = [];
+  try {
+    const fu = new URL(String(finalUrl || ''));
+    const rp = fu.searchParams.get('redirectPath') || '';
+    if (!rp) return out;
+    const direct = new URL(rp.replace(/^http:/i, 'https:'));
+    const m = direct.pathname.match(/\/(?:item|explore)\/([0-9a-f]+)/i);
+    if (!m) return out;
+    const id = m[1];
+    const token = direct.searchParams.get('xsec_token') || fu.searchParams.get('xsec_token') || '';
+    const q = token ? ('?xsec_token=' + encodeURIComponent(token) + '&xsec_source=app_share') : '';
+    out.push('https://www.xiaohongshu.com/explore/' + id + q);
+    out.push('https://www.xiaohongshu.com/discovery/item/' + id + q);
+  } catch (e) {}
+  return out;
+}
+function parseJinaText(raw) {
+  raw = String(raw || '');
+  const tm = raw.match(/^\s*Title\s*:\s*(.+)$/im);
+  const dm = raw.match(/^\s*(?:Description|Summary)\s*:\s*([\s\S]*?)(?=^\s*(?:URL Source|Published Time|Markdown Content|Content)\s*:|$)/im);
+  let body = raw.replace(/^(?:Title|URL Source|Published Time|Description|Summary|Markdown Content|Content):.*$/gim, '').trim();
+  const imgs = [], seen = {};
+  const ire = /!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/gi;
+  let m;
+  while ((m = ire.exec(raw))) {
+    const u = linkAbsImg(m[1]);
+    if (u && !seen[u]) { seen[u] = 1; imgs.push(u); if (imgs.length >= 6) break; }
+  }
+  return {
+    title: linkDecodeHtml((tm && tm[1]) || '').slice(0, 120),
+    desc: linkDecodeHtml((dm && dm[1]) || '').replace(/\s+/g, ' ').slice(0, 180),
+    content: body.slice(0, 7000),
+    images: imgs,
+    price: ''
+  };
+}
+async function fetchTextWithTimeout(target, headers, ms) {
+  const controller = new AbortController();
+  const timer = setTimeout(function () { try { controller.abort(); } catch (e) {} }, ms);
+  try {
+    const resp = await fetch(target, { redirect: 'follow', signal: controller.signal, headers: headers });
+    if (!resp || !resp.ok) return null;
+    return { resp: resp, text: await resp.text() };
+  } catch (e) {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+async function fetchLinkPreview(url) {
+  let u;
+  try { u = new URL(String(url || '')); } catch (e) { return null; }
+  if (u.protocol !== 'https:' || !linkHostAllowed(u.hostname)) return null;
+  const mobileUA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
+  const first = await fetchTextWithTimeout(u.href, {
+    'User-Agent': mobileUA,
+    'Accept': 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8',
+    'Accept-Language': 'zh-CN,zh;q=0.9'
+  }, 10000);
+  if (first && first.text) {
+    const data = parseLinkPage(first.text);
+    if ((data.title || data.content) && !linkLooksBlocked(first.resp.url || u.href, data)) {
+      return Object.assign({ url: first.resp.url || u.href }, data);
+    }
+  }
+  // 小红书被跳到登录/滑块页：用 redirectPath 里的笔记 id + xsec_token 换 /explore 地址再试。
+  const directUrls = xhsDirectUrls(first && first.resp ? first.resp.url : u.href);
+  for (const direct of directUrls) {
+    const r = await fetchTextWithTimeout(direct, {
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+      'Accept': 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'zh-CN,zh;q=0.9',
+      'Referer': 'https://www.xiaohongshu.com/'
+    }, 10000);
+    if (r && r.text) {
+      const data = parseLinkPage(r.text);
+      if ((data.title || data.content) && !linkLooksBlocked(r.resp.url || direct, data)) {
+        return Object.assign({ url: r.resp.url || direct, via: 'xhs-direct' }, data);
+      }
+    }
+  }
+  // Cloudflare 的数据中心 IP 经常被小红书跳到登录/滑块验证页；此时换 r.jina.ai 服务端读取。
+  const j = await fetchTextWithTimeout('https://r.jina.ai/' + u.href, {
+    'User-Agent': mobileUA,
+    'Accept': 'text/plain, text/markdown;q=0.9, */*;q=0.8',
+    'Accept-Language': 'zh-CN,zh;q=0.9'
+  }, 15000);
+  if (j && j.text) {
+    const data = parseJinaText(j.text);
+    if ((data.title || data.content) && !linkLooksBlocked('', data)) {
+      return Object.assign({ url: u.href, via: 'jina' }, data);
+    }
+  }
+  return null;
+}
+
+// ===== 实时热点（公开数据，不写 KV；给 MCP 的 get_hot_topics 用） =====
+const HOT_LABEL = { weibo: '微博', douyin: '抖音', baidu: '百度', toutiao: '今日头条', bilibili: 'B站' };
+const HOT_DESKTOP_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+const HOT_MOBILE_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
+function hotItem(title, hot, url) {
+  title = String(title || '').replace(/\s+/g, ' ').trim();
+  if (!title) return null;
+  return { title: title.slice(0, 160), hot: Number(hot) || 0, url: String(url || '') };
+}
+async function hotWeibo() {
+  const r = await fetchTextWithTimeout('https://weibo.com/ajax/statuses/hot_band', {
+    'User-Agent': HOT_DESKTOP_UA, 'Referer': 'https://weibo.com/', 'Accept': 'application/json, text/plain, */*'
+  }, 7000);
+  if (!r) return [];
+  const j = JSON.parse(r.text);
+  const list = (j.data && j.data.band_list) || [];
+  return list.map(function (x) {
+    return hotItem(x.word || x.note, x.num, 'https://s.weibo.com/weibo?q=' + encodeURIComponent(x.word_scheme || x.word || ''));
+  }).filter(Boolean).slice(0, 20);
+}
+async function hotDouyin() {
+  const r = await fetchTextWithTimeout('https://www.iesdouyin.com/web/api/v2/hotsearch/billboard/word/', {
+    'User-Agent': HOT_MOBILE_UA, 'Referer': 'https://www.douyin.com/', 'Accept': 'application/json, text/plain, */*'
+  }, 7000);
+  if (!r) return [];
+  const j = JSON.parse(r.text);
+  return ((j.word_list) || []).map(function (x) {
+    return hotItem(x.word, x.hot_value, 'https://www.douyin.com/search/' + encodeURIComponent(x.word || ''));
+  }).filter(Boolean).slice(0, 20);
+}
+async function hotBaidu() {
+  const r = await fetchTextWithTimeout('https://top.baidu.com/api/board?platform=wise&tab=realtime', {
+    'User-Agent': HOT_MOBILE_UA, 'Referer': 'https://top.baidu.com/', 'Accept': 'application/json, text/plain, */*'
+  }, 7000);
+  if (!r) return [];
+  const j = JSON.parse(r.text);
+  const out = [], seen = {};
+  (function walk(o) {
+    if (!o || out.length >= 20) return;
+    if (Array.isArray(o)) { o.forEach(walk); return; }
+    if (typeof o !== 'object') return;
+    if (typeof o.word === 'string' && o.word.trim() && !seen[o.word]) {
+      seen[o.word] = 1;
+      out.push(hotItem(o.word, o.hotScore || o.hot || 0, o.url || ('https://www.baidu.com/s?wd=' + encodeURIComponent(o.word))));
+    }
+    Object.keys(o).forEach(function (k) { walk(o[k]); });
+  })(j);
+  return out.filter(Boolean).slice(0, 20);
+}
+async function hotToutiao() {
+  const r = await fetchTextWithTimeout('https://www.toutiao.com/hot-event/hot-board/?origin=toutiao_pc', {
+    'User-Agent': HOT_DESKTOP_UA, 'Referer': 'https://www.toutiao.com/', 'Accept': 'application/json, text/plain, */*'
+  }, 7000);
+  if (!r) return [];
+  const j = JSON.parse(r.text);
+  return ((j.data) || []).map(function (x) {
+    return hotItem(x.Title, x.HotValue, x.Url);
+  }).filter(Boolean).slice(0, 20);
+}
+async function hotBilibili() {
+  const r = await fetchTextWithTimeout('https://s.search.bilibili.com/main/hotword', {
+    'User-Agent': HOT_DESKTOP_UA, 'Referer': 'https://www.bilibili.com/', 'Accept': 'application/json, text/plain, */*'
+  }, 7000);
+  if (!r) return [];
+  const j = JSON.parse(r.text);
+  return ((j.list) || []).map(function (x) {
+    const word = x.show_name || x.keyword || '';
+    return hotItem(word, x.heat_score, 'https://search.bilibili.com/all?keyword=' + encodeURIComponent(word));
+  }).filter(Boolean).slice(0, 20);
+}
+const HOT_SOURCES = { weibo: hotWeibo, douyin: hotDouyin, baidu: hotBaidu, toutiao: hotToutiao, bilibili: hotBilibili };
+async function getHotTopics(source) {
+  source = String(source || '').trim().toLowerCase();
+  const keys = (source && HOT_SOURCES[source]) ? [source] : Object.keys(HOT_SOURCES);
+  return await Promise.all(keys.map(async function (key) {
+    try {
+      const items = await HOT_SOURCES[key]();
+      return { source: key, label: HOT_LABEL[key] || key, items: items || [] };
+    } catch (e) {
+      return { source: key, label: HOT_LABEL[key] || key, items: [], error: true };
+    }
+  }));
+}
+
 export default {
   async fetch(request, env) {
     if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
@@ -704,6 +1030,25 @@ export default {
     let pathname = __reqUrl.pathname;
     if (pathname.indexOf('/nanoapi') === 0) pathname = pathname.slice('/nanoapi'.length) || '/';
 
+    // 分享链接解析：GET /link/preview?url=https://xhslink.cn/...
+    // 只抓白名单站点，结果不写 KV，避免占用 KV 写入额度。
+    if (pathname === '/link/preview' && request.method === 'GET') {
+      if (!autoOk(request, env, null)) return json({ ok: false, error: 'unauthorized' }, 401);
+      const target = new URL(request.url).searchParams.get('url') || '';
+      const data = await fetchLinkPreview(target);
+      // 反爬/登录页属于预期情况，用 200 + ok:false 返回，避免前端控制台出现一堆 502。
+      if (!data) return json({ ok: false, error: 'blocked' }, 200);
+      return json(Object.assign({ ok: true }, data));
+    }
+
+    // 实时热点：GET /hot?source=weibo|douyin|baidu|toutiao|bilibili
+    // 不写 KV，给 MCP 的 get_hot_topics 工具用。
+    if (pathname === '/hot' && request.method === 'GET') {
+      const source = new URL(request.url).searchParams.get('source') || '';
+      const sources = await getHotTopics(source);
+      return json({ ok: true, updatedAt: Date.now(), sources: sources });
+    }
+
     // 公开的 VAPID 公钥：App 里一键开启 Web Push 时读取（私钥永远不返回）
     // 没配置 VAPID_* secrets 时自动生成并存入 KV，用户不需要手动生成。
     if (pathname === '/vapid' && request.method === 'GET') {
@@ -723,7 +1068,9 @@ export default {
       subscription.appId = cleanAppId(body.appId);
       subscription.ua = String(body.ua || '');
       subscription.platform = String(body.platform || '');
-      await env.PUSH_KV.put(subId(subscription.endpoint), JSON.stringify(subscription));
+      await env.PUSH_KV.put(subKey(subscription.endpoint, subscription.appId, subscription.deviceId, subscription.userId), JSON.stringify(subscription));
+      // 删除旧的全局订阅 key，避免升级后同一设备收到两遍推送。
+      try { await env.PUSH_KV.delete(subId(subscription.endpoint)); } catch (e) {}
       return json({ ok: true });
     }
 
@@ -869,19 +1216,21 @@ export default {
       const deviceId = cleanDeviceId(body.deviceId);
       const userId = cleanUserId(cfg.user.id || body.userId);
       const cfgKey = autoKey('config', appId, deviceId, userId);
-      await env.PUSH_KV.put(cfgKey, JSON.stringify(cfg));
-      try {
-        await env.PUSH_KV.put(autoActiveKey(appId, deviceId), JSON.stringify({
-          userId: userId,
-          appId: appId,
-          deviceId: deviceId,
-          at: Date.now()
-        }), { expirationTtl: 60 * 60 * 24 * 7 });
-      } catch (e) {}
+      // 配置没变就不写 KV：客户端 10 分钟同步一次，每次都写会很快打满免费额度。
+      let oldCfgRaw = '';
+      try { oldCfgRaw = await env.PUSH_KV.get(cfgKey); } catch (e) { oldCfgRaw = ''; }
+      let cfgChanged = true;
+      if (oldCfgRaw) {
+        try { cfgChanged = autoConfigSig(JSON.parse(oldCfgRaw)) !== autoConfigSig(cfg); } catch (e) { cfgChanged = true; }
+      }
+      if (cfgChanged) await env.PUSH_KV.put(cfgKey, JSON.stringify(cfg));
+      // active 只在切换用户/超过 6 小时时才写，不在每次同步时重复写。
+      try { await touchActive(env, appId, deviceId, userId, false); } catch (e) {}
       const now = Date.now();
       const stateKey = autoKey('state', appId, deviceId, userId);
       let state = {};
-      try { const s = await env.PUSH_KV.get(stateKey); state = s ? JSON.parse(s) : {}; } catch (e) { state = {}; }
+      let stateRaw = '';
+      try { stateRaw = await env.PUSH_KV.get(stateKey); state = stateRaw ? JSON.parse(stateRaw) : {}; } catch (e) { state = {}; stateRaw = ''; }
       const reset = !!body.reset;
       if (cfg.msgEnabled) {
         const intervalMs = cfg.intervalMinutes * 60 * 1000;
@@ -910,7 +1259,11 @@ export default {
         state.nextMomentAt = 0;
         state.momentHours = cfg.momentIntervalHours;
       }
-      await env.PUSH_KV.put(stateKey, JSON.stringify(state));
+      let stateChanged = true;
+      if (stateRaw) {
+        try { stateChanged = JSON.stringify(JSON.parse(stateRaw)) !== JSON.stringify(state); } catch (e) { stateChanged = true; }
+      }
+      if (stateChanged) await env.PUSH_KV.put(stateKey, JSON.stringify(state));
       return json({ ok: true, enabled: cfg.enabled, appId: appId, deviceId: deviceId, userId: userId, nextMsgAt: state.nextMsgAt || 0, nextMomentAt: state.nextMomentAt || 0 });
     }
 
@@ -968,10 +1321,10 @@ export default {
       const appId = cleanAppId(sp.get('appId'));
       const userId = cleanUserId(sp.get('userId'));
       const deviceId = cleanDeviceId(sp.get('deviceId'));
-      // 标记这台设备当前活跃的是哪个用户，服务端只给活跃用户生成/推送
-      try {
-        await env.PUSH_KV.put(autoActiveKey(appId, deviceId), JSON.stringify({ userId: userId, appId: appId, deviceId: deviceId, at: Date.now() }), { expirationTtl: 60 * 60 * 24 * 7 });
-      } catch (e) {}
+      // 标记这台设备当前活跃的是哪个用户，服务端只给活跃用户生成/推送。
+      // 注意：这里原来每轮拉取都写一次 KV（客户端约 1 分钟一次 = 每天 1440 次写），
+      // 是免费额度被打满的主要原因；现在同一用户 6 小时内最多写一次。
+      try { await touchActive(env, appId, deviceId, userId, false); } catch (e) {}
       let messages = [], moments = [];
       try { const raw = await env.PUSH_KV.get(autoKey('msg', appId, deviceId, userId)); messages = raw ? JSON.parse(raw) : []; } catch (e) {}
       try { const raw = await env.PUSH_KV.get(autoKey('moments', appId, deviceId, userId)); moments = raw ? JSON.parse(raw) : []; } catch (e) {}
@@ -1008,10 +1361,31 @@ export default {
     }
 
     // ============ 共享集市（所有用户互相可见） ============
+    // 计数单独放一个 key：之前每点一次赞都要重写 post + 整个 500 条 index（2 次写），
+    // 集市稍微活跃一点就会把免费 KV 写额度打满。现在点赞只写 counts（1 次写）。
+    async function readMarketCounts() {
+      try {
+        const raw = await env.PUSH_KV.get('market:counts');
+        return raw ? (JSON.parse(raw) || {}) : {};
+      } catch (e) { return {}; }
+    }
+    function mergeMarketCounts(item, counts) {
+      if (!item || !item.id) return item;
+      const c = counts && counts[item.id];
+      if (c) {
+        if (c.likes != null) item.likes = Number(c.likes) || 0;
+        if (c.downloads != null) item.downloads = Number(c.downloads) || 0;
+        if (c.imports != null) item.imports = Number(c.imports) || 0;
+      }
+      return item;
+    }
+
     // GET  /market/list          列出全部资源摘要
     if (pathname === '/market/list' && request.method === 'GET') {
       let items = [];
       try { const raw = await env.PUSH_KV.get('market:index'); items = raw ? JSON.parse(raw) : []; } catch (e) { items = []; }
+      const counts = await readMarketCounts();
+      items = (Array.isArray(items) ? items : []).map(function (x) { return mergeMarketCounts(x, counts); });
       return json({ ok: true, items: items });
     }
 
@@ -1022,7 +1396,8 @@ export default {
       const raw = await env.PUSH_KV.get('market:post:' + id);
       if (!raw) return json({ ok: false, error: 'not found' }, 404);
       let rec; try { rec = JSON.parse(raw); } catch (e) { return json({ ok: false }, 500); }
-      return json({ ok: true, item: rec.item });
+      const counts = await readMarketCounts();
+      return json({ ok: true, item: mergeMarketCounts(rec.item, counts) });
     }
 
     // POST /market/post          发布：{ item, summary, token }
@@ -1053,13 +1428,16 @@ export default {
       const raw = await env.PUSH_KV.get(key);
       if (!raw) return json({ ok: false, error: 'not found' }, 404);
       let rec; try { rec = JSON.parse(raw); } catch (e) { return json({ ok: false }, 500); }
-      rec.item[field] = Math.max(0, (Number(rec.item[field]) || 0) + delta);
-      await env.PUSH_KV.put(key, JSON.stringify(rec));
-      let items = [];
-      try { const rawIdx = await env.PUSH_KV.get('market:index'); items = rawIdx ? JSON.parse(rawIdx) : []; } catch (e) { items = []; }
-      const s = items.find((x) => x && x.id === id);
-      if (s) { s[field] = rec.item[field]; await env.PUSH_KV.put('market:index', JSON.stringify(items)); }
-      return json({ ok: true, value: rec.item[field] });
+      const counts = await readMarketCounts();
+      const cur = counts[id] || {
+        likes: Number(rec.item.likes) || 0,
+        downloads: Number(rec.item.downloads) || 0,
+        imports: Number(rec.item.imports) || 0
+      };
+      cur[field] = Math.max(0, (Number(cur[field]) || 0) + delta);
+      counts[id] = cur;
+      await env.PUSH_KV.put('market:counts', JSON.stringify(counts));
+      return json({ ok: true, value: cur[field] });
     }
 
     // POST /market/delete        删除：{ id, token }
@@ -1182,11 +1560,25 @@ async function sendBarkReminder(env) {
 }
 
 async function getSubs(env, userId, deviceId, appId) {
-  const { keys } = await env.PUSH_KV.list({ prefix: 'sub:' });
   const out = [];
+  const seen = {};
   const wantApp = appId ? cleanAppId(appId) : '';
   const wantUser = userId ? cleanUserId(userId) : '';
   const wantDevice = deviceId ? cleanDeviceId(deviceId) : '';
+  let keys = [];
+  try {
+    let prefix = 'sub2:';
+    if (wantApp && wantDevice && wantUser) prefix = 'sub2:' + wantApp + ':' + wantDevice + ':' + wantUser + ':';
+    else if (wantApp && wantDevice) prefix = 'sub2:' + wantApp + ':' + wantDevice + ':';
+    else if (wantApp) prefix = 'sub2:' + wantApp + ':';
+    const r = await env.PUSH_KV.list({ prefix: prefix });
+    keys = r.keys || [];
+    // 新 key 没有命中时，兼容升级前写入的全局 sub: key（用户打开 App 重新订阅后会自动迁移）。
+    if (!keys.length) {
+      const legacy = await env.PUSH_KV.list({ prefix: 'sub:' });
+      keys = legacy.keys || [];
+    }
+  } catch (e) { return out; }
   for (const k of keys) {
     const v = await env.PUSH_KV.get(k.name);
     if (!v) continue;
@@ -1200,6 +1592,8 @@ async function getSubs(env, userId, deviceId, appId) {
       if (wantDevice && cleanDeviceId(s.deviceId) !== wantDevice) continue;
       // 用户隔离：只推给完全相同的 userId（不再把 default 当万能匹配）。
       if (wantUser && cleanUserId(s.userId) !== wantUser) continue;
+      if (seen[s.endpoint]) continue;
+      seen[s.endpoint] = 1;
       out.push(s);
     } catch (e) {}
   }
@@ -1222,6 +1616,7 @@ async function pushAll(subs, payload, env) {
       if (resp && resp.ok) sent++;
       // 订阅已失效（卸载/清数据/换浏览器）：删除，避免每次都失败
       if (resp && (resp.status === 404 || resp.status === 410)) {
+        try { await env.PUSH_KV.delete(subKey(sub.endpoint, sub.appId, sub.deviceId, sub.userId)); } catch (e) {}
         try { await env.PUSH_KV.delete(subId(sub.endpoint)); } catch (e) {}
       }
     } catch (e) { /* 单个失败不影响其他 */ }

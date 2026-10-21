@@ -71,7 +71,32 @@ window.NANO_CHAT_TEMPLATE = `/* ================================================
      想要渐隐遮罩（交界更自然）就改这两个变量，详见「配方 K2」。 */
   --chat-topbar-mask: transparent;
   --chat-bottom-mask: transparent;
+  /* 纯 CSS 固定翻译模式：0 = 译文合并进同一个气泡；1 = 独立译文气泡 */
+  --nano-trans-separate: 0;
 }
+
+/* 双击气泡菜单：iPhone 液态玻璃 */
+.nano-chat-inner .longpress-menu {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.48)) !important;
+  border: 0.5px solid rgba(255, 255, 255, 0.88) !important;
+  border-radius: 18px !important;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.18), 0 2px 8px rgba(0, 0, 0, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.95) !important;
+  -webkit-backdrop-filter: blur(34px) saturate(190%) !important;
+  backdrop-filter: blur(34px) saturate(190%) !important;
+  padding: 6px !important;
+}
+.nano-chat-inner .longpress-menu .menu-item {
+  padding: 9px 12px !important;
+  border-radius: 12px !important;
+  color: #111111 !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+}
+.nano-chat-inner .longpress-menu .menu-item:active { background: rgba(255, 255, 255, 0.55) !important; }
+.nano-chat-inner .longpress-menu .menu-item .mi-icon { color: #8e8e93 !important; }
+.nano-chat-inner .longpress-menu .menu-item.danger,
+.nano-chat-inner .longpress-menu .menu-item.danger .mi-icon { color: #ff3b30 !important; }
+.nano-chat-inner .longpress-menu .menu-divider { background: rgba(0, 0, 0, 0.06) !important; margin: 4px 10px !important; }
 
 /* ============================================================
    1. 公共结构（私聊 / 群聊 通用）
@@ -114,8 +139,9 @@ window.NANO_CHAT_TEMPLATE = `/* ================================================
    想在模板里固定模式，不用聊天设置按钮：
    - 模板 JS 里写 window.NANO_TRANSLATION_SEPARATE = 1;  // 独立
    - 或 window.NANO_TRANSLATION_SEPARATE = 0;             // 同一气泡
-   - 也可给 body 加 data-nano-trans-separate="1" / "0"。
-   模板 CSS 只负责样式；更换 DOM 结构需要上面的模板 JS 开关。 */
+   - 给 body 加 data-nano-trans-separate="1" / "0"。
+   - 最推荐：直接在模板 CSS 里写 :root { --nano-trans-separate: 1; }（0 = 合并）
+     纯 CSS 即可，优先级高于聊天设置里的「翻译气泡」开关。 */
 .bubble .translation-text {
   display: block; margin-top: 4px; padding-top: 4px;
   border-top: 0.5px solid rgba(128, 128, 128, 0.2);
@@ -153,7 +179,18 @@ window.NANO_CHAT_TEMPLATE = `/* ================================================
 .message-row.right .msg-think { align-self: flex-end; }
 .msg-think-toggle { font-family: inherit; font-size: 10px; line-height: 1; color: var(--chat-sub); background: rgba(0, 0, 0, 0.05); border: none; border-radius: 10px; padding: 4px 8px; cursor: pointer; }
 .msg-think-body { display: none; margin-top: 4px; font-size: 11px; line-height: 1.5; color: var(--chat-sub); background: rgba(0, 0, 0, 0.035); border-radius: 10px; padding: 6px 8px; white-space: pre-wrap; word-break: break-word; max-height: 180px; overflow-y: auto; }
+.msg-think-dot { width: 6px; height: 6px; border-radius: 50%; background: #b0b0b6; flex: none; display: inline-block; }
 .msg-think.open .msg-think-body { display: block; }
+/* 工具调用：长条悬浮框，居中 */
+.message-row.has-tools .message-content { width: 92%; max-width: 92%; align-items: stretch; }
+.message-row .msg-tools { align-self: center; width: min(92%, 420px); max-width: 100%; margin: 8px auto 10px auto; padding: 2px 14px; box-sizing: border-box; background: var(--tool-bg, rgba(255,255,255,.94)); color: var(--chat-text); border: 1px solid rgba(120,120,128,.16); border-radius: 16px; box-shadow: 0 8px 24px rgba(0,0,0,.10); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); overflow: hidden; }
+.message-row .msg-tools .msg-think-toggle { width: 100%; justify-content: flex-start; background: transparent; padding: 10px 0; font-size: 10.5px; }
+.message-row .msg-tools .msg-think-body { margin-top: 0; padding: 0 0 10px 0; max-height: 260px; background: transparent; border: none; color: var(--chat-sub); }
+.msg-tools .msg-tool { padding: 6px 0; border-top: 1px solid rgba(120,120,128,.16); }
+.msg-tools .msg-tool:first-child { border-top: none; padding-top: 0; }
+.msg-tool-name { font-size: 11px; font-weight: 700; color: #3a3a40; }
+.msg-tool-args { font-size: 10px; color: #8a8a8a; margin-top: 2px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all; }
+.msg-tool-res { font-size: 10.5px; color: #444; margin-top: 3px; white-space: pre-wrap; word-break: break-word; }
 
 /* 跳转高亮 */
 .message-row.jump-highlight .bubble,
@@ -282,9 +319,13 @@ window.NANO_CHAT_TEMPLATE = `/* ================================================
   content: ""; position: absolute; right: -6px; bottom: 5px; width: 17px; height: 17px;
   background: var(--bubble-me); clip-path: polygon(0 0, 100% 100%, 0 100%);
 }
-.nano-chat-inner .bubble.grouped::after { display: none; }
+/* 连发气泡：尾巴只出现在同侧连续消息的最后一条（不是第一条） */
+.nano-chat-inner .bubble.other::after,
+.nano-chat-inner .bubble.me::after { display: none; }
+.nano-chat-inner .message-row.tail-end .bubble.other::after,
+.nano-chat-inner .message-row.tail-end .bubble.me::after { display: block; }
 .nano-chat-inner .bubble.voice-transcript-bubble { background: #f2f2f4; color: #555; border-radius: 12px; padding: 4px 12px; margin-top: 4px; }
-.nano-chat-inner .bubble.voice-transcript-bubble::before, .nano-chat-inner .bubble.voice-transcript-bubble::after { display: none; }
+.nano-chat-inner .bubble.voice-transcript-bubble::before, .nano-chat-inner .bubble.voice-transcript-bubble::after { display: none !important; }
 
 /* 2.3 语音气泡
    HTML：<div class="voice-bubble right|left"><span class="play-icon"></span>
@@ -296,6 +337,11 @@ window.NANO_CHAT_TEMPLATE = `/* ================================================
 .nano-chat-inner .voice-bubble.right::before, .nano-chat-inner .voice-bubble.left::before { content: ""; position: absolute; bottom: 6px; width: 16px; height: 16px; background: inherit; clip-path: polygon(0 0, 100% 100%, 0 100%); }
 .nano-chat-inner .voice-bubble.right::before { right: -5px; }
 .nano-chat-inner .voice-bubble.left::before { left: -5px; }
+/* 语音连发：同样只在最后一条显示尾巴 */
+.nano-chat-inner .voice-bubble.right::before,
+.nano-chat-inner .voice-bubble.left::before { display: none; }
+.nano-chat-inner .message-row.tail-end .voice-bubble.left::before,
+.nano-chat-inner .message-row.tail-end .voice-bubble.right::before { display: block; }
 .nano-chat-inner .voice-bubble .voice-wave { display: flex; align-items: center; gap: 1.5px; height: 20px; }
 .nano-chat-inner .voice-bubble .voice-wave .bar { width: 3px; border-radius: 2px; background: currentColor; opacity: 0.55; }
 .nano-chat-inner .voice-bubble .voice-wave .bar.active { opacity: 1; }
@@ -632,7 +678,15 @@ window.NANO_CHAT_TEMPLATE = `/* ================================================
 .nano-groups .bubble.other::after { content: ""; position: absolute; left: -6px; bottom: 6px; width: 16px; height: 16px; background: #e5e5ea; clip-path: polygon(100% 0, 100% 100%, 0 100%); }
 .nano-groups .bubble.me { background: var(--bubble-me); color: #fff; }
 .nano-groups .bubble.me::after { content: ""; position: absolute; right: -6px; bottom: 6px; width: 16px; height: 16px; background: var(--bubble-me); clip-path: polygon(0 0, 100% 100%, 0 100%); }
-.nano-groups .bubble.grouped::after { display: none; }
+/* 群聊连发：同样只在最后一条显示尾巴 */
+.nano-groups .bubble.other::after,
+.nano-groups .bubble.me::after { display: none; }
+.nano-groups .message-row.tail-end .bubble.other::after,
+.nano-groups .message-row.tail-end .bubble.me::after { display: block; }
+.nano-groups .voice-bubble.left::before,
+.nano-groups .voice-bubble.right::before { display: none; }
+.nano-groups .message-row.tail-end .voice-bubble.left::before,
+.nano-groups .message-row.tail-end .voice-bubble.right::before { display: block; }
 .nano-groups .mention { display: inline-block; color: var(--chat-accent); font-weight: 600; background: rgba(255, 255, 255, 0.9); padding: 0 6px; border-radius: 6px; margin: 0 1px; }
 .nano-groups .bubble.me .mention { color: #fff; background: rgba(255, 255, 255, 0.25); }
 

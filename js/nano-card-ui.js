@@ -459,6 +459,17 @@
                     ['发送人', side === 'right' ? me : other, 'user'],
                     ['发送时间', time || '刚刚', 'clock']
                 ]) + note(preview) + statusFoot('点击卡片查看文件内容');
+        } else if (type === 'study') {
+            var studyMins = Number(cd.minutes || 0);
+            var studyPomos = Number(cd.pomos || 0);
+            html = header('book', '学习陪伴', time) +
+                mainTitle('clock', '番茄钟', cd.title || '学习', cd.date || '') +
+                info([
+                    ['学习主题', cd.title || '学习', 'book'],
+                    ['专注时长', studyMins ? (studyMins + ' 分钟') : (cd.duration || '—'), 'clock'],
+                    ['完成番茄', studyPomos ? (studyPomos + ' 个') : '—', 'checkCircle'],
+                    ['陪伴 char', side === 'left' ? other : me, 'user']
+                ]) + note(cd.summary || '') + statusFoot('点击查看本次学习内容与对话');
         } else if (type === 'scheduleReport') {
             var imgSrc = String(cd.img || '');
             var imgHtml = imgSrc ? '<div class="card-image"><img src="' + esc(imgSrc) + '" alt=""></div>' : '';

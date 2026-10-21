@@ -2,14 +2,14 @@
    groups.css - 群聊样式
    ============================================================ */
 * { box-sizing: border-box; margin: 0; padding: 0; }
-/* 隐藏所有滚动条（聊天页内的消息区、输入框、面板等�?*/
+/* 注释已清理（原文件编码损坏） */
 * { scrollbar-width: none; -ms-overflow-style: none; }
 *::-webkit-scrollbar { width: 0 !important; height: 0 !important; display: none !important; }
 /* 隐藏数字输入框的上下调节按钮 */
 input[type=number]::-webkit-outer-spin-button,
 input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none !important; margin: 0 !important; }
 input[type=number] { -moz-appearance: textfield !important; appearance: textfield !important; }
-/* 消息超过 100 条时的“展开”按�?*/
+/* 注释已清理（原文件编码损坏） */
 .collapse-btn {
     display: flex; justify-content: center; align-items: center;
     width: 100%; margin: 8px 0 10px 0; padding: 6px 0;
@@ -114,15 +114,14 @@ html.keyboard-open .chat-container {
 .message-scroll::-webkit-scrollbar { width: 0; }
 .date-label { text-align: center; color: #8e8e93; font-size: 12px; margin: 0 0 16px 0; padding: 4px 0; }
 
-/* ========== 消息�?========== */
+/* 注释已清理（原文件编码损坏） */
 .message-row {
     display: flex; align-items: flex-start; margin-bottom: 14px;
     width: 100%; position: relative;
 }
 .message-row.left { justify-content: flex-start; }
 .message-row.right { justify-content: flex-end; }
-/* 永久居中类：撤回 / 系统提示条（领红包、接龙、确认公告、改昵称/头衔、进群邀请等�?
-   居中系统卡片。美化只能改外观，不能改位置——这里用 !important 锁死居中�?*/
+/* 注释已清理（原文件编码损坏） */
 .message-row.tip-row-wrap,
 .message-row.centered,
 .message-row.recalled,
@@ -223,10 +222,7 @@ html.keyboard-open .chat-container {
     background: rgba(255,255,255,0.25);
 }
 
-/* 引用：在气泡外部下方（与单聊 .quote-block 结构一致，便于统一美化�?
-   小拐角来�?.quote-fold 里的 svg；想隐藏可加�?
-   .quote-block .quote-fold { display:none; }
-   或替�?.quote-block .quote-fold svg �?path 换其它图标�?*/
+/* 注释已清理（原文件编码损坏） */
 .quote-block {
     position: relative; display: flex; align-items: flex-start; gap: 6px;
     border-radius: 10px; padding: 6px 10px; margin-top: 5px;
@@ -242,7 +238,7 @@ html.keyboard-open .chat-container {
 .quote-block .quote-name { font-weight: 600; opacity: 0.75; margin-right: 3px; font-size: 12px; flex-shrink: 0; color: #6e6e73; }
 .quote-block .quote-text { opacity: 0.9; color: #6e6e73; word-break: break-word; white-space: pre-wrap; }
 
-/* 翻译：默认在气泡内下方分隔显示；想改成独立气泡可自行覆盖为其它设�?*/
+/* 注释已清理（原文件编码损坏） */
 .bubble .translation-text {
     display: block;
     margin-top: 4px;
@@ -476,7 +472,7 @@ html.keyboard-open .chat-container {
 .text-image-bubble.left { align-self: flex-start; }
 .text-image-bubble.right { align-self: flex-end; }
 
-/* 图片查看（放�?+ 底部四个按钮�?*/
+/* 注释已清理（原文件编码损坏） */
 .img-lightbox {
     display: none; position: fixed; inset: 0; z-index: 500;
     background: rgba(0,0,0,0.88);
@@ -494,7 +490,7 @@ html.keyboard-open .chat-container {
 .img-lightbox-actions button:active { background: rgba(255,255,255,0.26); }
 .img-lightbox-actions button svg { width: 22px; height: 22px; }
 
-/* 生图操作按钮（取�?重roll/查看/保存�?*/
+/* 注释已清理（原文件编码损坏） */
 .image-wrapper { display: flex; flex-direction: column; gap: 6px; max-width: 160px; }
 .image-wrapper.left { align-self: flex-start; }
 .image-wrapper.right { align-self: flex-end; }
@@ -560,7 +556,7 @@ html.keyboard-open body.nano-groups .bottom-bar {
     overflow: visible;
 }
 
-/* 输入框上方浮层：@下拉 / 表情推荐 / 引用，彼此独立、都不与输入框相�?*/
+/* 注释已清理（原文件编码损坏） */
 .above-input {
     position: absolute;
     left: 0; right: 0;
@@ -597,7 +593,7 @@ html.keyboard-open body.nano-groups .bottom-bar {
     flex-shrink: 0; padding: 0;
 }
 
-/* 输入关键词时出现的表情包推荐条（关键词消失即隐藏�?*/
+/* 注释已清理（原文件编码损坏） */
 .emoji-recommend {
     display: flex;
     flex-wrap: nowrap;
@@ -1004,11 +1000,9 @@ html.keyboard-open body.nano-groups .bottom-bar {
     from { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
     to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 }
-/* ============================================================
-   多选模式：晕染选中�?
-   ============================================================ */
+/* 注释已清理（原文件编码损坏） */
 
-/* 多选栏：从顶部滑入 + 毛玻�?*/
+/* 注释已清理（原文件编码损坏） */
 .multi-select-bar {
     display: none;
     /* 悬浮在顶栏下方，盖住群公告条，避免与顶栏重叠导致「取消/删除」点不到 */
@@ -1061,12 +1055,12 @@ html.keyboard-open body.nano-groups .bottom-bar {
     transition: background 0.25s ease, box-shadow 0.25s ease, transform 0.2s ease;
     border-radius: 12px;
 }
-/* 多选中：整行轻微压�?*/
+/* 注释已清理（原文件编码损坏） */
 .message-row.multi-mode { cursor: pointer; }
 .message-row.multi-mode:not(.selected) {
     opacity: 0.55;
 }
-/* 选中行：浅蓝�?+ 柔和光晕 */
+/* 注释已清理（原文件编码损坏） */
 .message-row.selected {
     background: rgba(0, 122, 255, 0.08);
     box-shadow: 0 0 0 1.5px rgba(0, 122, 255, 0.18),
@@ -1077,7 +1071,7 @@ html.keyboard-open body.nano-groups .bottom-bar {
     transform: scale(1.01);
     transition: transform 0.2s ease;
 }
-/* 选中时给个左侧小�?*/
+/* 注释已清理（原文件编码损坏） */
 .message-row.selected::before {
     content: "";
     position: absolute;

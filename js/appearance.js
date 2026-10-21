@@ -334,6 +334,8 @@
         applyStyle('nano-beautify-chat-fix', CHAT_STRUCT_FIX + legacyCardCompatCss(css));
         applyStyle('nano-chat-float', NANO_CHAT_FLOAT_CSS);
         reorderChatLayers();
+        // 通知聊天页：模板 CSS 已更新（例如 --nano-trans-separate 改变了翻译 DOM 结构）
+        try { window.dispatchEvent(new CustomEvent('nano-chat-theme-applied')); } catch (e) {}
         // 头像样式始终放最后，保证头像框不被聊天/全局 CSS 盖掉
         bringAvatarToFront();
     }
@@ -514,6 +516,14 @@
         if (fixed.indexOf('.overlay-header') !== -1) {
             fixed = fixed.replace(/(\.overlay-header\s*\{[^}]*?)padding\s*:\s*14px\s+0\s+12px\s+0\s*;/m, '$1padding: calc(14px + var(--safe-inset-top, 0px)) 0 12px 0;');
         }
+        // 旧版聊天底栏把选中态背景画在 flex:1 的按钮上：宽屏近似正圆，
+        // 窄屏按钮被压扁就成了椭圆。这里固定成 46×46 的正方形，选中态永远是正圆。
+        if (fixed.indexOf('.dock-btn') !== -1 && fixed.indexOf('/* dock-selected-circle-fix */') === -1) {
+            fixed += '\n/* dock-selected-circle-fix */\n' +
+                '.nano-chat .dock{justify-content:space-around !important;gap:0 !important;}\n' +
+                '.nano-chat .dock-btn{flex:0 0 46px !important;width:46px !important;min-width:46px !important;max-width:46px !important;height:46px !important;border-radius:50% !important;}\n' +
+                '.nano-chat .dock-btn.active::before,.nano-chat .dock-btn:not(.active):active::before{width:46px !important;height:46px !important;border-radius:50% !important;}\n';
+        }
         if (fixed !== css) {
             try {
                 localStorage.setItem('beautify_global_v2', fixed);
@@ -526,10 +536,41 @@
     // 旧版聊天模板：气泡偏大偏宽、底栏底部留白过多，就地修正已保存的聊天 CSS
     function migrateChatCss(css) {
         if (!css) return css;
+        var fixed = css;
+        // 老版初始模板把尾巴藏在 .grouped 上，导致「第一条有尾巴、后面没有」。
+        // 渲染层现在会给每行打 .tail-end（同侧连发的最后一条），这里把老 CSS 迁移成
+        // 只显示 tail-end 的尾巴；新模板本身已经使用该规则。
+        var tailBlock = [
+            '.nano-chat-inner .bubble.other::after,',
+            '.nano-chat-inner .bubble.me::after{display:none;}',
+            '.nano-chat-inner .message-row.tail-end .bubble.other::after,',
+            '.nano-chat-inner .message-row.tail-end .bubble.me::after{display:block;}',
+            '.nano-chat-inner .voice-bubble.left::before,',
+            '.nano-chat-inner .voice-bubble.right::before{display:none;}',
+            '.nano-chat-inner .message-row.tail-end .voice-bubble.left::before,',
+            '.nano-chat-inner .message-row.tail-end .voice-bubble.right::before{display:block;}'
+        ].join('');
+        var groupTailBlock = [
+            '.nano-groups .bubble.other::after,',
+            '.nano-groups .bubble.me::after{display:none;}',
+            '.nano-groups .message-row.tail-end .bubble.other::after,',
+            '.nano-groups .message-row.tail-end .bubble.me::after{display:block;}',
+            '.nano-groups .voice-bubble.left::before,',
+            '.nano-groups .voice-bubble.right::before{display:none;}',
+            '.nano-groups .message-row.tail-end .voice-bubble.left::before,',
+            '.nano-groups .message-row.tail-end .voice-bubble.right::before{display:block;}'
+        ].join('');
+        fixed = fixed.replace(/\.nano-chat-inner\s+\.bubble\.grouped::after\s*\{[^}]*display\s*:\s*none;?\s*\}/g, tailBlock);
+        fixed = fixed.replace(/\.nano-groups\s+\.bubble\.grouped::after\s*\{[^}]*display\s*:\s*none;?\s*\}/g, groupTailBlock);
+        if (fixed !== css) {
+            try {
+                localStorage.setItem('beautify_chat_v2', fixed);
+                localStorage.setItem('beautify_chat', fixed);
+            } catch (e) {}
+        }
         // 新版聊天模板（通用卡片：.bubble-card .card-header）不再套用旧版缩小规则，
         // 否则「还原初始模板」后刷新会被改回 6/11/15，和初始 UI 不一致。
-        if (/\.nano-chat-inner\s+\.bubble-card\s+\.card-header/.test(css)) return css;
-        var fixed = css;
+        if (/\.nano-chat-inner\s+\.bubble-card\s+\.card-header/.test(fixed)) return fixed;
         if (fixed.indexOf('.nano-chat-inner .bubble') !== -1) {
             fixed = fixed.replace(/(\.nano-chat-inner\s+\.bubble\s*\{[^}]*?)padding\s*:\s*7px\s+16px\s*;/m, '$1padding: 6px 11px;');
             fixed = fixed.replace(/(\.nano-chat-inner\s+\.bubble\s*\{[^}]*?)border-radius\s*:\s*22px\s*;/m, '$1border-radius: 15px;');

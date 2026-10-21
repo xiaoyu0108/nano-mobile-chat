@@ -184,7 +184,7 @@ body {
     display: none;
 }
 
-/* ===== 银行卡卡�?===== */
+/* 注释已清理（原文件编码损坏） */
 .bank-card {
     background: linear-gradient(145deg, #1a2a4a, #0d1b36);
     border-radius: 20px;
@@ -394,7 +394,7 @@ body {
     color: #34c759;
 }
 
-/* ===== 统计卡片（记账页�?===== */
+/* 注释已清理（原文件编码损坏） */
 .stats-card {
     background: #ffffff;
     border-radius: 16px;
@@ -573,7 +573,7 @@ body {
     margin-right: 6px;
 }
 
-/* 左滑状�?*/
+/* 注释已清理（原文件编码损坏） */
 .entry-item-wrap.swiped .entry-item {
     transform: translateX(-80px);
 }
@@ -582,7 +582,7 @@ body {
     background: #f2f2f7;
 }
 
-/* 空状�?*/
+/* 注释已清理（原文件编码损坏） */
 .empty-entries {
     padding: 30px 16px;
     text-align: center;
@@ -765,7 +765,7 @@ body {
     opacity: 1;
 }
 
-/* ===== 响应�?===== */
+/* 注释已清理（原文件编码损坏） */
 @media (max-width: 480px) {
     .bank-card {
         padding: 18px 16px 16px;

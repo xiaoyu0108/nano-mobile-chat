@@ -5,8 +5,19 @@
     'use strict';
     function getQueryParam(n){ return new URLSearchParams(location.search).get(n); }
     // 译文显示模式：true=独立气泡（气泡外），false=与原文同一气泡
-    function translationSeparate(){ try { return localStorage.getItem('nano_trans_separate') !== '0'; } catch (e) { return true; } }
+    function translationSeparate(){
+        try {
+            if (typeof window.NANO_TRANSLATION_SEPARATE !== 'undefined') return !!window.NANO_TRANSLATION_SEPARATE;
+            var attr = document.body && document.body.getAttribute('data-nano-trans-separate');
+            if (attr === '1' || attr === '0') return attr === '1';
+            var cssVar = '';
+            try { cssVar = String(getComputedStyle(document.body).getPropertyValue('--nano-trans-separate') || '').trim(); } catch (err) {}
+            if (cssVar === '1' || cssVar === '0') return cssVar === '1';
+            return localStorage.getItem('nano_trans_separate') !== '0';
+        } catch (e) { return true; }
+    }
     window.addEventListener('storage', function(e){ if(e && e.key === 'nano_trans_separate'){ try{ renderMessages(); }catch(err){} } });
+    window.addEventListener('nano-chat-theme-applied', function(){ try{ renderMessages(); }catch(err){} });
     var chatId = getQueryParam('group') || getQueryParam('chat') || 'group_default';
     var jumpMsgId = getQueryParam('jump') || '';
     var GROUP_KEY = 'group_data_' + chatId;
@@ -350,6 +361,17 @@
             var grouped = (i > 0 && messages[i-1].senderId === m.senderId && messages[i-1].type === m.type);
             messageContainer.appendChild(buildRow(m, grouped));
         }
+        try {
+            var rows = messageContainer.querySelectorAll('.message-row');
+            for (var ri = 0; ri < rows.length; ri++) {
+                var row = rows[ri];
+                var next = row.nextElementSibling;
+                var same = !!(next && next.classList && next.classList.contains('message-row') &&
+                    next.dataset.senderId === row.dataset.senderId &&
+                    next.dataset.msgType === row.dataset.msgType);
+                row.classList.toggle('tail-end', !same);
+            }
+        } catch (e) {}
         scrollBottom();
     }
 
@@ -358,6 +380,8 @@
         row.className = 'message-row ' + (m.type === 'right' ? 'right' : 'left');
         if (m.recalled) row.classList.add('recalled');
         row.dataset.id = m.id;
+        row.dataset.senderId = m.senderId || m.type || '';
+        row.dataset.msgType = m.type || '';
 
         // 系统提示：居中灰色小条
         if (m.isTip) {

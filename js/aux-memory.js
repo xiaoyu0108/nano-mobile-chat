@@ -226,11 +226,22 @@
   }
 
   var busy = {};
+  var failUntil = {};
+  var failNoticeAt = {};
+  function friendlyError(e) {
+    var s = String((e && e.message) || e || '').trim();
+    if (/429|quota|insufficient|balance|rate.?limit|额度|余额|欠费/i.test(s)) return 'API 额度不足或触发限流（429）。这次没有写入记忆库，聊天本身不受影响；请检查记忆 API 余额/额度，10 分钟后会自动重试。';
+    if (/401|403|unauthorized|invalid.*key|api.?key/i.test(s)) return '记忆 API 的 Key 无效或无权限（401/403）。请检查地址、Key 和模型名。';
+    if (/\b5\d\d\b/.test(s)) return '记忆 API 服务端错误（' + s + '）。这次没有写入记忆库，10 分钟后会自动重试。';
+    if (/network|failed to fetch|fetch failed|网络|timeout|超时/i.test(s)) return '网络连接失败，记忆 API 请求没有发出去。10 分钟后会自动重试。';
+    return '记忆总结失败：' + (s ? s.slice(0, 200) : '未知错误') + '\n这次没有写入记忆库，聊天本身不受影响。';
+  }
   // force=true 时无视阈值（用于结束「一起听 / 一起看」时收尾）
   function maybeSummarize(charId, opts) {
     charId = String(charId == null ? '' : charId).trim();
-    if (!charId || busy[charId]) return Promise.resolve();
     opts = opts || {};
+    if (!charId || busy[charId]) return Promise.resolve();
+    if (!opts.force && failUntil[charId] && Date.now() < failUntil[charId]) return Promise.resolve();
     return Promise.all([getV('autoSummary'), getV('autoThreshold')]).then(function (v) {
       // 自动总结开关只控制「攒够阈值时」的自动触发；
       // 结束一起听 / 退出一起看时的收尾（force）不受该开关限制
@@ -289,6 +300,16 @@
       }).catch(function (e) {
         busy[charId] = false;
         console.warn('[AuxMemory] 总结失败', e);
+        failUntil[charId] = Date.now() + 10 * 60 * 1000;
+        var now = Date.now();
+        if (!failNoticeAt[charId] || now - failNoticeAt[charId] >= 10 * 60 * 1000) {
+          failNoticeAt[charId] = now;
+          var msg = friendlyError(e);
+          try { window.dispatchEvent(new CustomEvent('NANO_MEMORY_SUMMARY_FAILED', { detail: { message: msg, chatId: charId } })); } catch (x) {}
+          try {
+            if (window.parent !== window) window.parent.postMessage({ type: 'NANO_MEMORY_SUMMARY_FAILED', message: msg, chatId: charId }, '*');
+          } catch (x) {}
+        }
       });
     });
   }

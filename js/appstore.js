@@ -972,7 +972,7 @@
   // ===== 从 DIY 应用返回后刷新（图标/名称可能被应用自己改过） =====
   window.addEventListener('message', function (e) {
     var d = e.data;
-    if (d && d.type === 'nanoAppManifestChanged') refresh();
+    if (d && (d.type === 'nanoAppManifestChanged' || d.type === 'nanoAppInstalled')) refresh();
   });
   document.addEventListener('visibilitychange', function () {
     if (document.visibilityState === 'visible') refresh();

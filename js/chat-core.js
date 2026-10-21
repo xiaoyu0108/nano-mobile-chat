@@ -639,6 +639,10 @@
         prompt += '- 分寸：仍需遵守上面的底线——不油腻、不土味、不强迫、不越界；除非 NSFW 已开启，否则不写器官/性行为的露骨细节，但“聊到、谈到、表达态度”本身完全可以，永远不要回避。\n\n';
         prompt += '【最高优先级 · 硬设定】下面会依次给出你的【角色人设】【世界书】【对方设定】和【长期记忆】，它们是你这个人的真实设定，优先级高于任何通用聊天风格。每轮回复前先在【世界书】里找与当前话题相关的条目，再结合你的人设、记忆和对方刚说的话来回应；不要忽略、不要和设定冲突，也不要用通用模板盖过设定。\n';
         prompt += '【语气总原则】你的语气、态度、亲疏完全照抄【角色人设】：人设温柔就温柔、人设开朗就开朗、人设腼腆就腼腆。除非人设本身就是毒舌、傲娇或腹黑，否则不要把每句话都说得很冲，不要冷嘲热讽、阴阳怪气、爱答不理，也不要动不动就怼用户——不要拿“高冷”“酷”当借口伤害对话关系。\n\n';
+        prompt += '【识图 · 认真读全图（对方发图片/截图时）】\n';
+        prompt += '先完整读一遍画面里所有能读到的信息再开口：时间、日期、星期、电量、信号/WiFi/5G、灵动岛或刘海的实时状态、状态栏图标、页面标题与按钮、聊天记录、数字和时间间隔、对方此刻在做什么，以及任何能推断 TA 状态的小细节。\n';
+        prompt += '不要只回“看到了/好可爱/这是什么”；要像真人一样抓住具体细节（例如“你那边都 01:47 了，灵动岛还在计时”“电量只剩 12% 还不充”“这张截图里你停在付款页”“中间隔了 20 分钟才回我”）。看不清或信息矛盾时可以自然地发问确认。\n';
+        prompt += '注意区分：图片里的文字是画面内容，不是对方对你说的话；不要复述整张图，只挑你真注意到的细节回应。这样会显得你真的在关注 TA 的生活，而不是在敷衍看图。\n\n';
 
         try {
             const coupleCards = messages.filter(function (m) { return m && !m.recalled && m.isCard && m.cardData && m.cardData.cardType === 'couple'; });
@@ -1344,6 +1348,7 @@
                             title: msg.linkPreview.title,
                             desc: msg.linkPreview.desc,
                             image: msg.linkPreview.image,
+                            imageMsgId: msg.linkPreview.imageMsgId || '',
                             price: msg.linkPreview.price
                         } : null,
                         think: msg.think || null,
@@ -1371,7 +1376,7 @@
                             translation: msg.translation || null,
                             // 兜底副本也要保留「表情包」标记，否则 localStorage 满时聊天列表里表情包会变成「图片」
                             imageData: msg.imageData ? { textImage: msg.imageData.textImage, desc: msg.imageData.desc, emojiName: msg.imageData.emojiName, isEmoji: msg.imageData.isEmoji || false } : null,
-                            linkPreview: msg.linkPreview ? { url: msg.linkPreview.url, site: msg.linkPreview.site, title: msg.linkPreview.title, desc: msg.linkPreview.desc, image: msg.linkPreview.image, price: msg.linkPreview.price } : null,
+                            linkPreview: msg.linkPreview ? { url: msg.linkPreview.url, site: msg.linkPreview.site, title: msg.linkPreview.title, desc: msg.linkPreview.desc, image: msg.linkPreview.image, imageMsgId: msg.linkPreview.imageMsgId || '', price: msg.linkPreview.price } : null,
                             think: msg.think || null,
                         tools: (msg.tools && msg.tools.length) ? msg.tools : null,
                             heart: msg.heart || null,
@@ -1442,6 +1447,36 @@
     // 记忆库：后台自动总结引擎（针对当前聊天，常驻运行）
     // ============================================================
     let __autoSummaryBusy = false;
+    // 失败后 10 分钟内不再反复请求/弹窗；避免额度不足时每轮回复都炸一次。
+    let __memRetryAfter = 0;
+    let __memFailNoticeAt = 0;
+    function __memFriendlyError(e) {
+        var s = String((e && e.message) || e || '').trim();
+        if (/429|quota|insufficient|balance|rate.?limit|额度|余额|欠费/i.test(s)) {
+            return 'API 额度不足或触发限流（429）。\n这次对话没有写入记忆库，聊天本身不受影响。\n请检查记忆总结用的 API 余额/额度，或换一个 Key；10 分钟后会自动重试。';
+        }
+        if (/401|403|unauthorized|invalid.*key|api.?key/i.test(s)) {
+            return '记忆 API 的 Key 无效或无权限（401/403）。\n这次对话没有写入记忆库。\n请到「设置 → API」检查记忆总结用的地址、Key 和模型名。';
+        }
+        if (/\b5\d\d\b/.test(s)) {
+            return '记忆 API 服务端错误（' + s + '）。\n这次对话没有写入记忆库，10 分钟后会自动重试。';
+        }
+        if (/network|failed to fetch|fetch failed|网络|timeout|超时/i.test(s)) {
+            return '网络连接失败，记忆 API 请求没有发出去。\n这次对话没有写入记忆库，10 分钟后会自动重试。';
+        }
+        return '记忆总结失败：' + (s ? s.slice(0, 240) : '未知错误') + '\n这次对话没有写入记忆库，聊天本身不受影响；10 分钟后会自动重试。';
+    }
+    function __memNotifyFailure(e) {
+        var now = Date.now();
+        __memRetryAfter = now + 10 * 60 * 1000;
+        if (now - __memFailNoticeAt < 10 * 60 * 1000) return;
+        __memFailNoticeAt = now;
+        var msg = __memFriendlyError(e);
+        try { showAlert('记忆总结失败', msg); } catch (x) {}
+        try {
+            if (window.parent !== window) window.parent.postMessage({ type: 'NANO_MEMORY_SUMMARY_FAILED', message: msg, chatId: chatId }, '*');
+        } catch (x) {}
+    }
     // 共享长期记忆（线上/线下都写这里，发消息时注入给模型）
     let __memHints = '';
     // 群聊总结卡片（带 groupId 的记忆）与群聊近况：单聊里也要读取，实现群聊↔单聊互通
@@ -1708,7 +1743,7 @@
         let base = toV1Base(resolveApiHost(baseUrl));
         return fetch(base + '/chat/completions', {
             method: 'POST',
-            headers: { 'Authorization': 'Bearer ' + key.trim(), 'Content-Type': 'application/json' },
+            headers: { 'Authorization': 'Bearer ' + key.trim(), 'Content-Type': 'application/json', 'X-Nano-Kind': 'memory' },
             body: JSON.stringify({
                 model: model,
                 messages: [
@@ -1719,7 +1754,11 @@
                 temperature: 0.5
             })
         }).then(function(r) {
-            if (!r.ok) throw new Error('HTTP ' + r.status);
+            if (!r.ok) {
+                return r.text().then(function(t) {
+                    throw new Error('HTTP ' + r.status + (t ? (' · ' + String(t).replace(/\s+/g, ' ').slice(0, 200)) : ''));
+                });
+            }
             return r.json();
         }).then(function(d) {
             return (d.choices && d.choices[0] && d.choices[0].message) ? d.choices[0].message.content : '';
@@ -1730,7 +1769,7 @@
         let base = toV1Base(resolveApiHost(baseUrl));
         return fetch(base + '/embeddings', {
             method: 'POST',
-            headers: { 'Authorization': 'Bearer ' + key.trim(), 'Content-Type': 'application/json' },
+            headers: { 'Authorization': 'Bearer ' + key.trim(), 'Content-Type': 'application/json', 'X-Nano-Kind': 'memory' },
             body: JSON.stringify({ model: model, input: text, encoding_format: 'float' })
         }).then(function(r) {
             if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -1780,6 +1819,7 @@
 
     function triggerMemoryAutoSummary() {
         if (__autoSummaryBusy || typeof indexedDB === 'undefined' || !chatId) return;
+        if (Date.now() < __memRetryAfter) return;
         __autoSummaryBusy = true;
         const charName = displayName || chatName || '角色';
         const currentUser = currentUserName || '用户';
@@ -1854,6 +1894,7 @@
         }).catch(function(e) {
             __autoSummaryBusy = false;
             console.error('[Memory] 后台自动总结失败', e);
+            __memNotifyFailure(e);
         });
     }
 
@@ -1910,6 +1951,23 @@
         } catch (e) {}
     }
 
+    function archiveNanoFileCards() {
+        if (!isNanoChat || !window.NanoFiles) return;
+        try {
+            messages.forEach(function (m) {
+                if (!m || !m.isCard || !m.cardData || m.cardData.cardType !== 'file' || !m.cardData.content) return;
+                window.NanoFiles.add({
+                    id: m.cardData.fileId || ('msg_' + m.id),
+                    name: m.cardData.name || '文件',
+                    content: m.cardData.content,
+                    source: m.type === 'right' ? 'user' : 'nano',
+                    messageId: m.id,
+                    chatId: chatId
+                }).catch(function () {});
+            });
+        } catch (e) {}
+    }
+
     function loadMessages(callback) {
         try {
             if (typeof localforage !== 'undefined') {
@@ -1918,6 +1976,7 @@
                         messages.length = 0;
                         messages.push(...data);
                         restoreMessageState();
+                        archiveNanoFileCards();
                         consumeChatInject();
                         renderMessages();
                         if (callback) callback(true);
@@ -1948,6 +2007,7 @@
                     messages.length = 0;
                     messages.push(...parsed);
                     restoreMessageState();
+                    archiveNanoFileCards();
                     consumeChatInject();
                     renderMessages();
                     if (callback) callback(true);
@@ -2230,6 +2290,15 @@
     updateTime();
 
     backBtn.addEventListener('click', function() {
+        // Nano 助手是独立 App：从私聊返回时回 Nano 首页，而不是聊天列表
+        if (isNanoChat) {
+            if (window.parent !== window) {
+                window.parent.postMessage({ type: 'openFullscreen', url: 'nano.html', title: 'Nano', showBack: true, source: 'main' }, '*');
+            } else {
+                location.href = 'nano.html';
+            }
+            return;
+        }
         if (window.parent !== window) {
             window.parent.postMessage({ type: 'closeFullscreen' }, '*');
         } else {
@@ -2292,6 +2361,16 @@
 
     // ===== 构建卡片 HTML =====
     function buildCardHTMLLegacy(cardData) {
+        if (cardData.cardType === 'study') {
+            const clean = function (v) { return String(v == null ? '' : v).replace(/[<>&"]/g, ''); };
+            const mins = Number(cardData.minutes || 0);
+            return '<div class="card-main" style="display:block;">' +
+                '<div style="font-size:12px;color:#8e8e93;margin-bottom:4px;">学习陪伴 · ' + (cardData.date || '') + '</div>' +
+                '<div class="card-title" style="font-size:15px;">' + clean(cardData.title || '学习') + '</div>' +
+                '<div class="card-sub" style="margin-top:5px;line-height:1.55;">' + (mins ? (mins + ' 分钟 · ') : '') + clean(cardData.summary || '') + '</div>' +
+                '<div class="card-footer"><span class="card-footer-text">点击查看本次学习与对话</span></div>' +
+                '</div>';
+        }
         if (cardData.cardType === 'scheduleReport') {
             const clean = function (v) { return String(v == null ? '' : v).replace(/[<>&"]/g, ''); };
             const imgSrc = String(cardData.img || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
@@ -2582,6 +2661,7 @@
             return desc || '一张照片';
         }
         if (isCard && cardData) {
+            if (cardData.cardType === 'study') return cardData.title || '一次学习陪伴';
             if (cardData.cardType === 'transfer') return '一笔转账';
             if (cardData.cardType === 'gift') return cardData.title || '一个礼物';
             if (cardData.cardType === 'call') return cardData.missed ? '未接电话' : '一次语音通话';
@@ -2602,11 +2682,8 @@
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'msg-think-toggle';
-        // 用 SVG 灯泡图标（不用 emoji）
-        btn.innerHTML = '<svg class="msg-think-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'
-            + '<path d="M9.5 18h5"/><path d="M10.2 21h3.6"/>'
-            + '<path d="M12 3a6 6 0 0 0-3.7 10.7c.6.4 1 1 1.2 1.6l.2.7h4.6l.2-.7c.2-.6.6-1.2 1.2-1.6A6 6 0 0 0 12 3z"/>'
-            + '</svg><span>思维链</span>';
+        // 灰色小圆点（替代原来的灯泡）
+        btn.innerHTML = '<span class="msg-think-dot" aria-hidden="true"></span><span>思维链</span>';
         const body = document.createElement('div');
         body.className = 'msg-think-body';
         body.textContent = thinkText;
@@ -2661,17 +2738,26 @@
     // 译文显示模式：true=独立气泡（在原文气泡外），false=与原文同一气泡
     function translationSeparate() {
         try {
-            // 模板可直接固定模式：模板 JS 里写 window.NANO_TRANSLATION_SEPARATE = 1/0，
-            // 或给 body 加 data-nano-trans-separate="1/0"；优先级高于聊天设置按钮。
+            // 模板可直接固定模式（优先级高于聊天设置按钮）：
+            // 1) 模板 JS：window.NANO_TRANSLATION_SEPARATE = 1/0
+            // 2) body 属性：data-nano-trans-separate="1/0"
+            // 3) 模板 CSS：--nano-trans-separate: 1/0（纯 CSS 即可切换独立/合并）
             if (typeof window.NANO_TRANSLATION_SEPARATE !== 'undefined') return !!window.NANO_TRANSLATION_SEPARATE;
             var attr = document.body && document.body.getAttribute('data-nano-trans-separate');
             if (attr === '1' || attr === '0') return attr === '1';
+            var cssVar = '';
+            try { cssVar = String(getComputedStyle(document.body).getPropertyValue('--nano-trans-separate') || '').trim(); } catch (err) {}
+            if (cssVar === '1' || cssVar === '0') return cssVar === '1';
             return localStorage.getItem('nano_trans_separate') !== '0';
         } catch (e) { return true; }
     }
     // 设置页改模式时（跨文档）重渲染
     window.addEventListener('storage', function (e) {
         if (e && e.key === 'nano_trans_separate') { try { renderMessages(); } catch (err) {} }
+    });
+    // 美化模板切换后重新渲染，让模板里用 CSS 固定的翻译模式立即生效
+    window.addEventListener('nano-chat-theme-applied', function () {
+        try { renderMessages(); } catch (err) {}
     });
 
     function createMessageRow(type, text, time, status, id, recalled, isCard, cardData, transcript, translation, quote, isVoice, voiceData, isImage, imageData, grouped, linkPreview) {
@@ -2741,6 +2827,7 @@
             }
         }
 
+        if (toolsList && toolsList.length) row.classList.add('has-tools');
         if (!recalled) {
         if (toolsList && toolsList.length) content.appendChild(buildToolsBlock(toolsList));
         if (thinkText) content.appendChild(buildThinkBlock(thinkText));
@@ -2893,18 +2980,37 @@
             if (linkPreview && linkPreview.url) {
                 const lc = document.createElement('div');
                 lc.className = 'link-preview ' + type;
-                if (linkPreview.image) {
+                const siteLabel = linkPreview.site || '链接';
+                // 用户补发的截图：不复制 base64，只记住图片消息 id，渲染时再取。
+                let previewImage = linkPreview.image || '';
+                if (!previewImage && linkPreview.imageMsgId) {
+                    const imMsg = messages.find(function (m) { return m && m.id === linkPreview.imageMsgId; });
+                    if (imMsg && imMsg.imageData) previewImage = (imMsg.imageData.urls && imMsg.imageData.urls[0]) || imMsg.imageData.url || '';
+                }
+                function makeFallbackThumb() {
+                    const fb = document.createElement('div');
+                    fb.className = 'link-preview-thumb link-preview-thumb-fallback';
+                    fb.textContent = /小红书/.test(siteLabel) ? '小红书' : (/抖音/.test(siteLabel) ? '抖音' : siteLabel.slice(0, 3));
+                    if (/小红书/.test(siteLabel)) fb.style.background = 'linear-gradient(135deg,#ff2442,#ff7a9a)';
+                    else if (/抖音/.test(siteLabel)) fb.style.background = 'linear-gradient(135deg,#111111,#25f4ee)';
+                    else if (/淘宝|天猫/.test(siteLabel)) fb.style.background = 'linear-gradient(135deg,#ff5000,#ffa06b)';
+                    else fb.style.background = 'linear-gradient(135deg,#4a6cf7,#8fa7ff)';
+                    return fb;
+                }
+                if (previewImage) {
                     const thumb = document.createElement('div');
                     thumb.className = 'link-preview-thumb';
                     const im = document.createElement('img');
                     im.loading = 'lazy';
-                    im.src = linkPreview.image;
+                    im.src = previewImage;
                     im.alt = '';
-                    im.onerror = function () { try { thumb.remove(); lc.classList.add('no-thumb'); } catch (e) {} };
+                    im.onerror = function () {
+                        try { thumb.replaceWith(makeFallbackThumb()); } catch (e) {}
+                    };
                     thumb.appendChild(im);
                     lc.appendChild(thumb);
                 } else {
-                    lc.classList.add('no-thumb');
+                    lc.appendChild(makeFallbackThumb());
                 }
                 const body = document.createElement('div');
                 body.className = 'link-preview-body';
@@ -3489,8 +3595,25 @@
                 try { maybeScheduleProactivePhoto(); } catch (e) {}
             }
         }
+        // 链接后补发截图：自动作为该链接卡片的封面
+        if (isImage && type === 'right' && row && row.dataset && row.dataset.id) {
+            try { attachScreenshotCover(row.dataset.id); } catch (e) {}
+        }
         renderMessages();
         saveMessages();
+        // 纳米文件：把 Nano 聊天里的文件卡片归档到独立文件库（删聊天不影响文件）
+        try {
+            if (isNanoChat && isCard && cardData && cardData.cardType === 'file' && cardData.content && window.NanoFiles) {
+                window.NanoFiles.add({
+                    id: cardData.fileId || ('msg_' + row.dataset.id),
+                    name: cardData.name || '文件',
+                    content: cardData.content,
+                    source: type === 'right' ? 'user' : 'nano',
+                    messageId: row.dataset.id,
+                    chatId: chatId
+                }).catch(function () {});
+            }
+        } catch (e) {}
         // 未读红点 / 最近活跃 / 通知
         try {
             if (window.NanoBadge) {
@@ -3592,6 +3715,22 @@
             );
             messageContainer.appendChild(row);
         }
+        // 同侧连发：最后一条带尾巴（tail-end），前面几条不带
+        try {
+            const rows = messageContainer.querySelectorAll('.message-row');
+            for (let ri = 0; ri < rows.length; ri++) {
+                const row = rows[ri];
+                const next = row.nextElementSibling;
+                const side = row.classList.contains('right') ? 'right' : 'left';
+                const same = !!(next && next.classList &&
+                    next.classList.contains('message-row') &&
+                    next.classList.contains(side) &&
+                    !next.classList.contains('centered') &&
+                    !next.classList.contains('sys-notice') &&
+                    !next.classList.contains('recalled'));
+                row.classList.toggle('tail-end', !same);
+            }
+        } catch (e) {}
         if (typingIndicator.classList.contains('active')) {
             messageContainer.appendChild(typingIndicator);
         }
@@ -6225,12 +6364,44 @@
     function guessLinkTitle(text, url) {
         var s = String(text || '').replace(String(url || ''), ' ');
         var m = s.match(/【([^】]{2,100})】/);
-        if (m && m[1]) return m[1].replace(/\s*[-|｜].*$/, '').trim().slice(0, 90);
+        if (m && m[1] && !/^(小红书|抖音|快手|微博|哔哩哔哩|B站)\s*$/i.test(m[1].trim())) {
+            return m[1].replace(/\s*[-|｜].*$/, '').trim().slice(0, 90);
+        }
         s = s.replace(/https?:\/\/\S+/g, ' ')
+            .replace(/【[^】]*】/g, ' ')
+            .replace(/这篇笔记在.*?等你来读.*$/g, ' ')
+            .replace(/复制.*?打开.*$/g, ' ')
             .replace(/#[^#\s]+#?/g, ' ')
             .replace(/^(分享|复制|打开|看看|来自|链接)[:：\s]*/,'')
             .replace(/\s+/g, ' ').trim();
         return s.slice(0, 90);
+    }
+    // 小红书被登录/滑块页拦截时，用户发来的分享文案本身往往就带着标题和正文。
+    function linkShareText(text, url) {
+        return String(text || '')
+            .replace(String(url || ''), ' ')
+            .replace(/https?:\/\/\S+/g, ' ')
+            .replace(/【[^】]*】/g, ' ')
+            .replace(/这篇笔记在.*?等你来读.*$/g, ' ')
+            .replace(/复制.*?打开.*$/g, ' ')
+            .replace(/#[^#\s]+#?/g, ' ')
+            .replace(/\s+/g, ' ').trim().slice(0, 600);
+    }
+    function isBlockedLinkContent(c) {
+        if (!c) return true;
+        var s = String((c.title || '') + ' ' + (c.url || '') + ' ' + (c.content || '') + ' ' + (c.desc || ''));
+        return /website-login|captcha|verify|\/login|signin|想了解些什么|登录后|扫码登录|登录小红书|安全验证|访问异常|滑动验证/i.test(s);
+    }
+    // 用户发链接后补一张截图：把截图挂到最近一张没有封面的链接卡片上，只存消息 id。
+    function attachScreenshotCover(imageMsgId) {
+        if (!imageMsgId) return;
+        for (var i = messages.length - 2; i >= 0 && i >= messages.length - 5; i--) {
+            var m = messages[i];
+            if (m && !m.recalled && m.linkPreview && m.linkPreview.url && !m.linkPreview.image && !m.linkPreview.imageMsgId) {
+                m.linkPreview.imageMsgId = imageMsgId;
+                return;
+            }
+        }
     }
     function attachLinkPreview(msgId, url, sourceText) {
         if (!msgId || !url) return;
@@ -6257,8 +6428,9 @@
             if (!preview) return;
             var msg = messages.find(function (m) { return m && m.id === msgId; });
             if (!msg || msg.recalled) return;
-            // 抓取结果缺标题时，保留分享文案里的标题
+            // 抓取结果缺标题时，保留分享文案里的标题；也保留用户补发的截图封面
             if (!preview.title && msg.linkPreview && msg.linkPreview.title) preview.title = msg.linkPreview.title;
+            if (msg.linkPreview && msg.linkPreview.imageMsgId && !preview.image) preview.imageMsgId = msg.linkPreview.imageMsgId;
             msg.linkPreview = preview;
             saveMessages();
             renderMessages();
@@ -6730,14 +6902,22 @@
     }
 
     // ===== 分享链接（小红书 / 抖音 / 淘宝等）自动读取：抓标题/正文/价格/图片作为上下文 =====
-    var LINK_HOST_RE = /(xiaohongshu\.com|xhslink\.com|douyin\.com|iesdouyin\.com|taobao\.com|tmall\.com|tb\.cn|jd\.com|3\.cn)/i;
+    // 小红书分享短链同时存在 xhslink.com / xhslink.cn（国内分享多为 .cn），
+    // 之前只认 .com，导致链接既不出卡片、也不会被当成链接抓正文。
+    var LINK_HOST_RE = /(xiaohongshu\.com|xhslink\.[a-z.]+|xhs\.cn|douyin\.com|iesdouyin\.com|taobao\.com|tmall\.com|tb\.cn|jd\.com|3\.cn)/i;
     var LINK_URL_RE = /https?:\/\/[^\s"'<>）)】\]]+/ig;
+    function cleanSharedUrl(url) {
+        return String(url || '')
+            .replace(/[，。！？；：、…~～"'”’）)】\]]+$/g, '')
+            .trim();
+    }
     function findSharedLinks(text) {
         var out = [];
         var s = String(text || '');
         var m; LINK_URL_RE.lastIndex = 0;
         while ((m = LINK_URL_RE.exec(s)) !== null) {
-            if (LINK_HOST_RE.test(m[0])) { out.push(m[0]); if (out.length >= 3) break; }
+            var u = cleanSharedUrl(m[0]);
+            if (LINK_HOST_RE.test(u)) { out.push(u); if (out.length >= 3) break; }
         }
         return out;
     }
@@ -6757,7 +6937,7 @@
         if (!url) return Promise.resolve(null);
         if (__linkPreviewCache[url]) return Promise.resolve(__linkPreviewCache[url]);
         return fetchLinkContent(url).then(function (c) {
-            if (!c) return null;
+            if (isBlockedLinkContent(c)) return null;
             var content = String(c.content || c.desc || '');
             var firstLine = content.split(/\n+/).map(function (s) { return s.trim(); }).filter(Boolean)[0] || '';
             var preview = {
@@ -6784,6 +6964,7 @@
         u = _decHtml(String(u || '')).replace(/\\\//g, '/').replace(/&amp;/g, '&');
         if (!u) return '';
         if (u.indexOf('//') === 0) u = 'https:' + u;
+        if (/^http:\/\//i.test(u)) u = 'https://' + u.slice(7);
         if (!/^https?:\/\//i.test(u)) return '';
         return u;
     }
@@ -6800,6 +6981,8 @@
         while ((m = re.exec(html))) add(m[1]);
         var re2 = /<meta[^>]+content=["']([^"']+)["'][^>]*(?:property|name)=["'](?:og:image(?::secure_url)?|twitter:image)["']/gi;
         while ((m = re2.exec(html))) add(m[1]);
+        var reNote = /"imageScene"\s*:\s*"H5_DTL"[\s\S]{0,240}?"url"\s*:\s*"([^"]+)"/gi;
+        while ((m = reNote.exec(html))) add(m[1]);
         var re3 = /"(?:picUrl|imageUrl|image|img|pic|pics|images)"\s*:\s*"([^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/gi;
         while ((m = re3.exec(html))) add(m[1]);
         var re4 = /(?:src|data-src|data-original)=["']([^"']+\.(?:jpg|jpeg|png|webp)[^"']*)["']/gi;
@@ -6825,6 +7008,8 @@
         var title = pick(/<meta[^>]+property=["']og:title["'][^>]*content=["']([\s\S]*?)["']/i)
             || pick(/<meta[^>]+content=["']([\s\S]*?)["'][^>]*property=["']og:title["']/i)
             || pick(/<title[^>]*>([\s\S]*?)<\/title>/i);
+        var jt = html.match(/"title"\s*:\s*"([^"]{1,200})"/i);
+        if (jt && jt[1] && (!title || /^(小红书|抖音|快手|微博|哔哩哔哩|B站)/i.test(_decHtml(title)))) title = jt[1];
         var desc = pick(/<meta[^>]+property=["']og:description["'][^>]*content=["']([\s\S]*?)["']/i)
             || pick(/<meta[^>]+name=["']description["'][^>]*content=["']([\s\S]*?)["']/i)
             || pick(/<meta[^>]+content=["']([\s\S]*?)["'][^>]*name=["']description["']/i);
@@ -6840,10 +7025,55 @@
             .replace(/[ \t]{2,}/g, ' ')
             .trim();
     }
-    // 真正读取分享内容：先 r.jina.ai 把分享页转成可读正文（含帖子正文 / 视频文案），失败再回退 CORS 代理解析 HTML
+    // 真正读取分享内容：先走自己的 Worker 代理（服务端抓取，不受 CORS/国内网络影响），
+    // 再试 r.jina.ai，最后回退公共 CORS 代理解析 HTML。
     function fetchLinkContent(url) {
+        // 每个抓取通道都限时：小红书/抖音被墙或反爬时不能把整轮回复卡住几分钟。
+        function linkFetch(u, opts, ms) {
+            var ctrl = null;
+            try { ctrl = new AbortController(); } catch (e) {}
+            var timer = setTimeout(function () { try { if (ctrl) ctrl.abort(); } catch (e) {} }, ms || 8000);
+            var o = Object.assign({}, opts || {});
+            if (ctrl) o.signal = ctrl.signal;
+            return fetch(u, o).then(function (r) { clearTimeout(timer); return r; }, function (e) { clearTimeout(timer); throw e; });
+        }
+        function fromWorker() {
+            var base = '';
+            try { base = autoPushBase(); } catch (e) {}
+            if (!base) return Promise.reject(new Error('no worker'));
+            var tok = '';
+            try { tok = autoPushToken() || ''; } catch (e) {}
+            return linkFetch(base + '/link/preview?url=' + encodeURIComponent(url) + (tok ? ('&token=' + encodeURIComponent(tok)) : ''), { cache: 'no-store' }, 12000)
+                .then(function (r) { if (!r.ok) throw new Error('http'); return r.json(); })
+                .then(function (j) {
+                    if (!j || !j.ok) {
+                        var be = new Error('blocked');
+                        be.blocked = true;
+                        throw be;
+                    }
+                    var content = String(j.content || j.desc || '');
+                    var images = Array.isArray(j.images) ? j.images.slice(0, 6) : [];
+                    var title = String(j.title || '').slice(0, 120);
+                    if (!title && !content) throw new Error('empty');
+                    // 小红书/抖音经常把云机房 IP 跳到登录/滑块页：这种结果不能当成正文，
+                    // 必须继续走 Jina / 代理，否则角色只会看到「小红书」三个字。
+                    var generic = /^(小红书|抖音|快手|微博|哔哩哔哩|B站)\s*$/i.test(title);
+                    if (/website-login|captcha|verify|\/login|signin/i.test(String(j.url || '')) ||
+                        /滑动验证|请登录|安全验证|访问异常|captcha|想了解些什么|登录后|扫码登录|登录小红书/i.test(content) ||
+                        (generic && content.replace(/\s+/g, '').length < 50 && !images.length)) {
+                        throw new Error('blocked');
+                    }
+                    return {
+                        title: title,
+                        desc: String(j.desc || content.replace(/\s+/g, ' ')).replace(/\s+/g, ' ').slice(0, 180),
+                        content: content.slice(0, 7000),
+                        images: images,
+                        price: String(j.price || '')
+                    };
+                });
+        }
         function fromJina() {
-            return fetch('https://r.jina.ai/' + url, { cache: 'no-store' })
+            return linkFetch('https://r.jina.ai/' + url, { cache: 'no-store' }, 10000)
                 .then(function (r) { if (!r.ok) throw new Error('http'); return r.text(); })
                 .then(function (txt) {
                     // 先取 Jina 的标题/描述，再清理成正文；否则卡片会没有标题
@@ -6862,7 +7092,8 @@
                         if (hm) title = _decHtml(hm[1]).trim();
                     }
                     if (!desc) desc = _cleanLinkText(t).replace(/\s+/g, ' ').slice(0, 180);
-                    if (t.length < 120) throw new Error('short');
+                    // 短笔记（例如只有标题「永远」）也是有效内容，不能因为不足 120 字就丢弃。
+                    if (!title && t.length < 20) throw new Error('short');
                     // jina 的 markdown 里也常带正文配图，抽出来一起给模型看
                     var imgs = [], seen = {};
                     var ire = /!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/gi, im;
@@ -6880,7 +7111,7 @@
                 function (u) { return 'https://corsproxy.io/?url=' + encodeURIComponent(u); }
             ];
             if (i >= proxies.length) return Promise.reject(new Error('no proxy'));
-            return fetch(proxies[i](url), { cache: 'no-store' })
+            return linkFetch(proxies[i](url), { cache: 'no-store' }, 8000)
                 .then(function (r) { if (!r.ok) throw new Error('http'); return r.text(); })
                 .then(function (html) {
                     var meta = parseHtmlMeta(html);
@@ -6896,7 +7127,15 @@
                 })
                 .catch(function () { return fromProxy(i + 1); });
         }
-        return fromJina().catch(function () { return fromProxy(0); }).catch(function () { return null; });
+        return fromWorker()
+            .catch(function (e) {
+                // Worker 已确认是登录/反爬页：Jina 和公共代理在国内通常也连不上，
+                // 不再白等十几秒，直接用用户分享文案兜底。
+                if (e && e.blocked) return null;
+                return fromJina();
+            })
+            .catch(function () { return fromProxy(0); })
+            .catch(function () { return null; });
     }
     async function buildLinkContext(text) {
         var links = findSharedLinks(text);
@@ -6905,13 +7144,22 @@
         for (var i = 0; i < Math.min(links.length, 2); i++) {
             var c = null;
             try { c = await fetchLinkPreview(links[i]); } catch (e) {}
+            var share = linkShareText(text, links[i]);
             var block = '链接：' + links[i];
             if (c) {
                 if (c.title) block = '标题：' + c.title + '\n' + block;
                 if (c.price) block += '\n价格：¥' + c.price;
                 var body = c.content || c.desc || '';
                 if (body) block += '\n内容 / 文案（可能包含正文、评论或热评）：\n' + body;
+                if (share) block += '\n用户分享时附带的文字：' + share;
                 if (c.image && images.indexOf(c.image) === -1) images.push(c.image);
+            } else {
+                // 小红书/抖音对机房 IP 很严格，抓不到正文时至少把用户发来的分享文案
+                // 当成标题+内容，不能让模型只看到一条光秃秃的链接。
+                var guessed = guessLinkTitle(text, links[i]) || linkSiteLabel(links[i]);
+                block = '标题：' + guessed + '\n' + block;
+                if (share) block += '\n内容（来自用户分享文案）：' + share;
+                block += '\n（网页正文被登录/反爬拦截，以上是用户分享时自带的文字。绝对不要回复“我打不开 / 需要登录 / 看不到”；直接根据这段标题和文案自然回应。）';
             }
             parts.push(block);
         }
@@ -7756,8 +8004,23 @@
             box.querySelector('.nano-run').addEventListener('click', async function () {
                 a.status = 'running'; a.error = ''; paint();
                 try {
-                    await window.NanoAssistant.execAction(a);
+                    var execResult = await window.NanoAssistant.execAction(a);
                     a.status = 'done';
+                    if (execResult && execResult.file && execResult.file.id) {
+                        var __hasFileCard = messages.some(function (m) {
+                            return m && m.isCard && m.cardData && m.cardData.fileId === execResult.file.id;
+                        });
+                        if (!__hasFileCard) {
+                            var __fh = String(execResult.file.content || '');
+                            addMessage('left', '', nowHHMM(), null, false, true, {
+                                cardType: 'file',
+                                name: execResult.file.name || '文件',
+                                size: execResult.file.size ? (execResult.file.size + ' B') : (__fh.length + ' B'),
+                                content: __fh,
+                                fileId: execResult.file.id
+                            });
+                        }
+                    }
                 } catch (e) {
                     a.status = 'failed'; a.error = String((e && e.message) || e);
                 }
@@ -7837,25 +8100,32 @@
         if (!row && parsed.actions.length) {
             row = addMessage('left', '好的，这是方案：', nowHHMM(), null, false, false, null, null, null, null);
         }
-        var reads = parsed.actions.filter(function (a) { return a.tool === 'read_file' && a.args && a.args.path; });
-        var presetReads = parsed.actions.filter(function (a) { return a.tool === 'list_presets' || a.tool === 'read_preset'; });
-        // 先渲染本条回复里的写入动作（只读动作 read_file / list_presets / read_preset 不渲染卡片）
-        parsed.actions.filter(function (a) { return a.tool !== 'read_file' && a.tool !== 'list_presets' && a.tool !== 'read_preset'; }).forEach(function (a) { renderNanoAction(a, row); });
-        if (reads.length || presetReads.length) {
+        var READ_TOOLS = {
+            read_file: 1, list_presets: 1, read_preset: 1,
+            list_characters: 1, read_character: 1, list_worldbooks: 1, read_worldbook: 1,
+            read_beautify: 1, list_status_bars: 1, list_offline_rules: 1, read_offline_rules: 1, list_persona_versions: 1,
+            list_apps: 1, read_app: 1, list_files: 1, read_generated_file: 1, read_memory: 1
+        };
+        var readActs = parsed.actions.filter(function (a) { return READ_TOOLS[a.tool]; });
+        // 只读动作不渲染卡片，先执行并把内容喂回模型；写入动作才显示「立即执行」
+        parsed.actions.filter(function (a) { return !READ_TOOLS[a.tool]; }).forEach(function (a) { renderNanoAction(a, row); });
+        if (readActs.length) {
             var out = '';
-            for (var i = 0; i < reads.length; i++) {
-                var txt = await NA.fetchSource(reads[i].args.path);
-                out += '\n===== ' + reads[i].args.path + ' =====\n' + (txt || '（读取失败）') + '\n';
-            }
-            for (var j = 0; j < presetReads.length; j++) {
-                var pa = presetReads[j];
-                var ptext = '';
+            for (var i = 0; i < readActs.length; i++) {
+                var ra = readActs[i], rtext = '';
                 try {
-                    ptext = (pa.tool === 'read_preset' && NA.readPreset)
-                        ? await NA.readPreset(pa.args && pa.args.scope, pa.args && pa.args.name)
-                        : (NA.listPresets ? await NA.listPresets(pa.args && pa.args.scope) : '');
-                } catch (err) { ptext = '读取失败：' + String((err && err.message) || err); }
-                out += '\n' + (ptext || '（无内容）') + '\n';
+                    if (ra.tool === 'read_file') {
+                        rtext = await NA.fetchSource(ra.args && ra.args.path);
+                        rtext = '\n===== ' + ((ra.args && ra.args.path) || '源码') + ' =====\n' + (rtext || '（读取失败）') + '\n';
+                    } else if (ra.tool === 'read_preset' && NA.readPreset) {
+                        rtext = await NA.readPreset(ra.args && ra.args.scope, ra.args && ra.args.name);
+                    } else if (ra.tool === 'list_presets' && NA.listPresets) {
+                        rtext = await NA.listPresets(ra.args && ra.args.scope);
+                    } else {
+                        rtext = await NA.execAction(ra);
+                    }
+                } catch (err) { rtext = '读取失败：' + String((err && err.message) || err); }
+                out += '\n===== ' + ra.tool + ' =====\n' + (rtext || '（无内容）') + '\n';
             }
             var extra = '[以下是你请求读取的内容，请基于它继续回答]\n' + out;
             if (depth < 1) {
@@ -8159,7 +8429,8 @@
                         } else if (tag.kind === 'rejectinvite') {
                             rejectUserInvite(tag.payload);
                         } else if (tag.kind === 'reply') {
-                            replyQuote = { name: currentUserName, text: tag.payload || '' };
+                            // 引用对象始终是用户；模型偶尔只输出 [reply:] 不带内容时，回退到最后一条用户消息
+                            replyQuote = { name: currentUserName, text: tag.payload || (quoteTarget && quoteTarget.text) || '' };
                             // [reply:] 独占一行，把引用挂到下一句真正的回复上，而不是把引用内容当气泡发出去
                             pendingQuote = replyQuote;
                         }
@@ -8485,10 +8756,22 @@
             try { cid = new URLSearchParams(location.search).get('chat') || ''; } catch (e) {}
             var setting = (characterData && (characterData.setting || characterData.desc || characterData.persona)) || '';
             var sys = '你是「' + (displayName || '角色') + '」。' + String(setting);
+            // 人设基本不变，之前每轮回复都写 3 个 KV key（persona:chat / latest / owner），
+            // 是 KV 写入额度的另一大来源。同一聊天 6 小时内人设没变就不再上传。
+            var sigKey = 'nano_peek_persona_sig_' + (cid || 'latest');
+            var atKey = 'nano_peek_persona_at_' + (cid || 'latest');
+            try {
+                var oldSig = localStorage.getItem(sigKey) || '';
+                var oldAt = parseInt(localStorage.getItem(atKey) || '0', 10) || 0;
+                if (oldSig === sys && Date.now() - oldAt < 6 * 3600 * 1000) return;
+            } catch (e) {}
             fetch(base.replace(/\/+$/, '') + '/peek/persona', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ token: token, appId: autoAppId(), deviceId: autoDeviceId(), userId: getCurrentMaskId(), chatId: cid, system: sys })
+            }).then(function (r) {
+                if (!r || !r.ok) return;
+                try { localStorage.setItem(sigKey, sys); localStorage.setItem(atKey, String(Date.now())); } catch (e) {}
             }).catch(function () {});
         } catch (e) {}
     }
@@ -9078,6 +9361,33 @@ if (callCard) {
     }, 300);
     return;
 }
+
+        // ===== 番茄钟学习卡片：点开看本次学习内容与对话 =====
+        const studyCard = e.target.closest('.bubble-card.study');
+        if (studyCard) {
+            if (isMultiSelect) return;
+            const stRow = studyCard.closest('.message-row');
+            const stMsg = stRow ? messages.find(m => m.id === stRow.dataset.id) : null;
+            if (stMsg && stMsg.cardData) {
+                const cd = stMsg.cardData;
+                const log = [];
+                if (cd.summary) log.push({ name: '学习记录', bubbles: [String(cd.summary)] });
+                if (Array.isArray(cd.dialogue) && cd.dialogue.length) {
+                    log.push({
+                        name: '这次对话',
+                        bubbles: cd.dialogue.map(function (x) {
+                            return (x.r === 'u' ? '我：' : ((displayName || 'TA') + '：')) + String(x.t || '');
+                        })
+                    });
+                }
+                openTakeoverViewer({
+                    title: cd.title || '番茄钟学习',
+                    coupleSummary: [cd.date, cd.minutes ? (cd.minutes + ' 分钟') : ''].filter(Boolean).join(' · '),
+                    takeoverLog: JSON.stringify(log)
+                });
+            }
+            return;
+        }
 
         // ===== 日程报备卡片：点开看图片和角色的一句话备注 =====
         const scheduleCard = e.target.closest('.bubble-card.scheduleReport');
@@ -10275,6 +10585,12 @@ if (callCard) {
             try { syncAutoPushConfig(); } catch (e) {}
         }
 
+        // 番茄钟写入学习卡片：当前私聊立刻重新载入，让卡片出现
+        if (data.type === 'studyCardAdded' && (!data.chatId || String(data.chatId) === String(chatId))) {
+            try { loadMessages(function () { try { scrollToBottom(); } catch (e) {} }); } catch (e) {}
+            return;
+        }
+
         // 线下返回线上：系统提示「已退出线下」+ 带回线下最新一轮作为衔接上下文
         if (data.type === 'NANO_SYS_NOTICE') {
             try { addSystemNotice(String(data.text || '')); } catch (e) {}
@@ -10346,6 +10662,12 @@ if (callCard) {
         if (data.type === 'NANO_MEMORY_UPDATED') {
             if (!data.chatId || String(data.chatId) === String(chatId)) {
                 try { refreshMemoryHints(); } catch (e) {}
+            }
+            return;
+        }
+        if (data.type === 'NANO_MEMORY_SUMMARY_FAILED') {
+            if (!data.chatId || String(data.chatId) === String(chatId)) {
+                try { showAlert('记忆总结失败', data.message || __memFriendlyError(null)); } catch (e) {}
             }
             return;
         }

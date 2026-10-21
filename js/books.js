@@ -214,6 +214,7 @@ async function loadCharMemory(charId){
 /* ==================== 工具 ==================== */
 function escapeHtml(s){return String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
 function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(t._timer);t._timer=setTimeout(()=>t.classList.remove('show'),1800);}
+window.addEventListener('NANO_MEMORY_SUMMARY_FAILED', function(e){ try { var m=((e.detail&&e.detail.message)||'记忆总结失败'); toast(String(m).split('\n')[0]); } catch (x) {} });
 function formatTime(ms){const min=Math.floor(ms/60000);if(min<60) return min+'分';return Math.floor(min/60)+'时'+(min%60)+'分';}
 
 /* ==================== 初始化 ==================== */
@@ -1366,7 +1367,7 @@ async function callMainAPI(){
   const history = buildHistoryMessages();
   let messages = [{role:'system',content:sys}, ...history];
   try {
-    if (window.NanoPrompts && NanoPrompts.inject) messages = NanoPrompts.inject(messages, 'social');
+    if (window.NanoPrompts && NanoPrompts.inject) messages = NanoPrompts.inject(messages, 'books');
   } catch (e) {}
   markedForNextReply='';   // 标记段落只让角色读一次，后续消息正常聊天
 

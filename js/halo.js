@@ -3372,7 +3372,7 @@ const HaloData = (() => {
     const url = toV1Base(resolveApiHost(cfg.main.url)) + '/chat/completions';
     let chatMessages = messages;
     try {
-      if (window.NanoPrompts && NanoPrompts.inject) chatMessages = NanoPrompts.inject(messages, 'social', { keepFormat: true });
+      if (window.NanoPrompts && NanoPrompts.inject) chatMessages = NanoPrompts.inject(messages, 'halo', { keepFormat: true });
     } catch (e) {}
     const body = {
       model: cfg.main.model,

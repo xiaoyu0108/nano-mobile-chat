@@ -42,7 +42,7 @@ button svg{pointer-events:none;vertical-align:middle;flex-shrink:0}
 .editor-wrap{position:relative;border-radius:12px;border:0.5px solid rgba(60,60,67,.12);background:#fafafa;overflow:hidden}
 .editor-wrap:focus-within{background:#fff;border-color:rgba(0,122,255,.4);box-shadow:0 0 0 2px rgba(0,122,255,.06)}
 .editor-wrap textarea{display:block;width:100%;height:180px;resize:vertical;border:none;background:transparent;outline:none;padding:10px 12px;color:#1c1c1e;font-family:"SFMono-Regular",Menlo,Monaco,Consolas,monospace;font-size:11px;line-height:1.6}
-/* 隐藏 CSS 输入框右侧的滚动条（仍可滚动�?*/
+/* 注释已清理（原文件编码损坏） */
 .editor-wrap textarea::-webkit-scrollbar{display:none;width:0;height:0}
 .editor-wrap textarea{scrollbar-width:none;-ms-overflow-style:none;overflow-x:hidden}
 
@@ -73,7 +73,7 @@ button svg{pointer-events:none;vertical-align:middle;flex-shrink:0}
 .live-preview.open .lp-body{display:block}
 .lp-frame{width:100%;height:360px;border:0.5px solid rgba(60,60,67,.12);border-radius:10px;background:#fff;display:block}
 
-/* ===== 头像调节（方�?/ 大小�?===== */
+/* 注释已清理（原文件编码损坏） */
 .tune-card{background:#f7f7f8;border-radius:12px;padding:10px 14px;margin-bottom:12px;border:0.5px solid rgba(60,60,67,.06)}
 .tune-row{display:grid;grid-template-columns:40px minmax(0,1fr) 44px;align-items:center;gap:8px;padding:2px 0}
 /* 头像框预设：切换框 / 保存 / 删除 强制同一行，不换行 */
@@ -87,6 +87,29 @@ button svg{pointer-events:none;vertical-align:middle;flex-shrink:0}
 .tune-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:18px;height:18px;border-radius:50%;background:#007aff;cursor:pointer;box-shadow:0 2px 6px rgba(0,122,255,.25)}
 .tune-slider::-moz-range-thumb{width:18px;height:18px;border-radius:50%;background:#007aff;cursor:pointer;border:none}
 .tune-slider::-moz-range-track{height:3px;border-radius:2px;background:rgba(60,60,67,.15)}
+
+/* ===== 内置风格 ===== */
+.builtin-theme-bar{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+#chat .labelrow .lp-sub{flex:none;margin-left:auto;text-align:right}
+.builtin-theme{
+  display:flex;flex-direction:column;align-items:flex-start;gap:2px;
+  min-width:0;overflow:hidden;
+  padding:10px 12px;border-radius:12px;border:0.5px solid rgba(60,60,67,.12);
+  background:#f7f7f8;color:#1c1c1e;text-align:left;cursor:pointer;
+  transition:all .16s ease;
+}
+.builtin-theme:active{transform:scale(.98)}
+.builtin-theme .bt-name,.builtin-theme .bt-sub{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.builtin-theme .bt-name{font-size:13.5px;font-weight:650;line-height:1.2}
+.builtin-theme .bt-sub{font-size:10px;color:#8e8e93;line-height:1.3;letter-spacing:.2px}
+.builtin-theme.on{background:#fff;border-color:#bd8395;box-shadow:0 0 0 2px rgba(189,131,149,.12)}
+.builtin-theme.on .bt-name{color:#a56379}
+.builtin-theme.on .bt-sub{color:#bd8395}
+.builtin-theme[data-theme="gray-pink"] .bt-name::before{
+  content:"";display:inline-block;width:18px;height:6px;margin-right:6px;
+  border-radius:3px;vertical-align:1px;
+  background:linear-gradient(90deg,#4a4a4a 0 45%,#f9d5e0 55% 100%);
+}
 
 /* ===== Preset - 隐藏下拉箭头 ===== */
 .group{margin-bottom:12px}

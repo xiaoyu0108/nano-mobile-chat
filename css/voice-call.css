@@ -16,7 +16,7 @@ body {
     position: relative;
 }
 
-/* ===== 顶部�?===== */
+/* 注释已清理（原文件编码损坏） */
 .topbar {
     display: flex;
     align-items: center;
@@ -280,7 +280,7 @@ body.connecting .avatar::after {
     box-shadow: none !important;
 }
 
-/* ===== 消息�?===== */
+/* 注释已清理（原文件编码损坏） */
 .chat-area {
     flex: 1;
     padding: 6px 16px 8px;
@@ -340,7 +340,7 @@ body.connecting .avatar::after {
 .msg-user .msg-trans { color: rgba(255, 255, 255, 0.9); }
 .msg-api .msg-trans { color: #6b6b70; }
 
-/* ===== 打字指示�?===== */
+/* 注释已清理（原文件编码损坏） */
 .typing-indicator {
     align-self: flex-start;
     display: none;
@@ -368,7 +368,7 @@ body.connecting .avatar::after {
     30% { transform: translateY(-6px); opacity: 1; }
 }
 
-/* ===== 底部输入�?===== */
+/* 注释已清理（原文件编码损坏） */
 .bottom-area {
     padding: 8px 16px 18px;
     flex-shrink: 0;
@@ -612,7 +612,7 @@ body.dark-bg .name-display, body.dark-bg .status-display { color: #ffffff; }
     opacity: 0.7;
 }
 
-/* ===== 响应�?===== */
+/* 注释已清理（原文件编码损坏） */
 @media (max-width: 400px) {
     .incoming-actions {
         gap: 50px;
@@ -728,7 +728,7 @@ body.dark-bg .name-display, body.dark-bg .status-display { color: #ffffff; }
     object-fit: cover;
 }
 
-/* ===== 响应�?===== */
+/* 注释已清理（原文件编码损坏） */
 @media (max-width: 400px) {
     .topbar { padding: 10px 12px 4px; }
     .btn-minimize, .btn-bg { width: 32px; height: 32px; }
@@ -782,7 +782,7 @@ body.dark-bg .name-display, body.dark-bg .status-display { color: #ffffff; }
     stroke: #fff;
 }
 
-/* ===== 背景切换按钮（右上角�?===== */
+/* 注释已清理（原文件编码损坏） */
 .btn-bg {
     position: absolute;
     top: calc(16px + var(--safe-top, env(safe-area-inset-top, 0px)));

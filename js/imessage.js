@@ -232,7 +232,7 @@ const CORE_POLICY = '\n【核心准则 · 每次都要遵守】\n'
   + '2. 【世界书】【记忆库】【记忆宫殿】【人设】都是必读项，可自主读取其中较重要的内容，输出时必须遵守；你就是{{char}}，一个活生生的人。记忆是重中之重，必须完善、完整，角色不能随时失忆；线上、线下以及各类 App 的记忆大多互通。记忆宫殿是调节角色记忆的地方，能让角色更好地记住重要的东西，分门别类的记忆线索也更利于角色查找、读取记忆。\n';
 function readGlobalBuiltinPrompt() {
   try {
-    if (window.NanoPrompts && NanoPrompts.buildBlock) return String(NanoPrompts.buildBlock('social') || '').trim();
+    if (window.NanoPrompts && NanoPrompts.buildBlock) return String(NanoPrompts.buildBlock('imessage') || '').trim();
     return (localStorage.getItem('nano_builtin_prompt') || '').trim();
   } catch (e) { return ''; }
 }
@@ -592,6 +592,21 @@ async function loadMemHints(charId) {
 function notifyMemoryUpdated(charId) {
   try { if (window.parent !== window) window.parent.postMessage({ type: 'NANO_MEMORY_UPDATED', chatId: charId }, '*'); } catch (e) {}
 }
+let imMemFailAt = 0;
+function imMemFriendly(s) {
+  s = String(s || '').trim();
+  if (/429|quota|insufficient|balance|rate.?limit|额度|余额|欠费/i.test(s)) return 'API 额度不足或触发限流（429）。这次没有写入记忆库，聊天本身不受影响；请检查记忆 API 余额/额度。';
+  if (/401|403|unauthorized|invalid.*key|api.?key/i.test(s)) return '记忆 API 的 Key 无效或无权限（401/403）。请检查地址、Key 和模型名。';
+  return '记忆总结失败：' + (s ? s.slice(0, 180) : '未知错误') + '\n这次没有写入记忆库，聊天本身不受影响。';
+}
+function imMemNotify(s) {
+  var now = Date.now();
+  if (now - imMemFailAt < 10 * 60 * 1000) return;
+  imMemFailAt = now;
+  var msg = imMemFriendly(s);
+  try { if (typeof toastMsg === 'function') toastMsg(msg.split('\n')[0]); } catch (e) {}
+  try { if (window.parent !== window) window.parent.postMessage({ type: 'NANO_MEMORY_SUMMARY_FAILED', message: msg }, '*'); } catch (e) {}
+}
 async function maybeSummarize(charId, charName, history) {
   try {
     const db = await openVectorDB();
@@ -609,7 +624,7 @@ async function maybeSummarize(charId, charName, history) {
       + '格式必须是【类型】内容。类型只能从这些里选：重要事件、用户偏好、情感、社交关系、地点、习惯、说话方式、禁忌、愿望、身世、秘密、其他。'
       + '内容要具体、简短（30字内），只写事实，不要评价、不要解释、不要输出多余文字。';
     const out = await callApi([{ role: 'system', content: sys }, { role: 'user', content: convo }], { maxTokens: 500, temperature: 0.3 });
-    if (!out) return;
+    if (!out) { imMemNotify(lastApiError || '接口没有返回内容'); return; }
     const items = [];
     String(out).split(/\n+/).forEach(line => {
       const m = line.match(/^\s*[【\[]\s*([^】\]]+?)\s*[】\]]\s*(.+?)\s*$/);
@@ -629,7 +644,7 @@ async function maybeSummarize(charId, charName, history) {
     }
     await dbPut(db, 'chat_state', { chatId: charId, summarizedCount: history.length });
     notifyMemoryUpdated(charId);
-  } catch (e) {}
+  } catch (e) { imMemNotify(e && e.message ? e.message : String(e)); }
 }
 
 /* ---------------- 状态 ---------------- */

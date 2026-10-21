@@ -152,7 +152,7 @@ async function getSubApiConfig() {
 async function callApiWith(conf, messages) {
   if (!conf || !conf.url || !conf.key) throw new Error('未配置 API，请先在 API 设置里填写中转地址和 Key');
   try {
-    if (window.NanoPrompts && NanoPrompts.inject) messages = NanoPrompts.inject(messages, 'social', { keepFormat: true });
+    if (window.NanoPrompts && NanoPrompts.inject) messages = NanoPrompts.inject(messages, 'ins', { keepFormat: true });
   } catch (e) {}
   let base = String(conf.url).trim().replace(/\/+$/, '');
   if (!base.endsWith('/v1')) base += '/v1';

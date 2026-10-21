@@ -1,7 +1,4 @@
-/* ============================================================
-   discover.css �?纯白�?· 照片�?+ 极简入口
-   已移除右侧菜单，照片墙尺�?圆角重新调和
-   ============================================================ */
+/* 注释已清理（原文件编码损坏） */
 
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 
@@ -34,9 +31,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   overflow:hidden;
 }
 
-/* ============================================================
-   照片轮播�?—�?尺寸与圆角重新调�?
-   ============================================================ */
+/* 注释已清理（原文件编码损坏） */
 .carousel-section{margin-bottom:36px}
 
 .carousel{
@@ -50,7 +45,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   width:212px;height:284px;
   left:50%;top:16px;
   transform:translateX(-50%);
-  border-radius:26px;           /* 更圆润，与入口卡片呼�?*/
+  border-radius:26px;           /* 注释已清理（原文件编码损坏） */
   background:#f2f2f7;
   overflow:hidden;
   box-shadow:0 16px 34px rgba(0,0,0,.10);
@@ -64,7 +59,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   pointer-events:none;
 }
 
-/* 中心最大，两侧依次缩小，间距收紧让整体更紧�?*/
+/* 注释已清理（原文件编码损坏） */
 .card.center  {transform:translateX(-50%) scale(1);z-index:5}
 .card.left    {transform:translateX(calc(-50% - 122px)) scale(.80) rotateY(14deg);z-index:3;opacity:.95}
 .card.right   {transform:translateX(calc(-50% + 122px)) scale(.80) rotateY(-14deg);z-index:3;opacity:.95}
@@ -86,7 +81,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .entry{
   display:flex;align-items:center;
   padding:15px 16px;
-  border-radius:20px;               /* 与照片圆角呼�?*/
+  border-radius:20px;               /* 注释已清理（原文件编码损坏） */
   background:#fafafa;
   border:.5px solid rgba(0,0,0,.04);
   text-align:left;
@@ -179,7 +174,7 @@ body::-webkit-scrollbar {
   height: 0;
 }
 
-/* 如果外层容器还叠加了滚动条，用这个兜�?*/
+/* 注释已清理（原文件编码损坏） */
 .container, .page {
   overflow: hidden;
 }

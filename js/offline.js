@@ -3448,8 +3448,19 @@ async function summarizeTextToMemory(chatText, chatId) {
   return entries.length;
 }
 
+var OFF_MEM_RETRY_AFTER = 0;
+var OFF_MEM_FAIL_NOTICE_AT = 0;
+function offMemFriendlyError(e) {
+  var s = String((e && e.message) || e || '').trim();
+  if (/429|quota|insufficient|balance|rate.?limit|额度|余额|欠费/i.test(s)) return 'API 额度不足或触发限流（429）。这次对话没有写入记忆库，聊天本身不受影响；请检查记忆 API 余额/额度，10 分钟后会自动重试。';
+  if (/401|403|unauthorized|invalid.*key|api.?key/i.test(s)) return '记忆 API 的 Key 无效或无权限（401/403）。请到「设置 → API」检查记忆总结用的地址、Key 和模型名。';
+  if (/\b5\d\d\b/.test(s)) return '记忆 API 服务端错误（' + s + '）。这次没有写入记忆库，10 分钟后会自动重试。';
+  if (/network|failed to fetch|fetch failed|网络|timeout|超时/i.test(s)) return '网络连接失败，记忆 API 请求没有发出去。这次没有写入记忆库，10 分钟后会自动重试。';
+  return '记忆总结失败：' + (s ? s.slice(0, 200) : '未知错误') + '\n这次对话没有写入记忆库，聊天本身不受影响；10 分钟后会自动重试。';
+}
 async function summarizeOfflineMemories(force) {
   if (!offlineChatId || OFF_MEM_BUSY.v) return;
+  if (!force && Date.now() < OFF_MEM_RETRY_AFTER) return;
   // 小剧场（番外）不计入记忆
   if (!isStoryScene(offlineScene)) return;
   // 自动总结开关关闭时，自动触发跳过；force（退出线下时）不受开关和条数阈值限制
@@ -3469,7 +3480,19 @@ async function summarizeOfflineMemories(force) {
     if (!n) return;
     const lastIdx = rel.indexOf(take[take.length - 1]);
     localStorage.setItem(offMemCountKey(), String(Math.max(count, lastIdx + 1)));
-  } catch (e) { console.warn('离线记忆总结失败', e); } finally { OFF_MEM_BUSY.v = false; }
+  } catch (e) {
+    console.warn('离线记忆总结失败', e);
+    OFF_MEM_RETRY_AFTER = Date.now() + 10 * 60 * 1000;
+    var now = Date.now();
+    if (now - OFF_MEM_FAIL_NOTICE_AT >= 10 * 60 * 1000) {
+      OFF_MEM_FAIL_NOTICE_AT = now;
+      try {
+        var msg = offMemFriendlyError(e);
+        if (typeof omToast === 'function') omToast('记忆总结失败：' + String(msg).split('\n')[0]);
+        if (window.parent !== window) window.parent.postMessage({ type: 'NANO_MEMORY_SUMMARY_FAILED', message: msg, chatId: offlineChatId }, '*');
+      } catch (x) {}
+    }
+  } finally { OFF_MEM_BUSY.v = false; }
 }
 
 // ============================================================

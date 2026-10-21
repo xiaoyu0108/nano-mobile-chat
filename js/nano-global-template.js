@@ -745,7 +745,8 @@ body.nano-chat {
 .nano-chat .dock {
   display: flex;
   align-items: center;
-  gap: 6px;
+  justify-content: space-around;
+  gap: 0;
   background: #ffffff;
   border-radius: 999px;
   padding: 6px 10px;
@@ -755,9 +756,10 @@ body.nano-chat {
 
 .nano-chat .dock-btn {
   position: relative;
-  flex: 1;
-  min-width: 0;
-  width: auto;
+  /* 固定正方形，任何屏幕宽度下选中态都是正圆，不会被 flex 拉伸成椭圆 */
+  flex: 0 0 46px;
+  min-width: 46px;
+  width: 46px;
   height: 46px;
   border: none;
   background: transparent;

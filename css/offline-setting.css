@@ -150,7 +150,7 @@ background:#fff;outline:none;padding:11px 12px;font-size:12px;line-height:1.65;c
 .bg-actions{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:10px}
 .bg-actions .sheet-btn{justify-content:center;width:100%;padding:0 6px}
 
-/* ===== 让离线页面主�? --page/--card/--ink/--pink-deep �?)也作用到设置�?===== */
+/* 注释已清理（原文件编码损坏） */
 :root{
   --bg: var(--page, #f3edf0);
   --paper: var(--card, #fffdfe);

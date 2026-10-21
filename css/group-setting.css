@@ -65,7 +65,7 @@ html, body {
     padding: 1px 8px; border-radius: 8px; font-size: 11px; font-weight: 600;
 }
 
-/* 列表�?*/
+/* 注释已清理（原文件编码损坏） */
 .list-group {
     background: #fff; border-radius: 12px; overflow: hidden;
     margin: 0 16px;
@@ -98,7 +98,7 @@ html, body {
 }
 .list-item.center.danger .li-center { color: #ff3b30; }
 
-/* iOS 开�?*/
+/* 注释已清理（原文件编码损坏） */
 .ios-switch {
     appearance: none; -webkit-appearance: none;
     width: 48px; height: 28px; border-radius: 14px; background: #d1d1d6;
@@ -154,7 +154,7 @@ html, body {
 .member-row .m-icon-btn.title-btn { color: #007aff; }
 .member-row .m-icon-btn.kick-btn { color: #ff3b30; }
 
-/* 邀请成员按�?*/
+/* 注释已清理（原文件编码损坏） */
 .add-member-btn {
     display: flex; align-items: center; justify-content: center; gap: 8px;
     width: calc(100% - 32px); margin: 10px 16px 0; padding: 13px 0;
@@ -263,7 +263,7 @@ html, body {
 .reset-btn:active { background: rgba(255,59,48,0.16); }
 input[type="file"] { display: none; }
 
-/* 邀请列�?*/
+/* 注释已清理（原文件编码损坏） */
 .invite-list {
     max-height: 320px; overflow-y: auto;
     margin: 0 -4px; padding: 4px;

@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <script src="../js/nano-runtime.js?v=20261021c"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Nano 文件</title>
+  <link rel="stylesheet" href="../css/nano-files.css?v=20261021c">
+  <script src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
+</head>
+<body class="nf-body">
+  <div class="nf-app">
+    <header class="nf-top">
+      <button class="nf-back" id="nfBack" data-back aria-label="返回">
+        <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="nf-title-wrap">
+        <h1>Nano 文件</h1>
+        <p>独立保存，删除聊天也不会丢</p>
+      </div>
+      <button class="nf-clear" id="nfClear">清空</button>
+    </header>
+
+    <div class="nf-scroll">
+      <div class="nf-hero">
+        <div class="nf-hero-glow"></div>
+        <div class="nf-hero-main">
+          <span class="nf-hero-k">FILE VAULT</span>
+          <strong>你的生成文件都在这里</strong>
+          <span class="nf-hero-sub">Nano 生成的文件会永久保存在本地，和聊天消息分开清理。</span>
+        </div>
+        <div class="nf-stats">
+          <div><b id="nfCount">0</b><span>个文件</span></div>
+          <div><b id="nfSize">0 B</b><span>总大小</span></div>
+        </div>
+      </div>
+
+      <div class="nf-search">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M20 20l-4.2-4.2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <input id="nfSearch" type="search" placeholder="搜索文件名或内容" autocomplete="off">
+      </div>
+
+      <div class="nf-filters" id="nfFilters">
+        <button data-f="all" class="on">全部</button>
+        <button data-f="nano">Nano 生成</button>
+        <button data-f="user">我发送</button>
+      </div>
+
+      <div class="nf-list" id="nfList"></div>
+      <div class="nf-empty" id="nfEmpty" style="display:none"></div>
+      <div class="nf-foot">文件只保存在当前设备。删除这里的文件不会影响聊天记录。</div>
+    </div>
+  </div>
+
+  <div class="nf-preview" id="nfPreview">
+    <div class="nf-preview-sheet">
+      <div class="nf-preview-head">
+        <div class="nf-preview-title-wrap">
+          <h2 id="nfPreviewTitle">文件</h2>
+          <p id="nfPreviewMeta"></p>
+        </div>
+        <button id="nfPreviewClose" aria-label="关闭">✕</button>
+      </div>
+      <pre class="nf-preview-code" id="nfPreviewCode"></pre>
+      <div class="nf-preview-actions">
+        <button class="nf-preview-del" id="nfPreviewDelete">删除文件</button>
+        <button class="nf-preview-dl" id="nfPreviewDownload">下载</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="nf-toast" id="nfToast"></div>
+
+  <script src="../js/nano-files.js?v=20261021c"></script>
+  <script src="../swipe-back.js"></script>
+</body>
+</html>

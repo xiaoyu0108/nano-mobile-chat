@@ -224,7 +224,7 @@ html, body {
 .list-empty-desc { font-size: 12px; color: var(--gray-4); margin-top: 4px; }
 
 /* ============================================================ */
-/* Listen —�?一起听 */
+/* 注释已清理（原文件编码损坏） */
 /* ============================================================ */
 .listen-empty {
   flex: 1; display: flex; flex-direction: column;
@@ -554,7 +554,7 @@ html, body {
 }
 .chat-status { text-align: center; font-size: 11px; color: var(--gray-4); padding: 4px 0; }
 
-/* ===== 一起听邀请卡�?===== */
+/* 注释已清理（原文件编码损坏） */
 .chat-invite-card {
   align-self: center;
   display: flex;
@@ -705,7 +705,7 @@ html, body {
 .online-card-name { font-size: 15px; font-weight: 500; color: var(--gray-1); }
 .online-card-desc { font-size: 12px; color: var(--gray-3); margin-top: 3px; }
 
-/* 迷你播放�?*/
+/* 注释已清理（原文件编码损坏） */
 .mini-player {
   position: absolute; left: 16px; right: 16px; bottom: 20px;
   background: rgba(28, 28, 30, 0.92);
@@ -828,7 +828,7 @@ html, body {
 }
 
 /* ============================================================ */
-/* 每日推荐 / 最近播�?独立页面 */
+/* 注释已清理（原文件编码损坏） */
 /* ============================================================ */
 .online-list-page {
   position: fixed; inset: 0; z-index: 300;
@@ -857,7 +857,7 @@ html, body {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   flex: 1; text-align: center;
 }
-/* 「播放全部」改为悬浮在底部的整行按�?*/
+/* 注释已清理（原文件编码损坏） */
 .online-list-top {
   position: absolute;
   left: 0; right: 0; bottom: 0;
@@ -1358,7 +1358,7 @@ html, body {
 }
 .playlist-detail-body::-webkit-scrollbar { display: none; }
 
-/* ===== 网易云扫码登录样�?===== */
+/* 注释已清理（原文件编码损坏） */
 .netease-qr-overlay {
   position: fixed; inset: 0; z-index: 3000;
   background: rgba(0, 0, 0, 0.4);

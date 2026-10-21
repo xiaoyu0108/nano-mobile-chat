@@ -648,8 +648,8 @@
 
         let displayChars = [];
         if (currentUser) {
-            // 用户隔离：只显示绑定到当前人设的角色 + 纳米助手；不再显示别的 user 的 NPC/小号
-            displayChars = allChars.filter(c => String(c.bindUser) === String(currentUser.id) || !!c.nanoAssistant);
+            // 用户隔离：只显示绑定到当前人设的角色；Nano 助手已独立成 App，不再出现在消息列表
+            displayChars = allChars.filter(c => String(c.bindUser) === String(currentUser.id) && !c.nanoAssistant);
         }
         charCountDisplay.textContent = numWord(displayChars.length);
 

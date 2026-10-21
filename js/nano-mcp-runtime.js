@@ -37,6 +37,7 @@
   var NATIVE_TOOLS = [
     { name: 'get_weather', description: '查天气：给城市名查该城市；不给城市则查用户当前位置的天气', inputSchema: { type: 'object', properties: { city: { type: 'string', description: '城市名，例如 北京（留空=当前位置）' } } } },
     { name: 'get_time', description: '获取当前的日期、星期和时间', inputSchema: { type: 'object', properties: {} } },
+    { name: 'get_hot_topics', description: '获取实时热点/热搜：微博、抖音、百度、今日头条、B站。用户问“今天有什么热点/热搜/新闻”时可调用', inputSchema: { type: 'object', properties: { source: { type: 'string', description: 'weibo | douyin | baidu | toutiao | bilibili（留空=全部）' }, limit: { type: 'number', description: '每个来源返回几条，默认 10，最多 20' } } } },
     { name: 'get_location', description: '读取用户当前所在位置（会请求定位授权），返回地址与坐标', inputSchema: { type: 'object', properties: {} } },
     { name: 'open_map', description: '在地图上打开一个地点或坐标', inputSchema: { type: 'object', properties: { place: { type: 'string', description: '地点名，如 长沙五一广场' }, lat: { type: 'number', description: '纬度（可选）' }, lng: { type: 'number', description: '经度（可选）' } } } },
     { name: 'open_url', description: '在浏览器里打开一个网页', inputSchema: { type: 'object', properties: { url: { type: 'string', description: 'https 开头的网址' } }, required: ['url'] } },
@@ -93,6 +94,26 @@
     return '已在地图打开：' + (name || (args.lat + ', ' + args.lng));
   }
   function nativeTime() { return new Date().toLocaleString('zh-CN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }); }
+  async function nativeHotTopics(args) {
+    args = args || {};
+    var src = String(args.source || '').trim().toLowerCase();
+    var limit = Math.max(1, Math.min(20, parseInt(args.limit, 10) || 10));
+    var url = baseURL() + '/hot' + (src ? ('?source=' + encodeURIComponent(src)) : '');
+    var r = await fetch(url, { headers: { 'Accept': 'application/json' }, cache: 'no-store' });
+    if (!r || !r.ok) throw new Error('热点服务暂时不可用');
+    var j = await r.json();
+    if (!j || !j.ok) throw new Error('热点服务返回异常');
+    var lines = [];
+    (j.sources || []).forEach(function (s) {
+      var items = (s.items || []).slice(0, limit);
+      if (!items.length) return;
+      lines.push('【' + (s.label || s.source) + '】');
+      items.forEach(function (it, i) {
+        lines.push((i + 1) + '. ' + it.title + (it.hot ? (' · ' + Math.round(it.hot)) : ''));
+      });
+    });
+    return lines.length ? lines.join('\n') : '暂时没有取到热点，请稍后再试';
+  }
   function nativeOpenUrl(args) {
     var url = String((args && args.url) || '').trim();
     if (!/^https?:\/\//i.test(url)) throw new Error('url 需以 http(s):// 开头');
@@ -125,6 +146,7 @@
   async function runNative(tool, args) {
     if (tool === 'get_weather') return nativeWeather(args || {});
     if (tool === 'get_time') return nativeTime();
+    if (tool === 'get_hot_topics') return nativeHotTopics(args || {});
     if (tool === 'get_location') return nativeLocation();
     if (tool === 'open_map') return nativeOpenMap(args || {});
     if (tool === 'open_url') return nativeOpenUrl(args || {});

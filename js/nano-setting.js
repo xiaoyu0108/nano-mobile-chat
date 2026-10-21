@@ -4,6 +4,8 @@
   var chatId = 'nano_ai';
   try { chatId = new URLSearchParams(location.search).get('chat') || 'nano_ai'; } catch (e) {}
 
+  var currentCharName = '纳米';
+  var currentCharAvatar = '';
   var DEFAULT_AVATAR = 'data:image/svg+xml;utf8,' + encodeURIComponent(
     '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80">' +
     '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff9ecb"/><stop offset="1" stop-color="#ff4d94"/></linearGradient></defs>' +
@@ -147,6 +149,8 @@
   async function loadAll() {
     var char = await getChar();
     if (char) {
+      currentCharName = char.name || '纳米';
+      currentCharAvatar = char.avatar || '';
       $('nsName').value = char.name || '纳米';
       $('nsAvatar').src = char.avatar || DEFAULT_AVATAR;
     } else {
@@ -158,26 +162,58 @@
     var memCount = await getMemoryCount();
     renderStats(msgs, memCount);
     renderSearch($('nsSearchInput') ? $('nsSearchInput').value : '');
+    refreshFileCount();
+  }
+
+  function openPage(url, title) {
+    try {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({ type: 'openFullscreen', url: url, title: title || '', showBack: true, source: 'settings' }, '*');
+        return;
+      }
+    } catch (e) {}
+    location.href = url;
+  }
+  function openChat() {
+    try {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({ type: 'openChat', chatId: chatId, chatName: currentCharName, chatAvatar: currentCharAvatar }, '*');
+        return;
+      }
+    } catch (e) {}
+    location.href = 'chat_inner.html?chat=' + encodeURIComponent(chatId) + '&name=' + encodeURIComponent(currentCharName);
+  }
+  var nsOpenFiles = $('nsOpenFiles'), nsOpenFiles2 = $('nsOpenFiles2'), nsOpenChat = $('nsOpenChat');
+  if (nsOpenFiles) nsOpenFiles.addEventListener('click', function () { openPage('nano-files.html', 'Nano 文件'); });
+  if (nsOpenFiles2) nsOpenFiles2.addEventListener('click', function () { openPage('nano-files.html', 'Nano 文件'); });
+  if (nsOpenChat) nsOpenChat.addEventListener('click', openChat);
+
+  function refreshFileCount() {
+    try {
+      if (!window.NanoFiles || !NanoFiles.list) return;
+      NanoFiles.list().then(function (list) {
+        var el = $('nsFileCount'); if (el) el.textContent = list.length;
+      }).catch(function () {});
+    } catch (e) {}
   }
 
   /* ---------- 返回 ---------- */
   function goBack() {
+    // Nano 设置永远返回 Nano 首页（不回到 chat / 聊天列表）
     try {
       if (window.parent && window.parent !== window) {
-        window.parent.postMessage({ type: 'closeFullscreen' }, '*');
-      } else if (history.length > 1) {
-        history.back();
-      } else {
-        location.href = 'chat.html';
+        window.parent.postMessage({ type: 'openFullscreen', url: 'nano.html', title: 'Nano', showBack: true, source: 'main' }, '*');
+        return;
       }
     } catch (e) {}
+    location.href = 'nano.html';
   }
   var nsBackBtn = $('nsBack');
   if (nsBackBtn) nsBackBtn.addEventListener('click', goBack);
   try {
     if (window.parent && window.parent !== window) {
       window.parent.postMessage({ type: 'pageLoaded', page: 'nano_setting' }, '*');
-      window.parent.postMessage({ type: 'setTitle', title: '纳米设置' }, '*');
+      window.parent.postMessage({ type: 'setTitle', title: 'Nano 设置' }, '*');
     }
   } catch (e) {}
 
@@ -372,4 +408,5 @@
 
   loadAll();
   loadBgUI();
+  refreshFileCount();
 })();

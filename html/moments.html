@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<script src="../js/nano-runtime.js"></script>
+<script src="../js/nano-runtime.js?v=20261021c"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>朋友圈</title>
@@ -54,9 +54,9 @@
 
     <!-- ===== 3. 个人主页 ===== -->
     <div class="page-view" id="viewProfile">
-        <div class="top-nav" style="background:transparent;position:absolute;border:none;z-index:10;width:100%;">
-            <button class="nav-back" id="btnBackFromProfile" style="color:#fff;" data-back><svg viewBox="0 0 24 24" stroke="#fff"><polyline points="15 18 9 12 15 6"/></svg></button>
-            <span class="nav-title" style="color:#fff;text-shadow:0 1px 4px rgba(0,0,0,0.3);">个人主页</span>
+        <div class="top-nav" style="position:relative;z-index:10;width:100%;background:#f7f7f7;backdrop-filter:none;">
+            <button class="nav-back" id="btnBackFromProfile" data-back><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg></button>
+            <span class="nav-title">个人主页</span>
             <div style="width:44px;"></div>
         </div>
         <div class="profile-header">
@@ -195,7 +195,7 @@
     <input type="file" id="postFileInput" accept="image/*" multiple>
 
 </div>
-<script src="../js/nano-prompts.js?v=20261021a"></script>
+<script src="../js/nano-prompts.js?v=20261021b"></script>
 <script src="../js/moments.js?v=20261020k"></script>
 <script src="../js/api-float.js"></script>
 <script src="../js/refresh-notify.js"></script>

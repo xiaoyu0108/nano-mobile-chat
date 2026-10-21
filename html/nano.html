@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <script src="../js/nano-runtime.js?v=20261021c"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Nano</title>
+  <link rel="stylesheet" href="../css/nano.css?v=20261021c">
+  <script src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
+</head>
+<body class="nc-body">
+  <div class="nc-app">
+    <header class="nc-top">
+      <button class="nc-back" id="ncBack" data-back aria-label="返回">
+        <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="nc-brand">Nano</div>
+      <button class="nc-settings" id="ncSettings" aria-label="设置">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.64 8.9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c.14.63.66 1.11 1.31 1.21H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </header>
+
+    <div class="nc-scroll">
+      <section class="nc-hero">
+        <div class="nc-hero-bg"></div>
+        <div class="nc-avatar-wrap"><img id="ncAvatar" alt=""></div>
+        <div class="nc-hero-main">
+          <div class="nc-hero-row"><h1 id="ncName">纳米</h1><span class="nc-online"><i></i>在线</span></div>
+          <p id="ncIntro">你的专属 Nano 助手 · 美化 / 世界书 / 人设 / 文件</p>
+        </div>
+        <button class="nc-chat-btn" id="ncChat">
+          <svg viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.4 8.6 8.6 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8A8.4 8.4 0 0 1 12.5 3 8.4 8.4 0 0 1 21 11.5z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          开始对话
+        </button>
+      </section>
+
+      <div class="nc-quick">
+        <button id="ncFiles" class="nc-quick-item">
+          <span class="nc-qi-icon">▤</span><span><b>文件库</b><small>生成的文件永久保存</small></span><em id="ncFileCount">0</em>
+        </button>
+        <button id="ncSettings2" class="nc-quick-item">
+          <span class="nc-qi-icon">✦</span><span><b>助手设置</b><small>头像、提示词、生成偏好</small></span><em>›</em>
+        </button>
+      </div>
+
+      <section class="nc-card">
+        <div class="nc-card-head"><b>最近对话</b><button id="ncOpenChat">继续聊 ›</button></div>
+        <div class="nc-msgs" id="ncMessages">
+          <div class="nc-empty">还没有对话，点「开始对话」找 Nano。</div>
+        </div>
+      </section>
+
+      <section class="nc-card">
+        <div class="nc-card-head"><b>最近文件</b><button id="ncOpenFiles">全部文件 ›</button></div>
+        <div class="nc-files" id="ncFilesList">
+          <div class="nc-empty">还没有生成文件。让 Nano 帮你导出 CSS、文本或代码，就会出现在这里。</div>
+        </div>
+      </section>
+
+      <section class="nc-card nc-about">
+        <div class="nc-card-head"><b>Nano 能做什么</b></div>
+        <div class="nc-ability-grid">
+          <div><span>美化</span><p>线上聊天、群聊、线下、心声</p></div>
+          <div><span>装修</span><p>头像、昵称、背景、气泡</p></div>
+          <div><span>设定</span><p>世界书、记忆、人设整理</p></div>
+          <div><span>文件</span><p>生成并永久保存到文件库</p></div>
+        </div>
+      </section>
+      <div class="nc-foot">Nano · 当前设备本地保存</div>
+    </div>
+  </div>
+  <div class="nc-toast" id="ncToast"></div>
+
+  <script src="../js/nano-files.js?v=20261021c"></script>
+  <script src="../js/nano-app.js?v=20261021c"></script>
+  <script src="../swipe-back.js"></script>
+</body>
+</html>

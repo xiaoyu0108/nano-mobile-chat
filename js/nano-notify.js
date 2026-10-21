@@ -323,21 +323,39 @@
     function setBarkEnabled(on) {
         try { localStorage.setItem(BARK_ENABLED, on ? '1' : '0'); } catch (e) {}
     }
-    // Bark 推送级别：passive 静默送达（不响不震动），避免每次都强震
+    // Bark 推送级别：active 才会在锁屏/后台弹横幅；声音单独用 sound=none 关掉
     function barkLevel() {
-        try { return (localStorage.getItem(BARK_LEVEL) || 'passive').trim() || 'passive'; } catch (e) { return 'passive'; }
+        try {
+            var v = (localStorage.getItem(BARK_LEVEL) || 'active').trim();
+            // 旧版本默认写过 passive（只进通知中心、不弹横幅），这里统一改成 active
+            return (!v || v === 'passive') ? 'active' : v;
+        } catch (e) { return 'active'; }
     }
     function setBarkLevel(level) {
-        try { localStorage.setItem(BARK_LEVEL, String(level || 'passive').trim() || 'passive'); } catch (e) {}
+        try { localStorage.setItem(BARK_LEVEL, String(level || 'active').trim() || 'active'); } catch (e) {}
+    }
+    // 兼容 body 被写成对象的情况，避免通知正文显示成 "[object Object]" / "body"
+    function pushText(v, fallback) {
+        var s = '';
+        if (v && typeof v === 'object') s = v.body || v.text || v.message || v.content || v.title || '';
+        else s = (v == null ? '' : v);
+        s = String(s || '').trim();
+        return s || String(fallback || '');
     }
     function barkPush(title, body, opts, keyOverride) {
         var key = String(keyOverride || barkKey() || '').trim();
         if (!key) return Promise.resolve({ ok: false, error: 'no-key' });
         opts = opts || {};
+        title = pushText(title, 'Nano');
+        body = pushText(body, '你有一条新消息');
         var base = key.indexOf('http') === 0 ? key.replace(/\/+$/, '') : ('https://api.day.app/' + encodeURIComponent(key));
-        var full = base + '/' + encodeURIComponent(title || 'Nano') + '/' + encodeURIComponent(String(body || '').slice(0, 150));
-        // level 默认 passive：静默送达、不响不震动（用户可在控制台 NanoNotify.setBarkLevel('active') 调强）
-        var q = ['group=' + encodeURIComponent(opts.group || 'Nano'), 'level=' + encodeURIComponent(opts.level || barkLevel())];
+        var full = base + '/' + encodeURIComponent(title) + '/' + encodeURIComponent(body.slice(0, 150));
+        // level=active：后台/锁屏弹横幅；sound=none：不要提示音，也尽量避免震动
+        var q = [
+            'group=' + encodeURIComponent(opts.group || 'Nano'),
+            'level=' + encodeURIComponent(opts.level || barkLevel()),
+            'sound=' + encodeURIComponent(opts.sound || 'none')
+        ];
         var target = opts.target || '';
         if (target) {
             try { q.push('url=' + encodeURIComponent(NANO_ROOT + 'index.html?open=' + encodeURIComponent(target))); } catch (e) {}
@@ -390,10 +408,11 @@
             notify._seen[dk] = now;
             if (Object.keys(notify._seen).length > 60) notify._seen = {};
         } catch (e) {}
-        playSound(soundFor(opts));
         // 前台统一走内置通知栏：头像 + 昵称 + 具体信息（后台仍走系统通知 / Bark）
         try {
             if (isForeground()) {
+                // 只有人在前台时才播放应用内提示音；后台交给 Bark（sound=none）静音推送
+                playSound(soundFor(opts));
                 var inAppPayload = {
                     type: 'appNotify',
                     title: title,

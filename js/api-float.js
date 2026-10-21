@@ -266,6 +266,8 @@
         applySettings(settings);
         placeBall(settings.x, settings.y);
         bind();
+        // 预先写入两套内置聊天模板，保证小窗“预设”里随时可切换
+        try { ensureBeautyScripts().then(seedBuiltinBeautyPresets); } catch (e) {}
     }
 
     var coreEl, photoEl, presetEl, modelEl, statusEl, pullBtn;
@@ -888,6 +890,17 @@
         }).catch(function () {});
     }
 
+    function seedBuiltinBeautyPresets() {
+        var rows = [];
+        if (window.NANO_CHAT_TEMPLATE) {
+            rows.push({ id: 900000001, category: 'chat', name: '初见 · Classic', code: window.NANO_CHAT_TEMPLATE, builtin: true, themeKey: 'classic' });
+        }
+        if (window.NANO_CHAT_TEMPLATE_GRAY_PINK) {
+            rows.push({ id: 900000002, category: 'chat', name: '灰粉 · Gray-Pink', code: window.NANO_CHAT_TEMPLATE_GRAY_PINK, builtin: true, themeKey: 'gray-pink' });
+        }
+        return Promise.all(rows.map(function (r) { return bdbSet('presets', r); }));
+    }
+
     function ensureBeautyScripts() {
         if (beautyTemplatesReady) return beautyTemplatesReady;
         beautyTemplatesReady = new Promise(function (resolve) {
@@ -903,7 +916,8 @@
             }
             var _r = window.NANO_ROOT || '';
             if (!window.NANO_GLOBAL_TEMPLATE) load(_r + 'js/nano-global-template.js?v=20261021a');
-            if (!window.NANO_CHAT_TEMPLATE) load(_r + 'js/nano-chat-template.js?v=20261020b');
+            if (!window.NANO_CHAT_TEMPLATE) load(_r + 'js/nano-chat-template.js?v=20261021h');
+            if (!window.NANO_CHAT_TEMPLATE_GRAY_PINK) load(_r + 'js/nano-chat-theme-gray-pink.js?v=20261021f');
             finish();
         });
         return beautyTemplatesReady;
@@ -929,7 +943,7 @@
 
     function loadBeautyPresets() {
         if (!beautyPresetEl) return;
-        bdbAllPresets().then(function (items) {
+        ensureBeautyScripts().then(seedBuiltinBeautyPresets).then(bdbAllPresets).then(function (items) {
             var list = (items || []).filter(function (x) { return x && x.category === beautyCat; });
             beautyPresetEl.innerHTML = '';
             if (!list.length) {
@@ -943,7 +957,7 @@
             beautyPresetEl.appendChild(ph);
             list.forEach(function (x) {
                 var o = document.createElement('option');
-                o.value = x.id; o.textContent = x.name || ('预设 ' + x.id);
+                o.value = x.id; o.textContent = (x.name || ('预设 ' + x.id)) + (x.builtin ? ' · 内置' : '');
                 beautyPresetEl.appendChild(o);
             });
             // 回填上次选中的预设，避免「切换后返回又变回之前」的错觉

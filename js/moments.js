@@ -1037,7 +1037,7 @@
             ? '你是一个真实的人类，正在刷朋友圈。请以第一人称发布一条简短、自然、有生活气息的朋友圈文案，像真人一样分享日常感受、心情或趣事。不超过30个字。不要加引号，不要解释，直接输出文案内容。'
             : '你是一个真实的人类，正在朋友圈评论区互动。请根据动态内容，用自然、口语化的方式发表一条简短评论，像真人一样。不超过20个字。不要加引号，不要解释，直接输出评论内容。');
         try {
-            if (window.NanoPrompts && NanoPrompts.appendTo) systemContent = NanoPrompts.appendTo(systemContent, 'social', { keepFormat: true });
+            if (window.NanoPrompts && NanoPrompts.appendTo) systemContent = NanoPrompts.appendTo(systemContent, 'moments', { keepFormat: true });
         } catch (e) {}
 
         var res;

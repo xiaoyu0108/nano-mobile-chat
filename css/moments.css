@@ -865,7 +865,7 @@ input[type="file"] { display: none; }
 .api-err-badge.http { background: #ede9fe; color: #5b21b6; }
 .api-err-badge.parse { background: #fef9c3; color: #854d0e; }
 
-/* ===== 顶部生成中提示（不遮挡返回键�?===== */
+/* 注释已清理（原文件编码损坏） */
 .moments-loading {
     position: fixed;
     top: 60px;
@@ -1008,7 +1008,7 @@ input[type="file"] { display: none; }
 }
 .mm-sheet-btn.primary { background: #007aff; color: #fff; }
 .mm-sheet-btn:active { opacity: 0.85; }
-/* ===== 未开启生图时的“文字照片�?===== */
+/* 注释已清理（原文件编码损坏） */
 .mm-text-photo {
     width: 124px; height: 124px; background: #fff; color: #111;
     border: 1px solid rgba(0, 0, 0, 0.06); border-radius: 8px;

@@ -312,7 +312,7 @@
             }
         } catch (e) {}
         try {
-            if (window.NanoPrompts && NanoPrompts.appendTo) p = NanoPrompts.appendTo(p, 'social');
+            if (window.NanoPrompts && NanoPrompts.appendTo) p = NanoPrompts.appendTo(p, 'call');
         } catch (e) {}
         return p;
     }

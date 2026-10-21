@@ -62,6 +62,11 @@ html, body {
     background: #f2f2f4;
 }
 .link-preview-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.link-preview-thumb-fallback {
+    display: flex; align-items: center; justify-content: center;
+    padding: 4px; color: #fff; font-size: 11px; font-weight: 700;
+    line-height: 1.2; letter-spacing: .3px; text-align: center;
+}
 .link-preview-body { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 3px; }
 .link-preview-site { font-size: 10.5px; font-weight: 600; color: #8e8e93; letter-spacing: .2px; }
 .link-preview-title {
@@ -1760,6 +1765,14 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
     gap: 4px;
 }
 .msg-think-icon { width: 12px; height: 12px; flex: none; }
+.msg-think-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #b0b0b6;
+    flex: none;
+    display: inline-block;
+}
 .msg-think-body {
     display: none;
     margin-top: 4px;
@@ -1796,12 +1809,44 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
     font-size: 10.5px; color: #444; margin-top: 3px;
     white-space: pre-wrap; word-break: break-word;
 }
-/* MCP 工具调用胶囊：单独占一行、居中显示（在消息气泡上方） */
+/* MCP 工具调用：长条悬浮框，单独占一行并居中（在消息气泡上方） */
+.message-row.has-tools .message-content {
+    width: 92%;
+    max-width: 92%;
+    align-items: stretch;
+}
 .message-row .msg-tools {
     align-self: center;
-    margin: 0 auto 4px auto;
+    width: min(92%, 420px);
     max-width: 100%;
+    margin: 8px auto 10px auto;
+    padding: 2px 14px;
+    box-sizing: border-box;
+    background: var(--tool-bg, rgba(255, 255, 255, 0.94));
+    color: var(--chat-text, #1c1c1e);
+    border: 1px solid rgba(120, 120, 128, 0.16);
+    border-radius: 16px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.10);
+    -webkit-backdrop-filter: blur(14px);
+    backdrop-filter: blur(14px);
+    overflow: hidden;
 }
+.message-row .msg-tools .msg-think-toggle {
+    width: 100%;
+    justify-content: flex-start;
+    background: transparent;
+    padding: 10px 0;
+    font-size: 10.5px;
+}
+.message-row .msg-tools .msg-think-body {
+    margin-top: 0;
+    padding: 0 0 10px 0;
+    max-height: 260px;
+    background: transparent;
+    border: none;
+    color: var(--chat-sub, #5f5f66);
+}
+.message-row .msg-tools .msg-tool:first-child { padding-top: 0; }
 
 /* ===== 语音转写 / 翻译气泡：不许超出屏幕；一行超过 20 字自动换行 ===== */
 .bubble { max-width: 100%; }
@@ -1925,4 +1970,4 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .tkv-bub .zh{font-size:11.5px;color:#b09a55;margin-top:2px}
 .tkv-bub{display:flex;flex-direction:column;gap:2px}
 
-/* ͬ���ķ�����Ƭ���ڰ׻ң� */
+/* 注释已清理（原文件编码损坏） */

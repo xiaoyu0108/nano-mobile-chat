@@ -1,7 +1,4 @@
-/* ==========================================================
-   Couple Space v17
-   完整样式：基础 UI + 全屏�?+ 选择�?+ 情书/日记 + 你画我猜
-   ========================================================== */
+/* 注释已清理（原文件编码损坏） */
 
 :root{
   --bg:#f6f3ef;--bg2:#efeae4;--paper:#fffdf9;--ink:#26242a;--sub:#918e96;--line:#eae4dd;
@@ -175,7 +172,7 @@ header .logo{
 .stat b{font-size:20px;letter-spacing:-.5px}
 .stat span{display:block;font-size:8.5px;color:#b3aca3;margin-top:5px;letter-spacing:.4px}
 
-/* ---------- 全屏�?---------- */
+/* 注释已清理（原文件编码损坏） */
 .fullpage{
   position:fixed;inset:0;
   background:var(--bg);
@@ -209,7 +206,7 @@ header .logo{
   min-width:0;
 }
 .fullpage header .right{
-  max-width:36px;   /* 只放一�?morebtn，限�?36px */
+  max-width:36px;   /* 注释已清理（原文件编码损坏） */
 }
 .fullpage header b{
   position:absolute;
@@ -260,7 +257,7 @@ header .logo{
 }
 .backbtn:active,.morebtn:active{transform:scale(.94)}
 
-/* ---------- sheet 内的内容�?---------- */
+/* 注释已清理（原文件编码损坏） */
 .sheet h2,.fullpage h2{font-size:19.5px;margin:0 0 6px;letter-spacing:-.3px}
 .desc{font-size:11px;color:var(--sub);line-height:1.75;margin-bottom:16px}
 .q{background:#faf7f3;border:1px solid #f2ece5;border-radius:17px;padding:14px;margin-bottom:10px}
@@ -305,7 +302,7 @@ canvas{display:block;width:100%;height:230px;background:#fbf9f6;border-radius:18
 .block b{font-size:9px;text-transform:uppercase;color:#b3aca3;letter-spacing:.6px;font-weight:600}
 .block p{font-size:11px;line-height:1.75;margin:7px 0 0}
 
-/* ---------- 选择�?---------- */
+/* 注释已清理（原文件编码损坏） */
 .selectchar{padding-bottom:30px}
 .selectchar .top{position:relative;padding:37px 5px 24px}
 .selectchar .top h1{font-size:31px;letter-spacing:-1.4px;margin:8px 0}
@@ -467,7 +464,7 @@ canvas{display:block;width:100%;height:230px;background:#fbf9f6;border-radius:18
   color:#5a4a4a;
 }
 
-/* ---------- 时间�?---------- */
+/* 注释已清理（原文件编码损坏） */
 .timeline{position:relative;padding-left:23px}
 .timeline:before{content:"";position:absolute;left:8px;top:10px;bottom:10px;width:1.5px;background:linear-gradient(180deg,#e8ded5,#ddd2c8)}
 .tl-item{position:relative;margin-bottom:23px}
@@ -708,9 +705,7 @@ canvas{display:block;width:100%;height:230px;background:#fbf9f6;border-radius:18
   .tabs button{height:44px!important;min-height:44px!important;font-size:12.5px!important;padding:0 10px!important}
   .exchange-actions .btn,.row>.btn{height:50px!important;min-height:50px!important}
 }
-/* ==========================================================
-   用户身份 / 轻提�?/ 忙碌�?
-   ========================================================== */
+/* 注释已清理（原文件编码损坏） */
 .selectchar .top .back-home{
   position:absolute;left:0;top:0;
 }
@@ -750,7 +745,7 @@ canvas{display:block;width:100%;height:230px;background:#fbf9f6;border-radius:18
 }
 .cs-toast.show{opacity:1;transform:translate(-50%,0)}
 
-/* 处理中提示：不遮挡任何按钮，可自由切换页�?返回 */
+/* 注释已清理（原文件编码损坏） */
 .cs-working{
   position:fixed;left:50%;bottom:22px;transform:translate(-50%,12px);
   display:flex;align-items:center;gap:8px;
@@ -769,7 +764,7 @@ canvas{display:block;width:100%;height:230px;background:#fbf9f6;border-radius:18
 }
 @keyframes cs-spin{to{transform:rotate(360deg)}}
 
-/* 同色系错误弹�?*/
+/* 注释已清理（原文件编码损坏） */
 .cs-modal{
   position:fixed;inset:0;z-index:140;
   display:none;align-items:center;justify-content:center;
@@ -822,12 +817,12 @@ html, body, * {
   scrollbar-width: none;
 }
 
-/* IE / �?Edge */
+/* 注释已清理（原文件编码损坏） */
 html, body, * {
   -ms-overflow-style: none;
 }
 
-/* Chrome / Safari / �?Edge */
+/* 注释已清理（原文件编码损坏） */
 html::-webkit-scrollbar,
 body::-webkit-scrollbar,
 *::-webkit-scrollbar {

@@ -35,7 +35,20 @@
           try { if (upgrade) upgrade(e.target.result, e.target.transaction); } catch (err) {}
         };
         req.onsuccess = function () { resolve(req.result); };
-        req.onerror = function () { resolve(null); };
+        req.onerror = function () {
+          // 手机端可能已经存在更高版本的数据库：带旧版本号 open 会抛 VersionError，
+          // 这里改用不带版本号的方式打开已有库，避免「明明有 char 却读不到」。
+          try {
+            if (req.error && req.error.name === 'VersionError') {
+              var retry = indexedDB.open(name);
+              retry.onsuccess = function () { resolve(retry.result); };
+              retry.onerror = function () { resolve(null); };
+              retry.onblocked = function () { resolve(null); };
+              return;
+            }
+          } catch (e) {}
+          resolve(null);
+        };
         req.onblocked = function () { resolve(null); };
       } catch (e) { resolve(null); }
     });
@@ -158,9 +171,8 @@
 
   function inferLang(c) {
     var explicit = String((c && (c.lang || c.language)) || '').trim();
-    if (explicit) return explicit;
-    var nat = String((c && c.nationality) || '').trim();
-    var low = nat.toLowerCase();
+    // 用户明确填了外语，直接使用；「中文」可能只是默认值，继续看人设里的母语
+    if (explicit && explicit !== '中文' && explicit !== '汉语' && explicit.toLowerCase() !== 'chinese') return explicit;
     var map = {
       '韩国': '韩语', '南韩': '韩语', 'korea': '韩语', 'korean': '韩语',
       '日本': '日语', 'japan': '日语', 'japanese': '日语',
@@ -170,9 +182,33 @@
       '西班牙': '西班牙语', 'spain': '西班牙语', '泰国': '泰语', 'thailand': '泰语',
       '俄罗斯': '俄语', 'russia': '俄语', '意大利': '意大利语', 'italy': '意大利语'
     };
+    // 人设里明确写了「母语是……」时，以母语为准（国籍未知或与国籍不一致都能兜住）
+    var setting = String((c && (c.setting || c.persona)) || '').trim();
+    if (setting) {
+      var langMap = {
+        '英语': 'English', '英文': 'English', 'english': 'English',
+        '韩语': '韩语', '韩文': '韩语', 'korean': '韩语', '한국어': '韩语',
+        '日语': '日语', '日文': '日语', 'japanese': '日语', '日本語': '日语',
+        '法语': '法语', 'french': '法语', '德语': '德语', 'german': '德语',
+        '西班牙语': '西班牙语', 'spanish': '西班牙语', '泰语': '泰语', 'thai': '泰语',
+        '俄语': '俄语', 'russian': '俄语', '意大利语': '意大利语', 'italian': '意大利语',
+        '葡萄牙语': '葡萄牙语', 'portuguese': '葡萄牙语', '阿拉伯语': '阿拉伯语', 'arabic': '阿拉伯语',
+        '粤语': '粤语', 'cantonese': '粤语'
+      };
+      var m = setting.match(/(?:母语|第一语言|native\s*language)\s*(?:是|为|[:：])?\s*([^\s，,。;；、/|]{1,12})/i);
+      var probe = m ? m[1] : '';
+      if (probe) {
+        var pl = probe.toLowerCase();
+        for (var lk in langMap) {
+          if (probe.indexOf(lk) > -1 || pl.indexOf(String(lk).toLowerCase()) > -1) return langMap[lk];
+        }
+      }
+    }
+    var nat = String((c && c.nationality) || '').trim();
+    var low = nat.toLowerCase();
     if (map[nat]) return map[nat];
     for (var k in map) { if (low && (low.indexOf(k) > -1 || nat.indexOf(k) > -1)) return map[k]; }
-    return '中文';
+    return explicit || '中文';
   }
 
   async function loadChars() {
@@ -360,6 +396,16 @@
       parts.push('【匿名语境】提问者/对话者只是平台上的匿名网友，你并不知道对方现实中是谁；不要因为语气、内容相似就认定是某个熟人，也不要把用户专属的记忆硬套到对方身上。');
     }
     parts.push('【平台】Q&A 是一个国际化提问箱/私信平台，用户和 char、陌生人都在同一个平台上交流。陌生人可能来自不同国家。保持活人感、贴人设，绝不解释自己是 AI，绝不跳出角色。');
+    // Q&A 很适合 deeptalk：借 DeepSeek 式「先理解、再推理、后表达」的内部思考方式，
+    // 但只输出最终回答，不展示思维链。
+    parts.push([
+      '【深度对话 · 适用于认真、复杂、情绪化或价值观提问】',
+      '1. 先在心里判断对方真正在意什么、问题背后有没有情绪或前提，不要急着给结论。',
+      '2. 内部推理：列出至少两个可能的角度，再选最符合你人设和当下关系的那一个；不展示思考过程。',
+      '3. 先回应最具体的那一点，再给角色自己的判断、经历或取舍；可以不同意，但要说清理由。',
+      '4. 不确定就承认，不装懂；不要鸡汤、排比、升华总结，也不要用“首先/其次/总之”的作文腔。',
+      '5. 回答留一个自然的开放口，不替对方下结论；如果问题太大，可以先接住一个具体的点，再反问一个真正值得回答的问题。'
+    ].join('\n'));
     return parts.filter(Boolean).join('\n\n');
   }
 
@@ -379,8 +425,10 @@
           return (x && (x.text || x.content)) || '';
         }).join('').trim();
       }
-      if (typeof msg.reasoning_content === 'string' && msg.reasoning_content.trim()) {
-        return msg.reasoning_content.trim();
+      if (typeof msg.reasoning_content === 'string') {
+        // 推理模型可能把最终 JSON 放在 reasoning_content；但纯思维链不要当成正文返回。
+        var rc = msg.reasoning_content.trim();
+        if (/^[\[{]/.test(rc)) return rc;
       }
     }
     if (data.response && typeof data.response === 'string') return data.response.trim();
@@ -470,30 +518,43 @@
     var temp = parseFloat(cfg.mainTemp);
     if (!isFinite(temp)) temp = 0.9;
     var headers = { 'Authorization': 'Bearer ' + String(cfg.mainKey || '').trim(), 'Content-Type': 'application/json' };
-    var body = JSON.stringify({
-      model: cfg.mainModel,
-      messages: msgs,
-      max_tokens: meta.maxTokens || 2000,
-      temperature: isFinite(meta.temp) ? meta.temp : temp,
-      stream: false
-    });
-    var resp = await requestAI(base + '/chat/completions', headers, body);
-    var rawText = String((resp && resp.text) || '');
-    var data = null;
-    try { data = rawText ? JSON.parse(rawText) : null; } catch (e) {}
-    if (!resp || !resp.ok) {
-      var msg = (data && ((data.error && data.error.message) || data.message)) || (resp && resp.status ? 'HTTP ' + resp.status : (resp && resp.error) || '请求失败');
-      throw new Error(msg);
+    // Q&A 的 JSON 输出比普通聊天长，预算太低会直接截断。至少给 1400，
+    // 并且遇到 finish_reason=length 时自动用更大的预算重试一次。
+    var startTokens = Math.max(parseInt(meta.maxTokens, 10) || 0, 1400);
+    var budgets = [startTokens];
+    if (meta.retryOnLength !== false) budgets.push(Math.min(16000, Math.round(startTokens * 1.8)));
+    var lastContent = '';
+    for (var attempt = 0; attempt < budgets.length; attempt++) {
+      var body = JSON.stringify({
+        model: cfg.mainModel,
+        messages: msgs,
+        max_tokens: budgets[attempt],
+        temperature: isFinite(meta.temp) ? meta.temp : temp,
+        stream: false
+      });
+      var resp = await requestAI(base + '/chat/completions', headers, body);
+      var rawText = String((resp && resp.text) || '');
+      var data = null;
+      try { data = rawText ? JSON.parse(rawText) : null; } catch (e) {}
+      if (!resp || !resp.ok) {
+        var msg = (data && ((data.error && data.error.message) || data.message)) || (resp && resp.status ? 'HTTP ' + resp.status : (resp && resp.error) || '请求失败');
+        throw new Error(msg);
+      }
+      if (!data) throw new Error('API 返回的不是 JSON：' + rawText.slice(0, 100));
+      var content = extractAIContent(data);
+      if (!content) {
+        var apiErr = data && ((data.error && data.error.message) || data.message);
+        if (apiErr) throw new Error(apiErr);
+        var fr = data.choices && data.choices[0] && data.choices[0].finish_reason;
+        // 推理模型可能把预算全花在思维链上：换更大的预算再试一次
+        if (attempt < budgets.length - 1) continue;
+        throw new Error(fr === 'length' ? '模型输出被截断，请重试' : '模型没有返回正文');
+      }
+      lastContent = content;
+      var finish = data.choices && data.choices[0] && data.choices[0].finish_reason;
+      if (finish !== 'length' || attempt === budgets.length - 1) return content;
     }
-    if (!data) throw new Error('API 返回的不是 JSON：' + rawText.slice(0, 100));
-    var content = extractAIContent(data);
-    if (!content) {
-      var apiErr = data && ((data.error && data.error.message) || data.message);
-      if (apiErr) throw new Error(apiErr);
-      var fr = data.choices && data.choices[0] && data.choices[0].finish_reason;
-      throw new Error(fr === 'length' ? '模型输出被截断，请重试' : '模型没有返回正文');
-    }
-    return content;
+    return lastContent;
   }
 
   function notifyParent() {

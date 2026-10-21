@@ -1723,6 +1723,71 @@ const CHAT_TEMPLATE = (typeof window !== 'undefined' && window.NANO_CHAT_TEMPLAT
   : CHAT_TEMPLATE_OLD;
 
 /* ============================================================
+   内置聊天美化风格（可一键切换）
+   - classic  : 初见（初始 UI）
+   - gray-pink: 灰粉对话（第二套内置气泡，来自内置小组件）
+   ============================================================ */
+const CHAT_BUILTIN_THEMES = {
+  classic: { name: "初见", sub: "初始 UI · Classic" },
+  "gray-pink": { name: "灰粉", sub: "gray-pink" }
+};
+const BUILTIN_CHAT_PRESET_IDS = { classic: 900000001, "gray-pink": 900000002 };
+let activeBuiltinChatTheme = "classic";
+
+async function ensureBuiltinChatPresets() {
+  const rows = [
+    { id: BUILTIN_CHAT_PRESET_IDS.classic, category: "chat", name: "初见 · Classic", code: getBuiltinChatCss("classic"), builtin: true, themeKey: "classic" },
+    { id: BUILTIN_CHAT_PRESET_IDS["gray-pink"], category: "chat", name: "灰粉 · Gray-Pink", code: getBuiltinChatCss("gray-pink"), builtin: true, themeKey: "gray-pink" }
+  ];
+  for (const row of rows) {
+    if (!row.code) continue;
+    try { await storePut("presets", row); } catch (e) {}
+  }
+}
+
+function getBuiltinChatCss(key) {
+  if (key === "gray-pink") return String((typeof window !== 'undefined' && window.NANO_CHAT_TEMPLATE_GRAY_PINK) || "");
+  return CHAT_TEMPLATE;
+}
+
+function detectBuiltinChatTheme(css) {
+  const s = String(css || "");
+  if (window.NANO_CHAT_TEMPLATE_GRAY_PINK && s === String(window.NANO_CHAT_TEMPLATE_GRAY_PINK)) return "gray-pink";
+  if (s.indexOf("灰粉对话 · Gray-Pink") !== -1) return "gray-pink";
+  if (s === String(CHAT_TEMPLATE)) return "classic";
+  return "";
+}
+
+function markBuiltinChatTheme(key) {
+  document.querySelectorAll("#builtinThemeBar .builtin-theme").forEach(function (b) {
+    b.classList.toggle("on", b.dataset.theme === key);
+  });
+}
+
+async function applyBuiltinChatTheme(key) {
+  const css = getBuiltinChatCss(key);
+  if (!css) { toast("内置风格加载失败"); return; }
+  activeBuiltinChatTheme = key;
+  markBuiltinChatTheme(key);
+  setCode("chat", css);
+  setName("chat", key === "gray-pink" ? "灰粉 · Gray-Pink" : "初见 · Classic");
+  currentPreset.chat = BUILTIN_CHAT_PRESET_IDS[key] || 0;
+  const presetSel = document.getElementById("chatPreset");
+  if (presetSel && currentPreset.chat) presetSel.value = String(currentPreset.chat);
+  persistDraft("chat");
+  try { localStorage.setItem("nano_builtin_chat_theme", key); } catch (e) {}
+  try { await storePut("settings", { key: "applied_chat", value: css }); } catch (e) {}
+  applyCSSToParent("chat", css);
+  refreshPreview("chat");
+  const meta = CHAT_BUILTIN_THEMES[key] || {};
+  toast("已套用「" + (meta.name || key) + "」");
+}
+
+document.querySelectorAll("#builtinThemeBar .builtin-theme").forEach(function (btn) {
+  btn.addEventListener("click", function () { applyBuiltinChatTheme(btn.dataset.theme); });
+});
+
+/* ============================================================
    IndexedDB
    ============================================================ */
 const DB_NAME = "BeautifyAppDB";
@@ -1862,7 +1927,7 @@ async function refreshPresets(type) {
   filtered.forEach(x => {
     const o = document.createElement("option");
     o.value = x.id;
-    o.textContent = x.name;
+    o.textContent = x.name + (x.builtin ? " · 内置" : "");
     sel.appendChild(o);
   });
   // 恢复当前选中的预设
@@ -1946,6 +2011,7 @@ document.querySelectorAll("[data-clear]").forEach(btn => {
   btn.onclick = async () => {
     const type = btn.dataset.clear;
     setCode(type, "");
+    if (type === "chat") markBuiltinChatTheme("");
     persistDraft(type);
     // 立即同步到所有页面：清空后界面回到初始样式
     await storePut("settings", { key: "applied_" + type, value: "" }).catch(() => {});
@@ -1958,8 +2024,9 @@ document.querySelectorAll("[data-clear]").forEach(btn => {
 document.querySelectorAll("[data-restore]").forEach(btn => {
   btn.onclick = async () => {
     const type = btn.dataset.restore;
-    const template = type === "global" ? GLOBAL_TEMPLATE : CHAT_TEMPLATE;
+    const template = type === "global" ? GLOBAL_TEMPLATE : getBuiltinChatCss(activeBuiltinChatTheme);
     setCode(type, template);
+    if (type === "chat") markBuiltinChatTheme(activeBuiltinChatTheme);
     persistDraft(type);
     // 立即同步到所有页面：点「还原」立刻恢复初始布局（顶栏/底栏/通知等）
     await storePut("settings", { key: "applied_" + type, value: template }).catch(() => {});
@@ -1992,7 +2059,7 @@ function copyText(text) {
 document.querySelectorAll("[data-copy]").forEach(btn => {
   btn.onclick = async () => {
     const type = btn.dataset.copy;
-    const template = type === "global" ? GLOBAL_TEMPLATE : CHAT_TEMPLATE;
+    const template = type === "global" ? GLOBAL_TEMPLATE : getBuiltinChatCss(activeBuiltinChatTheme);
     try {
       await copyText(template);
       toast("初始代码已复制");
@@ -2040,6 +2107,18 @@ document.querySelectorAll("[data-edit]").forEach(btn => {
     const items = await storeAll("presets");
     const found = items.find(x => x.id === id && x.category === type);
     if (!found) return toast("预设不存在，请重新选择");
+    if (found.builtin) {
+      // 内置预设本身保持不可覆盖；点「修改」时自动另存为可编辑副本
+      const copyName = (getName(type) || found.name) + " · 副本";
+      const copyId = await storePut("presets", { category: type, name: copyName, code: getCode(type), createdAt: Date.now() });
+      currentPreset[type] = copyId;
+      setName(type, copyName);
+      await refreshPresets(type);
+      sel.value = copyId;
+      persistDraft(type);
+      toast("已另存为副本，可继续修改");
+      return;
+    }
     // 名称允许直接沿用选中预设的名字（修改昵称时填写即可）
     const name = getName(type) || found.name;
     const code = getCode(type);
@@ -2059,6 +2138,9 @@ document.querySelectorAll("[data-delete]").forEach(btn => {
     const sel = document.getElementById(type + "Preset");
     const id = Number(sel.value) || currentPreset[type];
     if (!id) return toast("没有可删除的预设");
+    const items = await storeAll("presets");
+    const found = items.find(x => x.id === id && x.category === type);
+    if (found && found.builtin) return toast("内置预设不可删除");
     await storeDel("presets", id);
     if (currentPreset[type] === id) currentPreset[type] = 0;
     await refreshPresets(type);
@@ -2081,6 +2163,11 @@ document.querySelectorAll(".presetrow select").forEach(sel => {
       const css = found.code || "";
       setCode(type, css);
       setName(type, found.name || "");
+      if (type === "chat") {
+        const detected = detectBuiltinChatTheme(css);
+        markBuiltinChatTheme(detected);
+        if (detected) activeBuiltinChatTheme = detected;
+      }
       persistDraft(type);
       // 切换预设即应用并持久化，返回/重进后不会再回到初始样式
       try { await storePut("settings", { key: "applied_" + type, value: css }); } catch (e) {}
@@ -3290,6 +3377,8 @@ async function restoreFontToBeautifyPage() {
     } catch (e) {}
 
     await openDB();
+    // 内置主题写入预设库（不可删除；小窗与美化页都能切换）
+    await ensureBuiltinChatPresets();
 
     // 先恢复上次编辑的草稿（CSS/名称/选中预设），避免重新进入显示初始 CSS
     const gd = readDraft("global");
@@ -3302,6 +3391,16 @@ async function restoreFontToBeautifyPage() {
     await initTemplates();
     if (gd) setCode("global", gd.code || "");
     if (cd) setCode("chat", cd.code || "");
+    try {
+      const detected = detectBuiltinChatTheme(getCode("chat"));
+      if (detected) {
+        activeBuiltinChatTheme = detected;
+        markBuiltinChatTheme(detected);
+        try { localStorage.setItem("nano_builtin_chat_theme", detected); } catch (e) {}
+      } else {
+        markBuiltinChatTheme("");
+      }
+    } catch (e) {}
     await refreshPresets("global");
     await refreshPresets("chat");
     await refreshFontPresets();

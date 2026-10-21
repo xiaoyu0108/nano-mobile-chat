@@ -19,7 +19,7 @@
     -webkit-tap-highlight-color: transparent;
 }
 
-/* 隐藏右侧滚动条，并禁止横向滚�?*/
+/* 注释已清理（原文件编码损坏） */
 html, body {
     overflow-x: hidden;
     scrollbar-width: none;          /* Firefox */
@@ -244,7 +244,7 @@ body {
     font-weight: 600;
 }
 
-/* 操作�?*/
+/* 注释已清理（原文件编码损坏） */
 .list-item {
     display: flex;
     justify-content: space-between;
@@ -364,7 +364,7 @@ body {
     padding-bottom: 4px;
 }
 
-/* 隐藏右侧下滑栏（滚动条），功能不受影�?*/
+/* 注释已清理（原文件编码损坏） */
 .no-scrollbar {
     scrollbar-width: none;
     -ms-overflow-style: none;

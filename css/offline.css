@@ -56,7 +56,7 @@ button:active{opacity:.55}
 .back-icon{width:22px;height:22px}
 .more-icon{width:22px;height:22px}
 
-/* ===== 剧情 / 小剧�?Tab ===== */
+/* 注释已清理（原文件编码损坏） */
 .scene-tabs{
   flex:none;position:relative;display:flex;gap:6px;
   margin:10px 12px 0;padding:4px;border-radius:14px;
@@ -258,7 +258,7 @@ button:active{opacity:.55}
 }
 .plot-opt:active{background:#f0e8e8;transform:scale(.97)}
 
-/* ===== 操作栏（粗矮图标 + 加粗字体，栏更矮�?===== */
+/* 注释已清理（原文件编码损坏） */
 .actions{
   height:46px;border-top:1px solid var(--line);
   display:grid;grid-template-columns:repeat(3,1fr);
@@ -390,7 +390,7 @@ button:active{opacity:.55}
 }
 .toast.show{opacity:1;transform:translate(-50%,0)}
 
-/* 三连点正在回�?*/
+/* 注释已清理（原文件编码损坏） */
 .typing-card .typing-dots{display:flex;gap:6px;align-items:center;padding:18px 20px 22px}
 .typing-card .typing-dots span{width:7px;height:7px;border-radius:50%;background:var(--pink-deep,#bca8ab);opacity:.5;animation:typingBlink 1.2s infinite}
 .typing-card .typing-dots span:nth-child(2){animation-delay:.2s}
@@ -416,7 +416,7 @@ button:active{opacity:.55}
 .plot-opt{color:var(--ink, #40393b);background:var(--gray-pink, #f1e6e8);border-color:var(--line-strong, #ead9dc)}
 
 
-/* ===== 让内置主题变量完整作用：卡片顶栏Diary / 底栏按钮 / 输入�?===== */
+/* 注释已清理（原文件编码损坏） */
 .message-head{background:linear-gradient(135deg, var(--header,#f0eaea), var(--gray-pink,#e8dfe0));border-bottom:1px solid var(--line,#e5ddde)}
 .diary-title{color:var(--pink-deep,#bca8ab)}
 .round-btn{color:var(--ink,#3d3536)}

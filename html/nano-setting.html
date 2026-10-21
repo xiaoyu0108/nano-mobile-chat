@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<script src="../js/nano-runtime.js"></script>
+<script src="../js/nano-runtime.js?v=20261021c"></script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>纳米设置</title>
-  <link rel="stylesheet" href="../css/nano-setting.css?v=20261004e">
+  <title>Nano 设置</title>
+  <link rel="stylesheet" href="../css/nano-setting.css?v=20261021c">
   <script src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
   <script src="../js/appearance.js"></script>
 </head>
@@ -15,98 +15,98 @@
       <button class="ns-back" id="nsBack" data-back aria-label="返回">
         <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
-      <span class="ns-title">纳米设置</span>
-      <span style="width:32px"></span>
+      <span class="ns-title">Nano 设置</span>
+      <span style="width:36px"></span>
     </header>
 
     <div class="ns-scroll">
-      <!-- 资料 -->
-      <div class="ns-profile">
+      <section class="ns-hero">
+        <div class="ns-hero-glow"></div>
         <button class="ns-avatar" id="nsAvatarBtn" aria-label="更换头像">
           <img id="nsAvatar" alt="">
           <span class="ns-avatar-edit">换</span>
         </button>
         <div class="ns-profile-main">
           <input class="ns-name" id="nsName" maxlength="16" placeholder="纳米">
-          <div class="ns-sub">纳米专属助手 · 独立于其他角色</div>
+          <div class="ns-sub">Nano 助手 · 独立于其他角色</div>
         </div>
-      </div>
+        <button class="ns-file-pill" id="nsOpenFiles"><b id="nsFileCount">0</b><span>文件</span></button>
+      </section>
       <input type="file" id="nsAvatarFile" accept="image/*" style="display:none">
-      <div class="ns-row" id="nsAvatarUrlRow">
-        <input class="ns-input" id="nsAvatarUrl" placeholder="或输入头像图片 URL">
-        <button class="ns-mini-btn" id="nsAvatarUrlSave">使用</button>
-        <button class="ns-mini-btn ns-ghost" id="nsAvatarReset">还原</button>
+
+      <div class="ns-quickrow">
+        <button id="nsOpenChat" class="ns-quick-btn"><span>✦</span><b>打开对话</b><small>直接和 Nano 聊天</small></button>
+        <button id="nsOpenFiles2" class="ns-quick-btn"><span>▤</span><b>文件库</b><small>独立保存生成文件</small></button>
       </div>
 
-      <!-- 能力说明 -->
-      <div class="ns-card">
-        <div class="ns-card-title">纳米能做什么</div>
-        <div class="ns-feat-item">美化：线上聊天 / 群聊 / 线下 / 心声的 CSS 都能帮你写和改</div>
-        <div class="ns-feat-item">装修：改头像、昵称、背景、气泡，重排顶栏与底栏</div>
-        <div class="ns-feat-item">世界书 / 记忆 / 人设：按你的要求生成与整理</div>
-        <div class="ns-feat-item">读文件：把文件发进对话，纳米会读取内容后再处理</div>
-      </div>
-
-      <!-- 聊天背景 -->
-      <div class="ns-card">
-        <div class="ns-card-title">聊天背景</div>
+      <section class="ns-card">
+        <div class="ns-card-title"><span class="ns-ic">◐</span>头像与背景</div>
+        <div class="ns-row" id="nsAvatarUrlRow">
+          <input class="ns-input" id="nsAvatarUrl" placeholder="输入头像图片 URL">
+          <button class="ns-mini-btn" id="nsAvatarUrlSave">使用</button>
+          <button class="ns-mini-btn ns-ghost" id="nsAvatarReset">还原</button>
+        </div>
         <div class="ns-bg-preview" id="nsBgPreview">无预览</div>
         <div class="ns-row">
-          <button class="ns-mini-btn" id="nsBgPick" style="flex:1">从图库选择</button>
-          <button class="ns-mini-btn ns-ghost" id="nsBgReset" style="flex:1">恢复默认</button>
+          <button class="ns-mini-btn ns-wide" id="nsBgPick">从图库选择背景</button>
+          <input type="color" class="ns-color" id="nsBgColor" value="#ffffff" aria-label="纯色背景">
+          <button class="ns-mini-btn ns-ghost" id="nsBgReset">默认</button>
         </div>
         <input type="file" id="nsBgFile" accept="image/*" style="display:none">
-        <div class="ns-hint">选一张图片作为聊天背景；恢复默认即白底。</div>
-      </div>
+        <div class="ns-hint">背景只影响 Nano 的聊天窗口，不会改动其他角色。</div>
+      </section>
 
-      <!-- 数据概览 -->
-      <div class="ns-card">
-        <div class="ns-card-title">数据概览</div>
-        <div class="ns-stats">
-          <div class="ns-stat"><b id="stMsgs">0</b><span>消息条数</span></div>
-          <div class="ns-stat"><b id="stFloor">0</b><span>聊天楼层</span></div>
-          <div class="ns-stat"><b id="stTokens">0</b><span>≈Tokens</span></div>
-          <div class="ns-stat"><b id="stMemory">0</b><span>记忆条数</span></div>
-        </div>
-        <div class="ns-hint">Tokens 由字符估算，仅供参考。</div>
-      </div>
-
-      <!-- 查找聊天记录 -->
-      <div class="ns-card">
-        <div class="ns-card-title">
-          <span>查找聊天记录</span>
-          <button class="ns-danger" id="nsDeleteAll">删除全部</button>
-        </div>
-        <input class="ns-input" id="nsSearchInput" placeholder="输入关键词，查找历史消息">
-        <div class="ns-search-results" id="nsSearchResults"></div>
-      </div>
-
-      <!-- 内置提示词 -->
-      <div class="ns-card">
-        <div class="ns-card-title">内置提示词（每次生成都会遵守）</div>
+      <section class="ns-card">
+        <div class="ns-card-title"><span class="ns-ic">✎</span>对话与生成</div>
+        <label class="ns-label">内置提示词 <span>每次生成都会遵守</span></label>
         <textarea class="ns-textarea" id="nsPrompt" placeholder="例如：回答尽量精简；CSS 主题优先用莫兰迪色系；必须给出可复制的完整 CSS。"></textarea>
         <button class="ns-primary" id="nsPromptSave">保存提示词</button>
-      </div>
-
-      <!-- 生成设置 -->
-      <div class="ns-card">
-        <div class="ns-card-title">生成设置</div>
+        <div class="ns-divider"></div>
+        <label class="ns-label">最大输出 tokens</label>
         <div class="ns-row">
           <input class="ns-input" id="nsMaxTokens" type="number" min="256" max="32768" step="256" placeholder="最大输出 tokens（默认 8192）">
           <button class="ns-mini-btn" id="nsMaxTokensSave">保存</button>
         </div>
-        <label class="ns-switch-row"><span>直接执行（纳米给出动作后自动执行，不用手动点）</span><span class="ns-switch"><input type="checkbox" id="nsAutoExec"><i></i></span></label>
-        <label class="ns-switch-row"><span>减少啰嗦（只给结论 + 动作，不解释）</span><span class="ns-switch"><input type="checkbox" id="nsBrief"><i></i></span></label>
-        <div class="ns-hint">美化/世界书输出很长时容易被截断，把「最大输出」调大即可（上限 32768）。</div>
-      </div>
+        <label class="ns-switch-row"><span><b>直接执行</b><small>动作生成后自动执行，不用手动确认</small></span><span class="ns-switch"><input type="checkbox" id="nsAutoExec"><i></i></span></label>
+        <label class="ns-switch-row"><span><b>简洁模式</b><small>只给结论和动作，减少解释</small></span><span class="ns-switch"><input type="checkbox" id="nsBrief"><i></i></span></label>
+        <div class="ns-hint">长 CSS / 世界书容易被截断，调大最大输出即可（上限 32768）。</div>
+      </section>
 
-      <div style="height:40px"></div>
+      <section class="ns-card">
+        <div class="ns-card-title"><span class="ns-ic">▦</span>数据概览</div>
+        <div class="ns-stats">
+          <div class="ns-stat"><b id="stMsgs">0</b><span>消息</span></div>
+          <div class="ns-stat"><b id="stFloor">0</b><span>楼层</span></div>
+          <div class="ns-stat"><b id="stTokens">0</b><span>≈Tokens</span></div>
+          <div class="ns-stat"><b id="stMemory">0</b><span>记忆</span></div>
+        </div>
+        <div class="ns-hint">Tokens 由字符估算，仅供参考。</div>
+      </section>
+
+      <section class="ns-card">
+        <div class="ns-card-title"><span class="ns-ic">⌕</span><span style="flex:1">查找聊天记录</span><button class="ns-danger" id="nsDeleteAll">删除聊天</button></div>
+        <input class="ns-input" id="nsSearchInput" placeholder="输入关键词，查找历史消息">
+        <div class="ns-hint">只删除聊天和记忆，不会删除「Nano 文件」里的文件。</div>
+        <div class="ns-search-results" id="nsSearchResults"></div>
+      </section>
+
+      <section class="ns-card ns-about">
+        <div class="ns-card-title"><span class="ns-ic">✦</span>Nano 能做什么</div>
+        <div class="ns-feat-item">美化：线上聊天 / 群聊 / 线下 / 心声的 CSS 都能帮你写和改</div>
+        <div class="ns-feat-item">装修：改头像、昵称、背景、气泡，重排顶栏与底栏</div>
+        <div class="ns-feat-item">世界书 / 记忆 / 人设：按你的要求生成与整理</div>
+        <div class="ns-feat-item">文件：生成的代码和文本会永久保存在「Nano 文件」页</div>
+        <div class="ns-feat-item">最高权限：可读取角色 / 世界书 / 线下规则 / 文件，直接修改人设并保留历史版本，也能创建 AppStore 应用</div>
+      </section>
+
+      <div style="height:34px"></div>
     </div>
 
     <div class="ns-toast" id="nsToast"></div>
   </div>
 
-  <script src="../js/nano-setting.js"></script>
+  <script src="../js/nano-files.js?v=20261021c"></script>
+  <script src="../js/nano-setting.js?v=20261021c"></script>
   <script src="../swipe-back.js"></script>
 </body>
 </html>

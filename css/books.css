@@ -131,7 +131,7 @@ img{display:block;max-width:100%}
 .navitem.active{color:#18191b;font-weight:600}
 .navitem:active{background:#f0f0f2}
 
-/* 阅读�?*/
+/* 注释已清理（原文件编码损坏） */
 #libraryPage{background:#fff}
 #libraryPage .home-content{background:#fff}
 #readerPage{background:#fff;transition:background .25s,color .25s}
@@ -296,7 +296,7 @@ img{display:block;max-width:100%}
 .drawer-item:active{background:#f5f5f7}
 .drawer-item.active{color:#18191b;font-weight:650;background:#f8f8fa}
 
-/* 悬浮�?*/
+/* 注释已清理（原文件编码损坏） */
 .float-ball{
   position:absolute;right:16px;bottom:120px;
   width:44px;height:44px;border-radius:50%;
@@ -318,7 +318,7 @@ html.keyboard-open .chat-window{ transform: translateY(calc(-1 * var(--nano-kb, 
 .float-ball.dragging{cursor:grabbing;transform:scale(1.10)}
 .float-ball img{width:100%;height:100%;object-fit:cover;border-radius:50%}
 
-/* 聊天�?*/
+/* 注释已清理（原文件编码损坏） */
 .chat-window{
   position:absolute;right:16px;bottom:176px;
   width:320px;max-width:calc(100% - 32px);

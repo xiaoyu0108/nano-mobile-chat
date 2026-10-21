@@ -51,7 +51,7 @@ body {
     background-color: #FFFFFF;
 }
 
-/* ===== 名片�?===== */
+/* 注释已清理（原文件编码损坏） */
 .profile-card {
     display: flex;
     align-items: center;
@@ -174,7 +174,7 @@ body {
     color: #1c1c1e;
 }
 
-/* 其他面板：保�?/ 通知 开�?*/
+/* 注释已清理（原文件编码损坏） */
 .other-panel {
     max-height: 0;
     overflow: hidden;
@@ -285,7 +285,7 @@ body {
     line-height: 1.5;
 }
 
-/* ===== iOS 风格双按�?===== */
+/* 注释已清理（原文件编码损坏） */
 .modal-actions {
     display: flex;
     border-top: 0.5px solid rgba(60, 60, 67, 0.24);
@@ -508,7 +508,7 @@ body {
     transition: opacity 0.3s ease;
 }
 
-/* ===== 响应�?===== */
+/* 注释已清理（原文件编码损坏） */
 @media (max-width: 380px) {
     .container { padding: 0 12px 30px 12px; }
     .profile-avatar { width: 50px; height: 50px; }

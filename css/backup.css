@@ -100,7 +100,7 @@ body {
     line-height: 1.5;
 }
 
-/* ===== 列表�?===== */
+/* 注释已清理（原文件编码损坏） */
 .list-item {
     display: flex;
     justify-content: space-between;
@@ -156,7 +156,7 @@ body {
 }
 .chevron { color: var(--text-3); }
 
-/* 加载�?*/
+/* 注释已清理（原文件编码损坏） */
 .spinner {
     display: none;
     width: 16px; height: 16px;

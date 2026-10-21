@@ -1,6 +1,6 @@
 {
-  "name": "纳米",
-  "short_name": "纳米",
+  "name": "Nano",
+  "short_name": "Nano",
   "id": "./index.html",
   "gcm_sender_id": "103953800507",
   "start_url": "./index.html",
@@ -14,7 +14,7 @@
   "orientation": "portrait",
   "background_color": "#ffffff",
   "theme_color": "#ffffff",
-  "description": "纳米 AI 聊天与日程",
+  "description": "Nano AI 聊天与日程",
   "icons": [
     {
       "src": "icons/icon-192.png",

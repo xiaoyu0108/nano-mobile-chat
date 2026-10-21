@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <script src="../js/nano-runtime.js?v=20261020b"></script>
+  <script src="../js/nano-runtime.js?v=20261021c"></script>
   <script src="../js/group-store.js?v=20261021a"></script>
   <script src="../js/appearance.js"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
@@ -636,8 +636,8 @@
     .dock {
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      gap: 2px;
+      justify-content: space-around;
+      gap: 0;
       width: 100%;
       box-sizing: border-box;
       background: #ffffff;
@@ -649,9 +649,10 @@
 
     .dock-btn {
       position: relative;
-      flex: 1;
-      min-width: 0;
-      width: auto;
+      /* 固定正方形，任何屏幕宽度下选中态都是正圆，不会被 flex 拉伸成椭圆 */
+      flex: 0 0 46px;
+      min-width: 46px;
+      width: 46px;
       height: 46px;
       border: none;
       background: transparent;
@@ -1466,7 +1467,7 @@
         });
       }
       list = allChars.filter(function (c) {
-        return String(c.bindUser) === String(currentUser.id) || !!c.nanoAssistant;
+        return String(c.bindUser) === String(currentUser.id) && !c.nanoAssistant;
       });
     }
     const rows = await Promise.all(list.map(async function (c) {

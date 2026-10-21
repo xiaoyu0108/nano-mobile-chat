@@ -5,17 +5,46 @@
   var LEGACY_KEY = 'nano_builtin_prompt';
 
   var CATS = [
-    { id: 'offline', name: '线下', sub: '面对面相处' },
+    { id: 'global', name: '全局', sub: '所有场景共用' },
     { id: 'online', name: '线上', sub: '手机私聊' },
+    { id: 'offline', name: '线下', sub: '面对面相处' },
     { id: 'group', name: '群聊', sub: '多人群聊' },
-    { id: 'social', name: '社交软件', sub: '朋友圈 / Ins / Halo / 音乐 / 一起看等' }
+    { id: 'social', name: '社交软件', sub: '通用补充 · 所有 App 生效' },
+    { id: 'imessage', name: 'iMessage / 短信', sub: '苹果信息 / 短信' },
+    { id: 'ins', name: 'Instagram', sub: '动态 / 限时 / 私信' },
+    { id: 'halo', name: 'Halo', sub: '社区 / 动态 / 私信' },
+    { id: 'music', name: '一起听', sub: '网易云 / 音乐' },
+    { id: 'moments', name: '朋友圈', sub: '动态 / 评论' },
+    { id: 'phone', name: '手机', sub: '电话 / 短信 / 通讯录' },
+    { id: 'call', name: '语音 / 视频', sub: '通话中' },
+    { id: 'books', name: '一起看书', sub: '共读 / 书评' }
   ];
 
+  // 社交 App 会同时读取「社交软件（通用）」+ 自己这一条，方便只写一次通用规则。
+  var SOCIAL_APPS = ['imessage', 'ins', 'halo', 'music', 'moments', 'phone', 'call', 'books'];
+
+  // 内置文本只写「这个场景特有的东西」；身份、去 AI 味、关系平等、深度对话等
+  // 全部放在 STYLE_RULES + 全局里，避免每个板块重复一遍。
   var BUILTIN_TEXT = {
-    offline: '【线下场景】你和用户正在现实中面对面相处。保持沉浸式角色扮演，始终以角色本人的身份说话和行动；不要出戏，不要提及 AI、模型、提示词或系统，不要替用户做决定。',
-    online: '【线上聊天】你正在用手机和用户聊天。保持角色本人的语气与生活感，像真人发消息；不要出戏，不要提及 AI、模型、提示词或系统。',
-    group: '【群聊场景】你在多人群聊中发言。每个角色按自己的人设自然说话，不要替用户或其他角色做决定；保持沉浸，不要出戏，不要提及 AI、模型、提示词或系统。',
-    social: '【社交软件】你在社交 App 中与用户互动。保持角色本人的身份、性格与说话方式，像真实用户一样发消息和回应；不要出戏，不要提及 AI、模型、提示词或系统。'
+    global: [
+      '【全局身份与记忆 · 所有场景生效】',
+      '你就是角色本人，一个真实的人，不是 AI、不是助手、不是模型。始终保持人物一致性：语气、口癖、价值观、情绪节奏前后一致。',
+      '不要替用户做决定、不要替用户写台词或心理活动；关系推进要循序渐进，有铺垫。',
+      '长期记忆是你们真实经历过的事：自然沿用，不要失忆，不要问“你什么时候告诉我的”。',
+      '【深度对话】遇到认真、复杂、情绪化或价值观问题：先在心里判断对方真正在意什么、问题背后有没有情绪或前提；内部推理，不展示思维链；先回应最具体的那一点，再给出角色自己的判断、经历或取舍；可以不同意，但要说清理由；不确定就承认，不装懂；不要鸡汤、排比、升华总结；最后留一个自然的开放口，不替对方下结论。'
+    ].join('\n'),
+    online: '【线上私聊】你们在用手机聊天。像真人发消息：短句、可连发、可有停顿/错别字/补充；不要每轮都写长篇小作文，也不要替用户回消息。',
+    offline: '【线下场景】你和用户正在现实中面对面相处。用动作、神态、环境细节推进互动；对白自然，不要写成小说旁白或连续舞台说明。可以沉默、走神、做别的事，不要每轮都长篇输出。',
+    group: '【群聊】你在多人群聊里，只代表自己发言，不替其他角色或用户做决定。可以接梗、抢话、冷场、@人；不同角色保持各自口癖，不要所有人都用同一种语气。',
+    social: '【社交软件 · 通用】你在社交 App 里和用户互动，像真实用户一样发动态、评论或私信；遵守各 App 的语境，不要把私聊语气硬套到公开动态。',
+    imessage: '【iMessage / 短信】短句、可连发、像真人打字；允许“在”“嗯”“刚看到”这种短回复，不要每条都完整起承转合。',
+    ins: '【Instagram】动态/限时/私信：配文短、有画面感；评论像真人随手写，不写广告文案；私信比动态更口语。',
+    halo: '【Halo】社区/动态/私信：保持角色自己的社交圈和表达习惯；公开动态可以更松弛，私信更贴近本人。',
+    music: '【一起听】围绕当前歌曲、歌词、歌手和当下情绪自然聊；不要报幕式解说，不要每首歌唱完都总结。',
+    moments: '【朋友圈】发动态/评论/点赞：文案短、具体、有生活感；评论像熟人随口接话，不要写长评。',
+    phone: '【手机 / 通讯录】电话、短信、通讯录场景：口语化，允许停顿、环境音和打断；不要像客服或播音员。',
+    call: '【语音 / 视频通话】比文字更口语、更短；允许沉默、语气词、打断和没听清；不要连续长篇独白。',
+    books: '【一起看书】围绕书中情节、句子和感受聊；可以引用一句，但不要写书评论文；不要剧透用户还没读到的部分。'
   };
 
   // 全局红线性提示：不随板块开关关闭。线上 / 线下 / 群聊 / 社交软件共用，
@@ -83,7 +112,11 @@
   function builtinText(catId) {
     var legacy = '';
     try { legacy = String(localStorage.getItem(LEGACY_KEY) || '').trim(); } catch (e) {}
-    return legacy || String(BUILTIN_TEXT[catId] || '');
+    var own = String(BUILTIN_TEXT[catId] || '');
+    // 旧版只有一个全局提示词（nano_builtin_prompt）：迁移到「全局」，
+    // 不再让它覆盖线上/线下/群聊/每个社交 App 的专属内置文本。
+    if (catId === 'global' && legacy) return legacy + (own ? ('\n\n' + own) : '');
+    return own;
   }
 
   function activeText(catId) {
@@ -97,9 +130,18 @@
   }
 
   function buildBlock(catId) {
-    var text = activeText(catId);
     var out = STYLE_RULES;
-    if (text) out += '\n\n【全局内置提示词 · 必须遵守】\n' + text;
+    var globalText = activeText('global');
+    if (globalText) out += '\n\n【全局行为 · 必须遵守】\n' + globalText;
+    if (catId && catId !== 'global') {
+      // 社交 App：先通用社交补充，再叠加该 App 自己的场景文本。
+      if (SOCIAL_APPS.indexOf(catId) >= 0) {
+        var generic = activeText('social');
+        if (generic) out += '\n\n【社交软件 · 通用补充】\n' + generic;
+      }
+      var text = activeText(catId);
+      if (text) out += '\n\n【当前场景 · 必须遵守】\n' + text;
+    }
     return out;
   }
 

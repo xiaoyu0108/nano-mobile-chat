@@ -137,6 +137,16 @@
   } catch (e) {}
   window.NANO_ROOT = root;
 
+  // 全局 API 日志：设置页「后台日志」读取。异步加载，不阻塞首屏。
+  try {
+    if (!window.NanoApiLogs) {
+      var logScript = document.createElement('script');
+      logScript.src = root + 'js/api-logs.js?v=20261021a';
+      logScript.async = false;
+      (document.head || document.documentElement).appendChild(logScript);
+    }
+  } catch (e) {}
+
   function enabled() {
     try {
       var v = localStorage.getItem('nano_top_inset_enabled');
