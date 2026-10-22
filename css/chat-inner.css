@@ -501,6 +501,22 @@ html.nano-android.keyboard-open body.nano-chat-inner .bottom-bar {
     display: flex; align-items: center; padding: 0 10px; gap: 4px;
     cursor: pointer;
 }
+.voice-line { display: flex; align-items: center; gap: 6px; max-width: 100%; }
+.voice-line.left { align-self: flex-start; }
+.voice-line.right { align-self: flex-end; flex-direction: row-reverse; }
+.voice-actions { display: flex; align-items: center; gap: 4px; flex: none; }
+.voice-act {
+    width: 26px; height: 26px; border-radius: 50%; border: 1px solid rgba(0,0,0,0.06);
+    background: rgba(255,255,255,0.78); color: #6f6f76;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0; cursor: pointer; flex: none;
+    -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+}
+.voice-act i { font-size: 11px; }
+.voice-act:active { background: rgba(0,122,255,0.12); color: #007aff; }
+.voice-act:disabled { opacity: .55; cursor: default; }
+.voice-act.spinning i { animation: voiceActSpin .8s linear infinite; }
+@keyframes voiceActSpin { to { transform: rotate(360deg); } }
 .voice-bubble.right { align-self: flex-end; background: #2c2c2e; color: #fff; flex-direction: row-reverse; }
 .voice-bubble.left { align-self: flex-start; background: #dedede; color: #111; }
 .voice-bubble.right::before {

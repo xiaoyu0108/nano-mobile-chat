@@ -256,6 +256,8 @@
     var voicePresetSelect = document.getElementById('voicePresetSelect');
     var voiceConfirm = document.getElementById('voiceConfirm');
     var voiceCancel = document.getElementById('voiceCancel');
+    var ttsEnableToggle = document.getElementById('ttsEnableToggle');
+    var ttsEnableStatus = document.getElementById('ttsEnableStatus');
 
     var searchInput = document.getElementById('searchInput');
     var searchResults = document.getElementById('searchResults');
@@ -358,6 +360,13 @@
 
         var voiceSaved = getSetting('ttsPreset', '');
         if (voicePreview) voicePreview.textContent = voiceSaved ? voiceSaved : '跟随全局';
+        var ttsOn = getSetting('ttsEnabled', false) !== false;
+        if (ttsEnableToggle) ttsEnableToggle.checked = ttsOn;
+        if (ttsEnableStatus) ttsEnableStatus.textContent = ttsOn ? '开启' : '关闭';
+        (function () {
+            var vi = document.getElementById('voiceItem');
+            if (vi) vi.style.opacity = ttsOn ? '' : '0.55';
+        })();
 
         loadBackground();
 
@@ -1294,11 +1303,31 @@
         if (voicePreview) voicePreview.textContent = val ? val : '跟随全局';
         if (window.parent !== window) {
             try { window.parent.postMessage({ type: 'ttsVoiceChanged', chatId: chatId, ttsPreset: val }, '*'); } catch (e) {}
+            try {
+                var cf = window.parent.document.getElementById('chatInnerFrame');
+                if (cf && cf.contentWindow) cf.contentWindow.postMessage({ type: 'ttsVoiceChanged', chatId: chatId, ttsPreset: val }, '*');
+            } catch (e) {}
         }
         if (voiceModal) voiceModal.classList.remove('active');
     }
     var voiceItemEl = document.getElementById('voiceItem');
     if (voiceItemEl) voiceItemEl.addEventListener('click', openVoiceModal);
+    if (ttsEnableToggle) {
+        ttsEnableToggle.addEventListener('change', function () {
+            var on = !!this.checked;
+            setSetting('ttsEnabled', on);
+            if (ttsEnableStatus) ttsEnableStatus.textContent = on ? '开启' : '关闭';
+            if (voiceItemEl) voiceItemEl.style.opacity = on ? '' : '0.55';
+            if (!on) { try { if (window.NanoTTS) window.NanoTTS.stop(); } catch (e) {} }
+            if (window.parent !== window) {
+                try { window.parent.postMessage({ type: 'ttsEnabledChanged', chatId: chatId, enabled: on }, '*'); } catch (e) {}
+            }
+            try {
+                var f = window.parent && window.parent.document.getElementById('chatInnerFrame');
+                if (f && f.contentWindow) f.contentWindow.postMessage({ type: 'ttsEnabledChanged', chatId: chatId, enabled: on }, '*');
+            } catch (e) {}
+        });
+    }
     if (voiceConfirm) voiceConfirm.addEventListener('click', saveVoice);
     if (voiceCancel) voiceCancel.addEventListener('click', function() { if (voiceModal) voiceModal.classList.remove('active'); });
 

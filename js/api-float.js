@@ -703,6 +703,17 @@
         working.modelText = opt ? opt.text : working.model;
     }
 
+    // 悬浮窗切换 TTS 预设 = 私聊设置里切换音色：同步到当前打开的角色聊天。
+    function broadcastTtsPreset(name) {
+        if (activeCat !== 'tts' || !name) return;
+        try {
+            var frames = document.querySelectorAll('iframe');
+            for (var i = 0; i < frames.length; i++) {
+                try { frames[i].contentWindow.postMessage({ type: 'nanoTtsPresetApply', preset: name }, '*'); } catch (e) {}
+            }
+        } catch (e) {}
+    }
+
     function onPresetChange(name) {
         var c = CATS[activeCat];
         working.preset = name || '';
@@ -717,6 +728,7 @@
             syncModelText();
             return syncConfigToStore().then(function () {
                 statusEl.textContent = '已切换：' + name;
+                broadcastTtsPreset(name);
                 broadcastReload();
             });
         });
@@ -773,6 +785,7 @@
                 });
             });
         }).then(function () {
+            broadcastTtsPreset(working.preset);
             broadcastReload();
         });
     }
@@ -1135,6 +1148,47 @@
         }
         p.then(function () { flash('已保存', beautyStatusEl); });
     }
+
+    // 私聊设置里换了角色音色：同步悬浮窗 TTS 预设和全局配置，二者保持一致。
+    function applyTtsPresetFromSettings(name) {
+        name = String(name || '').trim();
+        if (!name) return;
+        var prevCat = activeCat;
+        activeCat = 'tts';
+        idbGet(PRESET_DATA_KEY).then(function (all) {
+            var d = all && all['tts_' + name];
+            if (!d) return;
+            working.preset = name;
+            working.url = d.url || '';
+            working.key = d.key || '';
+            working.model = d.modelValue || d.modelText || '';
+            if (presetEl) {
+                var has = false;
+                for (var i = 0; i < presetEl.options.length; i++) {
+                    if (presetEl.options[i].value === name) { has = true; break; }
+                }
+                if (!has) {
+                    var o = document.createElement('option');
+                    o.value = name; o.textContent = name;
+                    presetEl.appendChild(o);
+                }
+                presetEl.value = name;
+            }
+            if (modelEl) {
+                renderModels(modelCache, working.model);
+                syncModelText();
+            }
+            return syncConfigToStore().then(function () {
+                if (statusEl) statusEl.textContent = '已同步音色：' + name;
+            });
+        }).then(function () { activeCat = prevCat; }, function () { activeCat = prevCat; });
+    }
+
+    window.addEventListener('message', function (e) {
+        var d = e && e.data;
+        if (!d || d.type !== 'ttsVoiceChanged') return;
+        applyTtsPresetFromSettings(d.ttsPreset);
+    });
 
     window.ApiBall = {
         isTopLevel: true,

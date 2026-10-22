@@ -641,6 +641,7 @@
         const wbFront = wb.front, wbMid = wb.middle, wbBack = wb.back;
 
         let prompt = '你是' + charName + '，一个活生生的人类，正在用手机和' + user + '聊天。你有自己的生活、情绪和日常，不是程序，也不是在扮演谁。\n\n';
+        const __ttsOn = getChatSetting('ttsEnabled', false) !== false;
         // 最高优先级：人设 / 世界书 / 记忆一致性
         prompt += '【必须遵循（最高优先级）】\n'
             + '1. 严格保持你的人物设定，任何时候都不要 OOC、不要跳出角色。\n'
@@ -794,7 +795,7 @@
         prompt += '- [reply:引用内容] 例如 [reply:今天天气不错]（可引用任意一条历史消息的原话；用户要求引用时必用，[reply:] 为空时才兜底最后一条）\n';
         prompt += '- [transfer:金额] 例如 [transfer:52.00]\n';
         prompt += '- [gift:礼物名称] 例如 [gift:小熊玩偶]\n';
-        prompt += '- [voice:秒数|内容] 例如 [voice:8|路上小心]（发语音气泡，内容就是你要说的那句话）\n';
+        if (__ttsOn) prompt += '- [voice:秒数|内容] 例如 [voice:8|路上小心]（发语音气泡，内容就是你要说的那句话）\n';
         prompt += '- [call:来电]（给对方打电话，接通后即语音通话）\n';
         prompt += '- [call:视频]（给对方打视频电话）\n';
         prompt += '- [image:图片描述] 例如 [image:一张夕阳]\n';
@@ -829,15 +830,27 @@
             prompt += '【动描禁词】严禁小说腔、装腔和油腻特写，例如：勾唇一笑、微微一笑、勾起嘴角、邪魅一笑、眸色一沉、眼神一暗、喉结滚动、低笑一声、摘下金丝眼镜、推了推眼镜、挑眉、玩味地看着你、声音沙哑/低哑、指尖划过、把人圈进怀里 等。也不要每轮都写“笑”。\n';
         }
 
-        prompt += '\n【语音气泡 · 常用】\n';
         // 语音气泡频率：high=每轮2条以上；medium=每轮约1条；low=约2轮1条
         const __vFreq = getChatSetting('voiceFreq', 'medium');
-        if (__vFreq === 'high') {
-            prompt += '你很爱用语音说话，不要只发文字：**每一轮至少发 2 条以上** [voice:秒数|内容]（内容就是那句话本身）。撒娇、认真、安慰、道晚安、情绪浓的时候优先发语音。\n';
-        } else if (__vFreq === 'low') {
-            prompt += '你偶尔用语音说话：**大约每 2 轮发 1 条** [voice:秒数|内容]（内容就是那句话本身）。撒娇、认真、安慰、道晚安、情绪浓的时候优先发语音。\n';
+        if (!__ttsOn) {
+            prompt += '\n【语音气泡 · 已关闭】\n';
+            prompt += '这个角色当前的语音朗读已关闭：不要输出 [voice:秒数|内容]，所有内容都用普通文字气泡说。历史语音气泡仍会保留。\n';
         } else {
-            prompt += '你习惯用语音消息说话，不要只发文字：**平均每轮 1 条** [voice:秒数|内容]（内容就是那句话本身）。撒娇、认真、安慰、道晚安、情绪浓的时候优先发语音。\n';
+            prompt += '\n【语音气泡 · 常用】\n';
+            if (__vFreq === 'high') {
+                prompt += '你很爱用语音说话，不要只发文字：**每一轮至少发 2 条以上** [voice:秒数|内容]（内容就是那句话本身）。撒娇、认真、安慰、道晚安、情绪浓的时候优先发语音。\n';
+            } else if (__vFreq === 'low') {
+                prompt += '你偶尔用语音说话：**大约每 2~3 轮发 1 条** [voice:秒数|内容]（内容就是那句话本身）。撒娇、认真、安慰、道晚安、情绪浓的时候优先发语音。\n';
+            } else {
+                prompt += '你习惯用语音消息说话，不要只发文字：**平均每轮 1 条** [voice:秒数|内容]（内容就是那句话本身）。撒娇、认真、安慰、道晚安、情绪浓的时候优先发语音。\n';
+            }
+            prompt += '\n【语音演出要求 · 让声音像真人】\n';
+            prompt += '1. 语音内容就是你真的会说出口的话：口语、短句、有停顿；不要写成书面语、旁白或客服腔。\n';
+            prompt += '2. 用逗号、省略号、破折号制造自然停顿和换气感（例如“我没事……就是，有点想你了”），句尾可以轻一点、拖一点；不要每个字都咬得很清楚。\n';
+            prompt += '3. 允许一点点真实的换气、吸气、叹气或鼻音，但只通过语气词和标点表现；不要写“（深呼吸）”“（叹气）”“[风声]”这类会被 TTS 直接念出来的括号标签或音效标签。\n';
+            prompt += '4. 语气、语速、停顿要贴合你的人设和此刻情绪：开心就轻快，害羞就放软，生气就短促，困了/累了就含糊一点；同一句话不要每轮都用同一种播音腔。\n';
+            prompt += '5. 场景需要环境感时，用一句自然的话带过周围（比如“外面雨好像大了点”“那边有点吵，我走近一点”），不要写成音效说明，也不要每轮都加。\n';
+            prompt += '6. 一条语音可以 8~30 秒，把想说的话说完整；不要为了凑短句而截断，也不要在句中途莫名停下。\n';
         }
         if (__emojiNames.length) {
             prompt += '\n【表情包 · 很轻的辅助表达】\n';
@@ -1112,7 +1125,7 @@
             }
             const __vFreq2 = getChatSetting('voiceFreq', 'medium');
             const voiceTarget = __vFreq2 === 'high' ? 2 : 1;
-            if (leftSeen > 0 && voiceRecent < voiceTarget) {
+            if (__ttsOn && leftSeen > 0 && voiceRecent < voiceTarget) {
                 prompt += '\n【本轮要求】按你的语音频率，这一轮至少发 ' + voiceTarget + ' 条 [voice:秒数|内容]，内容就是你想说的那句话。\n';
             }
             // 表情包不做强制补发：它只是很轻的辅助表达，不发也完全正常。
@@ -2145,7 +2158,43 @@
         }
     });
 
-    // ===== 聊天设置读取 =====
+    // ===== TTS 开关只放在「私聊设置」里；聊天页不再放喇叭按钮 =====
+    function isChatTtsOn() {
+        return getChatSetting('ttsEnabled', false) !== false;
+    }
+    window.addEventListener('message', function (e) {
+        const d = e && e.data;
+        if (!d) return;
+        if (d.type === 'nanoTtsPresetApply') {
+            if (d.preset !== undefined) setChatSetting('ttsPreset', String(d.preset || ''));
+            if (d.enabled !== undefined) setChatSetting('ttsEnabled', !!d.enabled);
+            renderMessages();
+        } else if (d.type === 'ttsVoiceChanged' && String(d.chatId || '') === String(chatId)) {
+            setChatSetting('ttsPreset', String(d.ttsPreset || ''));
+            if (d.enabled !== undefined) setChatSetting('ttsEnabled', !!d.enabled);
+            renderMessages();
+        } else if (d.type === 'ttsEnabledChanged' && String(d.chatId || '') === String(chatId)) {
+            setChatSetting('ttsEnabled', !!d.enabled);
+            renderMessages();
+        }
+    });
+    window.addEventListener('storage', function (e) {
+        try {
+            if (!e || !e.key) return;
+            if (e.key === 'chat_setting_ttsEnabled_' + chatId || e.key === 'chat_setting_ttsPreset_' + chatId) {
+                renderMessages();
+            }
+        } catch (err) {}
+    });
+    // 打开某个角色时，把 TA 上次的音色同步给悬浮窗（“设置里的音色”和“悬浮窗 TTS 预设”保持一致）。
+    try {
+        if (window.parent !== window) {
+            setTimeout(function () {
+                var p = String(getChatSetting('ttsPreset', '') || '').trim();
+                if (p) window.parent.postMessage({ type: 'ttsVoiceChanged', chatId: chatId, ttsPreset: p }, '*');
+            }, 360);
+        }
+    } catch (e) {}
     function getChatSetting(key, defaultVal) {
         try {
             const val = localStorage.getItem('chat_setting_' + key + '_' + chatId);
@@ -2160,27 +2209,20 @@
 
     // 用「当前私聊绑定的 TTS 预设」朗读；没绑定就回落到全局 TTS 配置。
     // presetName 存在 chat_setting_ttsPreset_<角色id>（私聊设置里选）。
-    function speakWithChatVoice(text, onDone, onNa) {
+    function speakWithChatVoice(text, onDone, onNa, opts) {
         var done = function (r) { try { if (onDone) onDone(r); } catch (e) {} };
         var na = function () { try { if (onNa) onNa(); } catch (e) {} };
         if (!window.NanoTTS) { na(); return; }
-        var presetName = '';
-        try { presetName = String(getChatSetting('ttsPreset', '') || '').trim(); } catch (e) {}
-        var runGlobal = function () {
-            window.NanoTTS.isConfigured(function (ok) {
-                // 没配置远端 TTS 时不再只放动画：用浏览器语音兜底，让语音气泡真的有声音。
-                if (!ok && !(window.NanoTTS.canSpeakNative && window.NanoTTS.canSpeakNative())) { na(); return; }
-                window.NanoTTS.speak(text).then(function (r) { if (r === false) na(); else done(true); }, function () { na(); });
-            });
-        };
-        if (presetName && window.NanoTTS.getPresetConfig) {
-            window.NanoTTS.getPresetConfig(presetName).then(function (cfg) {
-                if (!cfg) { runGlobal(); return; }
-                window.NanoTTS.speak(text, { config: cfg }).then(function () { done(true); }, function () { done(false); });
-            }, runGlobal);
-        } else {
-            runGlobal();
+        // 关闭 TTS 的角色：语音气泡只做波形动画，不再偷偷合成或使用浏览器语音。
+        if (window.NanoTTS.isEnabled && window.NanoTTS.isEnabled(chatId) === false) { na(); return; }
+        opts = Object.assign({ chatId: chatId }, opts || {});
+        if (window.NanoTTS.speakForChat) {
+            window.NanoTTS.speakForChat(text, opts).then(function (r) {
+                if (r === false) na(); else done(true);
+            }, function () { na(); });
+            return;
         }
+        window.NanoTTS.speak(text, opts).then(function (r) { if (r === false) na(); else done(true); }, function () { na(); });
     }
 
     // 朋友圈生图频率：高=每条都生；中=2~3条一次；低=6~8条一次（按角色独立计数）
@@ -2353,10 +2395,67 @@
     });
 
     // ===== 语音气泡 =====
-    function createVoiceBubble(type, duration, unread, transcript, ttsText) {
+    function createVoiceActions(rowId, text) {
+        const box = document.createElement('span');
+        box.className = 'voice-actions';
+        box.hidden = true;
+        const reroll = document.createElement('button');
+        reroll.type = 'button';
+        reroll.className = 'voice-act';
+        reroll.title = '重新生成这条语音';
+        reroll.setAttribute('aria-label', '重新生成这条语音');
+        reroll.innerHTML = '<i class="fas fa-rotate-right"></i>';
+        const download = document.createElement('button');
+        download.type = 'button';
+        download.className = 'voice-act';
+        download.title = '下载 MP3';
+        download.setAttribute('aria-label', '下载 MP3');
+        download.innerHTML = '<i class="fas fa-download"></i>';
+        box.appendChild(reroll);
+        box.appendChild(download);
+        const fail = function (e) {
+            const msg = String((e && e.message) || e || '语音生成失败');
+            try { showAlert('语音生成失败', msg); } catch (err) { console.warn('[TTS]', msg); }
+        };
+        reroll.addEventListener('click', async function (ev) {
+            ev.stopPropagation();
+            if (reroll.disabled) return;
+            reroll.disabled = true; download.disabled = true;
+            reroll.classList.add('spinning');
+            try {
+                await window.NanoTTS.rerollVoice(text, { chatId: chatId, key: rowId });
+            } catch (e) { fail(e); }
+            finally {
+                reroll.disabled = false; download.disabled = false;
+                reroll.classList.remove('spinning');
+            }
+        });
+        download.addEventListener('click', async function (ev) {
+            ev.stopPropagation();
+            if (download.disabled) return;
+            reroll.disabled = true; download.disabled = true;
+            download.classList.add('spinning');
+            try {
+                await window.NanoTTS.downloadVoice(text, { chatId: chatId, key: rowId });
+            } catch (e) { fail(e); }
+            finally {
+                reroll.disabled = false; download.disabled = false;
+                download.classList.remove('spinning');
+            }
+        });
+        if (window.NanoTTS && window.NanoTTS.hasVoiceForChat) {
+            window.NanoTTS.hasVoiceForChat(chatId).then(function (ok) { box.hidden = !ok; },
+                function () { box.hidden = true; });
+        }
+        return box;
+    }
+
+    function createVoiceBubble(type, duration, unread, transcript, ttsText, opts) {
+        opts = opts || {};
         const vb = document.createElement('div');
         vb.className = 'voice-bubble ' + type;
         vb.dataset.playing = 'false';
+        if (opts.rowId) vb.dataset.msgId = String(opts.rowId);
 
         let bars = '';
         for (let i = 0; i < 6; i++) {
@@ -2392,10 +2491,11 @@
                         if (self.dataset.playing === 'true') setPlaying(self, false);
                     }, Math.max(1000, (duration || 3) * 1000));
                 };
-                if (speakText && window.NanoTTS) {
+                const ttsOn = !(window.NanoTTS && window.NanoTTS.isEnabled && window.NanoTTS.isEnabled(chatId) === false);
+                if (ttsOn && speakText && window.NanoTTS) {
                     speakWithChatVoice(speakText, function () {
                         if (self.dataset.playing === 'true') setPlaying(self, false);
-                    }, animateOnly);
+                    }, animateOnly, { key: opts.rowId });
                 } else {
                     animateOnly();
                 }
@@ -2921,9 +3021,17 @@
             try { card.innerHTML = buildCardHTML(cardData, type, time); } catch (err) { card.innerHTML = ''; }
             content.appendChild(card);
         } else if (isVoice) {
+            const voiceLine = document.createElement('div');
+            voiceLine.className = 'voice-line ' + type;
+            const voiceSpeakText = (voiceData && voiceData.ttsText) || transcript;
             const vb = createVoiceBubble(type, voiceData?.duration || 3, voiceData?.unread || false, transcript,
-                (voiceData && voiceData.ttsText) || transcript);
-            content.appendChild(vb);
+                voiceSpeakText, { rowId: rowId });
+            voiceLine.appendChild(vb);
+            // 只给「真的接入了 TTS」的角色语音条显示重roll / 下载；关闭 TTS 时只保留假波形。
+            if (type === 'left' && voiceSpeakText) {
+                voiceLine.appendChild(createVoiceActions(rowId, voiceSpeakText));
+            }
+            content.appendChild(voiceLine);
             if (transcript) {
                 const bub = document.createElement('div');
                 bub.className = 'bubble ' + (type === 'left' ? 'other' : 'me') + ' voice-transcript-bubble';
@@ -3684,7 +3792,7 @@
         if (isVoice && type === 'left' && !recalled && window.NanoTTS) {
             try {
                 const speakText = (voiceData && voiceData.ttsText) || transcript;
-                if (speakText && String(speakText).trim()) speakWithChatVoice(speakText);
+                if (speakText && String(speakText).trim()) speakWithChatVoice(speakText, null, null, { key: row.dataset.id });
             } catch (e) {}
         }
         if (type === 'left' && !recalled) {
@@ -5410,7 +5518,7 @@
                 window.NanoKeepAlive.schedule({
                     id: autoMsgTaskId(), at: Date.now() + ms, type: 'generate', owner: 'autoMsg',
                     chatId: chatId, title: displayName || chatName || '新消息',
-                    body: '（' + (displayName || chatName || '角色') + ' 想找你说句话）',
+                    body: '',
                     target: 'chat:' + chatId
                 });
             }
@@ -6071,7 +6179,7 @@
                 window.NanoKeepAlive.schedule({
                     id: autoMomentTaskId(), at: Date.now() + ms, type: 'generate', owner: 'autoMoment',
                     chatId: chatId, title: displayName || chatName || '朋友圈',
-                    body: '（' + (displayName || chatName || '角色') + ' 有新动态排队）',
+                    body: '',
                     target: 'moments'
                 });
             }

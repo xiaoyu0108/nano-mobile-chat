@@ -13,7 +13,9 @@
 
     var currentAudio = null;
     var currentUrl = '';
+    var currentClipKey = '';
     var lastError = '';
+    var voiceCache = {};   // key -> { blob, text, preset }
 
     function parseLocalConfig() {
         try {
@@ -111,6 +113,74 @@
         cfg = cfg || {};
         return !!(cleanUrl(cfg.ttsUrl) && cfg.ttsKey && (cfg.ttsModel || cfg.ttsVoice));
     }
+
+    // ===== 每个角色自己的语音设置（与私聊设置共用 chat_setting_* 键）=====
+    function chatStoreKey(chatId, key) {
+        return 'chat_setting_' + key + '_' + String(chatId || '');
+    }
+    function chatSetting(chatId, key, defVal) {
+        try {
+            var raw = localStorage.getItem(chatStoreKey(chatId, key));
+            if (raw === null) return defVal;
+            try { return JSON.parse(raw); } catch (e) { return raw; }
+        } catch (e) { return defVal; }
+    }
+    function writeChatSetting(chatId, key, val) {
+        try { localStorage.setItem(chatStoreKey(chatId, key), JSON.stringify(val)); } catch (e) {}
+        try {
+            if (typeof localforage !== 'undefined') {
+                localforage.setItem(chatStoreKey(chatId, key), val).catch(function () {});
+            }
+        } catch (e) {}
+    }
+    function isChatTtsEnabled(chatId) {
+        return chatSetting(chatId, 'ttsEnabled', false) !== false;
+    }
+    function setChatTtsEnabled(chatId, on) {
+        writeChatSetting(chatId, 'ttsEnabled', !!on);
+    }
+    function getChatPresetName(chatId) {
+        return String(chatSetting(chatId, 'ttsPreset', '') || '').trim();
+    }
+    function setChatPresetName(chatId, name) {
+        writeChatSetting(chatId, 'ttsPreset', String(name || '').trim());
+    }
+    function resolveChatConfig(chatId, presetOverride) {
+        var name = (presetOverride === undefined || presetOverride === null)
+            ? getChatPresetName(chatId)
+            : String(presetOverride || '').trim();
+        if (name) {
+            return getPresetConfig(name).then(function (cfg) {
+                if (cfg) return cfg;
+                return getConfig();
+            });
+        }
+        return getConfig();
+    }
+    // 清理成「真的能读出来」的台词：去掉翻译、标记、表情和多余符号；
+    // 保留逗号、省略号、破折号等自然停顿，不按长度截断。
+    function ttsScript(text, type) {
+        var raw = String(text == null ? '' : text);
+        var s = raw.replace(/\r/g, '');
+        s = s.replace(/^\s*\[voice:[^\]]*\]\s*/i, '');
+        s = s.replace(/\[(?:reply|image|voice|gift|transfer|call|heart|act|emoji|定位|外卖|头像|亲属卡)[^\]]*\]/gi, ' ');
+        // 模型偶尔会写舞台提示/音效标签；TTS 会照读，直接去掉，只保留真正说出口的话。
+        s = s.replace(/（[^）]{1,24}）/g, ' ').replace(/【[^】]{1,24}】/g, ' ');
+        s = s.replace(/\[[^\]\n]{1,16}\]/g, ' ');
+        s = s.replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{200D}]/gu, '');
+        var lines = s.split('\n').map(function (line) {
+            var sep = line.indexOf('||');
+            if (sep > -1) line = line.slice(0, sep);
+            return line.trim();
+        }).filter(Boolean);
+        s = lines.join(type === 'fishaudio' ? '，' : ' ');
+        s = s.replace(/[*_`#>]/g, '');
+        s = s.replace(/\.{3,}/g, '……').replace(/。{2,}/g, '。').replace(/，{2,}/g, '，');
+        s = s.replace(/[ \t]{2,}/g, ' ').trim();
+        if (!s) s = raw.trim();
+        return s;
+    }
+
     function hexToBytes(hex) {
         var h = String(hex || '').replace(/[^0-9a-fA-F]/g, '');
         if (!h || h.length % 2) return null;
@@ -124,6 +194,8 @@
         var base = toV1(cfg.ttsUrl);
         var type = String(cfg.ttsType || 'openai').toLowerCase();
         if (type.indexOf('fish') === 0) type = 'fishaudio';
+        text = ttsScript(text, type);
+        if (!text) throw new Error('这条语音没有可朗读的文字');
         if (type === 'minimax') {
             // MiniMax 国内版 / 海外版域名都兼容；当前域名失败时自动尝试另一个
             var mmBases = [base];
@@ -174,36 +246,67 @@
         }
         if (type === 'fishaudio') {
             // Fish Audio：model 是语音模型（如 s1 / s2.1-pro），reference_id 是用户手填的音色 ID。
-            // 注意：必须先声明 fishBody，再写 fishBody.model；旧代码顺序反了会抛
-            // “Cannot set properties of undefined”，语音气泡点击后完全没有声音。
+            // 注意：不要把 model 放进自定义请求头。浏览器会先发 CORS 预检，
+            // Fish 对自定义 model 头的放行不稳定，预检失败时表现为 "HTTP 0 / Load failed"。
             var rawFish = cleanUrl(cfg.ttsUrl);
             var fishRoot = rawFish.replace(/\/v1\/tts$/i, '').replace(/\/v1$/i, '').replace(/\/tts$/i, '');
-            var fishEndpoint = /\/tts$/i.test(rawFish) ? rawFish : (fishRoot + '/v1/tts');
+            var fishEndpoint = /\/tts$/i.test(rawFish) ? rawFish : (fishRoot ? (fishRoot + '/v1/tts') : 'https://api.fish.audio/v1/tts');
+            var isDirectFish = /^https?:\/\/api\.fish\.audio/i.test(fishEndpoint);
+            var fishEndpoints = [];
+            var fishProxy = '';
+            // 某些网络/代理会直接拦掉 api.fish.audio（CORS 预检都到不了，表现为 HTTP 0）。
+            // 直连 Fish 时优先走 Nano 推送 Worker 的 /fish-tts 同源反向代理，失败再直连。
+            try {
+                fishProxy = String(localStorage.getItem('nano_push_endpoint') || '').trim().replace(/\/+$/, '');
+                if (!fishProxy) fishProxy = 'https://nanopush.nano315.online';
+                if (fishProxy) fishProxy = fishProxy + '/fish-tts';
+            } catch (e) { fishProxy = ''; }
+            if (isDirectFish && fishProxy) fishEndpoints.push(fishProxy);
+            fishEndpoints.push(fishEndpoint);
+            if (!isDirectFish) fishEndpoints.push('https://api.fish.audio/v1/tts');
+            if (!isDirectFish && fishProxy) fishEndpoints.push(fishProxy);
+            // 去重
+            fishEndpoints = fishEndpoints.filter(function (u, i, a) { return u && a.indexOf(u) === i; });
             var fishVoice = String(cfg.ttsVoice || '').trim();
             var fishModel = String(cfg.ttsModel || '').trim();
-            var fishHeaders = { 'Authorization': 'Bearer ' + cfg.ttsKey, 'Content-Type': 'application/json' };
             var fishBody = {
                 text: text,
                 format: 'mp3',
                 mp3_bitrate: 128,
-                chunk_length: 200,
+                // 一次尽量把整段说完，不主动截断；Fish 会自己按句切分。
+                chunk_length: 300,
                 normalize: true
             };
-            if (fishModel) {
-                fishHeaders['model'] = fishModel;
-                fishBody.model = fishModel;
-            }
-            var fishRef = fishVoice || fishModel;
-            if (fishRef) fishBody.reference_id = fishRef;
-            async function fishRequest(withModel) {
-                var headers = Object.assign({}, fishHeaders);
+            if (fishModel) fishBody.model = fishModel;
+            // reference_id 只能是音色 ID；不要把模型名（s1 / s2.1-pro）当成音色塞进去，
+            // 否则 Fish 会按不存在的参考音色报错或直接返回空音频。
+            if (fishVoice) fishBody.reference_id = fishVoice;
+            async function fishRequest(endpoint, withModel) {
+                var headers = {
+                    'Authorization': 'Bearer ' + cfg.ttsKey,
+                    'Content-Type': 'application/json',
+                    'Accept': 'audio/mpeg, application/octet-stream, application/json'
+                };
                 var body = Object.assign({}, fishBody);
-                if (!withModel) { delete headers.model; delete body.model; }
-                var resp = await fetch(fishEndpoint, {
-                    method: 'POST',
-                    headers: headers,
-                    body: JSON.stringify(body)
-                });
+                if (!withModel) delete body.model;
+                // 直连 api.fish.audio 时不发自定义 model 头：它会让浏览器预检失败（HTTP 0）。
+                // 走 Worker / 自建代理时才带上，保证能选到 s1 / s2.1-pro 等模型。
+                if (withModel && fishModel && !/^https?:\/\/api\.fish\.audio/i.test(endpoint)) {
+                    headers['model'] = fishModel;
+                }
+                var resp;
+                try {
+                    resp = await fetch(endpoint, {
+                        method: 'POST',
+                        headers: headers,
+                        body: JSON.stringify(body)
+                    });
+                } catch (netErr) {
+                    var ne = new Error('Fish Audio 连接被拦截（HTTP 0 / Load failed）');
+                    ne.status = 0;
+                    ne.network = true;
+                    throw ne;
+                }
                 if (!resp.ok) {
                     var fMsg = 'HTTP ' + resp.status;
                     try { var fData = await resp.json(); fMsg = fData.message || (fData.error && fData.error.message) || fMsg; } catch (e) {}
@@ -213,19 +316,39 @@
                 }
                 return resp;
             }
-            var fishResp;
-            try {
-                fishResp = await fishRequest(true);
-            } catch (e) {
-                // 旧版内置的模型名（例如 s2.1-pro-free）在 Fish Audio 某些账号/旧接口上不识别。
-                // 400/422 时去掉 model 头重试一次，让 Fish 用默认模型，避免整个 TTS 直接不可用。
-                if (e && (e.status === 400 || e.status === 422) && fishModel) fishResp = await fishRequest(false);
-                else throw e;
+            var fishResp = null, fishErr = null, fishFatal = false;
+            for (var fi = 0; fi < fishEndpoints.length && !fishResp && !fishFatal; fi++) {
+                var variants = fishModel ? [true, false] : [false];
+                for (var vi = 0; vi < variants.length && !fishResp; vi++) {
+                    try {
+                        fishResp = await fishRequest(fishEndpoints[fi], variants[vi]);
+                    } catch (e) {
+                        fishErr = e;
+                        var st = e && e.status;
+                        // 400/422 可能是模型名不被该账号识别：去掉 model 再试一次。
+                        if (variants[vi] && (st === 400 || st === 422)) continue;
+                        // 鉴权失败 / 限流：换地址也没用，直接报错。
+                        if (st === 401 || st === 403 || st === 429) fishFatal = true;
+                        // 其他错误（网络/404/5xx）换下一个地址兜底。
+                        break;
+                    }
+                }
+            }
+            if (!fishResp) {
+                if (fishErr && fishErr.network) {
+                    throw new Error('Fish Audio 请求被网络或代理拦截（HTTP 0 / Load failed）。' +
+                        '请检查网络代理是否放行 api.fish.audio；也可在推送设置里配置 Worker 地址后重试。');
+                }
+                throw fishErr || new Error('Fish Audio 请求失败');
             }
             // Fish Audio 在参数/音色错误时有时仍返回 200 + JSON，直接当音频播放会静默失败。
             var fType = String(fishResp.headers.get('content-type') || '').toLowerCase();
             if (fType.indexOf('json') > -1) {
                 var fJson = await fishResp.json().catch(function () { return {}; });
+                if (fJson && fJson.audio) {
+                    var fBytes = hexToBytes(fJson.audio) || null;
+                    if (fBytes) return new Blob([fBytes], { type: 'audio/mpeg' });
+                }
                 throw new Error(fJson.message || (fJson.error && fJson.error.message) || 'Fish Audio 未返回音频');
             }
             var fBlob = await fishResp.blob();
@@ -281,10 +404,11 @@
         return await resp.blob();
     }
 
-    function playBlob(blob) {
+    function playBlob(blob, key) {
         return new Promise(function (resolve, reject) {
             try {
                 stop();
+                currentClipKey = String(key || '');
                 var url = URL.createObjectURL(blob);
                 currentUrl = url;
                 var audio = new Audio(url);
@@ -293,6 +417,7 @@
                     try { URL.revokeObjectURL(url); } catch (e) {}
                     if (currentUrl === url) currentUrl = '';
                     if (currentAudio === audio) currentAudio = null;
+                    if (currentClipKey === String(key || '')) currentClipKey = '';
                     resolve(true);
                 };
                 audio.onerror = function () {
@@ -316,6 +441,7 @@
             try { URL.revokeObjectURL(currentUrl); } catch (e) {}
             currentUrl = '';
         }
+        currentClipKey = '';
         try {
             if ('speechSynthesis' in window) window.speechSynthesis.cancel();
         } catch (e) {}
@@ -392,8 +518,108 @@
         return await playBlob(blob);
     }
 
+    // ===== 按角色合成 / 重roll / 下载 =====
+    function clipKeyFor(text, opts) {
+        opts = opts || {};
+        if (opts.key) return String(opts.key);
+        var chatId = String(opts.chatId || '');
+        var preset = (opts.preset === undefined || opts.preset === null) ? getChatPresetName(chatId) : String(opts.preset || '');
+        return chatId + '|' + preset + '|' + String(text || '').slice(0, 120);
+    }
+    async function ensureVoiceBlob(text, opts) {
+        opts = opts || {};
+        var t = String(text == null ? '' : text).trim();
+        if (!t) throw new Error('这条语音没有可朗读的文字');
+        var chatId = String(opts.chatId || '');
+        if (!opts.force && !isChatTtsEnabled(chatId)) throw new Error('这个角色的语音朗读已关闭');
+        var cfg = opts.config || await resolveChatConfig(chatId, opts.preset);
+        if (!isConfigured(cfg)) throw new Error('没有可用的 TTS 配置：请先在 API → TTS 保存预设');
+        var key = clipKeyFor(t, opts);
+        var hit = voiceCache[key];
+        if (!opts.fresh && hit && hit.blob) return { blob: hit.blob, key: key, cfg: cfg };
+        var blob = await synth(t, cfg);
+        if (!blob || !blob.size) throw new Error('TTS 没有返回音频');
+        voiceCache[key] = { blob: blob, text: t, preset: opts.preset || '', at: Date.now() };
+        return { blob: blob, key: key, cfg: cfg };
+    }
+    async function speakForChat(text, opts) {
+        opts = opts || {};
+        var chatId = String(opts.chatId || '');
+        if (!isChatTtsEnabled(chatId)) {
+            lastError = '这个角色的语音朗读已关闭';
+            return false;
+        }
+        var t = String(text == null ? '' : text).trim();
+        if (!t) return false;
+        try {
+            var got = await ensureVoiceBlob(t, opts);
+            lastError = '';
+            return await playBlob(got.blob, got.key);
+        } catch (e) {
+            lastError = String((e && e.message) || e || 'TTS 合成失败');
+            // 没有远端配置时才用浏览器语音兜底；已关闭 TTS 的角色不再偷偷发声。
+            var cfg = opts.config || await resolveChatConfig(chatId, opts.preset).catch(function () { return null; });
+            if (!isConfigured(cfg) && opts.browserFallback !== false && hasNativeVoice()) {
+                try { await speakNative(ttsScript(t, ''), opts); return true; } catch (e2) {}
+            }
+            throw e;
+        }
+    }
+    async function rerollVoice(text, opts) {
+        opts = Object.assign({}, opts || {}, { fresh: true });
+        delete voiceCache[clipKeyFor(text, opts)];
+        return speakForChat(text, opts);
+    }
+    async function downloadVoice(text, opts) {
+        opts = opts || {};
+        var got = await ensureVoiceBlob(text, opts);
+        var name = String(opts.filename || '').trim();
+        if (!name) {
+            var d = new Date();
+            function p2(n) { return (n < 10 ? '0' : '') + n; }
+            name = 'nano-voice-' + d.getFullYear() + p2(d.getMonth() + 1) + p2(d.getDate()) + '-' +
+                p2(d.getHours()) + p2(d.getMinutes()) + p2(d.getSeconds()) + '.mp3';
+        }
+        if (!/\.mp3$/i.test(name)) name += '.mp3';
+        var url = URL.createObjectURL(got.blob);
+        try {
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = name;
+            a.rel = 'noopener';
+            a.style.display = 'none';
+            (document.body || document.documentElement).appendChild(a);
+            a.click();
+            setTimeout(function () {
+                try { a.remove(); } catch (e) {}
+                try { URL.revokeObjectURL(url); } catch (e) {}
+            }, 4000);
+        } catch (e) {
+            try { window.open(url, '_blank'); } catch (e2) {}
+        }
+        return true;
+    }
+    async function hasVoiceForChat(chatId, presetOverride) {
+        if (!isChatTtsEnabled(chatId)) return false;
+        try {
+            var cfg = await resolveChatConfig(chatId, presetOverride);
+            return isConfigured(cfg);
+        } catch (e) { return false; }
+    }
+
     window.NanoTTS = {
         speak: function (text, opts) { return speak(text, opts).catch(function (e) { console.warn('[TTS] 失败:', e && e.message ? e.message : e); return false; }); },
+        speakForChat: function (text, opts) { return speakForChat(text, opts); },
+        speakForChar: function (text, opts) { return speakForChat(text, opts); },
+        rerollVoice: function (text, opts) { return rerollVoice(text, opts); },
+        downloadVoice: function (text, opts) { return downloadVoice(text, opts); },
+        hasVoiceForChat: function (chatId, preset) { return hasVoiceForChat(chatId, preset); },
+        isEnabled: isChatTtsEnabled,
+        setEnabled: setChatTtsEnabled,
+        getChatPreset: getChatPresetName,
+        setChatPreset: setChatPresetName,
+        activePreset: getChatPresetName,
+        script: ttsScript,
         speakNative: function (text, opts) { return speakNative(text, opts).catch(function () { return false; }); },
         preview: function (text, opts) { return preview(text, opts); },
         stop: stop,

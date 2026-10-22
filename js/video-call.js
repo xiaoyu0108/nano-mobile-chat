@@ -290,13 +290,18 @@
         chatArea.appendChild(el);
         chatArea.scrollTop = chatArea.scrollHeight;
         if (!isUser && speakerOn && window.NanoTTS && text && text.indexOf('出错了') !== 0) {
-            try { window.NanoTTS.speak(spokenText(text)); } catch (e) {}
+            try {
+                if (window.NanoTTS.speakForChat) window.NanoTTS.speakForChat(spokenText(text), { chatId: chatId });
+                else window.NanoTTS.speak(spokenText(text));
+            } catch (e) {}
         }
     }
 
     function buildSystemPrompt() {
         var p = '（这是你和「' + (displayName || '对方') + '」的视频通话。口语化、简短，像真人视频通话一样。）\n';
         p += '这是视频通话，结合你能看到/听到的内容自然回应；如果看不到画面就正常聊天，不要反复提"你没开摄像头"。\n';
+        p += '说话像真人视频通话一样：允许短句、停顿、换气、语气词（嗯、唔、欸）；用逗号、省略号、破折号表现自然停顿，不要播音腔，也不要写“（深呼吸）”“[风声]”这类会被直接念出来的旁白或音效标签。语气和语速要贴合人设与当下情绪。\n';
+        p += '一次可以说 8~30 秒，把话说完，不要中途截断，也不要在句中途莫名停下。\n';
         p += '如果你用外语说话，每一句都必须紧跟中文翻译，格式为：外文（中文翻译），一句一行；例如 do you love me（你爱我吗？）。不要只写外文，也不要只写中文，翻译要完整。\n';
         p += '每条消息单独一行，不同气泡之间用换行分隔；不要把多句话挤进同一段。\n';
         p += '如果你确实要结束这通视频电话（例如要去忙、手机快没电、话题自然结束、想休息了），可以在回复最后单独一行写 [hangup:简短理由]；这个标记不会显示给对方。不要每轮都挂断，只在真的想结束时用。\n';
@@ -630,11 +635,22 @@
     cameraBtn.addEventListener('click', function () { if (cameraOn) stopCamera(); else startCamera(); });
     flipBtn.addEventListener('click', function () { facingMode = facingMode === 'user' ? 'environment' : 'user'; stopCamera(); startCamera(); });
 
+    try {
+        if (window.NanoTTS && window.NanoTTS.isEnabled) speakerOn = window.NanoTTS.isEnabled(chatId);
+    } catch (e) {}
     speakerBtn.classList.toggle('active', speakerOn);
     speakerBtn.title = speakerOn ? '语音朗读：开' : '语音朗读：关';
     speakerBtn.addEventListener('click', function () {
         speakerOn = !speakerOn;
         try { localStorage.setItem('nano_call_tts', speakerOn ? '1' : '0'); } catch (e) {}
+        try { if (window.NanoTTS && window.NanoTTS.setEnabled) window.NanoTTS.setEnabled(chatId, speakerOn); } catch (e) {}
+        try {
+            if (window.parent !== window) {
+                window.parent.postMessage({ type: 'ttsEnabledChanged', chatId: chatId, enabled: speakerOn }, '*');
+                var cf = window.parent.document.getElementById('chatInnerFrame');
+                if (cf && cf.contentWindow) cf.contentWindow.postMessage({ type: 'ttsEnabledChanged', chatId: chatId, enabled: speakerOn }, '*');
+            }
+        } catch (e) {}
         speakerBtn.classList.toggle('active', speakerOn);
         speakerBtn.title = speakerOn ? '语音朗读：开' : '语音朗读：关';
         if (!speakerOn) { try { if (window.NanoTTS) window.NanoTTS.stop(); } catch (e) {} toast('语音朗读已关闭，纯文字'); }
@@ -745,6 +761,11 @@
 
     // ===== 初始化 =====
     loadInfos().then(function () {
+        try {
+            if (window.NanoTTS && window.NanoTTS.isEnabled) speakerOn = window.NanoTTS.isEnabled(chatId);
+            speakerBtn.classList.toggle('active', speakerOn);
+            speakerBtn.title = speakerOn ? '语音朗读：开' : '语音朗读：关';
+        } catch (e) {}
         if (userAvatar) return;
         return readUserAvatar().then(function (u) { if (u) userAvatar = u; });
     }).then(loadContext).then(function () {

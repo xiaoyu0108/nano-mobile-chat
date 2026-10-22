@@ -358,11 +358,23 @@
         if (/^(title|body|undefined|null)$/i.test(String(title).trim())) title = nameHint || 'Nano';
         if (bodyHint && /^(你有一条新消息|新消息|收到就说明配置成功.?)$/i.test(String(body).trim())) body = bodyHint;
         if (/^(title|body|undefined|null)$/i.test(String(body).trim())) body = bodyHint || '你有一条新消息';
-        var base = key.indexOf('http') === 0 ? key.replace(/\/+$/, '') : ('https://api.day.app/' + encodeURIComponent(key));
-        var full = base + '/' + encodeURIComponent(title) + '/' + encodeURIComponent(body.slice(0, 150));
+        // 支持直接粘贴完整 Bark 地址（可能自带 ?group=...）：只取 origin+path，
+        // 否则 /标题/正文 会被拼到查询串后面，Bark 收不到标题和正文。
+        var base = '';
+        if (key.indexOf('http') === 0) {
+            try {
+                var ku = new URL(key);
+                base = ku.origin + ku.pathname.replace(/\/+$/, '');
+            } catch (e) {
+                base = key.replace(/[?#].*$/, '').replace(/\/+$/, '');
+            }
+        } else {
+            base = 'https://api.day.app/' + encodeURIComponent(key);
+        }
+        var full = base + '/' + encodeURIComponent(title) + '/' + encodeURIComponent(body.slice(0, 300));
         // level=active：后台/锁屏弹横幅；sound=none：不要提示音，也尽量避免震动
         var q = [
-            'group=' + encodeURIComponent(opts.group || 'Nano'),
+            'group=' + encodeURIComponent(opts.group || nameHint || title || 'Nano'),
             'level=' + encodeURIComponent(opts.level || barkLevel()),
             'sound=' + encodeURIComponent(opts.sound || 'none')
         ];

@@ -64,7 +64,7 @@ button:active{opacity:.55}
 .tb svg{width:15px;height:15px;flex:none}
 .tb .ko{font-family:var(--ko);font-weight:500;overflow:hidden;text-overflow:ellipsis}
 .tb-name{justify-content:flex-start;padding-left:8px;gap:6px}
-.tb-name .star{fill:currentColor;stroke:none;width:17px;height:17px;color:#8d8b93}
+.tb-name .star{fill:none;stroke:currentColor;stroke-width:1.7;stroke-linejoin:round;width:17px;height:17px;color:#8d8b93}
 .top-title{
   min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
   font-family:var(--serif);font-style:italic;font-size:15px;font-weight:500;color:#85838b;
@@ -646,3 +646,96 @@ button:active{opacity:.55}
   box-shadow:none;padding:9px 14px;font-size:14px;line-height:1.5;color:var(--ink);
 }
 .composer .input:focus{border-color:var(--pink-deep);box-shadow:0 0 0 3px rgba(244,202,221,.35)}
+
+/* ==========================================================
+   灰樱 V2：独立居中头像 + 出处/章节卡头 + 白/灰双卡 + 星点灰底
+   ========================================================== */
+.app{
+  background-color:#e8e8ec;
+  background-image:url('../images/gray-stars.svg');
+  background-size:420px 420px;
+  background-position:0 0;
+  background-repeat:repeat;
+}
+.chat{background:transparent}
+
+.message{
+  --main:#e3e0e7;
+  --main-soft:#ffffff;
+  --sub:#aaa6b0;
+  --sub-line:#e4e1e8;
+  margin:110px auto 26px;
+  background:#ffffff;
+  border:1px solid #e2dfe6;
+  border-radius:12px;
+  box-shadow:0 10px 26px rgba(80,75,90,.07);
+}
+.message.gs-char{
+  --main:#d6d2dc;
+  --main-soft:#ecebef;
+  --sub:#9c98a4;
+  --sub-line:#dcd8e2;
+  background:#ecebef;
+  border-color:#d9d5df;
+  box-shadow:0 8px 22px rgba(80,75,90,.08);
+}
+
+/* 头像单独浮在卡片上方，居中，带双层环框 */
+.gs-avatar-wrap{
+  top:-100px;left:50%;transform:translateX(-50%);
+  width:88px;height:88px;z-index:3;
+  background:#ffffff;
+  box-shadow:
+    0 0 0 1px var(--main),
+    0 0 0 7px #f7f7f9,
+    0 0 0 8px var(--main),
+    0 12px 26px rgba(70,64,82,.12);
+}
+.gs-avatar-wrap::before{
+  inset:6px;
+  border:1px dashed var(--sub-line);
+}
+.avatar{
+  inset:12px;
+  background:#fbfafb;
+  border:1px solid var(--main);
+}
+
+/* 第一行：左「출처 昵称」 / 右「장절 n」 */
+.message-head{
+  align-items:center;
+  min-height:0;
+  padding:16px 18px 13px;
+  border-bottom:1px dashed var(--sub-line);
+}
+.gs-id{flex:1;min-width:0;display:flex;flex-direction:row;align-items:baseline}
+.nickname{
+  display:flex;align-items:baseline;gap:10px;
+  min-width:0;max-width:100%;
+  font-family:var(--ko);font-style:normal;
+  font-size:16px;font-weight:600;line-height:1.2;
+  color:#56515b;letter-spacing:.2px;
+}
+.gs-src,.gs-chap{
+  flex:none;
+  font-family:var(--ko);font-size:10.5px;font-weight:700;
+  letter-spacing:1.4px;line-height:1;color:var(--pink-ink);
+}
+.gs-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gs-floor{
+  display:flex;align-items:baseline;gap:8px;flex:none;
+  padding:0;opacity:1;
+  font-family:var(--ko);font-style:normal;
+  font-size:16px;font-weight:600;color:#56515b;letter-spacing:0;
+}
+.gs-floor b{
+  font-family:var(--serif);font-style:italic;
+  font-size:17px;font-weight:600;color:#6d6874;letter-spacing:.5px;
+}
+.message-head .time-row{display:none}
+
+.message .content{padding-top:16px}
+.message .gs-foot{border-top-color:var(--sub-line)}
+
+/* 首个卡片给悬空头像留空间 */
+.chat > .message:first-child{margin-top:118px}

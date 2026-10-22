@@ -3,10 +3,121 @@ import { buildPushPayload } from '@block65/webcrypto-web-push';
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, X-Push-Token, X-Peek-Token',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, Model, model, X-Push-Token, X-Peek-Token, X-Nano-App, X-Nano-Kind, xi-api-key',
+  'Access-Control-Max-Age': '86400',
 };
+
+// ===== D1 兼容层 =====
+// 绑定 D1 后，所有原来走 KV 的 get/put/delete/list 自动切到 D1 的 kv 表；
+// 没绑定 D1 时继续用 KV，方便还没迁移完成的部署。
+// 这样业务代码不用改 key 结构，先把免费版 KV 的读写/list 额度压力卸掉。
+function d1Kv(db) {
+  return {
+    async get(key) {
+      await d1Ready(db);
+      const row = await db.prepare('SELECT value, expires_at FROM kv WHERE key = ?').bind(String(key)).first();
+      if (!row) return null;
+      if (row.expires_at && Number(row.expires_at) <= Date.now()) {
+        try { await db.prepare('DELETE FROM kv WHERE key = ?').bind(String(key)).run(); } catch (e) {}
+        return null;
+      }
+      return row.value;
+    },
+    async put(key, value, opts) {
+      await d1Ready(db);
+      const exp = opts && opts.expirationTtl ? Date.now() + Number(opts.expirationTtl) * 1000 : 0;
+      await db.prepare(
+        'INSERT INTO kv (key, value, expires_at, updated_at) VALUES (?, ?, ?, ?) ' +
+        'ON CONFLICT(key) DO UPDATE SET value = excluded.value, expires_at = excluded.expires_at, updated_at = excluded.updated_at'
+      ).bind(String(key), String(value), exp, Date.now()).run();
+    },
+    async delete(key) {
+      await d1Ready(db);
+      await db.prepare('DELETE FROM kv WHERE key = ?').bind(String(key)).run();
+    },
+    async list(opts) {
+      await d1Ready(db);
+      const prefix = String((opts && opts.prefix) || '');
+      const limit = Math.max(1, Math.min(1000, Number((opts && opts.limit) || 1000)));
+      const rows = await db.prepare(
+        'SELECT key FROM kv WHERE key LIKE ? AND (expires_at = 0 OR expires_at > ?) ORDER BY key LIMIT ?'
+      ).bind(prefix + '%', Date.now(), limit).all();
+      return { keys: (rows.results || []).map(function (r) { return { name: r.key }; }), list_complete: true };
+    }
+  };
+}
+const D1_READY = new WeakMap();
+function d1Ready(db) {
+  let p = D1_READY.get(db);
+  if (!p) {
+    p = db.prepare(
+      'CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL, expires_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0)'
+    ).run().catch(function () {});
+    D1_READY.set(db, p);
+  }
+  return p;
+}
+function kv(env) {
+  const db = env && (env.DB || env.nano_db);
+  return db ? d1Kv(db) : env.PUSH_KV;
+}
+// 集市旧数据还在 KV 里：即使 D1 已接管，也继续从 KV 读，避免迁移后旧帖子凭空消失。
+function marketKv(env) {
+  return (env && env.PUSH_KV) ? env.PUSH_KV : kv(env);
+}
+
 const json = (o, s = 200) =>
   new Response(JSON.stringify(o), { status: s, headers: { ...CORS, 'Content-Type': 'application/json' } });
+
+// ===== Supabase（共享集市）=====
+// 只配 SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY 时启用；service role key 只在服务端，
+// 不能写进前端。没配置或请求失败时，下面 market 路由会自动回退到 KV。
+function supabaseConf(env) {
+  const url = String((env && env.SUPABASE_URL) || '').replace(/\/+$/, '');
+  const key = String((env && env.SUPABASE_SERVICE_ROLE_KEY) || '');
+  return (url && key) ? { url: url, key: key } : null;
+}
+async function supabase(env, path, opts) {
+  const c = supabaseConf(env);
+  if (!c) throw new Error('supabase not configured');
+  const o = opts || {};
+  const headers = Object.assign({
+    'apikey': c.key,
+    'Authorization': 'Bearer ' + c.key,
+    'Content-Type': 'application/json'
+  }, o.headers || {});
+  const resp = await fetch(c.url + path, {
+    method: o.method || 'GET',
+    headers: headers,
+    body: o.body === undefined ? undefined : (typeof o.body === 'string' ? o.body : JSON.stringify(o.body))
+  });
+  const text = await resp.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch (e) { data = text; }
+  if (!resp.ok) {
+    const msg = (data && (data.message || data.error_description || data.hint)) || ('HTTP ' + resp.status);
+    const err = new Error('Supabase: ' + msg);
+    err.status = resp.status;
+    throw err;
+  }
+  return data;
+}
+function marketRowToSummary(row) {
+  const s = Object.assign({}, (row && row.summary) || {});
+  s.id = (row && row.id) || s.id;
+  s.likes = Number(row && row.likes) || 0;
+  s.downloads = Number(row && row.downloads) || 0;
+  s.imports = Number(row && row.imports) || 0;
+  return s;
+}
+function marketRowToItem(row) {
+  const it = Object.assign({}, (row && row.item) || {});
+  it.id = (row && row.id) || it.id;
+  it.likes = Number(row && row.likes) || 0;
+  it.downloads = Number(row && row.downloads) || 0;
+  it.imports = Number(row && row.imports) || 0;
+  return it;
+}
 
 function subId(endpoint) {
   return 'sub:' + btoa(endpoint).replace(/[^a-zA-Z0-9]/g, '').slice(-48);
@@ -39,6 +150,55 @@ function autoKey(kind, appId, deviceId, userId) {
 function autoActiveKey(appId, deviceId) {
   return 'auto2:active:' + cleanAppId(appId) + ':' + cleanDeviceId(deviceId);
 }
+// ===== KV 索引 =====
+// 免费版 KV 每天只有 1000 次 list。旧实现每 5 分钟 list 一次 auto2:config: 和 job:，
+// 光 cron 就 576 次/天，稍微多做点事就会收到额度告警。改为用索引 key：
+//   auto2:_index = ["app:device:user", ...]
+//   job:_index   = ["job:时间戳:随机", ...]
+// cron 只 get 索引；旧数据/索引丢失时才 list 一次重建。
+const AUTO_INDEX_KEY = 'auto2:_index';
+const JOB_INDEX_KEY = 'job:_index';
+function autoScopeOf(appId, deviceId, userId) {
+  return cleanAppId(appId) + ':' + cleanDeviceId(deviceId) + ':' + cleanUserId(userId);
+}
+async function readIndex(env, key) {
+  try {
+    const raw = await kv(env).get(key);
+    if (raw === null) return null;
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr.filter(Boolean) : [];
+  } catch (e) { return null; }
+}
+async function writeIndex(env, key, arr) {
+  const clean = Array.from(new Set((arr || []).filter(Boolean))).slice(-300);
+  try { await kv(env).put(key, JSON.stringify(clean)); } catch (e) {}
+  return clean;
+}
+async function addAutoScope(env, scope) {
+  const arr = await readIndex(env, AUTO_INDEX_KEY);
+  if (arr === null) return;              // 让 cron 用 list 建一次完整索引
+  if (arr.indexOf(scope) === -1) await writeIndex(env, AUTO_INDEX_KEY, arr.concat(scope));
+}
+async function removeAutoScope(env, scope) {
+  const arr = await readIndex(env, AUTO_INDEX_KEY);
+  if (arr === null) return;
+  if (arr.indexOf(scope) !== -1) await writeIndex(env, AUTO_INDEX_KEY, arr.filter(function (x) { return x !== scope; }));
+}
+async function getAutoScopes(env) {
+  const arr = await readIndex(env, AUTO_INDEX_KEY);
+  if (arr !== null) return arr;
+  try {
+    const { keys } = await kv(env).list({ prefix: 'auto2:config:' });
+    const scopes = (keys || []).map(function (k) { return k.name.slice('auto2:config:'.length); });
+    await writeIndex(env, AUTO_INDEX_KEY, scopes);
+    return scopes;
+  } catch (e) { return []; }
+}
+async function addJobId(env, id) {
+  const arr = await readIndex(env, JOB_INDEX_KEY);
+  if (arr === null) return;
+  if (arr.indexOf(id) === -1) await writeIndex(env, JOB_INDEX_KEY, arr.concat(id));
+}
 // 内存缓存：/auto/pending 每次回前台都会调，不能每次都写一次 KV。
 // 同一 isolate 内 10 分钟内重复请求直接跳过；跨 isolate 最坏也只是多写一次。
 const ACTIVE_CACHE = new Map();
@@ -50,7 +210,7 @@ async function touchActive(env, appId, deviceId, userId, force) {
   if (!force && hit && hit.userId === userId && now - hit.checkedAt < 10 * 60 * 1000) return;
   try {
     const key = autoActiveKey(appId, deviceId);
-    const raw = await env.PUSH_KV.get(key);
+    const raw = await kv(env).get(key);
     if (raw && !force) {
       let old = {};
       try { old = JSON.parse(raw) || {}; } catch (e) { old = {}; }
@@ -60,7 +220,7 @@ async function touchActive(env, appId, deviceId, userId, force) {
         return;
       }
     }
-    await env.PUSH_KV.put(key, JSON.stringify({
+    await kv(env).put(key, JSON.stringify({
       userId: userId, appId: appId, deviceId: deviceId, at: now
     }), { expirationTtl: 60 * 60 * 24 * 7 });
     ACTIVE_CACHE.set(cacheKey, { userId: userId, checkedAt: now });
@@ -103,7 +263,7 @@ async function ensureVapid(env) {
     };
   }
   try {
-    const raw = await env.PUSH_KV.get('vapid:keys');
+    const raw = await kv(env).get('vapid:keys');
     if (raw) {
       const o = JSON.parse(raw);
       if (o && o.publicKey && o.privateKey) {
@@ -132,7 +292,7 @@ async function ensureVapid(env) {
       createdAt: Date.now()
     };
     if (!o.privateKey) return null;
-    await env.PUSH_KV.put('vapid:keys', JSON.stringify(o));
+    await kv(env).put('vapid:keys', JSON.stringify(o));
     return o;
   } catch (e) {
     return null;
@@ -164,7 +324,7 @@ function modelEndpoint(raw) {
 
 async function peekTurns(env, chatId, appId) {
   try {
-    const raw = await env.PUSH_KV.get(peekBase(appId, chatId));
+    const raw = await kv(env).get(peekBase(appId, chatId));
     if (raw) return JSON.parse(raw);
     // 兼容旧键：只在没有 appId 时才回退，避免新站点读到旧 Nano 的暂存轮次
     if (cleanAppId(appId) !== 'legacy') return [];
@@ -172,7 +332,7 @@ async function peekTurns(env, chatId, appId) {
   } catch (e) { return []; }
 }
 async function peekSave(env, chatId, turns, appId) {
-  try { await env.PUSH_KV.put(peekBase(appId, chatId), JSON.stringify(turns.slice(-40)), { expirationTtl: 60 * 60 * 24 * 7 }); } catch (e) {}
+  try { await kv(env).put(peekBase(appId, chatId), JSON.stringify(turns.slice(-40)), { expirationTtl: 60 * 60 * 24 * 7 }); } catch (e) {}
 }
 
 // ===== 无后台主动消息 / 朋友圈 =====
@@ -571,13 +731,35 @@ function pushText(v, fallback) {
 async function sendBarkKey(env, key, payload) {
   key = String(key || '').trim();
   if (!key) return false;
-  const base = key.indexOf('http') === 0 ? key.replace(/\/+$/, '') : ('https://api.day.app/' + encodeURIComponent(key));
+  // 允许直接粘贴完整 Bark 地址（可能自带 ?group=...）。先把路径截出来，
+  // 否则会在查询串后面继续拼 /标题/正文，Bark 只当成了未知参数，最终显示默认文案。
+  let base = '';
+  if (key.indexOf('http') === 0) {
+    try {
+      const u = new URL(key);
+      base = u.origin + u.pathname.replace(/\/+$/, '');
+    } catch (e) {
+      base = key.replace(/[?#].*$/, '').replace(/\/+$/, '');
+    }
+  } else {
+    base = 'https://api.day.app/' + encodeURIComponent(key);
+  }
   // 标题优先用角色昵称，正文用真实气泡内容；避免只推 "Nano / 你有一条新消息"。
-  const title = pushText(payload.title || payload.name, 'Nano');
-  const body = pushText(payload.body || payload.text || payload.preview, '你有一条新消息').slice(0, 150);
+  const title = pushText(payload.name || payload.title, 'Nano');
+  let body = '';
+  if (Array.isArray(payload.bubbles) && payload.bubbles.length) {
+    body = payload.bubbles.map(function (b) { return pushText(b, ''); }).filter(Boolean).join('\n');
+  }
+  body = pushText(body || payload.body || payload.text || payload.preview, '').slice(0, 300);
+  // 没有真实内容就不发：宁可交给 Web Push，也不要用通用占位文案刷屏。
+  if (!body) return false;
   let url = base + '/' + encodeURIComponent(title) + '/' + encodeURIComponent(body);
   // active 才会在锁屏/后台弹横幅；sound=none 关掉提示音（避免保活时又响又震）
-  const q = ['group=' + encodeURIComponent(payload.channel || 'Nano'), 'level=active', 'sound=none'];
+  const q = [
+    'group=' + encodeURIComponent(payload.name || payload.title || payload.channel || 'Nano'),
+    'level=active',
+    'sound=none'
+  ];
   if (payload.target) {
     const app = String(env.APP_URL || 'https://xiaoyu0108.github.io/nano-mobile-chat/').replace(/\/+$/, '');
     q.push('url=' + encodeURIComponent(app + '/index.html?open=' + encodeURIComponent(payload.target)));
@@ -612,23 +794,27 @@ async function runAutoPush(env, appId, deviceId, userId) {
   appId = cleanAppId(appId);
   deviceId = cleanDeviceId(deviceId);
   userId = cleanUserId(userId);
-  const raw = await env.PUSH_KV.get(autoKey('config', appId, deviceId, userId));
+  const raw = await kv(env).get(autoKey('config', appId, deviceId, userId));
   if (!raw) return;
   let cfg;
   try { cfg = JSON.parse(raw); } catch (e) { return; }
   if (!cfg || !cfg.enabled) return;
+  let state = {};
+  try { const s = await kv(env).get(autoKey('state', appId, deviceId, userId)); state = s ? JSON.parse(s) : {}; } catch (e) { state = {}; }
+  const now = Date.now();
+  const msgDue = !!(cfg.msgEnabled && now >= (Number(state.nextMsgAt) || 0));
+  const momentDue = !!(cfg.momentEnabled && now >= (Number(state.nextMomentAt) || 0));
+  // 没到点就只花「配置+state」两次读，不再读 active / call / 订阅。
+  if (!msgDue && !momentDue) return;
   // 同一台设备可能切换了面具：只跑当前活跃用户，避免 A 的推送弹到 B 当前页面。
   try {
-    const activeRaw = await env.PUSH_KV.get(autoActiveKey(appId, deviceId));
+    const activeRaw = await kv(env).get(autoActiveKey(appId, deviceId));
     if (activeRaw) {
       let active = '';
       try { active = String((JSON.parse(activeRaw) || {}).userId || ''); } catch (e) { active = ''; }
       if (active && active !== userId) return;
     }
   } catch (e) {}
-  let state = {};
-  try { const s = await env.PUSH_KV.get(autoKey('state', appId, deviceId, userId)); state = s ? JSON.parse(s) : {}; } catch (e) { state = {}; }
-  const now = Date.now();
   // 订阅只在真的要发消息/朋友圈时才查：cron 每 5 分钟跑一次，
   // 如果每轮都 list 一次订阅，用户一多就会把 KV 的「list 次数」额度打满。
   let subsCache = null;
@@ -638,10 +824,10 @@ async function runAutoPush(env, appId, deviceId, userId) {
     return subsCache;
   }
   let busyChatId = '';
-  try { busyChatId = String(await env.PUSH_KV.get('auto2:call:' + cleanAppId(appId) + ':' + userId) || ''); } catch (e) {}
+  try { busyChatId = String(await kv(env).get('auto2:call:' + cleanAppId(appId) + ':' + userId) || ''); } catch (e) {}
   let dirty = false;
   let usedChars = 0;
-  if (cfg.msgEnabled && now >= (Number(state.nextMsgAt) || 0)) {
+  if (msgDue) {
     // 先把下一次时间推进：即使模型超时/失败，也不会每 5 分钟重试一次造成刷屏
     state.nextMsgAt = now + cfg.intervalMinutes * 60 * 1000;
     state.msgMins = cfg.intervalMinutes;
@@ -652,9 +838,9 @@ async function runAutoPush(env, appId, deviceId, userId) {
       state.lastMsgChar = String(msgs[0].chatId || '');
       const key = autoKey('msg', appId, deviceId, userId);
       let list = [];
-      try { const old = await env.PUSH_KV.get(key); list = old ? JSON.parse(old) : []; } catch (e) { list = []; }
+      try { const old = await kv(env).get(key); list = old ? JSON.parse(old) : []; } catch (e) { list = []; }
       list = list.concat(msgs).slice(-20);
-      await env.PUSH_KV.put(key, JSON.stringify(list));
+      await kv(env).put(key, JSON.stringify(list));
       usedChars += msgs.length;
       const subs = await subsOnce();
       for (const m of msgs) {
@@ -662,6 +848,7 @@ async function runAutoPush(env, appId, deviceId, userId) {
         await autoNotify(env, cfg, subs, {
           title: pushText(m.name, 'TA'),
           body: pushText(m.bubbles && m.bubbles[0] || m.text, '你有一条新消息'),
+          bubbles: Array.isArray(m.bubbles) ? m.bubbles : null,
           target: 'chat:' + m.chatId,
           tag: 'auto-' + m.chatId,
           renotify: false,
@@ -673,7 +860,7 @@ async function runAutoPush(env, appId, deviceId, userId) {
       }
     }
   }
-  if (cfg.momentEnabled && now >= (Number(state.nextMomentAt) || 0)) {
+  if (momentDue) {
     state.nextMomentAt = now + cfg.momentIntervalHours * 3600 * 1000;
     state.momentHours = cfg.momentIntervalHours;
     dirty = true;
@@ -685,9 +872,9 @@ async function runAutoPush(env, appId, deviceId, userId) {
       if (posts.length) {
         const key = autoKey('moments', appId, deviceId, userId);
         let list = [];
-        try { const old = await env.PUSH_KV.get(key); list = old ? JSON.parse(old) : []; } catch (e) { list = []; }
+        try { const old = await kv(env).get(key); list = old ? JSON.parse(old) : []; } catch (e) { list = []; }
         list = list.concat(posts).slice(-30);
-        await env.PUSH_KV.put(key, JSON.stringify(list));
+        await kv(env).put(key, JSON.stringify(list));
         const subs = await subsOnce();
         await autoNotify(env, cfg, subs, {
           title: '朋友圈',
@@ -701,7 +888,7 @@ async function runAutoPush(env, appId, deviceId, userId) {
       }
     }
   }
-  if (dirty) await env.PUSH_KV.put(autoKey('state', appId, deviceId, userId), JSON.stringify(state));
+  if (dirty) await kv(env).put(autoKey('state', appId, deviceId, userId), JSON.stringify(state));
 }
 
 // 用服务端保存的 key 调主模型（Key 不出服务器），支持纯文本与「截图 + 文本」
@@ -1073,6 +1260,36 @@ export default {
       }
     }
 
+    // ===== Fish Audio TTS 反向代理 =====
+    // 浏览器的 CORS 预检有时会在到达 Fish 之前就被网络/代理拦掉（HTTP 0 / Load failed）。
+    // 前端在直连失败时会自动改走这里：POST /fish-tts，body 与 /v1/tts 完全一致。
+    if (/\/fish-tts$/.test(__reqUrl.pathname) && request.method === 'POST') {
+      const fishOrigin = String(env.FISH_API_ORIGIN || 'https://api.fish.audio').replace(/\/+$/, '');
+      const fwd = new Headers(request.headers);
+      fwd.delete('host');
+      fwd.delete('content-length');
+      fwd.delete('origin');
+      fwd.delete('referer');
+      try {
+        const resp = await fetch(fishOrigin + '/v1/tts', {
+          method: 'POST',
+          headers: fwd,
+          body: request.body
+        });
+        const out = new Headers(resp.headers);
+        out.set('Access-Control-Allow-Origin', '*');
+        out.set('Access-Control-Allow-Headers', '*');
+        out.set('Cache-Control', 'no-store');
+        return new Response(resp.body, { status: resp.status, headers: out });
+      } catch (e) {
+        return new Response(JSON.stringify({ message: 'fish proxy error: ' + (e && e.message ? e.message : e) }), {
+          status: 502,
+          headers: Object.assign({}, CORS, { 'Content-Type': 'application/json' })
+        });
+      }
+    }
+
+
     // 允许通过自定义域名路径前缀访问：https://nano315.online/nanoapi/xxx -> /xxx
     let pathname = __reqUrl.pathname;
     if (pathname.indexOf('/nanoapi') === 0) pathname = pathname.slice('/nanoapi'.length) || '/';
@@ -1115,9 +1332,9 @@ export default {
       subscription.appId = cleanAppId(body.appId);
       subscription.ua = String(body.ua || '');
       subscription.platform = String(body.platform || '');
-      await env.PUSH_KV.put(subKey(subscription.endpoint, subscription.appId, subscription.deviceId, subscription.userId), JSON.stringify(subscription));
+      await kv(env).put(subKey(subscription.endpoint, subscription.appId, subscription.deviceId, subscription.userId), JSON.stringify(subscription));
       // 删除旧的全局订阅 key，避免升级后同一设备收到两遍推送。
-      try { await env.PUSH_KV.delete(subId(subscription.endpoint)); } catch (e) {}
+      try { await kv(env).delete(subId(subscription.endpoint)); } catch (e) {}
       return json({ ok: true });
     }
 
@@ -1138,7 +1355,8 @@ export default {
           userId: cleanUserId(it.userId || userId)
         });
         const id = 'job:' + Number(job.at) + ':' + Math.random().toString(36).slice(2, 8);
-        await env.PUSH_KV.put(id, JSON.stringify(job));
+        await kv(env).put(id, JSON.stringify(job));
+        try { await addJobId(env, id); } catch (e) {}
         count++;
       }
       return json({ ok: true, count: count });
@@ -1147,7 +1365,7 @@ export default {
     // 3) 取消订阅
     if (pathname === '/unsubscribe' && request.method === 'POST') {
       const { endpoint } = await request.json();
-      if (endpoint) await env.PUSH_KV.delete(subId(endpoint));
+      if (endpoint) await kv(env).delete(subId(endpoint));
       return json({ ok: true });
     }
 
@@ -1167,7 +1385,7 @@ export default {
       // 速聊也要限定到「哪个站点的哪台设备/哪个用户」，否则旧 Nano 也会收到纳米的窥屏回复。
       let owner = {};
       try {
-        const rawOwner = await env.PUSH_KV.get('peek2:owner:' + chatId);
+        const rawOwner = await kv(env).get('peek2:owner:' + chatId);
         if (rawOwner) owner = JSON.parse(rawOwner) || {};
       } catch (e) { owner = {}; }
       const appId = cleanAppId(body.appId || owner.appId || 'legacy');
@@ -1175,8 +1393,8 @@ export default {
       // 快捷指令没带 system 时，用 App 最近同步过来的人设（谁当前在用就用谁的）
       if (!system) {
         try {
-          system = (await env.PUSH_KV.get(peekBase(appId, 'persona:' + chatId)))
-            || (await env.PUSH_KV.get(peekBase(appId, 'persona:latest')))
+          system = (await kv(env).get(peekBase(appId, 'persona:' + chatId)))
+            || (await kv(env).get(peekBase(appId, 'persona:latest')))
             || '';
         } catch (e) {}
       }
@@ -1214,10 +1432,10 @@ export default {
       const appId = cleanAppId(body.appId);
       const ttl = 60 * 60 * 24 * 30;
       try {
-        await env.PUSH_KV.put(peekBase(appId, 'persona:' + chatId), system, { expirationTtl: ttl });
-        await env.PUSH_KV.put(peekBase(appId, 'persona:latest'), system, { expirationTtl: ttl });
+        await kv(env).put(peekBase(appId, 'persona:' + chatId), system, { expirationTtl: ttl });
+        await kv(env).put(peekBase(appId, 'persona:latest'), system, { expirationTtl: ttl });
         // 记住这条聊天属于哪台设备/哪个用户，/peek 推送时只发给它
-        await env.PUSH_KV.put('peek2:owner:' + chatId, JSON.stringify({
+        await kv(env).put('peek2:owner:' + chatId, JSON.stringify({
           appId: appId,
           deviceId: cleanDeviceId(body.deviceId),
           userId: cleanUserId(body.userId),
@@ -1265,19 +1483,30 @@ export default {
       const cfgKey = autoKey('config', appId, deviceId, userId);
       // 配置没变就不写 KV：客户端 10 分钟同步一次，每次都写会很快打满免费额度。
       let oldCfgRaw = '';
-      try { oldCfgRaw = await env.PUSH_KV.get(cfgKey); } catch (e) { oldCfgRaw = ''; }
+      try { oldCfgRaw = await kv(env).get(cfgKey); } catch (e) { oldCfgRaw = ''; }
       let cfgChanged = true;
+      let oldCfg = null;
       if (oldCfgRaw) {
-        try { cfgChanged = autoConfigSig(JSON.parse(oldCfgRaw)) !== autoConfigSig(cfg); } catch (e) { cfgChanged = true; }
+        try { oldCfg = JSON.parse(oldCfgRaw); } catch (e) { oldCfg = null; }
+        // 客户端偶尔读不到 Bark key（localforage 还没加载完）时会传空字符串。
+        // 空值不要覆盖服务端已有的 key，否则后台推送会突然全部消失。
+        if (oldCfg && oldCfg.barkKey && !cfg.barkKey) cfg.barkKey = oldCfg.barkKey;
+        try { cfgChanged = autoConfigSig(oldCfg) !== autoConfigSig(cfg); } catch (e) { cfgChanged = true; }
       }
-      if (cfgChanged) await env.PUSH_KV.put(cfgKey, JSON.stringify(cfg));
+      if (cfgChanged) await kv(env).put(cfgKey, JSON.stringify(cfg));
+      // 维护 auto2:_index，cron 不再每 5 分钟 list 全部配置。
+      try {
+        const scope = autoScopeOf(appId, deviceId, userId);
+        if (cfg.enabled) await addAutoScope(env, scope);
+        else await removeAutoScope(env, scope);
+      } catch (e) {}
       // active 只在切换用户/超过 6 小时时才写，不在每次同步时重复写。
       try { await touchActive(env, appId, deviceId, userId, false); } catch (e) {}
       const now = Date.now();
       const stateKey = autoKey('state', appId, deviceId, userId);
       let state = {};
       let stateRaw = '';
-      try { stateRaw = await env.PUSH_KV.get(stateKey); state = stateRaw ? JSON.parse(stateRaw) : {}; } catch (e) { state = {}; stateRaw = ''; }
+      try { stateRaw = await kv(env).get(stateKey); state = stateRaw ? JSON.parse(stateRaw) : {}; } catch (e) { state = {}; stateRaw = ''; }
       const reset = !!body.reset;
       if (cfg.msgEnabled) {
         const intervalMs = cfg.intervalMinutes * 60 * 1000;
@@ -1310,7 +1539,7 @@ export default {
       if (stateRaw) {
         try { stateChanged = JSON.stringify(JSON.parse(stateRaw)) !== JSON.stringify(state); } catch (e) { stateChanged = true; }
       }
-      if (stateChanged) await env.PUSH_KV.put(stateKey, JSON.stringify(state));
+      if (stateChanged) await kv(env).put(stateKey, JSON.stringify(state));
       return json({ ok: true, enabled: cfg.enabled, appId: appId, deviceId: deviceId, userId: userId, nextMsgAt: state.nextMsgAt || 0, nextMomentAt: state.nextMomentAt || 0 });
     }
 
@@ -1323,9 +1552,9 @@ export default {
         const cycles = body.cycles && typeof body.cycles === 'object' ? body.cycles : {};
         // 只更新当前站点/设备/用户的配置，避免改月潮时把别人配置一起改掉。
         const scopePrefix = autoKey('config', body.appId, body.deviceId, body.userId);
-        const { keys } = await env.PUSH_KV.list({ prefix: scopePrefix });
+        const { keys } = await kv(env).list({ prefix: scopePrefix });
         for (const k of keys) {
-          const raw = await env.PUSH_KV.get(k.name);
+          const raw = await kv(env).get(k.name);
           if (!raw) continue;
           const cfg = JSON.parse(raw);
           (cfg.chars || []).forEach(function (c) {
@@ -1338,7 +1567,7 @@ export default {
               remindDays: Math.max(0, Math.min(14, parseInt(cy.remindDays, 10) || 0))
             } : null;
           });
-          await env.PUSH_KV.put(k.name, JSON.stringify(cfg));
+          await kv(env).put(k.name, JSON.stringify(cfg));
         }
       } catch (e) {}
       return json({ ok: true });
@@ -1355,8 +1584,8 @@ export default {
       const active = !!body.active && !!chatId;
       const key = 'auto2:call:' + appId + ':' + userId;
       try {
-        if (active) await env.PUSH_KV.put(key, chatId, { expirationTtl: 60 * 60 * 3 });
-        else await env.PUSH_KV.delete(key);
+        if (active) await kv(env).put(key, chatId, { expirationTtl: 60 * 60 * 3 });
+        else await kv(env).delete(key);
       } catch (e) {}
       return json({ ok: true });
     }
@@ -1373,8 +1602,8 @@ export default {
       // 是免费额度被打满的主要原因；现在同一用户 6 小时内最多写一次。
       try { await touchActive(env, appId, deviceId, userId, false); } catch (e) {}
       let messages = [], moments = [];
-      try { const raw = await env.PUSH_KV.get(autoKey('msg', appId, deviceId, userId)); messages = raw ? JSON.parse(raw) : []; } catch (e) {}
-      try { const raw = await env.PUSH_KV.get(autoKey('moments', appId, deviceId, userId)); moments = raw ? JSON.parse(raw) : []; } catch (e) {}
+      try { const raw = await kv(env).get(autoKey('msg', appId, deviceId, userId)); messages = raw ? JSON.parse(raw) : []; } catch (e) {}
+      try { const raw = await kv(env).get(autoKey('moments', appId, deviceId, userId)); moments = raw ? JSON.parse(raw) : []; } catch (e) {}
       return json({ ok: true, appId: appId, messages: messages, moments: moments });
     }
 
@@ -1391,17 +1620,17 @@ export default {
       if (mIds.length) {
         try {
           const key = autoKey('msg', appId, deviceId, userId);
-          const raw = await env.PUSH_KV.get(key);
+          const raw = await kv(env).get(key);
           const list = raw ? JSON.parse(raw) : [];
-          await env.PUSH_KV.put(key, JSON.stringify(list.filter(function (x) { return x && mIds.indexOf(x.id) < 0; })));
+          await kv(env).put(key, JSON.stringify(list.filter(function (x) { return x && mIds.indexOf(x.id) < 0; })));
         } catch (e) {}
       }
       if (pIds.length) {
         try {
           const key = autoKey('moments', appId, deviceId, userId);
-          const raw = await env.PUSH_KV.get(key);
+          const raw = await kv(env).get(key);
           const list = raw ? JSON.parse(raw) : [];
-          await env.PUSH_KV.put(key, JSON.stringify(list.filter(function (x) { return x && pIds.indexOf(x.id) < 0; })));
+          await kv(env).put(key, JSON.stringify(list.filter(function (x) { return x && pIds.indexOf(x.id) < 0; })));
         } catch (e) {}
       }
       return json({ ok: true });
@@ -1412,7 +1641,7 @@ export default {
     // 集市稍微活跃一点就会把免费 KV 写额度打满。现在点赞只写 counts（1 次写）。
     async function readMarketCounts() {
       try {
-        const raw = await env.PUSH_KV.get('market:counts');
+        const raw = await marketKv(env).get('market:counts');
         return raw ? (JSON.parse(raw) || {}) : {};
       } catch (e) { return {}; }
     }
@@ -1429,8 +1658,31 @@ export default {
 
     // GET  /market/list          列出全部资源摘要
     if (pathname === '/market/list' && request.method === 'GET') {
+      if (supabaseConf(env)) {
+        try {
+          const rows = await supabase(env, '/rest/v1/market_items?select=id,summary,likes,downloads,imports&order=created_at.desc&limit=500');
+          let items = Array.isArray(rows) ? rows.map(marketRowToSummary) : [];
+          // 兼容迁移前还留在 KV 里的旧帖子：Supabase 没有的 id 继续展示。
+          let legacy = [];
+          try {
+            const raw = await marketKv(env).get('market:index');
+            legacy = raw ? JSON.parse(raw) : [];
+          } catch (e) { legacy = []; }
+          if (Array.isArray(legacy) && legacy.length) {
+            const seen = {};
+            items.forEach(function (x) { if (x && x.id) seen[x.id] = 1; });
+            const counts = await readMarketCounts();
+            legacy.forEach(function (x) {
+              if (x && x.id && !seen[x.id]) items.push(mergeMarketCounts(Object.assign({}, x), counts));
+            });
+          }
+          return json({ ok: true, items: items });
+        } catch (e) {
+          console.warn('[market] supabase list failed, fallback KV:', e && e.message);
+        }
+      }
       let items = [];
-      try { const raw = await env.PUSH_KV.get('market:index'); items = raw ? JSON.parse(raw) : []; } catch (e) { items = []; }
+      try { const raw = await marketKv(env).get('market:index'); items = raw ? JSON.parse(raw) : []; } catch (e) { items = []; }
       const counts = await readMarketCounts();
       items = (Array.isArray(items) ? items : []).map(function (x) { return mergeMarketCounts(x, counts); });
       return json({ ok: true, items: items });
@@ -1440,7 +1692,15 @@ export default {
     if (pathname === '/market/item' && request.method === 'GET') {
       const id = new URL(request.url).searchParams.get('id') || '';
       if (!id) return json({ ok: false, error: 'no id' }, 400);
-      const raw = await env.PUSH_KV.get('market:post:' + id);
+      if (supabaseConf(env)) {
+        try {
+          const rows = await supabase(env, '/rest/v1/market_items?id=eq.' + encodeURIComponent(id) + '&select=id,item,likes,downloads,imports&limit=1');
+          if (Array.isArray(rows) && rows[0]) return json({ ok: true, item: marketRowToItem(rows[0]) });
+        } catch (e) {
+          console.warn('[market] supabase item failed, fallback KV:', e && e.message);
+        }
+      }
+      const raw = await marketKv(env).get('market:post:' + id);
       if (!raw) return json({ ok: false, error: 'not found' }, 404);
       let rec; try { rec = JSON.parse(raw); } catch (e) { return json({ ok: false }, 500); }
       const counts = await readMarketCounts();
@@ -1455,13 +1715,34 @@ export default {
       if (!item || !item.id) return json({ ok: false, error: 'no item' }, 400);
       const payload = JSON.stringify({ item: item, tok: token });
       if (payload.length > 24 * 1024 * 1024) return json({ ok: false, error: 'too large' }, 413);
-      await env.PUSH_KV.put('market:post:' + item.id, payload);
+      if (supabaseConf(env)) {
+        try {
+          await supabase(env, '/rest/v1/market_items?on_conflict=id', {
+            method: 'POST',
+            headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+            body: {
+              id: String(item.id),
+              summary: summary || {},
+              item: item,
+              token: token,
+              likes: Number(item.likes) || 0,
+              downloads: Number(item.downloads) || 0,
+              imports: Number(item.imports) || 0,
+              updated_at: new Date().toISOString()
+            }
+          });
+          return json({ ok: true, id: item.id });
+        } catch (e) {
+          console.warn('[market] supabase post failed, fallback KV:', e && e.message);
+        }
+      }
+      await marketKv(env).put('market:post:' + item.id, payload);
       let items = [];
-      try { const raw = await env.PUSH_KV.get('market:index'); items = raw ? JSON.parse(raw) : []; } catch (e) { items = []; }
+      try { const raw = await marketKv(env).get('market:index'); items = raw ? JSON.parse(raw) : []; } catch (e) { items = []; }
       items = items.filter((x) => x && x.id !== item.id);
       if (summary) items.unshift(summary);
       if (items.length > 500) items = items.slice(0, 500);
-      await env.PUSH_KV.put('market:index', JSON.stringify(items));
+      await marketKv(env).put('market:index', JSON.stringify(items));
       return json({ ok: true, id: item.id });
     }
 
@@ -1471,8 +1752,23 @@ export default {
       try { body = await request.json(); } catch (e) {}
       const id = String(body.id || ''), field = String(body.field || ''), delta = Number(body.delta) || 0;
       if (!id || ['likes', 'downloads', 'imports'].indexOf(field) < 0) return json({ ok: false, error: 'bad' }, 400);
+      if (supabaseConf(env)) {
+        try {
+          const value = await supabase(env, '/rest/v1/rpc/market_increment', {
+            method: 'POST',
+            body: { p_id: id, p_field: field, p_delta: delta }
+          });
+          let v = value;
+          if (v && typeof v === 'object') v = v.market_increment != null ? v.market_increment : Object.values(v)[0];
+          if (typeof v === 'number' || typeof v === 'string') {
+            return json({ ok: true, value: Number(v) || 0 });
+          }
+        } catch (e) {
+          console.warn('[market] supabase count failed, fallback KV:', e && e.message);
+        }
+      }
       const key = 'market:post:' + id;
-      const raw = await env.PUSH_KV.get(key);
+      const raw = await marketKv(env).get(key);
       if (!raw) return json({ ok: false, error: 'not found' }, 404);
       let rec; try { rec = JSON.parse(raw); } catch (e) { return json({ ok: false }, 500); }
       const counts = await readMarketCounts();
@@ -1483,7 +1779,7 @@ export default {
       };
       cur[field] = Math.max(0, (Number(cur[field]) || 0) + delta);
       counts[id] = cur;
-      await env.PUSH_KV.put('market:counts', JSON.stringify(counts));
+      await marketKv(env).put('market:counts', JSON.stringify(counts));
       return json({ ok: true, value: cur[field] });
     }
 
@@ -1492,16 +1788,28 @@ export default {
       let body = {};
       try { body = await request.json(); } catch (e) {}
       const id = String(body.id || ''), token = String(body.token || '');
+      if (supabaseConf(env)) {
+        try {
+          const rows = await supabase(env, '/rest/v1/market_items?id=eq.' + encodeURIComponent(id) + '&select=token&limit=1');
+          if (Array.isArray(rows) && rows[0]) {
+            if (rows[0].token && rows[0].token !== token) return json({ ok: false, error: 'forbidden' }, 403);
+            await supabase(env, '/rest/v1/market_items?id=eq.' + encodeURIComponent(id), { method: 'DELETE' });
+            return json({ ok: true });
+          }
+        } catch (e) {
+          console.warn('[market] supabase delete failed, fallback KV:', e && e.message);
+        }
+      }
       const key = 'market:post:' + id;
-      const raw = await env.PUSH_KV.get(key);
+      const raw = await marketKv(env).get(key);
       if (!raw) return json({ ok: false, error: 'not found' }, 404);
       let rec; try { rec = JSON.parse(raw); } catch (e) { return json({ ok: false }, 500); }
       if (rec.tok && rec.tok !== token) return json({ ok: false, error: 'forbidden' }, 403);
-      await env.PUSH_KV.delete(key);
+      await marketKv(env).delete(key);
       let items = [];
-      try { const rawIdx = await env.PUSH_KV.get('market:index'); items = rawIdx ? JSON.parse(rawIdx) : []; } catch (e) { items = []; }
+      try { const rawIdx = await marketKv(env).get('market:index'); items = rawIdx ? JSON.parse(rawIdx) : []; } catch (e) { items = []; }
       items = items.filter((x) => x && x.id !== id);
-      await env.PUSH_KV.put('market:index', JSON.stringify(items));
+      await marketKv(env).put('market:index', JSON.stringify(items));
       return json({ ok: true });
     }
 
@@ -1547,10 +1855,11 @@ export default {
     try { await sendBarkReminder(env); } catch (e) {}
     // 无后台主动消息 / 朋友圈：每台设备 + 每个用户单独跑自己的配置。
     // 旧前缀 auto:config: 不再执行，避免旧 Nano 和新纳米同时给同一台手机发消息。
+    // 通过 auto2:_index 读取作用域，避免每 5 分钟 list 一次（免费版 list 额度只有 1000/天）。
     try {
-      const { keys } = await env.PUSH_KV.list({ prefix: 'auto2:config:' });
-      for (const k of keys) {
-        const parts = k.name.slice('auto2:config:'.length).split(':');
+      const scopes = await getAutoScopes(env);
+      for (const scope of scopes) {
+        const parts = String(scope || '').split(':');
         const appId = parts[0] || 'legacy';
         const deviceId = parts[1] || 'default';
         const userId = parts[2] || 'default';
@@ -1559,8 +1868,24 @@ export default {
     } catch (e) {}
 
     const now = Date.now();
-    const { keys } = await env.PUSH_KV.list({ prefix: 'job:' });
-    if (!keys.length) return;
+    // ===== 预约任务：只读索引里到点的任务，不再每 5 分钟 list 全部 job: =====
+    let jobIds = await readIndex(env, JOB_INDEX_KEY);
+    if (jobIds === null) {
+      try {
+        const { keys } = await kv(env).list({ prefix: 'job:' });
+        jobIds = (keys || []).map(function (k) { return k.name; }).filter(function (id) { return id !== JOB_INDEX_KEY; });
+        await writeIndex(env, JOB_INDEX_KEY, jobIds);
+      } catch (e) { jobIds = []; }
+    }
+    const dueIds = [];
+    const keepIds = [];
+    for (const id of jobIds) {
+      const at = parseInt(String(id).split(':')[1], 10) || 0;
+      if (at && at <= now) dueIds.push(id); else keepIds.push(id);
+    }
+    if (!dueIds.length) return;
+    // 先摘掉到点的索引，任务执行失败也不会每 5 分钟重复推送。
+    await writeIndex(env, JOB_INDEX_KEY, keepIds);
     const subsCache = {};
     async function jobSubs(job) {
       // 旧客户端预约的任务没有 appId：只允许投给 legacy 订阅，绝不广播到新纳米。
@@ -1569,13 +1894,13 @@ export default {
       if (!subsCache[k]) subsCache[k] = await getSubs(env, job.userId || null, job.deviceId || null, jobApp);
       return subsCache[k];
     }
-    for (const k of keys) {
-      const raw = await env.PUSH_KV.get(k.name);
+    for (const id of dueIds) {
+      let raw = '';
+      try { raw = await kv(env).get(id); } catch (e) { raw = ''; }
+      try { await kv(env).delete(id); } catch (e) {}
       if (!raw) continue;
       let job;
-      try { job = JSON.parse(raw); } catch (e) { await env.PUSH_KV.delete(k.name); continue; }
-      if ((Number(job.at) || 0) > now) continue;
-      await env.PUSH_KV.delete(k.name);
+      try { job = JSON.parse(raw); } catch (e) { continue; }
       const jobPayload = { title: job.title || 'Nano', body: job.body || '', target: job.target || '', appId: cleanAppId(job.appId) };
       let subs = await jobSubs(job);
       let sent = 0;
@@ -1599,6 +1924,8 @@ async function sendBarkReminder(env) {
   // 没有再配置自定义提醒文案时不要发「有人想你了」这类通用占位通知：
   // 真实的主动消息 / 朋友圈会带角色昵称和具体内容，混在一起会让 Bark 看起来只有 title/body。
   if (!times.length || !text) return;
+  // 旧版默认文案即使还留在 Cloudflare 环境变量里，也不再发送。
+  if (text === '有人想你了，点开看看～') return;
   // 换算北京时间
   const bj = new Date(Date.now() + 8 * 3600 * 1000);
   const cur = String(bj.getUTCHours()).padStart(2, '0') + ':' + String(bj.getUTCMinutes()).padStart(2, '0');
@@ -1620,16 +1947,16 @@ async function getSubs(env, userId, deviceId, appId) {
     if (wantApp && wantDevice && wantUser) prefix = 'sub2:' + wantApp + ':' + wantDevice + ':' + wantUser + ':';
     else if (wantApp && wantDevice) prefix = 'sub2:' + wantApp + ':' + wantDevice + ':';
     else if (wantApp) prefix = 'sub2:' + wantApp + ':';
-    const r = await env.PUSH_KV.list({ prefix: prefix });
+    const r = await kv(env).list({ prefix: prefix });
     keys = r.keys || [];
     // 新 key 没有命中时，兼容升级前写入的全局 sub: key（用户打开 App 重新订阅后会自动迁移）。
     if (!keys.length) {
-      const legacy = await env.PUSH_KV.list({ prefix: 'sub:' });
+      const legacy = await kv(env).list({ prefix: 'sub:' });
       keys = legacy.keys || [];
     }
   } catch (e) { return out; }
   for (const k of keys) {
-    const v = await env.PUSH_KV.get(k.name);
+    const v = await kv(env).get(k.name);
     if (!v) continue;
     try {
       const s = JSON.parse(v);
@@ -1665,8 +1992,8 @@ async function pushAll(subs, payload, env) {
       if (resp && resp.ok) sent++;
       // 订阅已失效（卸载/清数据/换浏览器）：删除，避免每次都失败
       if (resp && (resp.status === 404 || resp.status === 410)) {
-        try { await env.PUSH_KV.delete(subKey(sub.endpoint, sub.appId, sub.deviceId, sub.userId)); } catch (e) {}
-        try { await env.PUSH_KV.delete(subId(sub.endpoint)); } catch (e) {}
+        try { await kv(env).delete(subKey(sub.endpoint, sub.appId, sub.deviceId, sub.userId)); } catch (e) {}
+        try { await kv(env).delete(subId(sub.endpoint)); } catch (e) {}
       }
     } catch (e) { /* 单个失败不影响其他 */ }
   }

@@ -15,13 +15,34 @@ kv_namespaces = [
   { binding = "PUSH_KV", id = "2bd6299b03c442bd81cbf023ec6cfb92" }
 ]
 
+# ===== D1（已创建 nano-db）=====
+# 绑定后 Worker 会自动把所有 KV get/put/delete/list 切到 D1 的 kv 表；
+# 没绑定则继续回退到上面的 KV。
+# 注意：binding 名用 nano_db（与 wrangler d1 create 输出一致），代码同时兼容 DB / nano_db。
+[[d1_databases]]
+binding = "nano_db"
+database_name = "nano-db"
+database_id = "8dba16fd-5976-4c57-a5cd-7313dc49c858"
+
+# ===== Supabase（共享集市）=====
+# 敏感项用 secret 设置，不要写进本文件：
+#   wrangler secret put SUPABASE_URL
+#   wrangler secret put SUPABASE_SERVICE_ROLE_KEY
+# 然后在 Supabase SQL Editor 执行 supabase-market.sql。
+# 没配置时共享集市仍回退到 KV。
+
 [triggers]
 crons = ["*/5 * * * *"]
 
-# 定时提醒（北京时间，必须是 5 分钟的整数倍），到点会发 Bark 通知
+# 定时提醒默认关闭：通用文案会让 Bark 看起来「只有标题没有内容」。
+# 真实的主动消息 / 朋友圈由 Worker 到点生成，并带上角色昵称与第一条气泡内容。
+# 如确实需要固定提醒，再取消下面两行的注释并填写：
+# REMIND_TIMES = "09:00,12:30,20:00,23:00"
+# REMIND_TEXT = "你的自定义提醒文案"
 [vars]
-REMIND_TIMES = "09:00,12:30,20:00,23:00"
-REMIND_TEXT = "有人想你了，点开看看～"
+# Fish Audio TTS 反向代理（前端直连失败时会自动走 /fish-tts）
+# 默认 https://api.fish.audio；如改用第三方 Fish 代理，可取消下面一行注释：
+# FISH_API_ORIGIN = "https://api.fish.audio"
 
 # ── 屏幕速聊（iOS 快捷指令）──
 # 敏感项用 secret 设置，不要写进本文件（会进版本库）：

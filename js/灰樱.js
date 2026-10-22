@@ -1174,13 +1174,9 @@ function render() {
       <div class="gs-avatar-wrap"><div class="avatar" data-action="heart" role="button" tabindex="0" aria-label="查看心声">${avatarHTML}</div></div>
       <div class="message-head">
         <div class="gs-id">
-          <div class="nickname">${escapeHTML(displayName)}</div>
-          <div class="time-row">
-            <svg class="clock-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"></circle><path d="M12 7.7v4.8l3.1 1.8"></path></svg>
-            <span class="gs-time">${offlineHHMM(m)}</span>
-          </div>
+          <div class="nickname"><span class="gs-src">출처</span><span class="gs-name">${escapeHTML(displayName)}</span></div>
         </div>
-        <div class="gs-floor">#${floorNo}</div>
+        <div class="gs-floor"><span class="gs-chap">장절</span><b>${floorNo}</b></div>
       </div>
 
       ${renderCustomBars(m, 'top')}
@@ -1280,8 +1276,8 @@ function buildTypingCard() {
   tc.innerHTML = '<div class="gs-avatar-wrap"><div class="avatar" aria-label="正在回复">' +
     (settings.charAvatar ? `<img src="${safeAvatar(settings.charAvatar)}" alt="">` : '<div class="avatar-fallback">' + escapeHTML((settings.charName || 'C').slice(0, 1)) + '</div>') +
     '</div></div>' +
-    '<div class="message-head"><div class="gs-id"><div class="nickname">' + escapeHTML(settings.charName || 'char') + '</div>' +
-    '<div class="time-row"><span class="gs-time">…</span></div></div><div class="gs-floor">#' + (messages.length + 1) + '</div></div>' +
+    '<div class="message-head"><div class="gs-id"><div class="nickname"><span class="gs-src">출처</span><span class="gs-name">' + escapeHTML(settings.charName || 'char') + '</span></div></div>' +
+    '<div class="gs-floor"><span class="gs-chap">장절</span><b>' + (messages.length + 1) + '</b></div></div>' +
     '<div class="typing-dots"><span></span><span></span><span></span></div>' +
     '<button class="typing-stop" type="button" aria-label="停止生成"></button>';
   const stop = tc.querySelector('.typing-stop');
@@ -3074,13 +3070,20 @@ function offlineCssOnly(css) {
   try { return window.NanoBeautifyRT ? window.NanoBeautifyRT.parse(css || '').css : (css || ''); }
   catch (e) { return css || ''; }
 }
+function offlineCssWithV2(css) {
+  var s = offlineCssOnly(css);
+  if (!/@offline-skin\s+gray-sakura/i.test(s) && !/\.gs-avatar-wrap|\.tb-name\s+\.star/.test(s)) return s;
+  var v2 = window.NANOOfflineThemes && window.NANOOfflineThemes.graySakuraV2;
+  if (!v2 || s.indexOf('@gray-sakura-v2') > -1) return s;
+  return s + '\n' + v2;
+}
 
 // ===== 头像菜单 → 美化弹窗：切换美化预设 / 切换头像框预设 / 还原美化 / 还原头像框 =====
 function omSaveCustomCss(css) {
   settings.customCSS = String(css || '');
   let tag = document.getElementById('offline-custom-css');
   if (!tag) { tag = document.createElement('style'); tag.id = 'offline-custom-css'; document.head.appendChild(tag); }
-  tag.textContent = offlineCssOnly(settings.customCSS);
+  tag.textContent = offlineCssWithV2(settings.customCSS);
   runOfflineJs(settings.customCSS);
   try {
     openDB().then(function (db) {
@@ -3622,7 +3625,7 @@ async function init() {
   {
     let tag = document.getElementById('offline-custom-css');
     if (!tag) { tag = document.createElement('style'); tag.id = 'offline-custom-css'; document.head.appendChild(tag); }
-    tag.textContent = offlineCssOnly(settings.customCSS || '');
+    tag.textContent = offlineCssWithV2(settings.customCSS || '');
   }
   runOfflineJs(settings.customCSS || '');
 
@@ -3672,7 +3675,7 @@ async function reloadSettings() {
     {
       let tag = document.getElementById('offline-custom-css');
       if (!tag) { tag = document.createElement('style'); tag.id = 'offline-custom-css'; document.head.appendChild(tag); }
-      tag.textContent = offlineCssOnly(settings.customCSS || '');
+      tag.textContent = offlineCssWithV2(settings.customCSS || '');
     }
     runOfflineJs(settings.customCSS || '');
     try { applyBackgroundImage(settings.bgImage); } catch (e) {}
@@ -3692,7 +3695,7 @@ window.addEventListener('message', function (e) {
     try {
       let tag = document.getElementById('offline-preview-css');
       if (!tag) { tag = document.createElement('style'); tag.id = 'offline-preview-css'; document.head.appendChild(tag); }
-      tag.textContent = offlineCssOnly(String(d.css || ''));
+      tag.textContent = offlineCssWithV2(String(d.css || ''));
       runOfflineJs(String(d.css || ''));
     } catch (err) {}
   }
