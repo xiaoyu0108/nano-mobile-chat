@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="zh">
 <head>
-<script src="../js/nano-runtime.js?v=20261021c"></script>
+<script src="../js/nano-runtime.js?v=20261023a"></script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <title>API · 配置</title>
@@ -298,6 +298,7 @@
                                     <option value="openai">OpenAI 兼容 (/v1/audio/speech)</option>
                                     <option value="minimax">MiniMax (/v1/t2a_v2)</option>
                                     <option value="fishaudio">Fish Audio (/v1/tts)</option>
+                                    <option value="elevenlabs">ElevenLabs (/v1/text-to-speech)</option>
                                     <option value="custom">自定义</option>
                                 </select>
                             </div>
@@ -325,8 +326,13 @@
                                 <input class="form-control" id="ttsGroupId" placeholder="MiniMax GroupId..." />
                             </div>
                             <div class="form-group">
-                                <label class="form-label">音色 ID <span class="hint">(手动填写。Fish Audio 填 reference_id / voice id；MiniMax 填 voice_id；OpenAI 填 voice 名)</span></label>
-                                <input class="form-control" id="ttsVoice" placeholder="手动填写音色 ID，例如 Fish Audio 的 reference_id" />
+                                <label class="form-label">音色 ID <span class="hint">(粘贴什么就用什么。拉取音色会按当前地址 / Key 查询，并优先使用这里粘贴的 ID；Fish Audio 填 reference_id，ElevenLabs / MiniMax 填 voice_id，OpenAI 填 voice 名)</span></label>
+                                <input class="form-control" id="ttsVoice" list="ttsVoiceList" placeholder="粘贴音色 ID，例如 Fish Audio 的 reference_id" />
+                                <datalist id="ttsVoiceList"></datalist>
+                                <div class="btn-group" style="margin-top:8px;">
+                                    <button class="btn btn-sm" id="ttsFetchVoices"><i class="fas fa-user-voice"></i> 拉取音色</button>
+                                    <button class="btn btn-sm" id="ttsTestVoice"><i class="fas fa-play"></i> 试听</button>
+                                </div>
                             </div>
                             <div class="form-row">
                                 <div class="form-group" style="flex:2;">
@@ -377,8 +383,8 @@
         </div>
     </div>
 
-    <script src="../js/nano-tts.js?v=20261021c"></script>
-    <script src="../js/api.js?v=20261020k"></script>
+    <script src="../js/nano-tts.js?v=20261022a"></script>
+    <script src="../js/api.js?v=20261023a"></script>
 <script src="../js/nano-own-back.js"></script>
 <script src="../swipe-back.js"></script>
 </body>

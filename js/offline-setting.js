@@ -276,6 +276,11 @@ const INITIAL_CSS = `/* ========================================================
    分区写清能改什么、怎么改；把想用的示例取消注释，改完点「应用 CSS」。
    想回到现在这套初始外观：把「模板」切回「初始 CSS」再应用。
 
+   · 新增「灰樱 · Grey Sakura」内置模板：在下面「模板」下拉里选择即可载入完整 CSS。
+     它的首行带有 @offline-skin + gray-sakura 标记，会启用灰樱的 5 按钮顶栏与卡片结构；
+     改完 CSS 后点「保存」即可另存为自定义预设，之后可以随意 DIY。
+     旧内置模板（Soft Pink / Minimal Gray / 语文书）不受影响，仍可随时切回。
+
    ★ 最高权限：本模板除了 CSS，还能写脚本块（能造 HTML / 改 DOM / 绑事件）。
      写法：用英文注释把脚本包起来——开头写「/ * @js」，结尾写「* /」，中间就是 JS，
      被包住的部分不当作 CSS。示例（全角符号换成英文符号即可）：
@@ -1292,10 +1297,19 @@ document.getElementById('cotPresetSelect').onchange = function() {
 // ============================================================
 //  9. 美化管理
 // ============================================================
+function offlineBuiltinThemes() {
+  try { return (window.NANOOfflineThemes && window.NANOOfflineThemes.list) || []; } catch (e) { return []; }
+}
 function populateCssPresets() {
   const sel = document.getElementById('cssPreset');
   const current = sel.value;
-  sel.innerHTML = '<option value="initial">初始 CSS</option><option value="soft">Soft Pink</option><option value="minimal">Minimal Gray</option><option value="textbook">语文书 · 简约</option><option value="custom">当前 CSS</option>';
+  const themes = offlineBuiltinThemes();
+  let html = '<option value="initial">初始 CSS</option>';
+  themes.forEach(function (t) {
+    html += '<option value="' + escapeHTML(t.key) + '">' + escapeHTML(t.name) + '</option>';
+  });
+  html += '<option value="custom">当前 CSS</option>';
+  sel.innerHTML = html;
   cssPresets.forEach((p, i) => {
     const opt = document.createElement('option');
     opt.value = 'user-' + i;
@@ -1346,16 +1360,17 @@ document.getElementById('cssPreset').onchange = function() {
   const cssText = document.getElementById('cssText');
   const nameEl = document.getElementById('cssPresetName');
   if (val === 'initial') { cssText.value = INITIAL_CSS; nameEl.value = ''; }
-  else if (val === 'soft') { cssText.value = BUILTIN_CSS.soft; nameEl.value = ''; }
-  else if (val === 'minimal') { cssText.value = BUILTIN_CSS.minimal; nameEl.value = ''; }
-  else if (val === 'textbook') { cssText.value = BUILTIN_CSS.textbook; nameEl.value = ''; }
   else if (val === 'custom') { cssText.value = settings.customCSS || ''; nameEl.value = ''; }
   else if (val.startsWith('user-')) {
     const idx = parseInt(val.replace('user-', ''));
     const p = cssPresets[idx];
     if (p) { cssText.value = p.content || ''; nameEl.value = p.name || ''; }
+  } else {
+    // 内置主题统一从 NANOOfflineThemes 读取（新增主题无需再改这里）
+    const theme = offlineBuiltinThemes().find(function (t) { return t.key === val; });
+    if (theme) { cssText.value = theme.css || BUILTIN_CSS[val] || ''; nameEl.value = ''; }
   }
-  // 选中即预览，内置主题（含「语文书 · 简约」）能立刻看到效果
+  // 选中即预览，内置主题（含「灰樱 · Grey Sakura」）能立刻看到效果
   applyCssPreview(cssText.value);
 };
 
@@ -1575,17 +1590,19 @@ document.getElementById('applyCss').onclick = function() {
 };
 
 document.getElementById('copyTemplate').onclick = async function() {
+  const edited = (document.getElementById('cssText') || {}).value || '';
+  const text = edited.trim() ? edited : INITIAL_CSS;
   try {
-    await navigator.clipboard.writeText(INITIAL_CSS);
-    showToast('已复制初始模板到剪贴板');
+    await navigator.clipboard.writeText(text);
+    showToast(edited.trim() ? '已复制当前模板到剪贴板' : '已复制初始模板到剪贴板');
   } catch {
     const ta = document.createElement('textarea');
-    ta.value = INITIAL_CSS;
+    ta.value = text;
     document.body.appendChild(ta);
     ta.select();
     document.execCommand('copy');
     document.body.removeChild(ta);
-    showToast('已复制初始模板');
+    showToast(edited.trim() ? '已复制当前模板' : '已复制初始模板');
   }
 };
 

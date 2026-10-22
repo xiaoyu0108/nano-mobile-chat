@@ -13,6 +13,7 @@
 
     var currentAudio = null;
     var currentUrl = '';
+    var lastError = '';
 
     function parseLocalConfig() {
         try {
@@ -172,10 +173,12 @@
             throw new Error('TTS 未返回音频');
         }
         if (type === 'fishaudio') {
-            // Fish Audio：model 是语音模型（如 s2.1-pro-free），reference_id 是用户手填的音色 ID。
+            // Fish Audio：model 是语音模型（如 s1 / s2.1-pro），reference_id 是用户手填的音色 ID。
             // 注意：必须先声明 fishBody，再写 fishBody.model；旧代码顺序反了会抛
             // “Cannot set properties of undefined”，语音气泡点击后完全没有声音。
-            var fishRoot = base.replace(/\/v1\/tts$/i, '').replace(/\/tts$/i, '').replace(/\/v1$/i, '');
+            var rawFish = cleanUrl(cfg.ttsUrl);
+            var fishRoot = rawFish.replace(/\/v1\/tts$/i, '').replace(/\/v1$/i, '').replace(/\/tts$/i, '');
+            var fishEndpoint = /\/tts$/i.test(rawFish) ? rawFish : (fishRoot + '/v1/tts');
             var fishVoice = String(cfg.ttsVoice || '').trim();
             var fishModel = String(cfg.ttsModel || '').trim();
             var fishHeaders = { 'Authorization': 'Bearer ' + cfg.ttsKey, 'Content-Type': 'application/json' };
@@ -192,15 +195,32 @@
             }
             var fishRef = fishVoice || fishModel;
             if (fishRef) fishBody.reference_id = fishRef;
-            var fishResp = await fetch(fishRoot + '/v1/tts', {
-                method: 'POST',
-                headers: fishHeaders,
-                body: JSON.stringify(fishBody)
-            });
-            if (!fishResp.ok) {
-                var fMsg = 'HTTP ' + fishResp.status;
-                try { var fData = await fishResp.json(); fMsg = fData.message || (fData.error && fData.error.message) || fMsg; } catch (e) {}
-                throw new Error(fMsg);
+            async function fishRequest(withModel) {
+                var headers = Object.assign({}, fishHeaders);
+                var body = Object.assign({}, fishBody);
+                if (!withModel) { delete headers.model; delete body.model; }
+                var resp = await fetch(fishEndpoint, {
+                    method: 'POST',
+                    headers: headers,
+                    body: JSON.stringify(body)
+                });
+                if (!resp.ok) {
+                    var fMsg = 'HTTP ' + resp.status;
+                    try { var fData = await resp.json(); fMsg = fData.message || (fData.error && fData.error.message) || fMsg; } catch (e) {}
+                    var err = new Error('Fish Audio：' + fMsg);
+                    err.status = resp.status;
+                    throw err;
+                }
+                return resp;
+            }
+            var fishResp;
+            try {
+                fishResp = await fishRequest(true);
+            } catch (e) {
+                // 旧版内置的模型名（例如 s2.1-pro-free）在 Fish Audio 某些账号/旧接口上不识别。
+                // 400/422 时去掉 model 头重试一次，让 Fish 用默认模型，避免整个 TTS 直接不可用。
+                if (e && (e.status === 400 || e.status === 422) && fishModel) fishResp = await fishRequest(false);
+                else throw e;
             }
             // Fish Audio 在参数/音色错误时有时仍返回 200 + JSON，直接当音频播放会静默失败。
             var fType = String(fishResp.headers.get('content-type') || '').toLowerCase();
@@ -211,6 +231,35 @@
             var fBlob = await fishResp.blob();
             if (!fBlob || !fBlob.size) throw new Error('Fish Audio 返回了空音频');
             return fBlob;
+        }
+        if (type === 'elevenlabs' || type === 'eleven') {
+            // ElevenLabs：POST /v1/text-to-speech/{voice_id}，鉴权用 xi-api-key。
+            // 音色 ID 必填（可以点 API 页的「拉取音色」从账号里选）。
+            var elVoice = String(cfg.ttsVoice || '').trim();
+            if (!elVoice) throw new Error('ElevenLabs 需要填写音色 ID（可在 API 页点「拉取音色」）');
+            var elRoot = base.replace(/\/v1\/text-to-speech.*$/i, '').replace(/\/v1$/i, '');
+            var elModel = String(cfg.ttsModel || 'eleven_multilingual_v2').trim() || 'eleven_multilingual_v2';
+            var elUrl = elRoot + '/v1/text-to-speech/' + encodeURIComponent(elVoice) + '?output_format=mp3_44100_128';
+            var elResp = await fetch(elUrl, {
+                method: 'POST',
+                headers: { 'xi-api-key': cfg.ttsKey, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    text: text,
+                    model_id: elModel,
+                    voice_settings: { stability: 0.5, similarity_boost: 0.75 }
+                })
+            });
+            if (!elResp.ok) {
+                var elMsg = 'HTTP ' + elResp.status;
+                try {
+                    var elData = await elResp.json();
+                    elMsg = (elData.detail && (elData.detail.message || (Array.isArray(elData.detail) && elData.detail[0] && elData.detail[0].msg))) || elData.message || elMsg;
+                } catch (e) {}
+                throw new Error('ElevenLabs：' + elMsg);
+            }
+            var elBlob = await elResp.blob();
+            if (!elBlob || !elBlob.size) throw new Error('ElevenLabs 返回了空音频');
+            return elBlob;
         }
         // openai / custom
         var body = {
@@ -321,10 +370,12 @@
         }
         try {
             var blob = await synth(t, cfg);
+            lastError = '';
             return await playBlob(blob);
         } catch (e) {
+            lastError = String((e && e.message) || e || 'TTS 合成失败');
+            console.warn('[TTS] 远端合成失败，改用浏览器语音：', lastError);
             if (opts.browserFallback === false) throw e;
-            console.warn('[TTS] 远端合成失败，改用浏览器语音：', e && e.message ? e.message : e);
             try { await speakNative(t, opts); return true; }
             catch (e2) { return false; }
         }
@@ -346,6 +397,7 @@
         speakNative: function (text, opts) { return speakNative(text, opts).catch(function () { return false; }); },
         preview: function (text, opts) { return preview(text, opts); },
         stop: stop,
+        lastError: function () { return lastError; },
         canSpeakNative: hasNativeVoice,
         isConfigured: function (cb) {
             getConfig().then(function (cfg) { try { cb(isConfigured(cfg)); } catch (e) {} });

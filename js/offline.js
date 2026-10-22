@@ -162,6 +162,21 @@ function offlineMessageTime(m) {
   if (!ts || ts < 1000000000000) ts = Date.now();
   try { return new Date(ts).toLocaleString('zh-CN'); } catch (e) { return ''; }
 }
+// 灰樱：卡片时间 hh:mm（取消息 id 里的时间戳；没有就用当前时间）
+function offlineHHMM(m) {
+  var ts = parseInt(String((m && m.id) || '').split('-')[0], 10);
+  if (!ts || ts < 1000000000000) ts = Date.now();
+  try { var d = new Date(ts); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); } catch (e) { return '--:--'; }
+}
+// 灰樱：卡片 @ 胶囊 / 剧情推荐 的展开状态（render 重绘后保留）
+var gsUi = {};
+function gsKey(m) { return (m && m.id) ? String(m.id) : ('i' + messages.indexOf(m)); }
+var GS_MOTTO_USER = '얕게, 쉬지 않고 너를 사랑해';
+var GS_MOTTO_CHAR = '너를 사랑해, 끝없이 이어지는 마음';
+var GS_AT_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/></svg>';
+var GS_CHEV_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>';
+var GS_STAR_SVG = '<svg class="star" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.6l2.8 5.9 6.4.9-4.7 4.5 1.2 6.4L12 17.2l-5.7 3.1 1.2-6.4L2.8 9.4l6.4-.9z"/></svg>';
+var GS_SETTINGS_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>';
 async function addOfflineFavorite(i) {
   var m = messages[i];
   if (!m) return;
@@ -1102,6 +1117,232 @@ function updateTopTitle() {
   }
 }
 
+// ============================================================
+// 5A. 灰樱 · Grey Sakura 内置皮肤
+// 通过美化模板首行的 /* @offline-skin gray-sakura */ 标记启用；
+// 只影响当前模板，旧的内置模板（Soft Pink / Minimal Gray / 语文书）保持原样。
+// ============================================================
+var __topbarDefaults = null;
+
+function detectOfflineSkin(css) {
+  var m = /@offline-skin\s+([a-z0-9_-]+)/i.exec(String(css == null ? '' : css));
+  return m ? String(m[1]).toLowerCase() : '';
+}
+function isGraySakuraSkin() {
+  try { if (document.body.getAttribute('data-offline-skin') === 'gray-sakura') return true; } catch (e) {}
+  return detectOfflineSkin(settings.customCSS || '') === 'gray-sakura';
+}
+
+function buildGrayTopbar() {
+  var bar = document.querySelector('.topbar');
+  var back = document.getElementById('backBtn');
+  var settingsBtn = document.getElementById('settingsBtn');
+  var title = document.getElementById('topTitle');
+  if (!bar || !back || !settingsBtn || !title) return;
+  if (bar.dataset.graySkin === '1') return;
+  if (!__topbarDefaults) {
+    __topbarDefaults = {
+      backHTML: back.innerHTML,
+      backClass: back.className,
+      settingsHTML: settingsBtn.innerHTML,
+      settingsClass: settingsBtn.className
+    };
+  }
+  bar.dataset.graySkin = '1';
+
+  back.classList.remove('top-btn');
+  back.classList.add('tb', 'tb-name');
+  back.setAttribute('aria-label', '返回');
+  back.innerHTML = GS_STAR_SVG;
+  back.appendChild(title);
+
+  var extra = [
+    { id: 'archiveBtn', label: '存档', ko: '아카이브', svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h12a1 1 0 0 1 1 1v15l-7-4-7 4V5a1 1 0 0 1 1-1z"/></svg>', run: function () { openStorySessions(); } },
+    { id: 'tidyBtn', label: '整理楼层', ko: '정리', svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16"/><path d="M4 11h9"/><path d="M4 16h6"/><path d="m14.5 15 2.5 2.5 4-4.5"/></svg>', run: function () { omOpenTidy(); } },
+    { id: 'floorsBtn', label: '楼层预览', ko: '미리보기', svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/></svg>', run: function () { omOpenFloors(); } }
+  ];
+  extra.forEach(function (it) {
+    var btn = document.getElementById(it.id);
+    if (!btn) {
+      btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'tb';
+      btn.id = it.id;
+      btn.innerHTML = it.svg + '<span class="ko">' + it.ko + '</span>';
+      bar.insertBefore(btn, settingsBtn);
+    }
+    btn.setAttribute('aria-label', it.label);
+    btn.onclick = function (e) {
+      try { e.preventDefault(); e.stopPropagation(); } catch (_) {}
+      try { it.run(); } catch (err) { console.warn(err); }
+    };
+  });
+
+  settingsBtn.classList.remove('top-btn');
+  settingsBtn.classList.add('tb');
+  settingsBtn.setAttribute('aria-label', '设置');
+  settingsBtn.innerHTML = GS_SETTINGS_SVG + '<span class="ko">설정</span>';
+}
+
+function restoreDefaultTopbar() {
+  var bar = document.querySelector('.topbar');
+  if (!bar || bar.dataset.graySkin !== '1') return;
+  var back = document.getElementById('backBtn');
+  var settingsBtn = document.getElementById('settingsBtn');
+  var title = document.getElementById('topTitle');
+  ['archiveBtn', 'tidyBtn', 'floorsBtn'].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (el) el.remove();
+  });
+  if (__topbarDefaults && back && settingsBtn) {
+    back.className = __topbarDefaults.backClass;
+    back.innerHTML = __topbarDefaults.backHTML;
+    settingsBtn.className = __topbarDefaults.settingsClass;
+    settingsBtn.innerHTML = __topbarDefaults.settingsHTML;
+  }
+  if (title && settingsBtn) bar.insertBefore(title, settingsBtn);
+  delete bar.dataset.graySkin;
+}
+
+function applyOfflineSkin(css, opts) {
+  opts = opts || {};
+  var prev = '';
+  try { prev = document.body.getAttribute('data-offline-skin') || ''; } catch (e) {}
+  var next = detectOfflineSkin(css == null ? (settings && settings.customCSS) : css);
+  try {
+    if (next) document.body.setAttribute('data-offline-skin', next);
+    else document.body.removeAttribute('data-offline-skin');
+  } catch (e) {}
+  if (next === 'gray-sakura') buildGrayTopbar();
+  else restoreDefaultTopbar();
+  ensureGrayComposer(next === 'gray-sakura');
+  if (opts.rerender && prev !== next) {
+    try { render(); } catch (e) {}
+  }
+  return next;
+}
+
+// 灰樱底栏：菜单按钮显示「Aa」，发送按钮显示「Re」；切回旧模板时恢复头像/箭头
+function ensureGrayComposer(on) {
+  var btn = document.getElementById('composerAvatarBtn');
+  var send = document.getElementById('sendBtn');
+  if (on) {
+    if (btn) {
+      if (!btn.querySelector('.aa')) {
+        var aa = document.createElement('span');
+        aa.className = 'aa';
+        aa.textContent = 'Aa';
+        btn.insertBefore(aa, btn.firstChild);
+      }
+      btn.classList.remove('hidden-avatar');
+    }
+    if (send) {
+      if (!send.querySelector('.re')) {
+        var re = document.createElement('span');
+        re.className = 're';
+        re.textContent = 'Re';
+        send.insertBefore(re, send.firstChild);
+      }
+      var icon = send.querySelector('.composer-icon');
+      if (icon) icon.style.display = 'none';
+    }
+  } else {
+    if (btn) {
+      var old = btn.querySelector('.aa');
+      if (old) old.remove();
+    }
+    if (send) {
+      var oldRe = send.querySelector('.re');
+      if (oldRe) oldRe.remove();
+      var sendIcon = send.querySelector('.composer-icon');
+      if (sendIcon) sendIcon.style.display = '';
+    }
+  }
+  try { omUpdateAvatar(); } catch (e) {}
+}
+
+function graySakuraCardHTML(m, i, avatarHTML, displayName, isChar, showPlot, parsedContent, floorNo) {
+  return `
+      <div class="gs-avatar-wrap"><div class="avatar" data-action="heart" role="button" tabindex="0" aria-label="查看心声">${avatarHTML}</div></div>
+      <div class="message-head">
+        <div class="gs-id">
+          <div class="nickname">${escapeHTML(displayName)}</div>
+          <div class="time-row">
+            <svg class="clock-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"></circle><path d="M12 7.7v4.8l3.1 1.8"></path></svg>
+            <span class="gs-time">${offlineHHMM(m)}</span>
+          </div>
+        </div>
+        <div class="gs-floor">#${floorNo}</div>
+      </div>
+
+      ${renderCustomBars(m, 'top')}
+      ${renderHeartThinkBars(m)}
+
+      ${renderCustomBars(m, 'before')}
+      <div class="content" data-role="content">${parsedContent}</div>
+
+      ${renderCustomBars(m, 'after')}
+      ${renderBodyStatusBar(m)}
+      ${renderCustomBars(m, 'bottom')}
+
+      <div class="gs-foot">
+        ${showPlot
+          ? '<button class="gs-motto" type="button" data-gs="plot">' + GS_MOTTO_CHAR + GS_CHEV_SVG + '</button>'
+          : '<span class="gs-motto">' + (isChar ? GS_MOTTO_CHAR : GS_MOTTO_USER) + '</span>'}
+        <div class="gs-tools">
+          <button class="gs-at" type="button" data-gs="at" aria-label="展开操作">${GS_AT_SVG}</button>
+          <div class="actions gs-capsule">
+            <button class="action" data-action="edit" aria-label="编辑">
+              <svg class="action-icon" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg>
+            </button>
+            <button class="action" data-action="delete" aria-label="删除">
+              <svg class="action-icon" viewBox="0 0 24 24"><path d="M5 7h14M9 7V4h6v3M7 7l1 13h8l1-13"/></svg>
+            </button>
+            <button class="action more-action" data-action="more" aria-label="更多">
+              <svg class="action-icon" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      ${showPlot ? statusBarHTML({
+        name: '剧情推荐',
+        title: '剧情推荐',
+        attr: ' data-kind="plot"',
+        defaultCollapsed: true,
+        bodyHtml: true,
+        body: `<div class="plot-options" data-plot-options="${i}">
+          <button class="plot-opt" data-plot-opt="${i}-0">加载中...</button>
+          <button class="plot-opt" data-plot-opt="${i}-1">加载中...</button>
+          <button class="plot-opt" data-plot-opt="${i}-2">加载中...</button>
+          <button class="plot-opt" data-plot-opt="${i}-3">加载中...</button>
+          <button class="plot-opt" data-plot-opt="${i}-4">加载中...</button>
+        </div>`
+      }) : ''}
+
+      <div class="edit-bar">
+        <button data-action="cancelEdit">取消</button>
+        <button class="done" data-action="doneEdit">完成</button>
+      </div>
+
+      <div class="more-menu">
+        <button data-action="favorite">收藏这条</button>
+        <button data-action="thinking">显示 / 隐藏思维链</button>
+        <button data-action="select">加入多选</button>
+      </div>
+    `;
+}
+
+function graySakuraTypingCardHTML() {
+  return '<div class="gs-avatar-wrap"><div class="avatar" aria-label="正在回复">' +
+    (settings.charAvatar ? `<img src="${safeAvatar(settings.charAvatar)}" alt="">` : '<div class="avatar-fallback">' + escapeHTML((settings.charName || 'C').slice(0, 1)) + '</div>') +
+    '</div></div>' +
+    '<div class="message-head"><div class="gs-id"><div class="nickname">' + escapeHTML(settings.charName || 'char') + '</div>' +
+    '<div class="time-row"><span class="gs-time">…</span></div></div><div class="gs-floor">#' + (messages.length + 1) + '</div></div>' +
+    '<div class="typing-dots"><span></span><span></span><span></span></div>' +
+    '<button class="typing-stop" type="button" aria-label="停止生成"></button>';
+}
+
 function render() {
   updateTopTitle();
   chat.innerHTML = '';
@@ -1150,10 +1391,20 @@ function render() {
 
     const isChar = (m.role === 'assistant' || m.role === 'char');
     const showPlot = isChar && !m.isOpening && m.content && m.content.length > 3;
+    const graySakura = isGraySakuraSkin();
+    if (graySakura) {
+      card.classList.add(isChar ? 'gs-char' : 'gs-user');
+      const st = gsUi[gsKey(m)] || {};
+      if (st.open) card.classList.add('gs-open');
+      if (st.plot && showPlot) card.classList.add('gs-plot-open');
+    }
+    const floorNo = messages.indexOf(m) + 1;
 
     const parsedContent = renderOfflineContent(m.content || '');
 
-    card.innerHTML = `
+    card.innerHTML = graySakura
+      ? graySakuraCardHTML(m, i, avatarHTML, displayName, isChar, showPlot, parsedContent, floorNo)
+      : `
       <div class="message-head">
         <div class="diary-title">Diary</div>
       </div>
@@ -1264,12 +1515,17 @@ function render() {
 function buildTypingCard() {
   const tc = document.createElement('article');
   tc.className = 'message typing-card';
-  tc.innerHTML = '<div class="message-head"><div class="diary-title">Diary</div></div>' +
-    '<div class="identity-row"><div class="avatar" aria-label="正在回复">' +
-    (settings.charAvatar ? `<img src="${safeAvatar(settings.charAvatar)}" alt="">` : '<div class="avatar-fallback">' + escapeHTML((settings.charName || 'C').slice(0, 1)) + '</div>') +
-    '</div><div><div class="nickname">' + escapeHTML(settings.charName || 'char') + '</div></div></div>' +
-    '<div class="typing-dots"><span></span><span></span><span></span></div>' +
-    '<button class="typing-stop" type="button" aria-label="停止生成"></button>';
+  if (isGraySakuraSkin()) {
+    tc.classList.add('gs-char');
+    tc.innerHTML = graySakuraTypingCardHTML();
+  } else {
+    tc.innerHTML = '<div class="message-head"><div class="diary-title">Diary</div></div>' +
+      '<div class="identity-row"><div class="avatar" aria-label="正在回复">' +
+      (settings.charAvatar ? `<img src="${safeAvatar(settings.charAvatar)}" alt="">` : '<div class="avatar-fallback">' + escapeHTML((settings.charName || 'C').slice(0, 1)) + '</div>') +
+      '</div><div><div class="nickname">' + escapeHTML(settings.charName || 'char') + '</div></div></div>' +
+      '<div class="typing-dots"><span></span><span></span><span></span></div>' +
+      '<button class="typing-stop" type="button" aria-label="停止生成"></button>';
+  }
   const stop = tc.querySelector('.typing-stop');
   if (stop) {
     stop.addEventListener('click', function (e) {
@@ -1445,6 +1701,24 @@ document.getElementById('settingsBtn').onclick = (e) => {
   const q = offlineChatId ? ('?chat=' + encodeURIComponent(offlineChatId) + '&name=' + encodeURIComponent(settings.charName || '')) : '';
   location.href = 'offline-setting.html' + q;
 };
+// 灰樱：卡片 @ 展开/收起玻璃胶囊；char 卡点韩文展开剧情推荐
+chat.addEventListener('click', function (e) {
+  var t = e.target.closest && e.target.closest('[data-gs]');
+  if (!t) return;
+  var card = t.closest('.message');
+  if (!card) return;
+  e.stopPropagation();
+  var m = messages[Number(card.dataset.index)];
+  var k = m ? gsKey(m) : null;
+  var st = k ? (gsUi[k] = gsUi[k] || {}) : {};
+  if (t.getAttribute('data-gs') === 'at') {
+    var on = card.classList.toggle('gs-open');
+    st.open = on;
+    if (!on) { var mm = card.querySelector('.more-menu'); if (mm) mm.classList.remove('open'); }
+  } else if (t.getAttribute('data-gs') === 'plot') {
+    st.plot = card.classList.toggle('gs-plot-open');
+  }
+}, true);
 // 返回按钮：弹出「退出线下？」选择（直接退出 / 返回线上）
 function chatModeKey(id) { return 'nano_chat_mode_' + (id || 'default'); }
 function setChatMode(mode) { try { localStorage.setItem(chatModeKey(offlineChatId), mode); } catch (e) {} }
@@ -2824,7 +3098,7 @@ function omUpdateAvatar() {
     omAvatarImg.hidden = true;
     if (omAvatarFallback) { omAvatarFallback.hidden = false; omAvatarFallback.textContent = ((settings.charName || settings.userName || 'U') + '').slice(0, 1); }
   }
-  if (omAvatarBtn) omAvatarBtn.classList.toggle('hidden-avatar', omHideAvatar());
+  if (omAvatarBtn) omAvatarBtn.classList.toggle('hidden-avatar', !isGraySakuraSkin() && omHideAvatar());
 }
 
 const omBuiltinItems = [
@@ -2844,7 +3118,14 @@ function omAddExtra(item) {
     omExtraItems.push({ id: item.id || ('p' + Math.random().toString(36).slice(2, 6)), label: item.label || item.name || '插件', icon: item.icon || '', run: item.run || item.onClick });
   }
 }
-function omItems() { return omBuiltinItems.concat(omExtraItems); }
+function omItems() {
+  var items = omBuiltinItems.concat(omExtraItems);
+  // 灰樱：存档 / 整理楼层 / 楼层预览 已移到顶栏，菜单里只保留其余按钮
+  if (isGraySakuraSkin()) {
+    items = items.filter(function (it) { return it && ['stories', 'tidy', 'floors'].indexOf(it.id) === -1; });
+  }
+  return items;
+}
 
 function omToast(msg) { try { showToast(msg); } catch (e) {} }
 
@@ -3009,6 +3290,7 @@ async function omClearBeautify() {
     });
     settings.customCSS = '';
     const tag = document.getElementById('offline-custom-css'); if (tag) tag.textContent = '';
+    applyOfflineSkin('', { rerender: false });
     render();
     showToast('已清空美化');
     try { window.parent.postMessage({ type: 'offlineSettingsChanged' }, '*'); } catch (e) {}
@@ -3039,6 +3321,7 @@ function omSaveCustomCss(css) {
   if (!tag) { tag = document.createElement('style'); tag.id = 'offline-custom-css'; document.head.appendChild(tag); }
   tag.textContent = offlineCssOnly(settings.customCSS);
   runOfflineJs(settings.customCSS);
+  applyOfflineSkin(settings.customCSS, { rerender: true });
   try {
     openDB().then(function (db) {
       try {
@@ -3111,6 +3394,15 @@ function omOpenBeautifyMenu() {
       const bt = builtinThemes.find(function (t) { return String(t.css || '') === cur; });
       if (bt) cssSel.value = 'builtin:' + bt.key;
       else presets.forEach(function (p, i) { if (!cssSel.value && String(p.content || '') === cur) cssSel.value = 'user:' + i; });
+    }
+    // 从内置主题改过 CSS 的情况：仍然显示为「当前美化（已自定义）」，不会被误认为空
+    if (cur && !cssSel.value) {
+      const o = document.createElement('option');
+      o.value = 'current';
+      const skin = detectOfflineSkin(cur);
+      o.textContent = skin ? '当前美化（已自定义 · ' + (skin === 'gray-sakura' ? '灰樱' : skin) + '）' : '当前美化（已自定义）';
+      cssSel.appendChild(o);
+      cssSel.value = 'current';
     }
   });
   cssSel.onchange = function () {
@@ -3535,6 +3827,7 @@ async function init() {
   }
   const dbSettings = await loadSettingsFromDB();
   settings = { ...dbSettings, userName: settings.userName || dbSettings.userName, charName: settings.charName || dbSettings.charName, userAvatar: settings.userAvatar || dbSettings.userAvatar, charAvatar: settings.charAvatar || dbSettings.charAvatar };
+  applyOfflineSkin(settings.customCSS || '');
   try { applyBackgroundImage(settings.bgImage); } catch (e) {}
   try { await loadCharGreetings(); } catch (e) { charGreetings = []; }
   try { await offLoadWorldbooks(); } catch (e) { offWorldbooks = []; }
@@ -3632,6 +3925,7 @@ async function reloadSettings() {
       tag.textContent = offlineCssOnly(settings.customCSS || '');
     }
     runOfflineJs(settings.customCSS || '');
+    applyOfflineSkin(settings.customCSS || '');
     try { applyBackgroundImage(settings.bgImage); } catch (e) {}
     render();
     try { omUpdateAvatar(); } catch (e) {}
@@ -3651,6 +3945,7 @@ window.addEventListener('message', function (e) {
       if (!tag) { tag = document.createElement('style'); tag.id = 'offline-preview-css'; document.head.appendChild(tag); }
       tag.textContent = offlineCssOnly(String(d.css || ''));
       runOfflineJs(String(d.css || ''));
+      applyOfflineSkin(String(d.css || ''), { rerender: true });
     } catch (err) {}
   }
   // 美化预览：背景图变化

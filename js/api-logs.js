@@ -7,11 +7,12 @@
    ============================================================ */
 (function () {
   'use strict';
-  if (window.NanoApiLogs) return;
+  var VERSION = '20261023b';
+  if (window.NanoApiLogs && window.NanoApiLogs.VERSION === VERSION) return;
 
   var KEY = 'nano_api_logs_v1';
   var MAX = 300;
-  var API_RE = /\/(chat\/completions|responses|messages|generateContent|embeddings|models|mcp\/proxy|market\/|link\/preview|hot(?:\?|$)|auto\/call|peek\/|schedule|subscribe|vapid|send|push)/i;
+  var API_RE = /\/(chat\/completions|responses|messages|generateContent|embeddings|models|images\/(generations|edits)|audio\/(speech|transcriptions)|tts|videos?\/|mcp\/proxy|market\/|link\/preview|hot(?:\?|$)|auto\/call|peek\/|schedule|subscribe|vapid|send|push)/i;
   var SKIP_RE = /\/auto\/(pending|config)|\/market\/list(?:\?|$)|\.(js|css|png|jpe?g|webp|gif|svg|woff2?|ico)(?:\?|$)/i;
 
   function currentUserId() {
@@ -41,11 +42,34 @@
     return '';
   }
 
+  // 调用方可以用 X-Nano-App 标记自己属于哪个 App（例如 Q&A），
+  // 这样在后台日志里可以按 App 筛选，而不是全部记到 index.html。
+  function headerApp(init) {
+    try {
+      var h = init && init.headers;
+      if (!h) return '';
+      if (typeof h.get === 'function') return String(h.get('X-Nano-App') || '').trim().toLowerCase();
+      if (Array.isArray(h)) {
+        for (var i = 0; i < h.length; i++) {
+          if (h[i] && String(h[i][0] || '').toLowerCase() === 'x-nano-app') return String(h[i][1] || '').trim().toLowerCase();
+        }
+        return '';
+      }
+      for (var k in h) {
+        if (String(k).toLowerCase() === 'x-nano-app') return String(h[k] || '').trim().toLowerCase();
+      }
+    } catch (e) {}
+    return '';
+  }
+
   function kindOf(url, init) {
     var hinted = headerKind(init);
     if (hinted) return hinted;
     var u = String(url || '');
-    if (/chat\/completions/i.test(u)) return 'chat';
+    if (/chat\/completions|responses|generateContent/i.test(u)) return 'chat';
+    if (/images\/(generations|edits)/i.test(u)) return 'image';
+    if (/audio\/(speech|transcriptions)|\btts\b/i.test(u)) return 'tts';
+    if (/videos?\//i.test(u)) return 'video';
     if (/embeddings/i.test(u)) return 'memory';
     if (/mcp\/proxy/i.test(u)) return 'mcp';
     if (/market\//i.test(u)) return 'market';
@@ -122,6 +146,7 @@
       at: Date.now(),
       page: (location.pathname || '').split('/').pop() || 'index.html',
       pageTitle: document.title || '',
+      app: '',
       userId: currentUserId(),
       method: 'GET',
       url: '',
@@ -151,7 +176,7 @@
       var method = String((init && init.method) || (input && input.method) || 'GET').toUpperCase();
       var meta = bodyMeta(init);
       var t0 = (window.performance && window.performance.now) ? window.performance.now() : Date.now();
-      var base = { url: url, method: method, kind: kindOf(url, init), meta: meta };
+      var base = { url: url, method: method, kind: kindOf(url, init), app: headerApp(init), meta: meta };
       return orig(input, init).then(function (res) {
         var dur = ((window.performance && window.performance.now) ? window.performance.now() : Date.now()) - t0;
         if (res && res.ok) {
@@ -197,6 +222,7 @@
   installFetch();
 
   window.NanoApiLogs = {
+    VERSION: VERSION,
     KEY: KEY,
     MAX: MAX,
     read: read,

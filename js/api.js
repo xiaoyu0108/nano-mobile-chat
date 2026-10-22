@@ -276,17 +276,19 @@
             openai: 'https://api.openai.com/v1',
             minimax: mmUrl,
             fishaudio: 'https://api.fish.audio',
+            elevenlabs: 'https://api.elevenlabs.io',
             custom: ''
         }[type] || '';
         var ph = {
             openai: 'https://api.openai.com/v1',
             minimax: mmUrl,
             fishaudio: 'https://api.fish.audio',
+            elevenlabs: 'https://api.elevenlabs.io',
             custom: 'https://api.example.com/v1'
         }[type] || 'https://api.example.com/v1';
         if (urlEl) {
             var cur = (urlEl.value || '').trim();
-            var isDefault = /^https?:\/\/(api\.openai\.com|api\.fish\.audio|api\.minimax\.chat|api\.minimaxi\.com)/i.test(cur);
+            var isDefault = /^https?:\/\/(api\.openai\.com|api\.fish\.audio|api\.minimax\.chat|api\.minimaxi\.com|api\.elevenlabs\.io)/i.test(cur);
             urlEl.placeholder = ph;
             if (defUrl && (forceUrl || !cur || isDefault)) urlEl.value = defUrl;
         }
@@ -615,6 +617,12 @@
             { id: 'speech-02-turbo', name: 'Speech 02 Turbo' },
             { id: 'speech-01-hd', name: 'Speech 01 HD' },
             { id: 'speech-01-turbo', name: 'Speech 01 Turbo' }
+        ],
+        elevenlabs: [
+            { id: 'eleven_multilingual_v2', name: 'Multilingual v2（多语言，推荐）' },
+            { id: 'eleven_turbo_v2_5', name: 'Turbo v2.5（低延迟）' },
+            { id: 'eleven_flash_v2_5', name: 'Flash v2.5（最快）' },
+            { id: 'eleven_v3', name: 'Eleven v3（最新）' }
         ]
     };
     function builtinTtsModels(type) {
@@ -644,7 +652,7 @@
 
             var models = [];
 
-            if (extra.type === 'minimax' || extra.type === 'fishaudio') {
+            if (extra.type === 'minimax' || extra.type === 'fishaudio' || extra.type === 'elevenlabs') {
                 // TTS：拉取的是语音模型（不是用户音色）；音色 ID 在下面手动填写
                 models = builtinTtsModels(extra.type);
             } else {
@@ -677,14 +685,14 @@
                 modelList.push({ value: m.id, text: m.name });
             });
             // 语音模型直接默认选中第一个（例如 Fish Audio S2.1 Pro Free），避免拉取后仍是空模型
-            if ((extra.type === 'minimax' || extra.type === 'fishaudio') && models.length) {
+            if ((extra.type === 'minimax' || extra.type === 'fishaudio' || extra.type === 'elevenlabs') && models.length) {
                 select.value = models[0].id;
             }
             select.disabled = false;
             await saveFullModelList(modelSelectId, modelList);
             await saveModelList(modelSelectId);
             status.className = 'status-msg success';
-            status.textContent = (extra.type === 'minimax' || extra.type === 'fishaudio')
+            status.textContent = (extra.type === 'minimax' || extra.type === 'fishaudio' || extra.type === 'elevenlabs')
                 ? ('拉取成功！共 ' + models.length + ' 个语音模型（音色 ID 请手动填写）')
                 : ('拉取成功！共 ' + models.length + ' 项');
             await saveAllToStorage();
@@ -942,6 +950,155 @@
         setupFetch('ttsFetch', 'ttsUrl', 'ttsKey', 'ttsModelSelect', 'ttsStatus', 'ttsModelWrap', function () {
             return { type: document.getElementById('ttsType').value, groupId: document.getElementById('ttsGroupId').value };
         });
+
+        // TTS 音色：ElevenLabs 可以直接从账号拉取 voice 列表；Fish Audio 拉取公开模型/音色。
+        // 旧版本「拉取模型」只填了模型名，用户以为音色也拉到了，结果 TTS 请求里 voice 为空。
+        function currentTtsConfig() {
+            return {
+                ttsUrl: (document.getElementById('ttsUrl') || {}).value || '',
+                ttsKey: (document.getElementById('ttsKey') || {}).value || '',
+                ttsModel: (document.getElementById('ttsModelSelect') || {}).value || '',
+                ttsType: (document.getElementById('ttsType') || {}).value || 'openai',
+                ttsGroupId: (document.getElementById('ttsGroupId') || {}).value || '',
+                ttsVoice: (document.getElementById('ttsVoice') || {}).value || ''
+            };
+        }
+        async function fetchTtsVoices() {
+            var cfg = currentTtsConfig();
+            var st = document.getElementById('ttsStatus');
+            var list = document.getElementById('ttsVoiceList');
+            var type = String(cfg.ttsType || 'openai').toLowerCase();
+            var pasted = String(cfg.ttsVoice || '').trim();
+            if (list) list.innerHTML = '';
+            if (st) { st.className = 'status-msg loading'; st.textContent = '正在按当前粘贴的 ID / Key 拉取音色…'; }
+            var root = cleanUrl(cfg.ttsUrl);
+            try {
+                if (!root || !cfg.ttsKey) throw new Error('请先填写 TTS 地址和 API Key');
+                var items = [];
+                var auth = { 'Authorization': 'Bearer ' + cfg.ttsKey };
+                function addItem(id, name) {
+                    id = String(id || '').trim();
+                    if (!id) return;
+                    if (items.some(function (x) { return x.id === id; })) return;
+                    items.push({ id: id, name: String(name || id) });
+                }
+                // 粘贴的音色 ID 永远排在第一项，且不会被账号列表里的第一项覆盖
+                if (pasted) addItem(pasted, pasted + '（当前粘贴的 ID）');
+
+                if (type === 'elevenlabs' || type === 'eleven') {
+                    var elOrigin = new URL(root).origin;
+                    var elHeaders = { 'xi-api-key': cfg.ttsKey };
+                    if (pasted) {
+                        try {
+                            var vr = await fetch(elOrigin + '/v1/voices/' + encodeURIComponent(pasted), { headers: elHeaders });
+                            if (vr.ok) {
+                                var vd = await vr.json();
+                                addItem((vd && (vd.voice_id || vd.id)) || pasted, (vd && vd.name) || pasted);
+                            }
+                        } catch (e1) {}
+                    }
+                    try {
+                        var lr = await fetch(elOrigin + '/v1/voices?page_size=100', { headers: elHeaders });
+                        if (lr.ok) {
+                            var ld = await lr.json();
+                            (ld && ld.voices || []).forEach(function (v) { addItem(v.voice_id, v.name || v.voice_id); });
+                        } else if (!items.length) {
+                            throw new Error('HTTP ' + lr.status);
+                        }
+                    } catch (e2) {
+                        if (!items.length) throw e2;
+                    }
+                } else if (type.indexOf('fish') === 0) {
+                    var fishOrigin = new URL(root).origin;
+                    if (pasted) {
+                        try {
+                            var fr = await fetch(fishOrigin + '/model/' + encodeURIComponent(pasted), { headers: auth });
+                            if (fr.ok) {
+                                var fd = await fr.json();
+                                addItem((fd && (fd._id || fd.id)) || pasted, (fd && (fd.title || fd.name)) || pasted);
+                            }
+                        } catch (e3) {}
+                    }
+                    try {
+                        var mr = await fetch(fishOrigin + '/model?page_size=100', { headers: auth });
+                        if (mr.ok) {
+                            var md = await mr.json();
+                            ((md && (md.items || md.data)) || []).forEach(function (m) { addItem(m._id || m.id, m.title || m.name); });
+                        } else if (!items.length) {
+                            throw new Error('HTTP ' + mr.status);
+                        }
+                    } catch (e4) {
+                        if (!items.length) throw e4;
+                    }
+                } else if (type === 'minimax') {
+                    // MiniMax 没有音色列表接口：拉取=使用你粘贴的音色 ID
+                    if (!pasted) throw new Error('MiniMax 没有音色列表接口，请先粘贴音色 ID（例如 male-qn-qingse）');
+                } else {
+                    // OpenAI / 自定义中转：有的中转支持 /audio/voices 或 /voices，没有就回退到常用音色名
+                    var trimmed = root.replace(/\/+$/, '');
+                    var base = /\/v1$/i.test(trimmed) ? trimmed : (trimmed + '/v1');
+                    var eps = [base + '/audio/voices', base + '/voices'];
+                    for (var i = 0; i < eps.length; i++) {
+                        try {
+                            var rr = await fetch(eps[i], { headers: auth });
+                            if (!rr.ok) continue;
+                            var rd = await rr.json();
+                            var arr = (rd && (rd.data || rd.voices || rd.models)) || rd;
+                            if (Array.isArray(arr)) {
+                                arr.forEach(function (v) {
+                                    if (typeof v === 'string') addItem(v, v);
+                                    else addItem(v.id || v.voice_id || v.name, v.name || v.title || v.id || v.voice_id);
+                                });
+                            }
+                            if (items.length > (pasted ? 1 : 0)) break;
+                        } catch (e5) {}
+                    }
+                    if (items.length <= (pasted ? 1 : 0)) {
+                        ['alloy', 'ash', 'ballad', 'coral', 'echo', 'fable', 'nova', 'onyx', 'sage', 'shimmer', 'verse', 'marin', 'cedar'].forEach(function (n) { addItem(n, n); });
+                    }
+                }
+
+                if (!items.length) throw new Error('没有返回可用音色');
+                if (list) {
+                    items.forEach(function (m) {
+                        var op = document.createElement('option');
+                        op.value = m.id;
+                        op.label = m.name + ' · ' + m.id;
+                        list.appendChild(op);
+                    });
+                }
+                // 粘贴了 ID 就保持不变；没粘贴时才用列表第一项补位
+                if (!pasted && items[0]) {
+                    var voiceEl = document.getElementById('ttsVoice');
+                    if (voiceEl) voiceEl.value = items[0].id;
+                }
+                if (st) {
+                    st.className = 'status-msg success';
+                    st.textContent = pasted
+                        ? ('已使用当前粘贴的音色 ID：' + pasted + '（共 ' + items.length + ' 项，点「试听」验证）')
+                        : ('拉取成功！共 ' + items.length + ' 个音色；也可以直接粘贴 ID，优先级最高');
+                }
+                await saveAllToStorage();
+            } catch (e) {
+                if (st) { st.className = 'status-msg error'; st.textContent = '拉取音色失败：' + ((e && e.message) || e) + '（Fish Audio 可从网页复制 reference_id 粘贴到音色 ID）'; }
+            }
+        }
+        async function testTtsVoice() {
+            var st = document.getElementById('ttsStatus');
+            if (!window.NanoTTS || !NanoTTS.preview) { if (st) st.textContent = 'TTS 模块未加载'; return; }
+            var cfg = currentTtsConfig();
+            if (st) { st.className = 'status-msg loading'; st.textContent = '正在试听…'; }
+            try {
+                await NanoTTS.preview('这是一段语音测试。', { config: cfg });
+                if (st) { st.className = 'status-msg success'; st.textContent = '试听成功，TTS 配置可用 ✓'; }
+            } catch (e) {
+                if (st) { st.className = 'status-msg error'; st.textContent = '试听失败：' + ((e && e.message) || e); }
+            }
+        }
+        var ttsVoiceBtn = document.getElementById('ttsFetchVoices');
+        if (ttsVoiceBtn) ttsVoiceBtn.addEventListener('click', fetchTtsVoices);
+        var ttsTestBtn = document.getElementById('ttsTestVoice');
+        if (ttsTestBtn) ttsTestBtn.addEventListener('click', testTtsVoice);
 
         // 保存预设
         setupSavePreset('main_', 'mainSavePreset', 'mainPresetName', 'mainPreset', 'mainUrl', 'mainKey', 'mainModelSelect');

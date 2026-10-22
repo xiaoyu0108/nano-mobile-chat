@@ -189,7 +189,8 @@ textarea.in{min-height:90px;resize:vertical}
 </style></head><body><div id="app"></div><div id="ld">正在加载…</div><div id="tt"></div>
 <script src="../js/mem-link.js?v=20261021a"></script>
 <script src="../js/friend-requests.js?v=20261021d"></script>
-<script src="../js/qa-bridge.js?v=20261021h"></script>
+<script src="../js/api-logs.js?v=20261022b"></script>
+<script src="../js/qa-bridge.js?v=20261022b"></script>
 <script>
 const P={x:'M5 5l14 14M19 5L5 19',rf:'M20 11a8 8 0 10-2.3 5.7M20 4v7h-7',send:'M21 3L3 10.5l7 3 3 7zM10 13.5L21 3',chat:'M4 5h16v11H9l-5 4z',back:'M15 5l-7 7 7 7',dice:'M5 4h14a1 1 0 011 1v14a1 1 0 01-1 1H5a1 1 0 01-1-1V5a1 1 0 011-1zM9 9h.01M15 15h.01M15 9h.01M9 15h.01',users:'M9 11a3 3 0 100-6 3 3 0 000 6zM3 19c0-3 3-5 6-5s6 2 6 5M17 8a2.5 2.5 0 010 5M18 14c2 .5 3 2 3 4',inbox:'M4 13l2-8h12l2 8v6H4zM4 13h5l1 2h4l1-2h5',plus:'M12 5v14M5 12h14',swap:'M7 4L3 8l4 4M3 8h14M17 20l4-4-4-4M21 16H7',img:'M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M9 9h.01',set:'M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M6 14v6',reply:'M9 7L4 12l5 5M4 12h9a7 7 0 017 7',phone:'M6 3h3l2 5-2 1.5a11 11 0 006 6L16.5 13l5 2v3a2 2 0 01-2 2A16 16 0 014 5a2 2 0 012-2z',video:'M3 7h11a2 2 0 012 2v6a2 2 0 01-2 2H3zM16 11l5-3v8l-5-3',lock:'M7 11V8a5 5 0 0110 0v3M5 11h14v9H5z',home:'M4 11l8-7 8 7v9H4zM10 20v-6h4v6',search:'M11 4a7 7 0 100 14 7 7 0 000-14zM21 21l-5-5',xl:'M4 4h4.5L20 20h-4.5zM19.5 4l-6.8 7.7M4.5 20l6.9-7.8',bell:'M6 16v-5a6 6 0 1112 0v5l2 2H4zM10 21a2 2 0 004 0',down:'M6 9l6 6 6-6',edit:'M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4',user:'M12 12a4 4 0 100-8 4 4 0 000 8zM4 20c0-4 4-6 8-6s8 2 8 6',cmp:'M20 11a8 8 0 10-3 6.2L21 20v-4M20 3v6M17 6h6'};
 const ic=(n,s=22,f=0)=>`<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="${f?'currentColor':'none'}" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="${P[n]}"/></svg>`;
@@ -229,7 +230,21 @@ function toast(t){const e=$('tt');e.textContent=t;e.style.display='block';clearT
 let _busyN=0;
 function showBusy(t){_busyN++;let e=$('busy');if(!e){e=document.createElement('div');e.id='busy';e.className='busy';document.body.appendChild(e)}e.innerHTML='<span class="spin"></span><span>'+esc(t||'正在处理…')+'</span>';e.style.display='flex'}
 function hideBusy(){_busyN=Math.max(0,_busyN-1);if(_busyN)return;const e=$('busy');if(e)e.style.display='none'}
-function showError(title,msg){const old=$('errbox');if(old)old.remove();const el=document.createElement('div');el.className='errbox';el.id='errbox';el.innerHTML=`<div class="e"><h3>${esc(title||'请求失败')}</h3><p>${esc(String(msg||'请稍后再试'))}</p><button onclick="$('errbox').remove()">知道了</button></div>`;document.body.appendChild(el)}
+function showError(title,msg){
+ const old=$('errbox');if(old)old.remove();
+ const detail=String(msg||'请稍后再试');
+ try{console.error('[Q&A] '+(title||'请求失败')+'\n'+detail)}catch(e){}
+ try{if(window.NanoApiLogs&&NanoApiLogs.add)NanoApiLogs.add({url:'qa://generation',method:'POST',kind:'chat',status:0,ok:false,error:(title||'Q&A 失败')+'：'+detail.slice(0,200),detail:detail.slice(0,1200),meta:{}})}catch(e){}
+ const el=document.createElement('div');el.className='errbox';el.id='errbox';
+ el.innerHTML=`<div class="e"><h3>${esc(title||'请求失败')}</h3><p style="white-space:pre-wrap">${esc(detail)}</p><div class="partial-actions"><button data-qa-copy>复制错误详情</button><button data-qa-close class="primary">知道了</button></div></div>`;
+ el.addEventListener('click',ev=>{
+  if(ev.target.closest('[data-qa-close]')){el.remove();return}
+  if(ev.target.closest('[data-qa-copy]')){
+   try{navigator.clipboard.writeText((title||'请求失败')+'\n'+detail);toast('已复制错误详情')}catch(e){toast('复制失败，请长按文字复制')}
+  }
+ });
+ document.body.appendChild(el)
+}
 function avx(u,name,s,cls=''){return `<span class="av ${cls}" style="width:${s}px;height:${s}px;font-size:${s*.42}px">${u?`<img src="${u}">`:esc((name||'?').trim().slice(0,1))}</span>`}
 function av(k,name,s=36){return avx(k=='c'?C()?.avatar:k=='u'?S.me.ua:'',name,s,k=='s'?'s':'')}
 const nm=k=>k=='c'?C().name:S.me.un;
@@ -237,9 +252,14 @@ const tx=(o,z)=>z?`<span class="o">${esc(o)}</span><span class="zq">${esc(z)}</s
 /* ---------- AI 接入点 ---------- */
 async function ai(messages,ch=C(),meta={}){
  const m=Object.assign({charId:ch&&ch.id,charName:ch&&ch.name,lang:(ch&&ch.lang)||'中文'},meta||{});
- if(window.QABridge&&QABridge.callAI)return await QABridge.callAI(messages,m);
- if(typeof window.QB_AI==='function')return await window.QB_AI(messages,m);
- throw new Error('主 API 未连接');
+ try{
+  if(window.QABridge&&QABridge.callAI)return await QABridge.callAI(messages,m);
+  if(typeof window.QB_AI==='function')return await window.QB_AI(messages,m);
+ }catch(e){
+  try{console.error('[Q&A] ai() 调用失败',{char:m.charName,mode:m.mode||'',error:e&&e.message})}catch(x){}
+  throw e;
+ }
+ throw new Error('主 API 未连接（QABridge / QB_AI 都不可用）');
 }
 function closeJson(s){
  let stack=[],inStr=false,esc=false;
@@ -260,6 +280,27 @@ function pj(t){
  if(!s)throw new Error('AI 没有返回内容');
  s=s.replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'').trim();
  const tryParse=x=>{try{const v=JSON.parse(x);return v==null?null:v}catch(e){return null}};
+ // 模型在 JSON 字符串里直接写换行/制表符是常见错误；先把字符串内部的裸控制字符转义再解析。
+ const escCtrl=x=>{
+  let out='',inStr=false,esc=false;
+  for(let i=0;i<x.length;i++){
+   const ch=x[i];
+   if(inStr){
+    if(esc){out+=ch;esc=false;continue}
+    if(ch==='\\'){out+=ch;esc=true;continue}
+    if(ch==='"'){inStr=false;out+=ch;continue}
+    if(ch==='\n'){out+='\\n';continue}
+    if(ch==='\r'){out+='\\r';continue}
+    if(ch==='\t'){out+='\\t';continue}
+    if(ch.charCodeAt(0)<32){out+=' ';continue}
+    out+=ch;
+   }else{
+    if(ch==='"')inStr=true;
+    out+=ch;
+   }
+  }
+  return out;
+ };
  const cands=[s];
  const a=s.search(/[\[{]/);
  if(a>0)cands.push(s.slice(a));
@@ -270,13 +311,14 @@ function pj(t){
  for(const c of cands){
   let v=tryParse(c);if(v!=null)return v;
   v=tryParse(c.replace(/,\s*([}\]])/g,'$1'));if(v!=null)return v;
-  v=tryParse(closeJson(c));if(v!=null)return v;
+  v=tryParse(escCtrl(c));if(v!=null)return v;
+  v=tryParse(closeJson(escCtrl(c)));if(v!=null)return v;
   const trimmed=c.replace(/,\s*"[^"]*"\s*:\s*"[^"]*$/,'').replace(/,\s*"[^"]*"\s*:\s*[^,{}\[\]]*$/,'');
   v=tryParse(closeJson(trimmed));if(v!=null)return v;
   const norm=trimmed.replace(/[“”]/g,'"').replace(/，/g,',').replace(/：/g,':');
   v=tryParse(closeJson(norm));if(v!=null)return v;
  }
- throw new Error('AI 返回格式不正确：'+s.slice(0,120));
+ throw new Error('AI 返回格式不正确（可能被截断或含未转义换行）：'+s.slice(0,400));
 }
 const arrOf=(r,k)=>{if(Array.isArray(r))return r;if(r&&Array.isArray(r[k]))return r[k];if(r&&Array.isArray(r.items))return r.items;if(r&&r.data&&Array.isArray(r.data.items))return r.data.items;if(r&&r[k]&&typeof r[k]==='object')return Object.values(r[k]).filter(x=>x&&typeof x==='object');if(r&&r.items&&typeof r.items==='object')return Object.values(r.items).filter(x=>x&&typeof x==='object');return[]};
 const sOf=v=>{if(v==null)return'';if(typeof v==='string')return v;if(typeof v==='number')return String(v);if(typeof v==='object')return String(v.text??v.content??v.t??v.a??v.answer??'');return String(v)};
@@ -292,7 +334,11 @@ const SYS='你在模拟一个国际化的匿名提问箱 / 私信平台（类似
 async function run(f,label,title){
  showBusy(label||'正在生成…');
  try{await f()}
- catch(e){showError(title||'请求失败',e&&e.message?e.message:String(e))}
+ catch(e){
+  const msg=String((e&&e.message)||e||'');
+  try{console.error('[Q&A] '+title+' 失败',e)}catch(x){}
+  showError(title||'请求失败',msg+'\n\n排查：设置 → 后台日志 可看请求状态码、模型名和响应摘要；也可能是模型返回的 JSON 被截断，重试或换模型。')
+ }
  finally{hideBusy()}
 }
 function askPartial(done,total,label){

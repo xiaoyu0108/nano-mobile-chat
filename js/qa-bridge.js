@@ -467,6 +467,8 @@
       }
       function onMsg(e) {
         if (e && e.data && e.data.type === 'chatApiDone' && e.data.token === token) {
+          // 主页面现在会把结果直接放进 postMessage；localStorage 满时也能拿到。
+          if (e.data.result) { finish(e.data.result); return; }
           if (!take()) finish({ ok: false, error: '未取到 API 结果' });
         }
       }
@@ -517,7 +519,13 @@
     var base = toV1(resolveHost(cfg.mainUrl));
     var temp = parseFloat(cfg.mainTemp);
     if (!isFinite(temp)) temp = 0.9;
-    var headers = { 'Authorization': 'Bearer ' + String(cfg.mainKey || '').trim(), 'Content-Type': 'application/json' };
+    var headers = {
+      'Authorization': 'Bearer ' + String(cfg.mainKey || '').trim(),
+      'Content-Type': 'application/json',
+      // 让后台日志按 App 归类：Q&A 的请求由主页面代发，否则会被记到 index.html。
+      'X-Nano-App': 'qa',
+      'X-Nano-Kind': 'chat'
+    };
     // Q&A 的 JSON 输出比普通聊天长，预算太低会直接截断。至少给 1400，
     // 并且遇到 finish_reason=length 时自动用更大的预算重试一次。
     var startTokens = Math.max(parseInt(meta.maxTokens, 10) || 0, 1400);
@@ -532,23 +540,36 @@
         temperature: isFinite(meta.temp) ? meta.temp : temp,
         stream: false
       });
+      try { console.info('[Q&A] 请求', { model: cfg.mainModel, messages: msgs.length, max_tokens: budgets[attempt], url: base + '/chat/completions' }); } catch (e) {}
       var resp = await requestAI(base + '/chat/completions', headers, body);
       var rawText = String((resp && resp.text) || '');
       var data = null;
       try { data = rawText ? JSON.parse(rawText) : null; } catch (e) {}
       if (!resp || !resp.ok) {
-        var msg = (data && ((data.error && data.error.message) || data.message)) || (resp && resp.status ? 'HTTP ' + resp.status : (resp && resp.error) || '请求失败');
-        throw new Error(msg);
+        var httpMsg = (data && ((data.error && data.error.message) || data.message)) || (resp && resp.status ? 'HTTP ' + resp.status : (resp && resp.error) || '请求失败');
+        var detail = rawText ? ('；响应：' + rawText.replace(/\s+/g, ' ').slice(0, 300)) : '';
+        var e1 = new Error('Q&A API 请求失败：' + httpMsg + '（模型：' + cfg.mainModel + '，地址：' + base + '/chat/completions）' + detail);
+        e1.status = resp && resp.status;
+        e1.body = rawText.slice(0, 2000);
+        try { console.error('[Q&A] API 失败', { url: base + '/chat/completions', status: e1.status, model: cfg.mainModel, response: rawText.slice(0, 1000) }); } catch (e) {}
+        try { if (window.NanoApiLogs && NanoApiLogs.add) NanoApiLogs.add({ url: base + '/chat/completions', method: 'POST', kind: 'chat', status: e1.status || 0, ok: false, error: httpMsg, detail: rawText.slice(0, 1200), meta: { model: cfg.mainModel, messages: msgs.length, maxTokens: budgets[attempt], stream: false } }); } catch (e) {}
+        throw e1;
       }
-      if (!data) throw new Error('API 返回的不是 JSON：' + rawText.slice(0, 100));
+      if (!data) {
+        try { if (window.NanoApiLogs && NanoApiLogs.add) NanoApiLogs.add({ url: base + '/chat/completions', method: 'POST', kind: 'chat', status: resp.status || 0, ok: false, error: 'API 返回的不是 JSON', detail: rawText.slice(0, 1200), meta: { model: cfg.mainModel } }); } catch (e) {}
+        throw new Error('Q&A API 返回的不是 JSON（模型：' + cfg.mainModel + '）：' + rawText.slice(0, 200));
+      }
       var content = extractAIContent(data);
       if (!content) {
         var apiErr = data && ((data.error && data.error.message) || data.message);
-        if (apiErr) throw new Error(apiErr);
+        if (apiErr) throw new Error('Q&A 模型返回错误：' + apiErr);
         var fr = data.choices && data.choices[0] && data.choices[0].finish_reason;
         // 推理模型可能把预算全花在思维链上：换更大的预算再试一次
         if (attempt < budgets.length - 1) continue;
-        throw new Error(fr === 'length' ? '模型输出被截断，请重试' : '模型没有返回正文');
+        try { if (window.NanoApiLogs && NanoApiLogs.add) NanoApiLogs.add({ url: base + '/chat/completions', method: 'POST', kind: 'chat', status: resp.status || 0, ok: false, error: fr === 'length' ? '模型输出被截断' : '模型没有返回正文', detail: rawText.slice(0, 1200), meta: { model: cfg.mainModel, maxTokens: budgets[attempt] } }); } catch (e) {}
+        throw new Error(fr === 'length'
+          ? ('Q&A 模型输出被截断（模型：' + cfg.mainModel + '，max_tokens=' + budgets[attempt] + '），请重试或换更大的上下文模型')
+          : ('Q&A 模型没有返回正文（模型：' + cfg.mainModel + '，finish_reason=' + (fr || '空') + '）'));
       }
       lastContent = content;
       var finish = data.choices && data.choices[0] && data.choices[0].finish_reason;

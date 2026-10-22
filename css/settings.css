@@ -1128,9 +1128,9 @@ label.row:active {
 }
 
 /* ===== 后台日志 ===== */
-.log-toolbar { display: flex; gap: 8px; align-items: center; margin: 2px 0 10px; }
+.log-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 2px 0 10px; }
 .log-search {
-  flex: 1; min-width: 0; height: 38px; border: 1px solid var(--line);
+  flex: 1 1 150px; min-width: 0; height: 38px; border: 1px solid var(--line);
   background: var(--soft); border-radius: 12px; padding: 0 12px; font-size: 13px;
   outline: none;
 }
@@ -1146,31 +1146,47 @@ label.row:active {
   background: var(--soft); color: var(--muted); font-size: 12px; border: 1px solid transparent;
 }
 .log-chip.active { background: #111; color: #fff; }
-.log-summary { font-size: 11.5px; color: var(--muted); padding: 0 2px 8px; }
-.log-list { padding: 0; }
-.log-row { align-items: flex-start; gap: 10px; cursor: pointer; }
+.log-summary { font-size: 11.5px; line-height: 1.6; color: var(--muted); padding: 0 2px 10px; }
+.log-list {
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 0; background: transparent; border: 0; border-radius: 0; overflow: visible;
+}
+.log-row {
+  width: 100%; align-items: flex-start; gap: 11px; cursor: pointer;
+  padding: 12px 14px; background: #fff; border: 1px solid #ececf1;
+  border-radius: 14px; box-shadow: 0 2px 10px rgba(20, 20, 30, .03);
+  transition: border-color .18s ease, box-shadow .18s ease;
+}
+.log-row.open { border-color: #dcdce4; box-shadow: 0 8px 24px rgba(20, 20, 30, .07); }
 .log-dot {
-  width: 8px; height: 8px; border-radius: 50%; flex: none; margin-top: 6px;
+  width: 8px; height: 8px; border-radius: 50%; flex: none; margin-top: 7px;
   background: #34c759;
 }
 .log-dot.error { background: #ff3b30; }
-.log-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.log-title { font-size: 12.5px; line-height: 1.45; color: var(--ink); word-break: break-all; }
-.log-title b { font-weight: 700; }
+.log-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.log-title {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 12.5px; line-height: 1.45; color: var(--ink); word-break: normal;
+}
+.log-title b { flex: none; font-weight: 700; }
+.log-url {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; color: #3c3c43;
+}
 .log-status {
-  display: inline-block; font-style: normal; font-size: 10px; font-weight: 700;
-  padding: 1px 5px; border-radius: 6px; margin-left: 3px; vertical-align: 1px;
+  flex: none; display: inline-block; font-style: normal; font-size: 10px; font-weight: 700;
+  padding: 2px 6px; border-radius: 6px; margin-left: 0; vertical-align: 1px;
 }
 .log-status.ok { background: #e8f8ec; color: #1d8f3a; }
 .log-status.client { background: #fff3e0; color: #b26a00; }
 .log-status.quota { background: #ffe9e7; color: #c0392b; }
 .log-status.server { background: #ffe9e7; color: #c0392b; }
 .log-status.net { background: #f2f2f7; color: #6b6b70; }
-.log-sub { font-size: 11px; line-height: 1.45; color: var(--muted); word-break: break-word; }
+.log-sub { font-size: 11px; line-height: 1.55; color: var(--muted); word-break: break-word; }
 .log-detail {
-  display: none; margin-top: 6px; padding: 9px 10px; border-radius: 10px;
-  background: var(--soft); color: #4a4a4f; font-size: 10.5px; line-height: 1.55;
-  word-break: break-word;
+  display: none; margin-top: 9px; padding: 11px 12px; border-radius: 10px;
+  background: #f6f6f8; color: #4a4a4f; font-size: 11px; line-height: 1.65;
+  word-break: break-word; max-height: 42vh; overflow: auto;
 }
 .log-row.open .log-detail { display: block; }
 .log-row-actions { display: flex; gap: 8px; margin-top: 8px; }
@@ -1189,3 +1205,15 @@ label.row:active {
   color: var(--ink); font-size: 13px; border: 1px solid var(--line);
 }
 .log-btn.danger { color: #c0392b; }
+.log-more-btn {
+  display: block; width: 100%; margin: 2px 0 0; height: 40px;
+  border-radius: 12px; border: 1px dashed var(--line); background: var(--soft);
+  color: var(--ink); font-size: 12.5px;
+}
+@media (max-width: 430px) {
+  .log-toolbar { gap: 7px; }
+  .log-toolbar .log-search { flex: 1 1 100%; }
+  .log-select { flex: 1 1 0; min-width: 0; }
+  .log-row { padding: 11px 12px; gap: 9px; }
+  .log-detail { padding: 10px; }
+}

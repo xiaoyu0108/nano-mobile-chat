@@ -2,14 +2,14 @@
    keep-alive.js — Nano 外壳统一保活 + 定时调度
 
    作用：让定时任务在切后台 / 锁屏后仍能继续跑。
-   做法：用一段听不见但非静音的音频占住音频会话，页面就不容易被系统挂起；
+   做法：用一段完全静音的音频占住音频会话，页面就不容易被系统挂起；
         再把心跳挂在音频的播放进度事件上（后台对 setInterval 的降权不影响它）。
 
    目标：切到别的页面（Nano 是「index 外壳 + iframe 子页」结构）或切后台后，
         定时任务与推送仍然继续，切页面不丢任务。
 
    原理：
-     1. 音频保活：循环播放 20Hz 极低音（非静音），iOS 会为该页面维持
+     1. 音频保活：循环播放完全静音的音频，iOS 会为该页面维持
         音频会话，页面不被立刻挂起 → fetch / 定时生成 / 自动消息能继续跑。
      2. MediaSession：锁屏 / 灵动岛显示「Nano 保活中」，暂停按钮不生效，
         让系统认为这是一个真实播放器而更稳定。
@@ -98,10 +98,8 @@
         return 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
     }
 
-    // 生成一段「听不见但不完全静音」的 WAV：占住音频会话，锁屏/切后台后页面不被系统挂起。
-    // 注意：纯静音（全部 128）在 iOS 上可能被判定为无音频播放，后台很快被挂起，
-    // 表现为「到点没有 Bark / 推送，回到页面才补弹内置通知」。这里保留 20Hz 极低音、
-    // 幅度压到 ±12（8bit PCM），手机扬声器基本发不出来，但音频会话是真实活跃的。
+    // 生成一段完全静音的 WAV：占住音频会话，锁屏/切后台后页面不被系统挂起。
+    // 用户要求保活必须静音，因此 PCM 全部为 128（8bit 静音），不留任何可听音。
     function wavUrl() {
         if (audioUrl) return audioUrl;
         try {
@@ -113,7 +111,7 @@
             put(12, 'fmt '); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
             dv.setUint32(24, rate, true); dv.setUint32(28, rate, true); dv.setUint16(32, 1, true); dv.setUint16(34, 8, true);
             put(36, 'data'); dv.setUint32(40, n, true);
-            var amp = 12, freq = 20;
+            var amp = 0, freq = 20;
             for (var j = 0; j < n; j++) {
                 var v = 128 + Math.round(amp * Math.sin(2 * Math.PI * freq * (j / rate)));
                 dv.setUint8(44 + j, Math.max(0, Math.min(255, v)));

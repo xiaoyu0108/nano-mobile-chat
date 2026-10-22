@@ -541,70 +541,16 @@
     }
 
     // ===== 重roll =====
+    // 统一走 chat-core 的实现：它会先停掉正在生成的请求，再删除上一轮用户消息之后的
+    // 全部角色内容（气泡/语音/图片/卡片），最后重新生成。这里不再保留一份容易分叉的逻辑。
     async function handleReroll() {
         const chat = window.__chat;
-        const messages = chat.messages;
-
-        if (!messages || messages.length === 0) {
-            chat.showAlert('提示', '没有可重roll的消息');
-            return;
+        try {
+            if (chat && typeof chat.handleReroll === 'function') return await chat.handleReroll();
+        } catch (e) {
+            console.warn('[More] 重roll 失败', e);
         }
-
-        let lastAIIndex = -1;
-        for (let i = messages.length - 1; i >= 0; i--) {
-            if (messages[i].type === 'left' && !messages[i].recalled) {
-                lastAIIndex = i;
-                break;
-            }
-        }
-
-        if (lastAIIndex === -1) {
-            chat.showAlert('提示', '没有可重roll的消息');
-            return;
-        }
-
-        if (window.NanoReroll) {
-            const reason = await NanoReroll.ask({ title: '重roll 纠正', subtitle: '上一版哪里不对？留空也可以直接重写' });
-            if (reason === null) return;
-            window.__nanoRerollReason = reason;
-        }
-
-        let startIndex = lastAIIndex;
-        for (let i = lastAIIndex - 1; i >= 0; i--) {
-            if (messages[i].type === 'left' && !messages[i].recalled) {
-                startIndex = i;
-            } else {
-                break;
-            }
-        }
-
-        const idsToRemove = [];
-        for (let i = startIndex; i <= lastAIIndex; i++) {
-            idsToRemove.push(messages[i].id);
-        }
-
-        const remaining = messages.filter(m => !idsToRemove.includes(m.id));
-        messages.length = 0;
-        messages.push(...remaining);
-
-        chat.renderMessages();
-        chat.saveMessages();
-
-        let lastUserMsg = null;
-        for (let i = messages.length - 1; i >= 0; i--) {
-            if (messages[i].type === 'right' && !messages[i].recalled) {
-                lastUserMsg = messages[i];
-                break;
-            }
-        }
-
-        if (lastUserMsg) {
-            setTimeout(function() {
-                chat.triggerReply();
-            }, 300);
-        } else {
-            chat.showAlert('提示', '没有找到用户消息');
-        }
+        chat.showAlert('提示', '重roll 未完成，请重试');
     }
 
     // ===== 事件绑定 =====

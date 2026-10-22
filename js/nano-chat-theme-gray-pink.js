@@ -1129,6 +1129,9 @@ body.nano-chat-inner .longpress-menu .menu-divider { background: rgba(0, 0, 0, 0
 
 /* @js
 (function () {
+  // 灰粉固定采用「外文气泡 + 下方独立译文」结构；显式声明一次，
+  // 避免某些页面读不到 :root 的 --nano-trans-separate 时退回合并样式。
+  try { window.NANO_TRANSLATION_SEPARATE = 1; } catch (e) {}
   var isPrivate = document.body && document.body.classList.contains('nano-chat-inner');
   var title = document.getElementById('chatTitle');
   var img = document.getElementById('avatarImage');

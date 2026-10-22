@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<script src="../js/nano-runtime.js?v=20261021c"></script>
+    <script src="../js/group-store.js?v=20261021a"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#f1f1f3">
+<title>offline</title>
+    <link rel="stylesheet" href="../css/offline.css?v=20261022a">
+    <script src="../js/appearance.js"></script>
+<script src="../js/nano-notify.js?v=20261021b"></script>
+<script src="../js/reroll-reason.js?v=20261018a"></script>
+<script src="../js/cycle-store.js?v=20261021b"></script>
+<script src="../js/nano-badge.js?v=20261021b"></script>
+</head>
+<body>
+<div class="app">
+  <!-- 顶栏：★name · 存档 · 整理 · 预览 · 设置（5 等分，除 name 外均为 svg + 韩文） -->
+  <header class="topbar">
+    <button class="tb tb-name" id="backBtn" aria-label="返回" data-back>
+      <svg class="star" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.6l2.8 5.9 6.4.9-4.7 4.5 1.2 6.4L12 17.2l-5.7 3.1 1.2-6.4L2.8 9.4l6.4-.9z"/></svg>
+      <span class="top-title" id="topTitle">加载中...</span>
+    </button>
+    <button class="tb" id="archiveBtn" aria-label="存档">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h12a1 1 0 0 1 1 1v15l-7-4-7 4V5a1 1 0 0 1 1-1z"/></svg>
+      <span class="ko">아카이브</span>
+    </button>
+    <button class="tb" id="tidyBtn" aria-label="整理楼层">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16"/><path d="M4 11h9"/><path d="M4 16h6"/><path d="m14.5 15 2.5 2.5 4-4.5"/></svg>
+      <span class="ko">정리</span>
+    </button>
+    <button class="tb" id="floorsBtn" aria-label="楼层预览">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/></svg>
+      <span class="ko">미리보기</span>
+    </button>
+    <button class="tb" id="settingsBtn" aria-label="设置">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+      <span class="ko">설정</span>
+    </button>
+  </header>
+
+  <div class="scene-tabs" id="sceneTabs" data-scene="story">
+    <button class="scene-tab active" data-scene="story">剧情</button>
+    <button class="scene-tab" data-scene="theater">小剧场</button>
+    <span class="scene-indicator" id="sceneIndicator"></span>
+  </div>
+
+  <div class="select-bar" id="selectBar">
+    <span id="selectCount">已选择 0 条</span>
+    <div class="select-actions">
+      <button id="cancelSelect">取消</button>
+      <button id="deleteSelected">删除</button>
+    </div>
+  </div>
+
+  <main class="chat" id="chat"></main>
+
+  <!-- 底栏：Aa 菜单 · 方圆白底输入框 · Re -->
+  <footer class="bottom">
+    <div class="composer">
+      <button class="round-btn avatar-btn" id="composerAvatarBtn" title="菜单" aria-label="打开菜单">
+        <span class="aa">Aa</span>
+        <img id="composerAvatarImg" alt="" hidden>
+        <span class="avatar-fallback" id="composerAvatarFallback" hidden>U</span>
+      </button>
+      <textarea class="input" id="input" rows="1" placeholder="我想对他说..."></textarea>
+      <button class="round-btn send" id="sendBtn" title="发送 / 回复" aria-label="发送或回复">
+        <span class="re">Re</span>
+      </button>
+    </div>
+  </footer>
+</div>
+
+<!-- 错误弹窗 -->
+<div class="modal-backdrop" id="errorModal">
+  <div class="modal error-modal">
+    <div class="modal-body">
+      <div class="modal-title" style="color:#c9808c;">⚠️ API 错误</div>
+      <div class="modal-text" id="errorText" style="text-align:left;white-space:pre-wrap;font-size:11px;max-height:260px;overflow:auto;background:#f8f6f8;padding:12px;border-radius:8px;margin-top:8px;color:#5a565d;"></div>
+    </div>
+    <div class="modal-buttons" style="grid-template-columns:1fr">
+      <button id="errorClose" style="color:#6f6c75;font-weight:600;" data-close>我知道了</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="deleteModal">
+  <div class="modal">
+    <div class="modal-body">
+      <div class="modal-title">删除这条消息？</div>
+      <div class="modal-text">删除后无法在当前页面恢复。</div>
+    </div>
+    <div class="modal-buttons">
+      <button id="modalCancel" data-close>取消</button>
+      <button id="modalConfirm" class="modal-delete">删除</button>
+    </div>
+  </div>
+</div>
+
+<!-- 退出线下确认 -->
+<div class="modal-backdrop" id="exitOfflineModal">
+  <div class="modal exit-modal">
+    <div class="modal-body">
+      <div class="modal-title">退出线下？</div>
+      <div class="modal-text">「直接退出」回到聊天列表，下次点开该角色直接进入线下；「返回线上」结束本次线下，回到线上聊天。</div>
+      <label class="exit-mem-toggle"><input type="checkbox" id="exitSummarizeMem"> 退出前整理本轮记忆（后台进行，有新内容才整理）</label>
+    </div>
+    <div class="exit-actions">
+      <button type="button" id="exitToChat" class="exit-btn">直接退出</button>
+      <button type="button" id="exitToOnline" class="exit-btn primary">返回线上</button>
+    </div>
+    <button type="button" id="exitCancel" data-close class="exit-cancel">取消</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="../js/avatar-frame.js?v=20261010a"></script>
+<script src="../js/mem-link.js?v=20261006a"></script>
+    <script src="../js/nano-holiday.js?v=20261012a"></script>
+    <script src="../js/offline-themes.js?v=20261013b"></script>
+    <script src="../js/roleplay-prompt.js?v=20261014a"></script>
+<script src="../js/nano-status-bar.js?v=20261015a"></script>
+<script src="../js/schedule-bridge.js?v=20261019d"></script>
+    <script src="../js/nano-prompts.js?v=20261021b"></script>
+    <script src="../js/offline.js?v=20261022a"></script>
+    <script src="../js/api-float.js?v=20261021d"></script>
+<script src="../swipe-back.js"></script>
+</body>
+</html>

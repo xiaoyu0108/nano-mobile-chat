@@ -1258,20 +1258,23 @@
     function groupMemberLanguage(c){
         if (!c) return '';
         if (c.language) return c.language;
-        var n = String(c.nationality || '');
+        var n = String(c.nationality || c.country || '');
         for (var k in GROUP_LANG_MAP) { if (n.indexOf(k) > -1) return GROUP_LANG_MAP[k]; }
         return '';
     }
     function isGroupForeignMember(c){
         if (!c) return false;
-        var n = String(c.nationality || '').trim();
-        if (!n || n === '未知' || n === '未设定') return false;
+        var n = String(c.nationality || c.country || '').trim();
+        if (!n || n === '未知' || n === '未设定') {
+            var l = String(c.language || '').trim();
+            return !!(l && !/中文|汉语|漢語|普通话|國語|chinese|mandarin|粤语|粵語/i.test(l));
+        }
         var cn = ['中国', '台湾', '香港', '澳门'];
         return !cn.some(function(v){ return n.indexOf(v) > -1; });
     }
     function isGroupCantoneseMember(c){
         if (!c) return false;
-        var n = String(c.nationality || '').trim();
+        var n = String(c.nationality || c.country || '').trim();
         if (!n) return false;
         return n.indexOf('香港') > -1 || n.indexOf('澳门') > -1 || n.indexOf('澳門') > -1;
     }

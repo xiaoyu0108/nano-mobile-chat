@@ -2,14 +2,14 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<script src="../js/nano-runtime.js?v=20261021c"></script>
+<script src="../js/nano-runtime.js?v=20261023a"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>后台日志</title>
 <link rel="icon" href="../icons/icon-192.png">
 <script>window.__NANO_FONT_ONLY = true;</script>
 <script src="../js/appearance.js"></script>
 <script src="../js/nano-idb.js"></script>
-<link rel="stylesheet" href="../css/settings.css?v=20261021b">
+<link rel="stylesheet" href="../css/settings.css?v=20261023a">
 </head>
 <body data-page="logs">
 <div class="app">
@@ -26,9 +26,13 @@
   <main class="scroll">
     <div class="log-toolbar">
       <input class="log-search" id="logSearch" type="search" placeholder="搜索 URL / 错误 / 页面…" autocomplete="off">
-      <select class="log-select" id="logRange" aria-label="显示范围">
-        <option value="100">最近 100 条</option>
-        <option value="50">最近 50 条</option>
+      <select class="log-select" id="logApp" aria-label="按 App 筛选">
+        <option value="all">全部 App</option>
+      </select>
+      <select class="log-select" id="logRange" aria-label="显示条数">
+        <option value="30">显示 30 条</option>
+        <option value="50">显示 50 条</option>
+        <option value="100">显示 100 条</option>
         <option value="300">全部 300 条</option>
       </select>
     </div>
@@ -56,7 +60,7 @@
   </main>
 </div>
 <div class="toast" id="toast"></div>
-<script src="../js/api-logs.js?v=20261021a"></script>
-<script src="../js/settings-logs.js?v=20261021a"></script>
+<script src="../js/api-logs.js?v=20261023b"></script>
+<script src="../js/settings-logs.js?v=20261023b"></script>
 </body>
 </html>

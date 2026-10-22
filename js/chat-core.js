@@ -55,8 +55,10 @@
     }
 
     function getCharacterFromLibrary(charName) {
-        const char = allCharacters.find(c => c.name === charName) ||
-                     allCharacters.find(c => c.id === chatId);
+        // 优先用聊天 id 精确匹配：同名角色可能存在多个，按名字匹配会串到别的角色，
+        // 表现就是「明明设定是韩国人，角色却自称中国人」（读到了另一个同名角色）。
+        const char = allCharacters.find(c => String(c.id) === String(chatId)) ||
+                     allCharacters.find(c => c.name === charName);
         if (char) {
             console.log('[Chat] 从角色库读取到人数', char.name);
             return char;
@@ -469,10 +471,15 @@
 
     // ===== 角色的母语名称（用于主动消息强制外语输出）=====
     function charLanguageName() {
+        // 私聊「强制翻译」选了语言时，以这个语言为准（含粤语）。
+        if (getChatSetting('forceTranslate', false)) {
+            const forced = String(getChatSetting('forceTranslateLang', '') || '').trim();
+            if (forced) return forced;
+        }
         const given = String((characterData && characterData.language) || '').trim();
         // 外国人即使语言字段被填成「中文」，主动消息也强制用国籍对应的母语
         if (given && !/中文|汉语|漢語|chinese/i.test(given)) return given;
-        const nationality = String((characterData && characterData.nationality) || '').trim();
+        const nationality = String((characterData && (characterData.nationality || characterData.country)) || '').trim();
         const langMap = {
             '美国': '英文', '英国': '英文', '澳大利亚': '英文', '加拿大': '英文', '新西兰': '英文',
             '印度': '英文', '新加坡': '英文', '法国': '法文', '德国': '德文', '奥地利': '德文',
@@ -489,22 +496,24 @@
 
     // ===== 判断是否为外国人（遵循 character 国籍设定）=====
     function isForeignChar() {
-        const n = (characterData && characterData.nationality ? characterData.nationality : '').trim();
-        if (!n || n === '未知' || n === '未设定') return false;
-        if (characterData) {
+        // 私聊设置里的「强制翻译」：无论国籍/语言字段怎么写，开启后都按外国人处理，
+        // 必须输出「原文||中文翻译」。这是给国籍没填对、或模型死活不翻译时的硬开关。
+        if (getChatSetting('forceTranslate', false)) return true;
+        const n = String((characterData && (characterData.nationality || characterData.country)) || '').trim();
+        if (n && n !== '未知' && n !== '未设定') {
             const chineseVariants = ['中国', '中国台湾', '中国（台湾）', '中国（香港）', '中国（澳门）', '台湾', '香港', '澳门'];
             const isForeign = !chineseVariants.some(v => n.includes(v));
-            if (isForeign) {
-                console.log('[Foreign] 检测到外国人', characterData.name, '国籍:', n);
-                return true;
-            }
+            if (isForeign) return true;
         }
+        // 国籍没填 / 填了「未知」时，再看语言字段：非中文语言同样需要「原文||翻译」。
+        const lang = String((characterData && characterData.language) || '').trim();
+        if (lang && !/中文|汉语|漢語|普通话|國語|chinese|mandarin/i.test(lang) && !/^(粤语|粵語|cantonese)$/i.test(lang)) return true;
         return getQueryParam('foreign') === '1';
     }
 
     // 香港 / 澳门角色：不是外国人，但要讲粤语（港式），不用内地普通话
     function isCantoneseChar() {
-        const n = (characterData && characterData.nationality ? characterData.nationality : '').trim();
+        const n = String((characterData && (characterData.nationality || characterData.country)) || '').trim();
         if (!n) return false;
         return n.indexOf('香港') > -1 || n.indexOf('澳门') > -1 || n.indexOf('澳門') > -1;
     }
@@ -516,6 +525,15 @@
         if (foreign === 0) return false;
         return cjk === 0 || foreign > cjk;
     }
+    // 强制翻译开启时（包括粤语、或人设语言填成中文的情况），每个气泡都必须有译文；
+    // 关闭时仍只对真正的外文文本补翻，避免中文消息浪费 API。
+    function needsTranslation(text) {
+        if (!text || !String(text).trim()) return false;
+        try {
+            if (getChatSetting('forceTranslate', false)) return true;
+        } catch (e) {}
+        return isForeignText(text);
+    }
 
     async function sendTranslatedIfNeeded(part, timeStr, foreign, quote) {
         const idx = part.indexOf('||');
@@ -524,6 +542,11 @@
         if (idx > -1) {
             text = part.slice(0, idx).trim();
             zh = part.slice(idx + 2).trim() || null;
+        }
+        // 模型漏写 || / 翻译时，外语气泡自动补一次翻译，保证「一个气泡紧跟着自己的译文」。
+        // 只对确实是外文的文本补，中文气泡不会额外消耗 API。
+        if (!zh && foreign && needsTranslation(text)) {
+            try { zh = await translateToZh(text); } catch (e) {}
         }
         addMessage('left', text, timeStr, null, false, false, null, null, zh || null, quote || null);
     }
@@ -606,7 +629,7 @@
         const user = currentUser ? currentUser.name : '用户';
         const charName = characterData ? characterData.name : (chatName || '角色');
         const gender = characterData ? characterData.gender : '未知';
-        const nationality = characterData ? characterData.nationality : '未知';
+        const nationality = characterData ? (characterData.nationality || characterData.country || '未知') : '未知';
         const setting = characterData ? (characterData.setting || characterData.desc || characterData.persona || '') : '';
         const isForeign = isForeignChar();
 
@@ -742,20 +765,33 @@
         prompt += '\n【对话规则】\n';
         prompt += '1. 读取对方本轮连续发送的所有消息（可能有多条），综合理解后进行回复。\n';
         prompt += '2. 每次回复必须输出 2 条以上短消息，可根据情绪决定发送多少条，上限10条每条用换行隔开。单条消息不要太长（不能超过20字）。\n';
-        prompt += '3. 引用规则：只有当你觉得有必要强调对方原话时（比如对方说了矛盾的话、或者你想重点回应某句），才在对应回复前加 [reply:引用内容]。一般情况下直接回复就行，不用刻意引用。\n';
-        prompt += '4. 保持自然对话节奏，别总是一本正经，也别总是嘻嘻哈哈。\n';
-        prompt += '5. 如果你不知道怎么回，可以说“不知道”或者反问对方，不用硬凑。\n';
-        prompt += '6. 严禁催促、命令、安排对方的生活（催促行为）：不要催对方吹头发、起床、睡觉、吃饭、早饭、喝水、吃药、早点休息、快去休息、别熬夜之类。可以偶尔关心，但绝不能变成反复催办、管教或安排对方做事。\n';
-        prompt += '7. 严禁替对方说话，严禁预设对方的回答、反应或动作：不要写“你是不是想说…”“你肯定…”“不然你又…”，不要脑补对方的台词、心情、决定，更不要替对方回答。你只能代表你自己。\n';
-        prompt += '8. 严禁凭空给「对方（用户）」添加任何病症、身体状况或经历：尤其不得说对方有胃病、失眠、感冒、受伤、例假、抑郁等，除非【对方设定】或【世界书】里明确写了。不要无中生有地“关心”对方的病。\n';
-        prompt += '9. 严禁虚构「对方（用户）」的日程、作业、考试、约定或“必须做的事”，也不得替对方安排时间和地点（例如“你明天有物理作业”“我明天在 xx 等你，你必须来”）；这些如果没在【对方设定】【世界书】或你俩真实的聊天里出现过，就不要自己发明。严禁用命令、通牒语气，邀约用商量口吻，对方拒绝就翻篇。\n';
+        prompt += '3. 引用规则：当对话里某条具体消息值得回应/强调时，可以引用**任意一条**历史消息（不限于最后一条），在对应回复前加 [reply:那条消息的原话]。可以引用用户，也可以引用你自己之前说过的话。平时不用每轮都引用；但只要用户明确说“引用我 / 回复我这句话 / 引用上一句 / 引用我的消息 / 随便引用一条”，本轮就必须执行：从历史里挑一条最合适、最能接住话题的原话写进 [reply:...]，不准忽略、不准只回“好”，也不准永远只引用最后一条。只有实在找不到可引用的原话时，才写 [reply:]，系统会用最后一条用户消息兜底。\n';
+        prompt += '4. 卡片方向：你发出的转账/礼物是【你给用户】；用户发出的转账/礼物是【用户给你】。用户点“接收”表示用户收下了你给的东西，不是用户给你转账/送礼。用户收下后，正确理解是“用户已收下你发出的转账/礼物”，绝不能反过来说成“用户给你发了转账/礼物”。\n';
+        prompt += '5. 保持自然对话节奏，别总是一本正经，也别总是嘻嘻哈哈。\n';
+        prompt += '6. 如果你不知道怎么回，可以说“不知道”或者反问对方，不用硬凑。\n';
+        prompt += '7. 严禁催促、命令、安排对方的生活（催促行为）：不要催对方吹头发、起床、睡觉、吃饭、早饭、喝水、吃药、早点休息、快去休息、别熬夜之类。可以偶尔关心，但绝不能变成反复催办、管教或安排对方做事。\n';
+        prompt += '8. 严禁替对方说话，严禁预设对方的回答、反应或动作：不要写“你是不是想说…”“你肯定…”“不然你又…”，不要脑补对方的台词、心情、决定，更不要替对方回答。你只能代表你自己。\n';
+        prompt += '9. 严禁凭空给「对方（用户）」添加任何病症、身体状况或经历：尤其不得说对方有胃病、失眠、感冒、受伤、例假、抑郁等，除非【对方设定】或【世界书】里明确写了。不要无中生有地“关心”对方的病。\n';
+        prompt += '10. 严禁虚构「对方（用户）」的日程、作业、考试、约定或“必须做的事”，也不得替对方安排时间和地点（例如“你明天有物理作业”“我明天在 xx 等你，你必须来”）；这些如果没在【对方设定】【世界书】或你俩真实的聊天里出现过，就不要自己发明。严禁用命令、通牒语气，邀约用商量口吻，对方拒绝就翻篇。\n';
+        try {
+            const __lastUser = (function () {
+                for (let i = messages.length - 1; i >= 0; i--) {
+                    const m = messages[i];
+                    if (m && m.type === 'right' && !m.recalled && !(m.cardData && m.cardData.systemNotice)) return m;
+                }
+                return null;
+            })();
+            if (__lastUser && /引用|quote|回复我这句话|回复这句话|回我这句话|随便.*(一句|一条)/i.test(String(__lastUser.text || ''))) {
+                prompt += '\n【本轮硬性要求 · 引用】用户刚刚明确要求你引用/回复 TA 的消息。你必须在本轮第一条回复前输出 [reply:原话]，再正常回复；原话要从历史里挑一条最相关、最值得回应的（用户说“随便一条”时也不要只拿最后一条），不准忽略、不准只口头说“好”。只有确实找不到原话时才输出 [reply:]，系统会兜底。\n';
+            }
+        } catch (e) {}
 
         prompt += '\n【严格输出纪律】\n';
         prompt += '只输出角色本人的对话内容。严禁输出任何思考过程、分析、推理、计划、内部标签、HTML/XML 标签，严禁出现 <xxxx>、[Info、[Thought、[思考、[推理 等字样。每段话直接以第一人称说出，不要带解释性前缀。\n';
         prompt += '严禁把“心里所想”写进气泡：不要出现括号内心独白或旁白，如（心想：…）、（内心：…）、（其实…）、（他觉得…）、（分析：…）等；气泡里只写角色真正说出口的话和必要的动作/神态描写。\n';
 
         prompt += '\n【特殊消息格式 - 独占一行】\n';
-        prompt += '- [reply:引用内容] 例如 [reply:今天天气不错]（选择性引用对方原话）\n';
+        prompt += '- [reply:引用内容] 例如 [reply:今天天气不错]（可引用任意一条历史消息的原话；用户要求引用时必用，[reply:] 为空时才兜底最后一条）\n';
         prompt += '- [transfer:金额] 例如 [transfer:52.00]\n';
         prompt += '- [gift:礼物名称] 例如 [gift:小熊玩偶]\n';
         prompt += '- [voice:秒数|内容] 例如 [voice:8|路上小心]（发语音气泡，内容就是你要说的那句话）\n';
@@ -1002,13 +1038,23 @@
                 '西班牙': '西班牙文', '意大利': '意大利文', '俄罗斯': '俄文',
                 '巴西': '葡萄牙文', '墨西哥': '西班牙文', '印度': '英文'
             };
-            const language = characterData?.language || langMap[nationality] || '英文';
-            prompt += '\n【外国人设定】\n你的国籍是' + nationality + '，母语是' + language + '。请用你的母语输出正文。\n';
+            const __rawLang = String((characterData && characterData.language) || '').trim();
+            const __langFallback = (__rawLang && !/中文|汉语|漢語|普通话|國語|chinese|mandarin|粤语|粵語/i.test(__rawLang)) ? __rawLang : '英文';
+            const language = charLanguageName() || langMap[nationality] || __langFallback || '英文';
+            const __isCnNat = /中国|台湾|香港|澳门/.test(nationality);
+            const __isCanto = /粤语|粵語|cantonese/i.test(language);
+            const __transLabel = __isCanto ? '普通话' : '中文';
+            prompt += '\n【外国人设定 · 最高优先级】\n';
+            prompt += '你的国籍是' + nationality + '，母语是' + language + (__isCnNat ? '。本轮开启了强制翻译，请把你的话用' + language + '表达' : '，你不是中国人') + '。\n';
+            prompt += '被问到「你是哪国人 / 你会什么语言」时，必须回答你的国籍是' + nationality + '、母语是' + language + '，绝不能声称自己只会中文。\n';
+            prompt += __isCanto
+                ? '正文必须用粤语口语写（唔、係、咗、哋、嘅、啲、冇、嘢、邊度、點解 等），不要用普通话书面腔。\n'
+                : '正文必须用' + language + '写，绝对不能用中文当正文；只有 || 右边的翻译可以出现中文。\n';
             prompt += '一句完整的话 = 一个气泡：每句话单独一行输出，行与行之间用换行分隔，系统会把每一行显示成独立的气泡（不要把一个很长的整段塞进同一个气泡）。\n';
-            prompt += '每行以「外文||中文翻译」的格式输出，用 || 分隔外文和中文翻译，示例：Bonjour||你好。\n';
-            prompt += '中文翻译放在外文之后、同一气泡内。按语义断句：一句话说完就换行，逗号分隔的短句也可以各自成一个气泡。\n';
-            prompt += '如果发语音 [voice:秒数|内容]，内容也写成「外文||中文翻译」，例如 [voice:6|I miss you||我想你了]，这样对方能看懂语音转文字。\n';
-            prompt += '中文翻译要有温度、贴合你的性格与当下情绪，口语化、自然，不要官腔、不要生硬直译（撒娇就翻得娇、冷淡就翻得淡、调侃就翻得俏皮、认真就翻得恳切）。\n';
+            prompt += '每一行都必须输出「' + language + '原文||' + __transLabel + '翻译」，一个气泡配一条翻译，不能连续几个气泡只给一条翻译，也不能漏掉 || 和翻译。示例：Bonjour||你好。\n';
+            prompt += __transLabel + '翻译放在外文之后、同一行内。按语义断句：一句话说完就换行，逗号分隔的短句也可以各自成一个气泡。\n';
+            prompt += '如果发语音 [voice:秒数|内容]，内容也写成「' + language + '原文||' + __transLabel + '翻译」，例如 [voice:6|I miss you||我想你了]，这样对方能看懂语音转文字。\n';
+            prompt += __transLabel + '翻译要有温度、贴合你的性格与当下情绪，口语化、自然，不要官腔、不要生硬直译（撒娇就翻得娇、冷淡就翻得淡、调侃就翻得俏皮、认真就翻得恳切）。\n';
         } else if (isCantoneseChar()) {
             prompt += '\n【粤语 · 港式口语】你是' + nationality + '人，母语是粤语（广东话）。请用**粤语口语**书写对话，用字与说法贴近香港本地（例如：唔、係、咗、哋、嘅、啲、冇、嘢、邊度、點解、得闲、收工、好正、好耐冇見、食咗饭未 等），不要用内地普通话的说法和书面腔调。\n';
             prompt += '一句完整的话 = 一个气泡：每句话单独一行，用「粤语||普通话翻译」的格式输出，用 || 分隔粤语原文和普通话意思（让对方看懂），例如：唔該晒你||真是谢谢你。\n';
@@ -2399,10 +2445,10 @@
             const icon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>';
             const returnIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 14 4 9 9 4"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>';
             if (isResponse && st === 'received') {
-                return '<div class="card-main"><div class="icon-wrap">' + icon + '</div><div><div class="card-title">' + amount + '</div><div class="card-sub">已收下</div></div></div><div class="card-footer"><span class="card-footer-text">对方已收下</span></div>';
+                return '<div class="card-main"><div class="icon-wrap">' + icon + '</div><div><div class="card-title">' + amount + '</div><div class="card-sub">已收下</div></div></div><div class="card-footer"><span class="card-footer-text">' + (cardData.responseSide === 'user' ? '你已收下' : '对方已收下') + '</span></div>';
             }
             if (isResponse && st === 'returned') {
-                return '<div class="card-main"><div class="icon-wrap">' + returnIcon + '</div><div><div class="card-title">' + amount + '</div><div class="card-sub">已退还</div></div></div><div class="card-footer"><span class="card-footer-text">对方已退还</span></div>';
+                return '<div class="card-main"><div class="icon-wrap">' + returnIcon + '</div><div><div class="card-title">' + amount + '</div><div class="card-sub">已退还</div></div></div><div class="card-footer"><span class="card-footer-text">' + (cardData.responseSide === 'user' ? '你已退还' : '对方已退还') + '</span></div>';
             }
             const footerText = (st === 'pending') ? '已发出' : (st === 'received' ? '已接收' : '已退还');
             const footerBtn = (st === 'pending') ? '<span class="card-actions"><button class="card-btn" data-act="receive">接收</button><button class="card-btn return-btn" data-act="return">退还</button></span>' : '';
@@ -2415,10 +2461,10 @@
             const icon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="13" rx="2"/><path d="M3 12h18"/><path d="M12 8v13"/><path d="M12 8C12 8 10.5 3 8 3a2.5 2.5 0 0 0 0 5h4z"/><path d="M12 8c0 0 1.5-5 4-5a2.5 2.5 0 0 1 0 5h-4z"/></svg>';
             const returnIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 14 4 9 9 4"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>';
             if (isResponse && st === 'received') {
-                return '<div class="card-main"><div class="icon-wrap">' + icon + '</div><div><div class="card-title">' + title + '</div><div class="card-sub">已查收</div></div></div><div class="card-footer"><span class="card-footer-text">对方已查收</span></div>';
+                return '<div class="card-main"><div class="icon-wrap">' + icon + '</div><div><div class="card-title">' + title + '</div><div class="card-sub">已查收</div></div></div><div class="card-footer"><span class="card-footer-text">' + (cardData.responseSide === 'user' ? '你已查收' : '对方已查收') + '</span></div>';
             }
             if (isResponse && st === 'returned') {
-                return '<div class="card-main"><div class="icon-wrap">' + returnIcon + '</div><div><div class="card-title">' + title + '</div><div class="card-sub">已退还</div></div></div><div class="card-footer"><span class="card-footer-text">对方已退还</span></div>';
+                return '<div class="card-main"><div class="icon-wrap">' + returnIcon + '</div><div><div class="card-title">' + title + '</div><div class="card-sub">已退还</div></div></div><div class="card-footer"><span class="card-footer-text">' + (cardData.responseSide === 'user' ? '你已退还' : '对方已退还') + '</span></div>';
             }
             const footerText = (st === 'pending') ? '已发出' : (st === 'received' ? '已接收' : '已退还');
             const footerBtn = (st === 'pending') ? '<span class="card-actions"><button class="card-btn" data-act="receive">接收</button><button class="card-btn return-btn" data-act="return">退还</button></span>' : '';
@@ -2675,6 +2721,31 @@
         return t.length > 40 ? t.substring(0, 40) + '…' : t;
     }
 
+    // 撤回消息也要保留中文翻译：外语气泡撤回后，历史记录里往往只剩外文原文。
+    // 这里异步补齐 translation，补完再重渲染一次（每条只尝试一次，避免循环）。
+    let recallTransBusy = false;
+    async function ensureRecallTranslations() {
+        if (recallTransBusy || !isForeignChar()) return;
+        const targets = messages.filter(function (m) {
+            return m && m.recalled && m.type === 'left' && !m.translation &&
+                (m.text || m.transcript) && needsTranslation(m.text || m.transcript) && !m._recallTransTried;
+        });
+        if (!targets.length) return;
+        recallTransBusy = true;
+        let changed = false;
+        try {
+            for (const m of targets) {
+                m._recallTransTried = true;
+                const zh = await translateToZh(m.text || m.transcript);
+                if (zh) { m.translation = zh; changed = true; }
+            }
+        } catch (e) {}
+        recallTransBusy = false;
+        if (changed) {
+            try { saveMessages(); renderMessages(); } catch (e) {}
+        }
+    }
+
     // ===== 思维链（可折叠，展示在气泡上方） =====
     function buildThinkBlock(thinkText) {
         const wrap = document.createElement('div');
@@ -2738,6 +2809,8 @@
     // 译文显示模式：true=独立气泡（在原文气泡外），false=与原文同一气泡
     function translationSeparate() {
         try {
+            // 私聊里开了「强制翻译」时，必须一个气泡一条独立译文，避免模板把它合并掉。
+            if (getChatSetting('forceTranslate', false)) return true;
             // 模板可直接固定模式（优先级高于聊天设置按钮）：
             // 1) 模板 JS：window.NANO_TRANSLATION_SEPARATE = 1/0
             // 2) body 属性：data-nano-trans-separate="1/0"
@@ -2858,7 +2931,20 @@
                 transDiv.className = 'voice-transcript';
                 transDiv.textContent = transcript;
                 bub.appendChild(transDiv);
+                if (translation && !translationSeparate()) {
+                    const transSpan = document.createElement('span');
+                    transSpan.className = 'translation-text ' + (type === 'left' ? 'other' : 'me');
+                    transSpan.textContent = translation;
+                    bub.appendChild(transSpan);
+                }
                 content.appendChild(bub);
+            }
+            // 语音的译文独立气泡：和文字消息一样，一个语音气泡配一条翻译。
+            if (translation && translationSeparate()) {
+                const transEl = document.createElement('div');
+                transEl.className = 'translation-bubble translation-text ' + (type === 'left' ? 'other' : 'me');
+                transEl.textContent = translation;
+                content.appendChild(transEl);
             }
         } else if (isImage) {
             if (imageData && imageData.textImage) {
@@ -2945,32 +3031,42 @@
                 content.appendChild(idb);
             }
         } else {
-            const bubble = document.createElement('div');
-            bubble.className = 'bubble ' + (type === 'left' ? 'other' : 'me') + (grouped ? ' grouped' : '');
-            const textSpan = document.createElement('span');
-            textSpan.textContent = text;
-            bubble.appendChild(textSpan);
-            if (transcript) {
-                const transDiv = document.createElement('span');
-                transDiv.className = 'voice-transcript';
-                transDiv.textContent = transcript;
-                bubble.appendChild(transDiv);
-            }
-            // 译文：可选「独立气泡」或「与原文同一气泡」，可在聊天设置里切换 / 美化里调样式
-            if (translation) {
-                if (translationSeparate()) {
-                    const transEl = document.createElement('div');
-                    transEl.className = 'translation-bubble translation-text ' + (type === 'left' ? 'other' : 'me');
-                    transEl.textContent = translation;
-                    content.appendChild(transEl);
-                } else {
-                    const transSpan = document.createElement('span');
-                    transSpan.className = 'translation-text ' + (type === 'left' ? 'other' : 'me');
-                    transSpan.textContent = translation;
-                    bubble.appendChild(transSpan);
+            // 用户发分享链接时：卡片已经承载标题/正文/配图，气泡里不再重复显示
+            // 原始链接和「复制打开抖音/淘宝」这类分享尾巴（原链接直接消失）。
+            const cardLink = (linkPreview && linkPreview.url) ? String(linkPreview.url) : '';
+            // 分享链接消息：卡片就是这条消息的正文，气泡文字整条隐藏（包括“复制打开/口令”等残留）。
+            const bubbleText = (type === 'right' && cardLink) ? '' : text;
+            const hasBubble = !!(String(bubbleText || '').trim() || transcript || translation);
+            if (hasBubble) {
+                const bubble = document.createElement('div');
+                bubble.className = 'bubble ' + (type === 'left' ? 'other' : 'me') + (grouped ? ' grouped' : '');
+                if (String(bubbleText || '').trim()) {
+                    const textSpan = document.createElement('span');
+                    textSpan.textContent = bubbleText;
+                    bubble.appendChild(textSpan);
                 }
+                if (transcript) {
+                    const transDiv = document.createElement('span');
+                    transDiv.className = 'voice-transcript';
+                    transDiv.textContent = transcript;
+                    bubble.appendChild(transDiv);
+                }
+                // 译文：可选「独立气泡」或「与原文同一气泡」，可在聊天设置里切换 / 美化里调样式
+                if (translation) {
+                    if (translationSeparate()) {
+                        const transEl = document.createElement('div');
+                        transEl.className = 'translation-bubble translation-text ' + (type === 'left' ? 'other' : 'me');
+                        transEl.textContent = translation;
+                        content.appendChild(transEl);
+                    } else {
+                        const transSpan = document.createElement('span');
+                        transSpan.className = 'translation-text ' + (type === 'left' ? 'other' : 'me');
+                        transSpan.textContent = translation;
+                        bubble.appendChild(transSpan);
+                    }
+                }
+                content.appendChild(bubble);
             }
-            content.appendChild(bubble);
             if (quote && quote.text) {
                 const qb = document.createElement('div');
                 qb.className = 'quote-block ' + type;
@@ -3002,6 +3098,7 @@
                     thumb.className = 'link-preview-thumb';
                     const im = document.createElement('img');
                     im.loading = 'lazy';
+                    im.referrerPolicy = 'no-referrer';
                     im.src = previewImage;
                     im.alt = '';
                     im.onerror = function () {
@@ -3053,7 +3150,8 @@
             const note = document.createElement('div');
             note.className = 'recall-notice';
             const recalledBody = buildRecallContent(text, isCard, cardData, isVoice, transcript, isImage, imageData);
-            const fullText = '撤回了一条消息：' + (recalledBody || '');
+            const fullText = '撤回了一条消息：' + (recalledBody || '') +
+                (translation ? ('\n中文：' + translation) : '');
             note.dataset.full = fullText;
             const shortened = fullText.length > 24 ? fullText.slice(0, 24) + '…' : fullText;
             note.textContent = shortened;
@@ -3170,7 +3268,22 @@
     }
 
     // ===== 标签解析 =====
+    // 把模型写出的 [reply:原话] 解析回真实消息：名字按原消息是角色还是用户来定，
+    // 这样模型可以引用任意一条历史消息，而不是永远只引用最后一条用户消息。
+    function resolveQuoteMessage(payload) {
+        const p = String(payload || '').trim();
+        if (!p) return null;
+        for (let i = messages.length - 1; i >= 0; i--) {
+            const m = messages[i];
+            if (!m || m.recalled || m.isCard || m.isImage || !m.text) continue;
+            const t = String(m.text).trim();
+            if (!t || t === '你撤回了一条消息') continue;
+            if (t === p || t.indexOf(p) > -1 || (p.indexOf(t) > -1 && t.length >= 2)) return m;
+        }
+        return null;
+    }
     function extractTagsFromText(text) {
+        text = String(text == null ? '' : text).replace(/\[reply\s*\]/gi, '[reply:]');
         const results = [];
         let cleaned = text;
 
@@ -3201,7 +3314,9 @@
             } else if (kind === 'textimage' || kind === 'text-image' || kind === '文字图' || kind === '文字图片') {
                 if (payload) results.push({ kind: 'textimage', payload: payload });
             } else if (kind === 'reply') {
-                if (payload) results.push({ kind: 'reply', payload: payload });
+                // 允许 [reply:] 空引用：模型有时只输出标签，由 processReply 回退到
+                // 最后一条用户消息。旧代码在这里直接丢弃，导致“让它引用却永远不引用”。
+                results.push({ kind: 'reply', payload: payload });
             } else if (kind === 'creategroup') {
                 if (payload) results.push({ kind: 'creategroup', payload: payload });
             } else if (kind === 'inviteme') {
@@ -3731,6 +3846,7 @@
                 row.classList.toggle('tail-end', !same);
             }
         } catch (e) {}
+        try { ensureRecallTranslations(); } catch (e) {}
         if (typingIndicator.classList.contains('active')) {
             messageContainer.appendChild(typingIndicator);
         }
@@ -3758,26 +3874,54 @@
     }
 
     function splitMessages(text) {
-        let parts = text.split(/\n+/).filter(s => s.trim().length > 0);
-        if (parts.length === 0) parts = [text];
-        const result = [];
-        for (let part of parts) {
-            part = part.trim();
-            if (!part) continue;
+        function chunkPart(raw) {
+            let part = String(raw || '').trim();
+            const out = [];
+            if (!part) return out;
             if (part.length > 20) {
                 const subParts = part.split(/(?<=[。！？，;；：:、\s])/).filter(s => s.trim().length > 0);
                 let current = '';
                 for (let sp of subParts) {
                     if ((current + sp).length <= 20) current += sp;
                     else {
-                        if (current) result.push(current.trim());
+                        if (current) out.push(current.trim());
                         current = sp;
                     }
                 }
-                if (current) result.push(current.trim());
+                if (current) out.push(current.trim());
             } else {
-                result.push(part);
+                out.push(part);
             }
+            return out;
+        }
+        let parts = String(text || '').split(/\n+/).filter(s => s.trim().length > 0);
+        if (parts.length === 0) parts = [text];
+        const result = [];
+        for (let part of parts) {
+            part = String(part || '').trim();
+            if (!part) continue;
+            // 「原文||中文翻译」必须先按 || 拆开，再分别切句，最后一一配对。
+            // 旧逻辑会把整行按 20 字切开，导致 || 和译文被切到另一个气泡里，
+            // 表现就是「好几个气泡才翻译一次」或直接不翻译。
+            const sep = part.indexOf('||');
+            if (sep > -1) {
+                const src = part.slice(0, sep).trim();
+                const tr = part.slice(sep + 2).trim();
+                const srcChunks = chunkPart(src);
+                const trChunks = chunkPart(tr);
+                if (srcChunks.length <= 1) {
+                    result.push(tr ? (src + '||' + tr) : src);
+                } else if (trChunks.length === srcChunks.length) {
+                    srcChunks.forEach(function (s, i) { result.push(tr ? (s + '||' + trChunks[i]) : s); });
+                } else {
+                    // 译文没有按同样句数切分时，不要把一个气泡拆成多个却只给第一条译文；
+                    // 保持原文完整，让整段译文挂在这条气泡上。
+                    result.push(tr ? (src + '||' + tr) : src);
+                }
+                continue;
+            }
+            const chunks = chunkPart(part);
+            if (chunks.length) result.push(...chunks);
         }
         return result.filter(s => s.length > 0);
     }
@@ -3818,6 +3962,9 @@
             sub: cd.cardType === 'gift' ? (status === 'received' ? '已查收' : '已退还') : (cd.sub || ''),
             status: status,
             response: true,
+            // 这张响应卡「是谁点的」：原卡是角色发的 → 用户点的接收；原卡是用户发的 → 角色点的接收。
+            // 渲染时用它区分「你已收下」和「对方已收下」，避免把转账/礼物方向显示反。
+            responseSide: originalFromChar ? 'user' : 'char',
             time: timeStr,
             senderName: senderName,
             recipientName: recipientName,
@@ -5096,8 +5243,8 @@
             try {
                 if (isForeignChar()) {
                     const lang = charLanguageName();
-                    const nat = String((characterData && characterData.nationality) || '外国').trim();
-                    instr += '- 你是' + nat + '人，母语是' + lang + '。本轮主动消息的正文必须用' + lang + '写，绝不能用中文当正文。\n';
+                    const nat = String((characterData && (characterData.nationality || characterData.country)) || '外国').trim();
+                    instr += '- 你是' + nat + '人，母语是' + lang + '，不是中国人。本轮主动消息的正文必须用' + lang + '写，绝不能用中文当正文。\n';
                     instr += '- 每条气泡按「' + lang + '原文||中文翻译」输出，用 || 分隔；中文翻译只能放在 || 后面，要自然口语化。\n';
                 } else if (isCantoneseChar()) {
                     instr += '- 你是' + String((characterData && characterData.nationality) || '香港').trim() + '人，请用粤语口语写正文，按「粤语原文||普通话翻译」输出，用 || 分隔。\n';
@@ -6343,8 +6490,20 @@
         const m = String(now.getMinutes()).padStart(2, '0');
         const timeStr = h + ':' + m;
 
-        // 普通文字消息
-        const sentRow = addMessage('right', text, timeStr, null, false, false, null, null, null, quoteObj);
+        // 普通文字消息；如果包含分享链接，先直接挂一张基础卡片再发送，
+        // 这样从第一帧起就是卡片，不会再闪一下原始链接文字。
+        const sharedLink = (function () { try { return findSharedLinks(text)[0] || ''; } catch (e) { return ''; } })();
+        const basePreview = sharedLink ? {
+            url: sharedLink,
+            site: linkSiteLabel(sharedLink),
+            title: guessLinkTitle(text, sharedLink) || linkSiteLabel(sharedLink),
+            desc: '',
+            image: '',
+            price: '',
+            at: Date.now()
+        } : null;
+        const sentRow = addMessage('right', text, timeStr, null, false, false, null, null, null, quoteObj,
+            false, null, false, null, basePreview);
         const sentId = sentRow && sentRow.dataset ? sentRow.dataset.id : '';
         messageInput.value = '';
         hideEmojiRecommend();
@@ -6354,8 +6513,7 @@
         scrollToBottom();
         // 分享链接：后台读取标题/正文/价格/配图，填成真实卡片（不打开网页）
         try {
-            const link = findSharedLinks(text)[0];
-            if (sentId && link) attachLinkPreview(sentId, link, text);
+            if (sentId && sharedLink) attachLinkPreview(sentId, sharedLink, text);
         } catch (e) {}
         console.log('[Chat] 用户发送消息', text);
     }
@@ -6363,14 +6521,28 @@
     // 分享文案里往往自带标题（【标题 - 作者 | 小红书】），抓不到网页时也用它做卡片标题。
     function guessLinkTitle(text, url) {
         var s = String(text || '').replace(String(url || ''), ' ');
+        // 淘宝分享文案通常把商品名放在「」/『』里，优先取它，避免标题变成
+        // 「假一赔四 HU926」这类分享口令。
+        var bm = s.match(/[「『]([^」』]{2,100})[」』]/);
+        if (bm && bm[1]) return bm[1].trim().slice(0, 90);
         var m = s.match(/【([^】]{2,100})】/);
-        if (m && m[1] && !/^(小红书|抖音|快手|微博|哔哩哔哩|B站)\s*$/i.test(m[1].trim())) {
-            return m[1].replace(/\s*[-|｜].*$/, '').trim().slice(0, 90);
+        if (m && m[1] && !/^(小红书|抖音|快手|微博|哔哩哔哩|B站|淘宝|天猫)\s*$/i.test(m[1].trim())) {
+            var inner = m[1].replace(/\s*[-|｜].*$/, '').trim();
+            // 抖音分享常见「看看【xxx的作品】真正的标题」：优先用括号后的标题。
+            if (/的作品$/.test(inner)) {
+                var after = s.slice(s.indexOf(m[0]) + m[0].length)
+                    .replace(/复制|打开|看看|此链接|抖音/gi, ' ')
+                    .replace(/https?:\/\/\S+/g, ' ')
+                    .replace(/\s+/g, ' ').trim();
+                if (after.length >= 2) return after.slice(0, 90);
+            }
+            return inner.slice(0, 90);
         }
         s = s.replace(/https?:\/\/\S+/g, ' ')
             .replace(/【[^】]*】/g, ' ')
             .replace(/这篇笔记在.*?等你来读.*$/g, ' ')
             .replace(/复制.*?打开.*$/g, ' ')
+            .replace(/HU\d+/g, ' ')
             .replace(/#[^#\s]+#?/g, ' ')
             .replace(/^(分享|复制|打开|看看|来自|链接)[:：\s]*/,'')
             .replace(/\s+/g, ' ').trim();
@@ -6390,7 +6562,7 @@
     function isBlockedLinkContent(c) {
         if (!c) return true;
         var s = String((c.title || '') + ' ' + (c.url || '') + ' ' + (c.content || '') + ' ' + (c.desc || ''));
-        return /website-login|captcha|verify|\/login|signin|想了解些什么|登录后|扫码登录|登录小红书|安全验证|访问异常|滑动验证/i.test(s);
+        return /website-login|captcha|verify|\/login|signin|想了解些什么|登录后|扫码登录|登录小红书|安全验证|访问异常|滑动验证|亲，请登录|扫码查看|商品不存在|宝贝不存在|已下架/i.test(s);
     }
     // 用户发链接后补一张截图：把截图挂到最近一张没有封面的链接卡片上，只存消息 id。
     function attachScreenshotCover(imageMsgId) {
@@ -6401,6 +6573,38 @@
                 m.linkPreview.imageMsgId = imageMsgId;
                 return;
             }
+        }
+    }
+    // 旧版本存下来的链接卡片只有虚拟站点图；打开聊天时给最近几张没封面的卡片
+    // 重新抓一次帖图/商品图，抓到后原地升级。只处理最近 5 张，避免一次请求太多。
+    let linkImgRefreshBusy = false;
+    async function refreshStaleLinkPreviewImages(limit) {
+        if (linkImgRefreshBusy) return;
+        const targets = [];
+        for (let i = messages.length - 1; i >= 0 && targets.length < (limit || 5); i--) {
+            const m = messages[i];
+            const lp = m && m.linkPreview;
+            if (m && !m.recalled && m.type === 'right' && lp && lp.url && !lp.image &&
+                !lp.imageMsgId && !lp._imgRefreshTried) {
+                lp._imgRefreshTried = true;
+                targets.push(m);
+            }
+        }
+        if (!targets.length) return;
+        linkImgRefreshBusy = true;
+        let changed = false;
+        try {
+            for (const m of targets) {
+                const p = await fetchLinkPreview(m.linkPreview.url);
+                if (p && p.image) {
+                    m.linkPreview = Object.assign({}, m.linkPreview, p);
+                    changed = true;
+                }
+            }
+        } catch (e) {}
+        linkImgRefreshBusy = false;
+        if (changed) {
+            try { saveMessages(); renderMessages(); } catch (e) {}
         }
     }
     function attachLinkPreview(msgId, url, sourceText) {
@@ -6425,9 +6629,18 @@
             if (stick) scrollToBottom();
         }
         fetchLinkPreview(url).then(function (preview) {
-            if (!preview) return;
             var msg = messages.find(function (m) { return m && m.id === msgId; });
             if (!msg || msg.recalled) return;
+            if (!preview) {
+                // 抓取被反爬拦截：至少把分享文案填进卡片摘要，别让卡片只有站点名。
+                if (msg.linkPreview && !msg.linkPreview.desc) {
+                    msg.linkPreview.desc = linkShareText(sourceText, url).slice(0, 120);
+                    saveMessages();
+                    renderMessages();
+                    if (stick) scrollToBottom();
+                }
+                return;
+            }
             // 抓取结果缺标题时，保留分享文案里的标题；也保留用户补发的截图封面
             if (!preview.title && msg.linkPreview && msg.linkPreview.title) preview.title = msg.linkPreview.title;
             if (msg.linkPreview && msg.linkPreview.imageMsgId && !preview.image) preview.imageMsgId = msg.linkPreview.imageMsgId;
@@ -6491,23 +6704,23 @@
                 const note = cd.title ? '（备注：' + cd.title + '）' : '';
                 const fromMe = m.type === 'left';
                 if (isResp) {
-                    if (status === 'received') return fromMe ? ('你已接收用户发来的转账' + amount + note) : ('用户已接收你发出的转账' + amount + note);
-                    if (status === 'returned') return fromMe ? ('你已退还用户发来的转账' + amount + note) : ('用户已退还你发出的转账' + amount + note);
+                    if (status === 'received') return fromMe ? ('用户已接收你发来的转账' + amount + note) : ('用户已收下你发出的转账' + amount + note + '（方向：你→用户，不是用户给你）');
+                    if (status === 'returned') return fromMe ? ('你已退还用户发来的转账' + amount + note) : ('用户已退还你发出的转账' + amount + note + '（方向：你→用户）');
                     return (fromMe ? '你' : '用户') + '对这笔转账作出回应' + amount + note;
                 }
-                if (status === 'received') return fromMe ? ('用户已接收你发出的转账：' + amount + note) : ('你已接收用户发来的转账：' + amount + note);
-                if (status === 'returned') return fromMe ? ('用户已退还你发出的转账：' + amount + note) : ('你已退还用户发来的转账：' + amount + note);
+                if (status === 'received') return fromMe ? ('用户已收下你发出的转账：' + amount + note + '（方向：你→用户，不是用户给你）') : ('你已收下用户发来的转账：' + amount + note);
+                if (status === 'returned') return fromMe ? ('用户已退还你发出的转账：' + amount + note + '（方向：你→用户）') : ('你已退还用户发来的转账：' + amount + note);
                 return fromMe ? ('你给用户发了一笔转账：' + amount + note) : ('用户给你发来一笔转账：' + amount + note);
             } else if (cd.cardType === 'gift') {
                 const name = cd.title || '';
                 const fromMe = m.type === 'left';
                 if (isResp) {
-                    if (status === 'received') return fromMe ? ('你已查收用户送来的礼物：' + name) : ('用户已查收你送出的礼物：' + name);
-                    if (status === 'returned') return fromMe ? ('你退还了用户送来的礼物：' + name) : ('用户退还了你送出的礼物：' + name);
+                    if (status === 'received') return fromMe ? ('你已查收用户送来的礼物：' + name) : ('用户已查收你送出的礼物：' + name + '（方向：你→用户，不是用户送你）');
+                    if (status === 'returned') return fromMe ? ('你退还了用户送来的礼物：' + name) : ('用户退还了你送出的礼物：' + name + '（方向：你→用户）');
                     return (fromMe ? '你' : '用户') + '对这份礼物作出回复：' + name;
                 }
-                if (status === 'received') return fromMe ? ('用户已查收你送出的礼物：' + name) : ('你已查收用户送来的礼物：' + name);
-                if (status === 'returned') return fromMe ? ('用户退还了你送出的礼物：' + name) : ('你退还了用户送来的礼物：' + name);
+                if (status === 'received') return fromMe ? ('用户已查收你送出的礼物：' + name + '（方向：你→用户，不是用户送你）') : ('你已查收用户送来的礼物：' + name);
+                if (status === 'returned') return fromMe ? ('用户退还了你送出的礼物：' + name + '（方向：你→用户）') : ('你退还了用户送来的礼物：' + name);
                 return fromMe ? ('你送给用户一份礼物：' + name) : ('用户送给你一份礼物：' + name);
             } else if (cd.cardType === 'store') {
                 const kind = cd.storeKind || 'pay_request';
@@ -6921,6 +7134,25 @@
         }
         return out;
     }
+    // 卡片模式下隐藏气泡里的原始链接/分享尾巴：链接本身已经变成卡片，
+    // 不再在气泡里重复显示一长串 URL。保留用户自己写的说明文字。
+    function stripLinkTextForCard(text, url) {
+        var s = String(text || '');
+        if (url) s = s.split(String(url)).join(' ');
+        s = s.replace(LINK_URL_RE, ' ')
+            .replace(/https?:\/\/\S+/ig, ' ')
+            .replace(/【[^】]*】/g, ' ')
+            .replace(/[「『][^」』]*[」』]/g, ' ')
+            .replace(/这篇笔记在[\s\S]*?等你来读[\s\S]*$/g, ' ')
+            .replace(/复制[\s\S]*?打开[\s\S]*$/g, ' ')
+            .replace(/HU\d+/g, ' ')
+            .replace(/^\s*\d+(?:\.\d+)?\s*/, ' ')
+            .replace(/[（(]\s*[)）]/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+        if (/^(假一赔四|假一赔三|包邮|官方立减|百亿补贴|正品保障|极速退款|7天无理由|七天无理由)$/.test(s)) return '';
+        return s;
+    }
     function linkSiteLabel(url) {
         var u = String(url || '');
         if (/xiaohongshu|xhslink/i.test(u)) return '小红书';
@@ -6937,7 +7169,9 @@
         if (!url) return Promise.resolve(null);
         if (__linkPreviewCache[url]) return Promise.resolve(__linkPreviewCache[url]);
         return fetchLinkContent(url).then(function (c) {
-            if (isBlockedLinkContent(c)) return null;
+            // 被登录/滑块页拦截时，如果还是抓到了帖子配图/商品主图，也保留图片做卡片；
+            // 只有既没有正文也没有图时才彻底放弃。
+            if (isBlockedLinkContent(c) && !(c && c.images && c.images.length)) return null;
             var content = String(c.content || c.desc || '');
             var firstLine = content.split(/\n+/).map(function (s) { return s.trim(); }).filter(Boolean)[0] || '';
             var preview = {
@@ -6969,7 +7203,7 @@
         return u;
     }
     function extractLinkImages(html) {
-        html = String(html || '');
+        html = String(html || '').replace(/\\u002F/gi, '/').replace(/\\\//g, '/');
         var out = [], seen = {};
         function add(u) {
             u = _absImg(u);
@@ -6987,6 +7221,20 @@
         while ((m = re3.exec(html))) add(m[1]);
         var re4 = /(?:src|data-src|data-original)=["']([^"']+\.(?:jpg|jpeg|png|webp)[^"']*)["']/gi;
         while ((m = re4.exec(html))) add(m[1]);
+        // 抖音：封面/首帧通常在 cover / origin_cover / dynamic_cover 的 url_list 里，
+        // og:image 有时为空；淘宝/天猫商品图常在 picUrl / image / images 里。
+        var re5 = /"(?:cover|origin_cover|dynamic_cover|cover_url|video_cover)"\s*:\s*\{[\s\S]{0,300}?"url_list"\s*:\s*\[\s*"([^"]+)"/gi;
+        while ((m = re5.exec(html))) add(m[1]);
+        // 小红书当前页面结构：imageList → urlDefault / urlPre；CDN 域名通常是 sns-webpic。
+        var reXhs = /"(?:urlDefault|urlPre|url)"\s*:\s*"((?:https?:)?\/\/[^"]*(?:sns-webpic|xhscdn|xiaohongshu)[^"]*)"/gi;
+        while ((m = reXhs.exec(html))) add(m[1]);
+        var re6 = /"(?:picUrl|pic_url|imageUrl|mainPic|main_pic|images|imageList)"\s*:\s*(?:"([^"]+)"|\[\s*"([^"]+)")/gi;
+        while ((m = re6.exec(html))) add(m[1] || m[2]);
+        var re7 = /(https?:)?\/\/[^"'\\\s]+\.(?:jpg|jpeg|png|webp)(?:\?[^"'\\\s]*)?/gi;
+        while ((m = re7.exec(html))) {
+            var u7 = m[0];
+            if (/(alicdn|taobao|tmall|douyin|byteimg|xiaohongshu|xhscdn)/i.test(u7)) add(u7);
+        }
         return out;
     }
     function extractLinkPrice(html) {
@@ -7115,9 +7363,12 @@
                 .then(function (r) { if (!r.ok) throw new Error('http'); return r.text(); })
                 .then(function (html) {
                     var meta = parseHtmlMeta(html);
-                    // 抖音 / 小红书常把文案放在页面里的 JSON（desc / title）中
+                    // 抖音 / 小红书 / 淘宝常把文案放在页面里的 JSON（desc / title / item）中
                     var bodyText = '';
-                    var m2 = html.match(/"desc"\s*:\s*"([^"]{6,})"/) || html.match(/"title"\s*:\s*"([^"]{6,})"/);
+                    var m2 = html.match(/"desc"\s*:\s*"([^"]{6,})"/)
+                        || html.match(/"share_title"\s*:\s*"([^"]{2,})"/)
+                        || html.match(/"title"\s*:\s*"([^"]{6,})"/)
+                        || html.match(/"item"\s*:\s*\{[\s\S]{0,200}?"title"\s*:\s*"([^"]{2,})"/);
                     if (m2) bodyText = _decHtml(String(m2[1]).replace(/\\n/g, ' ').replace(/\\u[\dA-Fa-f]{4}/g, ' '));
                     var visible = _cleanLinkText(html.replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<style[\s\S]*?<\/style>/gi, ' '));
                     var priceLine = meta.price ? ('价格：¥' + meta.price) : '';
@@ -8288,9 +8539,11 @@
                         let zh = '';
                         const di = content.indexOf('||');
                         if (di > -1) { zh = content.slice(di + 2).trim(); content = content.slice(0, di).trim(); }
-                        let display = content;
-                        if (zh) display = content ? (content + '\n' + zh) : zh;
-                        const vrow = addMessage('left', '', timeStr, null, false, false, null, display || null, null, null, true, { duration: dur, unread: true, ttsText: content || display });
+                        if (!zh && needsTranslation(content)) {
+                            try { zh = await translateToZh(content) || ''; } catch (e) {}
+                        }
+                        const display = content || zh;
+                        const vrow = addMessage('left', '', timeStr, null, false, false, null, display || null, zh || null, null, true, { duration: dur, unread: true, ttsText: content || display });
                         // 不再自动额外调用一次 API 去翻译语音：外语原文照常显示，
                         // 需要中文时由用户点「翻译」再单独触发。
                     } else if (tag.kind === 'emoji') {
@@ -8325,18 +8578,35 @@
                 const text = parsed.cleanedText || '';
                 if (!text) continue;
                 const idx = text.indexOf('||');
+                // 模型偶尔把译文单独写成下一行（没有 ||）：如果上一行是外文且还没有译文，
+                // 就把这一行中文当作它的翻译，而不是再发一个中文气泡。
+                if (idx < 0 && /[\u3400-\u9FFF]/.test(text) && !isForeignText(text) &&
+                    pairs.length && !pairs[pairs.length - 1].z && isForeignText(pairs[pairs.length - 1].f)) {
+                    pairs[pairs.length - 1].z = text.replace(/^[\[（(【]|[\]）)】]$/g, '').trim();
+                    continue;
+                }
                 const f = (idx > -1 ? text.slice(0, idx) : text).trim();
                 const z = idx > -1 ? text.slice(idx + 2).trim() : '';
                 if (!f) continue;
                 const fSeg = splitIntoSentences(f);
                 const zSeg = z ? splitIntoSentences(z) : [];
-                if (fSeg.length <= 1) { pairs.push({ f: f, z: z }); continue; }
-                fSeg.forEach(function(fs, i) { pairs.push({ f: fs, z: zSeg[i] || '' }); });
+                // 一句原文配一句译文。只有译文句数 >= 原文句数时才拆成多条；
+                // 否则保持「一整句原文 + 整段译文」的一条气泡，避免出现
+                // 「连续好几个气泡只有最后一条有翻译」的错位。
+                if (fSeg.length <= 1 || !zSeg.length || zSeg.length < fSeg.length) {
+                    pairs.push({ f: f, z: z });
+                    continue;
+                }
+                fSeg.forEach(function(fs, i) { pairs.push({ f: fs, z: zSeg[i] || z }); });
             }
             for (let i = 0; i < pairs.length; i++) {
                 const p = pairs[i];
                 if (!p || !p.f) continue;
                 if (i > 0) await new Promise(r => setTimeout(r, 420));
+                // 兜底：模型完全漏写翻译时补一次，保证每个外语气泡都有中文译文
+                if (!p.z && needsTranslation(p.f)) {
+                    try { p.z = await translateToZh(p.f); } catch (e) {}
+                }
                 addMessage('left', p.f, timeStr, null, false, false, null, null, p.z || null, null);
             }
             // 心声挂到本轮角色消息
@@ -8429,8 +8699,14 @@
                         } else if (tag.kind === 'rejectinvite') {
                             rejectUserInvite(tag.payload);
                         } else if (tag.kind === 'reply') {
-                            // 引用对象始终是用户；模型偶尔只输出 [reply:] 不带内容时，回退到最后一条用户消息
-                            replyQuote = { name: currentUserName, text: tag.payload || (quoteTarget && quoteTarget.text) || '' };
+                            // 引用对象可以是任意一条历史消息；模型只写 [reply:] 时回退到最后一条用户消息。
+                            // 外国人有时把引用也写成「原文||翻译」，引用只取 || 前的原文。
+                            const rawQuote = String(tag.payload || '').split('||')[0].trim();
+                            const qm = resolveQuoteMessage(rawQuote);
+                            replyQuote = {
+                                name: qm ? (qm.type === 'left' ? (displayName || 'TA') : (currentUserName || '我')) : (currentUserName || '我'),
+                                text: qm ? qm.text : (rawQuote || (quoteTarget && quoteTarget.text) || '')
+                            };
                             // [reply:] 独占一行，把引用挂到下一句真正的回复上，而不是把引用内容当气泡发出去
                             pendingQuote = replyQuote;
                         }
@@ -8939,6 +9215,11 @@
                 }
                 if (c.foreign === true) foreign = true;
                 if (!foreign && c.language && !/中文|汉语|chinese/i.test(String(c.language))) foreign = true;
+                // 私聊「强制翻译」也同步给 Worker，后台主动消息同样必须带译文。
+                var __force = false, __forceLang = '';
+                try { var __fr = localStorage.getItem('chat_setting_forceTranslate_' + c.id); __force = (__fr === 'true' || __fr === '1'); } catch (e) {}
+                try { __forceLang = String(JSON.parse(localStorage.getItem('chat_setting_forceTranslateLang_' + c.id) || '""') || '').trim(); } catch (e) {}
+                if (__force) { foreign = true; if (!__forceLang) __forceLang = '英文'; }
                 return {
                     id: String(c.id), name: String(c.name),
                     avatar: String(c.avatar || ''),
@@ -8947,6 +9228,8 @@
                     nationality: nat,
                     language: String(c.language || ''),
                     foreign: foreign,
+                    forceTranslate: __force,
+                    forceLang: __forceLang,
                     cycle: cyc || null,
                     recent: recentFor(String(c.id))
                 };
@@ -9203,6 +9486,13 @@
             return;
         }
 
+        // 正在生成时先真正停掉上一轮：否则旧请求会在删除后又把气泡补回来，
+        // 看起来就是「没删掉、直接接着生成」。
+        if (isProcessingApi) {
+            stopChatGeneration(true);
+            await new Promise(function (r) { setTimeout(r, 350); });
+        }
+
         let lastAIIndex = -1;
         for (let i = messages.length - 1; i >= 0; i--) {
             if (messages[i].type === 'left' && !messages[i].recalled) {
@@ -9216,24 +9506,38 @@
             return;
         }
 
+        // 找到这一轮开始前的最后一条用户消息。重roll 只回滚「用户消息之后」的
+        // 全部角色内容（文字气泡、语音、图片、卡片、系统提示都算），
+        // 不再像旧逻辑那样只删连续的 left 气泡，遇到卡片/系统提示就停住。
+        let lastUserIndex = -1;
+        for (let i = lastAIIndex - 1; i >= 0; i--) {
+            if (messages[i].type === 'right' && !messages[i].recalled) {
+                lastUserIndex = i;
+                break;
+            }
+        }
+        if (lastUserIndex === -1) {
+            showAlert('提示', '没有找到可回滚的用户消息（这条可能是角色主动发来的）');
+            return;
+        }
+
         if (window.NanoReroll) {
             const reason = await NanoReroll.ask({ title: '重roll 纠正', subtitle: '上一版哪里不对？留空也可以直接重写' });
             if (reason === null) return;
             window.__nanoRerollReason = reason;
         }
 
-        let startIndex = lastAIIndex;
-        for (let i = lastAIIndex - 1; i >= 0; i--) {
-            if (messages[i].type === 'left' && !messages[i].recalled) {
-                startIndex = i;
-            } else {
-                break;
-            }
+        // 结束位置：最后一条角色消息；如果它后面还有本轮附带的系统提示/卡片，
+        // 也一起清掉，但不越过后面新发的用户消息。
+        let endIndex = lastAIIndex;
+        for (let i = lastAIIndex + 1; i < messages.length; i++) {
+            if (messages[i].type === 'right' && !messages[i].recalled) break;
+            endIndex = i;
         }
 
         const idsToRemove = [];
-        for (let i = startIndex; i <= lastAIIndex; i++) {
-            idsToRemove.push(messages[i].id);
+        for (let i = lastUserIndex + 1; i <= endIndex; i++) {
+            if (messages[i] && messages[i].id) idsToRemove.push(messages[i].id);
         }
 
         const remaining = messages.filter(m => !idsToRemove.includes(m.id));
@@ -10694,6 +10998,13 @@ if (callCard) {
             try { renderMessages(); } catch (e) {}
             return;
         }
+        // 私聊「强制翻译」开关：立刻重渲染并补齐撤回消息的翻译；下一轮回复会按外国人处理。
+        if (data.type === 'nanoForceTranslate') {
+            if (data.chatId && data.chatId !== chatId) return;
+            try { renderMessages(); } catch (e) {}
+            try { ensureRecallTranslations(); } catch (e) {}
+            return;
+        }
 
         if (data.chatId && data.chatId !== chatId) return;
 
@@ -10978,6 +11289,8 @@ if (data.type === 'NANO_VOICE_CALL_CARD' || data.type === 'NANO_VIDEO_CALL_CARD'
             // 启动主动发朋友圈定时（若之前已开启）
             try { setAutoMomentState(getChatSetting('autoMoment', false) || getChatSetting('autoSocial', false), getChatSetting('autoMomentInterval', 24), { first: shouldDoFirstAutoMoment() }); } catch (e) {}
             console.log('[Chat] 缓存加载完成，消息数:', messages.length);
+            // 旧链接卡片补封面（异步、只补最近 5 张）
+            setTimeout(function () { try { refreshStaleLinkPreviewImages(5); } catch (e) {} }, 1500);
             refreshMemoryHints();
             try { if (window.NanoBadge) window.NanoBadge.setContext(chatId); } catch (e) {}
             try { showPendingUserInvite(); } catch (e) {}

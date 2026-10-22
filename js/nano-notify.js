@@ -346,8 +346,18 @@
         var key = String(keyOverride || barkKey() || '').trim();
         if (!key) return Promise.resolve({ ok: false, error: 'no-key' });
         opts = opts || {};
-        title = pushText(title, 'Nano');
-        body = pushText(body, '你有一条新消息');
+        // 通知标题优先用「角色昵称」，正文优先用真实消息内容。
+        // 之前的调用链里偶尔只传了 title/body 的空壳（例如 schedule 的占位文案），
+        // 结果 Bark 只显示通用的 "Nano / 你有一条新消息"。这里用 opts.name / opts.preview
+        // 兜底，保证每条推送都带角色名和具体内容。
+        var nameHint = pushText(opts.name, '');
+        var bodyHint = pushText(opts.preview, '');
+        title = pushText(title, nameHint || 'Nano');
+        body = pushText(body, bodyHint || '你有一条新消息');
+        if (nameHint && /^(Nano|新消息|通知|消息|朋友圈|TA)$/i.test(String(title).trim())) title = nameHint;
+        if (/^(title|body|undefined|null)$/i.test(String(title).trim())) title = nameHint || 'Nano';
+        if (bodyHint && /^(你有一条新消息|新消息|收到就说明配置成功.?)$/i.test(String(body).trim())) body = bodyHint;
+        if (/^(title|body|undefined|null)$/i.test(String(body).trim())) body = bodyHint || '你有一条新消息';
         var base = key.indexOf('http') === 0 ? key.replace(/\/+$/, '') : ('https://api.day.app/' + encodeURIComponent(key));
         var full = base + '/' + encodeURIComponent(title) + '/' + encodeURIComponent(body.slice(0, 150));
         // level=active：后台/锁屏弹横幅；sound=none：不要提示音，也尽量避免震动
@@ -369,7 +379,12 @@
         return fetch(url, { cache: 'no-store' }).then(function (r) {
             return r.json().catch(function () { return {}; });
         }).then(function (j) {
-            return { ok: !(j && j.code && Number(j.code) !== 200), resp: j };
+            var ok = !(j && j.code && Number(j.code) !== 200);
+            return {
+                ok: ok,
+                resp: j,
+                error: ok ? '' : String((j && (j.message || j.error)) || ('Bark code ' + (j && j.code)))
+            };
         }).catch(function () {
             // 读取响应被 CORS 拦截时，退化成不可读请求再发一次（请求仍会送达 Bark）
             try { fetch(url, { mode: 'no-cors' }).catch(function () {}); } catch (e) {}
@@ -455,7 +470,12 @@
         try {
             var hidden = !isForeground();
             if (barkEnabled() && barkKey() && (hidden || opts.force || opts.bark)) {
-                var bopts = Object.assign({}, opts, { icon: icon, group: opts.group || title || 'Nano' });
+                var bopts = Object.assign({}, opts, {
+                    icon: icon,
+                    name: opts.name || title,
+                    preview: body,
+                    group: opts.group || opts.name || title || 'Nano'
+                });
                 barkPush(title, body, bopts);
                 barkSent = true;
             }

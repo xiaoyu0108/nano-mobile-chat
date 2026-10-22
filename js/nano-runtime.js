@@ -141,7 +141,7 @@
   try {
     if (!window.NanoApiLogs) {
       var logScript = document.createElement('script');
-      logScript.src = root + 'js/api-logs.js?v=20261021a';
+      logScript.src = root + 'js/api-logs.js?v=20261023b';
       logScript.async = false;
       (document.head || document.documentElement).appendChild(logScript);
     }

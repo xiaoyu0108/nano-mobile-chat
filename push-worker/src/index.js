@@ -207,6 +207,8 @@ function sanitizeAutoConfig(body) {
       nationality: String((c && c.nationality) || '').slice(0, 40),
       language: String((c && c.language) || '').slice(0, 40),
       foreign: !!(c && c.foreign),
+      forceTranslate: !!(c && c.forceTranslate),
+      forceLang: String((c && c.forceLang) || '').slice(0, 40),
       // 最近聊天上下文：后台生成必须接得上你们刚聊过的话题，不能凭空发口水话
       recent: (Array.isArray(c && c.recent) ? c.recent.slice(-6) : []).map(function (r) {
         return {
@@ -375,6 +377,7 @@ function fmtCn(ms) {
 }
 function autoLangName(c) {
   if (!c) return '';
+  if (c.forceTranslate && c.forceLang) return String(c.forceLang).trim();
   const given = String(c.language || '').trim();
   // 外国人即使语言字段是「中文」，主动消息也强制用国籍对应的母语
   if (given && !/中文|汉语|漢語|chinese/i.test(given)) return given;
@@ -391,6 +394,7 @@ function autoLangName(c) {
 }
 function autoIsForeign(c) {
   if (!c) return false;
+  if (c.forceTranslate) return true;
   if (c.foreign) return true;
   const nat = String(c.nationality || '').trim();
   return !!(nat && nat !== '未知' && nat !== '未设定' && !/(中国|中國|china|chinese|香港|澳门|澳門|台湾|台灣)/i.test(nat));
@@ -398,9 +402,10 @@ function autoIsForeign(c) {
 function autoLangBlock(c) {
   if (!autoIsForeign(c)) return '';
   const lang = autoLangName(c);
+  const trans = /粤语|粵語|cantonese/i.test(lang) ? '普通话' : '中文';
   return '【语言 · 最高优先级】你是' + (c.nationality || '外国') + '人，母语是' + lang + '。'
     + '本轮主动消息的正文必须只用' + lang + '写，绝不能用中文当正文；即使人设或上面的说明是中文，也不要改变。'
-    + '每行一条气泡，严格按「' + lang + '原文||中文翻译」的格式输出，用 || 分隔；中文只能出现在 || 右边作为翻译，翻译要自然口语化。\n';
+    + '每行一条气泡，严格按「' + lang + '原文||' + trans + '翻译」的格式输出，用 || 分隔；' + trans + '只能出现在 || 右边作为翻译，翻译要自然口语化。\n';
 }
 function cycleBlock(c) {
   const cy = c && c.cycle;
@@ -559,15 +564,17 @@ function pushText(v, fallback) {
   let s = '';
   if (v && typeof v === 'object') s = v.body || v.text || v.message || v.content || v.title || '';
   else s = (v == null ? '' : v);
-  s = String(s || '').split('||')[0].trim();
+  // 外语气泡是「原文||中文翻译」：推送里两段都保留，别把翻译直接丢掉。
+  s = String(s || '').replace(/\s*\|\|\s*/g, ' / ').trim();
   return s || String(fallback || '');
 }
 async function sendBarkKey(env, key, payload) {
   key = String(key || '').trim();
   if (!key) return false;
   const base = key.indexOf('http') === 0 ? key.replace(/\/+$/, '') : ('https://api.day.app/' + encodeURIComponent(key));
-  const title = pushText(payload.title, 'Nano');
-  const body = pushText(payload.body, '你有一条新消息').slice(0, 150);
+  // 标题优先用角色昵称，正文用真实气泡内容；避免只推 "Nano / 你有一条新消息"。
+  const title = pushText(payload.title || payload.name, 'Nano');
+  const body = pushText(payload.body || payload.text || payload.preview, '你有一条新消息').slice(0, 150);
   let url = base + '/' + encodeURIComponent(title) + '/' + encodeURIComponent(body);
   // active 才会在锁屏/后台弹横幅；sound=none 关掉提示音（避免保活时又响又震）
   const q = ['group=' + encodeURIComponent(payload.channel || 'Nano'), 'level=active', 'sound=none'];
@@ -761,7 +768,7 @@ function linkCleanText(s) {
     .trim();
 }
 function parseLinkPage(html) {
-  html = String(html || '');
+  html = String(html || '').replace(/\\u002F/gi, '/').replace(/\\\//g, '/');
   function pick(re) { const m = html.match(re); return m ? m[1] : ''; }
   function jsonField(name) {
     const m = html.match(new RegExp('"' + name + '"\\s*:\\s*"([^"]{2,})"', 'i'));
@@ -797,6 +804,21 @@ function parseLinkPage(html) {
   while ((m = re.exec(html))) addImg(m[1]);
   re = /"(?:picUrl|imageUrl|image|img|pic|pics|images)"\s*:\s*"([^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/gi;
   while ((m = re.exec(html))) addImg(m[1]);
+  // 抖音：封面/首帧在 cover / origin_cover / dynamic_cover 的 url_list 里，og:image 经常为空。
+  re = /"(?:cover|origin_cover|dynamic_cover|cover_url|video_cover)"\s*:\s*\{[\s\S]{0,300}?"url_list"\s*:\s*\[\s*"([^"]+)"/gi;
+  while ((m = re.exec(html))) addImg(m[1]);
+  // 小红书当前页面结构：imageList → urlDefault / urlPre；CDN 域名通常是 sns-webpic。
+  re = /"(?:urlDefault|urlPre|url)"\s*:\s*"((?:https?:)?\/\/[^"]*(?:sns-webpic|xhscdn|xiaohongshu)[^"]*)"/gi;
+  while ((m = re.exec(html))) addImg(m[1]);
+  // 淘宝/天猫：商品主图常见字段。
+  re = /"(?:picUrl|pic_url|mainPic|main_pic|imageUrl|images|imageList)"\s*:\s*(?:"([^"]+)"|\[\s*"([^"]+)")/gi;
+  while ((m = re.exec(html))) addImg(m[1] || m[2]);
+  // 兜底：从 CDN 图片 URL 里捞（阿里/抖音/小红书）。
+  re = /(https?:)?\/\/[^"'\\\s]+\.(?:jpg|jpeg|png|webp)(?:\?[^"'\\\s]*)?/gi;
+  while ((m = re.exec(html))) {
+    const u8 = m[0];
+    if (/(alicdn|taobao|tmall|douyin|byteimg|xiaohongshu|xhscdn)/i.test(u8)) addImg(u8);
+  }
   const visible = linkCleanText(html.replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<style[\s\S]*?<\/style>/gi, ' '));
   let price = '';
   const pm = html.match(/"(?:price|priceText|priceShow|salePrice|promotionPrice)"\s*:\s*"?\s*[¥￥]?\s*([\d.]+)/i)
@@ -804,15 +826,15 @@ function parseLinkPage(html) {
   if (pm && pm[1]) price = pm[1];
   title = linkDecodeHtml(title).slice(0, 120);
   desc = linkDecodeHtml(desc).replace(/\s+/g, ' ').slice(0, 180);
-  const body = [jsonTitle, desc, jsonField('desc'), visible].filter(Boolean).join('\n').slice(0, 7000);
+  const body = [jsonTitle, jsonField('desc'), jsonField('share_title'), jsonField('description'), desc, visible].filter(Boolean).join('\n').slice(0, 7000);
   return { title: title, desc: desc, content: body, images: imgs, price: price };
 }
 function linkLooksBlocked(finalUrl, data) {
   if (/website-login|captcha|verify|\/login|signin/i.test(String(finalUrl || ''))) return true;
   const title = String((data && data.title) || '');
   const content = String((data && data.content) || '');
-  if (/^(小红书|抖音|快手|微博|哔哩哔哩|B站)\s*$/i.test(title) && content.replace(/\s+/g, '').length < 50) return true;
-  if (/滑动验证|请登录|安全验证|访问异常|captcha|想了解些什么|登录后|扫码登录|登录小红书/i.test(content)) return true;
+  if (/^(小红书|抖音|快手|微博|哔哩哔哩|B站|淘宝|天猫|京东)\s*$/i.test(title) && content.replace(/\s+/g, '').length < 50 && !(data && data.images && data.images.length)) return true;
+  if (/滑动验证|请登录|安全验证|访问异常|captcha|想了解些什么|登录后|扫码登录|登录小红书|亲，请登录|扫码查看|商品不存在|商品已下架|您查看的宝贝不存在|页面不存在/i.test(content)) return true;
   return false;
 }
 // 小红书短链被跳到登录/滑块页时，redirectPath 里仍然带着笔记 id 和 xsec_token。
@@ -870,17 +892,42 @@ async function fetchTextWithTimeout(target, headers, ms) {
 async function fetchLinkPreview(url) {
   let u;
   try { u = new URL(String(url || '')); } catch (e) { return null; }
+  // 分享链接经常是 http://（尤其抖音/淘宝的复制口令），Worker 里先自动升级成 https，
+  // 否则会被下面的 https 检查直接拒绝，表现为「小红书能解析，抖音/淘宝只有卡片」。
+  if (u.protocol === 'http:') u.protocol = 'https:';
   if (u.protocol !== 'https:' || !linkHostAllowed(u.hostname)) return null;
   const mobileUA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
+  const refHost = /douyin|iesdouyin/i.test(u.hostname) ? 'https://www.douyin.com/' :
+    (/taobao|tb\.cn|tmall/i.test(u.hostname) ? 'https://m.tb.cn/' : '');
   const first = await fetchTextWithTimeout(u.href, {
     'User-Agent': mobileUA,
     'Accept': 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8',
-    'Accept-Language': 'zh-CN,zh;q=0.9'
+    'Accept-Language': 'zh-CN,zh;q=0.9',
+    ...(refHost ? { 'Referer': refHost } : {})
   }, 10000);
+  let firstOk = false;
   if (first && first.text) {
     const data = parseLinkPage(first.text);
-    if ((data.title || data.content) && !linkLooksBlocked(first.resp.url || u.href, data)) {
+    const ok = (data.title || data.content) && !linkLooksBlocked(first.resp.url || u.href, data);
+    if (ok) {
       return Object.assign({ url: first.resp.url || u.href }, data);
+    }
+    firstOk = false;
+  }
+  // 抖音/淘宝移动页经常只给登录弹窗；再用桌面 UA 抓一次，很多商品/视频详情
+  // 在桌面页的 JSON 里仍然带封面和标题。
+  if (!firstOk && /douyin|iesdouyin|taobao|tb\.cn|tmall/i.test(u.hostname)) {
+    const desk = await fetchTextWithTimeout(u.href, {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+      'Accept': 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'zh-CN,zh;q=0.9',
+      'Referer': /taobao|tb\.cn|tmall/i.test(u.hostname) ? 'https://www.taobao.com/' : 'https://www.douyin.com/'
+    }, 10000);
+    if (desk && desk.text) {
+      const d2 = parseLinkPage(desk.text);
+      if ((d2.title || d2.content || (d2.images && d2.images.length)) && !linkLooksBlocked(desk.resp.url || u.href, d2)) {
+        return Object.assign({ url: desk.resp.url || u.href, via: 'desktop' }, d2);
+      }
     }
   }
   // 小红书被跳到登录/滑块页：用 redirectPath 里的笔记 id + xsec_token 换 /explore 地址再试。
@@ -1548,14 +1595,16 @@ async function sendBarkReminder(env) {
   const key = env.BARK_KEY;
   if (!key) return;
   const times = String(env.REMIND_TIMES || '').split(',').map((s) => s.trim()).filter(Boolean);
-  if (!times.length) return;
+  const text = String(env.REMIND_TEXT || '').trim();
+  // 没有再配置自定义提醒文案时不要发「有人想你了」这类通用占位通知：
+  // 真实的主动消息 / 朋友圈会带角色昵称和具体内容，混在一起会让 Bark 看起来只有 title/body。
+  if (!times.length || !text) return;
   // 换算北京时间
   const bj = new Date(Date.now() + 8 * 3600 * 1000);
   const cur = String(bj.getUTCHours()).padStart(2, '0') + ':' + String(bj.getUTCMinutes()).padStart(2, '0');
   if (!times.includes(cur)) return;
-  const text = env.REMIND_TEXT || '有人想你了，点开看看～';
   const base = String(key).indexOf('http') === 0 ? String(key).replace(/\/+$/, '') : ('https://api.day.app/' + encodeURIComponent(key));
-  const url = base + '/' + encodeURIComponent('你有一条新消息') + '/' + encodeURIComponent(text) + '?group=Nano&level=passive';
+  const url = base + '/' + encodeURIComponent('Nano 提醒') + '/' + encodeURIComponent(text) + '?group=Nano&level=passive';
   try { await fetch(url); } catch (e) {}
 }
 

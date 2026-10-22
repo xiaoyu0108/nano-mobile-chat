@@ -303,6 +303,10 @@
     var cotToggle = document.getElementById('cotToggle');
     var cotToggleStatus = document.getElementById('cotToggleStatus');
     var cotItemEl = document.getElementById('cotItem');
+    var forceTranslateToggle = document.getElementById('forceTranslateToggle');
+    var forceTranslateStatus = document.getElementById('forceTranslateStatus');
+    var forceTranslateLangItem = document.getElementById('forceTranslateLangItem');
+    var forceTranslateLang = document.getElementById('forceTranslateLang');
     function applyCotItemState(on) {
         if (!cotItemEl) return;
         cotItemEl.style.opacity = on ? '' : '0.45';
@@ -1349,6 +1353,36 @@
         if (transStatus) transStatus.textContent = sep ? '分开' : '同一气泡';
     }
     applyTransMode();
+    function applyForceTranslate() {
+        var on = !!getSetting('forceTranslate', false);
+        if (forceTranslateToggle) forceTranslateToggle.checked = on;
+        if (forceTranslateStatus) forceTranslateStatus.textContent = on ? '强制开启' : '跟随人设';
+        if (forceTranslateLang) forceTranslateLang.value = getSetting('forceTranslateLang', '英文') || '英文';
+        if (forceTranslateLangItem) forceTranslateLangItem.style.display = on ? 'flex' : 'none';
+    }
+    applyForceTranslate();
+    if (forceTranslateToggle) {
+        forceTranslateToggle.addEventListener('change', function () {
+            var on = !!this.checked;
+            setSetting('forceTranslate', on);
+            if (on && !getSetting('forceTranslateLang', '')) setSetting('forceTranslateLang', '英文');
+            if (forceTranslateStatus) forceTranslateStatus.textContent = on ? '强制开启' : '跟随人设';
+            if (forceTranslateLangItem) forceTranslateLangItem.style.display = on ? 'flex' : 'none';
+            var lang = forceTranslateLang ? (forceTranslateLang.value || '英文') : '英文';
+            if (window.parent !== window) {
+                try { window.parent.postMessage({ type: 'nanoForceTranslate', chatId: chatId, enabled: on, lang: lang }, '*'); } catch (e) {}
+            }
+        });
+    }
+    if (forceTranslateLang) {
+        forceTranslateLang.addEventListener('change', function () {
+            var lang = this.value || '英文';
+            setSetting('forceTranslateLang', lang);
+            if (window.parent !== window) {
+                try { window.parent.postMessage({ type: 'nanoForceTranslate', chatId: chatId, enabled: !!getSetting('forceTranslate', false), lang: lang }, '*'); } catch (e) {}
+            }
+        });
+    }
     if (transToggle) {
         transToggle.addEventListener('change', function (e) {
             var sep = e.target.checked;

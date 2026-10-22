@@ -2,7 +2,7 @@
 <html lang="zh">
 <head>
     <meta charset="UTF-8">
-    <script src="js/nano-runtime.js?v=20261021c"></script>
+    <script src="js/nano-runtime.js?v=20261023a"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <script>
     // 版本升级时强制清一次缓存并重载：避免手机/PWA 一直跑旧 JS（屏幕共享/思维链等问题）
@@ -3246,7 +3246,7 @@ setTimeout(function () {
                     try { localStorage.setItem(resultKey, JSON.stringify(result)); } catch (e) {}
                     delete groupApiInFlight[token];
                     [overlayFrameA, overlayFrameB, chatInnerFrame].forEach(function(fr) {
-                        try { if (fr && fr.contentWindow) fr.contentWindow.postMessage({ type: doneType, token: token }, '*'); } catch (e) {}
+                        try { if (fr && fr.contentWindow) fr.contentWindow.postMessage({ type: doneType, token: token, result: result }, '*'); } catch (e) {}
                     });
                 };
                 try {
@@ -3317,7 +3317,7 @@ setTimeout(function () {
                 } catch (e) {}
             }
 
-            const innerSettingTypes = ['autoMsgChanged', 'autoMsgIntervalChanged', 'autoMomentChanged', 'autoMomentIntervalChanged', 'autoSocialChanged', 'timeAwareChanged', 'allowImageChanged', 'allowMomentImageChanged', 'remarkChanged', 'cotChanged', 'messagesCleared', 'nanoTransMode', 'nanoBlockChanged', 'nanoCharBlocked', 'nanoCharUnblocked'];
+            const innerSettingTypes = ['autoMsgChanged', 'autoMsgIntervalChanged', 'autoMomentChanged', 'autoMomentIntervalChanged', 'autoSocialChanged', 'timeAwareChanged', 'allowImageChanged', 'allowMomentImageChanged', 'remarkChanged', 'cotChanged', 'messagesCleared', 'nanoTransMode', 'nanoForceTranslate', 'nanoBlockChanged', 'nanoCharBlocked', 'nanoCharUnblocked'];
             if (innerSettingTypes.indexOf(data.type) !== -1) {
                 const c = document.getElementById('chatInnerFrame');
                 if (c && frameBase(c) === 'chat_inner.html') {
@@ -4135,10 +4135,10 @@ setTimeout(function () {
 <script src="js/mem-link.js?v=20261006a"></script>
 <script src="js/aux-memory.js?v=20261021k"></script>
 <script src="js/user-scope.js?v=20261020j"></script>
-<script src="js/nano-notify.js?v=20261021b"></script>
+<script src="js/nano-notify.js?v=20261022a"></script>
 <script src="js/nano-push.js?v=20261021b"></script>
 <script src="swipe-back.js"></script>
-<script src="js/keep-alive.js?v=20261021a"></script>
+<script src="js/keep-alive.js?v=20261023a"></script>
 <script src="js/char-takeover.js?v=20261020c"></script>
 <script src="js/screen-share.js?v=20261013e"></script>
 <script src="js/ios-bridge.js?v=20261021b"></script>

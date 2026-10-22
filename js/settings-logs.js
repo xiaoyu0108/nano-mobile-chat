@@ -5,16 +5,113 @@
   var $ = function (id) { return document.getElementById(id); };
   var filter = 'all';
   var query = '';
-  var range = 100;
+  var appFilter = 'all';
+  var range = 30;
+  var expanded = false;
   var toastTimer = null;
+
+  // 每个页面 → App 名称。日志里的 page 是发起请求的页面文件名。
+  var APP_LABEL = {
+    'qa': 'Q&A',
+    'offline': '线下',
+    'chat': '聊天',
+    'groups': '群聊',
+    'moments': '朋友圈',
+    'ins': 'Instagram',
+    'imessage': 'iMessage',
+    'halo': 'Halo',
+    'books': 'Books',
+    'music': '音乐',
+    'index.html': '主界面',
+    'home.html': '主界面',
+    'chat.html': '聊天',
+    'chat_inner.html': '私聊',
+    'groups.html': '群聊',
+    'group-setting.html': '群聊设置',
+    'qa.html': 'Q&A',
+    'moments.html': '朋友圈',
+    'ins.html': 'Instagram',
+    'imessage.html': 'iMessage',
+    'halo.html': 'Halo',
+    'books.html': 'Books',
+    'music.html': '音乐',
+    'offline.html': '线下',
+    'offline-setting.html': '线下设置',
+    'phone.html': '手机',
+    'meet.html': '回忆',
+    'discover.html': '发现',
+    'doubao.html': '豆包',
+    'taobao.html': '淘宝',
+    'mapcal.html': '地图日历',
+    'appstore.html': '应用商店',
+    'app-host.html': 'App 宿主',
+    'nano-app-template.html': 'App 模板',
+    'nano.html': 'Nano',
+    'nano-setting.html': 'Nano 设置',
+    'nano-files.html': 'Nano 文件',
+    'api.html': 'API 设置',
+    'other.html': '设置·通知',
+    'settings.html': '设置',
+    'settings-logs.html': '后台日志',
+    'settings-notifications.html': '设置·通知',
+    'settings-other.html': '设置·其它',
+    'settings-prompts.html': '设置·提示词',
+    'settings-desktop.html': '设置·桌面',
+    'storage.html': '储存',
+    'backup.html': '备份',
+    'ios-setting.html': 'iOS 设置',
+    'more.html': '更多',
+    'character.html': '角色',
+    'heart-setting.html': '心声设置',
+    'inner-setting.html': '内心设置',
+    'beautify.html': '美化',
+    'schedule.html': '日程',
+    'pomodoro.html': '番茄钟',
+    'worldbook.html': '世界书',
+    'mask.html': '马甲',
+    'wallet.html': '钱包',
+    'market.html': '集市',
+    'mall.html': '商城',
+    'assistant.html': '助手',
+    'favorite.html': '收藏',
+    'emoji.html': '表情',
+    'mcp.html': 'MCP',
+    'family-card.html': '亲属卡',
+    'couple-spaces.html': '情侣空间',
+    'cycle.html': '周期',
+    'memory.html': '记忆',
+    'memory palace.html': '记忆宫殿',
+    'fanfic.html': '同人',
+    'fanfic-create.html': '同人创作',
+    'fanfic-read.html': '同人阅读',
+    'video-call.html': '视频通话',
+    'voice-call.html': '语音通话'
+  };
+  function appKey(log) {
+    var a = String((log && log.app) || '').trim();
+    if (a) return a;
+    var p = String((log && log.page) || '').trim();
+    if (!p) return 'unknown';
+    return p.split('?')[0];
+  }
+  function appLabel(key) {
+    if (key === 'unknown') return '未知页面';
+    return APP_LABEL[key] || key.replace(/\.html?$/i, '');
+  }
 
   var KIND_LABEL = {
     chat: '聊天 API',
+    image: '图片 API',
+    tts: '语音 API',
+    audio: '音频',
+    video: '视频',
     memory: '记忆',
     push: '推送',
+    schedule: '定时',
     mcp: 'MCP',
     market: '集市',
     link: '链接',
+    social: '社交',
     other: '其他'
   };
 
@@ -85,19 +182,43 @@
 
   function matches(log) {
     if (!log) return false;
+    if (appFilter !== 'all' && appKey(log) !== appFilter) return false;
     if (filter === 'error' && log.ok) return false;
     if (filter !== 'all' && filter !== 'error' && log.kind !== filter) return false;
     if (!query) return true;
-    var hay = [log.url, log.error, log.page, log.method, log.kind, log.meta && log.meta.model].join(' ').toLowerCase();
+    var hay = [log.url, log.error, log.page, appLabel(appKey(log)), log.method, log.kind, log.meta && log.meta.model].join(' ').toLowerCase();
     return hay.indexOf(query.toLowerCase()) !== -1;
+  }
+
+  function refreshAppOptions(all) {
+    var sel = $('logApp');
+    if (!sel) return;
+    var seen = {};
+    all.forEach(function (log) { seen[appKey(log)] = 1; });
+    var keys = Object.keys(seen).sort(function (a, b) { return appLabel(a).localeCompare(appLabel(b), 'zh-CN'); });
+    if (appFilter !== 'all' && keys.indexOf(appFilter) === -1) appFilter = 'all';
+    var html = '<option value="all">全部 App</option>' + keys.map(function (k) {
+      return '<option value="' + esc(k) + '">' + esc(appLabel(k)) + '</option>';
+    }).join('');
+    if (sel.innerHTML !== html) sel.innerHTML = html;
+    sel.value = appFilter;
   }
 
   function render() {
     var all = readLogs();
+    refreshAppOptions(all);
     var errors = all.filter(function (x) { return x && !x.ok; }).length;
-    var list = all.filter(matches).slice(0, range);
+    var matched = all.filter(matches);
+    var limit = expanded ? matched.length : Math.min(matched.length, range);
+    var list = matched.slice(0, limit);
+    var hidden = Math.max(0, matched.length - list.length);
     var summary = $('logSummary');
-    if (summary) summary.textContent = '共 ' + all.length + ' 条 · 错误 ' + errors + ' 条' + (list.length !== all.filter(matches).length ? (' · 当前显示 ' + list.length + ' 条') : '');
+    if (summary) {
+      summary.textContent = '共 ' + all.length + ' 条 · 错误 ' + errors + ' 条' +
+        (appFilter === 'all' ? '' : (' · 当前 App：' + appLabel(appFilter))) +
+        ' · 匹配 ' + matched.length + ' 条 · 显示 ' + list.length + ' 条' +
+        (hidden ? (' · 已折叠 ' + hidden + ' 条') : '');
+    }
     var host = $('logList');
     var empty = $('logEmpty');
     if (!host) return;
@@ -117,7 +238,7 @@
       if (meta.stream) metaBits.push('stream');
       var detailBits = [];
       detailBits.push('完整地址：' + safeUrl(log.url));
-      detailBits.push('页面：' + (log.page || '') + (log.pageTitle ? (' · ' + log.pageTitle) : ''));
+      detailBits.push('App：' + appLabel(appKey(log)) + ' · 页面：' + (log.page || '') + (log.pageTitle ? (' · ' + log.pageTitle) : ''));
       detailBits.push('用户：' + (log.userId || '未识别'));
       if (metaBits.length) detailBits.push('请求：' + metaBits.join(' · '));
       if (log.error) detailBits.push('错误：' + log.error);
@@ -125,17 +246,20 @@
       return '<div class="log-row ' + (log.ok ? 'ok' : 'fail') + '" data-id="' + esc(log.id) + '" role="button" tabindex="0">' +
         '<span class="log-dot ' + (log.ok ? 'ok' : 'error') + '"></span>' +
         '<span class="log-main">' +
-          '<span class="log-title"><b>' + esc(log.method || 'GET') + '</b> ' + esc(shortUrl(log.url)) +
-            ' <em class="log-status ' + statusClass(log) + '">' + esc(statusText(log)) + '</em></span>' +
+          '<span class="log-title"><b>' + esc(log.method || 'GET') + '</b>' +
+            '<span class="log-url" title="' + esc(safeUrl(log.url)) + '">' + esc(shortUrl(log.url)) + '</span>' +
+            '<em class="log-status ' + statusClass(log) + '">' + esc(statusText(log)) + '</em></span>' +
           '<span class="log-sub">' + esc(fmtTime(log.at)) + ' · ' + esc(KIND_LABEL[log.kind] || log.kind || '其他') +
-            ' · ' + esc(log.page || '') + ' · ' + esc(log.duration || 0) + 'ms' + (log.ok ? '' : (' · ' + esc(String(log.error || '请求失败').split('\n')[0].slice(0, 90)))) + '</span>' +
+            ' · ' + esc(appLabel(appKey(log))) + ' · ' + esc(log.duration || 0) + 'ms' + (log.ok ? '' : (' · ' + esc(String(log.error || '请求失败').split('\n')[0].slice(0, 90)))) + '</span>' +
           '<span class="log-detail">' + detailBits.map(esc).join('<br>') +
             '<span class="log-row-actions"><button type="button" class="log-mini" data-copy="' + esc(log.id) + '">复制错误</button>' +
             '<button type="button" class="log-mini danger" data-remove="' + esc(log.id) + '">删除</button></span>' +
           '</span>' +
         '</span>' +
       '</div>';
-    }).join('');
+    }).join('') +
+    (hidden ? ('<button type="button" class="log-more-btn" data-more="1">展开更多（还有 ' + hidden + ' 条）</button>') : '') +
+    ((expanded && matched.length > range) ? '<button type="button" class="log-more-btn" data-collapse="1">收起（只显示 ' + range + ' 条）</button>' : '');
   }
 
   function copyText(text) {
@@ -170,27 +294,49 @@
       var btn = e.target.closest('[data-filter]');
       if (!btn) return;
       filter = btn.getAttribute('data-filter') || 'all';
+      expanded = false;
       Array.prototype.forEach.call(chips.querySelectorAll('.log-chip'), function (x) {
         x.classList.toggle('active', x === btn);
       });
       render();
     });
 
+    var appSel = $('logApp');
+    if (appSel) appSel.addEventListener('change', function () {
+      appFilter = this.value || 'all';
+      expanded = false;
+      render();
+    });
+
     var search = $('logSearch');
     if (search) search.addEventListener('input', function () {
       query = String(this.value || '').trim();
+      expanded = false;
       render();
     });
 
     var rangeEl = $('logRange');
     if (rangeEl) rangeEl.addEventListener('change', function () {
-      range = parseInt(this.value, 10) || 100;
+      range = parseInt(this.value, 10) || 30;
+      expanded = false;
       render();
     });
 
     var list = $('logList');
     if (list) {
       list.addEventListener('click', function (e) {
+        var more = e.target.closest('[data-more]');
+        if (more) {
+          expanded = true;
+          render();
+          return;
+        }
+        var collapse = e.target.closest('[data-collapse]');
+        if (collapse) {
+          expanded = false;
+          render();
+          return;
+        }
         var copy = e.target.closest('[data-copy]');
         if (copy) {
           e.stopPropagation();
