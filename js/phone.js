@@ -2396,7 +2396,7 @@ async function openSettings(){
         <button class="st-btn" data-act="screenshare">
           <div>
             <div class="st-btn-title">让 TA 看我的真实屏幕</div>
-            <div class="st-btn-sub">共享真实屏幕让 TA 实时点评（需能识图的模型；电脑 Chrome/Edge 支持，iOS 网页端不支持）</div>
+            <div class="st-btn-sub">电脑上一键共享整个屏幕，TA 每 30 秒点评一次（需能识图的模型）</div>
           </div>
           <svg class="st-btn-chev" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></svg>
         </button>
@@ -2406,7 +2406,7 @@ async function openSettings(){
         <button class="st-btn" data-act="ios-screen">
           <div>
             <div class="st-btn-title">iOS 快捷指令 · 窥屏</div>
-            <div class="st-btn-sub">用快捷指令 / 轻点背面截屏，让 TA 点评你屏幕上的内容（iPhone / iPad）</div>
+            <div class="st-btn-sub">手机用屏幕速聊：截图 → 服务端 → 回复弹通知，回到 Nano 自动进聊天</div>
           </div>
           <svg class="st-btn-chev" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></svg>
         </button>
@@ -3221,6 +3221,13 @@ window.addEventListener("message", e => {
   const d = e && e.data;
   if(d && d.type === "phoneAppClose") closeApp();
   else if(d && d.type === "screenSetupClose"){ try{ openSettings(); }catch(err){} }
+  else if(d && d.type === "startScreenShare"){
+    // 窥屏页嵌在「查手机」里时，把共享请求继续交给外壳
+    try{
+      if(window.parent && window.parent !== window) window.parent.postMessage(d, "*");
+      else if(window.ScreenShare && window.ScreenShare.start) window.ScreenShare.start({ id:d.charId, name:d.charName, avatar:d.avatar });
+    }catch(err){}
+  }
 });
 
 /* App 路由 */

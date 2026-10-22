@@ -1458,10 +1458,20 @@ setTimeout(function () {
                 const d = ev.data;
                 if (!d) return;
                 if (d.type === 'nanoBackHandled') { done = true; cleanup(); }
-                else if (d.type === 'nanoBackUnhandled') { cleanup(); try { closeFullscreen(); } catch (e) {} }
+                else if (d.type === 'nanoBackUnhandled') { cleanup(); closeOverlayByBack(); }
+            }
+            function closeOverlayByBack() {
+                // 应用内部返回栈已经走到底：回到 AppStore，而不是直接回桌面/聊天
+                try {
+                    if (frameBase(f) === 'app-host.html') {
+                        openFullscreen('appstore.html', 'AppStore', false, 'appstore');
+                        return;
+                    }
+                } catch (e) {}
+                try { closeFullscreen(); } catch (e) {}
             }
             window.addEventListener('message', onMsg);
-            timer = setTimeout(function () { if (!done) { cleanup(); try { closeFullscreen(); } catch (e) {} } }, 320);
+            timer = setTimeout(function () { if (!done) { cleanup(); closeOverlayByBack(); } }, 900);
             try { f.contentWindow.postMessage({ type: 'nanoRequestBack' }, '*'); } catch (e) { cleanup(); return false; }
             return true;
         }
@@ -1675,7 +1685,7 @@ setTimeout(function () {
             'music.html', 'voice-call.html', 'video-call.html', 'storage.html', 'backup.html', 'other.html', 'more.html',
             'discover.html', 'api.html', 'moments.html', 'ins.html', 'inner-setting.html', 'beautify.html',
             'books.html', 'couple-spaces.html', 'halo.html', 'offline.html', 'offline-setting.html',
-            'heart-setting.html', 'market.html', 'mcp.html', 'settings.html', 'settings-logs.html', 'settings-desktop.html', 'settings-notifications.html', 'settings-prompts.html', 'settings-other.html', 'schedule.html',
+            'heart-setting.html', 'market.html', 'mcp.html', 'settings.html', 'settings-logs.html', 'gallery.html', 'settings-desktop.html', 'settings-notifications.html', 'settings-prompts.html', 'settings-other.html', 'schedule.html',
             'phone.html', 'assistant.html', 'nano-setting.html', 'family-card.html', 'wallet.html', 'appstore.html',
             'cycle.html', 'fanfic.html', 'fanfic-create.html', 'fanfic-read.html', 'imessage.html', 'memory palace.html', 'app-host.html', 'meet.html', 'mall.html', 'qa.html', 'pomodoro.html', 'nano.html', 'nano-files.html'];
         // 其余页面（发现/更多/API/moments/ins/…）兜底：内容整体让到灵动岛下面
@@ -1828,7 +1838,7 @@ setTimeout(function () {
                 showOverlayFrame();
                 // 同一个页面且已加载过 → 直接复用（切换更快）；正在后台生成 → 也必须复用（否则中断生成）
                 reuseOrLoadOverlayFrame(url);
-                const ownNavPages = ['chat.html', 'api.html', 'more.html', 'settings.html', 'settings-logs.html', 'settings-desktop.html', 'settings-notifications.html', 'settings-prompts.html', 'settings-other.html', 'beautify.html', 'schedule.html', 'worldbook.html', 'emoji.html', 'favorite.html', 'offline.html', 'offline-setting.html', 'moments.html', 'groups.html', 'group-setting.html', 'other.html', 'storage.html', 'backup.html', 'phone.html', 'ins.html', 'couple-spaces.html', 'halo.html', 'books.html', 'mask.html', 'character.html', 'inner-setting.html', 'nano-setting.html', 'nano-files.html', 'ios-setting.html', 'assistant.html', 'family-card.html', 'wallet.html', 'appstore.html', 'cycle.html', 'fanfic.html', 'fanfic-create.html', 'fanfic-read.html', 'market.html', 'mcp.html', 'heart-setting.html', 'imessage.html', 'memory palace.html', 'app-host.html', 'meet.html', 'mall.html', 'qa.html', 'pomodoro.html', 'nano.html'];
+                const ownNavPages = ['chat.html', 'api.html', 'more.html', 'settings.html', 'settings-logs.html', 'gallery.html', 'settings-desktop.html', 'settings-notifications.html', 'settings-prompts.html', 'settings-other.html', 'beautify.html', 'schedule.html', 'worldbook.html', 'emoji.html', 'favorite.html', 'offline.html', 'offline-setting.html', 'moments.html', 'groups.html', 'group-setting.html', 'other.html', 'storage.html', 'backup.html', 'phone.html', 'ins.html', 'couple-spaces.html', 'halo.html', 'books.html', 'mask.html', 'character.html', 'inner-setting.html', 'nano-setting.html', 'nano-files.html', 'ios-setting.html', 'assistant.html', 'family-card.html', 'wallet.html', 'appstore.html', 'cycle.html', 'fanfic.html', 'fanfic-create.html', 'fanfic-read.html', 'market.html', 'mcp.html', 'heart-setting.html', 'imessage.html', 'memory palace.html', 'app-host.html', 'meet.html', 'mall.html', 'qa.html', 'pomodoro.html', 'nano.html'];
                 const hasOwnNav = ownNavPages.indexOf(pageName) !== -1;
                 const noOuterHeader = hasOwnNav || pageName === 'mall.html' || (showBack === false && !(title || ''));
                 if (noOuterHeader) {
@@ -3612,7 +3622,8 @@ setTimeout(function () {
             // 线下 → 直接退出：回到聊天列表，并记住该角色「下次直接进线下」
             if (data.type === 'nanoOfflineExitToChat') {
                 try { localStorage.setItem('nano_chat_mode_' + (data.chatId || 'default'), 'offline'); } catch (e) {}
-                try { currentOverlaySource = 'main'; } catch (e) {}
+                // 直接退出线下：回到这个角色的聊天页（不是手机桌面 home）
+                try { currentOverlaySource = 'chat_inner'; } catch (e) {}
                 try { closeFullscreen(); } catch (e) {}
                 return;
             }
@@ -3669,6 +3680,16 @@ setTimeout(function () {
                 lastGroupTitle = '';
                 currentOverlaySource = 'main';
                 closeFullscreen();
+            }
+
+            if (data.type === 'nanoAppExit') {
+                // 应用自己的返回栈走到最外层：回到 AppStore，而不是直接回桌面
+                try {
+                    openFullscreen('appstore.html', 'AppStore', false, 'appstore');
+                } catch (e) {
+                    try { closeFullscreen(); } catch (e2) {}
+                }
+                return;
             }
 
             if (data.type === 'nanoCloseOverlay' || data.type === 'nano:closeMoments') {

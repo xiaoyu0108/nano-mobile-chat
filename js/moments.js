@@ -2071,7 +2071,10 @@
                         var promptText = cp.image || cp.text;
                         try {
                             var genUrl = await generateImage(promptText, { charId: gid, char: gch });
-                            if (genUrl) { cp.images = [genUrl]; cp.genPrompt = promptText; cp.media = 'image'; madeCount++; needForce = false; }
+                            if (genUrl) {
+                                cp.images = [genUrl]; cp.genPrompt = promptText; cp.media = 'image'; madeCount++; needForce = false;
+                                try { if (window.NanoGallery) window.NanoGallery.add({ url: genUrl, source: '朋友圈', charName: (gch && gch.name) || cp.author || '', prompt: promptText }); } catch (e) {}
+                            }
                         } catch (e) {}
                     }
                 }
@@ -2289,6 +2292,7 @@
                 item.images = [url];
                 item.genPrompt = val;
                 delete item.imageText;
+                try { if (window.NanoGallery) window.NanoGallery.add({ url: url, source: '朋友圈', charName: item.author || '', prompt: val }); } catch (e) {}
                 saveMomentsData(momentsData);
                 renderFeed();
                 openImageViewer(item.id, 0);

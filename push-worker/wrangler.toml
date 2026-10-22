@@ -40,6 +40,9 @@ crons = ["*/5 * * * *"]
 # REMIND_TIMES = "09:00,12:30,20:00,23:00"
 # REMIND_TEXT = "你的自定义提醒文案"
 [vars]
+# 设为 "0" 后，集市不再显示迁移前留在 KV 的旧帖子（数据仍在，只是隐藏）。
+# 想彻底删除旧 KV 帖子：Cloudflare Dashboard → KV → nano-push → 删除 market:* 键。
+INCLUDE_LEGACY_MARKET = "1"
 # Fish Audio TTS 反向代理（前端直连失败时会自动走 /fish-tts）
 # 默认 https://api.fish.audio；如改用第三方 Fish 代理，可取消下面一行注释：
 # FISH_API_ORIGIN = "https://api.fish.audio"

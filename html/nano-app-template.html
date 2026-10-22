@@ -1,466 +1,797 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<script src="../js/nano-runtime.js?v=20261023a"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<title>我的应用</title>
-<script src="../js/appearance.js"></script>
+<title>Nano 应用模板</title>
 <!--
   ============================================================
-  Nano 应用模板（DIY）
+  Nano App 完整模板 v3（可读、可改、可整份重写）
   ------------------------------------------------------------
-  1. 把本文件另存为 .html，改上面的 id / name / icon 后，在「App Store」里导入即可。
-  2. 应用运行时能通过 window.Nano 调用 Nano 的能力：
-     Nano.currentUser() / Nano.user() / Nano.avatar()   // 用户资料（含头像）
-     Nano.characters() / Nano.persona(id) / Nano.worldbook(id) / Nano.memory(id)
-     Nano.apiConfig() / Nano.chat({ charIds, messages, useCharPersona, useUserPersona, useWorldbook, useMemory })
-     Nano.store.get/set/remove(key)
-     Nano.apps() / Nano.openApp(id)                      // 已安装应用列表 / 打开其他应用
-     Nano.manifest() / Nano.setManifest({name,icon,color,desc}) / Nano.setIcon(...)  // 设计自己的图标
-     Nano.notify(title, body) / Nano.toast(text) / Nano.openUrl(url, title)
-     Nano.close()                                        // 关闭并回到 AppStore
-     Nano.onBack(fn)                                     // 自定义手势/返回逻辑；不注册则默认回 AppStore
-  3. 首次进入会让你配置：图标、名称、单人/多人、邀请方式、是否读取人设/世界书/记忆。
-  4. 想改默认值，直接改下面的 DEFAULT_CONFIG。
+  结构：
+    · 首页 home       —— 应用入口
+    · 清单 items      —— 一个完整的增删改查示例
+    · 详情 item       —— 从清单点进去的二级页
+    · 设置 settings   —— 名称 / 图标 / 字体 / 角色 / 权限
+    · 指南 guide      —— 页面写法、返回逻辑、Nano API
+
+  返回逻辑（重点）：
+    · 首页按返回  → 直接回 AppStore
+    · 清单/设置按返回 → 先回首页，再按一次才回 AppStore
+    · 二级页按返回 → 回到打开它的上一页
+    · 每个页面都可以写 onBack(params) 自己接管返回：
+        return true   自己处理完了
+        return false  交给上一级（默认）
+        return 'exit' 直接退出到 AppStore
+
+  想加页面：
+    App.define('my-page', {
+      title: '我的页面',
+      hideTab: true,
+      html: function (params) { return '<div>内容</div>'; },
+      mount: function (el, params) { ... },
+      onBack: function (params) { return false; }
+    });
+    App.go('my-page');
+
+  这个文件不依赖任何构建工具，直接保存成 .html 导入 AppStore 即可。
   ============================================================
 -->
 <script type="application/json" id="nano-manifest">{
   "id": "my-nano-app",
-  "name": "我的应用",
-  "icon": "A",
-  "color": "#5B8DEF",
-  "desc": "用 Nano 模板搭建的专属应用",
-  "version": "1.0.0",
-  "permissions": ["persona", "characters", "worldbook", "memory", "api"]
+  "name": "Nano 应用模板",
+  "icon": "◆",
+  "color": "#5B6CFF",
+  "desc": "完整可改写的 App 模板：首页 / 清单 / 二级页 / 设置 / DIY 返回栈 / 高权限",
+  "version": "3.0.0",
+  "highPermission": true,
+  "permissions": ["*", "characters", "persona", "worldbook", "memory", "api", "chat", "image", "tts", "files", "gallery", "notify", "clipboard", "apps", "storage", "openUrl"]
 }</script>
 <style>
   *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-  html,body{width:100%;height:100%;overflow:hidden;background:#fff;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",Arial,sans-serif;position:fixed;top:0;left:0}
-  .app{position:absolute;inset:0;display:flex;flex-direction:column;background:#fff}
-  .top{flex:none;display:flex;align-items:center;gap:10px;padding:calc(var(--safe-top, env(safe-area-inset-top,0px)) + 10px) 12px 10px;border-bottom:.5px solid rgba(60,60,67,.14);background:rgba(255,255,255,.9);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);position:relative;z-index:5}
-  .ico{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:16px;overflow:hidden;flex:none;background-size:cover;background-position:center}
-  .ico img{width:100%;height:100%;object-fit:cover}
-  .tt{flex:1;min-width:0}
-  .tt .n{font-size:16px;font-weight:700;color:#1c1c1e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .tt .s{font-size:11.5px;color:#8e8e93}
-  .gbtn{width:34px;height:34px;border-radius:50%;border:0;background:rgba(120,120,128,.1);color:#3c3c43;display:flex;align-items:center;justify-content:center;cursor:pointer;flex:none}
-  .gbtn svg{width:19px;height:19px}
-  /* 去掉应用顶栏：应用完全由用户 DIY（标题/返回自己设计）；设置改为悬浮按钮 */
-  .top{display:none !important}
-  #btnGear{position:fixed;top:calc(var(--safe-top, env(safe-area-inset-top,0px)) + 10px);right:12px;z-index:20;
-    background:rgba(120,120,128,.18);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
-  #btnInvite{position:fixed;top:calc(var(--safe-top, env(safe-area-inset-top,0px)) + 10px);right:56px;z-index:20}
-  .list{flex:1;overflow-y:auto;padding:14px 14px 6px;display:flex;flex-direction:column;gap:10px}
-  .row{display:flex;gap:8px;align-items:flex-end;max-width:100%}
-  .row.me{flex-direction:row-reverse}
-  .ava{width:30px;height:30px;border-radius:50%;flex:none;background:#e5e5ea center/cover no-repeat;display:flex;align-items:center;justify-content:center;font-size:12px;color:#8e8e93;overflow:hidden}
-  .ava img{width:100%;height:100%;object-fit:cover}
-  .col{min-width:0;display:flex;flex-direction:column;gap:3px;max-width:74%}
-  .row.me .col{align-items:flex-end}
-  .nm{font-size:11px;color:#8e8e93;padding:0 4px}
-  .bub{padding:9px 13px;border-radius:17px;font-size:15px;line-height:1.5;word-break:break-word;white-space:pre-wrap;background:#f0f0f4;color:#1c1c1e;border-bottom-left-radius:5px}
-  .row.me .bub{background:var(--theme);color:#fff;border-bottom-left-radius:17px;border-bottom-right-radius:5px}
-  .sys{text-align:center;font-size:11.5px;color:#aeaeb2;padding:4px 20px}
-  .invite{border:1px solid rgba(60,60,67,.14);border-radius:14px;padding:12px;background:#fff;display:flex;flex-direction:column;gap:8px}
-  .invite .it{font-size:13px;font-weight:650;color:#1c1c1e}
-  .invite .id{font-size:12px;color:#8e8e93}
-  .invite .ib{display:flex;gap:8px}
-  .btn{border:0;border-radius:10px;padding:8px 14px;font-size:13.5px;cursor:pointer;background:var(--theme);color:#fff}
-  .btn.ghost{background:rgba(120,120,128,.12);color:#3c3c43}
-  .composer{flex:none;display:flex;gap:8px;align-items:flex-end;padding:8px 12px calc(8px + env(safe-area-inset-bottom,0px));border-top:.5px solid rgba(60,60,67,.1);background:#fff}
-  .composer textarea{flex:1;min-height:40px;max-height:120px;resize:none;border:1px solid rgba(60,60,67,.14);border-radius:20px;padding:10px 14px;font-size:15px;line-height:1.4;outline:none;font-family:inherit;background:#f7f7fa}
-  .send{width:40px;height:40px;border-radius:50%;border:0;background:var(--theme);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;flex:none}
-  .send svg{width:19px;height:19px}
-  .send:disabled{opacity:.4}
-  /* 配置页 */
-  .setup{position:absolute;inset:0;background:#f7f7fa;overflow-y:auto;padding:calc(var(--safe-top, env(safe-area-inset-top,0px)) + 16px) 16px calc(24px + env(safe-area-inset-bottom,0px))}
-  .setup h1{font-size:22px;font-weight:800;color:#1c1c1e;margin-bottom:4px}
-  .setup .lead{font-size:13px;color:#8e8e93;margin-bottom:16px}
-  .card{background:#fff;border-radius:16px;padding:14px 16px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
-  .card .ct{font-size:12.5px;font-weight:700;color:#3c3c43;margin-bottom:10px}
-  .fld{margin-bottom:10px}
-  .fld label{display:block;font-size:12px;color:#8e8e93;margin-bottom:4px}
-  .fld input[type=text],.fld input[type=url],.fld textarea{width:100%;border:1px solid rgba(60,60,67,.14);border-radius:10px;padding:9px 11px;font-size:14px;outline:none;font-family:inherit;background:#fff}
-  .fld input[type=color]{width:44px;height:38px;border:1px solid rgba(60,60,67,.14);border-radius:10px;background:#fff;padding:2px}
-  .seg{display:flex;gap:8px}
-  .seg button{flex:1;border:1px solid rgba(60,60,67,.14);background:#fff;border-radius:10px;padding:9px;font-size:13.5px;color:#3c3c43;cursor:pointer}
-  .seg button.on{background:var(--theme);border-color:var(--theme);color:#fff;font-weight:600}
-  .chips{display:flex;flex-wrap:wrap;gap:8px}
-  .chip{display:flex;align-items:center;gap:6px;border:1px solid rgba(60,60,67,.14);border-radius:20px;padding:6px 12px 6px 6px;font-size:13px;color:#3c3c43;cursor:pointer;background:#fff}
-  .chip.on{border-color:var(--theme);background:color-mix(in srgb,var(--theme) 12%,#fff)}
-  .chip .ca{width:24px;height:24px;border-radius:50%;background:#e5e5ea center/cover no-repeat;display:flex;align-items:center;justify-content:center;font-size:11px;color:#8e8e93;overflow:hidden}
-  .chip .ca img{width:100%;height:100%;object-fit:cover}
-  .tog{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:.5px solid rgba(60,60,67,.08)}
-  .tog:last-child{border-bottom:0}
-  .tog .tl{font-size:14px;color:#1c1c1e}
-  .sw{width:46px;height:28px;border-radius:16px;background:#e5e5ea;position:relative;transition:.18s;flex:none;border:0;cursor:pointer}
-  .sw::after{content:"";position:absolute;top:2px;left:2px;width:24px;height:24px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:.18s}
+  :root{
+    --theme:#5B6CFF;
+    --theme-soft:color-mix(in srgb,var(--theme) 11%,#fff);
+    --ink:#171925;
+    --ink-2:#4c5064;
+    --muted:#8a8fa3;
+    --line:rgba(25,30,60,.09);
+    --bg:#f5f6fa;
+    --surface:#fff;
+    --danger:#ff3b30;
+    --ok:#1fa971;
+    --font:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",Arial,sans-serif;
+    --safe-top:env(safe-area-inset-top,0px);
+    --safe-bottom:env(safe-area-inset-bottom,0px);
+    --shadow:0 12px 34px rgba(30,35,80,.08);
+  }
+  html,body{width:100%;height:100%;overflow:hidden;position:fixed;inset:0;
+    background:var(--bg);color:var(--ink);font-family:var(--font)}
+  button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
+  img{display:block}
+  .app{position:absolute;inset:0;display:flex;flex-direction:column;
+    background:radial-gradient(120% 65% at 50% -10%,var(--theme-soft),transparent 55%),var(--bg)}
+
+  /* 顶栏：背景一直铺到灵动岛/刘海后面，按钮用 --safe-top 躲开它 */
+  .topbar{flex:none;z-index:20;display:flex;align-items:center;gap:8px;
+    padding:calc(var(--safe-top) + 8px) 12px 8px;min-height:56px;
+    background:rgba(245,246,250,.82);
+    -webkit-backdrop-filter:blur(18px) saturate(1.2);backdrop-filter:blur(18px) saturate(1.2);
+    border-bottom:1px solid var(--line)}
+  .tb-btn{width:38px;height:38px;border-radius:13px;flex:none;display:grid;place-items:center;
+    background:rgba(255,255,255,.72);border:1px solid var(--line);color:var(--ink)}
+  .tb-btn:active{transform:scale(.95)}
+  .tb-btn svg{width:20px;height:20px}
+  .tb-main{flex:1;min-width:0}
+  .tb-title{font-size:17px;font-weight:800;letter-spacing:-.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .tb-sub{font-size:10.5px;color:var(--muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .tb-actions{display:flex;gap:6px;flex:none}
+  .tb-action{padding:8px 11px;border-radius:11px;background:rgba(255,255,255,.72);
+    border:1px solid var(--line);font-size:12px;font-weight:700;color:var(--theme)}
+  .tb-action:active{transform:scale(.96)}
+
+  .screen{flex:1;overflow-y:auto;overflow-x:hidden;padding:4px 14px calc(92px + var(--safe-bottom));
+    scrollbar-width:none;overscroll-behavior:contain}
+  .screen::-webkit-scrollbar{display:none}
+  .screen.enter{animation:screenIn .22s cubic-bezier(.3,.8,.35,1)}
+  @keyframes screenIn{from{opacity:.35;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+  .tabbar{position:absolute;left:10px;right:10px;bottom:calc(8px + var(--safe-bottom));
+    display:flex;justify-content:space-around;align-items:center;padding:7px 6px;
+    background:rgba(255,255,255,.9);border:1px solid var(--line);border-radius:22px;
+    box-shadow:var(--shadow);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);z-index:12}
+  .tabbar[hidden]{display:none}
+  .tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:5px 2px;
+    border-radius:15px;color:var(--muted);font-size:10.5px;font-weight:700}
+  .tab svg{width:21px;height:21px}
+  .tab.on{color:var(--theme);background:var(--theme-soft)}
+
+  .hero{padding:14px 2px 4px}
+  .hero-row{display:flex;align-items:center;gap:12px}
+  .avatar{width:54px;height:54px;border-radius:19px;flex:none;overflow:hidden;
+    background:var(--theme-soft);display:grid;place-items:center;color:var(--theme);
+    font-weight:800;font-size:21px}
+  .avatar img{width:100%;height:100%;object-fit:cover}
+  .hero-name{font-size:23px;font-weight:850;letter-spacing:-.5px}
+  .hero-sub{font-size:12px;color:var(--muted);margin-top:3px;line-height:1.55}
+  .section{margin-top:22px}
+  .section-head{display:flex;align-items:baseline;justify-content:space-between;margin:0 2px 10px}
+  .section-title{font-size:13px;font-weight:800;color:var(--ink-2)}
+  .section-more{font-size:11px;color:var(--theme);font-weight:700}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:20px;
+    padding:15px;box-shadow:0 8px 24px rgba(30,35,80,.045)}
+  .quick{display:flex;flex-direction:column;align-items:flex-start;gap:8px;text-align:left;min-height:112px}
+  .quick:active{transform:scale(.98)}
+  .quick .emoji{font-size:25px;line-height:1}
+  .quick b{font-size:14.5px;font-weight:800}
+  .quick span{font-size:11.5px;line-height:1.55;color:var(--muted)}
+  .quick .tagline{font-size:10px;font-weight:800;color:var(--theme);background:var(--theme-soft);
+    border-radius:999px;padding:3px 8px;margin-top:auto}
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}
+  .stat{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:12px;text-align:center}
+  .stat .n{font-size:20px;font-weight:850;color:var(--theme)}
+  .stat .l{font-size:10px;color:var(--muted);margin-top:3px}
+  .chips{display:flex;flex-wrap:wrap;gap:7px}
+  .chip{display:inline-flex;align-items:center;gap:6px;padding:7px 11px;border-radius:999px;
+    background:var(--surface);border:1px solid var(--line);font-size:11.5px;color:var(--ink-2);font-weight:600}
+  .chip .dot{width:6px;height:6px;border-radius:50%;background:var(--theme)}
+  .char-row{display:flex;gap:10px;overflow-x:auto;padding:2px 0 4px;scrollbar-width:none}
+  .char-row::-webkit-scrollbar{display:none}
+  .char{width:64px;flex:none;text-align:center}
+  .char .avatar{width:56px;height:56px;border-radius:19px;margin:0 auto 5px;font-size:20px}
+  .char .name{font-size:10.5px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+  .row{display:flex;align-items:center;gap:11px;width:100%;padding:12px 13px;
+    background:var(--surface);border:1px solid var(--line);border-radius:16px;text-align:left}
+  .row:active{background:#fafbff}
+  .row .icon{width:38px;height:38px;border-radius:12px;flex:none;display:grid;place-items:center;
+    background:var(--theme-soft);color:var(--theme);font-size:17px;font-weight:800}
+  .row .main{flex:1;min-width:0}
+  .row .t{font-size:13.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .row .d{font-size:11px;color:var(--muted);margin-top:2px;line-height:1.45;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .row .v{font-size:10.5px;color:var(--muted);flex:none}
+  .row .chev{width:8px;height:13px;flex:none;color:#c7c9d6}
+  .list{display:flex;flex-direction:column;gap:8px}
+
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;
+    padding:11px 16px;border-radius:14px;background:var(--theme);color:#fff;
+    font-size:13.5px;font-weight:750;box-shadow:0 8px 20px color-mix(in srgb,var(--theme) 28%,transparent)}
+  .btn:active{transform:scale(.97)}
+  .btn.ghost{background:var(--surface);color:var(--ink-2);border:1px solid var(--line);box-shadow:none}
+  .btn.soft{background:var(--theme-soft);color:var(--theme);box-shadow:none}
+  .btn.danger{background:rgba(255,59,48,.1);color:var(--danger);box-shadow:none}
+  .btn.block{width:100%}
+  .btn.sm{padding:7px 11px;font-size:12px;border-radius:11px;box-shadow:none}
+  .btn:disabled{opacity:.4}
+
+  .empty{padding:46px 18px;text-align:center;color:var(--muted)}
+  .empty .big{font-size:32px;color:#d4d6e2;margin-bottom:10px}
+  .empty b{display:block;font-size:14px;color:var(--ink-2);margin-bottom:5px}
+  .empty span{font-size:12px;line-height:1.65}
+  .notice{font-size:11px;line-height:1.65;color:var(--muted);margin-top:10px}
+  .notice b{color:var(--ink-2)}
+
+  .field{margin:10px 0}
+  .field label{display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:5px}
+  .field input,.field textarea,.field select{width:100%;border:1px solid var(--line);
+    border-radius:13px;padding:10px 12px;font-size:14px;outline:none;background:var(--surface);
+    color:var(--ink);font-family:inherit}
+  .field textarea{min-height:78px;resize:vertical;line-height:1.55}
+  .field input:focus,.field textarea:focus,.field select:focus{border-color:var(--theme)}
+  .field-row{display:flex;gap:8px;align-items:center}
+  .field-row input[type=color]{width:46px;height:40px;border:1px solid var(--line);
+    border-radius:12px;background:#fff;padding:2px;flex:none}
+  .toggle{display:flex;align-items:center;justify-content:space-between;gap:10px;
+    padding:11px 0;border-top:1px solid var(--line)}
+  .toggle:first-child{border-top:0}
+  .toggle .tl{font-size:13px;font-weight:600}
+  .toggle .ts{font-size:10.5px;color:var(--muted);margin-top:2px;line-height:1.4}
+  .sw{width:46px;height:28px;border-radius:16px;background:#e3e4ec;position:relative;
+    transition:.18s;flex:none;border:0}
+  .sw::after{content:"";position:absolute;top:2px;left:2px;width:24px;height:24px;border-radius:50%;
+    background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:.18s}
   .sw.on{background:var(--theme)}
   .sw.on::after{left:20px}
-  .bigbtn{width:100%;border:0;border-radius:14px;padding:14px;font-size:16px;font-weight:650;background:var(--theme);color:#fff;cursor:pointer}
-  .warn{font-size:12px;color:#ff3b30;margin-top:8px}
-  .iconrow{display:flex;align-items:center;gap:12px}
-  .iconrow .prev{width:56px;height:56px;border-radius:15px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:24px;background-size:cover;background-position:center;flex:none;overflow:hidden}
-  .muted{font-size:11.5px;color:#aeaeb2;margin-top:8px;line-height:1.6}
+
+  .addbar{display:flex;gap:8px;margin:2px 0 12px}
+  .addbar input{flex:1;border:1px solid var(--line);border-radius:14px;padding:11px 13px;
+    font-size:14px;outline:none;background:var(--surface);font-family:inherit}
+  .addbar input:focus{border-color:var(--theme)}
+  .addbar .btn{flex:none;padding:0 15px;height:44px}
+
+  .detail-card{background:var(--surface);border:1px solid var(--line);border-radius:20px;
+    padding:16px;margin-top:8px;box-shadow:0 8px 24px rgba(30,35,80,.045)}
+  .detail-meta{font-size:11px;color:var(--muted);margin-bottom:12px}
+
+  .guide-block{margin-top:12px;padding:12px 14px;border-radius:15px;background:var(--surface);
+    border:1px solid var(--line);font-size:12px;line-height:1.75;color:var(--muted)}
+  .guide-block b{color:var(--ink-2)}
+  .guide-block code{background:var(--theme-soft);border-radius:6px;padding:1px 6px;
+    font-family:ui-monospace,Menlo,monospace;font-size:11px;color:var(--theme)}
+  .code{white-space:pre-wrap;word-break:break-word;background:#f7f8fc;border:1px solid var(--line);
+    border-radius:13px;padding:12px;margin-top:8px;font-family:ui-monospace,Menlo,monospace;
+    font-size:10.5px;line-height:1.65;color:#4c5064;max-height:260px;overflow:auto}
+  .perm-list{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .perm{font-size:10px;font-weight:700;padding:4px 8px;border-radius:999px;
+    background:var(--theme-soft);color:var(--theme)}
+
+  .toast{position:fixed;left:50%;bottom:calc(92px + var(--safe-bottom));transform:translate(-50%,10px);
+    background:rgba(23,25,37,.92);color:#fff;font-size:12.5px;padding:10px 16px;border-radius:999px;
+    opacity:0;transition:.2s;pointer-events:none;z-index:80;max-width:82%;text-align:center}
+  .toast.show{opacity:1;transform:translate(-50%,0)}
+  .modal{position:fixed;inset:0;z-index:90;background:rgba(20,22,45,.42);
+    display:none;align-items:center;justify-content:center;padding:22px}
+  .modal.on{display:flex}
+  .modal-card{width:100%;max-width:340px;max-height:calc(100vh - 44px);overflow-y:auto;
+    background:#fff;border-radius:22px;padding:20px;box-shadow:0 24px 70px rgba(20,22,45,.22)}
+  .modal-card h3{font-size:16px;font-weight:800;margin-bottom:8px}
+  .modal-card p{font-size:12.5px;line-height:1.65;color:var(--muted)}
+  .modal-card input{width:100%;margin-top:12px;border:1px solid var(--line);border-radius:12px;
+    padding:11px 12px;font-size:14px;outline:none;font-family:inherit}
+  .modal-actions{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:18px}
+  .modal-btn{height:44px;border-radius:13px;font-size:13.5px;font-weight:700;
+    background:#f1f2f7;color:var(--ink-2)}
+  .modal-btn.primary{background:var(--theme);color:#fff}
+  .modal-btn.danger{background:var(--danger);color:#fff}
+  .boot{padding:70px 24px;text-align:center;color:var(--muted);font-size:13px;line-height:1.7}
+  .boot b{display:block;color:var(--ink);font-size:17px;margin-bottom:8px}
+  @media(max-width:360px){.grid2{grid-template-columns:1fr}.quick{min-height:auto}}
 </style>
 </head>
 <body>
-<!-- 默认返回：回 AppStore。你也可以用 Nano.onBack(fn) 改成自己的返回逻辑 -->
-<button class="gbtn" id="btnBack" title="返回" style="position:fixed;left:12px;top:calc(var(--safe-top, env(safe-area-inset-top,0px)) + 10px);z-index:21;background:rgba(120,120,128,.18);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)">
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
-</button>
-<input type="file" id="sIconFile" accept="image/*" style="display:none">
-<div class="app" id="app" style="--theme:#5B8DEF">
-  <div class="top">
-    <div class="ico" id="hIco">A</div>
-    <div class="tt">
-      <div class="n" id="hName">我的应用</div>
-      <div class="s" id="hSub">Nano 应用</div>
+<div class="app">
+  <header class="topbar">
+    <button class="tb-btn" id="tbBack" aria-label="返回">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
+    </button>
+    <div class="tb-main">
+      <div class="tb-title" id="tbTitle">Nano 应用模板</div>
+      <div class="tb-sub" id="tbSub">首页返回 AppStore · 内部页面自己 DIY</div>
     </div>
-    <button class="gbtn" id="btnInvite" title="邀请角色" style="display:none">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-    </button>
-    <button class="gbtn" id="btnGear" title="设置">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 8.9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 8.96 4.6 1.7 1.7 0 0 0 10 3.09V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 8.96a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"/></svg>
-    </button>
-  </div>
-  <div class="list" id="list"></div>
-  <div class="composer">
-    <textarea id="input" rows="1" placeholder="输入消息…"></textarea>
-    <button class="send" id="btnSend">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>
-    </button>
-  </div>
+    <div class="tb-actions" id="tbActions"></div>
+  </header>
+  <main class="screen" id="screenHost"></main>
+  <nav class="tabbar" id="tabbar"></nav>
 </div>
-
-<div class="setup" id="setup" style="--theme:#5B8DEF"></div>
-
-<script src="../js/nano-app-bridge.js?v=20261002a"></script>
+<div class="toast" id="toast"></div>
+<div class="modal" id="modal"><div class="modal-card" id="modalCard"></div></div>
+<script src="../js/nano-app-bridge.js?v=20261023d"></script>
 <script>
 (function () {
   'use strict';
 
-  var DEFAULT_CONFIG = {
-    name: '我的应用',
-    icon: { letter: 'A', color: '#5B8DEF', image: '' },
-    mode: 'single',            // 'single' | 'multi'
-    charIds: [],               // 参与的角色 id
-    invite: 'auto',            // 'auto' | 'manual' | 'none'
-    welcome: '你好，很高兴见到你。',
+  var DEFAULT = {
+    name: 'Nano 应用模板',
+    icon: { letter: '◆', color: '#5B6CFF', image: '' },
+    charIds: [],
     useCharPersona: true,
     useUserPersona: true,
     useWorldbook: true,
-    useMemory: true
+    useMemory: true,
+    fontUrl: '',
+    welcome: '这是一个完整的 App 模板，直接改内容就能用。'
   };
 
-  var state = { config: null, history: [], joined: [] };
-  var allChars = [];
-  var apiConnected = false;
-  var busy = false;
+  var App = {
+    defs: {},
+    config: null,
+    user: {},
+    chars: [],
+    apiConnected: false,
+    items: [],
+    current: 'home',
+    tab: 'home',
+    params: {},
+    stack: [],
+    booted: false
+  };
+  var saveTimer = null;
+  var modalResolve = null;
 
-  var $ = function (id) { return document.getElementById(id); };
-  function esc(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-  function save() { var c = Object.assign({}, state); delete c._user; return Nano.store.set('state', c); }
-  function cfg() { return state.config || DEFAULT_CONFIG; }
-  function byId(id) { return allChars.filter(function (c) { return c.id === id; })[0] || null; }
-
-  function applyTheme() {
-    var c = cfg();
-    var color = (c.icon && c.icon.color) || '#5B8DEF';
-    document.getElementById('app').style.setProperty('--theme', color);
-    document.getElementById('setup').style.setProperty('--theme', color);
-    $('hName').textContent = c.name || '我的应用';
-    $('hSub').textContent = (c.mode === 'multi' ? '多人应用' : '单人应用') + (apiConnected ? '' : ' · 未连接 API');
-    var ico = $('hIco');
-    if (c.icon && c.icon.image) { ico.innerHTML = '<img src="' + esc(c.icon.image) + '" alt="">'; ico.style.background = '#e5e5ea'; }
-    else { ico.innerHTML = ''; ico.textContent = (c.icon && c.icon.letter) || 'A'; ico.style.background = color; }
-    $('btnInvite').style.display = (c.mode === 'multi') ? 'flex' : 'none';
-  }
-
-  /* ---------------- 消息渲染 ---------------- */
-  function avatarEl(charId, me) {
-    var wrap = document.createElement('div'); wrap.className = 'ava';
-    if (me) {
-      var u = state._user || {};
-      if (u.avatar) wrap.innerHTML = '<img src="' + esc(u.avatar) + '" alt="">';
-      else wrap.textContent = (u.name || '我').charAt(0);
-    } else {
-      var c = byId(charId);
-      if (c && c.avatar) wrap.innerHTML = '<img src="' + esc(c.avatar) + '" alt="">';
-      else wrap.textContent = (c ? c.name : '?').charAt(0);
-    }
-    return wrap;
-  }
-  function pushMsg(m) { state.history.push(m); render(); save(); }
-  function render() {
-    var list = $('list'); list.innerHTML = '';
-    var c = cfg();
-    state.history.forEach(function (m) {
-      if (m.role === 'system') { var s = document.createElement('div'); s.className = 'sys'; s.textContent = m.content; list.appendChild(s); return; }
-      if (m.role === 'invite') {
-        var inv = document.createElement('div'); inv.className = 'invite';
-        var ch = byId(m.charId) || { name: m.name || '角色' };
-        inv.innerHTML = '<div class="it">邀请 ' + esc(ch.name) + ' 加入</div><div class="id">是否把 TA 拉进这个应用？</div>' +
-          '<div class="ib"><button class="btn ghost" data-act="reject">拒绝</button><button class="btn" data-act="accept">同意</button></div>';
-        inv.querySelector('[data-act=accept]').onclick = function () { acceptInvite(m.charId); };
-        inv.querySelector('[data-act=reject]').onclick = function () {
-          state.history = state.history.filter(function (x) { return x !== m; }); render(); save();
-        };
-        list.appendChild(inv); return;
-      }
-      var row = document.createElement('div'); row.className = 'row' + (m.role === 'user' ? ' me' : '');
-      row.appendChild(avatarEl(m.charId, m.role === 'user'));
-      var col = document.createElement('div'); col.className = 'col';
-      if (m.role !== 'user' && c.mode === 'multi') {
-        var nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = (byId(m.charId) || {}).name || ''; col.appendChild(nm);
-      }
-      var b = document.createElement('div'); b.className = 'bub'; b.textContent = m.content; col.appendChild(b);
-      row.appendChild(col); list.appendChild(row);
+  function $(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
     });
-    list.scrollTop = list.scrollHeight;
   }
-  function acceptInvite(charId) {
-    if (state.joined.indexOf(charId) === -1) state.joined.push(charId);
-    if (cfg().charIds.indexOf(charId) === -1) { state.config.charIds.push(charId); }
-    state.history = state.history.filter(function (x) { return !(x.role === 'invite' && x.charId === charId); });
-    pushMsg({ role: 'system', content: '你邀请 ' + ((byId(charId) || {}).name || '角色') + ' 加入了会话' });
-    sendAutoWelcome(charId);
+  function byId(id) { return App.chars.filter(function (c) { return c.id === id; })[0] || null; }
+  function avatarOf(o, me) {
+    var a = me ? (App.user && App.user.avatar) : (o && o.avatar);
+    var n = (o && (o.name || o.id)) || '?';
+    return '<div class="avatar">' + (a ? '<img src="' + esc(a) + '" alt="">' : esc(String(n).charAt(0))) + '</div>';
   }
-
-  /* ---------------- 开场 / 邀请 ---------------- */
-  function ensureOpening() {
-    var c = cfg();
-    if (!c.charIds.length) { pushMsg({ role: 'system', content: '还没有选择角色：点右下角设置，选择参与的角色。' }); return; }
-    if (state.history.length) return;
-    if (c.invite === 'manual') {
-      c.charIds.forEach(function (id) {
-        if (state.joined.indexOf(id) === -1) pushMsg({ role: 'invite', charId: id, name: (byId(id) || {}).name });
-      });
-      return;
-    }
-    if (c.invite === 'auto') {
-      c.charIds.forEach(function (id) {
-        state.joined.push(id);
-        pushMsg({ role: 'system', content: '你邀请 ' + ((byId(id) || {}).name || '角色') + ' 加入了会话' });
-      });
-    }
-    if (c.welcome && c.welcome.trim()) {
-      c.charIds.forEach(function (id) { pushMsg({ role: 'assistant', charId: id, content: c.welcome }); });
-    }
+  function toast(text) {
+    var el = $('toast');
+    el.textContent = text; el.classList.add('show');
+    clearTimeout(el._t); el._t = setTimeout(function () { el.classList.remove('show'); }, 1700);
   }
-  function sendAutoWelcome(charId) {
-    var c = cfg();
-    if (c.welcome && c.welcome.trim()) pushMsg({ role: 'assistant', charId: charId, content: c.welcome });
-  }
-
-  /* ---------------- 发送 ---------------- */
-  function buildHistory() {
-    return state.history.filter(function (m) { return m.role === 'user' || m.role === 'assistant'; })
-      .map(function (m) { return { role: m.role, content: m.content }; });
-  }
-  function splitMulti(text, ids) {
-    var lines = String(text || '').split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
-    var out = [], cur = null, names = {};
-    ids.concat(state.joined).forEach(function (id) { var c = byId(id); if (c) names[c.name] = c.id; });
-    lines.forEach(function (line) {
-      var m = line.match(/^([^：:\n]{1,12})[：:]\s*(.+)$/);
-      if (m && names[m[1]]) { cur = { name: m[1], id: names[m[1]], text: m[2] }; out.push(cur); }
-      else if (out.length) { out[out.length - 1].text += '\n' + line; }
-      else { out.push({ name: '', id: ids[0] || '', text: line }); }
+  function merge(a, b) {
+    var out = {};
+    Object.keys(a || {}).forEach(function (k) { out[k] = a[k]; });
+    Object.keys(b || {}).forEach(function (k) {
+      out[k] = (b[k] && typeof b[k] === 'object' && !Array.isArray(b[k])) ? merge(a[k] || {}, b[k]) : b[k];
     });
-    return out.length ? out : [{ name: '', id: ids[0] || '', text: String(text || '') }];
+    if (b && b.icon) out.icon = merge(a.icon || {}, b.icon);
+    return out;
   }
-  async function send() {
-    var input = $('input'); var text = input.value.trim();
-    if (!text || busy) return;
-    input.value = ''; input.style.height = 'auto';
-    pushMsg({ role: 'user', content: text });
-    if (!apiConnected) { pushMsg({ role: 'system', content: '未连接主 API：请先到 API 页配置。' }); return; }
-    busy = true; $('btnSend').disabled = true;
-    var typing = document.createElement('div'); typing.className = 'sys'; typing.textContent = '正在输入…';
-    $('list').appendChild(typing); $('list').scrollTop = $('list').scrollHeight;
-    try {
-      var c = cfg();
-      var activeIds = state.joined.length ? state.joined : (c.invite === 'manual' ? [] : c.charIds);
-      var reply = await Nano.chat({
-        charIds: activeIds,
-        messages: buildHistory(),
-        useCharPersona: c.useCharPersona,
-        useUserPersona: c.useUserPersona,
-        useWorldbook: c.useWorldbook,
-        useMemory: c.useMemory
-      });
-      typing.remove();
-      if (c.mode === 'multi') {
-        splitMulti(reply, c.charIds).forEach(function (p) { pushMsg({ role: 'assistant', charId: p.id, content: p.text }); });
-      } else {
-        pushMsg({ role: 'assistant', charId: (state.joined[0] || c.charIds[0] || ''), content: reply });
-      }
-    } catch (e) {
-      typing.remove();
-      pushMsg({ role: 'system', content: '出错了：' + ((e && e.message) || e) });
-    } finally {
-      busy = false; $('btnSend').disabled = false;
-    }
-  }
-
-  /* ---------------- 设置页 ---------------- */
-  function charChip(c) {
-    var on = cfg().charIds.indexOf(c.id) > -1;
-    var el = document.createElement('div'); el.className = 'chip' + (on ? ' on' : '');
-    var a = document.createElement('div'); a.className = 'ca';
-    if (c.avatar) a.innerHTML = '<img src="' + esc(c.avatar) + '" alt="">'; else a.textContent = (c.name || '?').charAt(0);
-    el.appendChild(a);
-    var t = document.createElement('span'); t.textContent = c.name; el.appendChild(t);
-    el.onclick = function () {
-      var arr = cfg().charIds, i = arr.indexOf(c.id);
-      if (i > -1) arr.splice(i, 1); else arr.push(c.id);
-      openSetup();
-    };
-    return el;
-  }
-  function openSetup(firstRun) {
-    var c = cfg();
-    var box = $('setup');
-    box.style.display = 'block';
-    box.innerHTML =
-      '<h1>' + (firstRun ? '设计你的应用' : '应用设置') + '</h1>' +
-      '<div class="lead">这些设置随时可以修改。</div>' +
-      '<div class="card"><div class="ct">图标与名称</div>' +
-        '<div class="iconrow"><div class="prev" id="sPrev"></div>' +
-        '<div style="flex:1"><div class="fld"><label>名称</label><input type="text" id="sName" maxlength="16" value="' + esc(c.name) + '"></div></div></div>' +
-        '<div class="fld" style="margin-top:10px"><label>图标字母 / Emoji</label><input type="text" id="sLetter" maxlength="4" value="' + esc(c.icon.letter) + '"></div>' +
-        '<div class="fld"><label>图标颜色</label><input type="color" id="sColor" value="' + esc(c.icon.color) + '"></div>' +
-        '<div class="fld"><label>或使用图片（地址 / 上传 / 我的头像）</label><input type="url" id="sImage" placeholder="https://…" value="' + esc(c.icon.image) + '"></div>' +
-        '<div style="display:flex;gap:8px;margin-top:2px"><button class="btn ghost" id="sUseAvatar" type="button" style="flex:1">用我的头像</button><button class="btn ghost" id="sUploadIcon" type="button" style="flex:1">上传图片</button></div>' +
-      '</div>' +
-      '<div class="card"><div class="ct">聊天方式</div>' +
-        '<div class="seg"><button data-mode="single" class="' + (c.mode === 'single' ? 'on' : '') + '">单人</button>' +
-        '<button data-mode="multi" class="' + (c.mode === 'multi' ? 'on' : '') + '">多人 / 群聊</button></div>' +
-      '</div>' +
-      '<div class="card"><div class="ct">参与角色（可多选）</div><div class="chips" id="sChars"></div>' +
-        '<div class="muted">没有角色？先去 App 里创建角色，再回到这里刷新。</div></div>' +
-      '<div class="card"><div class="ct">邀请方式</div>' +
-        '<div class="seg"><button data-invite="auto" class="' + (c.invite === 'auto' ? 'on' : '') + '">自动加入</button>' +
-        '<button data-invite="manual" class="' + (c.invite === 'manual' ? 'on' : '') + '">发邀请卡</button>' +
-        '<button data-invite="none" class="' + (c.invite === 'none' ? 'on' : '') + '">不邀请</button></div>' +
-        '<div class="muted">“发邀请卡”会生成一张卡片，由你在聊天里点“同意”才加入。</div>' +
-      '</div>' +
-      '<div class="card"><div class="ct">读取内容</div>' +
-        '<div class="tog"><span class="tl">读取角色人设</span><button class="sw ' + (c.useCharPersona ? 'on' : '') + '" data-tog="useCharPersona"></button></div>' +
-        '<div class="tog"><span class="tl">读取我的人设</span><button class="sw ' + (c.useUserPersona ? 'on' : '') + '" data-tog="useUserPersona"></button></div>' +
-        '<div class="tog"><span class="tl">读取世界书</span><button class="sw ' + (c.useWorldbook ? 'on' : '') + '" data-tog="useWorldbook"></button></div>' +
-        '<div class="tog"><span class="tl">读取长期记忆</span><button class="sw ' + (c.useMemory ? 'on' : '') + '" data-tog="useMemory"></button></div>' +
-      '</div>' +
-      '<div class="card"><div class="ct">开场白</div><textarea id="sWelcome" rows="3">' + esc(c.welcome) + '</textarea></div>' +
-      '<button class="bigbtn" id="sSave">' + (firstRun ? '开始使用' : '保存') + '</button>' +
-      (apiConnected ? '' : '<div class="warn">提示：还没有配置主 API，聊天会失败。请到 API 页配置。</div>') +
-      '<div style="height:20px"></div>';
-
-    var chips = $('sChars');
-    if (!allChars.length) chips.innerHTML = '<div class="muted">暂无角色</div>';
-    allChars.forEach(function (ch) { chips.appendChild(charChip(ch)); });
-
-    function paintPrev() {
-      var letter = $('sLetter').value || 'A';
-      var color = $('sColor').value || '#5B8DEF';
-      var image = $('sImage').value.trim();
-      var p = $('sPrev');
-      if (image) { p.textContent = ''; p.style.background = '#e5e5ea'; p.innerHTML = '<img src="' + esc(image) + '" style="width:100%;height:100%;object-fit:cover">'; }
-      else { p.innerHTML = ''; p.textContent = letter; p.style.background = color; }
-      box.style.setProperty('--theme', color);
-    }
-    paintPrev();
-    ['sLetter','sColor','sImage'].forEach(function (id) { var el = $(id); if (el) el.oninput = paintPrev; });
-
-    var useAvatar = $('sUseAvatar');
-    if (useAvatar) useAvatar.onclick = function () {
-      var av = (state._user && state._user.avatar) || '';
-      if (!av) { alert('还没有设置头像'); return; }
-      $('sImage').value = av; paintPrev();
-    };
-    var upIcon = $('sUploadIcon');
-    if (upIcon) upIcon.onclick = function () { $('sIconFile').click(); };
-    var iconFile = $('sIconFile');
-    if (iconFile) iconFile.onchange = function () {
-      var f = this.files && this.files[0]; this.value = '';
-      if (!f) return;
-      var r = new FileReader();
-      r.onload = function (ev) { $('sImage').value = String(ev.target.result || ''); paintPrev(); };
-      r.readAsDataURL(f);
-    };
-
-    box.querySelectorAll('[data-mode]').forEach(function (b) { b.onclick = function () { cfg().mode = b.getAttribute('data-mode'); openSetup(firstRun); }; });
-    box.querySelectorAll('[data-invite]').forEach(function (b) { b.onclick = function () { cfg().invite = b.getAttribute('data-invite'); openSetup(firstRun); }; });
-    box.querySelectorAll('[data-tog]').forEach(function (b) { b.onclick = function () { var k = b.getAttribute('data-tog'); cfg()[k] = !cfg()[k]; openSetup(firstRun); }; });
-
-    $('sSave').onclick = async function () {
-      cfg().name = $('sName').value.trim() || '我的应用';
-      cfg().icon = { letter: $('sLetter').value.trim() || 'A', color: $('sColor').value || '#5B8DEF', image: $('sImage').value.trim() };
-      cfg().welcome = $('sWelcome').value;
-      await save();
-      // 把设计好的图标 / 名称写回 AppStore 的已安装区
+  function save() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(function () {
       try {
-        await Nano.setManifest({
-          name: cfg().name,
-          icon: (cfg().icon.image || cfg().icon.letter || 'A'),
-          color: cfg().icon.color
-        });
+        Nano.store.set('app_state_v3', {
+          config: App.config,
+          items: App.items.slice(0, 800),
+          savedAt: Date.now()
+        }).catch(function () {});
       } catch (e) {}
-      box.style.display = 'none';
-      applyTheme(); render();
-      if (firstRun || !state.history.length) ensureOpening();
-      $('hSub').textContent = (cfg().mode === 'multi' ? '多人应用' : '单人应用') + (apiConnected ? '' : ' · 未连接 API');
-    };
+    }, 120);
   }
 
-  /* ---------------- 邀请按钮 ---------------- */
-  $('btnInvite').onclick = function () {
-    var notJoined = cfg().charIds.filter(function (id) { return state.joined.indexOf(id) === -1; });
-    if (!notJoined.length) { pushMsg({ role: 'system', content: '所有角色都已加入。' }); return; }
-    notJoined.forEach(function (id) { pushMsg({ role: 'invite', charId: id, name: (byId(id) || {}).name }); });
+  /* ---------------- 路由：所有页面都在这里 ---------------- */
+  App.define = function (id, def) { App.defs[id] = def || {}; };
+  App.go = function (id, params) {
+    if (!App.defs[id]) { toast('页面不存在：' + id); return; }
+    if (['home', 'items', 'settings'].indexOf(id) > -1) { App.switchTab(id); return; }
+    if (App.current) App.stack.push({ id: App.current, params: App.params, tab: App.tab });
+    App.current = id; App.params = params || {};
+    App.render();
   };
-  $('btnGear').onclick = function () { openSetup(false); };
+  App.switchTab = function (tab) {
+    if (!App.defs[tab]) return;
+    App.tab = tab; App.current = tab; App.params = {}; App.stack = [];
+    App.render();
+  };
+  App.home = function () { App.switchTab('home'); };
+  App.exit = function () {
+    try { Nano.close(); } catch (e) { try { history.back(); } catch (e2) {} }
+  };
+  // 返回：页面自己的 onBack → 弹窗 → 页面栈 → 回到所属 tab → 回首页 → false（交给 AppStore）
+  App.back = function () {
+    var def = App.defs[App.current];
+    if (def && typeof def.onBack === 'function') {
+      var r = def.onBack(App.params);
+      if (r === true) return true;
+      if (r === 'exit') { App.exit(); return true; }
+    }
+    if ($('modal').classList.contains('on')) { closeModal(); return true; }
+    if (App.stack.length) {
+      var prev = App.stack.pop();
+      App.current = prev.id; App.params = prev.params || {}; App.tab = prev.tab || App.tab;
+      App.render();
+      return true;
+    }
+    if (App.current !== App.tab) { App.current = App.tab; App.params = {}; App.render(); return true; }
+    if (App.tab !== 'home') { App.switchTab('home'); return true; }
+    return false;
+  };
+  App.render = function () {
+    var def = App.defs[App.current] || App.defs.home;
+    if (!def) return;
+    var theme = (App.config && App.config.icon && App.config.icon.color) || '#5B6CFF';
+    $('app') /* not used */;
+    document.querySelector('.app').style.setProperty('--theme', theme);
+    var title = typeof def.title === 'function' ? def.title(App.params) : (def.title || App.config.name);
+    $('tbTitle').textContent = title;
+    $('tbSub').textContent = typeof def.sub === 'function' ? def.sub(App.params) : (def.sub || '');
+    var actions = typeof def.actions === 'function' ? def.actions(App.params) : (def.actions || []);
+    $('tbActions').innerHTML = (actions || []).map(function (a) {
+      return '<button class="tb-action" data-tbact="' + esc(a.id) + '">' + esc(a.label) + '</button>';
+    }).join('');
+    Array.prototype.forEach.call($('tbActions').querySelectorAll('[data-tbact]'), function (btn) {
+      btn.onclick = function () {
+        var id = btn.getAttribute('data-tbact');
+        if (def.onAction) def.onAction(id, App.params);
+      };
+    });
+    var host = $('screenHost');
+    host.classList.remove('enter');
+    host.innerHTML = typeof def.html === 'function' ? def.html(App.params) : (def.html || '');
+    void host.offsetWidth;
+    host.classList.add('enter');
+    $('tabbar').hidden = !!def.hideTab;
+    renderTabs();
+    if (def.mount) {
+      try { def.mount(host, App.params); } catch (e) { console.warn(e); }
+    }
+  };
+  function renderTabs() {
+    var tabs = [
+      { id: 'home', label: '首页', icon: '<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>' },
+      { id: 'items', label: '清单', icon: '<path d="M4 5h16M4 12h16M4 19h16"/><circle cx="2" cy="5" r="1"/><circle cx="2" cy="12" r="1"/><circle cx="2" cy="19" r="1"/>' },
+      { id: 'settings', label: '设置', icon: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.6V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.6 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>' }
+    ];
+    $('tabbar').innerHTML = tabs.map(function (t) {
+      return '<button class="tab' + (App.tab === t.id ? ' on' : '') + '" data-tab="' + t.id + '">' +
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + t.icon + '</svg>' +
+        t.label + '</button>';
+    }).join('');
+    Array.prototype.forEach.call($('tabbar').querySelectorAll('[data-tab]'), function (btn) {
+      btn.onclick = function () { App.switchTab(btn.getAttribute('data-tab')); };
+    });
+  }
 
-  /* ---------------- 返回：默认回 AppStore，可自定义 ---------------- */
-  var btnBack = $('btnBack');
-  if (btnBack) btnBack.onclick = function () { if (Nano.close) Nano.close(); else history.back(); };
-  if (Nano.onBack) Nano.onBack(function () {
-    var s = $('setup');
-    if (s && s.style.display !== 'none') { s.style.display = 'none'; applyTheme(); render(); return true; }
-    return false; // 交回系统 → 默认回到 AppStore
+  /* ---------------- 弹窗 ---------------- */
+  function openModal(html) { $('modalCard').innerHTML = html; $('modal').classList.add('on'); }
+  function closeModal() {
+    $('modal').classList.remove('on');
+    if (modalResolve) { modalResolve(false); modalResolve = null; }
+  }
+  function confirmBox(title, text, okText) {
+    return new Promise(function (resolve) {
+      openModal('<h3>' + esc(title) + '</h3><p>' + esc(text) + '</p>' +
+        '<div class="modal-actions"><button class="modal-btn" data-m="0">取消</button>' +
+        '<button class="modal-btn primary" data-m="1">' + esc(okText || '确定') + '</button></div>');
+      modalResolve = resolve;
+      $('modalCard').querySelector('[data-m="0"]').onclick = function () { closeModal(); };
+      $('modalCard').querySelector('[data-m="1"]').onclick = function () {
+        $('modal').classList.remove('on'); modalResolve = null; resolve(true);
+      };
+    });
+  }
+  function promptBox(title, value, placeholder) {
+    return new Promise(function (resolve) {
+      openModal('<h3>' + esc(title) + '</h3>' +
+        '<input id="promptInput" value="' + esc(value || '') + '" placeholder="' + esc(placeholder || '') + '">' +
+        '<div class="modal-actions"><button class="modal-btn" data-m="0">取消</button>' +
+        '<button class="modal-btn primary" data-m="1">确定</button></div>');
+      modalResolve = resolve;
+      var input = $('promptInput');
+      setTimeout(function () { try { input.focus(); input.select(); } catch (e) {} }, 80);
+      if (input) input.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          var ok = $('modalCard').querySelector('[data-m="1"]');
+          if (ok) ok.click();
+        }
+      });
+      $('modalCard').querySelector('[data-m="0"]').onclick = function () { closeModal(); };
+      $('modalCard').querySelector('[data-m="1"]').onclick = function () {
+        var v = input.value.trim();
+        $('modal').classList.remove('on'); modalResolve = null; resolve(v || '');
+      };
+    });
+  }
+
+  /* ---------------- 清单数据 ---------------- */
+  function itemById(id) {
+    return App.items.filter(function (x) { return x.id === id; })[0] || null;
+  }
+  function addItem(title) {
+    title = String(title || '').trim();
+    if (!title) return null;
+    var it = { id: 'i' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      title: title, note: '', createdAt: Date.now(), updatedAt: Date.now() };
+    App.items.unshift(it); save(); return it;
+  }
+  function removeItem(id) {
+    App.items = App.items.filter(function (x) { return x.id !== id; });
+    save();
+  }
+  function timeText(ts) {
+    try {
+      var d = new Date(ts), now = new Date();
+      var same = d.toDateString() === now.toDateString();
+      return same ? (String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'))
+        : ((d.getMonth() + 1) + '/' + d.getDate());
+    } catch (e) { return ''; }
+  }
+
+  /* ---------------- 首页 ---------------- */
+  App.define('home', {
+    title: function () { return App.config.name; },
+    sub: '首页返回 AppStore · 内部页面自己 DIY',
+    actions: [{ id: 'guide', label: '指南' }],
+    onAction: function (id) { if (id === 'guide') App.go('guide'); },
+    html: function () {
+      var chars = App.chars.slice(0, 8);
+      var recent = App.items.slice(0, 3);
+      return '<div class="hero"><div class="hero-row">' + avatarOf(App.user, true) +
+        '<div><div class="hero-name">你好，' + esc(App.user.name || '我') + '</div>' +
+        '<div class="hero-sub">' + (App.chars.length ? ('已连接 ' + App.chars.length + ' 个角色 · 高权限已开启') : '还没有角色，去设置里选择') + '</div></div></div>' +
+        '<div class="stats"><div class="stat"><div class="n">' + App.items.length + '</div><div class="l">清单</div></div>' +
+        '<div class="stat"><div class="n">' + App.chars.length + '</div><div class="l">角色</div></div>' +
+        '<div class="stat"><div class="n">' + (App.apiConnected ? '在线' : '未连') + '</div><div class="l">主 API</div></div></div></div>' +
+        '<div class="section"><div class="section-head"><span class="section-title">快速开始</span></div><div class="grid2">' +
+        '<button class="card quick" data-tab="items"><span class="emoji">☑</span><b>我的清单</b><span>增删改查 + 二级详情页</span><span class="tagline">完整示例</span></button>' +
+        '<button class="card quick" data-new="1"><span class="emoji">＋</span><b>新建一条</b><span>直接添加一条清单</span><span class="tagline">写数据</span></button>' +
+        '<button class="card quick" data-go="guide"><span class="emoji">⌘</span><b>DIY 指南</b><span>页面、返回、Nano API 全写清楚</span><span class="tagline">改模板</span></button>' +
+        '<button class="card quick" data-tab="settings"><span class="emoji">⚙</span><b>设置</b><span>名称 / 图标 / 字体 / 角色 / 权限</span><span class="tagline">自定义</span></button>' +
+        '</div></div>' +
+        '<div class="section"><div class="section-head"><span class="section-title">最近清单</span><button class="section-more" data-tab="items">全部</button></div>' +
+        (recent.length ? '<div class="list">' + recent.map(function (it) {
+          return '<button class="row" data-item="' + esc(it.id) + '"><span class="icon">' + esc(String(it.title).charAt(0)) + '</span><span class="main"><span class="t">' + esc(it.title) + '</span><span class="d">' + esc(it.note || '还没有备注') + '</span></span><span class="v">' + timeText(it.updatedAt) + '</span></button>';
+        }).join('') + '</div>' : '<div class="card empty"><div class="big">☑</div><b>还没有清单</b><span>点「新建一条」开始。</span></div>') +
+        '</div>' +
+        '<div class="section"><div class="section-head"><span class="section-title">我的角色</span><button class="section-more" data-tab="settings">管理</button></div>' +
+        (chars.length ? '<div class="char-row">' + chars.map(function (c) {
+          return '<div class="char"><div class="avatar">' + (c.avatar ? '<img src="' + esc(c.avatar) + '" alt="">' : esc(String(c.name || '?').charAt(0))) + '</div><div class="name">' + esc(c.name) + '</div></div>';
+        }).join('') + '</div>' : '<div class="notice">还没有角色。去设置里选择后，聊天/生图等能力才能用。</div>') +
+        '</div>' +
+        '<div class="section"><div class="section-head"><span class="section-title">已开放能力</span></div><div class="chips">' +
+        ['角色', '人设', '世界书', '记忆', '主 API', '聊天', '生图', 'TTS', '文件', '图库', '通知', '剪贴板'].map(function (x) { return '<span class="chip"><i class="dot"></i>' + x + '</span>'; }).join('') +
+        '</div><div class="notice">需要在宿主里授权；Nano 模板默认申请全部权限。</div></div>';
+    },
+    mount: function (el) {
+      el.querySelectorAll('[data-tab]').forEach(function (b) { b.onclick = function () { App.switchTab(b.getAttribute('data-tab')); }; });
+      el.querySelectorAll('[data-go]').forEach(function (b) { b.onclick = function () { App.go(b.getAttribute('data-go')); }; });
+      el.querySelectorAll('[data-item]').forEach(function (b) { b.onclick = function () { App.go('item', { id: b.getAttribute('data-item') }); }; });
+      var nw = el.querySelector('[data-new]');
+      if (nw) nw.onclick = function () { newItemFlow(); };
+    }
   });
 
-  /* ---------------- 输入框 ---------------- */
-  var input = $('input');
-  input.addEventListener('input', function () { this.style.height = 'auto'; this.style.height = Math.min(120, this.scrollHeight) + 'px'; });
-  input.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
-  $('btnSend').onclick = send;
-
-  /* ---------------- 启动 ---------------- */
-  (async function () {
-    try {
-      await Nano.ready();
-      var r = await Promise.all([Nano.store.get('state'), Nano.characters(), Nano.currentUser(), Nano.apiConfig()]);
-      allChars = r[1] || [];
-      state._user = r[2] || {};
-      apiConnected = !!(r[3] && r[3].connected);
-      if (r[0] && r[0].config) {
-        state.config = Object.assign({}, DEFAULT_CONFIG, r[0].config, { icon: Object.assign({}, DEFAULT_CONFIG.icon, (r[0].config || {}).icon || {}) });
-        state.history = r[0].history || [];
-        state.joined = r[0].joined || [];
-        $('setup').style.display = 'none';
-        applyTheme(); render();
-        if (!state.config.charIds.length) openSetup(false);
-      } else {
-        state.config = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
-        openSetup(true);
+  /* ---------------- 清单 ---------------- */
+  App.define('items', {
+    title: '清单',
+    sub: '增删改查示例 · 点条目进详情',
+    actions: [{ id: 'add', label: '新增' }],
+    onAction: function (id) { if (id === 'add') newItemFlow(); },
+    html: function () {
+      return '<div class="addbar"><input id="newItemInput" placeholder="写一条待办 / 笔记…" autocomplete="off"><button class="btn" id="newItemBtn">添加</button></div>' +
+        (App.items.length ? '<div class="list">' + App.items.map(function (it) {
+          return '<button class="row" data-item="' + esc(it.id) + '"><span class="icon">' + esc(String(it.title).charAt(0)) + '</span><span class="main"><span class="t">' + esc(it.title) + '</span><span class="d">' + esc(it.note || '还没有备注') + '</span></span><span class="v">' + timeText(it.updatedAt) + '</span><svg class="chev" viewBox="0 0 8 13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m1 1 5 5.5L1 12"/></svg></button>';
+        }).join('') + '</div>' : '<div class="card empty"><div class="big">☑</div><b>清单是空的</b><span>在上面输入一条，按「添加」。</span></div>') +
+        '<div class="notice">点条目进入详情页。详情页的返回只回清单，不会直接回首页。</div>';
+    },
+    mount: function (el) {
+      var input = $('newItemInput'), btn = $('newItemBtn');
+      function add() {
+        if (!input) return;
+        var it = addItem(input.value);
+        if (!it) { toast('先写点什么'); input.focus(); return; }
+        input.value = '';
+        App.render();
       }
-      applyTheme();
+      if (btn) btn.onclick = add;
+      if (input) input.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); add(); } });
+      el.querySelectorAll('[data-item]').forEach(function (b) { b.onclick = function () { App.go('item', { id: b.getAttribute('data-item') }); }; });
+    },
+    onBack: function () { return false; }
+  });
+
+  /* ---------------- 详情（二级页） ---------------- */
+  App.define('item', {
+    title: '详情',
+    sub: '二级页 · 返回只回清单',
+    hideTab: true,
+    html: function (p) {
+      var it = itemById(p && p.id);
+      if (!it) return '<div class="card empty"><div class="big">◌</div><b>找不到这条清单</b><span>可能已经被删除。</span></div>';
+      return '<div class="detail-card"><div class="detail-meta">创建于 ' + esc(new Date(it.createdAt).toLocaleString()) + '</div>' +
+        '<div class="field"><label>标题</label><input id="itemTitle" value="' + esc(it.title) + '" maxlength="60"></div>' +
+        '<div class="field"><label>备注</label><textarea id="itemNote" placeholder="写点细节…">' + esc(it.note) + '</textarea></div>' +
+        '<div style="display:flex;gap:8px"><button class="btn" id="itemSave" style="flex:1">保存</button>' +
+        '<button class="btn danger" id="itemDelete" style="flex:none">删除</button></div></div>' +
+        '<div class="notice">这个页面是从「清单」用 App.go(\'item\', {id}) 打开的。按返回会先回清单。</div>';
+    },
+    mount: function (el, p) {
+      var it = itemById(p && p.id);
+      if (!it) return;
+      var title = $('itemTitle'), note = $('itemNote');
+      function sync() {
+        if (!title || !note) return;
+        var t = title.value.trim();
+        if (!t) return;
+        it.title = t; it.note = note.value; it.updatedAt = Date.now();
+        save();
+      }
+      if (title) title.addEventListener('input', sync);
+      if (note) note.addEventListener('input', sync);
+      var saveBtn = $('itemSave');
+      if (saveBtn) saveBtn.onclick = function () { sync(); toast('已保存'); };
+      var del = $('itemDelete');
+      if (del) del.onclick = function () {
+        confirmBox('删除这条？', '删除后不会恢复。', '删除').then(function (ok) {
+          if (!ok) return;
+          removeItem(it.id);
+          toast('已删除');
+          App.back();
+        });
+      };
+    },
+    onBack: function () { return false; }
+  });
+
+  /* ---------------- 设置 ---------------- */
+  App.define('settings', {
+    title: '设置',
+    sub: '名称 · 字体 · 角色 · 权限',
+    html: function () {
+      var c = App.config;
+      return '<div class="card"><div class="section-title" style="margin-bottom:10px">应用</div>' +
+        '<div class="field"><label>名称</label><input id="stName" maxlength="16" value="' + esc(c.name) + '"></div>' +
+        '<div class="field"><label>图标（字母 / Emoji）</label><input id="stLetter" maxlength="4" value="' + esc(c.icon.letter || '') + '"></div>' +
+        '<div class="field"><label>主题色</label><div class="field-row"><input type="color" id="stColor" value="' + esc(c.icon.color || '#5B6CFF') + '"><span class="notice" style="margin:0">按钮、导航、图标都会跟着变</span></div></div>' +
+        '<div class="field"><label>自定义字体 URL（可选）</label><div class="field-row"><input id="stFont" placeholder="https://…/font.woff2" value="' + esc(c.fontUrl || '') + '"><button class="btn sm ghost" id="stFontProxy" type="button" style="flex:none">用代理</button></div><div class="notice">Catbox 直链可直接用；被 CORS/网络挡住时点「用代理」，会改成 Worker 的 <b>/font?url=</b> 地址（需要部署新版 push-worker）。</div></div>' +
+        '</div>' +
+        '<div class="card" style="margin-top:12px"><div class="section-title" style="margin-bottom:10px">参与角色</div>' +
+        (App.chars.length ? '<div class="chips" id="stChars">' + App.chars.map(function (ch) {
+          var on = c.charIds.indexOf(ch.id) > -1;
+          return '<button class="chip" data-char="' + esc(ch.id) + '" style="' + (on ? 'border-color:var(--theme);background:var(--theme-soft);color:var(--theme)' : '') + '">' + (ch.avatar ? '<img src="' + esc(ch.avatar) + '" style="width:20px;height:20px;border-radius:50%;object-fit:cover">' : '<i class="dot"></i>') + esc(ch.name) + '</button>';
+        }).join('') + '</div>' : '<div class="notice">还没有角色，先去主 App 创建。</div>') +
+        '</div>' +
+        '<div class="card" style="margin-top:12px"><div class="section-title" style="margin-bottom:6px">读取内容</div>' +
+        '<div class="toggle"><div><div class="tl">角色人设</div><div class="ts">让角色按自己的设定说话</div></div><button class="sw' + (c.useCharPersona ? ' on' : '') + '" data-tog="useCharPersona"></button></div>' +
+        '<div class="toggle"><div><div class="tl">我的人设</div><div class="ts">读取当前面具的设定</div></div><button class="sw' + (c.useUserPersona ? ' on' : '') + '" data-tog="useUserPersona"></button></div>' +
+        '<div class="toggle"><div><div class="tl">世界书</div><div class="ts">绑定角色的世界书自动加入</div></div><button class="sw' + (c.useWorldbook ? ' on' : '') + '" data-tog="useWorldbook"></button></div>' +
+        '<div class="toggle"><div><div class="tl">长期记忆</div><div class="ts">角色记得你们之前的事</div></div><button class="sw' + (c.useMemory ? ' on' : '') + '" data-tog="useMemory"></button></div>' +
+        '</div>' +
+        '<div class="card" style="margin-top:12px"><div class="section-title">权限</div><div class="notice" style="margin-top:6px">模板默认申请全部能力，宿主不会单独弹权限确认。</div>' +
+        '<div class="perm-list">' + ['角色', '人设', '世界书', '记忆', '主 API', '聊天', '生图', 'TTS', '文件', '图库', '通知', '剪贴板', '打开应用'].map(function (x) { return '<span class="perm">' + x + '</span>'; }).join('') + '</div></div>' +
+        '<button class="btn block" id="stSave" style="margin-top:14px">保存设置</button>' +
+        '<button class="btn soft block" id="stGuide" style="margin-top:8px">打开 DIY 指南</button>' +
+        '<button class="btn danger block" id="stReset" style="margin-top:8px">清空应用数据</button>';
+    },
+    mount: function (el) {
+      el.querySelectorAll('[data-char]').forEach(function (b) {
+        b.onclick = function () {
+          var id = b.getAttribute('data-char');
+          var i = App.config.charIds.indexOf(id);
+          if (i > -1) App.config.charIds.splice(i, 1); else App.config.charIds.push(id);
+          var on = App.config.charIds.indexOf(id) > -1;
+          b.style.borderColor = on ? 'var(--theme)' : '';
+          b.style.background = on ? 'var(--theme-soft)' : '';
+          b.style.color = on ? 'var(--theme)' : '';
+          save();
+        };
+      });
+      el.querySelectorAll('[data-tog]').forEach(function (b) {
+        b.onclick = function () {
+          var k = b.getAttribute('data-tog');
+          App.config[k] = !App.config[k];
+          b.classList.toggle('on', !!App.config[k]);
+          save();
+        };
+      });
+      var proxyBtn = $('stFontProxy');
+      if (proxyBtn) proxyBtn.onclick = function () {
+        var input = $('stFont');
+        var u = (input && input.value || '').trim();
+        if (!u) { toast('先填字体直链'); return; }
+        if (/\/font\?url=/i.test(u)) { toast('已经是代理地址'); return; }
+        input.value = 'https://nanopush.nano315.online/font?url=' + encodeURIComponent(u);
+        toast('已换成代理地址，记得保存');
+      };
+      var saveBtn = $('stSave');
+      if (saveBtn) saveBtn.onclick = function () {
+        App.config.name = ($('stName').value || '').trim() || '我的应用';
+        App.config.icon.letter = ($('stLetter').value || '').trim() || '◆';
+        App.config.icon.color = $('stColor').value || '#5B6CFF';
+        App.config.fontUrl = ($('stFont').value || '').trim();
+        applyFont();
+        save();
+        try { Nano.setManifest({ name: App.config.name, icon: App.config.icon.letter, color: App.config.icon.color }); } catch (e) {}
+        toast('已保存');
+        App.render();
+      };
+      var guide = $('stGuide');
+      if (guide) guide.onclick = function () { App.go('guide'); };
+      var reset = $('stReset');
+      if (reset) reset.onclick = function () {
+        confirmBox('清空应用数据？', '会删除清单、设置和存档，但不会卸载应用。', '清空').then(function (ok) {
+          if (!ok) return;
+          Nano.store.remove('app_state_v3').then(function () {
+            App.config = merge(DEFAULT, {});
+            App.items = [];
+            applyFont();
+            toast('已清空');
+            App.switchTab('home');
+          }).catch(function () { toast('清空失败'); });
+        });
+      };
+    },
+    onBack: function () { return false; }
+  });
+
+  /* ---------------- DIY 指南 ---------------- */
+  App.define('guide', {
+    title: 'DIY 指南',
+    sub: '页面 · 返回 · 高权限 API',
+    hideTab: true,
+    html: function () {
+      return '<div class="guide-block"><b>1. 页面怎么写</b><br>每个页面就是一个 <code>App.define</code>，返回 HTML 字符串，再在 <code>mount</code> 里绑事件：' +
+        '<div class="code">App.define(\'my-page\', {\n  title: \'我的页面\',\n  hideTab: true,\n  html: function (p) {\n    return \'&lt;div&gt;内容&lt;/div&gt;\';\n  },\n  mount: function (el, p) {\n    // el 是本页容器\n  },\n  onBack: function (p) {\n    return false; // false = 交给上一级\n  }\n});\n\nApp.go(\'my-page\', { id: 1 });</div></div>' +
+        '<div class="guide-block"><b>2. 返回逻辑（重点）</b><br>' +
+        '首页按返回 → 直接回 AppStore。<br>' +
+        '清单 / 设置按返回 → 先回首页，再按一次才回 AppStore。<br>' +
+        '二级页按返回 → 回到打开它的上一页。<br>' +
+        '页面里的 <code>onBack</code> 可以自己接管：<code>return true</code> 自己处理，<code>return false</code> 交给上一级，<code>return \'exit\'</code> 直接退出。</div>' +
+        '<div class="guide-block"><b>3. 加一个二级页</b><br>照着 <code>item</code> 页面抄：<code>App.go(\'detail\', {id})</code> 打开，按返回会自动回到清单。</div>' +
+        '<div class="guide-block"><b>4. 高权限 API</b><br>' +
+        'Nano.characters / currentUser / persona / worldbook / memory<br>' +
+        'Nano.chat({ charIds, messages, system })<br>' +
+        'Nano.image.generate(prompt, opts)<br>' +
+        'Nano.tts.speak(text, opts)<br>' +
+        'Nano.files.add / list / remove<br>' +
+        'Nano.gallery.add / list / remove<br>' +
+        'Nano.store.get / set / remove<br>' +
+        'Nano.notify(title, body) · Nano.clipboard.write(text)<br>' +
+        'Nano.openApp(id) · Nano.openUrl(url)<br>' +
+        '所有调用都返回 Promise。</div>' +
+        '<div class="guide-block"><b>5. 字体</b><br>设置里可以填字体直链。Catbox 这类直链通常能直接加载；如果字体站禁止跨域或国内访问不了，点「用代理」会生成 Worker 的 <code>/font?url=</code> 地址（需要部署新版 push-worker）。</div>' +
+        '<button class="btn block" id="cpPrompt" style="margin-top:14px">复制 AI 改造提示词</button>' +
+        '<button class="btn ghost block" id="cpSkeleton" style="margin-top:8px">复制页面骨架</button>' +
+        '<button class="btn ghost block" id="backHome" style="margin-top:8px">回到首页</button>';
+    },
+    mount: function (el) {
+      var skeleton = "App.define('my-page', {\n  title: '我的页面',\n  hideTab: true,\n  html: function (p) {\n    return '<div>内容</div>';\n  },\n  mount: function (el, p) {\n    // el 是本页容器\n  },\n  onBack: function (p) {\n    return false;\n  }\n});\n\nApp.go('my-page');";
+      var prompt = '你在改一个运行在 Nano AppStore 里的单文件 HTML 应用。请保留 <script id="nano-manifest">、App.define / App.go / App.back 这套结构，权限写 ["*"]。\n' +
+        '要求：首页按返回直接回 AppStore；清单/设置先回首页；二级页返回回到打开它的上一页；页面可以用 onBack 自己接管返回。\n' +
+        '新功能要完整可操作，状态用 Nano.store 存档。只输出完整 HTML，不要解释。';
+      var p1 = $('cpPrompt'); if (p1) p1.onclick = function () { Nano.clipboard.write(prompt).then(function () { toast('已复制提示词'); }).catch(function () { toast('复制失败'); }); };
+      var p2 = $('cpSkeleton'); if (p2) p2.onclick = function () { Nano.clipboard.write(skeleton).then(function () { toast('已复制骨架'); }).catch(function () { toast('复制失败'); }); };
+      var back = $('backHome'); if (back) back.onclick = function () { App.switchTab('home'); };
+    },
+    onBack: function () { return false; }
+  });
+
+  /* ---------------- 字体 ---------------- */
+  function applyFont() {
+    var url = String((App.config && App.config.fontUrl) || '').trim();
+    var style = document.getElementById('nanoFontStyle');
+    if (!style) {
+      style = document.createElement('style');
+      style.id = 'nanoFontStyle';
+      document.head.appendChild(style);
+    }
+    if (!url) {
+      style.textContent = '';
+      document.documentElement.style.removeProperty('--font');
+      return;
+    }
+    style.textContent = '@font-face{font-family:"NanoCustom";src:url(' + JSON.stringify(url) + ');font-display:swap}';
+    document.documentElement.style.setProperty('--font', '"NanoCustom",-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",Arial,sans-serif');
+  }
+
+  /* ---------------- 新建清单 ---------------- */
+  function newItemFlow() {
+    promptBox('新建一条', '', '比如：明天买牛奶').then(function (title) {
+      if (!title) return;
+      addItem(title);
+      App.switchTab('items');
+      toast('已添加');
+    });
+  }
+
+  /* ---------------- 顶栏 & 启动 ---------------- */
+  $('tbBack').onclick = function () {
+    if (!App.back()) App.exit();
+  };
+  $('modal').addEventListener('click', function (e) { if (e.target === $('modal')) closeModal(); });
+  try {
+    Nano.onBack(function () { return App.back(); });
+  } catch (e) {}
+
+  (async function boot() {
+    try {
+      if (!window.Nano) throw new Error('Nano 桥未加载');
+      if (window.parent === window) throw new Error('这个文件要在 Nano AppStore 里导入运行');
+      await Promise.race([
+        Nano.ready(),
+        new Promise(function (_, reject) { setTimeout(function () { reject(new Error('连接宿主超时')); }, 5000); })
+      ]);
+      var r = await Promise.all([
+        Nano.store.get('app_state_v3'),
+        Nano.characters(),
+        Nano.currentUser(),
+        Nano.apiConfig()
+      ]);
+      App.chars = r[1] || [];
+      App.user = r[2] || {};
+      App.apiConnected = !!(r[3] && r[3].connected);
+      var saved = r[0] || {};
+      App.config = merge(DEFAULT, saved.config || {});
+      App.config.icon = merge(DEFAULT.icon, App.config.icon || {});
+      if (!Array.isArray(App.config.charIds)) App.config.charIds = [];
+      App.items = Array.isArray(saved.items) ? saved.items : [];
+      App.booted = true;
+      applyFont();
+      App.switchTab('home');
     } catch (e) {
-      $('setup').style.display = 'block';
-      $('setup').innerHTML = '<h1>无法启动</h1><div class="lead">' + esc((e && e.message) || e) + '</div>';
+      $('screenHost').innerHTML = '<div class="boot"><b>无法启动</b>' + esc((e && e.message) || e) + '<br><br>请确认是从 AppStore 打开这个应用。</div>';
+      $('tabbar').hidden = true;
     }
   })();
 })();

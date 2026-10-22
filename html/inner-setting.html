@@ -357,6 +357,50 @@
                     </svg>
                 </div>
             </div>
+            <div class="list-item" id="coupleFaceItem">
+                <div class="item-left">
+                    <div class="item-icon" style="color: #ff7aa2;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9.5" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                    </div>
+                    <div class="item-text">合照锁脸 <span style="font-size:11px;color:var(--text-secondary);">仅合照生效</span></div>
+                </div>
+                <div class="item-right">
+                    <select id="coupleFaceMode" style="border:none;background:transparent;font-size:13px;color:var(--text-secondary);outline:none;">
+                        <option value="none">不锁</option>
+                        <option value="user">锁我</option>
+                        <option value="char">锁 TA</option>
+                        <option value="both">锁双方</option>
+                    </select>
+                </div>
+            </div>
+            <div class="list-item" id="coupleUserFaceItem">
+                <div class="item-left">
+                    <div class="item-icon" style="color: #ff9f43;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"></circle><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"></path></svg>
+                    </div>
+                    <div class="item-text">我的合照参考图</div>
+                </div>
+                <div class="item-right">
+                    <span id="coupleUserFaceStatus">未设置</span>
+                    <svg class="chevron-right" viewBox="0 0 8 13" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M1.5 1.5L6.5 6.5L1.5 11.5" stroke="#C6C6C8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </div>
+            </div>
+            <div class="list-item" id="coupleCharFaceItem">
+                <div class="item-left">
+                    <div class="item-icon" style="color: #ff9f43;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="4"></circle><path d="M1 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"></path><path d="M17 8h6"></path><path d="M20 5v6"></path></svg>
+                    </div>
+                    <div class="item-text">TA 的合照参考图</div>
+                </div>
+                <div class="item-right">
+                    <span id="coupleCharFaceStatus">未设置</span>
+                    <svg class="chevron-right" viewBox="0 0 8 13" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M1.5 1.5L6.5 6.5L1.5 11.5" stroke="#C6C6C8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </div>
+            </div>
             <div class="list-item" style="cursor:default;">
                 <div class="item-left">
                     <div class="item-icon" style="color: var(--ios-blue);">
@@ -639,8 +683,8 @@
         </div>
     </div>
 
-    <script src="../js/nano-tts.js?v=20261023a"></script>
-    <script src="../js/inner-setting.js?v=20261023a"></script>
+    <script src="../js/nano-tts.js?v=20261023c"></script>
+    <script src="../js/inner-setting.js?v=20261023c"></script>
 
 <script src="../js/api-float.js?v=20261023a"></script>
 <script src="../swipe-back.js"></script>

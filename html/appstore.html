@@ -300,6 +300,7 @@ h1{margin:0;font-size:clamp(26px,8vw,34px);line-height:1.1;letter-spacing:-.04em
   width:100%;max-width:360px;
   background:#fff;border-radius:20px;
   padding:22px 20px 16px;
+  max-height:calc(100vh - 48px);overflow-y:auto;
   box-shadow:var(--shadow-float);
 }
 .modal-card.center{text-align:center}
@@ -323,6 +324,13 @@ h1{margin:0;font-size:clamp(26px,8vw,34px);line-height:1.1;letter-spacing:-.04em
 .icon-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(74,108,247,.13)}
 
 .foot-note{margin:10px 8px 0;font-size:11.5px;color:var(--muted);line-height:1.6}
+.modal-code{width:100%;height:180px;margin-top:12px;border:1px solid var(--line);border-radius:12px;
+  padding:11px 12px;font-family:ui-monospace,Menlo,SFMono-Regular,monospace;font-size:11px;line-height:1.55;
+  color:var(--ink-2);background:#fafbfd;resize:vertical;outline:none}
+.modal-code:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(74,108,247,.13)}
+.guide-block{margin-top:10px;padding:10px 12px;border-radius:12px;background:#f7f8fb;
+  border:1px solid var(--line);font-size:12px;line-height:1.65;color:var(--muted)}
+.guide-block b{color:var(--ink-2)}
 
 @media (max-width:360px){
   .actions{grid-template-columns:1fr}
@@ -342,7 +350,7 @@ h1{margin:0;font-size:clamp(26px,8vw,34px);line-height:1.1;letter-spacing:-.04em
   <div id="pageStore">
     <p class="eyebrow">MY APPSTORE</p>
     <h1 id="appstoreTitle">AppStore</h1>
-    <p class="sub">导入一个 HTML 文件，就是一个应用</p>
+    <p class="sub">导入或粘贴一个 HTML 文件，就是一个高权限应用</p>
 
     <section class="section">
       <div class="section-head"><span class="label">开始</span></div>
@@ -355,8 +363,22 @@ h1{margin:0;font-size:clamp(26px,8vw,34px);line-height:1.1;letter-spacing:-.04em
             </svg>
           </span>
           <span>
-            <h3>复制 Nano 模板</h3>
-            <p>带角色、人设、世界书、记忆与主 API 的 DIY 模板</p>
+            <h3>复制完整模板</h3>
+            <p>高权限 · 页面栈返回 · 首页 / 清单 / 二级页 / 设置完整示例</p>
+          </span>
+        </button>
+
+        <button class="action" id="installTemplate" type="button">
+          <span class="glyph">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 3v12"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <rect x="3" y="19" width="18" height="2" rx="1"></rect>
+            </svg>
+          </span>
+          <span>
+            <h3>安装完整模板</h3>
+            <p>直接装进商店，打开就能照着改</p>
           </span>
         </button>
 
@@ -371,6 +393,32 @@ h1{margin:0;font-size:clamp(26px,8vw,34px);line-height:1.1;letter-spacing:-.04em
           <span>
             <h3>导入 HTML</h3>
             <p>上传本地 HTML 文件，立即在商店里运行</p>
+          </span>
+        </button>
+
+        <button class="action" id="pasteHtml" type="button">
+          <span class="glyph">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="5" y="4" width="14" height="18" rx="2"></rect>
+              <path d="M9 4V3h6v1"></path>
+              <path d="M9 11h6M9 15h4"></path>
+            </svg>
+          </span>
+          <span>
+            <h3>粘贴代码安装</h3>
+            <p>把 AI 生成的 HTML 直接粘进来，不用先存文件</p>
+          </span>
+        </button>
+
+        <button class="action" id="createGuide" type="button">
+          <span class="glyph">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 3l2.2 6.2L21 11l-6.8 1.8L12 19l-2.2-6.2L3 11l6.8-1.8z"></path>
+            </svg>
+          </span>
+          <span>
+            <h3>创作指南</h3>
+            <p>模板结构、全部权限、返回逻辑和 AI 提示词</p>
           </span>
         </button>
       </div>
@@ -487,6 +535,34 @@ h1{margin:0;font-size:clamp(26px,8vw,34px);line-height:1.1;letter-spacing:-.04em
           <svg class="set-chev" viewBox="0 0 8 14"><path d="M1 1l6 6-6 6"/></svg>
         </button>
       </div>
+    </section>
+
+    <!-- 权限 -->
+    <section class="section">
+      <div class="section-head"><span class="label">权限</span></div>
+      <div class="app-list">
+        <div class="set-row static">
+          <span class="set-icon">
+            <svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4.4-3 8.4-7 9-4-.6-7-4.6-7-9V6z"/><path d="m9 12 2 2 4-5"/></svg>
+          </span>
+          <span class="set-main">
+            <div class="set-title">全部权限 · 已开启</div>
+            <div class="set-sub">角色 / 人设 / 世界书 / 记忆 / 主 API / 聊天 / 生图 / TTS / 文件 / 图库 / 通知 / 剪贴板</div>
+          </span>
+          <span class="set-value">高权限</span>
+        </div>
+        <div class="set-row static">
+          <span class="set-icon">
+            <svg viewBox="0 0 24 24"><path d="M4 4h16v16H4z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
+          </span>
+          <span class="set-main">
+            <div class="set-title">应用返回栈</div>
+            <div class="set-sub">应用自己处理返回；首页退出回 AppStore，内部页面逐级返回</div>
+          </span>
+          <span class="set-value">已启用</span>
+        </div>
+      </div>
+      <p class="foot-note">高权限只作用于本机 IndexedDB / localStorage，数据不会上传服务器。</p>
     </section>
 
     <!-- 关于 -->
@@ -647,6 +723,47 @@ h1{margin:0;font-size:clamp(26px,8vw,34px);line-height:1.1;letter-spacing:-.04em
   </div>
 </div>
 
+<!-- 粘贴代码安装 -->
+<div class="modal" id="pasteModal">
+  <div class="modal-card">
+    <h3 class="modal-title">粘贴代码安装</h3>
+    <p class="modal-desc">把 AI 生成的完整 HTML 粘进来。必须包含 &lt;script id="nano-manifest"&gt; 和 id。</p>
+    <textarea class="modal-code" id="pasteCode" placeholder="在这里粘贴完整 HTML…"></textarea>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="modal-btn ghost" id="pasteClipboard" type="button" style="flex:1;height:38px">从剪贴板读取</button>
+      <button class="modal-btn ghost" id="pasteClear" type="button" style="flex:1;height:38px">清空</button>
+    </div>
+    <div class="modal-actions">
+      <button class="modal-btn ghost" id="pasteCancel" type="button">取消</button>
+      <button class="modal-btn primary" id="pasteOk" type="button">安装</button>
+    </div>
+  </div>
+</div>
+
+<!-- 创作指南 -->
+<div class="modal" id="guideModal">
+  <div class="modal-card">
+    <h3 class="modal-title">创作指南</h3>
+    <p class="modal-desc">模板本身就是一个完整 App：首页 + 清单 + 二级页 + 设置 + 返回栈。照着改就行。</p>
+    <div class="guide-block">
+      <b>1. 复制模板</b><br>点「复制完整模板」，把整份 HTML 交给 AI，或自己改。
+    </div>
+    <div class="guide-block">
+      <b>2. 描述你的应用</b><br>例如：「把清单换成记账，保留二级页和返回栈」。强调返回逻辑：首页 → AppStore；清单/设置 → 首页；二级页 → 上一页。
+    </div>
+    <div class="guide-block">
+      <b>3. 高权限能力</b><br>Nano.chat / Nano.image.generate / Nano.files / Nano.gallery / Nano.tts / Nano.notify / Nano.clipboard / Nano.store / Nano.onBack。
+    </div>
+    <div class="guide-block">
+      <b>4. 安装</b><br>把生成的 HTML 用「粘贴代码安装」贴进来，立刻运行。
+    </div>
+    <div class="modal-actions">
+      <button class="modal-btn ghost" id="guideClose" type="button">关闭</button>
+      <button class="modal-btn primary" id="guideCopy" type="button">复制 AI 提示词</button>
+    </div>
+  </div>
+</div>
+
 <input type="file" id="fileInput" accept=".html,text/html" hidden>
 <input type="file" id="backupInput" accept="application/json,.json" hidden>
 <input type="file" id="iconFile" accept="image/*" hidden>
@@ -668,6 +785,6 @@ h1{margin:0;font-size:clamp(26px,8vw,34px);line-height:1.1;letter-spacing:-.04em
   });
 })();
 </script>
-<script src="../js/appstore.js?v=20261021c"></script>
+<script src="../js/appstore.js?v=20261023d"></script>
 </body>
 </html>

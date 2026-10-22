@@ -7013,6 +7013,44 @@
     }
 
     // ===== 调用生图 API =====
+    function isCouplePhotoPrompt(text) {
+        var s = String(text || '');
+        if (/(只有你|单人的|独自|一个人拍|only you)/i.test(s)) return false;
+        return /(合照|合影|同框|双人|两个人|一起拍|一起照|我们.{0,6}(拍|照)|couple photo|group photo|together)/i.test(s);
+    }
+    function loadImageEl(src) {
+        return new Promise(function (resolve, reject) {
+            try {
+                var img = new Image();
+                img.crossOrigin = 'anonymous';
+                img.onload = function () { resolve(img); };
+                img.onerror = function () { reject(new Error('image load failed')); };
+                img.src = src;
+            } catch (e) { reject(e); }
+        });
+    }
+    // 把两张参考图拼成一张左右并排的图，兼容只接受单张 image 的 /images/edits 网关。
+    async function combineCoupleFaceRefs(a, b) {
+        try {
+            var ia = await loadImageEl(a);
+            var ib = await loadImageEl(b);
+            var c = document.createElement('canvas');
+            c.width = 1024; c.height = 512;
+            var ctx = c.getContext('2d');
+            ctx.fillStyle = '#f2f2f2'; ctx.fillRect(0, 0, c.width, c.height);
+            function draw(img, x) {
+                var scale = Math.max(512 / img.width, 512 / img.height);
+                var w = img.width * scale, h = img.height * scale;
+                ctx.drawImage(img, x + (512 - w) / 2, (512 - h) / 2, w, h);
+            }
+            draw(ia, 0); draw(ib, 512);
+            return c.toDataURL('image/jpeg', 0.92);
+        } catch (e) {
+            console.warn('[Image] 合照参考图合成失败，退回单张:', e && e.message);
+            return a || b;
+        }
+    }
+
     async function generateImageRaw(prompt) {
         const config = await getApiConfig();
         const imgUrl = config && (config.imgUrl || '').trim();
@@ -7027,12 +7065,61 @@
         if (!imgModel) {
             throw new Error('未配置生图模型');
         }
+        const registerImage = function (u) {
+            try { if (window.NanoGallery && u) window.NanoGallery.add({ url: u, source: '聊天', charName: (characterData && characterData.name) || chatName || '', prompt: prompt }); } catch (e) {}
+            return u;
+        };
         let faceRef = getChatSetting('faceRef', '') || '';
         // 兜底：早期大图只写进了 IndexedDB（localStorage 超限被静默吞掉），这里再取一次
         if (!faceRef && typeof localforage !== 'undefined') {
             try { faceRef = (await localforage.getItem('chat_setting_faceRef_' + chatId)) || ''; } catch (e) {}
         }
         let body = { model: imgModel, prompt: prompt, n: 1, size: '1024x1024' };
+        // 合照锁脸：只对「合照 / 合影 / 同框 / 双人」生效，普通单人图完全不碰。
+        const coupleMode = String(getChatSetting('coupleFaceMode', 'none') || 'none');
+        if (coupleMode !== 'none' && isCouplePhotoPrompt(prompt)) {
+            const wantUser = coupleMode === 'user' || coupleMode === 'both';
+            const wantChar = coupleMode === 'char' || coupleMode === 'both';
+            let userRef = '';
+            if (wantUser) {
+                userRef = String(getChatSetting('coupleFaceUser', '') || '');
+                if (!userRef && typeof localforage !== 'undefined') {
+                    try { userRef = String((await localforage.getItem('chat_setting_coupleFaceUser_' + chatId)) || ''); } catch (e) {}
+                }
+                if (!userRef) {
+                    userRef = String(currentUserAvatar || '');
+                }
+                if (!userRef) {
+                    try {
+                        const cu = getCurrentUser();
+                        if (cu && cu.id) userRef = (await getMaskAvatarFromDB(cu.id)) || '';
+                    } catch (e) {}
+                }
+            }
+            let charRef = '';
+            if (wantChar) {
+                charRef = String(getChatSetting('coupleFaceChar', '') || '');
+                if (!charRef && typeof localforage !== 'undefined') {
+                    try { charRef = String((await localforage.getItem('chat_setting_coupleFaceChar_' + chatId)) || ''); } catch (e) {}
+                }
+                if (!charRef) charRef = String(faceRef || '');
+            }
+            if (wantUser && wantChar && userRef && charRef) {
+                faceRef = await combineCoupleFaceRefs(userRef, charRef);
+                prompt += '\n【合照锁脸】参考图是左右拼接：左边是用户本人，右边是角色本人。必须同时保留两人的五官、脸型和发型，不要换脸或混成一个人。';
+            } else if (wantUser) {
+                if (userRef) {
+                    faceRef = userRef;
+                    prompt += '\n【合照锁脸】参考图是用户本人。画面里出现用户时必须保持这张脸不变。';
+                }
+            } else if (wantChar) {
+                if (charRef) {
+                    faceRef = charRef;
+                    prompt += '\n【合照锁脸】参考图是角色本人。画面里出现角色时必须保持这张脸不变。';
+                }
+            }
+            body.prompt = prompt;
+        }
         const hasFace = !!(faceRef && faceRef.trim() !== '');
         if (hasFace) {
             // 兼容部分支持图生图的网关字段
@@ -7064,8 +7151,8 @@
                 if (editResp.ok) {
                     const ed = await editResp.json();
                     const eitem = ed && ed.data && ed.data[0];
-                    if (eitem && eitem.url) return eitem.url;
-                    if (eitem && eitem.b64_json) return 'data:image/png;base64,' + eitem.b64_json;
+                    if (eitem && eitem.url) return registerImage(eitem.url);
+                    if (eitem && eitem.b64_json) return registerImage('data:image/png;base64,' + eitem.b64_json);
                 }
             } catch (e) {
                 console.warn('[Image] 锁脸图生图失败，改用普通生图:', e && e.message);
@@ -7096,8 +7183,8 @@
         }
         const data = await response.json();
         const item = data && data.data && data.data[0];
-        if (item && item.url) return item.url;
-        if (item && item.b64_json) return 'data:image/png;base64,' + item.b64_json;
+        if (item && item.url) return registerImage(item.url);
+        if (item && item.b64_json) return registerImage('data:image/png;base64,' + item.b64_json);
         throw new Error('生图接口未返回图片');
     }
 
@@ -7316,6 +7403,8 @@
         function add(u) {
             u = _absImg(u);
             if (!u || seen[u]) return;
+            // 网站 logo / favicon 不配当商品/视频封面。
+            if (/logo|favicon|sprite|qrcode|qr_|share[_-]?icon|app[_-]?icon|\/icon\//i.test(u)) return;
             seen[u] = 1;
             if (out.length < 6) out.push(u);
         }
@@ -9254,7 +9343,16 @@
     let lastAutoPushConfigAt = 0;
     async function syncAutoPushConfig(opts) {
         if (autoPushSyncing) return;
-        if (!allCharacters || !allCharacters.length) return;
+        if (!allCharacters || !allCharacters.length) {
+            // 刚打开聊天时角色列表可能还没从 IndexedDB 读完：隔 2.5 秒补一次，
+            // 否则自动消息配置永远同步不到 Worker，后台推送就会「看起来坏了」。
+            if (!syncAutoPushConfig.__retry) {
+                syncAutoPushConfig.__retry = true;
+                setTimeout(function () { try { syncAutoPushConfig(); } catch (e) {} }, 2500);
+            }
+            return;
+        }
+        syncAutoPushConfig.__retry = false;
         // 普通上下文同步最多 10 分钟一次，避免每次聊天/切前后台都写 KV；开关变动(reset)立即同步
         if (!(opts && opts.reset) && Date.now() - lastAutoPushConfigAt < 10 * 60 * 1000) return;
         autoPushSyncing = true;
@@ -9442,6 +9540,8 @@
         if (Date.now() - lastAutoPushSyncAt < 60000) return;
         scheduleAutoPushSync(800);
     });
+    // 打开聊天时主动同步一次自动消息配置（不再只依赖切前后台或发消息触发）。
+    setTimeout(function () { try { scheduleAutoPushSync(1200); } catch (e) {} }, 1800);
 
     async function triggerReply() {
         if (isProcessingApi) return;

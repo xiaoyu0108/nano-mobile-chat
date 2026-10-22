@@ -975,7 +975,8 @@
             try {
                 if (!root || !cfg.ttsKey) throw new Error('请先填写 TTS 地址和 API Key');
                 var items = [];
-                var auth = { 'Authorization': 'Bearer ' + cfg.ttsKey };
+                var cleanTtsKey = String(cfg.ttsKey || '').trim().replace(/^Bearer\s+/i, '').replace(/^["']|["']$/g, '');
+                var auth = { 'Authorization': 'Bearer ' + cleanTtsKey };
                 function addItem(id, name) {
                     id = String(id || '').trim();
                     if (!id) return;
@@ -1010,23 +1011,45 @@
                     }
                 } else if (type.indexOf('fish') === 0) {
                     var fishOrigin = new URL(root).origin;
+                    var fishProxyBase = '';
+                    try {
+                        fishProxyBase = String(localStorage.getItem('nano_push_endpoint') || '').trim().replace(/\/+$/, '') || 'https://nanopush.nano315.online';
+                    } catch (e0) { fishProxyBase = 'https://nanopush.nano315.online'; }
+                    var fishAuth = { 'Authorization': 'Bearer ' + String(cfg.ttsKey || '').trim().replace(/^Bearer\s+/i, '').replace(/^["']|["']$/g, '') };
+                    async function fishJson(paths) {
+                        var lastErr = null;
+                        for (var xi = 0; xi < paths.length; xi++) {
+                            var ctrl = null, timer = null;
+                            try {
+                                ctrl = new AbortController();
+                                timer = setTimeout(function () { try { ctrl.abort(); } catch (e) {} }, 12000);
+                                var xr = await fetch(paths[xi], { headers: fishAuth, cache: 'no-store', signal: ctrl.signal });
+                                clearTimeout(timer);
+                                if (xr.status === 401) throw new Error('Invalid Token：Fish 后台的 API Key 无效或已过期');
+                                if (!xr.ok) { lastErr = new Error('HTTP ' + xr.status); continue; }
+                                return await xr.json();
+                            } catch (xe) {
+                                if (timer) clearTimeout(timer);
+                                lastErr = xe;
+                            }
+                        }
+                        throw lastErr || new Error('Fish 接口不可用');
+                    }
                     if (pasted) {
                         try {
-                            var fr = await fetch(fishOrigin + '/model/' + encodeURIComponent(pasted), { headers: auth });
-                            if (fr.ok) {
-                                var fd = await fr.json();
-                                addItem((fd && (fd._id || fd.id)) || pasted, (fd && (fd.title || fd.name)) || pasted);
-                            }
+                            var fd = await fishJson([
+                                fishProxyBase + '/fish-model?id=' + encodeURIComponent(pasted),
+                                fishOrigin + '/model/' + encodeURIComponent(pasted)
+                            ]);
+                            addItem((fd && (fd._id || fd.id)) || pasted, (fd && (fd.title || fd.name)) || pasted);
                         } catch (e3) {}
                     }
                     try {
-                        var mr = await fetch(fishOrigin + '/model?page_size=100', { headers: auth });
-                        if (mr.ok) {
-                            var md = await mr.json();
-                            ((md && (md.items || md.data)) || []).forEach(function (m) { addItem(m._id || m.id, m.title || m.name); });
-                        } else if (!items.length) {
-                            throw new Error('HTTP ' + mr.status);
-                        }
+                        var md = await fishJson([
+                            fishProxyBase + '/fish-models',
+                            fishOrigin + '/model?page_size=100'
+                        ]);
+                        ((md && (md.items || md.data)) || []).forEach(function (m) { addItem(m._id || m.id, m.title || m.name); });
                     } catch (e4) {
                         if (!items.length) throw e4;
                     }

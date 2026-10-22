@@ -190,6 +190,22 @@
         return a;
     }
 
+    function ttsProxyBase() {
+        try {
+            return String(localStorage.getItem('nano_push_endpoint') || '').trim().replace(/\/+$/, '') || 'https://nanopush.nano315.online';
+        } catch (e) { return 'https://nanopush.nano315.online'; }
+    }
+    async function ttsFetch(url, opts) {
+        try {
+            var r = await fetch(url, opts);
+            // 403/407 常见于地区限制；交给 Worker 代理再试一次。401 是 Key 错，不代理重试。
+            if (r.status !== 403 && r.status !== 407) return r;
+        } catch (e) {}
+        var p = ttsProxyBase();
+        if (!p) return fetch(url, opts);
+        return fetch(p + '/ext-proxy?url=' + encodeURIComponent(url), opts);
+    }
+
     async function synth(text, cfg) {
         var base = toV1(cfg.ttsUrl);
         var type = String(cfg.ttsType || 'openai').toLowerCase();
@@ -213,7 +229,7 @@
                 var mmBase = mmBases[mi];
                 var mmUrl = mmBase + '/t2a_v2' + (cfg.ttsGroupId ? ('?GroupId=' + encodeURIComponent(cfg.ttsGroupId)) : '');
                 try {
-                    var mmResp = await fetch(mmUrl, {
+                    var mmResp = await ttsFetch(mmUrl, {
                         method: 'POST',
                         headers: { 'Authorization': 'Bearer ' + cfg.ttsKey, 'Content-Type': 'application/json' },
                         body: JSON.stringify(mmBody)
@@ -282,8 +298,9 @@
             // 否则 Fish 会按不存在的参考音色报错或直接返回空音频。
             if (fishVoice) fishBody.reference_id = fishVoice;
             async function fishRequest(endpoint, withModel) {
+                var fishKey = String(cfg.ttsKey || '').trim().replace(/^Bearer\s+/i, '').replace(/^["']|["']$/g, '');
                 var headers = {
-                    'Authorization': 'Bearer ' + cfg.ttsKey,
+                    'Authorization': 'Bearer ' + fishKey,
                     'Content-Type': 'application/json',
                     'Accept': 'audio/mpeg, application/octet-stream, application/json'
                 };
@@ -310,7 +327,9 @@
                 if (!resp.ok) {
                     var fMsg = 'HTTP ' + resp.status;
                     try { var fData = await resp.json(); fMsg = fData.message || (fData.error && fData.error.message) || fMsg; } catch (e) {}
-                    var err = new Error('Fish Audio：' + fMsg);
+                    var err = new Error(resp.status === 401
+                        ? 'Fish Audio：Invalid Token（API Key 无效或已过期，请到 fish.audio 后台重新生成；不要填网页登录 token 或音色 ID）'
+                        : ('Fish Audio：' + fMsg));
                     err.status = resp.status;
                     throw err;
                 }
@@ -363,7 +382,7 @@
             var elRoot = base.replace(/\/v1\/text-to-speech.*$/i, '').replace(/\/v1$/i, '');
             var elModel = String(cfg.ttsModel || 'eleven_multilingual_v2').trim() || 'eleven_multilingual_v2';
             var elUrl = elRoot + '/v1/text-to-speech/' + encodeURIComponent(elVoice) + '?output_format=mp3_44100_128';
-            var elResp = await fetch(elUrl, {
+            var elResp = await ttsFetch(elUrl, {
                 method: 'POST',
                 headers: { 'xi-api-key': cfg.ttsKey, 'Content-Type': 'application/json' },
                 body: JSON.stringify({

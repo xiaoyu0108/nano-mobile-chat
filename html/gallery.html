@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<script src="../js/nano-runtime.js?v=20261023a"></script>
+<script src="../js/appearance.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>图库</title>
+<link rel="stylesheet" href="../css/gallery.css?v=20261023d">
+</head>
+<body>
+<div class="app">
+  <header class="nav">
+    <button class="back" id="backBtn" aria-label="返回">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <h1 id="navTitle">图库</h1>
+    <div class="nav-actions">
+      <button class="nav-btn" id="selectBtn" type="button">选择</button>
+      <button class="nav-btn danger" id="clearBtn" type="button">清空</button>
+      <button class="nav-btn icon" id="refreshBtn" type="button" aria-label="刷新" title="刷新">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg>
+      </button>
+    </div>
+  </header>
+  <div class="filters" id="filters">
+    <button class="filter active" data-src="all">全部</button>
+    <button class="filter" data-src="聊天">聊天</button>
+    <button class="filter" data-src="线下">线下</button>
+    <button class="filter" data-src="Ins">Ins</button>
+    <button class="filter" data-src="朋友圈">朋友圈</button>
+    <button class="filter clean" id="cleanEmoji" type="button">清理表情包</button>
+  </div>
+  <main class="scroll" id="gridWrap">
+    <div class="empty" id="empty">
+      <div class="empty-icon">◌</div>
+      <div class="empty-title">还没有照片</div>
+      <div class="empty-sub">聊天、Ins、朋友圈里生成的图片会自动出现在这里</div>
+    </div>
+    <div class="grid" id="grid"></div>
+  </main>
+  <div class="selectbar" id="selectbar" hidden>
+    <button class="sel-btn ghost" id="selAll" type="button">全选</button>
+    <span class="sel-count" id="selCount">已选 0 张</span>
+    <button class="sel-btn" id="selDelete" type="button" disabled>删除所选</button>
+    <button class="sel-btn ghost" id="selDone" type="button">完成</button>
+  </div>
+</div>
+<div class="lightbox" id="lightbox" hidden>
+  <button class="lb-close" id="lbClose" aria-label="关闭">×</button>
+  <button class="lb-nav prev" id="lbPrev" aria-label="上一张">‹</button>
+  <img id="lbImg" alt="">
+  <button class="lb-nav next" id="lbNext" aria-label="下一张">›</button>
+  <div class="lb-meta" id="lbMeta"></div>
+  <div class="lb-actions">
+    <button class="lb-btn primary" id="lbDownload" type="button">下载图片</button>
+    <button class="lb-btn danger" id="lbDelete" type="button">删除</button>
+  </div>
+</div>
+<div class="dialog" id="dialog" hidden>
+  <div class="dialog-card">
+    <h3 id="dialogTitle">删除照片？</h3>
+    <p id="dialogText"></p>
+    <div class="dialog-actions">
+      <button class="dialog-btn ghost" id="dialogCancel" type="button">取消</button>
+      <button class="dialog-btn danger" id="dialogOk" type="button">删除</button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<script src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
+<script src="../js/nano-gallery.js?v=20261023d"></script>
+<script src="../js/gallery.js?v=20261023d"></script>
+</body>
+</html>

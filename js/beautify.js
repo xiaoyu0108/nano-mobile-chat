@@ -2915,6 +2915,31 @@ document.getElementById("fontFile").onchange = async e => {
   e.target.value = "";
 };
 
+// ---- 字体代理（国外字体 / Catbox 等） ----
+const fontProxyInput = document.getElementById("fontProxy");
+function normalizeFontProxyInput(v) {
+  v = String(v || "").trim();
+  if (!v) return "";
+  if (v.indexOf("{url}") !== -1) return v;
+  if (/[?&]url=$/i.test(v)) return v;
+  if (/\/font\/?$/i.test(v)) return v.replace(/\/+$/, "") + "?url=";
+  if (v.indexOf("?") === -1) return v.replace(/\/+$/, "") + "/font?url=";
+  return v;
+}
+try {
+  if (fontProxyInput) fontProxyInput.value = getCfFontProxy() || "https://nanopush.nano315.online/font?url=";
+} catch (e) {}
+const fontProxySave = document.getElementById("fontProxySave");
+if (fontProxySave) fontProxySave.onclick = () => {
+  const v = normalizeFontProxyInput(fontProxyInput ? fontProxyInput.value : "");
+  try {
+    if (v) localStorage.setItem(NANO_CF_FONT_PROXY_KEY, v);
+    else localStorage.removeItem(NANO_CF_FONT_PROXY_KEY);
+  } catch (e) {}
+  if (fontProxyInput) fontProxyInput.value = v;
+  toast(v ? "字体代理已保存" : "已改用公共代理");
+};
+
 // ---- URL字体 ----
 document.getElementById("urlApply").onclick = async () => {
   if (fontConnecting) return; // 一次只跑一个，失败也只弹一次

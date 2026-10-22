@@ -24,8 +24,20 @@
   var $appCount  = document.getElementById('appCount');
 
   var $copyBtn   = document.getElementById('copyTemplate');
+  var $installBtn = document.getElementById('installTemplate');
   var $importBtn = document.getElementById('importHtml');
   var $fileInput = document.getElementById('fileInput');
+  var $pasteBtn  = document.getElementById('pasteHtml');
+  var $guideBtn  = document.getElementById('createGuide');
+  var $pasteModal = document.getElementById('pasteModal');
+  var $pasteCode = document.getElementById('pasteCode');
+  var $pasteOk = document.getElementById('pasteOk');
+  var $pasteCancel = document.getElementById('pasteCancel');
+  var $pasteClipboard = document.getElementById('pasteClipboard');
+  var $pasteClear = document.getElementById('pasteClear');
+  var $guideModal = document.getElementById('guideModal');
+  var $guideClose = document.getElementById('guideClose');
+  var $guideCopy = document.getElementById('guideCopy');
 
   var $usageValue   = document.getElementById('usageValue');
   var $setUsage     = document.getElementById('setUsage');
@@ -329,7 +341,8 @@
       name.textContent = app.name || app.id || '未命名';
       var desc = document.createElement('div');
       desc.className = 'app-desc';
-      desc.textContent = app.desc || ('v' + (app.version || '1.0.0'));
+      var permTag = (app.highPermission || (Array.isArray(app.permissions) && app.permissions.indexOf('*') > -1)) ? '高权限 · ' : '';
+      desc.textContent = permTag + (app.desc || ('v' + (app.version || '1.0.0')));
       meta.appendChild(name);
       meta.appendChild(desc);
       row.appendChild(meta);
@@ -535,30 +548,38 @@
   }
 
   // ===== 导入 =====
+  function installHtml(html, label) {
+    html = String(html || '').trim();
+    if (!html) { toast('代码是空的'); return Promise.resolve(false); }
+    var manifest = parseManifest(html);
+    if (!manifest || !manifest.id) { toast('缺少 nano-manifest 或 id'); return Promise.resolve(false); }
+    var app = {
+      id: String(manifest.id),
+      name: manifest.name || manifest.id,
+      icon: manifest.icon || '',
+      color: manifest.color || '',
+      desc: manifest.desc || '',
+      version: manifest.version || '1.0.0',
+      permissions: manifest.permissions || [],
+      highPermission: !!manifest.highPermission,
+      html: html,
+      installedAt: Date.now()
+    };
+    return dbPut(app).then(function () {
+      toast('已安装「' + app.name + '」');
+      refresh();
+      return true;
+    }).catch(function (err) {
+      toast('安装失败：' + (err && err.message ? err.message : err));
+      return false;
+    });
+  }
+
   function importFile(file) {
     if (!file) return;
     var reader = new FileReader();
     reader.onload = function (e) {
-      var html = String(e.target.result || '');
-      var manifest = parseManifest(html);
-      if (!manifest || !manifest.id) { toast('缺少 nano-manifest 或 id'); return; }
-      var app = {
-        id: String(manifest.id),
-        name: manifest.name || manifest.id,
-        icon: manifest.icon || '',
-        color: manifest.color || '',
-        desc: manifest.desc || '',
-        version: manifest.version || '1.0.0',
-        permissions: manifest.permissions || [],
-        html: html,
-        installedAt: Date.now()
-      };
-      dbPut(app).then(function () {
-        toast('已导入「' + app.name + '」');
-        refresh();
-      }).catch(function (err) {
-        toast('导入失败：' + (err && err.message ? err.message : err));
-      });
+      installHtml(e.target.result, file.name);
     };
     reader.onerror = function () { toast('读取文件失败'); };
     reader.readAsText(file);
@@ -579,7 +600,7 @@
 '  "icon": "A",',
 '  "desc": "一句话介绍这个应用",',
 '  "version": "1.0.0",',
-'  "permissions": ["persona", "characters", "worldbook", "memory", "api", "tts"]',
+'  "permissions": ["*"]',
 '}',
 '</' + 'script>',
 '<style>',
@@ -964,6 +985,60 @@
     importFile(f);
   });
   $copyBtn.addEventListener('click', copyTemplate);
+  if ($installBtn) $installBtn.addEventListener('click', function () {
+    toast('正在安装示例…');
+    getTemplateText().then(function (text) {
+      return installHtml(text, 'template');
+    }).then(function (ok) {
+      if (ok) toast('完整模板已安装，点「打开」开始改');
+    });
+  });
+  if ($pasteBtn) $pasteBtn.addEventListener('click', function () {
+    if ($pasteCode) $pasteCode.value = '';
+    if ($pasteModal) $pasteModal.classList.add('on');
+    setTimeout(function () { try { $pasteCode.focus(); } catch (e) {} }, 120);
+  });
+  if ($pasteCancel) $pasteCancel.addEventListener('click', function () { $pasteModal.classList.remove('on'); });
+  if ($pasteModal) $pasteModal.addEventListener('click', function (e) { if (e.target === $pasteModal) $pasteModal.classList.remove('on'); });
+  if ($pasteClear) $pasteClear.addEventListener('click', function () { $pasteCode.value = ''; $pasteCode.focus(); });
+  if ($pasteClipboard) $pasteClipboard.addEventListener('click', function () {
+    if (navigator.clipboard && navigator.clipboard.readText) {
+      navigator.clipboard.readText().then(function (text) {
+        $pasteCode.value = String(text || '');
+        toast('已从剪贴板读取');
+      }).catch(function () { toast('读取剪贴板失败，请手动粘贴'); });
+    } else toast('这个浏览器不支持读取剪贴板');
+  });
+  if ($pasteOk) $pasteOk.addEventListener('click', function () {
+    var html = $pasteCode ? $pasteCode.value : '';
+    installHtml(html, 'paste').then(function (ok) {
+      if (ok) {
+        $pasteModal.classList.remove('on');
+        if ($pasteCode) $pasteCode.value = '';
+      }
+    });
+  });
+  if ($guideBtn) $guideBtn.addEventListener('click', function () { $guideModal.classList.add('on'); });
+  if ($guideClose) $guideClose.addEventListener('click', function () { $guideModal.classList.remove('on'); });
+  if ($guideModal) $guideModal.addEventListener('click', function (e) { if (e.target === $guideModal) $guideModal.classList.remove('on'); });
+  if ($guideCopy) $guideCopy.addEventListener('click', function () {
+    toast('正在整理模板…');
+    getTemplateText().then(function (template) {
+      var prompt = '你是一个 Nano App 开发者。请基于下面的完整模板，生成一个可直接运行的单文件 HTML 应用。\n\n' +
+        '硬性要求：\n' +
+        '1. 保留 <script id="nano-manifest"> 和 id，permissions 使用 ["*"]，highPermission 为 true。\n' +
+        '2. 沿用模板里的 App.define / App.go / App.switchTab / App.back 页面栈。\n' +
+        '3. 返回逻辑必须逐级：首页 → AppStore；清单/设置 → 首页；二级页 → 打开它的上一页，绝对不要从二级页直接退出。\n' +
+        '4. 功能要完整可操作，状态用 Nano.store 存档；页面写法参考模板里的 App.define / App.go。\n' +
+        '5. 可以使用 Nano.chat / Nano.image.generate / Nano.tts / Nano.files / Nano.gallery / Nano.notify / Nano.clipboard。\n' +
+        '6. 只输出完整 HTML，不要解释。\n\n' +
+        '【模板开始】\n' + template + '\n【模板结束】';
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(prompt).then(function () { toast('AI 提示词已复制'); })
+          .catch(function () { fallbackCopy(prompt); });
+      } else fallbackCopy(prompt);
+    });
+  });
   $search.addEventListener('input', function () {
     keyword = this.value.trim();
     renderList();

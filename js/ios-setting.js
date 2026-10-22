@@ -139,10 +139,14 @@
         try { url = localStorage.getItem(PEEK_URL_KEY) || ''; } catch (e) {}
         if (!url) url = PEEK_DEFAULT_URL;
         if ($('isPeekUrl')) $('isPeekUrl').value = url;
-        if ($('isPeekToken')) $('isPeekToken').textContent = getPeekToken();
+        var token = getPeekToken();
         var base = String(url).trim().replace(/\/+$/, '');
         if (/\/peek$/i.test(base)) base = base.replace(/\/peek$/i, '');
-        if ($('isPeekEndpoint')) $('isPeekEndpoint').textContent = base ? (base + '/peek') : '（先填服务端地址）';
+        var ep = base ? (base + '/peek') : '（先填服务端地址）';
+        if ($('isPeekToken')) $('isPeekToken').textContent = token;
+        if ($('isPeekEndpoint')) $('isPeekEndpoint').textContent = ep;
+        if ($('isPeekTokenMain')) $('isPeekTokenMain').textContent = token;
+        if ($('isPeekEndpointMain')) $('isPeekEndpointMain').textContent = ep;
         if ($('isPeekSystem')) {
             var c = currentChar();
             $('isPeekSystem').textContent = c ? ('你是「' + charName() + '」。' + (persona() || '')) : '（先创建角色）';
@@ -190,8 +194,9 @@
         var id = selectedId || '', name = charName();
         var model = (apiCfg && apiCfg.mainModel) || '你的模型';
         var sys = persona();
+        var root = window.NANO_ROOT || base;
 
-        $('isLinkA').textContent = base + 'index.html?nanoScreen={{识别文本}}&nanoChat=' + enc(id) + '&nanoName=' + enc(name);
+        $('isLinkA').textContent = root + 'index.html?nanoScreen={{识别文本}}&nanoChat=' + enc(id) + '&nanoName=' + enc(name);
         $('isUrl2').textContent = endpoint((apiCfg && apiCfg.mainUrl) || '') || '（主 API 未配置）';
 
         var __k = (apiCfg && apiCfg.mainKey) || '';
@@ -213,7 +218,7 @@
             temperature: 0.9
         };
         $('isBody').textContent = JSON.stringify(body, null, 2);
-        $('isLinkB').textContent = base + 'index.html?nanoScreenReply={{模型回复}}&nanoChat=' + enc(id) + '&nanoName=' + enc(name);
+        $('isLinkB').textContent = root + 'index.html?nanoScreenReply={{模型回复}}&nanoChat=' + enc(id) + '&nanoName=' + enc(name);
     }
 
     function renderGuide() {
@@ -251,6 +256,54 @@
         if (ok) { el.hidden = true; el.innerHTML = ''; return; }
         el.hidden = false;
         el.innerHTML = '还没有配置主 API。请先到 <b>API 页</b>填好 接口地址 / Key / 模型，再回到这里。';
+    }
+
+    function peekLink() {
+        var id = selectedId || '', name = charName();
+        var root = window.NANO_ROOT || base;
+        return root + 'index.html?nanoScreen={{识别文本}}&nanoChat=' + enc(id) + '&nanoName=' + enc(name);
+    }
+
+    function guideText() {
+        var ep = ($('isPeekEndpointMain') && $('isPeekEndpointMain').textContent) || '';
+        var tk = ($('isPeekTokenMain') && $('isPeekTokenMain').textContent) || '';
+        var id = String(selectedId || '');
+        return [
+            '窥屏 · 手机版（屏幕速聊）',
+            '',
+            '1. 打开「快捷指令」App，右上角 + 新建。',
+            '2. 添加动作：截图 → Base64 编码（关闭换行）。',
+            '3. 添加「获取 URL 内容」：',
+            '   地址：' + ep,
+            '   方法：POST',
+            '   头部：X-Peek-Token = ' + tk,
+            '   请求体：选「文件」，引用下面这段文本（把 Base64 结果插进去）',
+            '',
+            '{"chatId":"' + id + '","image":"data:image/jpeg;base64,<Base64结果>"}',
+            '',
+            '4. 添加「获取字典值」：reply → 显示提醒。',
+            '5. 运行。TA 的回复会弹在系统通知里；回到 Nano 后会自动进聊天。',
+            '',
+            '想连续聊：再加「要求输入」拿到文字，把请求体里的 image 换成 text 再发一轮。',
+            '想更快：设置 → 辅助功能 → 触控 → 轻点背面 → 双击 → 选这个快捷指令。'
+        ].join('\n');
+    }
+
+    function startRealShare() {
+        var info = { id: String(selectedId || ''), name: charName(), avatar: (currentChar() && currentChar().avatar) || '' };
+        if (!info.id) { toast('先选一个角色'); return; }
+        try {
+            var t = window.parent;
+            if (t && t !== window) {
+                t.postMessage({ type: 'startScreenShare', charId: info.id, charName: info.name, avatar: info.avatar }, '*');
+                return;
+            }
+        } catch (e) {}
+        if (window.ScreenShare && typeof window.ScreenShare.start === 'function') {
+            window.ScreenShare.start(info);
+            return;
+        }
+        toast('请从 App 里的「查手机 → 设置」打开窥屏');
     }
 
     function refresh() {
@@ -303,6 +356,10 @@
             refresh();
         });
         $('isPrompt').addEventListener('input', refresh);
+        var startBtn = $('isStartShare');
+        if (startBtn) startBtn.addEventListener('click', startRealShare);
+        var guideBtn = $('isCopyGuide');
+        if (guideBtn) guideBtn.addEventListener('click', function () { copy(guideText()); });
         var peekSave = $('isPeekSave');
         if (peekSave) peekSave.addEventListener('click', savePeek);
         var peekUrl = $('isPeekUrl');

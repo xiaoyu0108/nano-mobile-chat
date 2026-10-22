@@ -227,6 +227,129 @@
     if (!/\/v1$/i.test(s)) s += '/v1';
     return s;
   }
+  function toImageBase(u) {
+    var s = String(u || '').trim().replace(/\/+$/, '');
+    s = s.replace(/\/images\/(generations|edits)$/i, '');
+    if (!/\/v1$/i.test(s)) s += '/v1';
+    return s;
+  }
+
+  function dataUrlToBlob(u) {
+    var comma = String(u).indexOf(',');
+    var mime = (String(u).slice(5, comma).split(';')[0]) || 'image/png';
+    var bin = atob(String(u).slice(comma + 1));
+    var arr = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    return new Blob([arr], { type: mime });
+  }
+
+  function generateImage(prompt, opts) {
+    opts = opts || {};
+    return getApiConfig().then(function (cfg) {
+      if (!cfg) throw new Error('未配置 API');
+      var rawUrl = String(cfg.imgUrl || '').trim();
+      var key = String(cfg.imgKey || '').trim();
+      var model = String(cfg.imgModel || '').trim();
+      if (!rawUrl || !key || !model) throw new Error('请先在 API → 生图里配置地址、Key 和模型');
+      var base = toImageBase(resolveApiHost(rawUrl));
+      var size = opts.size || '1024x1024';
+      var faceRef = String(opts.faceRef || '');
+      if (faceRef && faceRef.indexOf('data:') === 0) {
+        try {
+          var fd = new FormData();
+          fd.append('model', model);
+          fd.append('prompt', String(prompt || ''));
+          fd.append('n', '1');
+          fd.append('size', size);
+          fd.append('image', dataUrlToBlob(faceRef), 'ref.png');
+          return fetch(base + '/images/edits', {
+            method: 'POST', headers: { 'Authorization': 'Bearer ' + key }, body: fd
+          }).then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+          }).then(function (d) {
+            var it = d && d.data && d.data[0];
+            if (it && it.url) return it.url;
+            if (it && it.b64_json) return 'data:image/png;base64,' + it.b64_json;
+            throw new Error('生图接口未返回图片');
+          }).catch(function () { return generateImageJson(base, key, model, prompt, size, ''); });
+        } catch (e) {}
+      }
+      return generateImageJson(base, key, model, prompt, size, faceRef);
+    });
+  }
+  function generateImageJson(base, key, model, prompt, size, faceRef) {
+    var body = { model: model, prompt: String(prompt || ''), n: 1, size: size };
+    if (faceRef) { body.image = faceRef; body.reference_image = [faceRef]; body.input_reference_image = [faceRef]; }
+    return fetch(base + '/images/generations', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    }).then(function (r) {
+      if (!r.ok) {
+        return r.text().then(function (t) {
+          var msg = 'HTTP ' + r.status;
+          try { var d = JSON.parse(t); msg = (d.error && d.error.message) || d.message || msg; } catch (e) {}
+          throw new Error(msg);
+        });
+      }
+      return r.json();
+    }).then(function (d) {
+      var it = d && d.data && d.data[0];
+      if (it && it.url) return it.url;
+      if (it && it.b64_json) return 'data:image/png;base64,' + it.b64_json;
+      throw new Error('生图接口未返回图片');
+    });
+  }
+
+  function speakText(text, opts) {
+    text = String(text || '').trim();
+    if (!text) return Promise.resolve(false);
+    if (window.NanoTTS && typeof window.NanoTTS.speak === 'function') {
+      try { return Promise.resolve(window.NanoTTS.speak(text, opts || {})).catch(function () { return nativeSpeak(text, opts); }); } catch (e) {}
+    }
+    return nativeSpeak(text, opts);
+  }
+  function clipboardWrite(text) {
+    text = String(text == null ? '' : text);
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text).then(function () { return true; }).catch(function () { return legacyCopy(text); });
+    }
+    return Promise.resolve(legacyCopy(text));
+  }
+  function legacyCopy(text) {
+    try {
+      var ta = document.createElement('textarea');
+      ta.value = text; ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
+      document.body.appendChild(ta); ta.select();
+      var ok = document.execCommand('copy');
+      ta.remove();
+      return !!ok;
+    } catch (e) { return false; }
+  }
+  function clipboardRead() {
+    if (navigator.clipboard && navigator.clipboard.readText) {
+      return navigator.clipboard.readText().catch(function () { return ''; });
+    }
+    return Promise.resolve('');
+  }
+  function nativeSpeak(text, opts) {
+    return new Promise(function (resolve) {
+      try {
+        if (!('speechSynthesis' in window)) { resolve(false); return; }
+        var u = new SpeechSynthesisUtterance(text);
+        opts = opts || {};
+        if (opts.rate) u.rate = Number(opts.rate) || 1;
+        if (opts.pitch) u.pitch = Number(opts.pitch) || 1;
+        if (opts.lang) u.lang = String(opts.lang);
+        u.onend = function () { resolve(true); };
+        u.onerror = function () { resolve(false); };
+        speechSynthesis.cancel();
+        speechSynthesis.speak(u);
+        setTimeout(function () { resolve(true); }, 1200 + text.length * 90);
+      } catch (e) { resolve(false); }
+    });
+  }
 
   function callChatApi(messages, maxTokens, temperature) {
     return getApiConfig().then(function (cfg) {
@@ -378,6 +501,47 @@
           return { connected: !!(cfg && cfg.mainUrl && cfg.mainKey && cfg.mainModel), model: cfg && cfg.mainModel || '' };
         });
         break;
+      case 'permissions':
+        task = idbGet(APP_STORE, appId).then(function (rec) {
+          var list = (rec && Array.isArray(rec.permissions)) ? rec.permissions : [];
+          return { all: true, list: list, note: 'Nano AppStore 默认授予全部能力' };
+        });
+        break;
+      case 'image.generate':
+        task = generateImage(args[0], args[1] || {});
+        break;
+      case 'tts.speak':
+        task = speakText(args[0], args[1] || {});
+        break;
+      case 'files.add':
+        task = (window.NanoFiles ? NanoFiles.add(args[0] || {}) : Promise.reject(new Error('文件库未加载')));
+        break;
+      case 'files.list':
+        task = (window.NanoFiles ? NanoFiles.list() : Promise.resolve([]));
+        break;
+      case 'files.remove':
+        task = (window.NanoFiles ? NanoFiles.remove(args[0]) : Promise.resolve(false));
+        break;
+      case 'gallery.add':
+        if (window.NanoGallery) NanoGallery.add(args[0] || {});
+        task = Promise.resolve(true);
+        break;
+      case 'gallery.list':
+        task = (window.NanoGallery ? (NanoGallery.allAsync ? NanoGallery.allAsync() : Promise.resolve(NanoGallery.all())) : Promise.resolve([]));
+        break;
+      case 'gallery.remove':
+        task = Promise.resolve(window.NanoGallery ? NanoGallery.remove(args[0]) : 0);
+        break;
+      case 'gallery.clear':
+        if (window.NanoGallery) NanoGallery.clear();
+        task = Promise.resolve(true);
+        break;
+      case 'clipboard.write':
+        task = clipboardWrite(args[0]);
+        break;
+      case 'clipboard.read':
+        task = clipboardRead();
+        break;
       case 'chat':
         (function () {
           var opts = args[0] || {};
@@ -439,7 +603,15 @@
         break;
       // 关闭当前应用：默认回到 AppStore
       case 'close':
-        try { parent.postMessage({ type: 'nanoCloseOverlay' }, '*'); } catch (e) {}
+        try {
+          if (window.parent && window.parent !== window) {
+            parent.postMessage({ type: 'nanoAppExit', appId: appId }, '*');
+          } else {
+            location.href = 'appstore.html';
+          }
+        } catch (e) {
+          try { location.href = 'appstore.html'; } catch (e2) {}
+        }
         task = Promise.resolve(true);
         break;
       // 系统 / 应用内通知
@@ -480,7 +652,7 @@
       setTimeout(function () {
         window.removeEventListener('message', onInner);
         try { parent.postMessage({ type: handled ? 'nanoBackHandled' : 'nanoBackUnhandled' }, '*'); } catch (e) {}
-      }, 220);
+      }, 650);
       return;
     }
 
@@ -494,11 +666,27 @@
     var root = '';
     try { root = new URL('../', location.href).href; } catch (e) {}
     var tag = '<script>window.__NANO_APP_ID__=' + JSON.stringify(String(id)) + ';<\/script>' +
-              '<script src="' + root + 'js/nano-app-bridge.js?v=20261002a"><\/script>' +
-              '<script src="' + root + 'js/appearance.js?v=20261020c"><\/script>';
+              '<script src="' + root + 'js/nano-app-bridge.js?v=20261023d"><\/script>' +
+              '<script src="' + root + 'js/appearance.js?v=20261023a"><\/script>';
     if (/<head[^>]*>/i.test(html)) return html.replace(/<head[^>]*>/i, function (m) { return m + tag; });
     if (/<html[^>]*>/i.test(html)) return html.replace(/<html[^>]*>/i, function (m) { return m + '<head>' + tag + '</head>'; });
     return tag + html;
+  }
+
+  function syncSafeArea() {
+    try {
+      var cs = getComputedStyle(document.documentElement);
+      var top = (cs.getPropertyValue('--safe-top') || '').trim() || '0px';
+      var bot = (cs.getPropertyValue('--safe-bottom') || '').trim() || '0px';
+      var de = appFrame && appFrame.contentDocument && appFrame.contentDocument.documentElement;
+      if (!de) return;
+      de.style.setProperty('--safe-top', top);
+      de.style.setProperty('--safe-t', top);
+      de.style.setProperty('--safe-inset-top', top);
+      de.style.setProperty('--safe-bottom', bot);
+      de.style.setProperty('--safe-b', bot);
+      de.style.setProperty('--nano-safe-bottom', bot);
+    } catch (e) {}
   }
 
   function start() {
@@ -506,7 +694,14 @@
     idbGet(APP_STORE, appId).then(function (rec) {
       if (!rec || !rec.html) { fail('没有找到该应用'); return; }
       var doc = injectBridge(String(rec.html), appId);
-      appFrame.addEventListener('load', function () { setTimeout(hideMsg, 120); });
+      appFrame.addEventListener('load', function () {
+        syncSafeArea();
+        [30, 80, 160, 320, 700, 1400].forEach(function (t) {
+          setTimeout(syncSafeArea, t);
+        });
+        setTimeout(hideMsg, 120);
+      });
+      window.addEventListener('resize', syncSafeArea);
       try { appFrame.srcdoc = doc; } catch (e) { fail('应用载入失败'); }
     }).catch(function () { fail('读取应用失败'); });
   }

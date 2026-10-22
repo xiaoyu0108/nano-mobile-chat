@@ -3110,6 +3110,8 @@ const omBuiltinItems = [
   { id: 'roundTop', label: '回本轮顶部', icon: '<svg viewBox="0 0 24 24"><path d="M12 4v9"/><path d="M8 8l4-4 4 4"/><path d="M5 20h14"/></svg>', run: function () { omScrollToRoundTop(); } },
   { id: 'top', label: '回顶', icon: '<svg viewBox="0 0 24 24"><path d="M12 19V6"/><path d="m6 12 6-6 6 6"/></svg>', run: function () { chat.scrollTo({ top: 0, behavior: 'smooth' }); } },
   { id: 'bottom', label: '回底', icon: '<svg viewBox="0 0 24 24"><path d="M12 5v13"/><path d="m18 12-6 6-6-6"/></svg>', run: function () { chat.scrollTo({ top: chat.scrollHeight, behavior: 'smooth' }); } },
+  { id: 'genimg', label: '根据场景生图', icon: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>', run: function () { generateSceneImage(); } },
+  { id: 'offgallery', label: '线下图库', icon: '<svg viewBox="0 0 24 24"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>', run: function () { openOfflineGallery(); } },
   { id: 'beautify', label: '美化', icon: '<svg viewBox="0 0 24 24"><path d="M12 2l2.1 7.4L22 12l-7.9 2.6L12 22l-2.1-7.4L2 12l7.9-2.6z"/></svg>', run: function () { omOpenBeautifyMenu(); } }
 ];
 
@@ -3533,6 +3535,67 @@ function resizeInput() {
 }
 input.addEventListener('input', resizeInput);
 sendBtn.onclick = send;
+
+// ===== 根据当前场景文生图 =====
+const genImageBtn = document.getElementById('genImageBtn');
+async function generateSceneImage() {
+  if (window.__offlineGenBusy) return;
+  if (!window.NanoImage) { showToast('生图模块未加载'); return; }
+  window.__offlineGenBusy = true;
+  const recent = (messages || []).slice(-8).map(function (m) {
+    return (m.role === 'user' ? '用户' : (settings.charName || '角色')) + '：' + String(m.content || '').slice(0, 300);
+  }).join('\n');
+  const charName = settings.charName || '角色';
+  const prompt = '根据下面的线下剧情，生成一张电影感的画面。画面里如果有角色，要符合角色人设和当前场景；不要出现文字、字幕、水印。\n角色：' + charName + '\n最近剧情：\n' + (recent || '两人安静地待在一起') + '\n\n画面要求：自然光、真实质感、构图完整，情绪贴合当前对话。';
+  let faceRef = '';
+  try {
+    var fr = localStorage.getItem('chat_setting_faceRef_' + (offlineChatId || ''));
+    if (fr) { try { faceRef = JSON.parse(fr); } catch (e) { faceRef = fr; } }
+  } catch (e) {}
+  genImageBtn.disabled = true;
+  genImageBtn.style.opacity = '.5';
+  showToast('正在根据当前场景生图…');
+  try {
+    const url = await window.NanoImage.generate(prompt, { faceRef: faceRef });
+    try { if (window.NanoGallery) window.NanoGallery.add({ url: url, source: '线下', charName: charName, prompt: prompt }); } catch (e) {}
+    showOfflineImageViewer(url, charName);
+  } catch (e) {
+    showErrorModal('生图失败：' + (e && e.message ? e.message : e));
+  } finally {
+    window.__offlineGenBusy = false;
+    if (genImageBtn) { genImageBtn.disabled = false; genImageBtn.style.opacity = ''; }
+  }
+}
+function openOfflineGallery() {
+  var old = document.getElementById('offlineGalleryOverlay');
+  if (old) old.remove();
+  var ov = document.createElement('div');
+  ov.id = 'offlineGalleryOverlay';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:9998;background:#fff;';
+  ov.innerHTML = '<iframe src="gallery.html?from=offline" style="width:100%;height:100%;border:0;display:block;" title="线下图库"></iframe>';
+  document.body.appendChild(ov);
+  function onMsg(e) {
+    if (e && e.data && e.data.type === 'closeOfflineGallery') {
+      window.removeEventListener('message', onMsg);
+      ov.remove();
+    }
+  }
+  window.addEventListener('message', onMsg);
+}
+function showOfflineImageViewer(url, charName) {  var old = document.getElementById('offlineImageViewer');
+  if (old) old.remove();
+  var box = document.createElement('div');
+  box.id = 'offlineImageViewer';
+  box.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.94);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;';
+  box.innerHTML = '<button style="position:absolute;top:18px;right:18px;width:38px;height:38px;border:0;border-radius:50%;background:rgba(255,255,255,.18);color:#fff;font-size:24px;line-height:1;cursor:pointer;">×</button>' +
+    '<img style="max-width:100%;max-height:76vh;object-fit:contain;border-radius:10px;" src="' + url + '" alt="">' +
+    '<div style="color:#ddd;font-size:12px;margin-top:12px;">' + (charName || '') + ' · 线下场景</div>' +
+    '<a style="margin-top:14px;background:#fff;color:#111;text-decoration:none;font-size:14px;padding:10px 20px;border-radius:20px;font-weight:600;" download="nano-offline-' + Date.now() + '.png" href="' + url + '">下载图片</a>';
+  box.querySelector('button').addEventListener('click', function () { box.remove(); });
+  box.addEventListener('click', function (e) { if (e.target === box) box.remove(); });
+  document.body.appendChild(box);
+}
+if (genImageBtn) genImageBtn.onclick = generateSceneImage;
 
 // ============================================================
 // 14. 搜索跳转

@@ -979,6 +979,8 @@ function parseLinkPage(html) {
   function addImg(u) {
     u = linkAbsImg(u);
     if (!u || seen[u]) return;
+    // 卡片封面不要用网站 logo / favicon / 分享图标，否则抖音淘宝卡片只剩软件图标。
+    if (/logo|favicon|sprite|qrcode|qr_|share[_-]?icon|app[_-]?icon|\/icon\//i.test(u)) return;
     seen[u] = 1;
     if (imgs.length < 6) imgs.push(u);
   }
@@ -1133,6 +1135,63 @@ async function fetchLinkPreview(url) {
       }
     }
   }
+  // 抖音：短链跳转后的页面经常被跳登录页。用视频 id 走公开的 iteminfo 接口，
+  // 通常能拿到文案、作者和封面；失败再继续走 Jina。
+  if (/douyin|iesdouyin/i.test(u.hostname)) {
+    const finalUrl = String((first && first.resp && first.resp.url) || u.href);
+    const vm = finalUrl.match(/\/(?:video|note|slides)\/(\d{8,})/) ||
+      (first && first.text ? first.text.match(/"aweme_id"\s*:\s*"(\d{8,})"/) : null);
+    if (vm && vm[1]) {
+      const a = await fetchTextWithTimeout('https://www.iesdouyin.com/web/api/v2/aweme/iteminfo/?item_ids=' + vm[1], {
+        'User-Agent': mobileUA,
+        'Accept': 'application/json, text/plain, */*',
+        'Referer': 'https://www.iesdouyin.com/'
+      }, 10000);
+      if (a && a.text) {
+        try {
+          const aj = JSON.parse(a.text);
+          const item = aj && aj.item_list && aj.item_list[0];
+          if (item) {
+            const desc = String(item.desc || '').replace(/\s+/g, ' ').trim();
+            const cover = item.video && item.video.cover && item.video.cover.url_list && item.video.cover.url_list[0] ||
+              (item.video && item.video.dynamic_cover && item.video.dynamic_cover.url_list && item.video.dynamic_cover.url_list[0]) || '';
+            if (desc || cover) {
+              return {
+                url: finalUrl,
+                via: 'douyin-api',
+                title: (desc || '抖音视频').slice(0, 120),
+                desc: desc.slice(0, 180),
+                content: [desc, item.author && item.author.nickname ? ('作者：' + item.author.nickname) : ''].filter(Boolean).join('\n').slice(0, 7000),
+                images: cover ? [linkAbsImg(cover)] : [],
+                price: ''
+              };
+            }
+          }
+        } catch (e) {}
+      }
+    }
+  }
+
+  // 淘宝/天猫：用商品 id 换 H5 详情页，桌面页被登录弹窗挡住时 H5 有时仍带标题和主图。
+  if (/taobao|tmall/i.test(u.hostname)) {
+    const taobaoSource = String((first && first.resp && first.resp.url) || u.href);
+    const tm = taobaoSource.match(/[?&](?:id|itemId)=(\d{6,})/) || u.href.match(/[?&](?:id|itemId)=(\d{6,})/);
+    if (tm && tm[1]) {
+      const tb = await fetchTextWithTimeout('https://h5.m.taobao.com/awp/core/detail.htm?id=' + tm[1], {
+        'User-Agent': mobileUA,
+        'Accept': 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'zh-CN,zh;q=0.9',
+        'Referer': 'https://m.tb.cn/'
+      }, 10000);
+      if (tb && tb.text) {
+        const td = parseLinkPage(tb.text);
+        if ((td.title || td.content || (td.images && td.images.length)) && !linkLooksBlocked(tb.resp.url || taobaoSource, td)) {
+          return Object.assign({ url: tb.resp.url || taobaoSource, via: 'taobao-h5' }, td);
+        }
+      }
+    }
+  }
+
   // Cloudflare 的数据中心 IP 经常被小红书跳到登录/滑块验证页；此时换 r.jina.ai 服务端读取。
   const j = await fetchTextWithTimeout('https://r.jina.ai/' + u.href, {
     'User-Agent': mobileUA,
@@ -1260,6 +1319,50 @@ export default {
       }
     }
 
+    // ===== 字体代理：/font?url=https://files.catbox.moe/xxx.woff2 =====
+    // 只代理字体文件（woff/woff2/ttf/otf），限制大小，避免变成通用开放代理。
+    if (__reqUrl.pathname === '/font') {
+      const target = __reqUrl.searchParams.get('url') || '';
+      let tu;
+      try { tu = new URL(target); } catch (e) { return new Response('bad font url', { status: 400, headers: CORS }); }
+      if (!/^https?:$/.test(tu.protocol)) return new Response('bad protocol', { status: 400, headers: CORS });
+      if (!/\.(woff2?|ttf|otf)$/i.test(tu.pathname)) return new Response('only font files', { status: 400, headers: CORS });
+      const host = tu.hostname.toLowerCase();
+      if (host === 'localhost' || host === '0.0.0.0' || host === '[::1]' ||
+          /^127\./.test(host) || /^10\./.test(host) || /^192\.168\./.test(host) ||
+          /^172\.(1[6-9]|2\d|3[01])\./.test(host)) {
+        return new Response('bad host', { status: 400, headers: CORS });
+      }
+      const cache = (typeof caches !== 'undefined' && caches.default) ? caches.default : null;
+      const cacheKey = new Request(__reqUrl.origin + '/font?url=' + encodeURIComponent(tu.href), { method: 'GET' });
+      if (cache) {
+        try { const hit = await cache.match(cacheKey); if (hit) return hit; } catch (e) {}
+      }
+      try {
+        const resp = await fetch(tu.href, {
+          headers: { 'User-Agent': 'Mozilla/5.0 (compatible; NanoFontProxy/1.0)' },
+          cf: { cacheEverything: true, cacheTtl: 31536000 }
+        });
+        if (!resp.ok) return new Response('font fetch failed: ' + resp.status, { status: 502, headers: CORS });
+        const ct = (resp.headers.get('content-type') || '').toLowerCase();
+        const isFont = /font/.test(ct) || /octet-stream/.test(ct) || /\.(woff2?|ttf|otf)$/i.test(tu.pathname);
+        if (!isFont) return new Response('not a font', { status: 415, headers: CORS });
+        const buf = await resp.arrayBuffer();
+        if (!buf || buf.byteLength > 8 * 1024 * 1024) {
+          return new Response('font too large', { status: 413, headers: CORS });
+        }
+        const out = new Headers(CORS);
+        out.set('Content-Type', ct && /font|octet-stream/.test(ct) ? ct : 'application/octet-stream');
+        out.set('Cache-Control', 'public, max-age=31536000, immutable');
+        out.set('X-Content-Type-Options', 'nosniff');
+        const res = new Response(buf, { status: 200, headers: out });
+        if (cache) { try { await cache.put(cacheKey, res.clone()); } catch (e) {} }
+        return res;
+      } catch (e) {
+        return new Response('font proxy error: ' + (e && e.message ? e.message : e), { status: 502, headers: CORS });
+      }
+    }
+
     // ===== Fish Audio TTS 反向代理 =====
     // 浏览器的 CORS 预检有时会在到达 Fish 之前就被网络/代理拦掉（HTTP 0 / Load failed）。
     // 前端在直连失败时会自动改走这里：POST /fish-tts，body 与 /v1/tts 完全一致。
@@ -1289,8 +1392,66 @@ export default {
       }
     }
 
+    // Fish Audio 音色 / 模型列表代理：api.fish.audio/model 在国内经常直连超时，
+    // 和 TTS 一样由 Cloudflare 去拉，前端只走 Worker。
+    if ((/\/fish-models$/.test(__reqUrl.pathname) || /\/fish-model$/.test(__reqUrl.pathname) || /\/fish-model\//.test(__reqUrl.pathname)) && request.method === 'GET') {
+      const fishOrigin = String(env.FISH_API_ORIGIN || 'https://api.fish.audio').replace(/\/+$/, '');
+      const isList = /\/fish-models$/.test(__reqUrl.pathname);
+      let fishPath = '/model?page_size=100';
+      if (!isList) {
+        const id = __reqUrl.searchParams.get('id') || (__reqUrl.pathname.split('/fish-model/')[1] || '');
+        if (!id) return json({ ok: false, error: 'no id' }, 400);
+        fishPath = '/model/' + encodeURIComponent(id);
+      }
+      try {
+        const resp = await fetch(fishOrigin + fishPath, {
+          headers: {
+            'Authorization': request.headers.get('Authorization') || '',
+            'Accept': 'application/json'
+          }
+        });
+        const text = await resp.text();
+        return new Response(text, {
+          status: resp.status,
+          headers: Object.assign({}, CORS, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
+        });
+      } catch (e) {
+        return json({ ok: false, error: 'fish proxy error: ' + (e && e.message ? e.message : e) }, 502);
+      }
+    }
 
-    // 允许通过自定义域名路径前缀访问：https://nano315.online/nanoapi/xxx -> /xxx
+    // ===== 通用外部 API 反向代理（ElevenLabs / MiniMax 海外版 / NovelAI）=====
+    // 只允许固定白名单域名，避免变成公开 SSRF 代理。
+    if (/\/ext-proxy$/.test(__reqUrl.pathname)) {
+      const raw = __reqUrl.searchParams.get('url') || '';
+      let target = null;
+      try { target = new URL(raw); } catch (e) {}
+      const allowed = ['api.elevenlabs.io', 'api.minimax.io', 'api.minimaxi.com', 'api.minimax.chat', 'api.novelai.net', 'image.novelai.net'];
+      if (!target || allowed.indexOf(target.hostname) === -1) return json({ ok: false, error: 'host not allowed' }, 403);
+      const fwd = new Headers();
+      ['authorization', 'xi-api-key', 'content-type', 'accept'].forEach(function (h) {
+        const v = request.headers.get(h);
+        if (v) fwd.set(h, v);
+      });
+      try {
+        const resp = await fetch(target.href, {
+          method: request.method,
+          headers: fwd,
+          body: (request.method === 'GET' || request.method === 'HEAD') ? undefined : request.body
+        });
+        const out = new Headers();
+        out.set('Access-Control-Allow-Origin', '*');
+        out.set('Access-Control-Allow-Headers', '*');
+        out.set('Cache-Control', 'no-store');
+        const ct = resp.headers.get('content-type');
+        if (ct) out.set('Content-Type', ct);
+        return new Response(resp.body, { status: resp.status, headers: out });
+      } catch (e) {
+        return json({ ok: false, error: 'ext proxy error: ' + (e && e.message ? e.message : e) }, 502);
+      }
+    }
+
+
     let pathname = __reqUrl.pathname;
     if (pathname.indexOf('/nanoapi') === 0) pathname = pathname.slice('/nanoapi'.length) || '/';
 
@@ -1668,7 +1829,7 @@ export default {
             const raw = await marketKv(env).get('market:index');
             legacy = raw ? JSON.parse(raw) : [];
           } catch (e) { legacy = []; }
-          if (Array.isArray(legacy) && legacy.length) {
+          if (Array.isArray(legacy) && legacy.length && String(env.INCLUDE_LEGACY_MARKET || '1') !== '0') {
             const seen = {};
             items.forEach(function (x) { if (x && x.id) seen[x.id] = 1; });
             const counts = await readMarketCounts();
@@ -1760,9 +1921,8 @@ export default {
           });
           let v = value;
           if (v && typeof v === 'object') v = v.market_increment != null ? v.market_increment : Object.values(v)[0];
-          if (typeof v === 'number' || typeof v === 'string') {
-            return json({ ok: true, value: Number(v) || 0 });
-          }
+          // 返回 0 可能是「旧帖子还在 KV 里，Supabase 没有这条」：继续走下面的 KV 回退。
+          if (Number(v) > 0) return json({ ok: true, value: Number(v) || 0 });
         } catch (e) {
           console.warn('[market] supabase count failed, fallback KV:', e && e.message);
         }

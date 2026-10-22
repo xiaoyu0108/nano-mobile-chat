@@ -50,11 +50,12 @@
     }
 
     // 读取锁脸参考：localStorage 优先，其次回退到 IndexedDB（旧的大图只写进了 IDB）
-    function getFaceRefAsync() {
-        var local = getSetting('faceRef', '');
+    function getFaceRefAsync(keyName) {
+        keyName = keyName || 'faceRef';
+        var local = getSetting(keyName, '');
         if (local) return Promise.resolve(local);
         if (typeof localforage === 'undefined') return Promise.resolve('');
-        return localforage.getItem(getStorageKey('faceRef')).then(function(v) {
+        return localforage.getItem(getStorageKey(keyName)).then(function(v) {
             return v || '';
         }).catch(function() { return ''; });
     }
@@ -86,15 +87,19 @@
         });
     }
 
-    function applyFacePreview(url) {
+    var faceModalTarget = 'faceRef';
+    function applyFacePreview(url, target) {
+        target = target || 'faceRef';
+        var statusEl = target === 'coupleFaceUser' ? document.getElementById('coupleUserFaceStatus')
+            : (target === 'coupleFaceChar' ? document.getElementById('coupleCharFaceStatus') : faceStatus);
         if (url) {
-            faceStatus.textContent = '已设置';
+            if (statusEl) statusEl.textContent = '已设置';
             facePreviewBox.style.backgroundImage = 'url(' + url + ')';
             facePreviewBox.style.backgroundSize = 'cover';
             facePreviewBox.style.backgroundPosition = 'center';
             facePreviewBox.textContent = '';
         } else {
-            faceStatus.textContent = '未设置';
+            if (statusEl) statusEl.textContent = '未设置';
             facePreviewBox.style.backgroundImage = 'none';
             facePreviewBox.textContent = '未上传参考图';
         }
@@ -376,6 +381,21 @@
         getFaceRefAsync().then(function(label) {
             applyFacePreview(label);
         });
+        getFaceRefAsync('coupleFaceUser').then(function (u) {
+            var el = document.getElementById('coupleUserFaceStatus');
+            if (el) el.textContent = u ? '已设置' : '未设置';
+        });
+        getFaceRefAsync('coupleFaceChar').then(function (c) {
+            var el = document.getElementById('coupleCharFaceStatus');
+            if (el) el.textContent = c ? '已设置' : '未设置';
+        });
+        var coupleFaceModeEl = document.getElementById('coupleFaceMode');
+        if (coupleFaceModeEl) {
+            coupleFaceModeEl.value = String(getSetting('coupleFaceMode', 'none') || 'none');
+            coupleFaceModeEl.addEventListener('change', function () {
+                setSetting('coupleFaceMode', this.value || 'none');
+            });
+        }
 
         var rmt = document.getElementById('replyMaxTokens');
         if (rmt) {
@@ -883,10 +903,14 @@
     }
 
     // ===== 锁脸 =====
-    function openFaceModal() {
+    function openFaceModal(target) {
+        faceModalTarget = target || 'faceRef';
+        var title = document.querySelector('#faceModal .modal-title');
+        if (title) title.textContent = faceModalTarget === 'coupleFaceUser' ? '上传我的合照参考' :
+            (faceModalTarget === 'coupleFaceChar' ? '上传 TA 的合照参考' : '上传锁脸参考');
         // 每次打开都从存储里回填，避免页面上预览为空时误把已保存的参考图清掉
-        getFaceRefAsync().then(function(url) {
-            applyFacePreview(url);
+        getFaceRefAsync(faceModalTarget).then(function(url) {
+            applyFacePreview(url, faceModalTarget);
             faceModal.classList.add('active');
         });
     }
@@ -896,13 +920,13 @@
         if (bgImage && bgImage !== 'none' && bgImage !== '') {
             var url = bgImage.replace(/url\(["']?([^"')]+)["']?\)/, '$1');
             if (url && url.startsWith('data:image')) {
-                setSetting('faceRef', url);
-                faceStatus.textContent = '已设置';
+                setSetting(faceModalTarget, url);
+                applyFacePreview(url, faceModalTarget);
             }
         } else {
             // 预览为空不代表要删除：可能只是还没回填，保持原值不动
-            getFaceRefAsync().then(function(existing) {
-                applyFacePreview(existing);
+            getFaceRefAsync(faceModalTarget).then(function(existing) {
+                applyFacePreview(existing, faceModalTarget);
             });
         }
         faceModal.classList.remove('active');
@@ -1439,7 +1463,11 @@
     promptCancel.addEventListener('click', function() { promptModal.classList.remove('active'); });
     promptConfirm.addEventListener('click', savePrompt);
 
-    document.getElementById('faceItem').addEventListener('click', openFaceModal);
+    document.getElementById('faceItem').addEventListener('click', function () { openFaceModal('faceRef'); });
+    var coupleUserItem = document.getElementById('coupleUserFaceItem');
+    if (coupleUserItem) coupleUserItem.addEventListener('click', function () { openFaceModal('coupleFaceUser'); });
+    var coupleCharItem = document.getElementById('coupleCharFaceItem');
+    if (coupleCharItem) coupleCharItem.addEventListener('click', function () { openFaceModal('coupleFaceChar'); });
     faceCancel.addEventListener('click', function() { faceModal.classList.remove('active'); });
     faceConfirm.addEventListener('click', saveFace);
     faceUpload.addEventListener('change', function(e) {

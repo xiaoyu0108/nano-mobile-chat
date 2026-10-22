@@ -1,6 +1,7 @@
 node_modules/
 push-worker/node_modules/
 push-worker/.wrangler/
+push-worker/supabase/.temp/
 push-server/
 *.log
 .DS_Store

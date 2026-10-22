@@ -489,7 +489,10 @@ async function maybeGeneratePostImages(made) {
       const authorChar = getSelectableChars().find(c => c && normName(c.name) === normName(p.user));
       const genOpts = authorChar ? { charId: String(authorChar.id || authorChar.name), char: authorChar } : null;
       const url = await generateInsImage(buildPostImagePrompt(p), genOpts);
-      if (url) { p.image = url; p.genPrompt = p.title || p.body || ''; budget--; }
+      if (url) {
+        p.image = url; p.genPrompt = p.title || p.body || ''; budget--;
+        try { if (window.NanoGallery) window.NanoGallery.add({ url: url, source: 'Ins', charName: p.user || '', prompt: p.genPrompt }); } catch (e) {}
+      }
     } catch (e) {
       if (!firstErr) firstErr = (e && e.message ? e.message : String(e));
     }
