@@ -630,6 +630,9 @@
         speak: function (text, opts) { return speak(text, opts).catch(function (e) { console.warn('[TTS] 失败:', e && e.message ? e.message : e); return false; }); },
         speakForChat: function (text, opts) { return speakForChat(text, opts); },
         speakForChar: function (text, opts) { return speakForChat(text, opts); },
+        // 通话整轮只合成一次：拿到 Blob 后可按气泡展示、重复播放、下载，重复调用命中缓存不再烧 TTS。
+        getVoiceBlob: function (text, opts) { return ensureVoiceBlob(text, opts); },
+        playVoiceBlob: function (blob, key) { return playBlob(blob, key); },
         rerollVoice: function (text, opts) { return rerollVoice(text, opts); },
         downloadVoice: function (text, opts) { return downloadVoice(text, opts); },
         hasVoiceForChat: function (chatId, preset) { return hasVoiceForChat(chatId, preset); },

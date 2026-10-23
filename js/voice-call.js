@@ -31,6 +31,23 @@
     // 语音朗读：开启时把角色的话接 TTS 读出来；关闭则纯文字。设置会记住。
     let speakerOn = (function(){try{return localStorage.getItem('nano_call_tts')!=='0'}catch(e){return true}})();
 
+    // iOS 需要一次用户手势才允许后续 HTMLAudio 自动播放；先用静音音频解锁。
+    let _audioUnlocked = false;
+    function unlockAudio() {
+        if (_audioUnlocked) return;
+        _audioUnlocked = true;
+        try {
+            var a = new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=');
+            a.volume = 0;
+            var p = a.play();
+            if (p && p.catch) p.catch(function () {});
+        } catch (e) {}
+    }
+    try {
+        document.addEventListener('touchstart', unlockAudio, { once: true, capture: true });
+        document.addEventListener('click', unlockAudio, { once: true, capture: true });
+    } catch (e) {}
+
     // ===== 从 URL 获取参数（与 chat_inner 的人设同步） =====
     const urlParams = new URLSearchParams(window.location.search);
     let chatId = urlParams.get('chat');
@@ -48,9 +65,11 @@
     chatId = chatId || 'default';
     contactNameParam = contactNameParam || '对方';
     const lookupName = contactNameParam;
-    // 通话喇叭与私聊顶栏喇叭是同一个开关：读取这个角色上次的 TTS 状态。
+    // 通话喇叭与私聊顶栏喇叭是同一个开关：只要这个角色或全局通话喇叭是开的，就打开 TTS。
+    // 注意不能直接用 isEnabled(chatId) 覆盖全局默认值——它的默认是 false，会把通话 TTS 静音。
     try {
-        if (window.NanoTTS && window.NanoTTS.isEnabled) speakerOn = window.NanoTTS.isEnabled(chatId);
+        if (window.NanoTTS && window.NanoTTS.isEnabled && window.NanoTTS.isEnabled(chatId)) speakerOn = true;
+        if (speakerOn && window.NanoTTS && window.NanoTTS.setEnabled) window.NanoTTS.setEnabled(chatId, true);
     } catch (e) {}
 
     // ===== 从角色库读取人设 =====
@@ -184,10 +203,14 @@
             if (characterData.setting) prompt += '\n- 设定：\n' + characterData.setting;
         }
         prompt += '\n\n你正在和用户进行语音通话，保持自然、简洁、真实的回复风格，不要使用 emoji。';
+        prompt += '\n你是真人，正在用手机和对方通话：任何情况下都不要承认自己是 AI、模型或程序，也不要说自己不能打电话；被问到就用人设自然带过。';
         prompt += '\n像真人打电话一样说：允许短句、停顿、换气、语气词（嗯、唔、欸）；用逗号、省略号、破折号表现自然停顿，不要播音腔，也不要写“（深呼吸）”“[风声]”这类会被直接念出来的旁白或音效标签。';
         prompt += '\n语气、语速要贴合你的人设和当下情绪；开心轻快、害羞放软、生气短促、困倦含糊。需要环境感时用一句自然的话带过（比如“外面有点吵，我走近一点”），不要每句都加。';
         prompt += '\n一次可以说 8~30 秒，把话说完，不要中途截断，也不要在句中途莫名停下。';
-        prompt += '\n如果你用外语说话，每一句都必须紧跟中文翻译，格式为：外文（中文翻译），一句一行；例如 do you love me（你爱我吗？）。不要只写外文或只写中文，翻译要完整。';
+        prompt += '\n【外语输出格式 · 强制】如果你说外语，每一句都必须写成：外文（中文翻译），一句一行；例如 do you love me（你爱我吗？）。翻译不能省略、不能用英文解释代替中文。TTS 只会读括号前的外文。';
+        if (isForeignCharacter()) {
+            prompt += '\n这个角色是外国人：本轮所有台词都必须同时包含外语原文和完整中文翻译，禁止只输出外语，也禁止只输出中文；每一句都要成对出现。';
+        }
         prompt += '\n每条消息单独一行，不同气泡之间用换行分隔；不要把多句话挤进同一段。';
         prompt += '\n如果你确实要结束这通电话（例如要去忙、手机快没电、话题自然结束、想休息了），可以在回复最后单独一行写 [hangup:简短理由]；这个标记不会显示给对方。不要每轮都挂断，只在真的想结束时用。';
         if (wbText) prompt += '\n【世界书】\n' + wbText;
@@ -203,6 +226,27 @@
             if (window.NanoPrompts && NanoPrompts.appendTo) prompt = NanoPrompts.appendTo(prompt, 'call');
         } catch (e) {}
         return prompt;
+    }
+
+    function isForeignCharacter() {
+        try {
+            var nat = String((characterData && (characterData.nationality || characterData.country)) || '').trim();
+            if (nat && nat !== '未知' && nat !== '未设定') {
+                return !/(中国|中國|china|chinese|香港|台湾|台湾|澳门)/i.test(nat);
+            }
+            var lang = String((characterData && characterData.language) || '').trim();
+            if (lang && !/中文|汉语|chinese/i.test(lang)) return true;
+            if (characterData && characterData.foreign) return true;
+            return /^[A-Za-z]/.test(String(contactNameParam || ''));
+        } catch (e) { return false; }
+    }
+
+    function notifyCallReplied() {
+        try {
+            if (window.parent !== window) {
+                window.parent.postMessage({ type: 'callCharReplied', chatId: chatId, callType: 'voice' }, '*');
+            }
+        } catch (e) {}
     }
 
     // ===== 从 localStorage 读取上次计时 =====
@@ -237,6 +281,12 @@
     let selectedIds = [];
     let menuTargetId = null;
     let isIncoming = urlParams.get('incoming') === '1';
+    // 同一通电话的稳定 ID：通话记录、语音文件、悬浮球续接都用它，不能等到挂断才生成。
+    let callSessionId = 'call_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+    let turnSeq = 0;
+    let firstSpeaker = (function () {
+        try { return localStorage.getItem('nano_call_first_' + chatId) === 'me' ? 'me' : 'char'; } catch (e) { return 'char'; }
+    })();
 
     // ===== 接通状态 =====
     let isConnected = false;          // 是否已接通
@@ -458,6 +508,7 @@ function hideInputArea() {
 
     function startConnecting() {
         if (isConnected) return;
+        unlockAudio();
         isConnecting = true;
         notifyCallState(true);
         connectStartTime = Date.now();
@@ -473,7 +524,9 @@ function hideInputArea() {
         // 接通时长 = 角色「决定接不接」的 API 反应时间（保留最短动画）
         if (connectTimer) clearTimeout(connectTimer);
         const minDelay = new Promise(function (r) { setTimeout(r, 2600 + Math.random() * 1400); });
-        Promise.all([decideAnswerRemote(), minDelay]).then(function (arr) {
+        // 对方主动打来的电话，不应该再让 TA「决定接不接」自己的来电。
+        const answerPromise = isIncoming ? Promise.resolve({ answer: true, say: '喂？' }) : decideAnswerRemote();
+        Promise.all([answerPromise, minDelay]).then(function (arr) {
             if (!isConnecting) return;
             const d = arr[0];
             if (d && d.answer === false) {
@@ -491,9 +544,10 @@ function hideInputArea() {
                 }, 1600);
                 return;
             }
-            // 角色接通后先说一句话（写进聊天）
-            if (d && d.say && window.parent !== window) {
-                try { window.parent.postMessage({ type: 'NANO_CALL_REPLY', chatId: chatId, text: d.say }, '*'); } catch (e) {}
+            // 「谁先说话」：对方先说就用接通 API 返回的第一句直接开口；
+            // 我先说就只接通、不抢话，等用户输入后再调用主 API。
+            if (firstSpeaker === 'char') {
+                deliverReplyBubbles((d && d.say) ? d.say : '喂？能听到吗？');
             }
             isConnecting = false;
             isConnected = true;
@@ -599,13 +653,14 @@ function showToast(text) {
                 toggleSelect(msg.id, el);
             }
         });
+        if (!msg.isUser && msg.clipId && msg.turnLast) appendAudioControls(el, msg.clipId);
         return el;
     }
 
     // ===== 分句 / 分气泡（外文（翻译）不拆）=====
     function splitSentences(text) {
         var out = [], cur = '', depth = 0;
-        var enders = '。！？!?；;…，,、';
+        var enders = '。！？!?；;…';
         for (var i = 0; i < text.length; i++) {
             var ch = text[i];
             if (ch === '（' || ch === '(') depth++;
@@ -639,8 +694,104 @@ function showToast(text) {
     }
     function spokenText(text) {
         var s = String(text == null ? '' : text);
-        var i = s.indexOf('（');
-        return i > 0 ? s.slice(0, i).trim() : s;
+        // 只去掉含中文的括号翻译；外语原文里的 (really) 这类括号要照读。
+        var cleaned = s.replace(/[（(]([^）)]*[\u4e00-\u9fff][^）)]*)[）)]/g, ' ').replace(/\s+/g, ' ').trim();
+        return cleaned || s;
+    }
+
+    function hasCJK(s) { return /[\u4e00-\u9fff]/.test(String(s || '')); }
+    function hasLatin(s) { return /[A-Za-z]/.test(String(s || '')); }
+
+    // 模型偶尔把「外语」和「中文翻译」拆成两行；这里把相邻的「外语 + 纯中文」合并成
+    // 一个完整气泡，避免字幕掉格式、TTS 把中文也读出来。
+    function normalizeBilingualBubbles(list) {
+        var out = [];
+        (list || []).forEach(function (raw) {
+            var line = String(raw || '').trim();
+            if (!line) return;
+            if (line.indexOf('||') !== -1) {
+                var p = line.split('||');
+                line = String(p[0] || '').trim() + '（' + String(p.slice(1).join('||') || '').trim() + '）';
+            }
+            var prev = out.length ? out[out.length - 1] : '';
+            var hasTrans = /[（(][^）)]*[\u4e00-\u9fff]/.test(prev);
+            if (prev && !hasTrans && hasLatin(prev) && hasCJK(line) && !hasLatin(line)) {
+                out[out.length - 1] = prev + '（' + line + '）';
+            } else {
+                out.push(line);
+            }
+        });
+        return out;
+    }
+
+    function appendAudioControls(el, clipId) {
+        if (!el || !clipId) return;
+        if (el.querySelector('.msg-audio')) return;
+        var box = document.createElement('div');
+        box.className = 'msg-audio';
+        var play = document.createElement('button');
+        play.type = 'button';
+        play.title = '播放本轮语音';
+        play.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+        play.addEventListener('click', function (e) {
+            e.stopPropagation();
+            try {
+                if (window.NanoTTS) window.NanoTTS.stop();
+                if (window.NanoCallAudio) window.NanoCallAudio.play(clipId);
+            } catch (err) {}
+        });
+        var dl = document.createElement('button');
+        dl.type = 'button';
+        dl.title = '下载本轮 MP3';
+        dl.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>';
+        dl.addEventListener('click', function (e) {
+            e.stopPropagation();
+            try { if (window.NanoCallAudio) window.NanoCallAudio.download(clipId, 'nano-call-' + clipId + '.mp3'); } catch (err) {}
+        });
+        box.appendChild(play);
+        box.appendChild(dl);
+        el.classList.add('has-audio');
+        el.appendChild(box);
+    }
+
+    // 一轮只调用一次主 API + 一次 TTS：气泡先拆开显示，语音整轮合成一次后播放。
+    function deliverReplyBubbles(raw, opts) {
+        opts = opts || {};
+        var bubbles = normalizeBilingualBubbles(splitBubbles(raw));
+        if (!bubbles.length) return;
+        var seq = ++turnSeq;
+        var clipId = callSessionId + '_t' + seq;
+        var els = [];
+        bubbles.forEach(function (line, i) {
+            var last = (i === bubbles.length - 1);
+            var el = addMessage(line, false, { silent: true, turnSeq: seq, turnLast: last, clipId: '' });
+            if (el && el._msg) { el._msg.turnSeq = seq; el._msg.turnLast = last; }
+            els.push(el);
+        });
+        notifyCallReplied();
+        var spoken = bubbles.map(spokenText).filter(Boolean).join('\n');
+        if (opts.noTts || !speakerOn || !spoken || !window.NanoTTS || !NanoTTS.getVoiceBlob) return;
+        try { if (NanoTTS.setEnabled) NanoTTS.setEnabled(chatId, true); } catch (e) {}
+        NanoTTS.getVoiceBlob(spoken, { chatId: chatId }).then(function (got) {
+            if (!got || !got.blob) {
+                try { if (typeof showToast === 'function') showToast('TTS 没有返回音频，请检查语音配置'); } catch (e) {}
+                return;
+            }
+            var save = (window.NanoCallAudio && NanoCallAudio.saveClip)
+                ? NanoCallAudio.saveClip(clipId, got.blob, { callId: callSessionId, turnSeq: seq, isUser: false, text: spoken })
+                : Promise.resolve(false);
+            return save.then(function () {
+                var lastEl = els[els.length - 1];
+                if (lastEl && lastEl._msg) lastEl._msg.clipId = clipId;
+                appendAudioControls(lastEl, clipId);
+                try {
+                    var _pl = NanoTTS.playVoiceBlob
+                        ? NanoTTS.playVoiceBlob(got.blob, got.key)
+                        : NanoTTS.speakForChat(spoken, { chatId: chatId });
+                    if (_pl && _pl.catch) _pl.catch(function () { showToast('点一下屏幕以允许播放语音'); });
+                } catch (e) {}
+            });
+        }).catch(function (e) { console.warn('[Call] 整轮 TTS 失败:', e && e.message ? e.message : e); });
     }
 
     // ===== 渲染消息 =====
@@ -675,8 +826,14 @@ function showToast(text) {
     }
 
     // ===== 添加消息 =====
-    function addMessage(text, isUser) {
-        const msg = { id: genMsgId(), text: text, isUser: isUser, time: Date.now(), recalled: false };
+    function addMessage(text, isUser, opts) {
+        opts = opts || {};
+        const msg = {
+            id: genMsgId(), text: text, isUser: isUser, time: Date.now(), recalled: false,
+            turnSeq: Number(opts.turnSeq) || 0,
+            turnLast: !!opts.turnLast,
+            clipId: String(opts.clipId || '')
+        };
         messages.push(msg);
         saveMessageObj(msg);
 
@@ -695,16 +852,10 @@ function showToast(text) {
         }
 
         const el = createMessageEl(msg);
+        el._msg = msg;
         chatArea.insertBefore(el, typingIndicator);
         chatArea.scrollTop = chatArea.scrollHeight;
-
-        // 角色在通话里说的话：免提开启且配置了 TTS 时，用这个角色绑定的音色合成播出来
-        if (!isUser && speakerOn && window.NanoTTS && text && text.indexOf('出错了') !== 0) {
-            try {
-                if (window.NanoTTS.speakForChat) window.NanoTTS.speakForChat(spokenText(text), { chatId: chatId });
-                else window.NanoTTS.speak(spokenText(text));
-            } catch (e) {}
-        }
+        return el;
     }
 
     // ===== 消息操作菜单 & 多选 =====
@@ -1030,7 +1181,7 @@ function showToast(text) {
             var reply = parsed.text;
             // 分句拆成多条独立气泡（先清掉可能漏出的思维链标记）
             if (window.nanoStripThink) reply = window.nanoStripThink(reply);
-            splitBubbles(reply).forEach(function(line) { addMessage(line, false); });
+            deliverReplyBubbles(reply);
             isWaiting = false;
             replyBtn.classList.remove('loading');
             // 角色说完最后一句后主动挂断
@@ -1134,6 +1285,8 @@ function showToast(text) {
     // ===== 发送语音通话卡片 =====
     function sendVoiceCallCard(missed, rejectReason) {
         notifyCallState(false);
+        try { if (window.NanoTTS && NanoTTS.stop) NanoTTS.stop(); } catch (e) {}
+        try { if (window.NanoCallAudio && NanoCallAudio.stop) NanoCallAudio.stop(); } catch (e) {}
         var messagesForCard = [];
         for (var i = 0; i < messages.length; i++) {
             var m = messages[i];
@@ -1141,12 +1294,15 @@ function showToast(text) {
             if (!m.recalled && m.text && m.text.trim() && !m.text.includes('📞 通话已接通')) {
                 messagesForCard.push({
                     text: m.text,
-                    isUser: m.isUser
+                    isUser: m.isUser,
+                    turnSeq: Number(m.turnSeq) || 0,
+                    turnLast: !!m.turnLast,
+                    clipId: String(m.clipId || '')
                 });
             }
         }
 
-        var callId = 'call_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+        var callId = callSessionId;
 
         if (window.parent !== window) {
             window.parent.postMessage({
@@ -1371,8 +1527,23 @@ init();
         this.classList.toggle('active');
     });
 
+    function applyFirstSpeakerUI() {
+        document.querySelectorAll('[data-first-speaker]').forEach(function (btn) {
+            btn.classList.toggle('active', String(btn.dataset.firstSpeaker) === firstSpeaker);
+        });
+    }
+    document.querySelectorAll('[data-first-speaker]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            firstSpeaker = String(this.dataset.firstSpeaker) === 'me' ? 'me' : 'char';
+            try { localStorage.setItem('nano_call_first_' + chatId, firstSpeaker); } catch (e) {}
+            applyFirstSpeakerUI();
+            showToast(firstSpeaker === 'char' ? '已设置：接通后 TA 先说' : '已设置：接通后你先说');
+        });
+    });
+    applyFirstSpeakerUI();
+
     document.addEventListener('click', function(e) {
-        if (!e.target.closest('.bg-panel') && !e.target.closest('.btn-bg')) {
+        if (!e.target.closest('.bg-panel') && !e.target.closest('.btn-bg') && !e.target.closest('.btn-settings')) {
             bgPanel.classList.remove('active');
             bgBtn.classList.remove('active');
         }

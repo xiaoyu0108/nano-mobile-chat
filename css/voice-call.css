@@ -14,6 +14,7 @@ body {
     flex-direction: column;
     overflow: hidden;
     position: relative;
+    image-rendering: -webkit-optimize-contrast;
 }
 
 /* 注释已清理（原文件编码损坏） */
@@ -84,6 +85,7 @@ body {
     height: 18px;
     stroke: #1c1c1e;
 }
+.btn-bg svg.settings-dots { stroke: none; fill: #1c1c1e; }
 .btn-bg.active {
     background: rgba(0, 0, 0, 0.08);
     border-color: rgba(0, 0, 0, 0.05);
@@ -841,3 +843,16 @@ body.dark-bg .name-display, body.dark-bg .status-display { color: #ffffff; }
     85% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
     100% { opacity: 0; transform: translate(-50%, -50%) scale(0.96); }
 }
+
+/* ===== 通话设置 / 语音条 ===== */
+.call-setting-block{margin-bottom:14px}
+.call-setting-label{font-size:11px;font-weight:700;color:#8e8e93;margin:0 0 7px;letter-spacing:.3px}
+.first-speaker{display:flex;gap:8px}
+.first-speaker button{flex:1;border:1px solid rgba(0,0,0,.08);background:rgba(255,255,255,.55);color:#1c1c1e;border-radius:12px;padding:8px 10px;font-size:12px;font-weight:600}
+.first-speaker button.active{background:#34c759;border-color:#34c759;color:#fff}
+.msg-audio{display:flex;gap:5px;justify-content:flex-end;margin-top:5px}
+.msg-audio button{width:24px;height:24px;border:0;border-radius:50%;background:rgba(0,0,0,.08);color:#1c1c1e;display:flex;align-items:center;justify-content:center;padding:0}
+.msg-audio button:active{transform:scale(.9)}
+.msg-audio svg{width:12px;height:12px}
+
+.message.has-audio { border-radius: 16px; }

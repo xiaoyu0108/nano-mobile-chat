@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>语音电话</title>
-    <link rel="stylesheet" href="../css/voice-call.css?v=20261017a">
+    <link rel="stylesheet" href="../css/voice-call.css?v=20261023b">
     <link rel="preconnect" href="https://cdn.jsdelivr.net">
     <link rel="dns-prefetch" href="https://unpkg.com">
     <script src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
@@ -21,12 +21,10 @@
         </svg>
     </div>
 
-    <!-- ===== 背景切换按钮（右上角） ===== -->
-    <button class="btn-bg" id="bgBtn" title="更换背景">
-        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="3" width="18" height="18" rx="2"/>
-            <circle cx="8.5" cy="8.5" r="1.5"/>
-            <path d="M21 15l-5-5-5 5-3-3-5 5"/>
+    <!-- ===== 通话设置（右上角） ===== -->
+    <button class="btn-bg btn-settings" id="bgBtn" title="通话设置" aria-label="通话设置">
+        <svg class="settings-dots" viewBox="0 0 24 24" fill="white" stroke="none">
+            <circle cx="5" cy="12" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="19" cy="12" r="1.9"/>
         </svg>
     </button>
 
@@ -42,9 +40,17 @@
         <div class="status-display" id="callStatus">00:00</div>
     </div>
 
-    <!-- ===== 背景选择面板 ===== -->
+    <!-- ===== 通话设置面板 ===== -->
     <div class="bg-panel" id="bgPanel">
-        <div class="bg-panel-title">背景</div>
+        <div class="bg-panel-title">通话设置</div>
+        <div class="call-setting-block">
+            <div class="call-setting-label">谁先说话</div>
+            <div class="first-speaker">
+                <button type="button" data-first-speaker="me">我先说</button>
+                <button type="button" data-first-speaker="char">对方先说</button>
+            </div>
+        </div>
+        <div class="call-setting-label">通话背景</div>
         <div class="bg-options">
             <div class="bg-option bg-option-avatar active" data-bg="avatar" title="头像"><span>头像</span></div>
             <div class="bg-option bg-option-black" data-bg="#000000" title="黑"></div>
@@ -158,10 +164,11 @@
         </div>
     </div>
 
-    <script src="../js/nano-tts.js?v=20261023c"></script>
+    <script src="../js/nano-tts.js?v=20261023d"></script>
+<script src="../js/nano-call-audio.js?v=20261023a"></script>
 <script src="../js/reroll-reason.js?v=20261022a"></script>
-<script src="../js/nano-prompts.js?v=20261021b"></script>
-<script src="../js/voice-call.js?v=20261023a"></script>
+<script src="../js/nano-prompts.js?v=20261023a"></script>
+<script src="../js/voice-call.js?v=20261023c"></script>
 <script src="../js/api-float.js"></script>
 <script src="../swipe-back.js"></script>
 </body>

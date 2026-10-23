@@ -1148,9 +1148,15 @@ const APP_ICONS = {
       NN.setBarkKey(k);
       var st = $('barkStatus');
       if (st) st.textContent = '发送中…';
-      NN.barkPush('测试推送', '收到就说明配置成功', { force: true }, k).then(function () {
-        if (st) st.textContent = '已发送，请查看系统通知';
-        toast('已发送');
+      NN.barkPush('测试推送', '收到就说明配置成功', { force: true }, k).then(function (res) {
+        if (res && res.ok) {
+          if (st) st.textContent = '已发送，请查看系统通知';
+          toast('已发送');
+        } else {
+          var msg = (res && (res.error || res.message)) || '密钥无效或网络不可达';
+          if (st) st.textContent = '发送失败：' + msg;
+          toast('发送失败：' + msg);
+        }
       }).catch(function () {
         if (st) st.textContent = '发送失败，请检查密钥';
         toast('发送失败');

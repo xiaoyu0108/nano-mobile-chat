@@ -115,9 +115,12 @@
         if (ctx.persona) lines.push('\n【你的人物设定 · 必须严格遵守】\n' + ctx.persona);
         if (ctx.worldbook) lines.push('\n【世界书设定】\n' + ctx.worldbook);
         if (ctx.memory) lines.push('\n【你和用户的共同记忆】\n' + ctx.memory);
-        if (ctx.foreign) lines.push('\n【语言】你是外国角色：每条先写母语原文，再紧跟中文翻译，用 || 分隔。');
+        if (ctx.recent) lines.push('\n【你们最近的聊天】\n' + ctx.recent);
+        if (ctx.foreign) lines.push('\n【语言】你是外国角色：每条先写母语原文，再紧跟完整中文翻译，用 || 分隔；TTS 只读 || 前的原文。');
         lines.push('\n【要求】像就在 TA 旁边看着一样，用你的人设随口点评' + (isText ? '屏幕上的这段内容' : '当前画面') + '：可以吐槽、惊讶、关心、吃醋、好奇。每次写 2~3 条完整、通顺的话（每条 15~40 字，不要碎片、不要只蹦几个字），口语、有细节、别像旁白。全程贴合人设，不要油腻。只输出 JSON：{"bubbles":["...","..."]}');
-        return lines.join('\n');
+        var out = lines.join('\n');
+        try { if (window.NanoPrompts && NanoPrompts.appendTo) out = NanoPrompts.appendTo(out, 'online'); } catch (e) {}
+        return out;
     }
 
     /* ---------------- UI ---------------- */
@@ -228,6 +231,7 @@
         var timer = ctrl ? setTimeout(function () { try { ctrl.abort(); } catch (e) {} }, 45000) : null;
         var resp;
         try {
+            console.log('[ScreenShare] 调用主 API', apiEndpoint(cfg.mainUrl), cfg.mainModel);
             resp = await fetch(apiEndpoint(cfg.mainUrl), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + cfg.mainKey },
@@ -245,6 +249,7 @@
                 }),
                 signal: ctrl ? ctrl.signal : undefined
             });
+            console.log('[ScreenShare] API 返回', resp.status);
         } finally { if (timer) clearTimeout(timer); }
         if (!resp.ok) {
             var m = 'HTTP ' + resp.status;
@@ -316,6 +321,7 @@
         var timer = ctrl ? setTimeout(function () { try { ctrl.abort(); } catch (e) {} }, 45000) : null;
         var resp;
         try {
+            console.log('[ScreenShare] 调用主 API（文字）', apiEndpoint(cfg.mainUrl), cfg.mainModel);
             resp = await fetch(apiEndpoint(cfg.mainUrl), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + cfg.mainKey },
@@ -330,6 +336,7 @@
                 }),
                 signal: ctrl ? ctrl.signal : undefined
             });
+            console.log('[ScreenShare] API 返回（文字）', resp.status);
         } finally { if (timer) clearTimeout(timer); }
         if (!resp.ok) {
             var m = 'HTTP ' + resp.status;
@@ -350,7 +357,7 @@
         text = String(text || '').trim();
         if (!info.id || !text) return;
         injectCss();
-        SS.active = true; SS.info = info; SS.mode = 'text';
+        SS.active = true; SS.info = info; SS.mode = 'text'; SS.cfg = null;
         SS.comments = []; SS.cardPosted = false;
         try { if (window.NanoNotify && NanoNotify.ensurePermission) NanoNotify.ensurePermission(); } catch (e) {}
         buildPanel(info, 'text');
@@ -373,7 +380,23 @@
         SS.busy = true;
         try {
             var dataURL = grab();
-            if (!dataURL) { SS.busy = false; return; }
+            if (!dataURL) {
+                // 刚拿到屏幕流时，第一帧可能还没解码出来。之前的逻辑会直接 return，
+                // 然后要等满 30 秒才会再试，看起来就像「弹窗出现了但根本不调用 API」。
+                SS.emptyTries = (SS.emptyTries || 0) + 1;
+                setStatus('正在等待画面…');
+                if (SS.emptyTries <= 12) {
+                    try { if (SS.video && SS.video.play) SS.video.play().catch(function () {}); } catch (e) {}
+                    setTimeout(function () { SS.busy = false; captureAndComment(); }, 1000);
+                    return;
+                }
+                addLine('没有拿到画面帧：请重新点「开始共享」，并在系统弹窗里选择「整个屏幕」或正在看的窗口。', true);
+                setStatus('没有画面');
+                SS.emptyTries = 0;
+                SS.busy = false;
+                return;
+            }
+            SS.emptyTries = 0;
             setStatus('正在看…');
             await requestComment(dataURL, SS.mode || 'screen');
         } catch (e) {
@@ -409,7 +432,7 @@
         } else {
             // iOS / 隐私浏览器等拿不到录屏接口：直接引导到「屏幕速聊」（快捷指令 + 服务端）
             title = 'iOS 上请用「屏幕速聊」';
-            desc = 'iOS 的网页端拿不到录屏接口，无法在这里直接共享屏幕。改用它：在任意 App 里双击「辅助触控」→ 快捷指令截屏 → TA 的回复直接弹在系统窗口里，可继续打字；回到小手机后这几轮会自动合并进聊天。';
+            desc = 'iOS 的网页端拿不到录屏接口，无法在这里直接共享屏幕。请用「屏幕速聊」快捷指令截屏，TA 的回复会直接弹在系统窗口里，可继续打字；回到小手机后自动合并进聊天。';
             actions = '<button class="ss-cancel">知道了</button><button class="ss-ios">去配置「屏幕速聊」</button>';
         }
         var el = document.createElement('div'); el.className = 'ss-confirm';
@@ -433,12 +456,19 @@
     }
 
     async function runStream(info, stream, mode) {
-        SS.active = true; SS.info = info; SS.stream = stream; SS.lastAt = Date.now();
+        SS.active = true; SS.info = info; SS.stream = stream; SS.lastAt = Date.now(); SS.cfg = null;
         SS.mode = mode || 'screen';
         SS.comments = []; SS.cardPosted = false;
         try { if (window.NanoNotify && NanoNotify.ensurePermission) NanoNotify.ensurePermission(); } catch (e) {}
         buildPanel(info, SS.mode);
-        try { SS.video.srcObject = stream; } catch (e) {}
+        try {
+            SS.video.srcObject = stream;
+            if (SS.video.play) SS.video.play().catch(function () {});
+            SS.video.addEventListener('loadedmetadata', function () {
+                try { SS.video.play().catch(function () {}); } catch (e) {}
+                setStatus('画面已连接，正在看…');
+            }, { once: true });
+        } catch (e) {}
         setStatus('正在读取人设与 API…');
         SS.ctx = (await requestContext(info)) || {};
         if (SS.ctx.api && SS.ctx.api.url && SS.ctx.api.key && SS.ctx.api.model) {
@@ -466,7 +496,8 @@
             });
         } catch (e) {}
         SS.lastAt = 0;
-        setTimeout(captureAndComment, 2500);
+        SS.emptyTries = 0;
+        setTimeout(captureAndComment, 1000);
         SS.timer = setInterval(tick, 3000);
     }
 
@@ -530,5 +561,9 @@
         var d = e && e.data;
         if (!d) return;
         if (d.type === 'startScreenShare') start({ id: d.charId, name: d.charName, avatar: d.avatar });
+        // 「粘贴屏幕文字，直接回复」：不录屏，直接调用主 API
+        if (d.type === 'peekText') {
+            runText({ id: d.charId, name: d.charName, avatar: d.avatar }, d.text);
+        }
     });
 })();

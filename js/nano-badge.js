@@ -28,7 +28,8 @@
         if (!buf) return;
         delete notifyBuffer[chatId];
         try {
-            if (!window.NanoNotify || !window.NanoNotify.enabled()) return;
+            // 不要在这里用 NanoNotify.enabled() 拦截：用户可能只开了 Bark。
+            if (!window.NanoNotify) return;
             var body = buf.texts.join('\n').trim();
             if (body.length > 200) body = body.slice(0, 200) + '…';
             window.NanoNotify.notify(buf.title || '新消息', body || '你有一条新消息', buf.opts || {});
@@ -55,7 +56,16 @@
     function incoming(chatId, title, text, opts) {
         if (!chatId) return;
         activity(chatId);
-        var isForeground = (ctx.foreground && ctx.chatId === chatId);
+        // 保活音频会让 PWA 在后台仍保持 visible；除了本 iframe 的 blur，
+        // 再看一眼顶层的焦点/可见状态，避免把后台消息当成“正在看”吞掉。
+        var pageVisible = !document.hidden;
+        try {
+            if (window.top && window.top !== window) {
+                if (window.top.document && window.top.document.hidden) pageVisible = false;
+                if (window.top.__nanoPageFocused === false) pageVisible = false;
+            }
+        } catch (e) {}
+        var isForeground = (ctx.foreground && ctx.chatId === chatId && pageVisible);
         if (isForeground) {
             markRead(chatId);
             return; // 正在看这个聊天时不再弹通知/响铃

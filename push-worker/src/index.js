@@ -334,6 +334,52 @@ async function peekTurns(env, chatId, appId) {
 async function peekSave(env, chatId, turns, appId) {
   try { await kv(env).put(peekBase(appId, chatId), JSON.stringify(turns.slice(-40)), { expirationTtl: 60 * 60 * 24 * 7 }); } catch (e) {}
 }
+// 屏幕速聊复用主 API：优先读 /peek/persona 同步上来的这份，再读 /auto/config 里的 api。
+// 这样 PEEK_API_* 只是可选项，不再因为漏配 secret 导致「弹窗有了但模型没被调用」。
+async function peekApiConfig(env, appId, chatId, body, owner) {
+  const cleanApi = function (v) {
+    if (!v || typeof v !== 'object') return null;
+    const url = String(v.url || '').trim();
+    const key = String(v.key || '').trim();
+    const model = String(v.model || '').trim();
+    return (url && key && model) ? { url: url, key: key, model: model } : null;
+  };
+  const deviceId = cleanDeviceId((owner && owner.deviceId) || (body && body.deviceId) || 'default');
+  let userId = cleanUserId((owner && owner.userId) || (body && body.userId) || '');
+  if (!userId || userId === 'default') {
+    try {
+      const rawActive = await kv(env).get(autoActiveKey(appId, deviceId));
+      if (rawActive) {
+        const active = JSON.parse(rawActive);
+        if (active && active.userId) userId = cleanUserId(active.userId);
+      }
+    } catch (e) {}
+  }
+  if (!userId) userId = 'default';
+  // 1) 优先用聊天同步上来的最新主 API
+  try {
+    const raw = await kv(env).get(autoKey('config', appId, deviceId, userId));
+    if (raw) {
+      const cfg = JSON.parse(raw);
+      const api = cleanApi(cfg && cfg.api);
+      if (api) return api;
+    }
+  } catch (e) {}
+  // 2) 没有 auto config 时，再用窥屏页保存的那份
+  try {
+    const raw = await kv(env).get(peekBase(appId, 'api:' + chatId));
+    if (raw) {
+      const own = cleanApi(JSON.parse(raw));
+      if (own) return own;
+    }
+    const rawLatest = await kv(env).get(peekBase(appId, 'api:latest'));
+    if (rawLatest) {
+      const latest = cleanApi(JSON.parse(rawLatest));
+      if (latest) return latest;
+    }
+  } catch (e) {}
+  return null;
+}
 
 // ===== 无后台主动消息 / 朋友圈 =====
 // 客户端把「人设 + 设置 + 模型配置」同步上来，Worker 的 cron 到点生成内容并推送；
@@ -777,17 +823,19 @@ async function sendBarkKey(env, key, payload) {
   } catch (e) { return false; }
 }
 
-// 后台推送：有 Web Push 订阅时优先推订阅；全部失败/没有订阅时再回退 Bark。
-// 旧逻辑只要填了 Bark 就再也不走 Web Push，Bark 密钥失效时会表现为「完全收不到」。
+// 后台推送：用户填了 Bark 就优先走 Bark（iPhone 上不依赖 Web Push / GMS，也更省电），
+// Bark 明确失败时再用 Web Push 兜底；没填 Bark 则只走 Web Push。
+// 之前是 Web Push 优先：只要有一个「能返回 200 但实际不显示」的旧订阅，Bark 就永远不会发。
 async function autoNotify(env, cfg, subs, payload) {
-  let sent = 0;
-  if (subs && subs.length) {
-    try { sent = await pushAll(subs, payload, env); } catch (e) { sent = 0; }
-  }
   const key = String((cfg && cfg.barkKey) || '').trim();
-  if (!sent && key) {
-    await sendBarkKey(env, key, payload);
+  if (key) {
+    const ok = await sendBarkKey(env, key, payload);
+    if (ok) return 1;
   }
+  if (subs && subs.length) {
+    try { return await pushAll(subs, payload, env); } catch (e) { return 0; }
+  }
+  return 0;
 }
 
 async function runAutoPush(env, appId, deviceId, userId) {
@@ -891,11 +939,13 @@ async function runAutoPush(env, appId, deviceId, userId) {
   if (dirty) await kv(env).put(autoKey('state', appId, deviceId, userId), JSON.stringify(state));
 }
 
-// 用服务端保存的 key 调主模型（Key 不出服务器），支持纯文本与「截图 + 文本」
-async function peekModel(env, system, text, image, history) {
-  const url = modelEndpoint(env.PEEK_API_URL);
-  const key = env.PEEK_API_KEY;
-  const model = env.PEEK_MODEL;
+// 用服务端保存的 key 调主模型（Key 不出服务器），支持纯文本与「截图 + 文本」。
+// 优先用 PEEK_* 专用配置；没有时复用 App 同步上来的主 API（cfg.api），
+// 这样用户不用再额外配一套 PEEK_API_URL / PEEK_API_KEY / PEEK_MODEL。
+async function peekModel(env, system, text, image, history, apiCfg, context) {
+  const url = modelEndpoint(env.PEEK_API_URL || (apiCfg && apiCfg.url) || '');
+  const key = env.PEEK_API_KEY || (apiCfg && apiCfg.key) || '';
+  const model = env.PEEK_MODEL || (apiCfg && apiCfg.model) || '';
   if (!url || !key || !model) return null;
   let content;
   if (image) {
@@ -908,6 +958,11 @@ async function peekModel(env, system, text, image, history) {
   }
   const messages = [];
   if (system) messages.push({ role: 'system', content: system });
+  // App 同步过来的最近聊天上下文：让 TA 接得上你们刚聊过的话题，而不是像陌生人。
+  (context || []).forEach(function (m) {
+    if (!m || !m.content) return;
+    messages.push({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content).slice(0, 1200) });
+  });
   (history || []).forEach(function (t) {
     if (t.user) messages.push({ role: 'user', content: String(t.user) });
     if (t.char) messages.push({ role: 'assistant', content: String(t.char) });
@@ -1541,7 +1596,9 @@ export default {
     if (pathname === '/peek' && request.method === 'POST') {
       let body = {};
       try { body = await request.json(); } catch (e) {}
-      if (!peekOk(request, env, body)) return json({ ok: false, error: 'unauthorized' }, 401);
+      if (!peekOk(request, env, body)) {
+        return json({ ok: false, error: 'unauthorized', reply: '令牌不一致：请把 Worker 的 PEEK_TOKEN 和窥屏页里生成的令牌改成同一个。' }, 401);
+      }
       const chatId = String(body.chatId || 'default');
       // 速聊也要限定到「哪个站点的哪台设备/哪个用户」，否则旧 Nano 也会收到纳米的窥屏回复。
       let owner = {};
@@ -1550,22 +1607,65 @@ export default {
         if (rawOwner) owner = JSON.parse(rawOwner) || {};
       } catch (e) { owner = {}; }
       const appId = cleanAppId(body.appId || owner.appId || 'legacy');
-      let system = String(body.system || '');
-      // 快捷指令没带 system 时，用 App 最近同步过来的人设（谁当前在用就用谁的）
+      // 优先用 App 当前选中的角色人设（含完整规则 / 最近上下文），避免快捷指令里
+      // 旧的内置 system 覆盖掉人设；只有没同步过时才回退到请求体里的 system。
+      let system = '';
+      try {
+        system = (await kv(env).get(peekBase(appId, 'persona:' + chatId)))
+          || (await kv(env).get(peekBase(appId, 'persona:latest')))
+          || '';
+      } catch (e) {}
+      if (!system) system = String(body.system || '');
+      // 再兜底：从 /auto/config 同步的角色卡里找这条聊天的人设
       if (!system) {
         try {
-          system = (await kv(env).get(peekBase(appId, 'persona:' + chatId)))
-            || (await kv(env).get(peekBase(appId, 'persona:latest')))
-            || '';
+          const deviceId = cleanDeviceId((owner && owner.deviceId) || body.deviceId);
+          let userId = cleanUserId((owner && owner.userId) || body.userId);
+          if (!userId || userId === 'default') {
+            const rawActive = await kv(env).get(autoActiveKey(appId, deviceId));
+            if (rawActive) {
+              const active = JSON.parse(rawActive);
+              if (active && active.userId) userId = cleanUserId(active.userId);
+            }
+          }
+          const rawCfg = await kv(env).get(autoKey('config', appId, deviceId, userId));
+          if (rawCfg) {
+            const cfg = JSON.parse(rawCfg);
+            const c = (cfg && Array.isArray(cfg.chars) ? cfg.chars : []).find(function (x) {
+              return x && String(x.id) === String(chatId);
+            });
+            if (c) system = '你是「' + (c.name || 'TA') + '」。' + String(c.setting || '');
+          }
         } catch (e) {}
       }
       const text = String(body.text || '').trim();
       const image = String(body.image || '').trim();
-      if (!text && !image) return json({ ok: false, error: 'empty' }, 400);
+      if (!text && !image) {
+        return json({ ok: false, error: 'empty', reply: '没有收到屏幕内容：请在快捷指令里传入截图或文字。' }, 400);
+      }
       const history = await peekTurns(env, chatId, appId);
+      const apiCfg = await peekApiConfig(env, appId, chatId, body, owner);
+      let context = [];
+      try {
+        const rawCtx = (await kv(env).get(peekBase(appId, 'context:' + chatId)))
+          || (await kv(env).get(peekBase(appId, 'context:latest')));
+        if (rawCtx) {
+          const parsed = JSON.parse(rawCtx);
+          if (Array.isArray(parsed)) context = parsed;
+        }
+      } catch (e) {}
       let reply = null;
-      try { reply = await peekModel(env, system, text, image, history); } catch (e) {}
-      if (!reply) return json({ ok: false, error: 'model' }, 502);
+      try { reply = await peekModel(env, system, text, image, history, apiCfg, context); } catch (e) {}
+      if (!reply) {
+        const hasEnvApi = !!(env.PEEK_API_URL && env.PEEK_API_KEY && env.PEEK_MODEL);
+        return json({
+          ok: false,
+          error: 'model',
+          reply: hasEnvApi
+            ? '模型没有返回内容：请检查 PEEK_API_URL / PEEK_API_KEY / PEEK_MODEL 或模型是否支持识图。'
+            : '服务端还没有模型 API：请在 Nano 里打开一次聊天同步主 API，或在 Worker 配置 PEEK_API_URL / PEEK_API_KEY / PEEK_MODEL。'
+        }, 502);
+      }
       history.push({ user: text || '[图片]', char: reply, ts: Date.now() });
       await peekSave(env, chatId, history, appId);
       // 只推给这条聊天所属的 App / 设备 / 用户；找不到归属就不广播，避免串到别的 Nano。
@@ -1595,6 +1695,27 @@ export default {
       try {
         await kv(env).put(peekBase(appId, 'persona:' + chatId), system, { expirationTtl: ttl });
         await kv(env).put(peekBase(appId, 'persona:latest'), system, { expirationTtl: ttl });
+        // 主 API 也一起同步：快捷指令只发截图/文字，服务端直接用这里的 Key 调模型。
+        const api = body.api && typeof body.api === 'object' ? {
+          url: String(body.api.url || '').trim(),
+          key: String(body.api.key || '').trim(),
+          model: String(body.api.model || '').trim()
+        } : null;
+        if (api && api.url && api.key && api.model) {
+          await kv(env).put(peekBase(appId, 'api:' + chatId), JSON.stringify(api), { expirationTtl: ttl });
+          await kv(env).put(peekBase(appId, 'api:latest'), JSON.stringify(api), { expirationTtl: ttl });
+        }
+        // 最近的聊天上下文也一起同步：快捷指令只发截图/文字，服务端仍能接上你们的话题。
+        if (Array.isArray(body.history)) {
+          const history = body.history.slice(-12).map(function (m) {
+            return {
+              role: m && m.role === 'assistant' ? 'assistant' : 'user',
+              content: String((m && m.content) || '').slice(0, 1200)
+            };
+          }).filter(function (m) { return m.content; });
+          await kv(env).put(peekBase(appId, 'context:' + chatId), JSON.stringify(history), { expirationTtl: ttl });
+          await kv(env).put(peekBase(appId, 'context:latest'), JSON.stringify(history), { expirationTtl: ttl });
+        }
         // 记住这条聊天属于哪台设备/哪个用户，/peek 推送时只发给它
         await kv(env).put('peek2:owner:' + chatId, JSON.stringify({
           appId: appId,
@@ -2062,14 +2183,18 @@ export default {
       let job;
       try { job = JSON.parse(raw); } catch (e) { continue; }
       const jobPayload = { title: job.title || 'Nano', body: job.body || '', target: job.target || '', appId: cleanAppId(job.appId) };
-      let subs = await jobSubs(job);
       let sent = 0;
-      if (subs.length) { try { sent = await pushAll(subs, jobPayload, env); } catch (e) { sent = 0; } }
-      // 对应设备/站点没有 Web Push 订阅时，才回退到这条预约自带的 Bark 密钥。
-      // 旧任务没有 appId 时才使用全局 BARK_KEY，避免旧配置把消息发到别人手机。
+      // 用户明确留了 Bark 密钥：优先走 Bark，失败再用 Web Push 兜底。
+      if (job.barkKey) {
+        try { if (await sendBarkKey(env, job.barkKey, jobPayload)) sent = 1; } catch (e) { sent = 0; }
+      }
       if (!sent) {
-        if (job.barkKey) await sendBarkKey(env, job.barkKey, jobPayload);
-        else if (!job.appId && env.BARK_KEY) await sendBarkKey(env, env.BARK_KEY, jobPayload);
+        let subs = await jobSubs(job);
+        if (subs.length) { try { sent = await pushAll(subs, jobPayload, env); } catch (e) { sent = 0; } }
+      }
+      // 旧任务没有 appId 时才使用全局 BARK_KEY，避免旧配置把消息发到别人手机。
+      if (!sent && !job.barkKey && !job.appId && env.BARK_KEY) {
+        try { await sendBarkKey(env, env.BARK_KEY, jobPayload); } catch (e) {}
       }
     }
   }

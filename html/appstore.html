@@ -265,7 +265,7 @@ h1{margin:0;font-size:clamp(26px,8vw,34px);line-height:1.1;letter-spacing:-.04em
 
 .nav{
   position:fixed;left:0;right:0;bottom:0;z-index:20;
-  padding:8px max(18px,env(safe-area-inset-right)) calc(8px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom))) max(18px,env(safe-area-inset-left));
+  padding:8px max(18px,env(safe-area-inset-right)) calc(2px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom))) max(18px,env(safe-area-inset-left));
   background:rgba(255,255,255,.86);
   -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);
   border-top:1px solid var(--line);
@@ -364,7 +364,7 @@ h1{margin:0;font-size:clamp(26px,8vw,34px);line-height:1.1;letter-spacing:-.04em
           </span>
           <span>
             <h3>复制完整模板</h3>
-            <p>高权限 · 页面栈返回 · 首页 / 清单 / 二级页 / 设置完整示例</p>
+            <p>复制给 AI / 编辑器改，不安装也能用</p>
           </span>
         </button>
 
@@ -746,6 +746,16 @@ h1{margin:0;font-size:clamp(26px,8vw,34px);line-height:1.1;letter-spacing:-.04em
     <h3 class="modal-title">创作指南</h3>
     <p class="modal-desc">模板本身就是一个完整 App：首页 + 清单 + 二级页 + 设置 + 返回栈。照着改就行。</p>
     <div class="guide-block">
+      <b>模板是干什么的？</b><br>它是一份「能直接运行、也能直接改」的示例：首页、清单、二级页、设置和返回逻辑都已经写好。复制模板 = 交给 AI 或编辑器继续改；安装模板 = 立刻装进商店，打开就能看效果。两者内容相同，只是用途不同。
+    </div>
+    <div class="guide-block">
+      <b>应用的清单（nano-manifest）是什么？</b><br>就是 HTML 里那段 <code>&lt;script id="nano-manifest"&gt;</code> JSON，相当于 App 的身份证：<br>
+      <code>id</code>：唯一标识，也用来隔离这个 App 的存档；<br>
+      <code>name / icon / color / desc / version</code>：商店里显示的名字、图标、颜色、介绍和版本；<br>
+      <code>permissions / highPermission</code>：声明要用的能力（角色、人设、世界书、API、通知等），<code>["*"]</code> 表示高权限。<br>
+      没有它、或缺少 <code>id</code>，商店会拒绝安装。
+    </div>
+    <div class="guide-block">
       <b>1. 复制模板</b><br>点「复制完整模板」，把整份 HTML 交给 AI，或自己改。
     </div>
     <div class="guide-block">
@@ -785,6 +795,6 @@ h1{margin:0;font-size:clamp(26px,8vw,34px);line-height:1.1;letter-spacing:-.04em
   });
 })();
 </script>
-<script src="../js/appstore.js?v=20261023d"></script>
+<script src="../js/appstore.js?v=20261023e"></script>
 </body>
 </html>

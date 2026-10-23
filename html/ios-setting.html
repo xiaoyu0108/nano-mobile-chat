@@ -144,8 +144,9 @@
         <details class="sk-subfold">
           <summary><span>方式 C · 屏幕速聊（服务端）</span><svg class="sk-fold-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></summary>
           <div class="sk-fold-body">
-            <div class="sk-note" style="color:#c14a70">需要自己部署一个 Cloudflare Worker（`push-worker`）。没有服务端就用方式 B，或直接用上面的简单方式。</div>
+            <div class="sk-note" style="color:#c14a70">需要自己部署一个 Cloudflare Worker（`push-worker`）。没有服务端就用方式 B，或直接用上面的「粘贴屏幕文字」。</div>
             <div class="sk-note">在任意 App 里双击「辅助触控」运行快捷指令：截屏 → 发到服务端 → 回复直接弹在系统窗口里、可继续打字；回到小手机后自动合并进聊天。</div>
+            <div class="sk-note">主 API 会自动同步到服务端，不需要再额外配置 PEEK_API_KEY；只有想给窥屏单独用另一套模型时才需要。</div>
 
             <div class="sk-line" style="margin-top:12px"><span class="sk-line-label">服务端地址</span></div>
             <input id="isPeekUrl" class="sk-textarea" style="min-height:40px;height:42px" placeholder="https://nanopush.nano315.online" autocomplete="off">
@@ -166,7 +167,8 @@
               1) 截屏 → <b>Base64 编码</b>（关掉换行）；<br>
               2) <b>获取 URL 内容</b>：POST 到上面「接口地址」，头部加 <code>X-Peek-Token: 你的令牌</code>；<br>
               3) 请求体选 <b>文件</b>，引用一个 <b>文本</b> 动作：<br>
-              <code>{"chatId":"&lt;角色ID&gt;","system":"&lt;人设&gt;","image":"data:image/jpeg;base64,&lt;截图base64&gt;"}</code>；<br>
+              <code>{"chatId":"&lt;角色ID&gt;","image":"data:image/jpeg;base64,&lt;截图base64&gt;"}</code>；<br>
+            <span class="sk-note">不用填 system：Worker 会自动使用你当前选中的角色人设、最近聊天上下文和主 API。</span><br>
               4) <b>获取字典值</b> 取 <code>reply</code> → <b>显示提醒</b> 弹出；<br>
               5) 接着 <b>要求输入</b> 拿到你打的字，把 image 换成 text 再发一轮 → 循环，形成连续对话。
             </div>
@@ -195,7 +197,8 @@
   </main>
 
   <div class="sk-toast" id="isToast"></div>
-  <script src="../js/ios-setting.js?v=20261023c"></script>
+  <script src="../js/nano-prompts.js?v=20261023a"></script>
+<script src="../js/ios-setting.js?v=20261023e"></script>
   <script src="../swipe-back.js"></script>
 </body>
 </html>

@@ -417,8 +417,12 @@
             inset: -5px;
             border-radius: 50%;
             border: 2px solid rgba(52, 199, 89, 0.5);
-            animation: voiceBallPulse 1.8s ease-out infinite;
+            opacity: 0;
             pointer-events: none;
+        }
+        /* 角色没回复时不要有呼吸/动态框；收到消息才出现一圈提示 */
+        .voice-float-ball.has-new::after {
+            animation: voiceBallPulse 1.5s ease-out infinite;
         }
         .voice-float-ball.is-video::after { border-color: rgba(10, 132, 255, 0.5); }
         @keyframes voiceBallPulse {
@@ -1780,9 +1784,21 @@ setTimeout(function () {
                 }
                 lastFullscreenOpen = { url: url, at: now };
             } catch (e) {}
-            voiceCallKeptAlive = false;
+            // 只有不是「通话进行中」时才重置；否则切到别的 App 会把正在进行的通话标记清掉。
+            if (!window.__nanoActiveCall || pageName === 'voice-call.html' || pageName === 'video-call.html') {
+                voiceCallKeptAlive = false;
+            }
             try { urlSourceMap[baseName(url)] = source || ''; } catch (e) {}
             if (pageName === 'voice-call.html' || pageName === 'video-call.html') {
+                try {
+                    var cu = new URL(url, location.href);
+                    window.__nanoActiveCall = {
+                        chatId: cu.searchParams.get('chat') || 'default',
+                        name: cu.searchParams.get('name') || '对方',
+                        type: pageName === 'video-call.html' ? 'video' : 'voice',
+                        at: Date.now()
+                    };
+                } catch (e) {}
                 showVoiceFrame();
                 voiceCallFrame.src = url;
                 overlay.classList.add('no-header');
@@ -1891,7 +1907,10 @@ setTimeout(function () {
             overlay.classList.remove('no-header');
             overlayBack.classList.remove('hidden');
             overlayActive = false;
-            voiceCallKeptAlive = false;
+            // 通话进行中（包括已缩小）：不要销毁 voiceCallFrame，否则从悬浮球回来会变成
+            // 用顶层 URL 的默认 chat/name 重新接一通（表现为「又变成和 AI 助手重新接通」）。
+            const keepActiveCall = !!window.__nanoActiveCall || voiceCallKeptAlive;
+            voiceCallKeptAlive = keepActiveCall;
 
             try {
                 [document.getElementById('chatInnerFrame'), overlayFrame].forEach(function (fr) {
@@ -1904,7 +1923,16 @@ setTimeout(function () {
             const _vcBase = frameBase(voiceCallFrame);
             if (_vcBase === 'voice-call.html' || _vcBase === 'video-call.html') {
                 voiceCallFrame.style.display = 'none';
-                voiceCallFrame.src = 'about:blank';
+                if (keepActiveCall) {
+                    // 保留 iframe 里的计时、消息和 TTS 状态；悬浮球继续显示。
+                    try {
+                        if (window.__voiceFloatBall) {
+                            window.__voiceFloatBall.show(window.__voiceFloatBall.getTime());
+                        }
+                    } catch (e) {}
+                } else {
+                    voiceCallFrame.src = 'about:blank';
+                }
             }
 
             if (isMusicFrameActive) {
@@ -2513,7 +2541,10 @@ setTimeout(function () {
             }
             // 切到后台 / 锁屏时，同步弹一条系统通知，避免只在内页提示而看不到
             try {
-                if (window.NanoNotify && document.hidden) {
+                var _notifyBg = !!window.NanoNotify && (typeof window.NanoNotify.isForeground === 'function'
+                    ? !window.NanoNotify.isForeground()
+                    : document.hidden);
+                if (window.NanoNotify && _notifyBg) {
                     window.NanoNotify.notify(title, body, {
                         icon: opts.icon,
                         avatar: opts.avatar,
@@ -3099,6 +3130,10 @@ setTimeout(function () {
                 callSeconds = 0;
             }
 
+            function markCallReplied() {
+                if (floatBall) floatBall.classList.add('has-new');
+            }
+
             function restoreVoiceCall() {
                 const currentSeconds = callSeconds;
                 hideFloatBall();
@@ -3130,8 +3165,12 @@ setTimeout(function () {
                     }
                     return;
                 }
-                const url = 'voice-call.html?chat=' + encodeURIComponent(getChatId()) + '&name=' + encodeURIComponent(getContactName());
-                openFullscreen(url, '语音电话', false);
+                const meta = window.__nanoActiveCall || {};
+                const callChatId = meta.chatId || getChatId();
+                const callName = meta.name || getContactName();
+                const callPage = meta.type === 'video' ? 'video-call.html' : 'voice-call.html';
+                const url = callPage + '?chat=' + encodeURIComponent(callChatId) + '&name=' + encodeURIComponent(callName);
+                openFullscreen(url, meta.type === 'video' ? '视频通话' : '语音电话', false);
                 setTimeout(function() {
                     const f = document.getElementById('voiceCallFrame');
                     if (f && f.contentWindow) {
@@ -3163,7 +3202,8 @@ setTimeout(function () {
                 remove: removeFloatBall,
                 getTime: function() { return callSeconds; },
                 setTime: function(seconds) { callSeconds = seconds; },
-                isVisible: function() { return isFloatBallVisible; }
+                isVisible: function() { return isFloatBallVisible; },
+                markReplied: markCallReplied
             };
         })();
 
@@ -3857,16 +3897,23 @@ setTimeout(function () {
                 }
             }
 
+            if (data.type === 'callCharReplied') {
+                if (window.__voiceFloatBall) window.__voiceFloatBall.markReplied();
+            }
+
             if (data.type === 'minimizeVoiceCall') {
                 if (window.__voiceFloatBall) {
                     window.__voiceFloatBall.show(data.seconds || 0);
                 }
                 voiceCallKeptAlive = true;
                 voiceCallFrame.style.display = 'none';
+                const _cm = window.__nanoActiveCall || {};
+                const _callCid = _cm.chatId || getChatId();
+                const _callName = _cm.name || getContactName();
                 const chatInnerAlive = frameBase(chatInnerFrame) === 'chat_inner.html';
                 if (!chatInnerAlive) {
                     showChatInnerFrame();
-                    const _cu = withBuild('chat_inner.html?chat=' + encodeURIComponent(getChatId()) + '&name=' + encodeURIComponent(getContactName()));
+                    const _cu = withBuild('chat_inner.html?chat=' + encodeURIComponent(_callCid) + '&name=' + encodeURIComponent(_callName));
                     chatInnerFrame.setAttribute('data-loaded-url', _cu);
                     chatInnerFrame.src = _cu;
                 } else {
@@ -3891,6 +3938,7 @@ setTimeout(function () {
                 voiceCallFrame.style.display = 'none';
                 voiceCallFrame.src = 'about:blank';
                 voiceCallKeptAlive = false;
+                window.__nanoActiveCall = null;
                 const chatInnerAlive = frameBase(chatInnerFrame) === 'chat_inner.html';
                 if (chatInnerAlive) {
                     showChatInnerFrame();
@@ -4156,12 +4204,13 @@ setTimeout(function () {
 <script src="js/mem-link.js?v=20261006a"></script>
 <script src="js/aux-memory.js?v=20261021k"></script>
 <script src="js/user-scope.js?v=20261020j"></script>
-<script src="js/nano-notify.js?v=20261022f"></script>
+<script src="js/nano-notify.js?v=20261023g"></script>
 <script src="js/nano-push.js?v=20261021b"></script>
 <script src="swipe-back.js"></script>
 <script src="js/keep-alive.js?v=20261023a"></script>
 <script src="js/char-takeover.js?v=20261020c"></script>
-<script src="js/screen-share.js?v=20261013e"></script>
+<script src="js/nano-prompts.js?v=20261023a"></script>
+<script src="js/screen-share.js?v=20261023b"></script>
 <script src="js/ios-bridge.js?v=20261021b"></script>
 <script src="js/auto-push-bridge.js?v=20261021b"></script>
 <script src="js/online-catchup.js?v=20261018c"></script>

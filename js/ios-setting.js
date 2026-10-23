@@ -148,8 +148,7 @@
         if ($('isPeekTokenMain')) $('isPeekTokenMain').textContent = token;
         if ($('isPeekEndpointMain')) $('isPeekEndpointMain').textContent = ep;
         if ($('isPeekSystem')) {
-            var c = currentChar();
-            $('isPeekSystem').textContent = c ? ('你是「' + charName() + '」。' + (persona() || '')) : '（先创建角色）';
+            $('isPeekSystem').textContent = currentChar() ? fullPeekSystem() : '（先创建角色）';
         }
     }
     function savePeek() {
@@ -174,6 +173,41 @@
     function charName() { var c = currentChar(); return c ? (c.name || c.id) : '角色'; }
     function persona() { var c = currentChar(); return String($('isPrompt').value || '').trim() || (c ? String(c.setting || c.desc || c.persona || '') : ''); }
 
+    function recentContext() {
+        try {
+            var arr = JSON.parse(localStorage.getItem('chat_messages_' + selectedId) || '[]');
+            if (!Array.isArray(arr)) return [];
+            return arr.filter(function (m) {
+                return m && m.text && !m.isCard && !m.recalled && (m.type === 'left' || m.type === 'right');
+            }).slice(-12).map(function (m) {
+                return { role: m.type === 'right' ? 'user' : 'assistant', content: String(m.text).slice(0, 900) };
+            });
+        } catch (e) { return []; }
+    }
+
+    // 和私聊同一套人设 / 世界规则 / 最近上下文，不再只是「人设原文 + 一句点评」。
+    function fullPeekSystem() {
+        var c = currentChar();
+        var name = charName();
+        var p = '你是「' + name + '」，一个真实的人，不是 AI、不是助手、不是模型。\n';
+        if (c) {
+            if (c.gender && c.gender !== '未知') p += '性别：' + c.gender + '\n';
+            if (c.nationality && c.nationality !== '未知') p += '国籍：' + c.nationality + '\n';
+        }
+        p += persona() || '';
+        try {
+            if (window.NanoPrompts && NanoPrompts.appendTo) p = NanoPrompts.appendTo(p, 'online');
+        } catch (e) {}
+        var ctx = recentContext();
+        if (ctx.length) {
+            p += '\n【你们最近的聊天】\n' + ctx.map(function (m) {
+                return (m.role === 'user' ? '对方：' : name + '：') + m.content;
+            }).join('\n').slice(0, 3500) + '\n';
+        }
+        p += '\n现在你看到了对方手机屏幕上的画面/文字。用你的人设自然点评 2~3 句，像真人随口说，不要像 AI 助手汇报。';
+        return p;
+    }
+
     function renderCharSelect() {
         var sel = $('isChar');
         sel.innerHTML = '';
@@ -193,7 +227,7 @@
     function renderGenerated() {
         var id = selectedId || '', name = charName();
         var model = (apiCfg && apiCfg.mainModel) || '你的模型';
-        var sys = persona();
+        var sys = fullPeekSystem();
         var root = window.NANO_ROOT || base;
 
         $('isLinkA').textContent = root + 'index.html?nanoScreen={{识别文本}}&nanoChat=' + enc(id) + '&nanoName=' + enc(name);
@@ -325,11 +359,17 @@
             var base = String(url).trim().replace(/\/+$/, '');
             if (/\/peek$/i.test(base)) base = base.replace(/\/peek$/i, '');
             if (!base) return;
-            var sys = '你是「' + charName() + '」。' + (persona() || '');
+            var sys = fullPeekSystem();
+            var api = (apiCfg && apiCfg.mainUrl && apiCfg.mainKey && apiCfg.mainModel)
+                ? { url: apiCfg.mainUrl, key: apiCfg.mainKey, model: apiCfg.mainModel }
+                : null;
             fetch(base + '/peek/persona', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ token: getPeekToken(), appId: appId(), deviceId: deviceId(), userId: currentUserId(), chatId: String(selectedId || ''), system: sys })
+                body: JSON.stringify({
+                    token: getPeekToken(), appId: appId(), deviceId: deviceId(), userId: currentUserId(),
+                    chatId: String(selectedId || ''), system: sys, api: api, history: recentContext()
+                })
             }).catch(function () {});
         } catch (e) {}
     }

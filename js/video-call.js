@@ -12,6 +12,7 @@
 
     var chatId = q('chat') || 'default';
     var contactName = q('name') || 'AI 助手';
+    var isIncoming = q('incoming') === '1';
 
     var $ = function (id) { return document.getElementById(id); };
     var stage = $('vcStage');
@@ -42,16 +43,38 @@
     var typingEl = $('vcTyping');
 
     var messages = [];
+    var callSessionId = 'call_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+    var turnSeq = 0;
+    var firstSpeaker = (function () {
+        try { return localStorage.getItem('nano_call_first_' + chatId) === 'me' ? 'me' : 'char'; } catch (e) { return 'char'; }
+    })();
     var isWaiting = false;
     var callSeconds = 0;
     var timer = null;
     var cameraOn = false;
     var facingMode = 'user';
     var speakerOn = (function(){try{return localStorage.getItem('nano_call_tts')!=='0'}catch(e){return true}})();
+
+    var _audioUnlocked = false;
+    function unlockAudio() {
+        if (_audioUnlocked) return;
+        _audioUnlocked = true;
+        try {
+            var a = new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=');
+            a.volume = 0;
+            var p = a.play();
+            if (p && p.catch) p.catch(function () {});
+        } catch (e) {}
+    }
+    try {
+        document.addEventListener('touchstart', unlockAudio, { once: true, capture: true });
+        document.addEventListener('click', unlockAudio, { once: true, capture: true });
+    } catch (e) {}
     var mediaStream = null;
     var charAvatar = '';
     var userAvatar = '';
     var charPersona = '';
+    var characterData = null;
     var displayName = contactName;
     var memText = '';
     var wbText = '';
@@ -167,6 +190,7 @@
                             var c = list.find(function (x) { return x && x.name === contactName; }) ||
                                     list.find(function (x) { return x && x.id === chatId; }) || null;
                             if (c) {
+                                characterData = c;
                                 if (c.avatar && c.avatar.length > 20) charAvatar = c.avatar;
                                 if (c.name) displayName = c.name;
                                 var parts = [];
@@ -229,18 +253,56 @@
             o.classList.toggle('active', (o.getAttribute('data-bg') || '') === key);
         });
     }
-    function loadBg() {
-        var v = '';
-        try { v = localStorage.getItem(BG_KEY) || ''; } catch (e) {}
-        applyBg(v);
+    // 背景可能是一张动图（GIF），dataURL 很容易超过 localStorage 5MB；
+    // 优先放 IndexedDB，失败再退回 localStorage。
+    function openBgDB() {
+        return new Promise(function (resolve, reject) {
+            try {
+                var req = indexedDB.open('nano_call_bg_db', 1);
+                req.onupgradeneeded = function (e) {
+                    var db = e.target.result;
+                    if (!db.objectStoreNames.contains('bg')) db.createObjectStore('bg', { keyPath: 'key' });
+                };
+                req.onsuccess = function (e) { resolve(e.target.result); };
+                req.onerror = function (e) { reject(e.target.error); };
+            } catch (e) { reject(e); }
+        });
     }
-    function saveBg(v) { try { localStorage.setItem(BG_KEY, v || ''); } catch (e) {} }
+    function loadBg() {
+        return openBgDB().then(function (db) {
+            return new Promise(function (resolve) {
+                var tx = db.transaction('bg', 'readonly');
+                var req = tx.objectStore('bg').get('background');
+                req.onsuccess = function () {
+                    var v = (req.result && req.result.value) || '';
+                    try { db.close(); } catch (e) {}
+                    if (!v) { try { v = localStorage.getItem(BG_KEY) || ''; } catch (e) {} }
+                    resolve(v);
+                };
+                req.onerror = function () { try { db.close(); } catch (e) {} resolve(''); };
+            });
+        }).catch(function () {
+            try { return localStorage.getItem(BG_KEY) || ''; } catch (e) { return ''; }
+        }).then(function (v) { applyBg(v); });
+    }
+    function saveBg(v) {
+        v = v || '';
+        try { localStorage.setItem(BG_KEY, v); } catch (e) {}
+        return openBgDB().then(function (db) {
+            return new Promise(function (resolve) {
+                var tx = db.transaction('bg', 'readwrite');
+                tx.objectStore('bg').put({ key: 'background', value: v });
+                tx.oncomplete = function () { try { db.close(); } catch (e) {} resolve(); };
+                tx.onerror = function () { try { db.close(); } catch (e) {} resolve(); };
+            });
+        }).catch(function () {});
+    }
 
     // ===== 消息 =====
     // 分句：按中英文标点切分，括号内的翻译不拆
     function splitSentences(text) {
         var out = [], cur = '', depth = 0;
-        var enders = '。！？!?；;…，,、';
+        var enders = '。！？!?；;…';
         for (var i = 0; i < text.length; i++) {
             var ch = text[i];
             if (ch === '（' || ch === '(') depth++;
@@ -278,31 +340,130 @@
     // TTS 只读母语：外语（中文翻译）→ 读括号前的部分
     function spokenText(text) {
         var s = String(text == null ? '' : text);
-        var i = s.indexOf('（');
-        return i > 0 ? s.slice(0, i).trim() : s;
+        // 只去掉含中文的括号翻译；外语原文里的 (really) 这类括号要照读。
+        var cleaned = s.replace(/[（(]([^）)]*[\u4e00-\u9fff][^）)]*)[）)]/g, ' ').replace(/\s+/g, ' ').trim();
+        return cleaned || s;
     }
 
-    function addMessage(text, isUser) {
-        messages.push({ text: text, isUser: !!isUser });
+    function hasCJK(s) { return /[\u4e00-\u9fff]/.test(String(s || '')); }
+    function hasLatin(s) { return /[A-Za-z]/.test(String(s || '')); }
+
+    function normalizeBilingualBubbles(list) {
+        var out = [];
+        (list || []).forEach(function (raw) {
+            var line = String(raw || '').trim();
+            if (!line) return;
+            if (line.indexOf('||') !== -1) {
+                var p = line.split('||');
+                line = String(p[0] || '').trim() + '（' + String(p.slice(1).join('||') || '').trim() + '）';
+            }
+            var prev = out.length ? out[out.length - 1] : '';
+            var hasTrans = /[（(][^）)]*[\u4e00-\u9fff]/.test(prev);
+            if (prev && !hasTrans && hasLatin(prev) && hasCJK(line) && !hasLatin(line)) {
+                out[out.length - 1] = prev + '（' + line + '）';
+            } else {
+                out.push(line);
+            }
+        });
+        return out;
+    }
+
+    function appendAudioControls(el, clipId) {
+        if (!el || !clipId || el.querySelector('.vc-msg-audio')) return;
+        var box = document.createElement('div');
+        box.className = 'vc-msg-audio';
+        var play = document.createElement('button');
+        play.type = 'button';
+        play.title = '播放本轮语音';
+        play.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+        play.addEventListener('click', function (e) {
+            e.stopPropagation();
+            try {
+                if (window.NanoTTS) window.NanoTTS.stop();
+                if (window.NanoCallAudio) window.NanoCallAudio.play(clipId);
+            } catch (err) {}
+        });
+        var dl = document.createElement('button');
+        dl.type = 'button';
+        dl.title = '下载本轮 MP3';
+        dl.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>';
+        dl.addEventListener('click', function (e) {
+            e.stopPropagation();
+            try { if (window.NanoCallAudio) window.NanoCallAudio.download(clipId, 'nano-call-' + clipId + '.mp3'); } catch (err) {}
+        });
+        box.appendChild(play);
+        box.appendChild(dl);
+        el.classList.add('has-audio');
+        el.appendChild(box);
+    }
+
+    function addMessage(text, isUser, opts) {
+        opts = opts || {};
+        var msg = {
+            text: text, isUser: !!isUser,
+            turnSeq: Number(opts.turnSeq) || 0,
+            turnLast: !!opts.turnLast,
+            clipId: String(opts.clipId || '')
+        };
+        messages.push(msg);
         var el = document.createElement('div');
         el.className = 'vc-msg ' + (isUser ? 'user' : 'ai');
         el.textContent = text;
+        el._msg = msg;
         chatArea.appendChild(el);
         chatArea.scrollTop = chatArea.scrollHeight;
-        if (!isUser && speakerOn && window.NanoTTS && text && text.indexOf('出错了') !== 0) {
-            try {
-                if (window.NanoTTS.speakForChat) window.NanoTTS.speakForChat(spokenText(text), { chatId: chatId });
-                else window.NanoTTS.speak(spokenText(text));
-            } catch (e) {}
-        }
+        return el;
+    }
+
+    // 一轮只调用一次主 API + 一次 TTS：气泡拆开显示，语音整轮合成一次后播放。
+    function deliverReplyBubbles(raw, opts) {
+        opts = opts || {};
+        var bubbles = normalizeBilingualBubbles(splitBubbles(raw));
+        if (!bubbles.length) return;
+        var seq = ++turnSeq;
+        var clipId = callSessionId + '_t' + seq;
+        var els = [];
+        bubbles.forEach(function (line, i) {
+            var last = (i === bubbles.length - 1);
+            var el = addMessage(line, false, { turnSeq: seq, turnLast: last, clipId: '' });
+            els.push(el);
+        });
+        notifyCallReplied();
+        var spoken = bubbles.map(spokenText).filter(Boolean).join('\n');
+        if (opts.noTts || !speakerOn || !spoken || !window.NanoTTS || !NanoTTS.getVoiceBlob) return;
+        try { if (NanoTTS.setEnabled) NanoTTS.setEnabled(chatId, true); } catch (e) {}
+        NanoTTS.getVoiceBlob(spoken, { chatId: chatId }).then(function (got) {
+            if (!got || !got.blob) {
+                try { toast('TTS 没有返回音频，请检查语音配置'); } catch (e) {}
+                return;
+            }
+            var save = (window.NanoCallAudio && NanoCallAudio.saveClip)
+                ? NanoCallAudio.saveClip(clipId, got.blob, { callId: callSessionId, turnSeq: seq, isUser: false, text: spoken })
+                : Promise.resolve(false);
+            return save.then(function () {
+                var lastEl = els[els.length - 1];
+                if (lastEl && lastEl._msg) lastEl._msg.clipId = clipId;
+                appendAudioControls(lastEl, clipId);
+                try {
+                    var _pl = NanoTTS.playVoiceBlob
+                        ? NanoTTS.playVoiceBlob(got.blob, got.key)
+                        : NanoTTS.speakForChat(spoken, { chatId: chatId });
+                    if (_pl && _pl.catch) _pl.catch(function () { toast('点一下屏幕以允许播放语音'); });
+                } catch (e) {}
+            });
+        }).catch(function (e) { console.warn('[Call] 整轮 TTS 失败:', e && e.message ? e.message : e); });
     }
 
     function buildSystemPrompt() {
         var p = '（这是你和「' + (displayName || '对方') + '」的视频通话。口语化、简短，像真人视频通话一样。）\n';
         p += '这是视频通话，结合你能看到/听到的内容自然回应；如果看不到画面就正常聊天，不要反复提"你没开摄像头"。\n';
+        p += '你是真人，正在用手机和对方视频：任何情况下都不要承认自己是 AI、模型或程序，也不要说自己不能视频；被问到就用人设自然带过。\n';
         p += '说话像真人视频通话一样：允许短句、停顿、换气、语气词（嗯、唔、欸）；用逗号、省略号、破折号表现自然停顿，不要播音腔，也不要写“（深呼吸）”“[风声]”这类会被直接念出来的旁白或音效标签。语气和语速要贴合人设与当下情绪。\n';
         p += '一次可以说 8~30 秒，把话说完，不要中途截断，也不要在句中途莫名停下。\n';
-        p += '如果你用外语说话，每一句都必须紧跟中文翻译，格式为：外文（中文翻译），一句一行；例如 do you love me（你爱我吗？）。不要只写外文，也不要只写中文，翻译要完整。\n';
+        p += '【外语输出格式 · 强制】如果你说外语，每一句都必须写成：外文（中文翻译），一句一行；例如 do you love me（你爱我吗？）。翻译不能省略、不能用英文解释代替中文。TTS 只会读括号前的外文。\n';
+        if (isForeignCharacter()) {
+            p += '这个角色是外国人：本轮所有台词都必须同时包含外语原文和完整中文翻译，禁止只输出外语，也禁止只输出中文；每一句都要成对出现。\n';
+        }
         p += '每条消息单独一行，不同气泡之间用换行分隔；不要把多句话挤进同一段。\n';
         p += '如果你确实要结束这通视频电话（例如要去忙、手机快没电、话题自然结束、想休息了），可以在回复最后单独一行写 [hangup:简短理由]；这个标记不会显示给对方。不要每轮都挂断，只在真的想结束时用。\n';
         p += '不要每轮都重复描述你看到的外貌/穿着/环境细节（例如眼镜、发型、灯光）；只在有变化或确有必要时才提，别反复强调。\n';
@@ -320,6 +481,28 @@
             if (window.NanoPrompts && NanoPrompts.appendTo) p = NanoPrompts.appendTo(p, 'call');
         } catch (e) {}
         return p;
+    }
+
+    function isForeignCharacter() {
+        try {
+            if (!characterData) return false;
+            var nat = String(characterData.nationality || characterData.country || '').trim();
+            if (nat && nat !== '未知' && nat !== '未设定') {
+                return !/(中国|中國|china|chinese|香港|台湾|台湾|澳门)/i.test(nat);
+            }
+            var lang = String(characterData.language || '').trim();
+            if (lang && !/中文|汉语|chinese/i.test(lang)) return true;
+            if (characterData.foreign) return true;
+            return /^[A-Za-z]/.test(String(displayName || ''));
+        } catch (e) { return false; }
+    }
+
+    function notifyCallReplied() {
+        try {
+            if (window.parent !== window) {
+                window.parent.postMessage({ type: 'callCharReplied', chatId: chatId, callType: 'video' }, '*');
+            }
+        } catch (e) {}
     }
 
     // ===== 长期记忆库 / 世界书 =====
@@ -510,7 +693,7 @@
             var parsed = extractHangup(rawReply);
             var reply = parsed.text;
             if (window.nanoStripThink) reply = window.nanoStripThink(reply);
-            splitBubbles(reply).forEach(function (line) { addMessage(line, false); });
+            deliverReplyBubbles(reply);
             isWaiting = false;
             replyBtn.classList.remove('loading');
             if (parsed.hangup) {
@@ -576,12 +759,22 @@
         if (ended) return;
         ended = true;
         notifyCallState(false);
+        try { if (window.NanoTTS && NanoTTS.stop) NanoTTS.stop(); } catch (e) {}
+        try { if (window.NanoCallAudio && NanoCallAudio.stop) NanoCallAudio.stop(); } catch (e) {}
         var out = [];
         for (var i = 0; i < messages.length; i++) {
             var m = messages[i];
-            if (m.text && m.text.trim()) out.push({ text: m.text, isUser: m.isUser });
+            if (m.text && m.text.trim()) {
+                out.push({
+                    text: m.text,
+                    isUser: m.isUser,
+                    turnSeq: Number(m.turnSeq) || 0,
+                    turnLast: !!m.turnLast,
+                    clipId: String(m.clipId || '')
+                });
+            }
         }
-        var callId = 'call_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+        var callId = callSessionId;
         if (window.parent !== window) {
             window.parent.postMessage({
                 type: 'NANO_VIDEO_CALL_CARD',
@@ -589,7 +782,7 @@
                 callId: callId,
                 duration: missed ? 0 : callSeconds,
                 missed: missed || false,
-                incoming: false,
+                incoming: isIncoming,
                 rejectReason: rejectReason || '',
                 video: true,
                 messages: out
@@ -636,7 +829,8 @@
     flipBtn.addEventListener('click', function () { facingMode = facingMode === 'user' ? 'environment' : 'user'; stopCamera(); startCamera(); });
 
     try {
-        if (window.NanoTTS && window.NanoTTS.isEnabled) speakerOn = window.NanoTTS.isEnabled(chatId);
+        if (window.NanoTTS && window.NanoTTS.isEnabled && window.NanoTTS.isEnabled(chatId)) speakerOn = true;
+            if (speakerOn && window.NanoTTS && window.NanoTTS.setEnabled) window.NanoTTS.setEnabled(chatId, true);
     } catch (e) {}
     speakerBtn.classList.toggle('active', speakerOn);
     speakerBtn.title = speakerOn ? '语音朗读：开' : '语音朗读：关';
@@ -656,6 +850,21 @@
         if (!speakerOn) { try { if (window.NanoTTS) window.NanoTTS.stop(); } catch (e) {} toast('语音朗读已关闭，纯文字'); }
         else toast('语音朗读已开启');
     });
+
+    function applyFirstSpeakerUI() {
+        document.querySelectorAll('[data-first-speaker]').forEach(function (btn) {
+            btn.classList.toggle('active', String(btn.dataset.firstSpeaker) === firstSpeaker);
+        });
+    }
+    document.querySelectorAll('[data-first-speaker]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            firstSpeaker = String(this.dataset.firstSpeaker) === 'me' ? 'me' : 'char';
+            try { localStorage.setItem('nano_call_first_' + chatId, firstSpeaker); } catch (e) {}
+            applyFirstSpeakerUI();
+            toast(firstSpeaker === 'char' ? '已设置：接通后 TA 先说' : '已设置：接通后你先说');
+        });
+    });
+    applyFirstSpeakerUI();
 
     bgBtn.addEventListener('click', function (e) { e.stopPropagation(); bgPanel.classList.toggle('active'); });
     if (bgPanel) {
@@ -691,6 +900,8 @@
             var el = document.createElement('div');
             el.className = 'vc-msg ' + (m.isUser ? 'user' : 'ai');
             el.textContent = m.text;
+            el._msg = m;
+            if (!m.isUser && m.clipId && m.turnLast) appendAudioControls(el, m.clipId);
             chatArea.appendChild(el);
         });
         chatArea.scrollTop = chatArea.scrollHeight;
@@ -762,13 +973,15 @@
     // ===== 初始化 =====
     loadInfos().then(function () {
         try {
-            if (window.NanoTTS && window.NanoTTS.isEnabled) speakerOn = window.NanoTTS.isEnabled(chatId);
+            if (window.NanoTTS && window.NanoTTS.isEnabled && window.NanoTTS.isEnabled(chatId)) speakerOn = true;
+            if (speakerOn && window.NanoTTS && window.NanoTTS.setEnabled) window.NanoTTS.setEnabled(chatId, true);
             speakerBtn.classList.toggle('active', speakerOn);
             speakerBtn.title = speakerOn ? '语音朗读：开' : '语音朗读：关';
         } catch (e) {}
         if (userAvatar) return;
         return readUserAvatar().then(function (u) { if (u) userAvatar = u; });
     }).then(loadContext).then(function () {
+        unlockAudio();
         applyAvatars();
         loadBg();
         // 默认不开摄像头：本地小窗显示「我」的头像；点了摄像头按钮才出实时画面
@@ -789,7 +1002,8 @@
         if (connectingEl) connectingEl.style.display = 'flex';
         startRing();
         // 接通时长 = 角色「决定接不接」的 API 反应时间（保留最短动画）
-        Promise.all([decideAnswer(), new Promise(function (r) { setTimeout(r, 2600 + Math.random() * 1400); })]).then(function (arr) {
+        var _answerP = isIncoming ? Promise.resolve({ answer: true, say: '喂？' }) : decideAnswer();
+        Promise.all([_answerP, new Promise(function (r) { setTimeout(r, 2600 + Math.random() * 1400); })]).then(function (arr) {
             if (ended) return;
             var d = arr[0];
             if (d && d.answer === false) {
@@ -803,9 +1017,9 @@
                 }, 2000);
                 return;
             }
-            // 角色接通后先说一句话（写进聊天）
-            if (d && d.say && window.parent !== window) {
-                try { window.parent.postMessage({ type: 'NANO_CALL_REPLY', chatId: chatId, text: d.say }, '*'); } catch (e) {}
+            // 「谁先说话」：对方先说就用接通 API 返回的第一句直接开口；我先说就等用户输入。
+            if (firstSpeaker === 'char') {
+                deliverReplyBubbles((d && d.say) ? d.say : '喂？能听到吗？');
             }
             stopRing();
             if (connectingEl) connectingEl.style.display = 'none';

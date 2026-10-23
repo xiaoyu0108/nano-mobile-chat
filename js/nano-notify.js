@@ -388,7 +388,7 @@
             if (bi) q.push('icon=' + encodeURIComponent(bi));
         } catch (e) {}
         var url = full + '?' + q.join('&');
-        return fetch(url, { cache: 'no-store' }).then(function (r) {
+        return fetch(url, { cache: 'no-store', keepalive: true }).then(function (r) {
             return r.json().catch(function () { return {}; });
         }).then(function (j) {
             var ok = !(j && j.code && Number(j.code) !== 200);
@@ -408,23 +408,44 @@
         try { return NANO_ROOT + 'icons/icon-192.png'; } catch (e) { return ''; }
     }
 
-    // 是否「真的在前台」。只看 document.hidden 不够：开启保活音频后，PWA 切到后台
-    // 仍可能保持 visible，导致通知被当成前台胶囊吞掉（表现为后台收不到系统提醒）。
+    // 是否「真的在前台」。不能只依赖 document.hasFocus()：开启保活音频后，PWA 切到
+    // 后台仍可能被系统判定为 focused/visible，导致 Bark 永远不触发（这就是之前的根因）。
+    // 现在用 focus / blur / visibilitychange 一起判断，并让顶层窗口把状态共享给 iframe。
+    var _pageFocused = true;
+    function _syncFocus(on) { _pageFocused = !!on; }
+    try {
+        document.addEventListener('visibilitychange', function () { _syncFocus(!document.hidden); });
+        window.addEventListener('focus', function () { _syncFocus(true); });
+        window.addEventListener('blur', function () { _syncFocus(false); });
+        window.addEventListener('pagehide', function () { _syncFocus(false); });
+        if (window.top === window) {
+            window.__nanoPageFocused = true;
+            window.addEventListener('focus', function () { window.__nanoPageFocused = true; });
+            window.addEventListener('blur', function () { window.__nanoPageFocused = false; });
+            document.addEventListener('visibilitychange', function () { window.__nanoPageFocused = !document.hidden; });
+        }
+    } catch (e) {}
     function isForeground() {
         try {
             if (document.hidden) return false;
-            var topDoc = null;
-            try { topDoc = (window.top && window.top !== window) ? window.top.document : null; } catch (e) { topDoc = null; }
-            if (topDoc && topDoc.hidden) return false;
-            var d = topDoc || document;
-            if (typeof d.hasFocus === 'function') return d.hasFocus();
-            return !document.hidden;
+            if (!_pageFocused) return false;
+            if (window.top && window.top !== window) {
+                try {
+                    if (window.top.document && window.top.document.hidden) return false;
+                } catch (e) {}
+                if (window.top.__nanoPageFocused === false) return false;
+            }
+            return true;
         } catch (e) { return !document.hidden; }
     }
 
     function notify(title, body, opts) {
         opts = opts || {};
-        if (!enabled() && !opts.force) return;
+        // 「允许通知」和「Bark」是两个独立开关：只开 Bark 时也必须能推系统消息。
+        // 之前的写法在这里就用 enabled() 拦掉了，导致 Bark 永远走不到。
+        var inApp = enabled() || !!opts.force;
+        var barkOn = barkEnabled() && !!barkKey();
+        if (!inApp && !barkOn) return;
         // 去重：同一条通知在极短时间内被多个通道/多次调用触发时只弹一次，
         // 解决「系统通知内容重复两次」的问题（标题+内容+target 作为 key）。
         try {
@@ -438,6 +459,8 @@
         // 前台统一走内置通知栏：头像 + 昵称 + 具体信息（后台仍走系统通知 / Bark）
         try {
             if (isForeground()) {
+                // 前台只走内置通知栏；如果用户只开了 Bark，就不要在正在用 App 时打扰。
+                if (!inApp) return;
                 // 只有人在前台时才播放应用内提示音；后台交给 Bark（sound=none）静音推送
                 playSound(soundFor(opts));
                 var inAppPayload = {
@@ -467,7 +490,7 @@
             }
         } catch (e) {
             try {
-                if (window.parent !== window) {
+                if (inApp && window.parent !== window) {
                     window.parent.postMessage({ type: 'appNotify', title: title, body: body, app: opts.app || opts.channel || '', icon: opts.icon || '', name: opts.name || title, target: opts.target || '' }, '*');
                     return;
                 }
@@ -481,7 +504,7 @@
         var barkSent = false;
         try {
             var hidden = !isForeground();
-            if (barkEnabled() && barkKey() && (hidden || opts.force || opts.bark)) {
+            if (barkOn && (hidden || opts.force || opts.bark)) {
                 var bopts = Object.assign({}, opts, {
                     icon: icon,
                     name: opts.name || title,
@@ -494,6 +517,8 @@
         } catch (e) {}
         // Bark 已经弹过系统通知：不再走 ServiceWorker / new Notification，避免同一条弹两次
         if (barkSent) return;
+        // 只开了 Bark、没有开「允许通知」时，不再走浏览器通知
+        if (!inApp) return;
         // 已按要求去掉应用内的黑色横幅（appNotify）；前台只保留提示音 + 未读红点
         var payload = {
             body: String(body || '').slice(0, 120),
@@ -562,6 +587,7 @@
         unlockAudio: unlockAudio,
         ensurePermission: ensurePermission,
         enabled: enabled,
+        isForeground: isForeground,
         currentSound: currentSound,
         sounds: SOUNDS,
         channels: CHANNELS,

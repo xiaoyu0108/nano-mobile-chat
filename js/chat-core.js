@@ -654,7 +654,8 @@
         prompt += '2.3 严禁复读与死循环（全局铁律，最高优先级之一）：严禁反复、重复地谈论同一件事、提同一个要求或表达同一个情绪。一旦某个话题、请求或情绪对方已经明确回应过（同意、拒绝、敷衍、岔开，或说了“不想再提/别说了”），就**翻篇**，绝不揪住不放、不每轮重提、不换着说法复述同一层意思。禁止同一条消息里堆叠意思相近的句子，禁止连续多轮重复同一个诉求——例如你邀请对方去某地、对方已经拒绝，你就不能再反复说“我会一直等你”“你什么时候来”“我一直在这儿等你”，每一句都重复是严重违规。每一轮都要推进话题、给出新的信息或真实反应，而不是原地打转；确实没话说就自然收住，宁可少说，也不要复读。\n';
         prompt += '2.4 禁止编造对方的事、禁止下命令（全局铁律）：不得凭空给用户安上日程、作业、考试、约定、必须完成的任务，或“明天要在某地等你”这类安排——这些只能来自【对方设定】或【世界书】，没有依据就绝不能编。也不要用命令、通牒或上位者语气对用户说话（“你必须来”“不来就别…”“你今天必须做完”），邀约、见面、请求一律用商量的口吻（“要不要一起”“有空的话”）；对方拒绝或不回应就翻篇，不许纠缠、不许拿“我一直在等你”反复施压。\n';
         prompt += '3. 不催人：禁止催促、命令、安排对方的生活（起床、吃饭、睡觉、喝水、吃药、吹头发、早点休息等）。关心可以有，但绝不反复催办、管教，也不替对方做决定。\n';
-        prompt += '4. 不 OOC、不出戏：不脱离设定、不跳戏、不替对方说话；任何情况下都不承认自己是 AI、模型或程序，被问到时以' + charName + '的身份自然回应。\n\n';
+        prompt += '4. 不 OOC、不出戏：不脱离设定、不跳戏、不替对方说话；任何情况下都不承认自己是 AI、模型或程序，被问到时以' + charName + '的身份自然回应。\n';
+        prompt += '5. 你手机里的功能都是这个世界的真实能力：打电话 / 视频 / 转账 / 外卖 / 看屏幕都由系统真正执行。对方让你打电话或视频时，绝对不要回答“我是人工智能 / 我不能打电话 / 我没有手机 / 我做不到”，也不要解释技术限制；直接像真人一样答应，并在本轮单独一行输出 [call:来电] 或 [call:视频]，让系统把电话打过去。\n\n';
         prompt += '【亲密与性 · 分寸（中庸之道）】\n';
         prompt += '性是爱与亲密的一部分，是成年人之间正常、自然的事，不是禁忌。请守住中道：既不要主动开黄腔、油腻撩拨或硬把话题往那方面带，也**绝不要把「性」当成不能碰的东西**。\n';
         prompt += '- 当对方主动聊起性、身体或亲密话题时，你要自然、坦诚地接住：不要回避、不要装不懂、不要转移话题、不要用“这个不好说 / 别说这个 / 换个话题吧”来敷衍或拒绝；按你的性格和你们现在的关系给出真实、有分寸的回应。\n';
@@ -977,6 +978,7 @@
         prompt += '1.2 文字图 [文字图:要展示的文字]：想发一张「白底黑字」的图片（比如把一句话、通知、纸条、便签、截图文字做成图）时用这个，不需要生图、也不耗 API。对方让你发文字图时就用它。\n';
         prompt += '2. 转账 / 礼物：在合适的时机主动表达，而不是等人要——纪念日、道歉、庆祝、心疼、制造惊喜、对方随口提过想要的东西、关系升温时，都可以主动来一份 [transfer:金额] 或 [gift:礼物名称]。频率比“克制版”更高一些，但每次都要有贴合语境的理由，不要无脑刷。\n';
         prompt += '3. 电话 [call:来电] / [call:视频]：情绪浓、想听对方声音、重要的时刻、想给惊喜时，都可以主动打过去；比“只有紧急才打”更主动，但也不要每轮都打。\n';
+        prompt += '3.1 视频不是稀有选项：想见对方、想展示眼前的风景/东西、对方在打扮或在外、暧昧想念、纪念日等重要时刻，优先 [call:视频]；只有纯日常短聊才默认 [call:来电]。不要连续几次都只打语音，也不要因为“视频更麻烦”就回避。\n';
         prompt += '4. 亲属卡 / 情侣头像 / 一起听 / 建群 / 邀请进群：关系到位、气氛自然时主动发起，推动关系进展，不要干等。\n';
         prompt += '5. 对方明确开口要的时候，爽快答应、不推辞。\n';
         if (!isNanoChat) {
@@ -8680,6 +8682,30 @@
             .replace(/\n{3,}/g, '\n\n')
             .trim();
 
+        // 兜底：用户明确要求打电话/视频，模型却出戏说“我是人工智能/不能打”时，
+        // 不要让这句 OOC 落到聊天里；直接改成角色答应并发起来电标记。
+        try {
+            var __lastUser = '';
+            for (var __mi = messages.length - 1; __mi >= 0; __mi--) {
+                var __mm = messages[__mi];
+                if (__mm && __mm.type === 'right' && !__mm.isCard && !__mm.recalled) {
+                    __lastUser = String(__mm.text || '');
+                    break;
+                }
+            }
+            var __wantsCall = /打电话给我|打给我|给我打|拨给我|打个电话|打视频|视频给我|开视频|语音通话|视频通话/.test(__lastUser);
+            var __isVideo = /视频/.test(__lastUser);
+            if (__wantsCall && !/\[call:/i.test(replyBody)) {
+                var __aiRefusal = /人工智能|\bAI\b|语言模型|我是模型|我是程序|不能打|不能拨|无法打|无法拨|打不了|拨不了|没有手机|做不到/i.test(replyBody);
+                var __agrees = /我(这就|马上|现在)?(打|拨)给你|好[，,。!！]|嗯[，,。]|行[，,。]/.test(replyBody);
+                if (__aiRefusal) {
+                    replyBody = __isVideo ? '好，开视频。\n[call:视频]' : '好，我打给你。\n[call:来电]';
+                } else if (__agrees) {
+                    replyBody += '\n[call:' + (__isVideo ? '视频' : '来电') + ']';
+                }
+            }
+        } catch (e) {}
+
         // AI 对「用户发来的转账/礼物」表态（[收]/[不收]/[退]）：
         // 收下转账→银行−；不收/退还→不动流水；礼物一律不动流水
         const moneySettle = settleCardsFromReplyText(replyBody);
@@ -8847,7 +8873,9 @@
                                 null, true, { duration: dur, unread: true, ttsText: voiceText });
                         } else if (tag.kind === 'call') {
                             // 角色主动来电：直接弹出真实来电页面（无冷却，不再先插卡片）
-                            triggerIncomingCall('通话');
+                            // [call:视频] 要打开视频通话，不能一律当成语音。
+                            var isVideoCall = /视频|video/i.test(String(tag.payload || ''));
+                            triggerIncomingCall(isVideoCall ? '视频通话' : '通话', isVideoCall);
                         } else if (tag.kind === 'textimage') {
                             // 角色主动发「文字图」：白底黑字，不调用生图 API
                             addMessage('left', '', timeStr, null, false, false, null, null, null,
@@ -9046,6 +9074,33 @@
                     toggleCallSheetSelect(index, check);
                 }
             });
+            // 每轮角色最后一条气泡右侧：播放 / 下载本轮 MP3（命中本地缓存，不再烧 TTS）
+            if (!msg.isUser && msg.clipId && msg.turnLast && window.NanoCallAudio) {
+                const audioBox = document.createElement('div');
+                audioBox.className = 'call-msg-audio';
+                const playBtn = document.createElement('button');
+                playBtn.type = 'button';
+                playBtn.title = '播放本轮语音';
+                playBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+                playBtn.addEventListener('click', function (e) {
+                    e.stopPropagation();
+                    try {
+                        if (window.NanoTTS) window.NanoTTS.stop();
+                        NanoCallAudio.play(msg.clipId);
+                    } catch (err) {}
+                });
+                const dlBtn = document.createElement('button');
+                dlBtn.type = 'button';
+                dlBtn.title = '下载本轮 MP3';
+                dlBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>';
+                dlBtn.addEventListener('click', function (e) {
+                    e.stopPropagation();
+                    try { NanoCallAudio.download(msg.clipId, 'nano-call-' + msg.clipId + '.mp3'); } catch (err) {}
+                });
+                audioBox.appendChild(playBtn);
+                audioBox.appendChild(dlBtn);
+                msgEl.appendChild(audioBox);
+            }
             
             row.appendChild(check);
             row.appendChild(msgEl);
@@ -9140,6 +9195,18 @@
         if (delBtn) {
             delBtn.addEventListener('click', function() {
                 deleteCallSheetSelected();
+            });
+        }
+        const dlAllBtn = document.getElementById('callSheetDownload');
+        if (dlAllBtn) {
+            dlAllBtn.addEventListener('click', function() {
+                if (!callSheetData || !window.NanoCallAudio) return;
+                const ids = (callSheetData.messages || []).map(function (m) { return m && m.clipId; }).filter(Boolean);
+                if (!ids.length) {
+                    try { addSystemNotice('这次通话没有语音记录'); } catch (e) {}
+                    return;
+                }
+                NanoCallAudio.downloadAll(ids, 'nano-call-' + (callSheetData.callId || Date.now()) + '.zip');
             });
         }
     }
@@ -11020,6 +11087,11 @@ if (callCard) {
             if (e && e.key === 'nano_pending_phone_share') { try { consumePendingPhoneShare(); } catch (err) {} }
             if (e && e.key === 'nano_pending_fanfic_card') { try { consumePendingFanficCard(); } catch (err) {} }
             if (e && e.key === 'nano_pending_store_cards') { try { consumePendingStoreCards(); } catch (err) {} }
+            // 设置页改了 Bark 密钥/开关后，立刻把新密钥同步给 Worker；
+            // 否则要等下一次聊天同步（最多 10 分钟），后台 Bark 会一直用旧配置。
+            if (e && (e.key === 'nano_bark_key' || e.key === 'nano_bark_enabled')) {
+                setTimeout(function () { try { syncAutoPushConfig({ reset: true }); } catch (err) {} }, 800);
+            }
         });
     } catch (e) {}
     // 接管详情查看器（马卡龙配色）

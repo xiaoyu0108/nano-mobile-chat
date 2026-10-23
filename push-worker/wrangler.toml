@@ -48,10 +48,10 @@ INCLUDE_LEGACY_MARKET = "1"
 # FISH_API_ORIGIN = "https://api.fish.audio"
 
 # ── 屏幕速聊（iOS 快捷指令）──
-# 敏感项用 secret 设置，不要写进本文件（会进版本库）：
+# 推荐：不用配 PEEK_API_*。App 会把主 API（地址 / Key / 模型）同步到 Worker，
+# 快捷指令只发截图或文字，Worker 直接复用主 API。
+# 如果要单独给窥屏用另一套模型，再配置下面这些可选项：
 #   wrangler secret put PEEK_TOKEN      # 与 ios-setting 页面生成的「令牌」一致
-#   wrangler secret put PEEK_API_KEY    # 你的主模型 API Key（只存在服务端）
-# 非敏感的地址/模型也可以放这里：
-# [vars]
-# PEEK_API_URL = "https://api.openai.com/v1"
-# PEEK_MODEL = "gpt-4o-mini"
+#   wrangler secret put PEEK_API_KEY    # 单独的窥屏 API Key（可选）
+#   wrangler secret put PEEK_API_URL    # 单独的窥屏接口地址（可选）
+#   wrangler secret put PEEK_MODEL      # 单独的窥屏模型（可选）

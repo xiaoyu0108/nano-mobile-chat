@@ -153,7 +153,7 @@
 
 | 路由 | 作用 |
 | --- | --- |
-| `POST /peek` | 令牌校验 → 收 `{chatId, system, text?, image?}` → 用服务端 Key 调模型 → 返回 `{ok, reply}`，并把这一轮暂存；若已配置 VAPID 且 App 已订阅，会顺带用 Web Push 推一条通知 |
+| `POST /peek` | 令牌校验 → 收 `{chatId, text?, image?}`（`system` 可省略）→ 用当前角色人设 + 最近上下文 + 服务端保存的主 API 调模型 → 返回 `{ok, reply}`，并把这一轮暂存；若已配置 VAPID 且 App 已订阅，会顺带用 Web Push 推一条通知 |
 | `GET /peek/pending?chatId=&token=` | App 拉取暂存轮次 `{ok, turns:[{user, char, ts}]}` |
 | `POST /peek/ack` | App 合并完后清空暂存 |
 
@@ -176,22 +176,23 @@
    wrangler kv namespace create PUSH_KV
    ```
    把命令返回的 `id` 填进 `wrangler.toml` 的 `kv_namespaces[0].id`。
-4. 设置密钥（**别写进仓库**）：
+4. 设置令牌（**别写进仓库**）：
    ```bash
    wrangler secret put PEEK_TOKEN      # 必须与 ios-setting 方式 C 里显示的「令牌」完全一致
-   wrangler secret put PEEK_API_KEY    # 你的主模型 Key（只存在服务端，不进快捷指令）
+   ```
+   **模型 API 不需要再配一套**：只要在 Nano 里打开过一次聊天，或点过「保存配置」，
+   App 会把主 API（地址 / Key / 模型）同步到 Worker；`/peek` 会直接复用它。
+   如果你想给窥屏单独用另一套模型，才需要再配这些可选项：
+   ```bash
+   wrangler secret put PEEK_API_KEY    # 可选：单独的窥屏 Key
+   wrangler secret put PEEK_API_URL    # 可选：单独的窥屏接口地址
+   wrangler secret put PEEK_MODEL      # 可选：单独的窥屏模型
    ```
    可选：想「点通知就打开主屏的 Nano」（见上方说明），再加这三个 VAPID 变量（App 里也要 `NanoPush.enable()`）：
    ```bash
    wrangler secret put VAPID_SUBJECT   # 例如 mailto:you@example.com
    wrangler secret put VAPID_PUBLIC
    wrangler secret put VAPID_PRIVATE
-   ```
-   接口 / 模型这两个非敏感项，取消注释并填进 `wrangler.toml` 的 `[vars]`：
-   ```toml
-   [vars]
-   PEEK_API_URL = "https://api.openai.com/v1"
-   PEEK_MODEL   = "gpt-4o-mini"
    ```
 5. 部署，记下输出里的地址（形如 `https://nano-push.xxxx.workers.dev`）：
    ```bash
@@ -203,8 +204,9 @@
 
 ### Nano 侧
 
-在 **查手机 → 设置 → iOS 快捷指令 · 窥屏 → 方式 C** 里：填「服务端地址」、复制「令牌 / 接口地址 / 人设」，
-点「保存配置」。之后 `js/ios-bridge.js` 会在 App 启动和回到前台时自动拉取并合并轮次。
+在 **查手机 → 设置 → iOS 快捷指令 · 窥屏 → 方式 C** 里：填「服务端地址」、点「保存配置」。
+保存时会把**当前选中的角色人设、最近聊天上下文、主 API**一起同步到 Worker，快捷指令里不用再贴人设或 Key。
+之后 `js/ios-bridge.js` 会在 App 启动和回到前台时自动拉取并合并轮次。
 
 ### 快捷指令搭建
 
@@ -213,11 +215,27 @@
    请求体选 **文件**，引用一个 **文本** 动作：
 
    ```json
-   {"chatId":"<角色ID>","system":"<你的人设>","image":"data:image/jpeg;base64,<截图base64>"}
+   {"chatId":"<角色ID>","image":"data:image/jpeg;base64,<截图base64>"}
    ```
+
+   `system` 可以完全省略：Worker 会用 App 同步过来的当前角色人设 + 最近聊天上下文。
+   如果你确实想临时指定另一套人设，再加 `"system":"..."`（会被同步的人设优先覆盖，避免旧快捷指令把人设改错）。
 
 3. **获取字典值** 取 `reply` → **显示提醒** 弹出。
 4. **要求输入** 拿到你打的字，把 `image` 换成 `text` 再发一轮 → 循环，就是连续对话。
+
+### 弹窗出现但没回复 / Worker 日志里没有 API 调用
+
+按顺序检查：
+
+1. **先打开一次 Nano 聊天**：Worker 需要先拿到主 API。新版会在聊天启动/切角色时自动同步；
+   也可以在「窥屏 → 方式 C」点一次「保存配置」。
+2. **看快捷指令的「显示提醒」内容**：新版 `/peek` 在失败时也会把原因写进 `reply`，
+   例如「服务端还没有模型 API」。如果还是空白，说明快捷指令没取到 `reply` 字段。
+3. **确认请求真的到了 Worker**：Cloudflare → Worker → Logs，看有没有 `POST /peek`。
+   没有请求 = 快捷指令地址/网络不对；有请求但没上游调用 = Worker 还没拿到 API 配置。
+4. **不想用快捷指令**：在电脑 Chrome / Edge 上用 App 内的「看屏幕」共享真实屏幕；
+   iPhone 网页端没有录屏接口，只能用「屏幕速聊」快捷指令截屏。
 
 ### 触发
 
