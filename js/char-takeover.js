@@ -37,7 +37,23 @@
         { id: 'music',     name: '音乐',       w: 2, url: 'music.html' },
         { id: 'couple',    name: '情侣空间',   w: 3, url: 'couple-spaces.html' },
         { id: 'familycard',name: '亲属卡',     w: 2, url: 'family-card.html', selfWith: true },
-        { id: 'phone',     name: '查手机',     w: 1, url: 'phone.html' }
+        { id: 'phone',     name: '查手机',     w: 1, url: 'phone.html' },
+        // 新增 App：反查时也能查看最新页面、字体/美化、储存记录和后台日志
+        { id: 'qa',        name: 'Q&A',        w: 3, url: 'qa.html' },
+        { id: 'nano',      name: 'Nano',       w: 2, url: 'nano.html' },
+        { id: 'pomodoro',  name: '番茄钟',     w: 2, url: 'pomodoro.html' },
+        { id: 'gallery',   name: '图库',       w: 2, url: 'gallery.html' },
+        { id: 'files',     name: '文件',       w: 2, url: 'nano-files.html' },
+        { id: 'appstore',  name: '应用商店',   w: 2, url: 'appstore.html' },
+        { id: 'worldbook', name: '世界书',     w: 2, url: 'worldbook.html' },
+        { id: 'fanfic',    name: '同人文',     w: 2, url: 'fanfic.html' },
+        { id: 'beautify',  name: '美化 / 字体', w: 2, url: 'beautify.html' },
+        { id: 'schedule',  name: '日程',       w: 2, url: 'schedule.html' },
+        { id: 'memory',    name: '记忆宫殿',   w: 2, url: 'memory.html' },
+        { id: 'tide',      name: '月潮',       w: 2, url: 'cycle.html' },
+        { id: 'market',    name: '共享集市',   w: 2, url: 'market.html' },
+        { id: 'storage',   name: '储存记录',   w: 2, url: 'storage.html' },
+        { id: 'logs',      name: '后台日志',   w: 2, url: 'settings-logs.html' }
     ];
 
     var SVG = {

@@ -137,6 +137,48 @@
         } catch (e) {}
         return out;
     }
+    function loadCharNames() {
+        return new Promise(function (resolve) {
+            var out = {}, done = false;
+            function finish() { if (!done) { done = true; resolve(out); } }
+            function openIt() {
+                try {
+                    var req = indexedDB.open('nano_characters_db');
+                    req.onupgradeneeded = function () {};
+                    req.onsuccess = function () {
+                        var db = req.result;
+                        try {
+                            if (!db.objectStoreNames.contains('characters')) {
+                                db.close();
+                                // 不要留下一个空库，否则角色库之后用同版本打开会看不到 characters store。
+                                try { indexedDB.deleteDatabase('nano_characters_db'); } catch (e) {}
+                                finish(); return;
+                            }
+                            var r = db.transaction('characters', 'readonly').objectStore('characters').getAll();
+                            r.onsuccess = function () {
+                                (r.result || []).forEach(function (c) {
+                                    if (c && c.id) out[String(c.id)] = String(c.name || '');
+                                });
+                                try { db.close(); } catch (e) {}
+                                finish();
+                            };
+                            r.onerror = function () { try { db.close(); } catch (e) {} finish(); };
+                        } catch (e) { try { db.close(); } catch (e2) {} finish(); }
+                    };
+                    req.onerror = finish;
+                    req.onblocked = finish;
+                } catch (e) { finish(); }
+            }
+            // 先确认角色库存在，避免为了读名字反而新建一个空的 nano_characters_db。
+            if (indexedDB.databases) {
+                indexedDB.databases().then(function (list) {
+                    var has = (list || []).some(function (d) { return d && d.name === 'nano_characters_db'; });
+                    if (has) openIt(); else finish();
+                }).catch(openIt);
+            } else openIt();
+        });
+    }
+
     function all() {
         var out = read().slice();
         var tombs = {};
@@ -161,9 +203,12 @@
     function allAsync() {
         var base = all();
         if (typeof localforage === 'undefined') return Promise.resolve(base);
-        return localforage.keys().then(function (keys) {
+        return Promise.all([localforage.keys(), loadCharNames()]).then(function (res) {
+            var keys = res[0] || [], charNames = res[1] || {};
             var chatKeys = (keys || []).filter(function (k) { return /^chat_messages_/.test(k); }).slice(0, 40);
             return Promise.all(chatKeys.map(function (k) {
+                var cid = String(k).replace(/^chat_messages_/, '');
+                var cname = charNames[cid] || '';
                 return localforage.getItem(k).then(function (msgs) {
                     var out = [];
                     (Array.isArray(msgs) ? msgs : []).forEach(function (m) {
@@ -174,7 +219,7 @@
                         if (isEmojiRecord(m) || isEmojiRecord(m.imageData)) return;
                         var u = m.imageData && (m.imageData.url || (m.imageData.urls && m.imageData.urls[0]));
                         if (u && /^(data:image\/|https?:\/\/)/i.test(u)) {
-                            out.push({ url: u, source: '聊天', charName: '', prompt: m.imageData.prompt || m.text || '', createdAt: Date.parse(m.time || '') || 0 });
+                            out.push({ url: u, source: '聊天', charName: cname, charId: cid, prompt: m.imageData.prompt || m.text || '', createdAt: Date.parse(m.time || '') || 0 });
                         }
                     });
                     return out;
@@ -182,6 +227,16 @@
             })).then(function (groups) {
                 var tombs = {};
                 readTombs().forEach(function (k) { tombs[k] = 1; });
+                var scannedName = {};
+                groups.forEach(function (g) {
+                    (g || []).forEach(function (x) {
+                        if (x && x.url && x.charName) scannedName[urlKey(x.url)] = x.charName;
+                    });
+                });
+                // 旧图库里可能没有存角色名：用聊天记录里扫到的名字补上，避免显示“未知角色”。
+                base.forEach(function (x) {
+                    if (x && x.url && !x.charName && scannedName[urlKey(x.url)]) x.charName = scannedName[urlKey(x.url)];
+                });
                 var seen = {};
                 base.forEach(function (x) { if (x && x.url) seen[urlKey(x.url)] = 1; });
                 groups.forEach(function (g) {

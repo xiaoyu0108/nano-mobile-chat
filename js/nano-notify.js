@@ -360,48 +360,71 @@
         if (/^(title|body|undefined|null)$/i.test(String(body).trim())) body = bodyHint || '你有一条新消息';
         // 支持直接粘贴完整 Bark 地址（可能自带 ?group=...）：只取 origin+path，
         // 否则 /标题/正文 会被拼到查询串后面，Bark 收不到标题和正文。
-        var base = '';
+        var root = 'https://api.day.app', devKey = key;
         if (key.indexOf('http') === 0) {
             try {
                 var ku = new URL(key);
-                base = ku.origin + ku.pathname.replace(/\/+$/, '');
+                var segs = ku.pathname.split('/').filter(Boolean);
+                devKey = segs.length ? segs.pop() : '';
+                root = ku.origin + (segs.length ? '/' + segs.join('/') : '');
             } catch (e) {
-                base = key.replace(/[?#].*$/, '').replace(/\/+$/, '');
+                root = 'https://api.day.app';
             }
-        } else {
-            base = 'https://api.day.app/' + encodeURIComponent(key);
         }
-        var full = base + '/' + encodeURIComponent(title) + '/' + encodeURIComponent(body.slice(0, 300));
-        // level=active：后台/锁屏弹横幅；sound=none：不要提示音，也尽量避免震动
-        var q = [
-            'group=' + encodeURIComponent(opts.group || nameHint || title || 'Nano'),
-            'level=' + encodeURIComponent(opts.level || barkLevel()),
-            'sound=' + encodeURIComponent(opts.sound || 'none')
-        ];
+        var group = opts.group || nameHint || title || 'Nano';
+        var level = opts.level || barkLevel();
+        var sound = opts.sound || 'none';
         var target = opts.target || '';
-        if (target) {
-            try { q.push('url=' + encodeURIComponent(NANO_ROOT + 'index.html?open=' + encodeURIComponent(target))); } catch (e) {}
+        var icon = '';
+        try { icon = (opts.icon && /^https?:/i.test(opts.icon)) ? opts.icon : nanoIconUrl(); } catch (e) {}
+        var openUrl = target ? (NANO_ROOT + 'index.html?open=' + encodeURIComponent(target)) : '';
+        var bodyText = body.slice(0, 300);
+
+        function barkGet() {
+            var full = root + '/' + encodeURIComponent(devKey || '') + '/' + encodeURIComponent(title) + '/' + encodeURIComponent(bodyText);
+            var q = ['group=' + encodeURIComponent(group), 'level=' + encodeURIComponent(level), 'sound=' + encodeURIComponent(sound)];
+            if (openUrl) q.push('url=' + encodeURIComponent(openUrl));
+            if (icon) q.push('icon=' + encodeURIComponent(icon));
+            var url = full + '?' + q.join('&');
+            return fetch(url, { cache: 'no-store', keepalive: true }).then(function (r) {
+                return r.json().catch(function () { return {}; });
+            }).then(function (j) {
+                var ok = !(j && j.code && Number(j.code) !== 200);
+                return {
+                    ok: ok, resp: j, url: url, method: 'GET',
+                    error: ok ? '' : String((j && (j.message || j.error)) || ('Bark code ' + (j && j.code)))
+                };
+            }).catch(function () {
+                try { fetch(url, { mode: 'no-cors' }).catch(function () {}); } catch (e) {}
+                return { ok: true, cors: true, url: url, method: 'GET' };
+            });
         }
-        // 有头像就用头像当图标；Bark 需要可访问的 http 图片，data: 头像则退回 Nano 图标
-        try {
-            var bi = (opts.icon && /^https?:/i.test(opts.icon)) ? opts.icon : nanoIconUrl();
-            if (bi) q.push('icon=' + encodeURIComponent(bi));
-        } catch (e) {}
-        var url = full + '?' + q.join('&');
-        return fetch(url, { cache: 'no-store', keepalive: true }).then(function (r) {
-            return r.json().catch(function () { return {}; });
-        }).then(function (j) {
-            var ok = !(j && j.code && Number(j.code) !== 200);
-            return {
-                ok: ok,
-                resp: j,
-                error: ok ? '' : String((j && (j.message || j.error)) || ('Bark code ' + (j && j.code)))
+
+        // 优先 POST /push：正文里的 / ? # 和换行不会破坏 Bark 的路径解析，
+        // 标题和正文一定能带上；旧版 Bark 不支持 POST 时自动退回 GET 路径接口。
+        if (devKey) {
+            var payload = {
+                device_key: devKey, title: title, body: bodyText,
+                group: group, level: level, sound: sound
             };
-        }).catch(function () {
-            // 读取响应被 CORS 拦截时，退化成不可读请求再发一次（请求仍会送达 Bark）
-            try { fetch(url, { mode: 'no-cors' }).catch(function () {}); } catch (e) {}
-            return { ok: true, cors: true };
-        });
+            if (icon) payload.icon = icon;
+            if (openUrl) payload.url = openUrl;
+            var postUrl = root.replace(/\/+$/, '') + '/push';
+            return fetch(postUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+                cache: 'no-store',
+                keepalive: true
+            }).then(function (r) {
+                return r.json().catch(function () { return {}; });
+            }).then(function (j) {
+                var ok = !(j && j.code && Number(j.code) !== 200);
+                if (ok) return { ok: true, resp: j, url: postUrl, method: 'POST' };
+                return barkGet();
+            }).catch(function () { return barkGet(); });
+        }
+        return barkGet();
     }
 
     function nanoIconUrl() {

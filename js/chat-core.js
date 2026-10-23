@@ -8497,6 +8497,12 @@
             msg.nanoActions.push(a);
             try { saveMessages(); } catch (e) {}
         }
+        // 生成即归档：可执行框框本身也是一份文件，直接出现在「文件」页。
+        try {
+            if (window.NanoAssistant && window.NanoAssistant.snapshotAction) {
+                window.NanoAssistant.snapshotAction(a);
+            }
+        } catch (e) {}
         var host = nanoAttachTo(row);
         if (!host) return;
         host.appendChild(makeNanoActionCard(a, msg));
@@ -9074,38 +9080,54 @@
                     toggleCallSheetSelect(index, check);
                 }
             });
-            // 每轮角色最后一条气泡右侧：播放 / 下载本轮 MP3（命中本地缓存，不再烧 TTS）
+            // 每轮角色最后一条气泡右侧外部：播放 / 下载本轮 MP3（命中本地缓存，不再烧 TTS）
+            let audioBox = null;
             if (!msg.isUser && msg.clipId && msg.turnLast && window.NanoCallAudio) {
-                const audioBox = document.createElement('div');
+                audioBox = document.createElement('div');
                 audioBox.className = 'call-msg-audio';
                 const playBtn = document.createElement('button');
                 playBtn.type = 'button';
                 playBtn.title = '播放本轮语音';
+                playBtn.className = 'call-audio-play';
+                playBtn.setAttribute('data-call-audio-clip', msg.clipId);
+                playBtn.setAttribute('aria-label', '播放本轮语音');
                 playBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
                 playBtn.addEventListener('click', function (e) {
                     e.stopPropagation();
+                    e.preventDefault();
                     try {
                         if (window.NanoTTS) window.NanoTTS.stop();
-                        NanoCallAudio.play(msg.clipId);
+                        var p = NanoCallAudio.play(msg.clipId);
+                        if (p && p.then) p.then(function (ok) {
+                            if (!ok) showAlert('无法播放', '这条语音还没有缓存，可能当时 TTS 保存失败。');
+                        });
                     } catch (err) {}
                 });
                 const dlBtn = document.createElement('button');
                 dlBtn.type = 'button';
                 dlBtn.title = '下载本轮 MP3';
+                dlBtn.setAttribute('aria-label', '下载本轮 MP3');
                 dlBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>';
                 dlBtn.addEventListener('click', function (e) {
                     e.stopPropagation();
-                    try { NanoCallAudio.download(msg.clipId, 'nano-call-' + msg.clipId + '.mp3'); } catch (err) {}
+                    e.preventDefault();
+                    try {
+                        var p = NanoCallAudio.download(msg.clipId, 'nano-call-' + msg.clipId + '.mp3');
+                        if (p && p.then) p.then(function (ok) {
+                            if (!ok) showAlert('无法下载', '这条语音还没有缓存，可能当时 TTS 保存失败。');
+                        });
+                    } catch (err) {}
                 });
                 audioBox.appendChild(playBtn);
                 audioBox.appendChild(dlBtn);
-                msgEl.appendChild(audioBox);
             }
             
             row.appendChild(check);
             row.appendChild(msgEl);
+            if (audioBox) row.appendChild(audioBox);
             body.appendChild(row);
         });
+        try { if (window.NanoCallAudio && NanoCallAudio.sync) NanoCallAudio.sync(); } catch (e) {}
     }
 
     function toggleCallSheetSelect(index, checkEl) {
@@ -9206,7 +9228,11 @@
                     try { addSystemNotice('这次通话没有语音记录'); } catch (e) {}
                     return;
                 }
-                NanoCallAudio.downloadAll(ids, 'nano-call-' + (callSheetData.callId || Date.now()) + '.zip');
+                NanoCallAudio.downloadAll(ids, 'nano-call-' + (callSheetData.callId || Date.now()) + '.mp3').then(function (ok) {
+                    if (!ok) {
+                        try { addSystemNotice('这次通话的语音还没有缓存，无法下载'); } catch (e) {}
+                    }
+                });
             });
         }
     }

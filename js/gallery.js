@@ -74,11 +74,11 @@
     function render() {
         list = items.filter(function (x) { return src === 'all' || x.source === src; });
         grid.innerHTML = list.map(function (x, i) {
-            var name = x.charName ? (' · ' + x.charName) : '';
+            var who = x.charName || (x.source === '聊天' ? '未知角色' : '');
             var isSel = !!selected[x.url];
             return '<div class="cell' + (isSel ? ' sel' : '') + '" data-i="' + i + '">' +
                 '<img loading="lazy" src="' + esc(x.url) + '" alt="">' +
-                '<div class="tag">' + esc((x.source || '') + name) + '</div>' +
+                '<div class="tag">' + (who ? '<b>' + esc(who) + '</b>' : '') + '<span>' + esc(x.source || '') + '</span></div>' +
                 '<div class="check">✓</div></div>';
         }).join('');
         empty.classList.toggle('show', !list.length);

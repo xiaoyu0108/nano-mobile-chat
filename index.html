@@ -9,7 +9,7 @@
     (function () {
         try {
             var KEY = 'nano_build';
-            var CUR = 'nano-2026-10-23-07';
+            var CUR = 'nano-2026-10-23-10';
             var prev = null, ok = false;
             try { prev = localStorage.getItem(KEY); } catch (e) {}
             if (prev === CUR) return;
@@ -1050,7 +1050,7 @@
 
 
 <div class="home-shell pre-splash" id="homeShell">
-    <iframe id="homeFrame" src="html/home.html?v=20261021e" title="Nano桌面"></iframe>
+    <iframe id="homeFrame" src="html/home.html?v=20261023a" title="Nano桌面"></iframe>
 </div>
 <div class="app hidden-shell" id="legacyShell" aria-hidden="true">
   <div class="app-container">
@@ -1735,7 +1735,7 @@ setTimeout(function () {
         setTimeout(applySafeTopToFrames, 300);
 
         // 构建版本号（改这里即可让所有同源页面刷新缓存）
-        var BUILD = 'nano-2026-10-23-07';
+        var BUILD = 'nano-2026-10-23-10';
 
         // 给同源页面 URL 追加构建版本号，避免浏览器/Service Worker 缓存到旧 HTML
         function pageUrl(u) {
@@ -2788,6 +2788,12 @@ setTimeout(function () {
                 openFullscreen('phone.html?char=' + encodeURIComponent(target.slice(9)), '查手机', false, 'more');
                 return;
             }
+            if (target.indexOf('call:') === 0) {
+                try {
+                    if (window.__voiceFloatBall && window.__voiceFloatBall.restore) window.__voiceFloatBall.restore();
+                } catch (e) {}
+                return;
+            }
             if (target.indexOf('chat:') === 0) {
                 const chatId = target.slice(5);
                 let info = null;
@@ -3192,6 +3198,7 @@ setTimeout(function () {
             function restoreVoiceCall() {
                 const currentSeconds = callSeconds;
                 hideFloatBall();
+                try { if (floatBall) floatBall.classList.remove('has-new'); } catch (e) {}
                 const frame = document.getElementById('voiceCallFrame');
                 // 只要通话帧还活着（src 还在、没被置回 about:blank），就从悬浮球直接续接原通话，绝不重载/重连
                 const _src = frame ? (frame.getAttribute('src') || frame.src || '') : '';
@@ -3255,6 +3262,7 @@ setTimeout(function () {
                 show: showFloatBall,
                 hide: hideFloatBall,
                 remove: removeFloatBall,
+                restore: restoreVoiceCall,
                 getTime: function() { return callSeconds; },
                 setTime: function(seconds) { callSeconds = seconds; },
                 isVisible: function() { return isFloatBallVisible; },
@@ -3975,6 +3983,22 @@ setTimeout(function () {
 
             if (data.type === 'callCharReplied') {
                 if (window.__voiceFloatBall) window.__voiceFloatBall.markReplied();
+                // 通话已缩小成悬浮球：除了小球动效，也弹一条内置通知栏消息。
+                try {
+                    const visible = !!(window.__voiceFloatBall && window.__voiceFloatBall.isVisible && window.__voiceFloatBall.isVisible());
+                    if (visible) {
+                        const meta = window.__nanoActiveCall || {};
+                        const isVideo = data.callType === 'video' || data.video || meta.type === 'video';
+                        const nm = String(data.name || meta.name || (isVideo ? '视频通话' : '语音通话')).trim();
+                        const body = String(data.text || '').replace(/\s+/g, ' ').trim() || (isVideo ? '对方在视频里说话了' : '对方说话了');
+                        showAppNotify(nm, body.slice(0, 100), 'call', {
+                            name: nm,
+                            avatar: data.avatar || '',
+                            icon: isVideo ? '📹' : '📞',
+                            target: 'call:' + String(data.chatId || meta.chatId || getChatId())
+                        });
+                    }
+                } catch (e) {}
             }
 
             if (data.type === 'minimizeVoiceCall') {
@@ -4280,11 +4304,11 @@ setTimeout(function () {
 <script src="js/mem-link.js?v=20261006a"></script>
 <script src="js/aux-memory.js?v=20261021k"></script>
 <script src="js/user-scope.js?v=20261020j"></script>
-<script src="js/nano-notify.js?v=20261023i"></script>
+<script src="js/nano-notify.js?v=20261023j"></script>
 <script src="js/nano-push.js?v=20261021b"></script>
 <script src="swipe-back.js"></script>
 <script src="js/keep-alive.js?v=20261023a"></script>
-<script src="js/char-takeover.js?v=20261020c"></script>
+<script src="js/char-takeover.js?v=20261023a"></script>
 <script src="js/nano-prompts.js?v=20261023a"></script>
 <script src="js/screen-share.js?v=20261023c"></script>
 <script src="js/ios-bridge.js?v=20261023c"></script>

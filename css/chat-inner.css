@@ -1485,6 +1485,36 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
     stroke: #FF3B30;
 }
 
+/* 顶栏右侧：下载全部语音 + 编辑（SVG 必须有尺寸，否则会被浏览器当成 300x150 大图，看起来像乱码） */
+.call-sheet-nav .call-sheet-nav-right {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex: none;
+}
+.call-sheet-nav .call-sheet-download {
+    background: none;
+    border: none;
+    color: #007AFF;
+    padding: 8px 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.call-sheet-nav .call-sheet-download svg {
+    width: 22px;
+    height: 22px;
+    stroke: #007AFF;
+    fill: none;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+.call-sheet-nav .call-sheet-download:active {
+    opacity: 0.55;
+}
+
 /* ===== 弹窗内容区 ===== */
 .call-sheet-body {
     flex: 1;
@@ -1589,6 +1619,42 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 }
 .call-sheet.editing .call-msg-row .call-msg {
     max-width: 78%;
+}
+
+/* 本轮语音：播放 / 下载按钮放在最后一个气泡右侧外部 */
+.call-msg-audio {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex: none;
+    margin-left: 2px;
+}
+.call-msg-audio button {
+    width: 26px;
+    height: 26px;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 50%;
+    background: #ffffff;
+    color: #1c1c1e;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+.call-msg-audio button:active {
+    transform: scale(0.9);
+}
+.call-msg-audio .call-audio-play.is-playing {
+    background: #1c1c1e;
+    color: #ffffff;
+    border-color: #1c1c1e;
+}
+.call-msg-audio svg {
+    width: 13px;
+    height: 13px;
+    display: block;
 }
 
 .call-empty {

@@ -121,6 +121,7 @@
 
     /* ---------------- 屏幕速聊（快捷指令 + 服务端） ---------------- */
     var PEEK_URL_KEY = 'nano_peek_url', PEEK_TOKEN_KEY = 'nano_peek_token', PEEK_CHAT_KEY = 'nano_peek_chat', PEEK_CHATS_KEY = 'nano_peek_chats';
+    var PEEK_INIT_TOKEN_KEY = 'nano_peek_token_initial';
     var PEEK_DEFAULT_URL = 'https://nanopush.nano315.online';
 
     function getPeekUrl() {
@@ -133,14 +134,48 @@
         if (/\/peek$/i.test(base)) base = base.replace(/\/peek$/i, '');
         return base;
     }
+    function newPeekToken() {
+        return 'pk_' + Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10);
+    }
     function getPeekToken() {
         var t = '';
         try { t = localStorage.getItem(PEEK_TOKEN_KEY) || ''; } catch (e) {}
         if (!t) {
-            t = 'pk_' + Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10);
+            // 第一次生成时记下这个站点/浏览器的初始令牌，方便之后「还原初始」。
+            try { t = localStorage.getItem(PEEK_INIT_TOKEN_KEY) || ''; } catch (e) {}
+            if (!t) t = newPeekToken();
             try { localStorage.setItem(PEEK_TOKEN_KEY, t); } catch (e) {}
         }
+        // 老版本已有令牌的用户：把当前令牌补记为初始令牌，还原时不会突然换新。
+        try {
+            if (!localStorage.getItem(PEEK_INIT_TOKEN_KEY)) localStorage.setItem(PEEK_INIT_TOKEN_KEY, t);
+        } catch (e) {}
         return t;
+    }
+    function resetPeekConfig() {
+        var tok = '';
+        try { tok = localStorage.getItem(PEEK_INIT_TOKEN_KEY) || ''; } catch (e) {}
+        if (!tok) tok = newPeekToken();
+        try {
+            localStorage.setItem(PEEK_INIT_TOKEN_KEY, tok);
+            localStorage.setItem(PEEK_TOKEN_KEY, tok);
+            localStorage.setItem(PEEK_URL_KEY, PEEK_DEFAULT_URL);
+            // Web Push 和窥屏共用同一个 Worker，地址一起还原
+            localStorage.setItem('nano_push_endpoint', PEEK_DEFAULT_URL);
+            localStorage.removeItem('nano_push_vapid');
+            // 清掉人设同步缓存，下一次会用初始令牌重新同步
+            var stale = [];
+            for (var i = 0; i < localStorage.length; i++) {
+                var k = localStorage.key(i);
+                if (k && (k.indexOf('nano_peek_page_sig_') === 0 || k.indexOf('nano_peek_page_at_') === 0)) stale.push(k);
+            }
+            stale.forEach(function (k) { try { localStorage.removeItem(k); } catch (e) {} });
+        } catch (e) {}
+        var urlInput = $('isPeekUrl');
+        if (urlInput) urlInput.value = PEEK_DEFAULT_URL;
+        rememberChat(selectedId);
+        refresh();
+        toast('已还原初始地址和令牌');
     }
     function rememberChat(id) {
         id = String(id || '');
@@ -406,6 +441,10 @@
         if (startBtn) startBtn.addEventListener('click', startRealShare);
         var guideBtn = $('isCopyGuide');
         if (guideBtn) guideBtn.addEventListener('click', function () { copy(guideText()); });
+        var peekRestore = $('isPeekRestore');
+        if (peekRestore) peekRestore.addEventListener('click', function () {
+            if (confirm('还原成默认服务端地址和初始令牌？当前快捷指令里的旧地址/令牌会失效，需要重新复制。')) resetPeekConfig();
+        });
         var peekSave = $('isPeekSave');
         if (peekSave) peekSave.addEventListener('click', function () {
             var u = $('isPeekUrl');

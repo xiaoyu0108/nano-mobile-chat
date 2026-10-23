@@ -1401,6 +1401,7 @@
   /* 每一个可执行动作都留一份文件快照（删除聊天后仍可在 Nano 文件页找到） */
   async function archiveAction(a, res) {
     if (!window.NanoFiles || !window.NanoFiles.add || !a || !a.tool) return null;
+    if (a.tool === 'create_file') return null;
     var args = a.args || {};
     var base = '', content = '', ext = 'txt';
     if (a.tool === 'apply_beautify') {
@@ -1453,17 +1454,28 @@
       base = 'App-' + (args.name || args.id || '应用');
       content = String((res && res.html) || args.html || ''); ext = 'html';
     } else {
-      return null;
+      // 任何可执行框框都留一份文件快照，未单独归档的动作也能在文件页找到。
+      base = '动作-' + a.tool;
+      content = JSON.stringify({ tool: a.tool, title: actionTitle(a), args: args, at: new Date().toISOString() }, null, 2);
+      ext = 'json';
     }
     if (!String(content).trim()) return null;
+    var fp = String(a.tool) + '|' + JSON.stringify(args);
+    var h = 5381;
+    for (var hi = 0; hi < fp.length; hi++) h = ((h << 5) + h) ^ fp.charCodeAt(hi);
+    var actId = (h >>> 0).toString(36);
     return await window.NanoFiles.add({
-      name: safeFileName(base) + '-' + formatStamp() + '.' + ext,
+      id: 'act_' + actId,
+      name: safeFileName(base) + '-' + actId + '.' + ext,
       content: String(content),
       ext: ext,
       source: 'nano',
       kind: 'action',
       action: a.tool
     });
+  }
+  async function snapshotAction(a) {
+    try { return await archiveAction(a, null); } catch (e) { return null; }
   }
 
   async function execActionRaw(a) {
@@ -1563,6 +1575,7 @@
     parseActions: parseActions,
     fetchSource: fetchSource,
     execAction: execAction,
+    snapshotAction: snapshotAction,
     actionTitle: actionTitle,
     // 只读预设（供 chat-core 读取后喂回模型继续处理）
     listPresets: function (scope) { return presetsToText(scope, null); },

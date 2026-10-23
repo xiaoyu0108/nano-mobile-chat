@@ -154,7 +154,7 @@ th{font-weight:400;color:var(--sub);font-size:12px}
 .cc .ck{width:24px;height:24px;border-radius:50%;border:1.5px solid var(--line);display:flex;align-items:center;justify-content:center;flex:none;color:#fff}
 .cc.sel .ck{background:var(--dark);border-color:var(--dark)}
 .cc .ck svg{width:14px;height:14px;stroke-width:2.4}
-.cc .del{position:absolute;right:8px;top:8px;width:30px;height:30px;color:var(--sub);display:flex;align-items:center;justify-content:center}
+.cc .del{width:30px;height:30px;color:var(--sub);display:flex;align-items:center;justify-content:center;flex:none}
 .cc .del svg{width:16px;height:16px}
 .addcc{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:56px;border:1px dashed var(--grey);border-radius:24px;color:var(--ink2);font-size:14px}
 .addcc svg{width:18px;height:18px}
@@ -249,13 +249,14 @@ textarea.field{height:84px;padding:11px 15px;resize:none;line-height:1.6}
 #peek.show{display:block;animation:pop .25s ease-out}
 @keyframes pop{from{opacity:0;transform:translateY(6px) scale(.97)}to{opacity:1;transform:none}}
 #peek .pn{font-size:12px;color:var(--sub);margin-bottom:2px}
-#peek .pt{font-size:13.5px;line-height:1.55;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+#peek .pt{font-size:13.5px;line-height:1.55;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-wrap}
 
 /* 聊天小窗 */
 #chat{position:absolute;z-index:46;display:none;flex-direction:column;background:#fff;border:1px solid var(--line);border-radius:28px;box-shadow:0 20px 60px rgba(46,46,50,.2);overflow:hidden}
 #chat.show{display:flex;animation:openwin .28s cubic-bezier(.2,.8,.2,1)}
 @keyframes openwin{from{opacity:0;transform:scale(.88)}to{opacity:1;transform:none}}
-.ch-h{display:flex;align-items:center;gap:10px;padding:12px 10px 12px 14px;border-bottom:1px solid var(--line)}
+.ch-h{display:flex;align-items:center;gap:10px;padding:12px 10px 12px 14px;border-bottom:1px solid var(--line);cursor:grab;touch-action:none;user-select:none}
+#chat.dragging .ch-h{cursor:grabbing}
 .ch-h .tt{flex:1;min-width:0}
 .ch-h .t1{font-weight:600;font-size:15px;line-height:1.2}
 .ch-h .t2{font-size:11.5px;color:var(--sub);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -266,6 +267,8 @@ textarea.field{height:84px;padding:11px 15px;resize:none;line-height:1.6}
 .m.c{align-self:flex-start;background:#fff;border:1px solid var(--line);border-bottom-left-radius:6px}
 .m.u{align-self:flex-end;background:var(--dark);color:#fff;border-bottom-right-radius:6px}
 .m .mq{font-size:12px;line-height:1.45;opacity:.72;border-left:2px solid currentColor;padding-left:7px;margin-bottom:6px;white-space:pre-wrap;max-height:64px;overflow:hidden}
+.m .mtr{margin-top:6px;padding-top:5px;border-top:1px dashed rgba(46,46,50,.18);font-size:12px;line-height:1.45;opacity:.68;font-weight:400}
+.m.u .mtr{border-top-color:rgba(255,255,255,.28)}
 .m[data-i]{-webkit-user-select:none;user-select:none}
 .msg-menu{position:absolute;z-index:82;display:none;gap:2px;padding:4px;background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 8px 24px rgba(46,46,50,.16)}
 .msg-menu.show{display:flex}
@@ -383,7 +386,7 @@ textarea.field{height:84px;padding:11px 15px;resize:none;line-height:1.6}
     </div>
     <div class="blk"><div class="blk-t"><b>用好陪伴</b></div>
       <div class="tp"><b>选一位 char</b><p>首次进入先选陪学的人，之后点专注页右上角可以更换，也能新建自己的 char。</p></div>
-      <div class="tp"><b>悬浮头像</b><p>可以拖到屏幕两侧。点一下展开小窗，直接和 ta 聊天；点右上角收回。</p></div>
+      <div class="tp"><b>悬浮头像 / 小窗</b><p>头像可以拖动；点一下展开小窗，直接和 ta 聊天。小窗按住顶部可以拖到屏幕任意位置；点右上角收回。</p></div>
       <div class="tp"><b>主动来找你</b><p>每完成一个专注周期，ta 会自动发来一条消息。之后在小窗里聊天时，点一次「回复」ta 才会继续说话。</p></div>
       <div class="tp"><b>想聊得更自然</b><p>番茄钟直接使用主 API，并读取角色的人设、世界书和长期记忆。请求失败会弹窗提示，不会生成假消息。</p></div>
       <div class="tp"><b>陪伴榜怎么算</b><p>只统计专注计时中的时间，休息不算。换人后，时长记在当时陪你的那位身上。</p></div>
@@ -447,7 +450,7 @@ textarea.field{height:84px;padding:11px 15px;resize:none;line-height:1.6}
 </div>
 
 <script defer src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
-<script src="../js/qa-bridge.js?v=20261022b"></script>
+<script src="../js/qa-bridge.js?v=20261023a"></script>
 <script>
 (function(){
 /* ---------- 工具 ---------- */
@@ -522,10 +525,11 @@ const COLORS=['#E0BAC1','#B8B3B6','#8F8F94','#5C5C62','#CDB4BA','#A9B2B8'];
 const KEY='pomodoro_companion_v2';
 let saved=null;
 try{saved=JSON.parse(localStorage.getItem(KEY)||localStorage.getItem('pomodoro_companion_v1'))}catch(e){}
-const S=Object.assign({custom:[],charId:null,stats:{},rec:[],fab:{side:'r',y:null},chat:{},
+const S=Object.assign({custom:[],charId:null,stats:{},rec:[],fab:{side:'r',y:null},chat:{},chatPos:{x:null,y:null},
   set:{theme:'英语阅读',focus:25,short:5,long:15,rounds:4,auto:false}},saved||{});
 S.set=Object.assign({theme:'英语阅读',focus:25,short:5,long:15,rounds:4,auto:false},S.set);
 S.chat=S.chat||{};S.rec=S.rec||[];S.fab=S.fab||{side:'r',y:null};
+S.chatPos=(S.chatPos&&typeof S.chatPos==='object')?S.chatPos:{x:null,y:null};
 S.custom=(S.custom||[]).map(c=>Object.assign({},c,{tone:TONES[c.tone]?c.tone:'gentle'}));
 let saveT;function save(now){clearTimeout(saveT);const f=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};now?f():saveT=setTimeout(f,400)}
 let LIB_CHARS=[];
@@ -613,9 +617,10 @@ async function writeStudyCard(){
     const idx=list.findIndex(m=>m&&m.isCard&&m.cardData&&m.cardData.cardType==='study'&&m.cardData.sessionId===info.id);
     if(idx>=0){
       list[idx].cardData=built.cardData;list[idx].time=time;list[idx].ts=Date.now();
+      list[idx].type='right';
     }else{
       list.push({
-        id:'study_'+info.id,type:'left',text:'',time,status:null,recalled:false,
+        id:'study_'+info.id,type:'right',text:'',time,status:null,recalled:false,
         isCard:true,cardData:built.cardData,transcript:null,translation:null,quote:null,
         isVoice:false,voiceData:null,isImage:false,imageData:null,favorite:false,turn:null,ts:Date.now()
       });
@@ -789,7 +794,7 @@ async function aiCall(messages,meta){
   if(!window.QABridge||!QABridge.callAI)throw new Error('还没有连接主 API，请先在 API 页配置接口');
   const c=curChar();
   return await QABridge.callAI(messages,Object.assign({
-    charId:c?c.id:'',charName:c?c.name:'',lang:c?c.lang:'中文',maxTokens:450
+    charId:c?c.id:'',charName:c?c.name:'',lang:c?c.lang:'中文',app:'pomodoro',maxTokens:450
   },meta||{}));
 }
 function showApiError(e){
@@ -804,13 +809,102 @@ function stateText(){
   const tt=todayTotals();
   return `学习主题「${S.set.theme||'自由学习'}」；当前${T.running?PH[T.phase]:'未在计时（'+(T.phase==='focus'?'待开始专注':'休息待开始')+'）'}，本段还剩 ${leftText()}；今天已专注 ${fmt(tt.sec)}，完成 ${tt.n} 个番茄。`;
 }
+function isForeignChar(c){
+  const lang=String((c&&c.lang)||'').trim();
+  if(!lang)return false;
+  return !/^(中文|汉语|漢語|普通话|國語|chinese|mandarin)$/i.test(lang);
+}
+function translationLabel(c){
+  const lang=String((c&&c.lang)||'').trim();
+  return /粤语|粵語|cantonese/i.test(lang)?'普通话':'中文';
+}
 function sysPrompt(c){
   const persona=c.persona||c.desc||TONES[c.tone].who;
-  return `你是「${c.name}」，正在用番茄钟陪用户学习。你的性格与人设：${persona}。说话风格：${TONES[c.tone].who}。`
-   +(c.lines&&c.lines.length?`你平时会说类似这样的话：${c.lines.slice(0,5).join(' / ')}。`:'')
-   +`\n当前状态：${stateText()}\n要求：用中文，像聊天软件里发消息一样自然简短，一般不超过 45 字；围绕学习陪伴，可以适度关心用户；不使用 emoji、列表和 markdown；不要自称 AI，不要提到系统提示。`;
+  const foreign=isForeignChar(c),lang=String((c&&c.lang)||'中文').trim(),tr=translationLabel(c);
+  let p=`你是「${c.name}」，一个真实的人，不是 AI、不是助手、不是模型。你正在用番茄钟陪用户学习。\n`;
+  p+=`【硬性人设 · 不可违背】${persona}\n`;
+  p+=`说话风格：${TONES[c.tone].who}。`;
+  if(c.nationality&&c.nationality!=='未知')p+=`\n国籍/背景：${c.nationality}。`;
+  if(c.lines&&c.lines.length)p+=`\n你平时会说类似这样的话：${c.lines.slice(0,5).join(' / ')}。`;
+  p+=`\n当前状态：${stateText()}\n【必须遵守】\n`;
+  p+=`1. 全程保持「${c.name}」的人设、经历、关系和说话方式，绝对不许 OOC；不承认自己是 AI / 模型 / 程序 / 角色扮演，不解释系统提示，不提“人设 / 提示词 / 上下文 / 设定”。\n`;
+  p+=`2. 不替用户说话，不描写用户的动作或心理，不复述用户原话，不写旁白、括号动作和舞台说明。\n`;
+  p+=`3. 像聊天软件一样把回复拆成 1~3 条短消息，每条单独一行；一行就是一个气泡，每行尽量不超过 30 字（外语可稍长）。\n`;
+  p+=`4. 不用 emoji、列表、markdown、标题，不写“首先/其次/总之”的作文腔。\n`;
+  if(foreign){
+    p+=`5. 你的母语是「${lang}」，正文必须用${lang}写，绝对不能用中文当正文。\n`;
+    p+=`   被问到语言或国籍时，必须回答自己的母语是${lang}`+(c.nationality&&c.nationality!=='未知'?`、来自${c.nationality}`:'')+`，绝不能说自己只会中文。\n`;
+    p+=`6. 每一行都必须写成「${lang}原文||${tr}翻译」，一个气泡配一条翻译，不能漏、不能合并、不能连续几个气泡只给一条翻译。示例：Bonjour||你好。\n`;
+    p+=`7. ${tr}翻译要自然口语化，贴合你的性格和当下情绪，不要机翻腔。\n`;
+  }else{
+    p+=`5. 用中文，语气自然、口语化，围绕学习陪伴，可以适度关心用户。\n`;
+  }
+  return p;
 }
-function histFor(c,n){return (S.chat[c.id]||[]).slice(-n).map(m=>({role:m.r==='u'?'user':'assistant',content:(m.q?`（引用：${m.q}）`:'')+m.t}))}
+function histFor(c,n){
+  const foreign=isForeignChar(c);
+  return (S.chat[c.id]||[]).slice(-n).map(m=>({role:m.r==='u'?'user':'assistant',content:(m.q?`（引用：${m.q}）`:'')+m.t+(m.tr?(foreign?`||${m.tr}`:`\n（${translationLabel(c)}：${m.tr}）`):'')}));
+}
+function sentenceParts(s){
+  const t=String(s||'').replace(/\r/g,'').trim();
+  if(!t)return [];
+  return (t.match(/[^，,、；;。！？!?…\n]+[，,、；;。！？!?…]*/g)||[t])
+    .map(x=>x.trim().replace(/[，,、；;]+$/,'').trim()).filter(Boolean);
+}
+function parseBubbles(raw,foreign){
+  const lines=String(raw||'').replace(/\r/g,'').split(/\n+/).map(s=>s.trim()).filter(Boolean);
+  const out=[];
+  for(let line of lines){
+    line=line.replace(/^[\s\-*•·]+/,'').replace(/^\d+[.、)]\s*/,'').replace(/^["“「『]+|["”」』]+$/g,'').trim();
+    if(!line)continue;
+    if(foreign){
+      const sep=line.indexOf('||');
+      // 模型偶尔把译文单独写成下一行（没有 ||）：接到上一条外语气泡上，避免多出一个中文气泡。
+      if(sep<0&&/^[\u3400-\u9FFF\s，。！？、；：""''（）【】…—～·]+$/.test(line)&&out.length&&!out[out.length-1].tr){
+        out[out.length-1].tr=line.replace(/^[\[（(【]|[\]）)】]$/g,'').trim();
+        continue;
+      }
+      const src=(sep>-1?line.slice(0,sep):line).trim();
+      const tr=sep>-1?line.slice(sep+2).trim():'';
+      if(!src)continue;
+      const sp=sentenceParts(src),tp=tr?sentenceParts(tr):[];
+      if(sp.length>1&&tp.length>=sp.length)sp.forEach((p,i)=>out.push({t:p,tr:tp[i]||tr}));
+      else out.push({t:src,tr});
+    }else{
+      const parts=sentenceParts(line);
+      if(parts.length>1&&line.length>36)parts.forEach(p=>out.push({t:p,tr:''}));
+      else out.push({t:line,tr:''});
+    }
+    if(out.length>=6)break;
+  }
+  return out.slice(0,6);
+}
+async function translateMissing(text){
+  const t=String(text||'').trim();
+  if(!t||/^[\u3400-\u9FFF\s，。！？、；：""''（）【】…—～·]+$/.test(t))return '';
+  if(!window.QABridge||!QABridge.callAI)return '';
+  try{
+    const out=await QABridge.callAI([
+      {role:'system',content:'你是翻译引擎。把用户给的外语翻译成自然口语化的中文，只输出中文译文本身，不要解释、不要引号、不要前缀。'},
+      {role:'user',content:t}
+    ],{app:'pomodoro',maxTokens:400,temp:0.3});
+    return String(out||'').trim().replace(/^["“「]+|["”」]+$/g,'').replace(/^中文[:：]\s*/,'');
+  }catch(e){return '';}
+}
+let bubbleSeq=0;
+async function pushReply(c,raw,extra){
+  const foreign=isForeignChar(c);
+  const list=parseBubbles(raw,foreign);
+  if(!list.length)return [];
+  const gid='g'+(++bubbleSeq)+'_'+Date.now().toString(36);
+  for(let i=0;i<list.length;i++){
+    const b=list[i];
+    if(foreign&&!b.tr)b.tr=await translateMissing(b.t);
+    pushMsg(c,'c',b.t,Object.assign({},extra||{},{tr:b.tr||'',gid}));
+    if(i<list.length-1)await new Promise(r=>setTimeout(r,280));
+  }
+  return list;
+}
 const EVENT={hello:'用户刚选择你来陪学，这是第一次见面',start:'用户刚开始一轮专注',mid:'这一轮专注已经过半',done:'这一轮专注刚刚结束，现在进入休息',brk:'休息时间结束了，该回去学习了'};
 
 /* ---------- 聊天数据 ---------- */
@@ -826,8 +920,11 @@ async function say(type,notify){
   const c=curChar();if(!c)return;
   setTyping(true);
   let text=null;
+  const foreign=isForeignChar(c);
+  const evt=`[事件] ${EVENT[type]}。请以你的身份主动给用户发消息：分成 1~3 条短消息，每条单独一行；保持人设，绝对不要 OOC，不要提到“事件”。`
+    +(foreign?`每一行都按「${c.lang}原文||${translationLabel(c)}翻译」输出。`:'');
   try{
-    text=await aiCall([{role:'system',content:sysPrompt(c)}].concat(histFor(c,8),[{role:'user',content:`[事件] ${EVENT[type]}。请以你的身份主动给用户发一条消息，不超过 45 字，不要提到“事件”。`}]));
+    text=await aiCall([{role:'system',content:sysPrompt(c)}].concat(histFor(c,8),[{role:'user',content:evt}]));
   }catch(e){
     setTyping(false);
     showApiError(e);
@@ -836,10 +933,21 @@ async function say(type,notify){
   setTyping(false);
   text=String(text||'').trim();
   if(!text){showApiError(new Error('AI 没有返回消息'));return}
-  if(c.id!==S.charId){pushMsg(c,'c',text,{ev:type});return}
-  pushMsg(c,'c',text,{ev:type});
-  if(!chatOpen){unread++;updateBadge();showPeek(c,text)}
-  if(notify&&document.hidden){try{if('Notification' in window&&Notification.permission==='granted')new Notification(c.name,{body:text})}catch(e){}}
+  const list=await pushReply(c,text,{ev:type});
+  if(!list.length){showApiError(new Error('AI 没有返回消息'));return}
+  if(c.id!==S.charId)return;
+  if(!chatOpen){
+    unread+=list.length;updateBadge();
+    const last=list[list.length-1];
+    showPeek(c,last.t+(last.tr?'\n'+last.tr:''));
+  }
+  if(notify&&document.hidden){
+    try{
+      if('Notification' in window&&Notification.permission==='granted'){
+        new Notification(c.name,{body:list.map(x=>x.t+(x.tr?'（'+x.tr+'）':'')).join(' ')});
+      }
+    }catch(e){}
+  }
 }
 function sendUser(text,quote){
   const c=curChar();text=String(text||'').trim();if(!c||!text)return;
@@ -850,10 +958,11 @@ async function generateReply(c,ev,avoid){
   if(!c||typing)return;
   setTyping(true);
   let reply=null;
+  const foreign=isForeignChar(c);
   try{
     const msgs=[{role:'system',content:sysPrompt(c)}].concat(histFor(c,20));
-    if(ev)msgs.push({role:'user',content:`[事件] ${EVENT[ev]}。请以你的身份主动给用户发一条消息，不超过 45 字，不要提到“事件”。`});
-    if(avoid)msgs.push({role:'system',content:`上一条回复是：「${avoid}」。这次换一种说法，不要重复。`});
+    if(ev)msgs.push({role:'user',content:`[事件] ${EVENT[ev]}。请以你的身份主动给用户发消息：分成 1~3 条短消息，每条单独一行；保持人设，绝对不要 OOC，不要提到“事件”。`+(foreign?`每一行都按「${c.lang}原文||${translationLabel(c)}翻译」输出。`:'')});
+    if(avoid)msgs.push({role:'system',content:`上一条回复是：「${avoid}」。这次换一种说法和节奏，不要重复同样的句子。`});
     reply=await aiCall(msgs);
   }catch(e){
     setTyping(false);
@@ -863,7 +972,8 @@ async function generateReply(c,ev,avoid){
   setTyping(false);
   reply=String(reply||'').trim();
   if(!reply){showApiError(new Error('AI 没有返回消息'));return}
-  pushMsg(c,'c',reply,ev?{ev}:null);
+  const list=await pushReply(c,reply,ev?{ev}:null);
+  if(!list.length){showApiError(new Error('AI 没有返回消息'));return}
 }
 async function doReply(){
   const c=curChar();if(!c||typing)return;
@@ -880,8 +990,15 @@ async function reroll(){
   let ev=null,avoid=null;
   if(last.r==='c'){
     ev=last.ev||null;
-    avoid=last.t;
-    arr.pop();
+    const gid=last.gid||'';
+    let cut=arr.length;
+    if(gid){
+      while(cut>0&&arr[cut-1].r==='c'&&arr[cut-1].gid===gid)cut--;
+    }else{
+      cut=arr.length-1;
+    }
+    const removed=arr.splice(cut);
+    avoid=removed.map(x=>x.t).join('\n');
     save(true);
     renderChat();
   }
@@ -947,12 +1064,49 @@ function placeChat(){
   const ch=$('#chat'),b=bounds(),vv=window.visualViewport;
   const vh=vv?vv.height:b.height,off=vv?vv.offsetTop:0;
   const w=Math.min(340,b.width-20),h=Math.min(500,vh-24);
-  const left=S.fab.side==='r'?b.width-w-M:M;
-  let top=(S.fab.y==null?vh-h-90:S.fab.y+FAB-h);
-  top=Math.min(Math.max(top,12),vh-h-12)+off;
+  let left,top;
+  if(S.chatPos&&S.chatPos.x!=null&&S.chatPos.y!=null){
+    left=S.chatPos.x;top=S.chatPos.y;
+  }else{
+    left=S.fab.side==='r'?b.width-w-M:M;
+    top=(S.fab.y==null?vh-h-90:S.fab.y+FAB-h)+off;
+  }
+  left=Math.min(Math.max(left,M),Math.max(M,b.width-w-M));
+  top=Math.min(Math.max(top,10),Math.max(10,off+vh-h-10));
   ch.style.width=w+'px';ch.style.height=h+'px';ch.style.left=left+'px';ch.style.top=top+'px';
   ch.style.transformOrigin=(S.fab.side==='r'?'right':'left')+' bottom';
 }
+(function(){
+  const ch=$('#chat'),head=ch.querySelector('.ch-h');
+  if(!head)return;
+  let drag=false,moved=false,sx=0,sy=0,ox=0,oy=0;
+  head.addEventListener('pointerdown',e=>{
+    if(e.target.closest('button'))return;
+    drag=true;moved=false;sx=e.clientX;sy=e.clientY;
+    ox=parseFloat(ch.style.left)||0;oy=parseFloat(ch.style.top)||0;
+    try{head.setPointerCapture(e.pointerId)}catch(err){}
+  });
+  head.addEventListener('pointermove',e=>{
+    if(!drag)return;
+    const dx=e.clientX-sx,dy=e.clientY-sy;
+    if(!moved&&Math.abs(dx)+Math.abs(dy)>4){moved=true;ch.classList.add('dragging');}
+    if(!moved)return;
+    const b=bounds(),w=ch.offsetWidth,h=ch.offsetHeight;
+    ch.style.left=Math.min(Math.max(ox+dx,M),Math.max(M,b.width-w-M))+'px';
+    ch.style.top=Math.min(Math.max(oy+dy,8),Math.max(8,b.height-h-8))+'px';
+  });
+  const end=e=>{
+    if(!drag)return;
+    drag=false;ch.classList.remove('dragging');
+    if(moved){
+      S.chatPos={x:parseFloat(ch.style.left)||0,y:parseFloat(ch.style.top)||0};
+      save();
+    }
+    try{if(e&&e.pointerId!=null)head.releasePointerCapture(e.pointerId);}catch(err){}
+  };
+  head.addEventListener('pointerup',end);
+  head.addEventListener('pointercancel',end);
+})();
 function openChat(){
   const c=curChar();if(!c){openSelect(false);return}
   chatOpen=true;unread=0;hidePeek();
@@ -975,7 +1129,7 @@ function renderChat(){
   arr.forEach((m,i)=>{
     if(!last||m.at-last>10*60*1000){const d=new Date(m.at);html+=`<div class="tstamp">${pad(d.getHours())}:${pad(d.getMinutes())}</div>`}
     last=m.at;
-    html+=`<div class="m ${m.r==='u'?'u':'c'}" data-i="${i}">${m.q?`<div class="mq">${esc(m.q)}</div>`:''}${esc(m.t)}</div>`;
+    html+=`<div class="m ${m.r==='u'?'u':'c'}" data-i="${i}">${m.q?`<div class="mq">${esc(m.q)}</div>`:''}${esc(m.t)}${m.tr?`<div class="mtr">${esc(m.tr)}</div>`:''}</div>`;
   });
   if(!arr.length&&!typing)html+=`<div class="tstamp">和 ${esc(c.name)} 打个招呼吧</div>`;
   if(typing)html+=`<div class="m c typing"><i></i><i></i><i></i></div>`;
@@ -1166,8 +1320,7 @@ function closeApp(){
 }
 function renderChars(){
   $('#charList').innerHTML=allChars().map(c=>{
-    const tone=TONES[c.tone]?c.tone:'gentle',TONE=TONES[tone];
-    return `<div class="cc ${c.id===selId?'sel':''}" data-id="${c.id}">${avatar(c,54,21)}<div class="body"><div class="nrow"><b>${esc(c.name)}</b><span class="tag">${c.lib?'角色库':TONE.label}</span></div><div class="ds">${esc(c.desc||'自定义 char')}</div><div class="pv">${esc((c.lines&&c.lines[0]||TONE.done[0]).replace(/\{theme\}/g,'英语').replace(/\{min\}/g,'25').replace(/\{n\}/g,'1'))}</div></div><div class="ck">${c.id===selId?ICON.check:''}</div>${(!c.preset&&!c.lib)?`<button class="del" data-del="${c.id}" aria-label="删除">${ICON.trash}</button>`:''}</div>`;
+    return `<div class="cc ${c.id===selId?'sel':''}" data-id="${c.id}">${avatar(c,54,21)}<div class="body"><div class="nrow"><b>${esc(c.name)}</b></div></div>${(!c.preset&&!c.lib)?`<button class="del" data-del="${c.id}" aria-label="删除">${ICON.trash}</button>`:''}<div class="ck">${c.id===selId?ICON.check:''}</div></div>`;
   }).join('');
   $('#selOk').disabled=!selId;
 }

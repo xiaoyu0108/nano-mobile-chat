@@ -16,8 +16,21 @@ html::-webkit-scrollbar,body::-webkit-scrollbar,.nf-scroll::-webkit-scrollbar,.n
 .nf-title-wrap{flex:1;min-width:0}
 .nf-title-wrap h1{margin:0;font-size:19px;font-weight:700;letter-spacing:.01em;line-height:1.25}
 .nf-title-wrap p{margin:2px 0 0;font-size:11px;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nf-top-actions{display:flex;align-items:center;gap:6px;flex:none}
+.nf-select{border:0;background:#eee9ee;color:#5c5560;border-radius:999px;padding:7px 11px;font-size:12px;font-weight:600}
+.nf-select.on{background:#171318;color:#fff}
 .nf-clear{border:0;background:rgba(255,77,148,.10);color:#c92f6e;border-radius:999px;padding:7px 13px;font-size:12px;font-weight:600;flex:none}
+.nf-item.picked{background:#fff4f9;box-shadow:0 0 0 1.5px #ff4d94 inset}
+.nf-check{margin-left:auto;width:22px;height:22px;border-radius:50%;border:1.5px solid #ddd3dd;display:grid;place-items:center;flex:none;color:transparent;font-size:12px;font-weight:800}
+.nf-item.picked .nf-check{background:#ff4d94;border-color:#ff4d94;color:#fff}
+.nf-bulk{position:fixed;left:50%;bottom:calc(14px + var(--safe-bottom,0px));transform:translateX(-50%);z-index:50;display:none;align-items:center;gap:10px;padding:8px;border-radius:999px;background:rgba(255,255,255,.96);box-shadow:0 12px 34px rgba(40,25,38,.18);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
+.nf-bulk.on{display:flex}
+.nf-bulk button{border:0;border-radius:999px;height:36px;padding:0 14px;font-size:12.5px;font-weight:650;background:#f2eef2;color:#3c343d}
+.nf-bulk button.danger{background:#ffe8f1;color:#c42466}
+.nf-bulk button.danger:disabled{opacity:.42}
+.nf-bulk span{font-size:12px;color:#8f8691;min-width:52px;text-align:center}
 .nf-scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:16px 16px calc(30px + var(--safe-bottom,0px))}
+.nf-selecting .nf-scroll{padding-bottom:calc(92px + var(--safe-bottom,0px))}
 
 .nf-hero{position:relative;overflow:hidden;border-radius:26px;padding:18px;background:linear-gradient(145deg,#2c2630,#171318);color:#fff;box-shadow:0 14px 34px rgba(28,20,28,.18)}
 .nf-hero-glow{position:absolute;right:-30px;top:-60px;width:180px;height:180px;border-radius:50%;background:radial-gradient(circle,rgba(255,77,148,.55),rgba(255,77,148,0) 68%)}

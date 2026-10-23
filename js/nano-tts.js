@@ -16,6 +16,7 @@
     var currentClipKey = '';
     var lastError = '';
     var voiceCache = {};   // key -> { blob, text, preset }
+    var sharedAudio = null; // 复用同一个 <audio>，手势解锁后后续回合才更容易自动播放
 
     function parseLocalConfig() {
         try {
@@ -430,7 +431,16 @@
                 currentClipKey = String(key || '');
                 var url = URL.createObjectURL(blob);
                 currentUrl = url;
-                var audio = new Audio(url);
+                if (!sharedAudio) sharedAudio = new Audio();
+                var audio = sharedAudio;
+                audio.onended = null;
+                audio.onerror = null;
+                audio.__nanoPrimeToken = 0;
+                try { audio.pause(); } catch (e) {}
+                try { audio.removeAttribute('src'); audio.load(); } catch (e) {}
+                audio.src = url;
+                audio.muted = false;
+                audio.volume = 1;
                 currentAudio = audio;
                 audio.onended = function () {
                     try { URL.revokeObjectURL(url); } catch (e) {}
@@ -449,6 +459,30 @@
                 if (p && typeof p.catch === 'function') p.catch(reject);
             } catch (e) { reject(e); }
         });
+    }
+
+    // 在用户手势里预热同一个 <audio>，让之后没有手势的自动朗读也能播。
+    function prime() {
+        try {
+            if (!sharedAudio) sharedAudio = new Audio();
+            var audio = sharedAudio;
+            if (audio.__nanoPrimed) return;
+            audio.__nanoPrimed = true;
+            var wasMuted = audio.muted;
+            audio.muted = true;
+            try { audio.pause(); audio.removeAttribute('src'); audio.load(); } catch (e) {}
+            audio.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=';
+            var token = Date.now() + Math.random();
+            audio.__nanoPrimeToken = token;
+            var p = audio.play();
+            var done = function () {
+                if (audio.__nanoPrimeToken !== token) return;
+                audio.__nanoPrimeToken = 0;
+                try { audio.pause(); audio.currentTime = 0; audio.muted = wasMuted; } catch (e) {}
+            };
+            if (p && typeof p.then === 'function') p.then(done, function () { try { audio.muted = wasMuted; } catch (e) {} });
+            else setTimeout(done, 120);
+        } catch (e) {}
     }
 
     function stop() {
@@ -644,6 +678,7 @@
         script: ttsScript,
         speakNative: function (text, opts) { return speakNative(text, opts).catch(function () { return false; }); },
         preview: function (text, opts) { return preview(text, opts); },
+        prime: prime,
         stop: stop,
         lastError: function () { return lastError; },
         canSpeakNative: hasNativeVoice,

@@ -817,18 +817,18 @@ function pushText(v, fallback) {
 async function sendBarkKey(env, key, payload) {
   key = String(key || '').trim();
   if (!key) return false;
-  // 允许直接粘贴完整 Bark 地址（可能自带 ?group=...）。先把路径截出来，
-  // 否则会在查询串后面继续拼 /标题/正文，Bark 只当成了未知参数，最终显示默认文案。
-  let base = '';
+  // 允许直接粘贴完整 Bark 地址（可能自带 ?group=...）。拆出 server 根路径和设备 key，
+  // 这样 GET 路径和 POST /push 都能正确拼装，标题/正文不会再被查询串吞掉。
+  let root = 'https://api.day.app', devKey = key;
   if (key.indexOf('http') === 0) {
     try {
       const u = new URL(key);
-      base = u.origin + u.pathname.replace(/\/+$/, '');
+      const segs = u.pathname.split('/').filter(Boolean);
+      devKey = segs.length ? segs.pop() : '';
+      root = u.origin + (segs.length ? '/' + segs.join('/') : '');
     } catch (e) {
-      base = key.replace(/[?#].*$/, '').replace(/\/+$/, '');
+      root = 'https://api.day.app';
     }
-  } else {
-    base = 'https://api.day.app/' + encodeURIComponent(key);
   }
   // 标题优先用角色昵称，正文用真实气泡内容；避免只推 "Nano / 你有一条新消息"。
   const title = pushText(payload.name || payload.title, 'Nano');
@@ -839,28 +839,58 @@ async function sendBarkKey(env, key, payload) {
   body = pushText(body || payload.body || payload.text || payload.preview, '').slice(0, 300);
   // 没有真实内容就不发：宁可交给 Web Push，也不要用通用占位文案刷屏。
   if (!body) return false;
-  let url = base + '/' + encodeURIComponent(title) + '/' + encodeURIComponent(body);
-  // active 才会在锁屏/后台弹横幅；sound=none 关掉提示音（避免保活时又响又震）
-  const q = [
-    'group=' + encodeURIComponent(payload.name || payload.title || payload.channel || 'Nano'),
-    'level=active',
-    'sound=none'
-  ];
+  const group = pushText(payload.name || payload.title || payload.channel, 'Nano');
+  let openUrl = '';
   if (payload.target) {
     const app = String(env.APP_URL || 'https://xiaoyu0108.github.io/nano-mobile-chat/').replace(/\/+$/, '');
-    q.push('url=' + encodeURIComponent(app + '/index.html?open=' + encodeURIComponent(payload.target)));
+    openUrl = app + '/index.html?open=' + encodeURIComponent(payload.target);
   }
-  url += '?' + q.join('&');
-  try {
-    const resp = await fetch(url);
-    if (!resp || !resp.ok) return false;
-    // Bark 正常返回 { code: 200 }；非 200 视为失败，交给 Web Push 兜底。
+
+  async function barkGet() {
+    let url = root + '/' + encodeURIComponent(devKey || '') + '/' + encodeURIComponent(title) + '/' + encodeURIComponent(body);
+    // active 才会在锁屏/后台弹横幅；sound=none 关掉提示音（避免保活时又响又震）
+    const q = [
+      'group=' + encodeURIComponent(group),
+      'level=active',
+      'sound=none'
+    ];
+    if (openUrl) q.push('url=' + encodeURIComponent(openUrl));
+    url += '?' + q.join('&');
     try {
-      const data = await resp.json();
-      if (data && data.code != null && Number(data.code) !== 200) return false;
+      const resp = await fetch(url);
+      if (!resp || !resp.ok) return false;
+      // Bark 正常返回 { code: 200 }；非 200 视为失败，交给 Web Push 兜底。
+      try {
+        const data = await resp.json();
+        if (data && data.code != null && Number(data.code) !== 200) return false;
+      } catch (e) {}
+      return true;
+    } catch (e) { return false; }
+  }
+
+  // 优先 POST /push：正文里的 / ? # 和换行不会破坏 Bark 的路径解析，title/body 不会再丢；
+  // 旧版 Bark 不支持 POST 时自动退回 GET。
+  if (devKey) {
+    try {
+      const postUrl = root.replace(/\/+$/, '') + '/push';
+      const resp = await fetch(postUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          device_key: devKey, title: title, body: body,
+          group: group, level: 'active', sound: 'none',
+          url: openUrl || undefined
+        })
+      });
+      if (resp && resp.ok) {
+        try {
+          const data = await resp.json();
+          if (!data || data.code == null || Number(data.code) === 200) return true;
+        } catch (e) { return true; }
+      }
     } catch (e) {}
-    return true;
-  } catch (e) { return false; }
+  }
+  return await barkGet();
 }
 
 // 后台推送：用户填了 Bark 就优先走 Bark（iPhone 上不依赖 Web Push / GMS，也更省电），

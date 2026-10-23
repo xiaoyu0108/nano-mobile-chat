@@ -174,6 +174,21 @@ const APP_CATEGORIES = [
         idb: [{ db: 'nano_user_db' }]
     },
     {
+        id: 'pomodoro', label: '番茄钟', color: '#ff7a59',
+        ls: ['pomodoro_', 'nano_pomodoro'],
+        idb: []
+    },
+    {
+        id: 'qa', label: 'Q&A', color: '#5ac8fa',
+        ls: ['nano_qa_', 'nano_qb_', 'qb4_'],
+        idb: []
+    },
+    {
+        id: 'nano', label: '纳米', color: '#2c2c2e',
+        ls: ['nano_files_', 'nano_gallery_', 'nano_assistant_', 'nano_takeover_'],
+        idb: [{ db: 'nano_files_db' }]
+    },
+    {
         id: 'system', label: '系统与通知', color: '#aeaeb2',
         ls: ['nano_notify_', 'nano_keep_alive', 'nano_chat_activity', 'nano_unread_counts', 'nano_chat_menu', 'nano_pending_', 'nanoApiBall'],
         idb: [{ db: 'nano_chat_menu_db' }, { db: 'NanoVoiceDB' }]

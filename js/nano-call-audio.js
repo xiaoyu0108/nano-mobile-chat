@@ -8,6 +8,75 @@
     var dbPromise = null;
     var currentAudio = null;
     var currentUrl = '';
+    var activeClipId = '';
+    var paused = false;
+    var stateListeners = [];
+
+    var PLAY_SVG = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+    var PAUSE_SVG = '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4.5" width="4" height="15" rx="1.2"/><rect x="14" y="4.5" width="4" height="15" rx="1.2"/></svg>';
+
+    function getState() {
+        return { clipId: activeClipId, playing: !!currentAudio && !paused, paused: !!paused };
+    }
+
+    // 统一刷新所有「播放/暂停」按钮，页面上新增按钮后调用 sync() 即可。
+    function syncButtons(state) {
+        state = state || getState();
+        var list = document.querySelectorAll('[data-call-audio-clip]');
+        Array.prototype.forEach.call(list, function (btn) {
+            var id = btn.getAttribute('data-call-audio-clip');
+            var playing = state.clipId === id && state.playing && !state.paused;
+            var isPaused = state.clipId === id && state.paused;
+            btn.innerHTML = playing ? PAUSE_SVG : PLAY_SVG;
+            btn.title = playing ? '暂停' : (isPaused ? '继续播放' : '播放本轮语音');
+            btn.setAttribute('aria-label', btn.title);
+            btn.classList.toggle('is-playing', playing);
+            btn.classList.toggle('is-paused', isPaused);
+        });
+    }
+
+    function emitState() {
+        var st = getState();
+        stateListeners.slice().forEach(function (fn) {
+            try { fn(st); } catch (e) {}
+        });
+        syncButtons(st);
+    }
+
+    function onStateChange(fn) {
+        if (typeof fn !== 'function') return function () {};
+        stateListeners.push(fn);
+        try { fn(getState()); } catch (e) {}
+        return function () {
+            var i = stateListeners.indexOf(fn);
+            if (i >= 0) stateListeners.splice(i, 1);
+        };
+    }
+
+    function pause() {
+        if (!currentAudio || paused) return false;
+        try { currentAudio.pause(); } catch (e) {}
+        paused = true;
+        emitState();
+        return true;
+    }
+
+    function resume() {
+        if (!currentAudio || !paused) return Promise.resolve(false);
+        paused = false;
+        emitState();
+        try {
+            var p = currentAudio.play();
+            if (p && typeof p.catch === 'function') {
+                return p.then(function () { return true; }).catch(function () {
+                    paused = true; emitState(); return false;
+                });
+            }
+        } catch (e) {
+            paused = true; emitState(); return Promise.resolve(false);
+        }
+        return Promise.resolve(true);
+    }
 
     function openDB() {
         if (dbPromise) return dbPromise;
@@ -21,7 +90,16 @@
                         try { st.createIndex('callId', 'callId', { unique: false }); } catch (err) {}
                     }
                 };
-                req.onsuccess = function (e) { resolve(e.target.result); };
+                req.onsuccess = function (e) {
+                    var db = e.target.result;
+                    try {
+                        db.onversionchange = function () {
+                            try { db.close(); } catch (err) {}
+                            dbPromise = null;
+                        };
+                    } catch (err) {}
+                    resolve(db);
+                };
                 req.onerror = function (e) { reject(e.target.error); };
             } catch (e) { reject(e); }
         });
@@ -44,8 +122,8 @@
                     mime: blob.type || 'audio/mpeg',
                     blob: blob
                 });
-                tx.oncomplete = function () { try { db.close(); } catch (e) {} resolve(true); };
-                tx.onerror = function (e) { try { db.close(); } catch (err) {} reject(e.target.error); };
+                tx.oncomplete = function () { resolve(true); };
+                tx.onerror = function (e) { reject(e.target.error); };
             });
         }).catch(function () { return false; });
     }
@@ -56,8 +134,8 @@
             return new Promise(function (resolve) {
                 var tx = db.transaction(STORE, 'readonly');
                 var req = tx.objectStore(STORE).get(String(clipId));
-                req.onsuccess = function () { try { db.close(); } catch (e) {} resolve(req.result || null); };
-                req.onerror = function () { try { db.close(); } catch (e) {} resolve(null); };
+                req.onsuccess = function () { resolve(req.result || null); };
+                req.onerror = function () { resolve(null); };
             });
         }).catch(function () { return null; });
     }
@@ -75,11 +153,11 @@
                     var req = store.get(String(id));
                     req.onsuccess = function () {
                         out[idx] = req.result || null;
-                        if (--left === 0) { try { db.close(); } catch (e) {} resolve(out.filter(Boolean)); }
+                        if (--left === 0) resolve(out.filter(Boolean));
                     };
                     req.onerror = function () {
                         out[idx] = null;
-                        if (--left === 0) { try { db.close(); } catch (e) {} resolve(out.filter(Boolean)); }
+                        if (--left === 0) resolve(out.filter(Boolean));
                     };
                 });
             });
@@ -96,17 +174,34 @@
             try { URL.revokeObjectURL(currentUrl); } catch (e) {}
             currentUrl = '';
         }
+        activeClipId = '';
+        paused = false;
+        emitState();
     }
 
     function playClip(clipId) {
-        return getClip(clipId).then(function (row) {
+        var id = String(clipId);
+        // 同一轮再点一次：播放中就暂停，暂停中就继续。
+        if (activeClipId === id && currentAudio) {
+            if (paused) return resume();
+            pause();
+            return Promise.resolve(true);
+        }
+        return getClip(id).then(function (row) {
             if (!row || !row.blob) return false;
             stop();
+            activeClipId = id;
+            paused = false;
             currentUrl = URL.createObjectURL(row.blob);
             currentAudio = new Audio(currentUrl);
             currentAudio.onended = function () { stop(); };
             currentAudio.onerror = function () { stop(); };
-            return currentAudio.play().then(function () { return true; }).catch(function () { stop(); return false; });
+            var p = currentAudio.play();
+            if (p && typeof p.then === 'function') {
+                return p.then(function () { emitState(); return true; }).catch(function () { stop(); return false; });
+            }
+            emitState();
+            return true;
         }).catch(function () { return false; });
     }
 
@@ -243,7 +338,7 @@
         return new Blob(localParts.concat(centralParts, [end]), { type: 'application/zip' });
     }
 
-    function downloadAll(clipIds, filename) {
+    function downloadAllZip(clipIds, filename) {
         return getClips(clipIds).then(function (rows) {
             if (!rows.length) return false;
             return Promise.all(rows.map(function (row, idx) {
@@ -263,14 +358,78 @@
         }).catch(function () { return false; });
     }
 
+    // 整通电话的语音按顺序拼成一个 MP3：去掉后续音频片段开头的 ID3 标签，
+    // 这样文件在播放器里能连续读完，而不是只播第一段。
+    function id3v2Size(bytes) {
+        if (!bytes || bytes.length < 10) return 0;
+        if (bytes[0] !== 0x49 || bytes[1] !== 0x44 || bytes[2] !== 0x33) return 0;
+        var size = ((bytes[6] & 0x7F) << 21) | ((bytes[7] & 0x7F) << 14) | ((bytes[8] & 0x7F) << 7) | (bytes[9] & 0x7F);
+        var footer = (bytes[5] & 0x10) ? 10 : 0;
+        return Math.min(bytes.length, 10 + size + footer);
+    }
+
+    function stripMp3Wrapper(bytes, keepHeadTag) {
+        var start = keepHeadTag ? 0 : id3v2Size(bytes);
+        var end = bytes.length;
+        if (end - start >= 128 && bytes[end - 128] === 0x54 && bytes[end - 127] === 0x41 && bytes[end - 126] === 0x47) {
+            end -= 128;
+        }
+        return bytes.subarray(start, end);
+    }
+
+    function mergeMp3Buffers(buffers) {
+        var parts = [];
+        var total = 0;
+        (buffers || []).forEach(function (buf, idx) {
+            var bytes = stripMp3Wrapper(new Uint8Array(buf), idx === 0);
+            if (!bytes.length) return;
+            parts.push(bytes);
+            total += bytes.length;
+        });
+        var out = new Uint8Array(total);
+        var offset = 0;
+        parts.forEach(function (bytes) {
+            out.set(bytes, offset);
+            offset += bytes.length;
+        });
+        return out;
+    }
+
+    function downloadAll(clipIds, filename) {
+        return getClips(clipIds).then(function (rows) {
+            if (!rows.length) return false;
+            rows.sort(function (a, b) {
+                return (Number(a.turnSeq) || 0) - (Number(b.turnSeq) || 0) ||
+                    (Number(a.at) || 0) - (Number(b.at) || 0);
+            });
+            if (rows.length === 1) {
+                return downloadBlob(rows[0].blob, filename || ('nano-call-' + Date.now() + '.mp3'));
+            }
+            return Promise.all(rows.map(function (row) {
+                return row.blob.arrayBuffer();
+            })).then(function (buffers) {
+                var merged = mergeMp3Buffers(buffers);
+                if (!merged.length) return false;
+                return downloadBlob(new Blob([merged], { type: 'audio/mpeg' }), filename || ('nano-call-' + Date.now() + '.mp3'));
+            });
+        }).catch(function () { return false; });
+    }
+
     window.NanoCallAudio = {
         saveClip: saveClip,
         getClip: getClip,
         getClips: getClips,
         play: playClip,
         stop: stop,
+        pause: pause,
+        resume: resume,
+        getState: getState,
+        sync: function () { syncButtons(); },
+        onStateChange: onStateChange,
         download: downloadClip,
         downloadAll: downloadAll,
-        _buildZip: buildZip
+        downloadAllZip: downloadAllZip,
+        _buildZip: buildZip,
+        _mergeMp3: mergeMp3Buffers
     };
 })();

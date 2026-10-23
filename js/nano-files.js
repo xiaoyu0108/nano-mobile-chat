@@ -180,7 +180,7 @@
 
   /* ---------- Nano 文件页 ---------- */
   if (document.getElementById('nfList')) {
-    var state = { all: [], filter: 'all', q: '' };
+    var state = { all: [], filter: 'all', q: '', selMode: false, selected: {} };
     var $ = function (id) { return document.getElementById(id); };
     var esc = function (s) {
       return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -214,6 +214,23 @@
       $('nfCount').textContent = state.all.length;
       $('nfSize').textContent = formatSize(total);
     }
+    function selectedCount() { return Object.keys(state.selected).length; }
+    function updateBulk() {
+      var bar = $('nfBulk'), btn = $('nfSelDelete'), allBtn = $('nfSelAll');
+      if (!bar) return;
+      bar.classList.toggle('on', state.selMode);
+      if (allBtn) allBtn.textContent = state.selMode && filtered().every(function (f) { return state.selected[f.id]; }) ? '取消全选' : '全选';
+      if (btn) btn.disabled = !selectedCount();
+      if ($('nfSelCount')) $('nfSelCount').textContent = '已选 ' + selectedCount();
+      var selBtn = $('nfSelect');
+      if (selBtn) { selBtn.classList.toggle('on', state.selMode); selBtn.textContent = state.selMode ? '完成' : '选择'; }
+      document.body.classList.toggle('nf-selecting', state.selMode);
+    }
+    function setSelMode(on) {
+      state.selMode = !!on;
+      if (!on) state.selected = {};
+      render();
+    }
     function render() {
       var items = filtered();
       var list = $('nfList');
@@ -221,19 +238,23 @@
         list.innerHTML = '';
         $('nfEmpty').style.display = 'block';
         $('nfEmpty').textContent = state.all.length ? '没有找到匹配的文件' : '还没有文件。Nano 生成文件或你发来文件后，会永久保存在这里。';
+        updateBulk();
         return;
       }
       $('nfEmpty').style.display = 'none';
       list.innerHTML = items.map(function (f) {
         var preview = String(f.content || '').replace(/\s+/g, ' ').slice(0, 130);
-        return '<button class="nf-item" data-id="' + esc(f.id) + '">' +
+        var picked = !!state.selected[f.id];
+        return '<button class="nf-item' + (picked ? ' picked' : '') + '" data-id="' + esc(f.id) + '">' +
           '<div class="nf-icon">' + esc((f.ext || 'txt').toUpperCase().slice(0, 4)) + '</div>' +
           '<div class="nf-main"><div class="nf-name">' + esc(f.name) + '</div>' +
           '<div class="nf-preview">' + esc(preview || '（空文件）') + '</div>' +
           '<div class="nf-meta"><span class="nf-src ' + (f.source === 'user' ? 'user' : '') + '">' + sourceLabel(f) + '</span>' +
           '<span>' + dateText(f.createdAt) + '</span><span>' + formatSize(f.size) + '</span></div></div>' +
-          '<span class="nf-arrow">›</span></button>';
+          (state.selMode ? '<span class="nf-check">✓</span>' : '<span class="nf-arrow">›</span>') +
+          '</button>';
       }).join('');
+      updateBulk();
     }
     function openPreview(f) {
       if (!f) return;
@@ -271,6 +292,13 @@
     }
     $('nfList').addEventListener('click', function (e) {
       var item = e.target.closest('.nf-item'); if (!item) return;
+      if (state.selMode) {
+        var id = item.dataset.id;
+        if (state.selected[id]) delete state.selected[id];
+        else state.selected[id] = true;
+        render();
+        return;
+      }
       var f = state.all.find(function (x) { return x.id === item.dataset.id; });
       openPreview(f);
     });
@@ -281,9 +309,27 @@
       render();
     });
     $('nfSearch').addEventListener('input', function () { state.q = this.value.trim(); render(); });
+    $('nfSelect').addEventListener('click', function () { setSelMode(!state.selMode); });
+    $('nfSelAll').addEventListener('click', function () {
+      var items = filtered();
+      var allPicked = items.length && items.every(function (f) { return state.selected[f.id]; });
+      if (allPicked) state.selected = {};
+      else items.forEach(function (f) { state.selected[f.id] = true; });
+      render();
+    });
+    $('nfSelDelete').addEventListener('click', async function () {
+      var ids = Object.keys(state.selected);
+      if (!ids.length) return toast('还没有选择文件');
+      if (!confirm('删除选中的 ' + ids.length + ' 个文件？只删除文件库里的副本，不影响聊天。')) return;
+      for (var i = 0; i < ids.length; i++) { try { await remove(ids[i]); } catch (e) {} }
+      state.selected = {};
+      await refresh();
+      toast('已删除 ' + ids.length + ' 个文件');
+    });
     $('nfClear').addEventListener('click', async function () {
       if (!state.all.length) return toast('文件库已经是空的');
       if (!confirm('清空 Nano 文件库？只删除这里的文件，不影响聊天记录。')) return;
+      if (state.selMode) { state.selMode = false; state.selected = {}; }
       await clear(); await refresh(); toast('文件库已清空');
     });
     $('nfPreviewClose').addEventListener('click', closePreview);

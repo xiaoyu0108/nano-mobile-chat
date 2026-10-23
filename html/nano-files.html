@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Nano 文件</title>
-  <link rel="stylesheet" href="../css/nano-files.css?v=20261021c">
+  <link rel="stylesheet" href="../css/nano-files.css?v=20261023a">
   <script src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
 </head>
 <body class="nf-body">
@@ -18,7 +18,10 @@
         <h1>Nano 文件</h1>
         <p>独立保存，删除聊天也不会丢</p>
       </div>
-      <button class="nf-clear" id="nfClear">清空</button>
+      <div class="nf-top-actions">
+        <button class="nf-select" id="nfSelect">选择</button>
+        <button class="nf-clear" id="nfClear">清空</button>
+      </div>
     </header>
 
     <div class="nf-scroll">
@@ -69,9 +72,15 @@
     </div>
   </div>
 
+  <div class="nf-bulk" id="nfBulk">
+    <button id="nfSelAll" type="button">全选</button>
+    <span id="nfSelCount">已选 0</span>
+    <button id="nfSelDelete" class="danger" type="button" disabled>删除所选</button>
+  </div>
+
   <div class="nf-toast" id="nfToast"></div>
 
-  <script src="../js/nano-files.js?v=20261021c"></script>
+  <script src="../js/nano-files.js?v=20261023a"></script>
   <script src="../swipe-back.js"></script>
 </body>
 </html>

@@ -2614,16 +2614,21 @@ function offForeignInfo() {
   const c = offlineCharRecord;
   if (!c) return null;
   const n = String(c.nationality || '').trim();
-  if (!n || n === '未知' || n === '未设定') return null;
   const chineseVariants = ['中国', '中国台湾', '中国（台湾）', '中国（香港）', '中国（澳门）', '台湾', '香港', '澳门'];
-  if (chineseVariants.some(v => n.indexOf(v) > -1)) return null;
+  const isChinese = n && chineseVariants.some(v => n.indexOf(v) > -1);
+  if (isChinese) return null;
   const langMap = {
     '美国': '英文', '英国': '英文', '澳大利亚': '英文', '加拿大': '英文', '新西兰': '英文',
     '日本': '日文', '韩国': '韩文', '法国': '法文', '德国': '德文',
     '西班牙': '西班牙文', '意大利': '意大利文', '俄罗斯': '俄文',
     '巴西': '葡萄牙文', '葡萄牙': '葡萄牙文', '墨西哥': '西班牙文', '印度': '英文'
   };
-  return { nationality: n, language: c.language || langMap[n] || '英文' };
+  const rawLang = String(c.language || c.lang || '').trim();
+  const chineseLang = /^(中文|汉语|漢語|普通话|國語|mandarin|chinese)$/i.test(rawLang);
+  const language = !chineseLang && rawLang ? rawLang : (langMap[n] || '');
+  // 国籍没填、但语言字段明确是外语的角色，也按外国人处理（线下同样强制外语＋中文）。
+  if (!language) return null;
+  return { nationality: n || '外国', language };
 }
 // 线下：香港 / 澳门角色讲粤语（港式），不用内地普通话
 function offCantoneseInfo() {
@@ -2643,10 +2648,11 @@ function buildOfflineForeignInstruction() {
   }
   const fi = offForeignInfo();
   if (!fi) return '';
-  return '【外国人设定】{{char}} 的国籍是' + fi.nationality + '，母语是' + fi.language + '。\n'
-    + '面对面的台词请用母语（' + fi.language + '）书写，并在同一句后面用括号附上中文翻译，格式「外文（中文翻译）」，例如：I love you so much（我好爱你呀）。\n'
-    + '翻译要有温度、贴合 {{char}} 的性格与当下情绪，口语化、自然，不要官腔、不要生硬直译（撒娇就翻得娇、冷淡就翻得淡、调侃就翻得俏皮、认真就翻得恳切）。\n'
-    + '旁白、动作、环境与心理描写仍用中文书写；只有 {{char}} 的台词写成「母语（中文翻译）」这种形式。';
+  return '【外国人设定 · 必须执行】{{char}} 的国籍是' + fi.nationality + '，母语是' + fi.language + '。\n'
+    + '规则只有一条：{{char}} 说出口的台词 100% 用母语（' + fi.language + '）写，并在同一句后面紧跟括号中文翻译，格式「外文（中文翻译）」，例如：Do you love me?（你喜欢我吗？）。\n'
+    + '每一句台词都必须带括号翻译；不能只写外语不翻译，也不能只写中文台词。翻译要短、口语化、有温度，贴合 {{char}} 的性格和当下情绪。\n'
+    + '除台词外，所有旁白、动作、环境、心理、叙述全部用中文写；不要把描写也写成外语，也不要给中文描写加外语翻译。\n'
+    + '如果一句话里既有动作又有台词，动作留在中文旁白里，只有引号/对话部分写成「母语（中文翻译）」。';
 }
 async function callMainAPI(history) {
   const rules = await loadRulesFromDB();

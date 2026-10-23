@@ -19,19 +19,19 @@
 <body>
   <div class="wrap">
     <div class="logo">🤖</div>
-    <div class="title">纳米已搬进聊天</div>
-    <div class="desc">纳米现在是聊天里的普通角色。<br>请到「更多 → 纳米助手」打开开关，<br>然后回到聊天列表点「纳米」。</div>
-    <button class="btn" id="go">去「更多」开启</button>
+    <div class="title">Nano 已经是独立 App</div>
+    <div class="desc">不再需要在其他功能页里打开「纳米助手」开关。<br>回到桌面点 Nano，即可美化、写世界书、改人设和管理文件。</div>
+    <button class="btn" id="go">打开 Nano</button>
   </div>
   <script>
     document.getElementById('go').addEventListener('click', function () {
       try {
         if (window.parent && window.parent !== window) {
-          window.parent.postMessage({ type: 'openFullscreen', url: 'more.html', title: '更多', source: 'more', showBack: false }, '*');
+          window.parent.postMessage({ type: 'openFullscreen', url: 'nano.html', title: 'Nano', source: 'nano', showBack: true }, '*');
         } else {
-          location.href = 'more.html';
+          location.href = 'nano.html';
         }
-      } catch (e) { location.href = 'more.html'; }
+      } catch (e) { location.href = 'nano.html'; }
     });
   </script>
 </body>
