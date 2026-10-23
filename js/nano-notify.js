@@ -527,13 +527,13 @@
             silent: false,
             renotify: true,
             vibrate: [90, 50, 90],
-            data: { target: opts.target || '' }
+            data: { target: opts.target || '', name: opts.name || title || '' }
         };
         if (icon) payload.icon = icon;
         if (badge) payload.badge = badge;
         // Android 网页通知支持「文本动作」：下拉/长按通知可直接输入回复（iOS 不支持，忽略即可）
         if (opts.reply && String(opts.target || '').indexOf('ss-reply:') === 0) {
-            try { payload.actions = [{ action: 'reply', type: 'text', title: '回复', placeholder: '回复 TA…' }]; } catch (e) {}
+            try { payload.actions = [{ action: 'reply', type: 'text', title: '回复', placeholder: '回复 ' + (title || 'TA') + '…' }]; } catch (e) {}
         }
         function legacy() {
             try {

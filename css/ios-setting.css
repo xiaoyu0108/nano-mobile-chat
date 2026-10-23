@@ -19,8 +19,9 @@ body.sk{padding-top:0;
 /* ---------- 顶栏（唯一，单层，白底 + 粉色返回键） ----------
    sticky 而不是 fixed：顶栏占据文档流高度，滚动时正文不会钻到栏下面。 */
 .sk-top{position:-webkit-sticky;position:sticky;top:0;left:0;right:0;z-index:20;
-  height:calc(50px + env(safe-area-inset-top));
-  padding:env(safe-area-inset-top) 10px 0;display:flex;align-items:center;
+  --sk-safe-top:var(--safe-top, env(safe-area-inset-top, 0px));
+  height:calc(50px + var(--sk-safe-top));
+  padding:var(--sk-safe-top) 10px 0;display:flex;align-items:center;
   background:rgba(255,255,255,.9);
   -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
 .sk-back{width:38px;height:38px;border:0;background:transparent;color:var(--sk-pink-deep);
@@ -30,7 +31,7 @@ body.sk{padding-top:0;
 .sk-top-spacer{width:38px}
 
 /* ---------- 内容 ---------- */
-.sk-wrap{padding:6px 22px calc(30px + env(safe-area-inset-bottom));max-width:560px;margin:0 auto}
+.sk-wrap{padding:6px 22px calc(30px + var(--safe-bottom, env(safe-area-inset-bottom, 0px)));max-width:560px;margin:0 auto}
 
 .sk-hero{padding:20px 2px 22px}
 .sk-hero-kicker{font-size:11.5px;font-weight:700;letter-spacing:2px;color:var(--sk-pink-deep);opacity:.75}
@@ -99,13 +100,16 @@ body.sk{padding-top:0;
 .sk-guide code{background:rgba(255,176,205,.16);border-radius:6px;padding:1px 6px;
   font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:#b05577}
 .sk-guide .warn{color:#c05a80;margin-top:10px}
+.sk-guide-json{margin:8px 0;padding:9px 10px;background:rgba(255,176,205,.08);border-radius:10px;
+  font-family:ui-monospace,Menlo,monospace;font-size:11px;line-height:1.6;color:#5f4652;
+  white-space:pre-wrap;word-break:break-all;max-height:190px;overflow:auto}
 
 .sk-foot{margin-top:22px;text-align:center;font-size:11px;color:#e2c3d1;letter-spacing:.3px}
 .sk-foot b{color:var(--sk-muted)}
 
 .sk-spacer{height:16px}
 
-.sk-toast{position:fixed;left:50%;bottom:calc(40px + env(safe-area-inset-bottom));
+.sk-toast{position:fixed;left:50%;bottom:calc(40px + var(--safe-bottom, env(safe-area-inset-bottom, 0px)));
   transform:translateX(-50%) translateY(10px);background:rgba(150,80,110,.92);color:#fff;
   font-size:13px;padding:9px 18px;border-radius:999px;opacity:0;transition:all .2s;pointer-events:none;z-index:50}
 .sk-toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
@@ -147,6 +151,24 @@ body.sk{padding-top:0;
 .sk-copy.compact{padding:10px 12px;margin-top:9px}
 .sk-copy.compact code{font-size:11.5px}
 .sk-copy.compact .sk-copy-btn{align-self:flex-start;padding:7px 14px}
+
+/* 当前角色 / 逐项复制：换角色后整块跟着更新 */
+.sk-peek-char{display:flex;align-items:center;gap:10px;padding:11px 12px;margin:0 0 12px;
+  background:#fff;border:1px solid var(--sk-line);border-radius:15px}
+.sk-peek-char-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.sk-peek-char-label{font-size:10.5px;font-weight:700;letter-spacing:.6px;color:var(--sk-muted)}
+.sk-peek-char-name{font-size:14px;font-weight:750;color:var(--sk-ink);line-height:1.3}
+.sk-peek-char-id{font-size:11.5px;line-height:1.5;color:var(--sk-muted);word-break:break-all}
+.sk-peek-char-id code{font-family:ui-monospace,Menlo,monospace;color:#b05577}
+.sk-peek-char .sk-copy-btn{flex:none;align-self:center}
+.sk-field{margin-top:10px;padding:11px 12px;background:#fff;border:1px solid var(--sk-line);border-radius:15px}
+.sk-field-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:7px}
+.sk-field-head span{font-size:11.5px;font-weight:750;color:var(--sk-pink-deep);letter-spacing:.2px}
+.sk-field-head .sk-copy-btn{padding:6px 13px;font-size:11.5px;box-shadow:none}
+.sk-field code,.sk-field pre{margin:0;display:block;font-family:ui-monospace,Menlo,SFMono-Regular,monospace;
+  font-size:11.5px;line-height:1.65;color:#5f4652;word-break:break-all;white-space:pre-wrap;
+  max-height:210px;overflow:auto}
+.sk-field pre{background:rgba(255,176,205,.08);border-radius:10px;padding:9px 10px}
 .sk-tip{margin:2px 2px 20px;padding:12px 14px;border-radius:15px;background:rgba(255,186,212,.1);
   font-size:11.5px;line-height:1.75;color:#a17c8e}
 .sk-tip b{color:var(--sk-pink-deep)}

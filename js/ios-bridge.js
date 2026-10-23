@@ -176,47 +176,104 @@
         setTimeout(function () { try { pullPeek(); } catch (e) {} }, 2600);
     }
 
-    // 屏幕速聊：拉取服务端暂存的轮次，按顺序合并进该角色「唯一」的聊天
-    async function pullPeek() {
-        var base = '', token = '', chat = '';
-        try { base = localStorage.getItem('nano_peek_url') || ''; } catch (e) {}
-        try { token = localStorage.getItem('nano_peek_token') || ''; } catch (e) {}
-        try { chat = localStorage.getItem('nano_peek_chat') || ''; } catch (e) {}
-        if (!base || !chat) return;
-        base = String(base).trim().replace(/\/+$/, '');
-        if (/\/peek$/i.test(base)) base = base.replace(/\/peek$/i, '');
-        var sh = window.__nanoShell;
-        if (!sh) return;
+    // 屏幕速聊：把服务端暂存的轮次先落到本机，再由 chat_inner 在打开时合并。
+    // 这样即使当时没打开聊天、或打开的是别的角色，也不会把消息弄丢。
+    function peekStashKey(chatId) { return 'nano_peek_pending_' + String(chatId || ''); }
+    function stashPeekTurns(chatId, turns) {
+        chatId = String(chatId || '');
+        if (!chatId || !Array.isArray(turns) || !turns.length) return false;
+        var key = peekStashKey(chatId);
+        var arr = [];
+        try { arr = JSON.parse(localStorage.getItem(key) || '[]'); } catch (e) { arr = []; }
+        if (!Array.isArray(arr)) arr = [];
+        var seen = {};
+        arr.forEach(function (t) { if (t && t.ts) seen[String(t.ts)] = 1; });
+        var added = false;
+        turns.forEach(function (t, i) {
+            if (!t) return;
+            var ts = String(t.ts || (Date.now() + i));
+            if (seen[ts]) return;
+            if (!t.user && !t.char) return;
+            seen[ts] = 1;
+            arr.push({
+                user: String(t.user || ''),
+                char: String(t.char || ''),
+                image: String(t.image || ''),
+                imageOmitted: !!t.imageOmitted,
+                ts: Number(t.ts) || (Date.now() + i)
+            });
+            added = true;
+        });
+        if (added) {
+            arr.sort(function (a, b) { return (a.ts || 0) - (b.ts || 0); });
+            try { localStorage.setItem(key, JSON.stringify(arr.slice(-80))); } catch (e) {}
+        }
+        return added;
+    }
+    function peekCandidateChats() {
+        var out = [], seen = {};
+        function add(id) {
+            id = String(id || '');
+            if (!id || seen[id]) return;
+            seen[id] = 1; out.push(id);
+        }
+        try { add(localStorage.getItem('nano_peek_chat')); } catch (e) {}
+        try {
+            var list = JSON.parse(localStorage.getItem('nano_peek_chats') || '[]');
+            if (Array.isArray(list)) list.forEach(add);
+        } catch (e) {}
+        try { var lc = JSON.parse(localStorage.getItem('nano_last_chat') || 'null'); if (lc && lc.id) add(lc.id); } catch (e) {}
+        try { var si = JSON.parse(sessionStorage.getItem('last_chat_info') || 'null'); if (si && si.chatId) add(si.chatId); } catch (e) {}
+        try {
+            for (var i = 0; i < localStorage.length; i++) {
+                var k = localStorage.key(i);
+                if (k && k.indexOf('chat_messages_') === 0) add(k.slice(14));
+            }
+        } catch (e) {}
+        return out.slice(0, 10);
+    }
+
+    async function pullOnePeek(chatId, base, token) {
+        var url = base + '/peek/pending?chatId=' + enc(chatId) + '&appId=' + enc(appId()) + '&token=' + enc(token);
         var r;
-        try { r = await fetch(base + '/peek/pending?chatId=' + enc(chat) + '&appId=' + enc(appId()) + '&token=' + enc(token), { cache: 'no-store' }); } catch (e) { return; }
-        if (!r.ok) return;
+        try { r = await fetch(url, { cache: 'no-store' }); } catch (e) { return 0; }
+        if (!r.ok) return 0;
         var data = null;
         try { data = await r.json(); } catch (e) {}
         var turns = (data && Array.isArray(data.turns)) ? data.turns : [];
-        if (!turns.length) return;
-        try { if (sh.open) sh.open('chat_inner.html?chat=' + enc(chat) + '&name=' + enc(''), '', 'main'); } catch (e) {}
-        await new Promise(function (res) { setTimeout(res, 1100); });
-        for (var i = 0; i < turns.length; i++) {
-            var t = turns[i] || {};
-            if (t.user && t.user !== '[图片]') {
-                try { sh.postToChat({ type: 'NANO_USER_SAY', chatId: String(chat), text: String(t.user), silent: true }); } catch (e) {}
-                await new Promise(function (res) { setTimeout(res, 400); });
-            }
-            if (t.char) {
-                try { sh.postToChat({ type: 'NANO_CHAR_SAY', chatId: String(chat), text: String(t.char) }); } catch (e) {}
-                await new Promise(function (res) { setTimeout(res, 400); });
-            }
-        }
+        if (!turns.length) return 0;
+        stashPeekTurns(chatId, turns);
+        // 已落到本机就可以清空服务端；聊天没开着也不会丢。
         try {
             await fetch(base + '/peek/ack', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ chatId: String(chat), appId: appId(), deviceId: deviceId(), token: token })
+                body: JSON.stringify({ chatId: String(chatId), appId: appId(), deviceId: deviceId(), token: token })
             });
         } catch (e) {}
+        try {
+            var sh = window.__nanoShell;
+            if (sh && sh.postToChat) sh.postToChat({ type: 'NANO_PEEK_UPDATED', chatId: String(chatId) });
+        } catch (e) {}
+        return turns.length;
+    }
+
+    async function pullPeek(onlyChat) {
+        var base = '', token = '';
+        try { base = localStorage.getItem('nano_peek_url') || ''; } catch (e) {}
+        if (!base) { try { base = localStorage.getItem('nano_push_endpoint') || ''; } catch (e) {} }
+        if (!base) base = 'https://nanopush.nano315.online';
+        try { token = localStorage.getItem('nano_peek_token') || ''; } catch (e) {}
+        base = String(base).trim().replace(/\/+$/, '');
+        if (/\/peek$/i.test(base)) base = base.replace(/\/peek$/i, '');
+        if (!base) return;
+        var ids = onlyChat ? [String(onlyChat)] : peekCandidateChats();
+        for (var i = 0; i < ids.length; i++) {
+            try { await pullOnePeek(ids[i], base, token); } catch (e) {}
+        }
     }
 
     window.NanoIOSBridge = {
-        version: '20261013b',
+        version: '20261023c',
         queue: function (item) { var l = loadPending(); l.push(item || {}); savePending(l); },
         drain: drain,
         pullPeek: pullPeek,

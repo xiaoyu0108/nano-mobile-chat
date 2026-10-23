@@ -305,14 +305,51 @@ function tokenOk(request, env) {
   return request.headers.get('X-Push-Token') === env.PUSH_TOKEN;
 }
 
-// 屏幕速聊（iOS 快捷指令）令牌校验：带了 PEEK_TOKEN 就必须匹配，未设置则放行
-function peekOk(request, env, body) {
-  if (!env.PEEK_TOKEN) return true;
-  const h = request.headers.get('X-Peek-Token');
+// 屏幕速聊（iOS 快捷指令）令牌校验
+// · 普通模式：带了 PEEK_TOKEN 就必须匹配，未设置则放行。
+// · 公用模式（PEEK_PUBLIC=1）：接受任意长度足够的令牌，并把令牌哈希进数据分区，
+//   这样同一个站点上不同用户的窥屏记录 / 人设 / API 互不可见。
+function peekPublic(env) {
+  const v = String(env.PEEK_PUBLIC || '').toLowerCase();
+  return v === '1' || v === 'true' || v === 'yes' || v === 'on';
+}
+function peekTokenValue(request, body) {
+  let h = '';
+  try { h = request.headers.get('X-Peek-Token') || ''; } catch (e) {}
   let q = '';
   try { q = new URL(request.url).searchParams.get('token') || ''; } catch (e) {}
   const b = body && body.token ? String(body.token) : '';
-  return h === env.PEEK_TOKEN || q === env.PEEK_TOKEN || b === env.PEEK_TOKEN;
+  return String(h || q || b || '').trim();
+}
+function peekTokenHash(token) {
+  const s = String(token || '');
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
+  }
+  return (h >>> 0).toString(36);
+}
+function peekScope(env, appId, token) {
+  const a = cleanAppId(appId);
+  if (!peekPublic(env)) return a;
+  return a + '.' + peekTokenHash(token || 'anon');
+}
+function peekOwnerKey(env, token, chatId) {
+  chatId = String(chatId || 'default');
+  if (!peekPublic(env)) return 'peek2:owner:' + chatId;
+  return 'peek2:owner:' + peekTokenHash(token || 'anon') + ':' + chatId;
+}
+function peekOk(request, env, body) {
+  const t = peekTokenValue(request, body);
+  if (peekPublic(env)) return t.length >= 8;
+  if (!env.PEEK_TOKEN) return true;
+  return t === env.PEEK_TOKEN;
+}
+// 从同步过来的人设里取角色名：'你是「小柒」，...' → 小柒
+function peekCharName(system) {
+  const m = String(system || '').match(/你是[「"]([^」"]{1,40})[」"]/);
+  return m ? String(m[1]).trim() : '';
 }
 
 function modelEndpoint(raw) {
@@ -336,7 +373,7 @@ async function peekSave(env, chatId, turns, appId) {
 }
 // 屏幕速聊复用主 API：优先读 /peek/persona 同步上来的这份，再读 /auto/config 里的 api。
 // 这样 PEEK_API_* 只是可选项，不再因为漏配 secret 导致「弹窗有了但模型没被调用」。
-async function peekApiConfig(env, appId, chatId, body, owner) {
+async function peekApiConfig(env, appId, chatId, body, owner, realAppId) {
   const cleanApi = function (v) {
     if (!v || typeof v !== 'object') return null;
     const url = String(v.url || '').trim();
@@ -348,7 +385,7 @@ async function peekApiConfig(env, appId, chatId, body, owner) {
   let userId = cleanUserId((owner && owner.userId) || (body && body.userId) || '');
   if (!userId || userId === 'default') {
     try {
-      const rawActive = await kv(env).get(autoActiveKey(appId, deviceId));
+      const rawActive = await kv(env).get(autoActiveKey(realAppId || appId, deviceId));
       if (rawActive) {
         const active = JSON.parse(rawActive);
         if (active && active.userId) userId = cleanUserId(active.userId);
@@ -356,15 +393,18 @@ async function peekApiConfig(env, appId, chatId, body, owner) {
     } catch (e) {}
   }
   if (!userId) userId = 'default';
-  // 1) 优先用聊天同步上来的最新主 API
-  try {
-    const raw = await kv(env).get(autoKey('config', appId, deviceId, userId));
-    if (raw) {
-      const cfg = JSON.parse(raw);
-      const api = cleanApi(cfg && cfg.api);
-      if (api) return api;
-    }
-  } catch (e) {}
+  // 1) 优先用聊天同步上来的最新主 API。
+  //    公用模式直接跳过这一步：那是按站点/设备存的，绝不能把站长的 Key 给陌生人用。
+  if (!peekPublic(env)) {
+    try {
+      const raw = await kv(env).get(autoKey('config', realAppId || appId, deviceId, userId));
+      if (raw) {
+        const cfg = JSON.parse(raw);
+        const api = cleanApi(cfg && cfg.api);
+        if (api) return api;
+      }
+    } catch (e) {}
+  }
   // 2) 没有 auto config 时，再用窥屏页保存的那份
   try {
     const raw = await kv(env).get(peekBase(appId, 'api:' + chatId));
@@ -943,9 +983,11 @@ async function runAutoPush(env, appId, deviceId, userId) {
 // 优先用 PEEK_* 专用配置；没有时复用 App 同步上来的主 API（cfg.api），
 // 这样用户不用再额外配一套 PEEK_API_URL / PEEK_API_KEY / PEEK_MODEL。
 async function peekModel(env, system, text, image, history, apiCfg, context) {
-  const url = modelEndpoint(env.PEEK_API_URL || (apiCfg && apiCfg.url) || '');
-  const key = env.PEEK_API_KEY || (apiCfg && apiCfg.key) || '';
-  const model = env.PEEK_MODEL || (apiCfg && apiCfg.model) || '';
+  // 公用模式绝对不回退到站长的 PEEK_API_*：别人来玩只能用他们自己同步上来的 Key。
+  const allowEnvApi = !peekPublic(env);
+  const url = modelEndpoint((allowEnvApi ? env.PEEK_API_URL : '') || (apiCfg && apiCfg.url) || '');
+  const key = (allowEnvApi ? env.PEEK_API_KEY : '') || (apiCfg && apiCfg.key) || '';
+  const model = (allowEnvApi ? env.PEEK_MODEL : '') || (apiCfg && apiCfg.model) || '';
   if (!url || !key || !model) return null;
   let content;
   if (image) {
@@ -1597,16 +1639,43 @@ export default {
       let body = {};
       try { body = await request.json(); } catch (e) {}
       if (!peekOk(request, env, body)) {
-        return json({ ok: false, error: 'unauthorized', reply: '令牌不一致：请把 Worker 的 PEEK_TOKEN 和窥屏页里生成的令牌改成同一个。' }, 401);
+        return json({
+          ok: false, error: 'unauthorized',
+          reply: peekPublic(env)
+            ? '令牌太短或为空：请从窥屏页重新复制令牌 / JSON。'
+            : '令牌不一致：请把 Worker 的 PEEK_TOKEN 和窥屏页里生成的令牌改成同一个。'
+        }, 401);
       }
-      const chatId = String(body.chatId || 'default');
+      const token = peekTokenValue(request, body);
+      const requestedChatId = String(body.chatId || '').trim();
       // 速聊也要限定到「哪个站点的哪台设备/哪个用户」，否则旧 Nano 也会收到纳米的窥屏回复。
+      // 公用模式再叠加令牌哈希，避免同一个站点上不同用户互相串消息。
       let owner = {};
       try {
-        const rawOwner = await kv(env).get('peek2:owner:' + chatId);
+        const rawOwner = await kv(env).get(peekOwnerKey(env, token, requestedChatId || 'latest'));
         if (rawOwner) owner = JSON.parse(rawOwner) || {};
       } catch (e) { owner = {}; }
-      const appId = cleanAppId(body.appId || owner.appId || 'legacy');
+      const realAppId = cleanAppId(body.appId || owner.appId || 'legacy');
+      const appId = peekScope(env, realAppId, token);
+      // 快捷指令可以不传 chatId：App 每次打开聊天 / 保存窥屏配置都会把最近角色写进 chat:latest。
+      let chatId = requestedChatId;
+      if (!chatId) {
+        try { chatId = String(await kv(env).get(peekBase(appId, 'chat:latest')) || '').trim(); } catch (e) {}
+      }
+      if (!chatId) chatId = 'default';
+      if (!owner.appId) {
+        try {
+          const rawOwner2 = await kv(env).get(peekOwnerKey(env, token, chatId));
+          if (rawOwner2) owner = JSON.parse(rawOwner2) || {};
+        } catch (e) {}
+      }
+      if (!owner.appId && peekPublic(env)) {
+        // 兼容旧键：老快捷指令 / 老页面没有写新 owner 键
+        try {
+          const rawOld = await kv(env).get('peek2:owner:' + chatId);
+          if (rawOld) owner = JSON.parse(rawOld) || {};
+        } catch (e) {}
+      }
       // 优先用 App 当前选中的角色人设（含完整规则 / 最近上下文），避免快捷指令里
       // 旧的内置 system 覆盖掉人设；只有没同步过时才回退到请求体里的 system。
       let system = '';
@@ -1616,19 +1685,21 @@ export default {
           || '';
       } catch (e) {}
       if (!system) system = String(body.system || '');
+      const charName = peekCharName(system);
       // 再兜底：从 /auto/config 同步的角色卡里找这条聊天的人设
-      if (!system) {
+      // 公用模式跳过：那是站点/设备维度的数据，不能把站长的角色卡给陌生人。
+      if (!system && !peekPublic(env)) {
         try {
           const deviceId = cleanDeviceId((owner && owner.deviceId) || body.deviceId);
           let userId = cleanUserId((owner && owner.userId) || body.userId);
           if (!userId || userId === 'default') {
-            const rawActive = await kv(env).get(autoActiveKey(appId, deviceId));
+            const rawActive = await kv(env).get(autoActiveKey(realAppId, deviceId));
             if (rawActive) {
               const active = JSON.parse(rawActive);
               if (active && active.userId) userId = cleanUserId(active.userId);
             }
           }
-          const rawCfg = await kv(env).get(autoKey('config', appId, deviceId, userId));
+          const rawCfg = await kv(env).get(autoKey('config', realAppId, deviceId, userId));
           if (rawCfg) {
             const cfg = JSON.parse(rawCfg);
             const c = (cfg && Array.isArray(cfg.chars) ? cfg.chars : []).find(function (x) {
@@ -1644,7 +1715,7 @@ export default {
         return json({ ok: false, error: 'empty', reply: '没有收到屏幕内容：请在快捷指令里传入截图或文字。' }, 400);
       }
       const history = await peekTurns(env, chatId, appId);
-      const apiCfg = await peekApiConfig(env, appId, chatId, body, owner);
+      const apiCfg = await peekApiConfig(env, appId, chatId, body, owner, realAppId);
       let context = [];
       try {
         const rawCtx = (await kv(env).get(peekBase(appId, 'context:' + chatId)))
@@ -1657,29 +1728,54 @@ export default {
       let reply = null;
       try { reply = await peekModel(env, system, text, image, history, apiCfg, context); } catch (e) {}
       if (!reply) {
-        const hasEnvApi = !!(env.PEEK_API_URL && env.PEEK_API_KEY && env.PEEK_MODEL);
+        const hasEnvApi = !peekPublic(env) && !!(env.PEEK_API_URL && env.PEEK_API_KEY && env.PEEK_MODEL);
         return json({
           ok: false,
           error: 'model',
-          reply: hasEnvApi
-            ? '模型没有返回内容：请检查 PEEK_API_URL / PEEK_API_KEY / PEEK_MODEL 或模型是否支持识图。'
-            : '服务端还没有模型 API：请在 Nano 里打开一次聊天同步主 API，或在 Worker 配置 PEEK_API_URL / PEEK_API_KEY / PEEK_MODEL。'
+          reply: peekPublic(env)
+            ? '公用窥屏不会使用站长的 API：请在你自己的 Nano 里配置主 API（最好支持识图），并打开一次聊天或窥屏页保存配置，把 Key 同步到你自己的令牌分区。如果已经配置，请检查模型是否支持图片。'
+            : (hasEnvApi
+              ? '模型没有返回内容：请检查 PEEK_API_URL / PEEK_API_KEY / PEEK_MODEL 或模型是否支持识图。'
+              : '服务端还没有模型 API：请在 Nano 里打开一次聊天同步主 API，或在 Worker 配置 PEEK_API_URL / PEEK_API_KEY / PEEK_MODEL。')
         }, 502);
       }
-      history.push({ user: text || '[图片]', char: reply, ts: Date.now() });
+      // 截图也存进这一轮，App 拉取后会把截图和 TA 的评论一起放进私聊。
+      // 只保留最近 2 张、单张最大约 4MB，避免 KV 值超限；快捷指令教程里会先压缩再上传。
+      const MAX_IMAGE_CHARS = 4 * 1024 * 1024;
+      const imageStore = (image && image.length <= MAX_IMAGE_CHARS) ? image : '';
+      history.push({
+        user: text || (image ? '' : '[图片]'),
+        char: reply,
+        image: imageStore,
+        imageOmitted: !!(image && !imageStore),
+        ts: Date.now()
+      });
+      let __imgKeep = 0;
+      for (let __i = history.length - 1; __i >= 0; __i--) {
+        if (history[__i] && history[__i].image) {
+          __imgKeep++;
+          if (__imgKeep > 2) delete history[__i].image;
+        }
+      }
       await peekSave(env, chatId, history, appId);
       // 只推给这条聊天所属的 App / 设备 / 用户；找不到归属就不广播，避免串到别的 Nano。
       try {
         const targetUser = owner.userId || body.userId || '';
         const targetDevice = owner.deviceId || body.deviceId || '';
         const subs = (targetUser || targetDevice)
-          ? await getSubs(env, targetUser || null, targetDevice || null, appId)
+          ? await getSubs(env, targetUser || null, targetDevice || null, realAppId)
           : [];
         if (subs.length) {
-          await pushAll(subs, { title: '窥屏', body: String(reply).slice(0, 120), target: 'chat:' + chatId, tag: 'peek-' + chatId, appId: appId }, env);
+          await pushAll(subs, { title: charName || '窥屏', body: String(reply).slice(0, 120), target: 'chat:' + chatId, tag: 'peek-' + chatId, appId: realAppId }, env);
         }
       } catch (e) {}
-      return json({ ok: true, reply: reply });
+      return json({
+        ok: true,
+        // 快捷指令的「显示提醒」直接取 reply，所以在前面带上角色名；聊天里仍用干净的 text。
+        reply: charName ? ('「' + charName + '」\n' + reply) : reply,
+        text: reply,
+        name: charName
+      });
     }
 
     // 5.5) 人设同步：App 切换人设 / 发消息时上传当前角色人设，快捷指令就无需内置人设
@@ -1690,7 +1786,9 @@ export default {
       const system = String(body.system || '').trim();
       if (!system) return json({ ok: false, error: 'empty' }, 400);
       const chatId = String(body.chatId || 'latest');
-      const appId = cleanAppId(body.appId);
+      const token = peekTokenValue(request, body);
+      const realAppId = cleanAppId(body.appId);
+      const appId = peekScope(env, realAppId, token);
       const ttl = 60 * 60 * 24 * 30;
       try {
         await kv(env).put(peekBase(appId, 'persona:' + chatId), system, { expirationTtl: ttl });
@@ -1717,12 +1815,18 @@ export default {
           await kv(env).put(peekBase(appId, 'context:latest'), JSON.stringify(history), { expirationTtl: ttl });
         }
         // 记住这条聊天属于哪台设备/哪个用户，/peek 推送时只发给它
-        await kv(env).put('peek2:owner:' + chatId, JSON.stringify({
-          appId: appId,
+        const ownerRecord = JSON.stringify({
+          appId: realAppId,
           deviceId: cleanDeviceId(body.deviceId),
           userId: cleanUserId(body.userId),
           at: Date.now()
-        }), { expirationTtl: ttl });
+        });
+        await kv(env).put(peekOwnerKey(env, token, chatId), ownerRecord, { expirationTtl: ttl });
+        // 记住这个令牌最近一次打开的角色（快捷指令不传 chatId 时使用）
+        if (chatId && chatId !== 'latest') {
+          await kv(env).put(peekBase(appId, 'chat:latest'), chatId, { expirationTtl: ttl });
+        }
+        await kv(env).put(peekOwnerKey(env, token, 'latest'), ownerRecord, { expirationTtl: ttl });
       } catch (e) {}
       return json({ ok: true });
     }
@@ -1737,7 +1841,14 @@ export default {
       if (!chatId) { try { chatId = new URL(request.url).searchParams.get('chatId') || ''; } catch (e) {} }
       if (!appId) { try { appId = new URL(request.url).searchParams.get('appId') || ''; } catch (e) {} }
       if (!chatId) return json({ ok: false, error: 'no chatId' }, 400);
-      const turns = await peekTurns(env, chatId, appId);
+      const token = peekTokenValue(request, body);
+      const scope = peekScope(env, appId, token);
+      let turns = await peekTurns(env, chatId, scope);
+      // 兼容旧数据：老快捷指令没有带 appId 时，/peek 可能把轮次存在 legacy 分区
+      if (!turns.length) {
+        const legacyScope = peekScope(env, 'legacy', token);
+        if (legacyScope !== scope) turns = await peekTurns(env, chatId, legacyScope);
+      }
       return json({ ok: true, turns: turns });
     }
 
@@ -1747,7 +1858,13 @@ export default {
       try { body = await request.json(); } catch (e) {}
       if (!peekOk(request, env, body)) return json({ ok: false, error: 'unauthorized' }, 401);
       const chatId = String(body.chatId || '');
-      if (chatId) await peekSave(env, chatId, [], body.appId);
+      if (chatId) {
+        const token = peekTokenValue(request, body);
+        const scope = peekScope(env, body.appId, token);
+        await peekSave(env, chatId, [], scope);
+        const legacyScope = peekScope(env, 'legacy', token);
+        if (legacyScope !== scope) await peekSave(env, chatId, [], legacyScope);
+      }
       return json({ ok: true });
     }
 

@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>窥屏</title>
-  <link rel="stylesheet" href="../css/ios-setting.css?v=20261023c">
+  <link rel="stylesheet" href="../css/ios-setting.css?v=20261023e">
   <script src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
   <script src="../js/appearance.js"></script>
 </head>
@@ -57,53 +57,56 @@
       </div>
       <div class="sk-mode-desc">苹果不允许网页直接看你手机屏幕。手机用「屏幕速聊」：快捷指令截屏 → 发到服务端 → TA 的回复弹在系统通知里；回到 Nano 后自动进聊天。</div>
 
-      <div class="sk-steps">
-        <div class="sk-step">
-          <div class="sk-step-no">1</div>
-          <div class="sk-step-main">
-            <div class="sk-step-title">复制接口和令牌</div>
-            <div class="sk-step-desc">快捷指令要 POST 到这个地址。令牌相当于密码，别发给别人。</div>
-            <div class="sk-copy compact">
-              <code id="isPeekEndpointMain"></code>
-              <button class="sk-copy-btn" data-copy="isPeekEndpointMain">复制接口</button>
-            </div>
-            <div class="sk-copy compact">
-              <code id="isPeekTokenMain"></code>
-              <button class="sk-copy-btn" data-copy="isPeekTokenMain">复制令牌</button>
-            </div>
-          </div>
+      <div class="sk-peek-char">
+        <div class="sk-peek-char-main">
+          <span class="sk-peek-char-label">当前角色 · 换角色后下面的 ID 和请求体会自动更新</span>
+          <span class="sk-peek-char-name" id="isPeekCharName">—</span>
+          <span class="sk-peek-char-id">角色 ID：<code id="isPeekCharId">—</code></span>
         </div>
-
-        <div class="sk-step">
-          <div class="sk-step-no">2</div>
-          <div class="sk-step-main">
-            <div class="sk-step-title">在「快捷指令」里搭出这条流程</div>
-            <div class="sk-step-desc">
-              <span class="sk-pill">截图</span>
-              <span class="sk-arrow">→</span>
-              <span class="sk-pill">Base64 编码</span>
-              <span class="sk-arrow">→</span>
-              <span class="sk-pill">获取 URL 内容</span>
-              <span class="sk-arrow">→</span>
-              <span class="sk-pill">获取字典值</span>
-              <span class="sk-arrow">→</span>
-              <span class="sk-pill">显示提醒</span>
-            </div>
-            <div class="sk-step-desc">「获取 URL 内容」选 POST，地址填上面的接口；头部加 <code>X-Peek-Token</code>；请求体选「文件」，内容用下面「复制完整步骤」里的 JSON。</div>
-          </div>
-        </div>
-
-        <div class="sk-step">
-          <div class="sk-step-no">3</div>
-          <div class="sk-step-main">
-            <div class="sk-step-title">运行，然后回到 Nano</div>
-            <div class="sk-step-desc">TA 的回复会先弹在系统通知里。等你回到小手机，这几轮会自动合并进角色聊天。</div>
-          </div>
-        </div>
+        <button class="sk-copy-btn" type="button" data-copy="isPeekCharId">复制 ID</button>
       </div>
 
-      <button class="sk-big-btn soft" id="isCopyGuide" type="button">复制完整步骤和 JSON</button>
-      <div class="sk-mode-foot">想更省事：设置 → 辅助功能 → 触控 → 轻点背面 → 双击 → 选这个快捷指令。服务端地址可以在下面「高级玩法」里改。</div>
+      <div class="sk-field">
+        <div class="sk-field-head">
+          <span>接口地址</span>
+          <button class="sk-copy-btn" type="button" data-copy="isPeekEndpointMain">复制</button>
+        </div>
+        <code id="isPeekEndpointMain"></code>
+      </div>
+
+      <div class="sk-field">
+        <div class="sk-field-head">
+          <span>站点 ID（appId）</span>
+          <button class="sk-copy-btn" type="button" data-copy="isPeekAppId">复制</button>
+        </div>
+        <code id="isPeekAppId"></code>
+      </div>
+
+      <div class="sk-field">
+        <div class="sk-field-head">
+          <span>令牌（相当于密码）</span>
+          <button class="sk-copy-btn" type="button" data-copy="isPeekTokenMain">复制</button>
+        </div>
+        <code id="isPeekTokenMain"></code>
+      </div>
+
+      <div class="sk-field">
+        <div class="sk-field-head">
+          <span>截图请求体 JSON</span>
+          <button class="sk-copy-btn" type="button" data-copy="isPeekBodyImage">复制 JSON</button>
+        </div>
+        <pre id="isPeekBodyImage"></pre>
+      </div>
+
+      <div class="sk-field">
+        <div class="sk-field-head">
+          <span>回话请求体 JSON（连续聊时用）</span>
+          <button class="sk-copy-btn" type="button" data-copy="isPeekBodyText">复制 JSON</button>
+        </div>
+        <pre id="isPeekBodyText"></pre>
+      </div>
+
+      <div class="sk-mode-foot">每换一个角色，上面的「角色 ID」和两段 JSON 都会自动换成这个角色；直接复制，不用手改。JSON 里的尖括号占位符在快捷指令里替换成变量即可。</div>
     </section>
 
     <div class="sk-tip">
@@ -111,84 +114,187 @@
     </div>
 
     <details class="sk-fold">
-      <summary><span>高级玩法 · 直连 API / 屏幕速聊</span><svg class="sk-fold-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <summary><span>具体步骤（点开）</span><svg class="sk-fold-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></summary>
       <div class="sk-fold-body">
-        <div class="sk-note">已经会用快捷指令了？下面可以自己改成直连模型，或者在任意 App 里连续对话。看不懂就跳过，用上面的简单方式就好。</div>
+        <div id="isGuide" class="sk-guide"></div>
+        <button class="sk-big-btn soft" id="isCopyGuide" type="button" style="margin-top:14px">复制完整步骤和 JSON</button>
+      </div>
+    </details>
 
-        <details class="sk-subfold">
-          <summary><span>方式 A · 浏览器直接打开（电脑 / 浏览器）</span><svg class="sk-fold-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></summary>
-          <div class="sk-fold-body">
-            <div class="sk-copy"><code id="isLinkA"></code><button class="sk-copy-btn" data-copy="isLinkA">复制链接</button></div>
-            <div class="sk-note">把链接里的 <b>{{识别文本}}</b> 删掉，改插入「从图像中提取文本」的结果。⚠️ iPhone 上用这个链接会进 Safari，进不了主屏 Nano，所以手机请用上面的「屏幕速聊」。</div>
+    <details class="sk-fold">
+      <summary><span>服务端地址（换自己的 Worker 时才改）</span><svg class="sk-fold-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <div class="sk-fold-body">
+        <input id="isPeekUrl" class="sk-textarea" style="min-height:40px;height:42px" placeholder="https://nanopush.nano315.online" autocomplete="off">
+        <input id="isPushToken" class="sk-textarea" style="min-height:40px;height:42px;margin-top:10px" placeholder="可选：Web Push 的 PUSH_TOKEN（没设就留空）" autocomplete="off">
+        <button class="sk-copy-btn" id="isPeekSave" style="margin-top:12px" type="button">保存配置</button>
+        <div class="sk-note">这个地址会同时用于「窥屏」和「Web Push」。保存后去 <b>设置 → 其他 → Web Push</b> 点一次「开启 / 重新订阅」；VAPID 公钥会自动从 Worker 的 <code>/vapid</code> 获取。<br>默认用作者的公用 Worker 就能玩；如果经常失败、额度不足，或想和朋友隔离数据，可以换成自己的 Worker，详细步骤见下面的 <b>「自己部署 Worker（详细教程）」</b>。<br>给其他人公用时，在 Worker 里设置 <code>PEEK_PUBLIC=1</code>，每个浏览器的令牌会把数据彼此隔离。<br>公用模式不会使用站长的模型 API：每个人都要在自己的 Nano 里配置主 API，否则只会收到“请先配置你自己的 API”的提示。</div>
+      </div>
+    </details>
+
+    <details class="sk-fold" id="selfDeployFold">
+      <summary><span>自己部署 Worker（详细教程）</span><svg class="sk-fold-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <div class="sk-fold-body">
+        <div class="sk-guide">
+          <p>默认用作者的 Worker 就能玩。如果你经常遇到慢、额度不足，或者想和朋友隔离数据，就按下面部署一个自己的。部署一次，<b>窥屏和 Web Push 都会走你的 Worker</b>。</p>
+
+          <button class="sk-big-btn soft" type="button" data-copy="isDeployPrompt" style="margin:4px 0 8px">复制给 AI 的部署指令</button>
+          <div class="sk-note" style="margin-bottom:14px">复制后发给任意 AI（ChatGPT / Claude / 豆包等），让它按「电脑」或「只用手机」一步一步教你。下面也有一份手动步骤。</div>
+          <textarea id="isDeployPrompt" hidden>你在帮我部署一个 Cloudflare Worker，用来给 Nano（一个网页版 AI 聊天 PWA）提供「窥屏 / 屏幕速聊」和「Web Push」。请一步一步指导我，不要一次给太多步骤；每步等我确认后再继续。
+
+背景：
+- 我有一个 Nano 网页，已经能打开。
+- 我要部署的是仓库里的 push-worker。
+- 部署后，把 Worker 地址填进 Nano 的「查手机 → 设置 → 窥屏 → 手机上玩 → 服务端地址」，窥屏和 Web Push 都会走它。
+- 模型 API 不需要在 Worker 里配；Nano 会把我的主 API 同步过去。
+- 我不能用作者的 Worker，想自己部署。
+
+仓库：
+https://github.com/xiaoyu0108/nano-mobile-chat
+Worker 源码（电脑 / 仓库里用）：
+https://raw.githubusercontent.com/xiaoyu0108/nano-mobile-chat/main/push-worker/src/index.js
+单文件版（手机粘贴到 Cloudflare 控制台用，依赖已打包）：
+https://raw.githubusercontent.com/xiaoyu0108/nano-mobile-chat/main/push-worker/dist/index.js
+
+请先问我：用电脑（有终端）还是只用手机（Cloudflare 网页控制台）？然后按对应路径指导。
+
+=== 路径 A：电脑 + wrangler ===
+1. 安装 Node.js 18+，终端执行 npm i -g wrangler，wrangler login。
+2. git clone 仓库，cd push-worker，npm install。
+3. wrangler kv namespace create PUSH_KV，记下 id。
+4. 改 wrangler.toml：
+   - name 改成自己的；
+   - kv_namespaces 的 id 换成自己的；
+   - 删除作者的 routes（nanopush.nano315.online / music.nano315.online）；
+   - 不需要 D1 就删除 [[d1_databases]]（代码会用 KV）；想带更多人可保留并创建自己的 D1。
+5. wrangler secret put PEEK_PUBLIC，填 1。
+   - 可选：wrangler secret put PUSH_TOKEN（保护 /send /schedule；如果设了，Nano 里也要填同一个）。
+   - VAPID 不用配，Worker 会自动生成。
+6. wrangler deploy，记下 https://...workers.dev 地址。
+7. 浏览器打开 地址/vapid，应返回 {"ok":true,"key":"..."}。
+8. 在 Nano 的「服务端地址」填这个地址，保存；如果设了 PUSH_TOKEN 就填下面的输入框。
+9. 打开对应角色的窥屏页，重新复制接口地址/令牌/JSON 到快捷指令。
+10. 去 设置 → 其他 → Web Push，点「开启 / 重新订阅」。
+11. 测试：跑一次窥屏，回 Nano 私聊看消息；看 Cloudflare Logs 有没有 POST /peek。
+
+=== 路径 B：只用手机（Cloudflare 网页控制台） ===
+1. 手机浏览器打开 dash.cloudflare.com，登录。
+2. Workers & Pages → Create → Worker → 起名（例如 nano-push-你的名字）→ Deploy。
+3. 进入 Worker → Edit code / Quick Edit，把默认代码全部删掉，粘贴上面的「单文件版 dist/index.js」全部内容 → Save and Deploy。
+4. Storage & Databases → KV → Create namespace，名字 PUSH_KV；回到 Worker → Settings → Bindings → Add → KV Namespace，Variable name 必须填 PUSH_KV，选择刚建的命名空间。
+5. Settings → Variables and Secrets → Add：
+   - PEEK_PUBLIC = 1（类型 Text 或 Secret）
+   - 可选 PUSH_TOKEN = 一个随机字符串（如果设了，Nano 里也要填同一个）
+6. 不需要 D1；如果代码里报 env.nano_db 相关错误，忽略/删除 D1 绑定即可，代码会回退 KV。
+7. 部署后打开 https://你的worker.workers.dev/vapid，应返回 key。
+8. 在 Nano 的「服务端地址」填这个地址，保存；有 PUSH_TOKEN 就填。
+9. 更新窥屏快捷指令的接口地址/令牌/JSON。
+10. 设置 → 其他 → Web Push → 开启/重新订阅。
+11. 测试同上。
+
+兼容要求（必须遵守）：
+- 电脑用 push-worker/src/index.js；手机粘贴用 push-worker/dist/index.js（同一版本打出来的单文件），不要用旧版/别人改过的版本。
+- KV 绑定名必须是 PUSH_KV，不能改名。
+- 不要保留作者的 routes 和 D1 ID；否则会部署冲突。
+- PEEK_PUBLIC=1 或 PEEK_TOKEN=页面令牌，二选一；否则别人的令牌会 401。
+- 如果设置了 PUSH_TOKEN，Nano 的「服务端地址」下面也要填同一个值。
+- VAPID 不用手动配；打开 /vapid 会自动生成。
+- 换 Worker 地址后，Web Push 必须点一次「重新订阅」。
+
+请从第一步开始，问我当前卡在哪，并逐步确认。不要让我一次复制太多东西。</textarea>
+
+          <div class="sk-field">
+            <div class="sk-field-head"><span>单文件源码（手机部署用，依赖已打包）</span><button class="sk-copy-btn" type="button" data-copy="isDeployRaw">复制源码链接</button></div>
+            <code id="isDeployRaw" hidden>https://raw.githubusercontent.com/xiaoyu0108/nano-mobile-chat/main/push-worker/dist/index.js</code>
+            <div class="sk-note">手机打开这个链接，全选复制内容，粘贴到 Cloudflare 的 Worker 代码编辑器。不要用 <code>src/index.js</code> 手动粘贴，它带 import，控制台会报错。<br>这个单文件版和作者当前 Worker 是同一份代码：<code>/peek</code>、<code>/peek/pending</code>、<code>/vapid</code>、<code>/subscribe</code> 路由完全一致。不要改路由名，也不要把 KV 绑定名改成别的。</div>
           </div>
-        </details>
 
-        <details class="sk-subfold">
-          <summary><span>方式 B · 快捷指令直连 API</span><svg class="sk-fold-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></summary>
-          <div class="sk-fold-body">
-            <div class="sk-line"><span class="sk-line-label">接口地址</span></div>
-            <div class="sk-copy"><code id="isUrl2"></code><button class="sk-copy-btn" data-copy="isUrl2">复制</button></div>
+          <h4>0. 准备</h4>
+          <ul>
+            <li>一个 Cloudflare 账号（免费，不用买域名）</li>
+            <li>Node.js 18+（安装时一路下一步）</li>
+            <li>能打开 PowerShell / Terminal</li>
+          </ul>
 
-            <div class="sk-line"><span class="sk-line-label">主 API Key</span></div>
-            <div class="sk-copy"><code id="isApiKey"></code><button class="sk-copy-btn" data-copy="isApiKey">复制</button><button class="sk-copy-btn" id="isApiKeyReveal" type="button">显示</button></div>
-
-            <div class="sk-line"><span class="sk-line-label">请求体 JSON</span></div>
-            <div class="sk-copy"><pre id="isBody"></pre><button class="sk-copy-btn" data-copy="isBody">复制</button></div>
-
-            <div class="sk-line"><span class="sk-line-label">回传深链</span></div>
-            <div class="sk-copy"><code id="isLinkB"></code><button class="sk-copy-btn" data-copy="isLinkB">复制</button></div>
-            <div class="sk-note">头部加 <b>Authorization: Bearer 你的Key</b> 与 <b>Content-Type: application/json</b>。Key 会存在快捷指令里，注意安全。</div>
+          <div class="sk-field">
+            <div class="sk-field-head"><span>1. 安装 wrangler 并登录</span><button class="sk-copy-btn" type="button" data-copy="isDeployCmd1">复制</button></div>
+            <pre id="isDeployCmd1">npm i -g wrangler
+wrangler login</pre>
           </div>
-        </details>
+          <p>登录会打开浏览器，点 Allow。装完如果提示找不到 wrangler，关掉终端重新打开；还不行就用 <code>npx wrangler login</code>。</p>
 
-        <details class="sk-subfold">
-          <summary><span>方式 C · 屏幕速聊（服务端）</span><svg class="sk-fold-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></summary>
-          <div class="sk-fold-body">
-            <div class="sk-note" style="color:#c14a70">需要自己部署一个 Cloudflare Worker（`push-worker`）。没有服务端就用方式 B，或直接用上面的「粘贴屏幕文字」。</div>
-            <div class="sk-note">在任意 App 里双击「辅助触控」运行快捷指令：截屏 → 发到服务端 → 回复直接弹在系统窗口里、可继续打字；回到小手机后自动合并进聊天。</div>
-            <div class="sk-note">主 API 会自动同步到服务端，不需要再额外配置 PEEK_API_KEY；只有想给窥屏单独用另一套模型时才需要。</div>
-
-            <div class="sk-line" style="margin-top:12px"><span class="sk-line-label">服务端地址</span></div>
-            <input id="isPeekUrl" class="sk-textarea" style="min-height:40px;height:42px" placeholder="https://nanopush.nano315.online" autocomplete="off">
-
-            <div class="sk-line" style="margin-top:12px"><span class="sk-line-label">令牌</span></div>
-            <div class="sk-copy"><code id="isPeekToken"></code><button class="sk-copy-btn" data-copy="isPeekToken">复制</button></div>
-
-            <div class="sk-line" style="margin-top:12px"><span class="sk-line-label">接口地址</span></div>
-            <div class="sk-copy"><code id="isPeekEndpoint"></code><button class="sk-copy-btn" data-copy="isPeekEndpoint">复制</button></div>
-
-            <div class="sk-line" style="margin-top:12px"><span class="sk-line-label">人设 / system</span></div>
-            <div class="sk-note">人设会自动从 App 同步到服务端，快捷指令里 system 可以留空。</div>
-            <div class="sk-copy"><pre id="isPeekSystem"></pre><button class="sk-copy-btn" data-copy="isPeekSystem">复制</button></div>
-            <button class="sk-copy-btn" id="isPeekSave" style="margin-top:12px">保存配置</button>
-
-            <div class="sk-note" style="margin-top:12px">
-              快捷指令怎么搭：<br>
-              1) 截屏 → <b>Base64 编码</b>（关掉换行）；<br>
-              2) <b>获取 URL 内容</b>：POST 到上面「接口地址」，头部加 <code>X-Peek-Token: 你的令牌</code>；<br>
-              3) 请求体选 <b>文件</b>，引用一个 <b>文本</b> 动作：<br>
-              <code>{"chatId":"&lt;角色ID&gt;","image":"data:image/jpeg;base64,&lt;截图base64&gt;"}</code>；<br>
-            <span class="sk-note">不用填 system：Worker 会自动使用你当前选中的角色人设、最近聊天上下文和主 API。</span><br>
-              4) <b>获取字典值</b> 取 <code>reply</code> → <b>显示提醒</b> 弹出；<br>
-              5) 接着 <b>要求输入</b> 拿到你打的字，把 image 换成 text 再发一轮 → 循环，形成连续对话。
-            </div>
+          <div class="sk-field">
+            <div class="sk-field-head"><span>2. 拿代码并安装依赖</span><button class="sk-copy-btn" type="button" data-copy="isDeployCmd2">复制</button></div>
+            <pre id="isDeployCmd2">git clone https://github.com/xiaoyu0108/nano-mobile-chat.git
+cd nano-mobile-chat/push-worker
+npm install</pre>
           </div>
-        </details>
+          <p>不会用 git 就去 GitHub 点 <b>Code → Download ZIP</b>，解压后进入 <code>push-worker</code> 目录。</p>
 
-        <details class="sk-subfold">
-          <summary><span>提示词 · 人设</span><svg class="sk-fold-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></summary>
-          <div class="sk-fold-body">
-            <textarea id="isPrompt" class="sk-textarea" rows="6" placeholder="角色的性格 / 语气 / 你和 TA 的关系…"></textarea>
-            <div class="sk-note">已自动填入所选角色的人设，可自行删改。</div>
+          <div class="sk-field">
+            <div class="sk-field-head"><span>3. 建自己的 KV，记下 id</span><button class="sk-copy-btn" type="button" data-copy="isDeployCmd3">复制</button></div>
+            <pre id="isDeployCmd3">wrangler kv namespace create PUSH_KV</pre>
           </div>
-        </details>
 
-        <details class="sk-subfold">
-          <summary><span>完整步骤与排错</span><svg class="sk-fold-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></summary>
-          <div class="sk-fold-body">
-            <div id="isGuide" class="sk-guide"></div>
+          <h4>4. 改 wrangler.toml</h4>
+          <p>必须删掉作者的 <code>routes</code> 和 D1，把 <code>name</code>、KV id 换成你自己的。最小可用配置：</p>
+          <div class="sk-field">
+            <div class="sk-field-head"><span>wrangler.toml</span><button class="sk-copy-btn" type="button" data-copy="isDeployToml">复制</button></div>
+            <pre id="isDeployToml">name = "nano-push-你的名字"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+workers_dev = true
+
+kv_namespaces = [
+  { binding = "PUSH_KV", id = "你刚才的KV_ID" }
+]</pre>
           </div>
-        </details>
+          <p><code>PUSH_KV</code> 这个名字不要改。想用自己的域名再加 <code>routes</code>；不需要 D1 / 定时任务就删掉对应块，代码会自动回退到 KV。</p>
+          <p>想带更多人，可以保留 D1：执行 <code>wrangler d1 create nano-db-你的名字</code>，把返回的 <code>database_id</code> 填进 <code>[[d1_databases]]</code>，binding 保持 <code>nano_db</code>。</p>
+
+          <div class="sk-field">
+            <div class="sk-field-head"><span>5. 设置密钥</span><button class="sk-copy-btn" type="button" data-copy="isDeployCmd4">复制</button></div>
+            <pre id="isDeployCmd4">wrangler secret put PEEK_PUBLIC
+# 输入：1
+
+# 可选：保护 /send、/schedule
+wrangler secret put PUSH_TOKEN</pre>
+          </div>
+          <p>VAPID 不用手动配，Worker 第一次访问 <code>/vapid</code> 会自动生成。模型 API 也不用配，Nano 打开聊天时会同步。</p>
+
+          <div class="sk-field">
+            <div class="sk-field-head"><span>6. 部署</span><button class="sk-copy-btn" type="button" data-copy="isDeployCmd5">复制</button></div>
+            <pre id="isDeployCmd5">wrangler deploy</pre>
+          </div>
+          <p>记下输出的地址，形如 <code>https://nano-push-你的名字.xxxx.workers.dev</code>。浏览器打开 <code>你的地址/vapid</code>，能看到 <code>key</code> 就正常。</p>
+
+          <h4>7. 填进 Nano</h4>
+          <ol>
+            <li>回到上面的 <b>服务端地址</b>，粘贴你的 Worker 地址；</li>
+            <li>如果第 5 步设了 <code>PUSH_TOKEN</code>，在下面的「Web Push 的 PUSH_TOKEN」填同一个值；没设就留空；</li>
+            <li>点 <b>保存配置</b>；</li>
+            <li>本页会更新接口地址 / 令牌 / JSON，按新值更新快捷指令；</li>
+            <li>去 <b>设置 → 其他 → Web Push</b> 点 <b>开启 / 重新订阅</b>。</li>
+          </ol>
+
+          <h4>8. 验证</h4>
+          <ul>
+            <li><code>/vapid</code> 能返回 <code>key</code>；</li>
+            <li>运行窥屏快捷指令能收到回复；</li>
+            <li>回到 Nano 私聊能看到这一轮；</li>
+            <li>Web Push 显示「已开启」；</li>
+            <li>Cloudflare → Workers → 你的 Worker → Logs 能看到 <code>POST /peek</code>。</li>
+          </ul>
+
+          <h4>9. 能带多少人</h4>
+          <ul>
+            <li>纯 KV 自建（上面最小配置）：免费版约 1,000 写/天，约 <b>10~30 个活跃用户</b>；</li>
+            <li>保留 D1（作者默认配置）：免费 D1 约 10 万行写/天，保守可带 <b>100~300 个活跃用户</b>；</li>
+            <li>经常跑「重复 50」或很多人同时用，人数要往下压；</li>
+            <li>到 Cloudflare 看用量，接近 70%~80% 就让重度用户自己部署，或升级 Workers Paid。</li>
+          </ul>
+
+          <p>更完整的排错、费用和截图说明见：<a href="https://github.com/xiaoyu0108/nano-mobile-chat/blob/main/docs/self-deploy-worker.md" target="_blank" rel="noopener" style="color:#b23a5b;font-weight:700">docs/self-deploy-worker.md</a>。</p>
+        </div>
       </div>
     </details>
 
@@ -198,7 +304,7 @@
 
   <div class="sk-toast" id="isToast"></div>
   <script src="../js/nano-prompts.js?v=20261023a"></script>
-<script src="../js/ios-setting.js?v=20261023e"></script>
+<script src="../js/ios-setting.js?v=20261023l"></script>
   <script src="../swipe-back.js"></script>
 </body>
 </html>

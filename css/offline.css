@@ -53,6 +53,24 @@ button:active{opacity:.55}
 /* 顶栏点击保护：即使外面把它改成悬浮/全宽，也保证按钮各占自己那一块、标题不挡点击 */
 .topbar .top-btn{flex:0 0 auto;max-width:64px}
 .topbar .top-title{pointer-events:none}
+/* 生图进度：顶部轻提示条（不拦截点击，不影响其它按钮操作） */
+.gen-status{
+  flex:none;display:flex;align-items:center;justify-content:center;gap:7px;
+  margin:0 12px;padding:6px 12px;border:1px solid var(--line-strong);border-top:0;
+  border-radius:0 0 12px 12px;background:rgba(255,253,254,.92);color:var(--muted);
+  font-size:12px;font-weight:600;letter-spacing:.03em;pointer-events:none;
+  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+}
+.gen-status[hidden]{display:none}
+.gen-status .gen-spinner{
+  width:11px;height:11px;flex:none;border-radius:50%;
+  border:2px solid rgba(0,0,0,.12);border-top-color:var(--pink-deep);
+  animation:genStatusSpin .8s linear infinite;
+}
+@keyframes genStatusSpin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){
+  .gen-status .gen-spinner{animation:none}
+}
 .back-icon{width:22px;height:22px}
 .more-icon{width:22px;height:22px}
 

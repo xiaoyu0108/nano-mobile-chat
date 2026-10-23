@@ -187,7 +187,7 @@
         // 同时弹一条系统通知，并把它写进标签页标题：切到别的窗口/标签、看不到小窗时也能看到 TA 的点评
         try {
             if (window.NanoNotify && SS.info) {
-                window.NanoNotify.notify(SS.info.name || 'TA', p.main || String(text || ''), { icon: SS.info.avatar || '', channel: 'chat', force: true, target: 'ss-reply:' + String(SS.info.id), reply: true });
+                window.NanoNotify.notify(SS.info.name || 'TA', p.main || String(text || ''), { icon: SS.info.avatar || '', channel: 'chat', force: true, target: 'ss-reply:' + String(SS.info.id) + ':' + encodeURIComponent(SS.info.name || 'TA'), reply: true });
             }
             document.title = '💬 ' + (p.main || String(text || '')).slice(0, 24) + ' · Nano';
         } catch (e) {}

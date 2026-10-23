@@ -5,6 +5,9 @@
 > 结论先行：iOS 上第三方 **没有通用悬浮窗、也不能后台连续读屏**。
 > 现实可行的做法是「**你按一下 → TA 看一眼 → TA 说话**」，触发用「快捷指令 + 轻点背面」，
 > 显示用「通知」，要常驻小窗则必须配一个原生 App（灵动岛 / Live Activity）。
+>
+> **2026-10 更新**：窥屏页已精简为「电脑共享 / 手机屏幕速聊」两种方式，换角色会自动生成新的角色 ID 和请求体 JSON。
+> 下面的 Part 1 / Part 2（深链、直连 API）是旧版参考，页面里不再提供入口；手机端请直接用 Part 2.5。
 
 本仓库已内置 Web 侧支持：
 
@@ -13,7 +16,7 @@
 | `js/screen-share.js` | 新增 `ScreenShare.commentText(info, text)`：让角色点评一段屏幕文本 |
 | `js/keep-alive.js` | 新增 `NanoKeepAlive.setNowPlaying()`：用保活音频把点评显示到锁屏 / 灵动岛 |
 | `js/ios-bridge.js` | 解析深链参数，把快捷指令送来的文本交给角色 / 写进聊天 |
-| `ios-setting.html` | 图形化生成深链、接口地址与请求体 JSON（在 查手机 → 设置 → **iOS 快捷指令 · 窥屏** 打开） |
+| `ios-setting.html` | 图形化生成接口地址、令牌与请求体 JSON（在 查手机 → 设置 → **窥屏** 打开） |
 | `docs/ios-shortcuts.md` | 本文档 |
 
 ---
@@ -23,7 +26,7 @@
 1. **HTTPS 部署**：Nano 必须跑在 `https://` 上（PWA、剪贴板、通知都需要）。
 2. **装到主屏**：Safari 打开 → 分享 → 添加到主屏幕，之后以独立 App 形态运行。
 3. **配置主 API**：在 API 页填好 接口地址 / Key / 模型。识图或长文本模型效果更好。
-4. **生成参数**：打开 `ios-setting.html`（手机 → 设置 → iOS 快捷指令 · 窥屏），
+4. **生成参数**：打开 `ios-setting.html`（手机 → 设置 → 窥屏），
    它会根据你选的角色和 API 配置，生成下面要用到的 **深链** 和 **请求体 JSON**。
 
 ---
@@ -59,7 +62,7 @@
 所以 iPhone 上不要指望深链能唤起 PWA。请改用下面两条**不依赖深链**的路：
 
 - **方式 B**（最省事）：快捷指令自己 POST 你的模型接口拿回复 → 用系统通知显示。Key 会存在快捷指令里。
-- **方式 C · 屏幕速聊**（体验最好）：回复弹在系统窗口、可继续打字，回到 Nano 后自动合并进聊天。见 Part 2.5。
+- **屏幕速聊**（体验最好）：回复弹在系统窗口、可继续打字，回到 Nano 后自动合并进聊天。见 Part 2.5。
 
 > 电脑 Chrome / Edge 上不存在这个问题：App 内「让 TA 看我的真实屏幕」按钮可以真正共享屏幕。
 
@@ -153,83 +156,346 @@
 
 | 路由 | 作用 |
 | --- | --- |
-| `POST /peek` | 令牌校验 → 收 `{chatId, text?, image?}`（`system` 可省略）→ 用当前角色人设 + 最近上下文 + 服务端保存的主 API 调模型 → 返回 `{ok, reply}`，并把这一轮暂存；若已配置 VAPID 且 App 已订阅，会顺带用 Web Push 推一条通知 |
+| `POST /peek` | 令牌校验 → 收 `{chatId, appId?, token?, text?, image?}`（`system` 可省略）→ 用当前角色人设 + 最近上下文 + 服务端保存的主 API 调模型 → 返回 `{ok, reply, text, name}`（`reply` 带角色名前缀，`text` 是干净回复），并把这一轮暂存；若已配置 VAPID 且 App 已订阅，会顺带用 Web Push 推一条通知 |
 | `GET /peek/pending?chatId=&token=` | App 拉取暂存轮次 `{ok, turns:[{user, char, ts}]}` |
 | `POST /peek/ack` | App 合并完后清空暂存 |
 
-> **点通知打开的是「添加到主屏幕」的 Nano，不是 Safari。** iOS 里只有 Web Push 通知能唤起已安装的主屏 PWA（`sw.js` 的 `notificationclick` 会聚焦/冷启动 App）。所以想在手机上「啪一下就在主屏 Nano 里看到」，就让 `/peek` 顺手发一条推送：在 Worker 配好 `VAPID_*`，在 Nano 里执行一次 `NanoPush.setup(worker地址, VAPID公钥)` + `NanoPush.enable()`，之后点通知即进 App。
+> **点通知打开的是「添加到主屏幕」的 Nano，不是 Safari。** iOS 里只有 Web Push 通知能唤起已安装的主屏 PWA（`sw.js` 的 `notificationclick` 会聚焦/冷启动 App）。所以想在手机上「啪一下就在主屏 Nano 里看到」，就让 `/peek` 顺手发一条推送：Worker 会自动生成 / 读取 `VAPID_*`，在 Nano 的 **设置 → 其他 → Web Push** 点一次「开启」即可，之后点通知就进 App。
 
-### 部署 `push-worker`（一步步来，约 5 分钟）
+### 部署 `push-worker`（自建，约 10 分钟）
 
-1. 装好 **Node.js**，在终端执行（只需一次）：
-   ```bash
-   npm i -g wrangler
-   wrangler login          # 浏览器授权你的 Cloudflare 账号
-   ```
-2. 进入本仓库的 worker 目录并装依赖：
-   ```bash
-   cd push-worker
-   npm install
-   ```
-3. **建一个你自己的 KV 命名空间**（`wrangler.toml` 里那个 id 是作者的，务必换成你的）：
-   ```bash
-   wrangler kv namespace create PUSH_KV
-   ```
-   把命令返回的 `id` 填进 `wrangler.toml` 的 `kv_namespaces[0].id`。
-4. 设置令牌（**别写进仓库**）：
-   ```bash
-   wrangler secret put PEEK_TOKEN      # 必须与 ios-setting 方式 C 里显示的「令牌」完全一致
-   ```
-   **模型 API 不需要再配一套**：只要在 Nano 里打开过一次聊天，或点过「保存配置」，
-   App 会把主 API（地址 / Key / 模型）同步到 Worker；`/peek` 会直接复用它。
-   如果你想给窥屏单独用另一套模型，才需要再配这些可选项：
-   ```bash
-   wrangler secret put PEEK_API_KEY    # 可选：单独的窥屏 Key
-   wrangler secret put PEEK_API_URL    # 可选：单独的窥屏接口地址
-   wrangler secret put PEEK_MODEL      # 可选：单独的窥屏模型
-   ```
-   可选：想「点通知就打开主屏的 Nano」（见上方说明），再加这三个 VAPID 变量（App 里也要 `NanoPush.enable()`）：
-   ```bash
-   wrangler secret put VAPID_SUBJECT   # 例如 mailto:you@example.com
-   wrangler secret put VAPID_PUBLIC
-   wrangler secret put VAPID_PRIVATE
-   ```
-5. 部署，记下输出里的地址（形如 `https://nano-push.xxxx.workers.dev`）：
-   ```bash
-   wrangler deploy
-   ```
-6. 回到 **查手机 → 设置 → iOS 快捷指令 · 窥屏 → 方式 C**：把上面的地址填进「服务端地址」，点「保存配置」，然后复制「令牌 / 接口地址 / 人设 / system」。
+> 给普通用户看的完整版（更啰嗦、带排错）在 **[self-deploy-worker.md](self-deploy-worker.md)**；下面是精简版。
 
-`PEEK_TOKEN` 未设置时接口放行（仅建议本地调试）；生产务必设置。
+#### 0. 准备
+
+- 一个 **Cloudflare 账号**（免费版够玩）；
+- **Node.js 18+**；
+- 本仓库（至少要有 `push-worker` 目录）。
+
+> **每个人自己部署时，必须改掉 `wrangler.toml` 里作者的东西**：
+> - 删除或替换 `routes` 里的自定义域名（`nanopush.nano315.online` 不是你的）；
+> - 把 `kv_namespaces[0].id` 换成你自己的 KV；
+> - 不需要 D1 / Supabase / 定时任务就删掉对应块，代码会自动回退到 KV。
+
+#### 1. 安装 wrangler 并登录
+
+```bash
+npm i -g wrangler
+wrangler login
+```
+
+第一次会打开浏览器，授权你的 Cloudflare 账号。
+
+#### 2. 进入 worker 目录并装依赖
+
+```bash
+cd push-worker
+npm install
+```
+
+#### 3. 新建你自己的 KV
+
+```bash
+wrangler kv namespace create PUSH_KV
+```
+
+把返回的 `id` 填进 `wrangler.toml`。
+
+最小可用的 `wrangler.toml` 长这样（直接复制，改成你的名字和 KV ID）：
+
+```toml
+name = "nano-push-yourname"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+workers_dev = true
+
+kv_namespaces = [
+  { binding = "PUSH_KV", id = "你的KV_ID" }
+]
+```
+
+说明：
+
+- `PUSH_KV` 这个 binding 名不要改，代码里写死了；
+- 不需要自定义域名就先不写 `routes`；
+- 不需要 D1 / Supabase / 定时任务就先删掉对应块；
+- 想用自己的域名，再加 `routes`，并在 Cloudflare 里绑定域名。
+
+#### 4. 设置 secrets
+
+私用（只给自己玩）：
+
+```bash
+wrangler secret put PEEK_TOKEN
+# 填窥屏页显示的 pk_... 令牌
+```
+
+公用（给其他人玩）：
+
+```bash
+wrangler secret put PEEK_PUBLIC
+# 填 1
+```
+
+可选：
+
+```bash
+wrangler secret put PUSH_TOKEN
+# 想保护 /send、/schedule 就设一个；不设则这些接口不校验
+```
+
+VAPID **可以不配**：Worker 第一次访问 `/vapid` 时会自动生成一对密钥并存进 KV。想固定密钥再配：
+
+```bash
+wrangler secret put VAPID_SUBJECT   # 例如 mailto:you@example.com
+wrangler secret put VAPID_PUBLIC
+wrangler secret put VAPID_PRIVATE
+```
+
+**模型 API 不需要单独配**：Nano 打开聊天 / 保存窥屏配置时会把主 API 同步到 Worker，`/peek` 直接复用。
+
+#### 5. 部署
+
+```bash
+wrangler deploy
+```
+
+记下输出里的地址，形如：
+
+```text
+https://nano-push-yourname.xxxx.workers.dev
+```
+
+#### 6. 引入 Nano（一个地址，两套功能）
+
+打开 **查手机 → 设置 → 窥屏 → 手机上玩 → 服务端地址**：
+
+1. 填你的 Worker 地址；
+2. 如果你在第 4 步设了 `PUSH_TOKEN`，在下面的「Web Push 的 PUSH_TOKEN」填同一个值；没设就留空；
+3. 点 **保存配置**。
+
+保存会同时写入：
+
+- `nano_peek_url`：给窥屏用；
+- `nano_push_endpoint`：给 Web Push 用；
+- 换地址时会清掉旧的 `nano_push_vapid`，避免新 Worker 用旧公钥。
+
+然后：
+
+- **窥屏**：页面会重新生成「接口地址 / 令牌 / 请求体 JSON」，按上面的快捷指令搭建；
+- **Web Push**：去 **设置 → 其他 → Web Push**，点 **开启 / 重新订阅**。它会自动请求新 Worker 的 `/vapid` 拿公钥，再 `/subscribe` 订阅；
+- **iOS**：必须把 Nano「添加到主屏幕」；Web Push 需要 iOS 16.4+；
+- 从旧 Worker 切到新 Worker 后，一定要点一次 **重新订阅**，旧订阅不会自动迁移。
+
+#### Web Push 和窥屏是同一个 Worker 吗？
+
+是同一个 Worker，但走不同路由、不同密钥：
+
+| 功能 | 路由 | 认证 | 主要数据 |
+| --- | --- | --- | --- |
+| 窥屏 / 屏幕速聊 | `/peek`、`/peek/persona`、`/peek/pending`、`/peek/ack` | `PEEK_TOKEN`，或公用模式下的每用户令牌 | 人设、API、轮次、截图 |
+| Web Push | `/vapid`、`/subscribe`、`/send`、`/schedule` | `/vapid`、`/subscribe` 公开；`/send`、`/schedule` 用 `PUSH_TOKEN` | 订阅、定时任务 |
+
+两者共用同一个 KV 命名空间：
+
+- 窥屏每轮大约 1 次写 + 1 次读；
+- Web Push 的订阅和定时任务也会读写 KV；
+- **每个人自己部署 = 各自 KV / 各自 VAPID / 各自免费额度**；
+- **公用一个 Worker = 用你的 KV 额度**，但模型 API 仍然是每个人自己的。
+
+| 方式 | 模型费用 | KV / Worker 费用 | 适合 |
+| --- | --- | --- | --- |
+| 公用一个 Worker（`PEEK_PUBLIC=1`） | 每个用户自己的 API | 站长承担 | 朋友多、不想折腾 |
+| 每个人自己部署 | 自己的 API | 自己的 Cloudflare 免费额度 | 想隔离数据 / 不想帮别人付 KV |
+| 只给自己用（不设 `PEEK_PUBLIC`） | 自己 | 自己 | 最省心 |
+
+`PEEK_TOKEN` 未设置时窥屏接口放行（仅建议本地调试）；生产务必设置，或者用 `PEEK_PUBLIC=1` 做公用模式。
+
+### 公用部署（PEEK_PUBLIC）与 KV 费用
+
+先澄清：这里没有「公钥」。公用指的是 **一个 Worker 接受多个人的令牌**，每个人的数据按令牌哈希隔离。部署分两步：设置 `PEEK_PUBLIC`，再重新部署。
+
+#### 方式 A：命令行（推荐）
+
+```bash
+cd push-worker
+wrangler secret put PEEK_PUBLIC
+# 提示输入值时填：1
+wrangler deploy
+```
+
+#### 方式 B：Cloudflare 控制台
+
+1. 打开 **Cloudflare Dashboard → Workers & Pages → 你的 Worker**。
+2. 进入 **Settings → Variables and Secrets**。
+3. 点 **Add**：
+   - Type：**Secret**（或 Text）
+   - Name：`PEEK_PUBLIC`
+   - Value：`1`
+4. 保存后点 **Deploy**。
+
+#### 公用模式的行为
+
+- 接受任意长度 ≥ 8 的令牌（`pk_...` 即可），不再要求等于 `PEEK_TOKEN`；
+- 把令牌哈希进 KV 分区（`appId + 令牌哈希`），每个人的暂存轮次、人设、API、owner 都互相隔离；
+- 每个人仍然用自己 Nano 里配置的主 API，**不会花你的模型额度**；
+- `/peek/pending` 也按令牌分区，别人拿不到你的消息；
+- 公用模式只作用于 `/peek*`，不会把 `/auto*` 后台主动消息一起公开。
+
+#### 会花 KV 吗？会，但花的是 Cloudflare 额度，不是模型额度
+
+Cloudflare 免费版大致是（以官网当前价格为准）：
+
+| 项目 | 免费额度 |
+| --- | --- |
+| Workers 请求 | 100,000 次/天 |
+| KV 读取 | 100,000 次/天 |
+| KV 写入 | 1,000 次/天 |
+| KV 存储 | 1 GB |
+
+> **如果你的 Worker 绑定了 D1**（仓库默认的 `wrangler.toml` 就有 `nano_db`），业务代码会自动走 D1，不按 KV 的 1,000 写/天算。
+> D1 免费版大致是 **500 万行读/天、10 万行写/天、5 GB 存储**（以官网为准），容量比纯 KV 大得多。
+> 下面的 KV 估算适用于「自建时删掉了 D1」的纯 KV 配置。
+
+每轮窥屏大概消耗：
+
+- 1 次 `/peek` 请求（Worker 请求 +1）
+- 1 次 KV 写入（暂存这一轮）
+- App 拉取时 1 次 KV 读 + 1 次 KV 写（清空）
+- 人设 / API / 上下文同步一次约写 9 个 key；聊天侧 6 小时内不会重复，窥屏页每次点「保存配置」会写一次
+- 截图只增加存储，不增加写入次数；每个聊天只保留最近 2 张，7 天过期
+
+也就是说，**纯 KV** 免费版的 **1,000 次写入/天** 大概能撑几百轮对话，约 10~30 个活跃用户。
+如果你的 Worker 保留了 D1，免费额度大约能到几万轮/天，保守可带 100~300 个活跃用户；重度循环会少一些。
+
+超了怎么办：
+
+- **Workers Paid**：约 $5/月，包含更多请求和 KV 读写（具体看 Cloudflare 官网）；
+- **每个人自己部署一个免费 Worker**：最省钱，教程就在上面「部署 push-worker（自建）」；
+- **平时关掉 `PEEK_PUBLIC`**，需要给别人玩时再打开；
+- 在 Cloudflare 给 `/peek` 加 **Rate Limiting**，限制每个 IP / 路径的频率；
+- 缩短快捷指令的「重复」次数，减少无意义的轮次。
+
+> 注意：公用模式只能防「不同令牌之间串数据」，防不了「令牌被主动泄露」。令牌相当于密码，不要发到公开群聊里。
+> 公用模式消耗的是你的 Cloudflare Worker / KV 额度（不是模型额度）；上面的免费额度和限流建议就是给这种情况准备的。
 
 ### Nano 侧
 
-在 **查手机 → 设置 → iOS 快捷指令 · 窥屏 → 方式 C** 里：填「服务端地址」、点「保存配置」。
+在 **查手机 → 设置 → 窥屏 → 手机上玩 → 服务端地址** 里：填「服务端地址」、点「保存配置」。
 保存时会把**当前选中的角色人设、最近聊天上下文、主 API**一起同步到 Worker，快捷指令里不用再贴人设或 Key。
-之后 `js/ios-bridge.js` 会在 App 启动和回到前台时自动拉取并合并轮次。
+之后 `js/ios-bridge.js` 会在 App 启动和回到前台时自动拉取；打开对应角色私聊时，`js/chat-core.js` 会再把本机暂存的轮次按时间顺序合并进去。两者都是幂等的，不会重复。
 
-### 快捷指令搭建
+### 快捷指令搭建（照着这个顺序做）
 
-1. 加 **截屏** → **Base64 编码**（关闭「行长度换行」）。
-2. 加 **获取 URL 内容**：POST 到 `https://你的worker/peek`；头部 `X-Peek-Token: 你的令牌`；
-   请求体选 **文件**，引用一个 **文本** 动作：
+> 下面按你习惯的「第一阶段：截屏发图 / 第二阶段：循环速聊」写。
+> 不同 iOS 版本的动作名可能略有差异：`获取 URL 内容` = Get Contents of URL，`获取字典值` = Get Dictionary Value。
+> 快捷指令名字随便取，比如「窥屏速聊」。
 
-   ```json
-   {"chatId":"<角色ID>","image":"data:image/jpeg;base64,<截图base64>"}
+#### 准备：先从窥屏页拿 4 个值
+
+打开 **查手机 → 设置 → 窥屏 → 手机上玩**：
+
+- **角色 ID**：页面「角色 ID」那一行，例如 `c1234567890`；
+- **接口地址**：例如 `https://nanopush.nano315.online/peek`；
+- **令牌**：`pk_...`；
+- **站点 ID（appId）**：页面「站点 ID」那一行，例如 `app_1abc2def`。
+
+换角色后只有 `chatId` 会变；`appId`、令牌、接口地址不变。每次换角色重新复制一次页面上的 `chatId`，别用旧 ID。
+
+#### 第一阶段：截屏发图（开局偷袭）
+
+1. 打开快捷指令，新建，命名「窥屏速聊」。
+2. 搜索添加 **截屏**。
+3. 搜索添加 **调整图像大小**：宽度填 `900`，高度留空（自动）。
+   - iPhone 原图很大，不压缩的话 Base64 经常超过 4MB，Worker 不会保存这张图，私聊里就只看到评论、没有截图。
+4. 搜索添加 **转换图像**：格式选 **JPEG**，质量 `0.7`。
+   - 如果你跳过这一步，第 6 步的 `image` 前缀要改成 `data:image/png;base64,`，因为「截屏」默认是 PNG。
+5. 搜索添加 **Base64 编码**，点开箭头，把「换行」设为 **无**。
+6. 搜索添加 **获取 URL 内容**：
+   - 地址：`接口地址`
+   - 点开 `>`，方法选 **POST**
+   - 头部：添加 `X-Peek-Token`，值填 `令牌`
+   - 请求体选 **JSON**，添加字段：
+     - 键 `chatId`，值填 `角色 ID`
+     - 键 `appId`，值填 `站点 ID`
+     - 键 `image`，值填 `data:image/jpeg;base64,`，后面紧跟蓝色的 **Base64 已编码** 变量（中间不要有空格或换行）
+   - `appId` 不是必须的，但加上后即使 App 还没同步过 owner，Worker 也能把轮次存到正确分区。
+7. 搜索添加 **获取字典值**：从「URL 的内容」里获取键 `reply` 的值。
+8. 搜索添加 **显示提醒**：
+   - 内容只放上一步的 `reply` 变量。
+   - **不要再写「TA说：」再拼 `reply`**：新版 `reply` 已经自动带「角色名」前缀，否则会变成「TA说：「角色名」……」。
+9. 运行一次测试：应该弹出「角色名 + 点评」。回到 Nano 打开这个角色的私聊，截图和评论会自动补进来。
+
+#### 第二阶段：循环速聊（无限对线）
+
+10. 搜索添加 **重复**：次数设置为 `10`（或你想要的次数）。
+11. 把下面第 12~19 步全部拖进「重复」里面。
+12. 添加 **要求输入**：提示词写「回复：」，打开「允许多行」。
+13. 添加 **如果**：条件设置为 `请求输入` **是** `退出`。
+14. 在「如果」下面添加 **停止执行此快捷指令**（打「退出」就结束）。
+15. 点「如果」里面的 **添加否则**（Add Else）。
+16. 在「否则」下面添加 **获取 URL 内容**（用来发文字）：
+    - 地址：`接口地址`
+    - 方法：**POST**
+    - 头部：`X-Peek-Token` = `令牌`
+    - 请求体选 **JSON**，添加字段：
+      - 键 `chatId`，值填 `角色 ID`
+      - 键 `appId`，值填 `站点 ID`
+      - 键 `text`，值插入前面的 **请求输入** 变量
+    - **不需要再加一个「文本」动作手拼 JSON**。用 JSON 字段时，Shortcuts 会自动处理引号和换行；手拼 `{"text":"..."}` 遇到换行或英文引号容易把 JSON 弄坏。
+17. 添加 **获取字典值**：从「URL 的内容」里获取键 `reply` 的值。
+18. 添加 **显示提醒**：内容只放 `reply`。
+19. **结束如果** 和 **结束重复** 都是系统自带的：确保「结束如果」在「否则」后面、和「如果」左对齐，位置在「重复」里面；「结束重复」在所有动作最下面。
+
+#### 你原来的流程需要改的地方
+
+- `image` 前缀：你写的是 `data:image/jpeg;base64,`，但「截屏」默认是 PNG。要么加「转换图像 → JPEG」（推荐），要么把前缀改成 `data:image/png;base64,`。
+- 建议加「调整图像大小 900 + 转换 JPEG」：否则 Base64 太大，Worker 不会存图，私聊里只有评论没有截图。
+- JSON 里建议加 `appId`：不加也能用，但依赖 owner 同步；换角色、换设备或刚部署时容易不同步。
+- 第二阶段的「文本」动作可以删掉：直接用「获取 URL 内容 → 请求体 JSON → 字段 text」更稳。
+- 「显示提醒」不要再写「TA说：」+ `reply`：新版 `reply` 已经带「角色名」。
+- 如果你把令牌贴到过公开聊天、截图或视频里，建议换一个令牌（见下面「令牌泄露怎么办」）。
+
+> **你现在这套已经能跑**，不改也能继续收到回复。上面这些是「更稳、弹窗更干净、截图也能进私聊」的升级项。
+> 最少要记住一条：**换角色时更新 `chatId`**。
+- 每次换角色，`chatId` 要换成当前角色的；`appId`、令牌、接口地址不变。旧快捷指令不会自动改。
+
+#### 令牌泄露怎么办
+
+如果令牌被发到公开群 / 截图里：
+
+1. 在窥屏页的浏览器控制台执行：
+   ```js
+   localStorage.removeItem('nano_peek_token'); location.reload();
    ```
+   刷新后会生成新令牌。
+2. 把新令牌填回快捷指令的头部和 JSON。
+3. 如果你用的是私用模式（设置了 `PEEK_TOKEN`），还要把 Worker 的 `PEEK_TOKEN` 也改成新令牌并重新部署：
+   ```bash
+   wrangler secret put PEEK_TOKEN
+   wrangler deploy
+   ```
+4. 公用模式（`PEEK_PUBLIC=1`）不需要改 Worker，只需更新自己的快捷指令；旧令牌最多还能读到旧暂存轮次，等 7 天 TTL 过期。
 
-   `system` 可以完全省略：Worker 会用 App 同步过来的当前角色人设 + 最近聊天上下文。
-   如果你确实想临时指定另一套人设，再加 `"system":"..."`（会被同步的人设优先覆盖，避免旧快捷指令把人设改错）。
+> **弹窗里显示角色名**：重新部署 Worker 后，`/peek` 返回的 `reply` 会自动带上「角色名」前缀，所以快捷指令的 **显示提醒** 会直接显示角色名，不用改快捷指令。
+> 回传聊天时用的是干净的 `text` / 暂存轮次，不会把名字重复写进角色气泡。
+> 点通知打开的 Nano 快速回复弹窗也会显示角色名：优先用通知携带的名字，其次读最近聊天和角色库。
+> Web Push / 屏幕共享通知的标题也会使用角色名，不再只显示「窥屏」或「TA」。
 
-3. **获取字典值** 取 `reply` → **显示提醒** 弹出。
-4. **要求输入** 拿到你打的字，把 `image` 换成 `text` 再发一轮 → 循环，就是连续对话。
+> **为什么私聊里看不到消息？** 旧版只把 `nano_peek_chat` 当成拉取目标，而且在窥屏页换角色时不会更新它；快捷指令发的又是另一个 `chatId`，两边对不上，轮次就一直躺在服务端。现在：
+> - 窥屏页换角色会立刻记住角色 ID，并维护 `nano_peek_chats` 列表；
+> - App 回到前台会按列表逐个拉取，**先落到本机**再清空服务端；
+> - 打开对应角色私聊时，`chat-core.js` 会把暂存的「你 + 角色」轮次按时间顺序合并进去；
+> - 当前私聊开着时，也会收到 `NANO_PEEK_UPDATED` 立即合并。
+>
+> 如果仍不同步：确认快捷指令 JSON 里的 `chatId` 与窥屏页显示的「角色 ID」完全一致；确认 `appId` / `token` 是同一套（直接重新复制页面上的 JSON 最稳）；然后打开一次该角色私聊。
 
 ### 弹窗出现但没回复 / Worker 日志里没有 API 调用
 
 按顺序检查：
 
 1. **先打开一次 Nano 聊天**：Worker 需要先拿到主 API。新版会在聊天启动/切角色时自动同步；
-   也可以在「窥屏 → 方式 C」点一次「保存配置」。
+   也可以在「窥屏 → 手机上玩 → 服务端地址」点一次「保存配置」。
 2. **看快捷指令的「显示提醒」内容**：新版 `/peek` 在失败时也会把原因写进 `reply`，
    例如「服务端还没有模型 API」。如果还是空白，说明快捷指令没取到 `reply` 字段。
 3. **确认请求真的到了 Worker**：Cloudflare → Worker → Logs，看有没有 `POST /peek`。
@@ -241,10 +507,51 @@
 
 设置 → 辅助功能 → 触控 → 辅助触控 → 轻点两下 → 选这个快捷指令。首次运行允许「截屏 / 访问网络 / 显示提醒」。
 
-> 隐私：截图只在使用时经你的服务端转发给模型，不写入数据库（Worker 只暂存文本轮次，7 天过期）。
+> 隐私：截图经你的服务端转发给模型；Worker 会暂存这一轮的文本和截图（每个聊天只保留最近 2 张），7 天过期，App 拉取并 ack 后清空。
 
 ---
 
+## Part 2.6 — 现实桥：让 TA 看你正在用的真实 App
+
+可以，而且不用改服务端：**真实 App 的画面只能靠「截屏 / OCR」，不能靠网页去查手机 App 列表**。
+最稳的玩法是「App 打开时自动截图」，而不是让 TA 自己点开 App。
+
+### 玩法 A：打开某个 App 时，TA 自动看一眼（推荐）
+
+在「快捷指令 → 自动化」里建一条个人自动化：
+
+1. 新建自动化 → **App** → 选择你想让 TA 看的 App（微信、小红书、B 站……）→ **已打开**。
+2. 勾选 **立即运行**（iOS 15.4+ 可关闭「运行前询问」）。
+3. 添加动作：
+   - **等待** 1~2 秒（等 App 界面加载出来）；
+   - **截屏**；
+   - **Base64 编码**（关闭换行）；
+   - **获取 URL 内容**：POST 到 `https://你的worker/peek`，请求体用窥屏页生成的截图 JSON（把 Base64 变量插进去）。
+4. 保存。以后你每次打开这个 App，TA 都会自动看到当前画面，并在回到 Nano 后把点评合并进私聊。
+
+> 一次自动化只能绑定一个 App。想覆盖多个 App，就复制几条自动化，或在同一条里用「如果」判断当前 App。
+>
+> 如果 POST 到 `/peek` 的 JSON 里带上 `image`（Base64 截图），回到 Nano 后截图会作为私聊里的图片消息出现，后面跟 TA 的评论。
+
+### 玩法 B：TA 想看哪个 App，你一键带她看
+
+TA 不能在网页里直接执行「打开 App」。现实做法是：
+
+1. 做一个「现实桥」快捷指令，第一个动作是 **从菜单中选取**，菜单项写「微信 / 小红书 / 设置 / …」。
+2. 每个分支：**打开 App**（或 **打开 URL** 填 App 的 URL Scheme）→ **等待** 2 秒 → **截屏** → **Base64** → POST `/peek`。
+3. 把这个快捷指令放到「轻点背面」或「辅助触控」。
+4. TA 在聊天里说「我想看你微信」，你双击背面 → 菜单选微信 → 她会收到截图并点评。
+
+> 为什么不能全自动？iOS 的快捷指令不能在后台读另一个 App 的屏幕，也不能根据 Nano 里的一条消息自动去点开 App。
+> 要做到「TA 说完 → 手机自己打开 App → 截图」需要原生 App + App Intent 常驻桥；纯网页 + 快捷指令做不到。
+> 但「App 打开时自动截图」已经把「你正常用手机」变成 TA 的实时素材，体验最接近现实桥。
+
+### 和 Nano 自带「查手机」的区别
+
+- **查手机**：看的是 Nano 里模拟的手机界面（角色手机、聊天记录、相册等），数据在 Nano 内部。
+- **现实桥**：看的是你 iPhone 上真实 App 的截屏，走快捷指令 + `/peek`，只在你授权运行时发生。
+
+---
 
 **纯快捷指令开不了灵动岛。** 灵动岛 / 锁屏实时活动是 iOS 的 **Live Activity**，只能由原生 App 用 **ActivityKit** 创建和更新。因此需要一个小 App（可以把你现有的 Web 前端用 `WKWebView` 套壳，逻辑复用）。
 

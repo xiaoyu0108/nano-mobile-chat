@@ -1222,6 +1222,7 @@
       if (!d || Date.now() - d.at >= 120000) return 'chat';
       if (d.page === 'groups') { returnTab = 'groups'; return 'chat'; }
       if (d.tab === 'groups') returnTab = 'groups';
+      else if (d.tab === 'friends') returnTab = 'friends';
       if (d.page === 'profile' || d.page === 'chat') return d.page;
     } catch (e) {}
     return 'chat';
@@ -2144,6 +2145,7 @@
       }
       if (d.type === 'nanoChatGoHome') {
         activatePage('chat');
+        if (d.tab === 'friends' || d.tab === 'groups') activateTab(d.tab);
       }
     });
 

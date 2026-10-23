@@ -9284,34 +9284,164 @@
         }
     }
 
+    // ===== 屏幕速聊（窥屏）同步 =====
+    // 服务端暂存的「你 + 角色」轮次，先落到本机，再由当前私聊按顺序合并。
+    // 这样即使快捷指令跑的时候 Nano 没开、或开着别的角色，消息也不会丢。
+    function peekBaseUrl() {
+        var b = '';
+        try { b = (localStorage.getItem('nano_peek_url') || '').trim(); } catch (e) {}
+        if (!b) { try { b = (localStorage.getItem('nano_push_endpoint') || '').trim(); } catch (e) {} }
+        if (!b) b = 'https://nanopush.nano315.online';
+        b = String(b).replace(/\/+$/, '');
+        if (/\/peek$/i.test(b)) b = b.replace(/\/peek$/i, '');
+        return b;
+    }
+    function peekToken() {
+        var t = '';
+        try { t = localStorage.getItem('nano_peek_token') || ''; } catch (e) {}
+        if (!t) { try { t = localStorage.getItem('nano_push_token') || ''; } catch (e) {} }
+        return t || '';
+    }
+    function rememberPeekChat(id) {
+        id = String(id || '');
+        if (!id) return;
+        try { localStorage.setItem('nano_peek_chat', id); } catch (e) {}
+        try {
+            var arr = JSON.parse(localStorage.getItem('nano_peek_chats') || '[]');
+            if (!Array.isArray(arr)) arr = [];
+            arr = arr.map(String);
+            if (arr.indexOf(id) === -1) arr.push(id);
+            localStorage.setItem('nano_peek_chats', JSON.stringify(arr.slice(-10)));
+        } catch (e) {}
+    }
+    function peekStashKey(id) { return 'nano_peek_pending_' + String(id || ''); }
+    function stashPeekTurns(id, turns) {
+        id = String(id || '');
+        if (!id || !Array.isArray(turns) || !turns.length) return false;
+        var key = peekStashKey(id);
+        var arr = [];
+        try { arr = JSON.parse(localStorage.getItem(key) || '[]'); } catch (e) { arr = []; }
+        if (!Array.isArray(arr)) arr = [];
+        var seen = {};
+        arr.forEach(function (t) { if (t && t.ts) seen[String(t.ts)] = 1; });
+        var added = false;
+        turns.forEach(function (t, i) {
+            if (!t) return;
+            var ts = String(t.ts || (Date.now() + i));
+            if (seen[ts] || (!t.user && !t.char)) return;
+            seen[ts] = 1;
+            arr.push({
+                user: String(t.user || ''),
+                char: String(t.char || ''),
+                image: String(t.image || ''),
+                imageOmitted: !!t.imageOmitted,
+                ts: Number(t.ts) || (Date.now() + i)
+            });
+            added = true;
+        });
+        if (added) {
+            arr.sort(function (a, b) { return (a.ts || 0) - (b.ts || 0); });
+            try { localStorage.setItem(key, JSON.stringify(arr.slice(-80))); } catch (e) {}
+        }
+        return added;
+    }
+    function consumePendingPeekTurns() {
+        var key = peekStashKey(chatId);
+        var arr = [];
+        try { arr = JSON.parse(localStorage.getItem(key) || '[]'); } catch (e) { return; }
+        if (!Array.isArray(arr) || !arr.length) return;
+        try { localStorage.removeItem(key); } catch (e) {}
+        arr.sort(function (a, b) { return (a.ts || 0) - (b.ts || 0); });
+        arr.forEach(function (t) {
+            if (!t) return;
+            // 屏幕速聊带来的截图：作为用户这一侧的一张图片消息，后面紧跟 TA 的评论
+            var img = String(t.image || '').trim();
+            if (img && img.indexOf('data:image') === 0) {
+                try {
+                    addMessage('right', '', nowHHMM(), null, false, false, null, null, null, null,
+                        false, null, true, { url: img, desc: '屏幕截图' }, null);
+                } catch (e) {}
+            }
+            var u = String(t.user || '').trim();
+            if (u && u !== '[图片]') {
+                try { addMessage('right', u, nowHHMM(), null, false, false, null, null, null, null); } catch (e) {}
+            }
+            var c = String(t.char || '').trim();
+            if (c) { try { addCharSaid(c); } catch (e) {} }
+        });
+        try { scrollToBottom(); } catch (e) {}
+    }
+    async function pullPeekTurnsForCurrentChat() {
+        try {
+            var id = String(chatId || '');
+            if (!id) return;
+            var base = peekBaseUrl();
+            var token = peekToken();
+            var app = autoAppId();
+            var url = base + '/peek/pending?chatId=' + encodeURIComponent(id) + '&appId=' + encodeURIComponent(app) + '&token=' + encodeURIComponent(token);
+            var r = await fetch(url, { cache: 'no-store' });
+            if (!r.ok) return;
+            var data = null;
+            try { data = await r.json(); } catch (e) {}
+            var turns = (data && Array.isArray(data.turns)) ? data.turns : [];
+            if (!turns.length) return;
+            stashPeekTurns(id, turns);
+            try {
+                await fetch(base + '/peek/ack', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ chatId: id, appId: app, deviceId: autoDeviceId(), token: token })
+                });
+            } catch (e) {}
+        } catch (e) {}
+    }
+
     // 把「当前角色的人设」同步到窥屏服务端，快捷指令就不需要内置人设，切人设后自动生效
     function pushPeekPersona() {
         try {
-            var base = '';
-            try { base = (localStorage.getItem('nano_push_endpoint') || '').trim(); } catch (e) {}
-            if (!base) base = 'https://nanopush.nano315.online';
-            var token = '';
-            try { token = localStorage.getItem('nano_peek_token') || ''; } catch (e) {}
             var cid = '';
             try { cid = new URLSearchParams(location.search).get('chat') || ''; } catch (e) {}
+            if (cid) rememberPeekChat(cid);
+            var base = peekBaseUrl();
+            var token = peekToken();
+            if (!base) return;
             var setting = (characterData && (characterData.setting || characterData.desc || characterData.persona)) || '';
-            var sys = '你是「' + (displayName || '角色') + '」。' + String(setting);
-            // 人设基本不变，之前每轮回复都写 3 个 KV key（persona:chat / latest / owner），
-            // 是 KV 写入额度的另一大来源。同一聊天 6 小时内人设没变就不再上传。
+            var sys = '你是「' + (displayName || '角色') + '」，一个真实的人，不是 AI、不是助手。\n' + String(setting);
+            try {
+                if (window.NanoPrompts && NanoPrompts.appendTo) sys = NanoPrompts.appendTo(sys, 'online');
+            } catch (e) {}
+            sys += '\n如果对方给你看了手机屏幕截图，用你的人设自然点评 2~3 句，像真人随口说，不要像 AI 助手汇报。';
+            var peekHistory = [];
+            try {
+                peekHistory = messages.filter(function (m) {
+                    return m && m.text && !m.isCard && !m.recalled && (m.type === 'left' || m.type === 'right');
+                }).slice(-12).map(function (m) {
+                    return { role: m.type === 'right' ? 'user' : 'assistant', content: String(m.text).slice(0, 900) };
+                });
+            } catch (e) {}
             var sigKey = 'nano_peek_persona_sig_' + (cid || 'latest');
             var atKey = 'nano_peek_persona_at_' + (cid || 'latest');
-            try {
-                var oldSig = localStorage.getItem(sigKey) || '';
-                var oldAt = parseInt(localStorage.getItem(atKey) || '0', 10) || 0;
-                if (oldSig === sys && Date.now() - oldAt < 6 * 3600 * 1000) return;
-            } catch (e) {}
-            fetch(base.replace(/\/+$/, '') + '/peek/persona', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ token: token, appId: autoAppId(), deviceId: autoDeviceId(), userId: getCurrentMaskId(), chatId: cid, system: sys })
-            }).then(function (r) {
-                if (!r || !r.ok) return;
-                try { localStorage.setItem(sigKey, sys); localStorage.setItem(atKey, String(Date.now())); } catch (e) {}
+            // 人设基本不变，之前每轮回复都写 3 个 KV key（persona:chat / latest / owner），
+            // 是 KV 写入额度的另一大来源。同一聊天 6 小时内人设没变就不再上传。
+            getApiConfig().then(function (cfg) {
+                var api = (cfg && cfg.mainUrl && cfg.mainKey && cfg.mainModel)
+                    ? { url: cfg.mainUrl, key: cfg.mainKey, model: cfg.mainModel }
+                    : null;
+                var sig = sys + '|' + (api ? (api.url + '|' + api.model + '|' + String(api.key).slice(-6)) : '');
+                try {
+                    var oldSig = localStorage.getItem(sigKey) || '';
+                    var oldAt = parseInt(localStorage.getItem(atKey) || '0', 10) || 0;
+                    if (oldSig === sig && Date.now() - oldAt < 6 * 3600 * 1000) return;
+                } catch (e) {}
+                var payload = { token: token, appId: autoAppId(), deviceId: autoDeviceId(), userId: getCurrentMaskId(), chatId: cid, system: sys, api: api };
+                if (peekHistory.length) payload.history = peekHistory;
+                return fetch(base + '/peek/persona', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                }).then(function (r) {
+                    if (!r || !r.ok) return;
+                    try { localStorage.setItem(sigKey, sig); localStorage.setItem(atKey, String(Date.now())); } catch (e) {}
+                });
             }).catch(function () {});
         } catch (e) {}
     }
@@ -11164,6 +11294,13 @@ if (callCard) {
             return;
         }
 
+        // 屏幕速聊刚拉到新轮次：当前私聊立刻合并
+        if (data.type === 'NANO_PEEK_UPDATED') {
+            if (data.chatId && String(data.chatId) !== String(chatId)) return;
+            try { if (isStorageReady) consumePendingPeekTurns(); } catch (e) {}
+            return;
+        }
+
         // 角色/人设变化后，把最新的角色列表同步给无后台推送服务
         if (data.type === 'contactsDataUpdated' || data.type === 'currentMaskChanged' || data.type === 'nanoCharUpdated') {
             try { syncAutoPushConfig(); } catch (e) {}
@@ -11542,6 +11679,7 @@ if (data.type === 'NANO_VOICE_CALL_CARD' || data.type === 'NANO_VIDEO_CALL_CARD'
         try { await getEmojiData(); } catch (e) {}
         await loadAllCharactersFromDB();
         setupCharacter();
+        try { pushPeekPersona(); } catch (e) {}
 
         // 先把长期记忆读出来，保证第一轮回复就能用上记忆库
         try { await refreshMemoryHints(); } catch (e) {}
@@ -11561,6 +11699,11 @@ if (data.type === 'NANO_VOICE_CALL_CARD' || data.type === 'NANO_VIDEO_CALL_CARD'
             isStorageReady = true;
             window.__nanoChatReady = true;
             window.__nanoChatReadyChat = String(chatId || '');
+            // 屏幕速聊：先合并本机暂存，再拉一次服务端（两处都幂等）
+            try { consumePendingPeekTurns(); } catch (e) {}
+            pullPeekTurnsForCurrentChat().then(function () {
+                try { consumePendingPeekTurns(); } catch (e) {}
+            });
             if (jumpMsgId) {
                 setTimeout(function() { jumpToMessage(jumpMsgId); }, 100);
             }

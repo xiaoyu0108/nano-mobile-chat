@@ -1,7 +1,8 @@
 // ============================================================
 // ios-setting.js — iOS「快捷指令 · 窥屏」图形化配置
 // 读取角色库 + 主 API（无需单独配置），生成可直接粘贴进
-// 「快捷指令」的深链、接口地址与请求体 JSON，并给出完整步骤。
+// 「快捷指令」的接口、令牌、请求体 JSON 与完整步骤。
+// 换角色时自动更新角色 ID 和 JSON。
 // 原理与灵动岛做法见 docs/ios-shortcuts.md
 // ============================================================
 (function () {
@@ -9,6 +10,9 @@
 
     function $(id) { return document.getElementById(id); }
     function enc(s) { return encodeURIComponent(String(s == null ? '' : s)); }
+    function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+    function setText(id, v) { var el = $(id); if (el) el.textContent = String(v == null ? '' : v); }
+
     function appId() {
         var s = '';
         try {
@@ -39,12 +43,6 @@
             if (hd && Array.isArray(hd.masks) && hd.masks[0] && hd.masks[0].id) return String(hd.masks[0].id);
         } catch (e) {}
         return 'default';
-    }
-    function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
-    function maskKey(k) {
-        k = String(k || '');
-        if (k.length <= 10) return k ? '••••••' : '';
-        return k.slice(0, 5) + '••••••' + k.slice(-4);
     }
 
     var toastEl = $('isToast'), toastTimer = null;
@@ -77,7 +75,6 @@
             function fin(v) { if (!done) { done = true; resolve(v); } }
             try {
                 if (!('indexedDB' in window)) { fin([]); return; }
-                // 不指定版本号：用数据库当前版本打开，避免比实际版本低而抛 VersionError
                 var req = indexedDB.open(dbName);
                 req.onerror = function () { fin([]); };
                 req.onsuccess = function (e) {
@@ -99,7 +96,6 @@
             function fin(v) { if (!done) { done = true; resolve(v); } }
             try {
                 if (!('indexedDB' in window)) { fin(null); return; }
-                // 同上：不指定版本号
                 var req = indexedDB.open(dbName);
                 req.onerror = function () { fin(null); };
                 req.onsuccess = function (e) {
@@ -122,9 +118,21 @@
             return cfg || null;
         });
     }
+
     /* ---------------- 屏幕速聊（快捷指令 + 服务端） ---------------- */
-    var PEEK_URL_KEY = 'nano_peek_url', PEEK_TOKEN_KEY = 'nano_peek_token', PEEK_CHAT_KEY = 'nano_peek_chat';
+    var PEEK_URL_KEY = 'nano_peek_url', PEEK_TOKEN_KEY = 'nano_peek_token', PEEK_CHAT_KEY = 'nano_peek_chat', PEEK_CHATS_KEY = 'nano_peek_chats';
     var PEEK_DEFAULT_URL = 'https://nanopush.nano315.online';
+
+    function getPeekUrl() {
+        var url = '';
+        try { url = localStorage.getItem(PEEK_URL_KEY) || ''; } catch (e) {}
+        return String(url || PEEK_DEFAULT_URL).trim();
+    }
+    function peekBase(url) {
+        var base = String(url || '').trim().replace(/\/+$/, '');
+        if (/\/peek$/i.test(base)) base = base.replace(/\/peek$/i, '');
+        return base;
+    }
     function getPeekToken() {
         var t = '';
         try { t = localStorage.getItem(PEEK_TOKEN_KEY) || ''; } catch (e) {}
@@ -134,29 +142,24 @@
         }
         return t;
     }
-    function renderPeek() {
-        var url = '';
-        try { url = localStorage.getItem(PEEK_URL_KEY) || ''; } catch (e) {}
-        if (!url) url = PEEK_DEFAULT_URL;
-        if ($('isPeekUrl')) $('isPeekUrl').value = url;
-        var token = getPeekToken();
-        var base = String(url).trim().replace(/\/+$/, '');
-        if (/\/peek$/i.test(base)) base = base.replace(/\/peek$/i, '');
-        var ep = base ? (base + '/peek') : '（先填服务端地址）';
-        if ($('isPeekToken')) $('isPeekToken').textContent = token;
-        if ($('isPeekEndpoint')) $('isPeekEndpoint').textContent = ep;
-        if ($('isPeekTokenMain')) $('isPeekTokenMain').textContent = token;
-        if ($('isPeekEndpointMain')) $('isPeekEndpointMain').textContent = ep;
-        if ($('isPeekSystem')) {
-            $('isPeekSystem').textContent = currentChar() ? fullPeekSystem() : '（先创建角色）';
-        }
+    function rememberChat(id) {
+        id = String(id || '');
+        if (!id) return;
+        try { localStorage.setItem(PEEK_CHAT_KEY, id); } catch (e) {}
+        try {
+            var ids = JSON.parse(localStorage.getItem(PEEK_CHATS_KEY) || '[]');
+            if (!Array.isArray(ids)) ids = [];
+            ids = ids.map(String);
+            if (ids.indexOf(id) === -1) ids.push(id);
+            localStorage.setItem(PEEK_CHATS_KEY, JSON.stringify(ids.slice(-10)));
+        } catch (e) {}
     }
-    function savePeek() {
-        try { localStorage.setItem(PEEK_URL_KEY, String($('isPeekUrl').value || '').trim()); } catch (e) {}
-        try { localStorage.setItem(PEEK_TOKEN_KEY, getPeekToken()); } catch (e) {}
-        try { localStorage.setItem(PEEK_CHAT_KEY, String(selectedId || '')); } catch (e) {}
-        renderPeek();
-        toast('配置已保存');
+
+    function peekBody(kind) {
+        var body = { chatId: String(selectedId || ''), appId: appId(), token: getPeekToken() };
+        if (kind === 'image') body.image = 'data:image/jpeg;base64,<把上一步的 Base64 结果插到这里>';
+        else body.text = '<把「要求输入」拿到的文字插到这里>';
+        return JSON.stringify(body);
     }
 
     function endpoint(raw) {
@@ -171,7 +174,7 @@
 
     function currentChar() { for (var i = 0; i < chars.length; i++) if (String(chars[i].id) === String(selectedId)) return chars[i]; return null; }
     function charName() { var c = currentChar(); return c ? (c.name || c.id) : '角色'; }
-    function persona() { var c = currentChar(); return String($('isPrompt').value || '').trim() || (c ? String(c.setting || c.desc || c.persona || '') : ''); }
+    function persona() { var c = currentChar(); return c ? String(c.setting || c.desc || c.persona || '') : ''; }
 
     function recentContext() {
         try {
@@ -210,6 +213,7 @@
 
     function renderCharSelect() {
         var sel = $('isChar');
+        if (!sel) return;
         sel.innerHTML = '';
         if (!chars.length) {
             var o = document.createElement('option');
@@ -224,103 +228,101 @@
         sel.value = selectedId;
     }
 
-    function renderGenerated() {
-        var id = selectedId || '', name = charName();
-        var model = (apiCfg && apiCfg.mainModel) || '你的模型';
-        var sys = fullPeekSystem();
-        var root = window.NANO_ROOT || base;
+    function renderInfo() {
+        var id = selectedId || '';
+        var name = charName();
+        var tok = getPeekToken();
+        var baseUrl = peekBase(getPeekUrl());
+        var ep = baseUrl ? (baseUrl + '/peek') : '（先填服务端地址）';
 
-        $('isLinkA').textContent = root + 'index.html?nanoScreen={{识别文本}}&nanoChat=' + enc(id) + '&nanoName=' + enc(name);
-        $('isUrl2').textContent = endpoint((apiCfg && apiCfg.mainUrl) || '') || '（主 API 未配置）';
-
-        var __k = (apiCfg && apiCfg.mainKey) || '';
-        var __kEl = $('isApiKey');
-        if (__kEl) {
-            __kEl.dataset.raw = __k;
-            __kEl.dataset.shown = '';
-            __kEl.textContent = __k ? maskKey(__k) : '（主 API 未配置）';
-            var __rv = $('isApiKeyReveal'); if (__rv) __rv.textContent = '显示';
-        }
-
-        var body = {
-            model: model,
-            messages: [
-                { role: 'system', content: sys || ('你是「' + name + '」。') },
-                { role: 'user', content: '这是用户手机屏幕上的一段内容，用你的人设随口点评 2~3 句：\n{{屏幕文本}}' }
-            ],
-            max_tokens: 800,
-            temperature: 0.9
-        };
-        $('isBody').textContent = JSON.stringify(body, null, 2);
-        $('isLinkB').textContent = root + 'index.html?nanoScreenReply={{模型回复}}&nanoChat=' + enc(id) + '&nanoName=' + enc(name);
+        setText('isPeekCharName', currentChar() ? name : '（先创建角色）');
+        setText('isPeekCharId', id || '—');
+        setText('isPeekEndpointMain', ep);
+        setText('isPeekAppId', appId());
+        setText('isPeekTokenMain', tok);
+        setText('isPeekBodyImage', peekBody('image'));
+        setText('isPeekBodyText', peekBody('text'));
+        renderGuide(ep, tok, id, name);
     }
 
-    function renderGuide() {
-        var name = charName();
-        var url = endpoint((apiCfg && apiCfg.mainUrl) || '');
-        $('isGuide').innerHTML = ''
-            + '<h4>方式 A · 让 Nano 点评</h4>'
+    function renderGuide(ep, tok, id, name) {
+        var el = $('isGuide');
+        if (!el) return;
+        var imgBody = peekBody('image');
+        var txtBody = peekBody('text');
+        el.innerHTML = ''
+            + '<h4>截图 → TA 点评</h4>'
             + '<ol>'
-            + '<li>打开「快捷指令」App，右上角 <b>+</b> 新建。</li>'
-            + '<li>加动作 <code>截图</code>。</li>'
-            + '<li>加动作 <code>从图像中提取文本</code>。</li>'
-            + '<li>加动作 <code>打开 URL</code>：粘贴上面的深链，把 <code>{{识别文本}}</code> 删掉，改插入第 3 步的结果。</li>'
-            + '<li>运行：' + esc(name) + ' 会点评你屏幕上的内容，并写进聊天。</li>'
+            + '<li>打开「快捷指令」App，右上角 <b>+</b> 新建，命名「窥屏」。</li>'
+            + '<li>添加动作 <code>截屏</code>。</li>'
+            + '<li>添加动作 <code>Base64 编码</code>，关闭「行长度换行」。</li>'
+            + '<li>添加动作 <code>获取 URL 内容</code>：<br>'
+            + '地址：<code>' + esc(ep || '（先填服务端地址）') + '</code><br>'
+            + '方法：<code>POST</code><br>'
+            + '请求体：选 <b>文件</b> → 引用一个 <code>文本</code> 动作，内容粘贴下面这段 JSON：'
+            + '<pre class="sk-guide-json">' + esc(imgBody) + '</pre>'
+            + '把 <code>&lt;把上一步的 Base64 结果插到这里&gt;</code> 替换成第 3 步的 Base64 变量。</li>'
+            + '<li>添加动作 <code>获取字典值</code>，键填 <code>reply</code>。</li>'
+            + '<li>添加动作 <code>显示提醒</code>，内容用上一步的 <code>reply</code>。运行一次，应该能弹出 TA 的点评。</li>'
+            + '<li>回到 Nano，打开角色「' + esc(name) + '」（ID <code>' + esc(id || '—') + '</code>）的私聊，这轮对话会自动补进来。</li>'
             + '</ol>'
-            + '<h4>方式 B · 直连 API</h4>'
+            + '<h4>继续聊（可选）</h4>'
             + '<ol>'
-            + '<li>前三步同上（截图 → 提取文本）。</li>'
-            + '<li>加 <code>获取 URL 内容</code>：网址填 <code>' + esc(url || '（先配置主 API）') + '</code>，方法 <b>POST</b>，头部加 <code>Authorization: Bearer 你的Key</code>、<code>Content-Type: application/json</code>。</li>'
-            + '<li>请求体选 <b>文件</b>，引用一个 <code>文本</code> 动作，内容用上面的 JSON，把 <code>{{屏幕文本}}</code> 换成提取的文本。</li>'
-            + '<li>加 <code>获取字典值</code>：<code>choices</code> → 第 1 项 → <code>message</code> → <code>content</code>。</li>'
-            + '<li>加 <code>打开 URL</code> 用「回传深链」写进聊天，或用 <code>显示通知</code> 先弹出来。</li>'
+            + '<li>在「显示提醒」后面加 <code>要求输入</code>，拿到你打的字。</li>'
+            + '<li>再加一个 <code>获取 URL 内容</code>，地址和方法同上；请求体换成下面这段 JSON：'
+            + '<pre class="sk-guide-json">' + esc(txtBody) + '</pre>'
+            + '把 <code>&lt;把「要求输入」拿到的文字插到这里&gt;</code> 替换成上一步输入的文字。</li>'
+            + '<li>如果输入里带英文双引号或换行，先在「要求输入」后面加「替换文本」把 <code>"</code> 换成 <code>\\"</code>、换行换成 <code>\\n</code>，否则 JSON 会拼坏。</li>'
+            + '<li>再接 <code>获取字典值</code> → <code>显示提醒</code>，就可以一轮一轮聊下去。</li>'
             + '</ol>'
             + '<h4>更顺手的触发</h4>'
             + '<ol>'
-            + '<li><b>轻点背面</b>：设置 → 辅助功能 → 触控 → 轻点背面 → 轻点两下 → 选这个快捷指令。</li>'
-            + '<li><b>个人自动化</b>：快捷指令 → 自动化 → 新建（打开某 App / 特定时间）→ 运行快捷指令。</li>'
+            + '<li><b>轻点背面</b>：设置 → 辅助功能 → 触控 → 轻点背面 → 轻点两下 → 选「窥屏」。</li>'
+            + '<li><b>辅助触控</b>：设置 → 辅助功能 → 触控 → 辅助触控 → 轻点两下 → 选「窥屏」。</li>'
             + '</ol>'
-            + '<h4>灵动岛 / 锁屏</h4>'
-            + '<div>真·自定义灵动岛需要原生 App（ActivityKit），见 <code>docs/ios-shortcuts.md</code>。开启「保活」后，TA 的点评也会出现在系统的媒体播放器（锁屏 / 灵动岛）里。</div>';
+            + '<div class="warn">换角色时，角色 ID 和两段 JSON 会自动更新。请重新复制一次 JSON；旧的快捷指令仍然指向旧 ID。</div>';
+    }
+
+    function guideText() {
+        var id = String(selectedId || '');
+        var name = charName();
+        var baseUrl = peekBase(getPeekUrl());
+        var ep = baseUrl ? (baseUrl + '/peek') : '（先填服务端地址）';
+        var tok = getPeekToken();
+        return [
+            '窥屏 · 手机版（屏幕速聊）',
+            '',
+            '角色：' + name,
+            '角色 ID：' + id,
+            '接口地址：' + ep,
+            '令牌：' + tok,
+            '',
+            '截图请求体 JSON：',
+            peekBody('image'),
+            '',
+            '回话请求体 JSON：',
+            peekBody('text'),
+            '',
+            '具体步骤：',
+            '1. 打开「快捷指令」App，右上角 + 新建，命名「窥屏」。',
+            '2. 添加动作：截屏 → Base64 编码（关闭行长度换行）。',
+            '3. 添加「获取 URL 内容」：地址填上面的接口地址，方法 POST，请求体选「文件」，引用一个「文本」动作，内容粘贴上面的截图 JSON。',
+            '   把 <把上一步的 Base64 结果插到这里> 替换成 Base64 变量。',
+            '4. 添加「获取字典值」：reply → 显示提醒。',
+            '5. 运行。TA 的回复会弹出；回到 Nano 打开这个角色的私聊，消息会自动补进来。',
+            '',
+            '想连续聊：再加「要求输入」拿到文字，用回话 JSON 再发一轮（把占位符换成输入的文字）。',
+            '想更快：设置 → 辅助功能 → 触控 → 轻点背面 → 双击 → 选这个快捷指令。'
+        ].join('\n');
     }
 
     function renderMissing() {
         var el = $('skMissing');
+        if (!el) return;
         var ok = !!(apiCfg && apiCfg.mainUrl && apiCfg.mainKey && apiCfg.mainModel);
         if (ok) { el.hidden = true; el.innerHTML = ''; return; }
         el.hidden = false;
         el.innerHTML = '还没有配置主 API。请先到 <b>API 页</b>填好 接口地址 / Key / 模型，再回到这里。';
-    }
-
-    function peekLink() {
-        var id = selectedId || '', name = charName();
-        var root = window.NANO_ROOT || base;
-        return root + 'index.html?nanoScreen={{识别文本}}&nanoChat=' + enc(id) + '&nanoName=' + enc(name);
-    }
-
-    function guideText() {
-        var ep = ($('isPeekEndpointMain') && $('isPeekEndpointMain').textContent) || '';
-        var tk = ($('isPeekTokenMain') && $('isPeekTokenMain').textContent) || '';
-        var id = String(selectedId || '');
-        return [
-            '窥屏 · 手机版（屏幕速聊）',
-            '',
-            '1. 打开「快捷指令」App，右上角 + 新建。',
-            '2. 添加动作：截图 → Base64 编码（关闭换行）。',
-            '3. 添加「获取 URL 内容」：',
-            '   地址：' + ep,
-            '   方法：POST',
-            '   头部：X-Peek-Token = ' + tk,
-            '   请求体：选「文件」，引用下面这段文本（把 Base64 结果插进去）',
-            '',
-            '{"chatId":"' + id + '","image":"data:image/jpeg;base64,<Base64结果>"}',
-            '',
-            '4. 添加「获取字典值」：reply → 显示提醒。',
-            '5. 运行。TA 的回复会弹在系统通知里；回到 Nano 后会自动进聊天。',
-            '',
-            '想连续聊：再加「要求输入」拿到文字，把请求体里的 image 换成 text 再发一轮。',
-            '想更快：设置 → 辅助功能 → 触控 → 轻点背面 → 双击 → 选这个快捷指令。'
-        ].join('\n');
     }
 
     function startRealShare() {
@@ -342,9 +344,7 @@
 
     function refresh() {
         renderMissing();
-        renderGenerated();
-        renderGuide();
-        renderPeek();
+        renderInfo();
         pushPersona();
     }
 
@@ -352,24 +352,33 @@
     function pushPersona() {
         try {
             var c = currentChar();
-            if (!c) return;
-            var url = '';
-            try { url = localStorage.getItem(PEEK_URL_KEY) || ''; } catch (e) {}
-            if (!url) url = PEEK_DEFAULT_URL;
-            var base = String(url).trim().replace(/\/+$/, '');
-            if (/\/peek$/i.test(base)) base = base.replace(/\/peek$/i, '');
-            if (!base) return;
+            if (!c || !selectedId) return;
+            rememberChat(selectedId);
+            var baseUrl = peekBase(getPeekUrl());
+            if (!baseUrl) return;
             var sys = fullPeekSystem();
             var api = (apiCfg && apiCfg.mainUrl && apiCfg.mainKey && apiCfg.mainModel)
                 ? { url: apiCfg.mainUrl, key: apiCfg.mainKey, model: apiCfg.mainModel }
                 : null;
-            fetch(base + '/peek/persona', {
+            var hist = recentContext();
+            var sig = sys + '|' + (api ? (api.url + '|' + api.model + '|' + String(api.key).slice(-6)) : '');
+            var sigKey = 'nano_peek_page_sig_' + String(selectedId || 'latest');
+            var atKey = 'nano_peek_page_at_' + String(selectedId || 'latest');
+            try {
+                if (localStorage.getItem(sigKey) === sig && Date.now() - (parseInt(localStorage.getItem(atKey) || '0', 10) || 0) < 6 * 3600 * 1000) return;
+            } catch (e) {}
+            var payload = {
+                token: getPeekToken(), appId: appId(), deviceId: deviceId(), userId: currentUserId(),
+                chatId: String(selectedId || ''), system: sys, api: api
+            };
+            if (hist.length) payload.history = hist;
+            fetch(baseUrl + '/peek/persona', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    token: getPeekToken(), appId: appId(), deviceId: deviceId(), userId: currentUserId(),
-                    chatId: String(selectedId || ''), system: sys, api: api, history: recentContext()
-                })
+                body: JSON.stringify(payload)
+            }).then(function (r) {
+                if (!r || !r.ok) return;
+                try { localStorage.setItem(sigKey, sig); localStorage.setItem(atKey, String(Date.now())); } catch (e) {}
             }).catch(function () {});
         } catch (e) {}
     }
@@ -380,46 +389,63 @@
         if (backBtn) backBtn.addEventListener('click', function () {
             try {
                 if (window.parent && window.parent !== window) {
-                    // 由外壳以全屏浮层打开 → 收起整层（回到 Discover 等来源页）
                     window.parent.postMessage({ type: 'closeFullscreen' }, '*');
-                    // 由「查手机」内嵌打开 → 回到查手机的「设置」
                     window.parent.postMessage({ type: 'screenSetupClose' }, '*');
                     return;
                 }
                 if (history.length > 1) history.back(); else location.href = 'chat.html';
             } catch (e) {}
         });
-        $('isChar').addEventListener('change', function () {
+        var sel = $('isChar');
+        if (sel) sel.addEventListener('change', function () {
             selectedId = this.value;
-            var c = currentChar();
-            $('isPrompt').value = c ? String(c.setting || c.desc || c.persona || '') : '';
+            rememberChat(selectedId);
             refresh();
         });
-        $('isPrompt').addEventListener('input', refresh);
         var startBtn = $('isStartShare');
         if (startBtn) startBtn.addEventListener('click', startRealShare);
         var guideBtn = $('isCopyGuide');
         if (guideBtn) guideBtn.addEventListener('click', function () { copy(guideText()); });
         var peekSave = $('isPeekSave');
-        if (peekSave) peekSave.addEventListener('click', savePeek);
+        if (peekSave) peekSave.addEventListener('click', function () {
+            var u = $('isPeekUrl');
+            var next = peekBase((u && u.value) || '');
+            var old = '';
+            try { old = peekBase(localStorage.getItem(PEEK_URL_KEY) || localStorage.getItem('nano_push_endpoint') || ''); } catch (e) {}
+            try {
+                localStorage.setItem(PEEK_URL_KEY, next);
+                // Web Push 和窥屏用同一个 Worker：保存一次，两边都生效
+                localStorage.setItem('nano_push_endpoint', next);
+                // 换了 Worker，旧的 VAPID 公钥 / 旧订阅不能用，清掉让页面重新获取
+                if (old && next && old !== next) localStorage.removeItem('nano_push_vapid');
+            } catch (e) {}
+            var pt = $('isPushToken');
+            try {
+                var ptv = String((pt && pt.value) || '').trim();
+                if (ptv) localStorage.setItem('nano_push_token', ptv);
+                else localStorage.removeItem('nano_push_token');
+            } catch (e) {}
+            rememberChat(selectedId);
+            refresh();
+            toast('配置已保存');
+        });
         var peekUrl = $('isPeekUrl');
-        if (peekUrl) peekUrl.addEventListener('change', function () { try { localStorage.setItem(PEEK_URL_KEY, String(peekUrl.value || '').trim()); } catch (e) {} renderPeek(); });
+        if (peekUrl) peekUrl.addEventListener('change', function () {
+            var next = peekBase(peekUrl.value || '');
+            var old = '';
+            try { old = peekBase(localStorage.getItem(PEEK_URL_KEY) || localStorage.getItem('nano_push_endpoint') || ''); } catch (e) {}
+            try {
+                localStorage.setItem(PEEK_URL_KEY, next);
+                localStorage.setItem('nano_push_endpoint', next);
+                if (old && next && old !== next) localStorage.removeItem('nano_push_vapid');
+            } catch (e) {}
+            renderInfo();
+        });
         document.querySelectorAll('[data-copy]').forEach(function (btn) {
             btn.addEventListener('click', function () {
                 var el = $(btn.getAttribute('data-copy'));
-                if (el) copy((el.dataset && el.dataset.raw) ? el.dataset.raw : el.textContent);
+                if (el) copy(el.textContent);
             });
-        });
-        var reveal = $('isApiKeyReveal');
-        if (reveal) reveal.addEventListener('click', function () {
-            var el = $('isApiKey');
-            if (!el) return;
-            var raw = el.dataset.raw || '';
-            var shown = el.dataset.shown === '1';
-            if (!raw) return;
-            el.textContent = shown ? maskKey(raw) : raw;
-            el.dataset.shown = shown ? '' : '1';
-            reveal.textContent = shown ? '显示' : '隐藏';
         });
     }
 
@@ -436,17 +462,27 @@
         apiCfg = results[1] || null;
         chars = all.filter(function (c) { return c && c.id && !c.nanoAssistant; });
 
-        if (wantChat) selectedId = wantChat;
-        else if (chars.length) selectedId = String(chars[0].id);
-        if (wantName && !currentChar()) {
+        function hasChar(id) { return chars.some(function (c) { return String(c.id) === String(id); }); }
+        if (wantChat && hasChar(wantChat)) selectedId = String(wantChat);
+        else {
+            var saved = '';
+            try { saved = localStorage.getItem(PEEK_CHAT_KEY) || ''; } catch (e) {}
+            if (saved && hasChar(saved)) selectedId = saved;
+        }
+        if (!selectedId && wantName) {
             for (var i = 0; i < chars.length; i++) if (String(chars[i].name) === wantName) { selectedId = String(chars[i].id); break; }
         }
-        if (!currentChar() && chars.length) selectedId = String(chars[0].id);
+        if (!selectedId && chars.length) selectedId = String(chars[0].id);
 
+        var urlInput = $('isPeekUrl');
+        if (urlInput) urlInput.value = getPeekUrl();
+        var pushTokenInput = $('isPushToken');
+        if (pushTokenInput) {
+            try { pushTokenInput.value = localStorage.getItem('nano_push_token') || ''; } catch (e) {}
+        }
         renderCharSelect();
-        var c = currentChar();
-        $('isPrompt').value = c ? String(c.setting || c.desc || c.persona || '') : '';
         bind();
+        rememberChat(selectedId);
         refresh();
     }
 

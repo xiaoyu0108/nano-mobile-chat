@@ -9,7 +9,7 @@
     (function () {
         try {
             var KEY = 'nano_build';
-            var CUR = 'nano-2026-10-21-01';
+            var CUR = 'nano-2026-10-23-07';
             var prev = null, ok = false;
             try { prev = localStorage.getItem(KEY); } catch (e) {}
             if (prev === CUR) return;
@@ -1691,7 +1691,7 @@ setTimeout(function () {
             'books.html', 'couple-spaces.html', 'halo.html', 'offline.html', 'offline-setting.html',
             'heart-setting.html', 'market.html', 'mcp.html', 'settings.html', 'settings-logs.html', 'gallery.html', 'settings-desktop.html', 'settings-notifications.html', 'settings-prompts.html', 'settings-other.html', 'schedule.html',
             'phone.html', 'assistant.html', 'nano-setting.html', 'family-card.html', 'wallet.html', 'appstore.html',
-            'cycle.html', 'fanfic.html', 'fanfic-create.html', 'fanfic-read.html', 'imessage.html', 'memory palace.html', 'app-host.html', 'meet.html', 'mall.html', 'qa.html', 'pomodoro.html', 'nano.html', 'nano-files.html'];
+            'cycle.html', 'fanfic.html', 'fanfic-create.html', 'fanfic-read.html', 'imessage.html', 'memory palace.html', 'app-host.html', 'meet.html', 'mall.html', 'qa.html', 'pomodoro.html', 'nano.html', 'nano-files.html', 'ios-setting.html'];
         // 其余页面（发现/更多/API/moments/ins/…）兜底：内容整体让到灵动岛下面
         function applySafeFallback(f) {
             try {
@@ -1735,7 +1735,7 @@ setTimeout(function () {
         setTimeout(applySafeTopToFrames, 300);
 
         // 构建版本号（改这里即可让所有同源页面刷新缓存）
-        var BUILD = 'nano-2026-10-21-10';
+        var BUILD = 'nano-2026-10-23-07';
 
         // 给同源页面 URL 追加构建版本号，避免浏览器/Service Worker 缓存到旧 HTML
         function pageUrl(u) {
@@ -2757,7 +2757,17 @@ setTimeout(function () {
             target = String(target || '');
             if (!target) return;
             // 屏幕共享点评通知：点通知只在底部弹一个「快速回复」输入框，不打开整个聊天
-            if (target.indexOf('ss-reply:') === 0) { showScreenReplyPopup(target.slice(9)); return; }
+            if (target.indexOf('ss-reply:') === 0) {
+                const rest = target.slice(9);
+                const cut = rest.indexOf(':');
+                const cid = cut === -1 ? rest : rest.slice(0, cut);
+                let nm = '';
+                if (cut !== -1) {
+                    try { nm = decodeURIComponent(rest.slice(cut + 1)); } catch (e) { nm = ''; }
+                }
+                showScreenReplyPopup(cid, nm);
+                return;
+            }
             if (target === 'moments') { openFullscreen('moments.html', 'Moments', false, 'discover'); return; }
             if (target === 'ins') { openFullscreen('ins.html?v=14', 'Instagram', false, 'discover'); return; }
             if (target === 'halo') { openFullscreen('halo.html', 'Halo', false, 'discover'); return; }
@@ -2837,27 +2847,72 @@ setTimeout(function () {
                 }
             } catch (e) {}
         }
-        function showScreenReplyPopup(chatId) {
+        function lookupCharNameFromDB(chatId) {
+            return new Promise(function (resolve) {
+                var done = false;
+                function fin(v) { if (!done) { done = true; resolve(String(v || '')); } }
+                try {
+                    if (!('indexedDB' in window)) { fin(''); return; }
+                    var req = indexedDB.open('nano_characters_db');
+                    req.onerror = function () { fin(''); };
+                    req.onsuccess = function (e) {
+                        try {
+                            var db = e.target.result;
+                            if (!db.objectStoreNames.contains('characters')) { try { db.close(); } catch (x) {} fin(''); return; }
+                            var r = db.transaction('characters', 'readonly').objectStore('characters').getAll();
+                            r.onsuccess = function () {
+                                var list = r.result || [];
+                                var c = null;
+                                for (var i = 0; i < list.length; i++) {
+                                    if (list[i] && String(list[i].id) === String(chatId)) { c = list[i]; break; }
+                                }
+                                try { db.close(); } catch (x) {}
+                                fin(c ? (c.name || c.id || '') : '');
+                            };
+                            r.onerror = function () { try { db.close(); } catch (x) {} fin(''); };
+                        } catch (err) { fin(''); }
+                    };
+                } catch (e) { fin(''); }
+                setTimeout(function () { fin(''); }, 2500);
+            });
+        }
+        function showScreenReplyPopup(chatId, nameHint) {
             var old = document.getElementById('ssReplyOverlay');
             if (old) { try { old.remove(); } catch (e) {} }
-            var name = 'TA';
-            try {
-                var info = JSON.parse(sessionStorage.getItem('last_chat_info') || 'null');
-                if (info && String(info.chatId) === String(chatId) && info.chatName) name = info.chatName;
-            } catch (e) {}
+            var name = String(nameHint || '').trim();
+            if (!name || name === 'TA') {
+                try {
+                    var lc = JSON.parse(localStorage.getItem('nano_last_chat') || 'null');
+                    if (lc && String(lc.id) === String(chatId) && lc.name) name = String(lc.name);
+                } catch (e) {}
+            }
+            if (!name || name === 'TA') {
+                try {
+                    var info = JSON.parse(sessionStorage.getItem('last_chat_info') || 'null');
+                    if (info && String(info.chatId) === String(chatId) && info.chatName) name = String(info.chatName);
+                } catch (e) {}
+            }
+            if (!name) name = 'TA';
             var el = document.createElement('div');
             el.id = 'ssReplyOverlay';
             el.style.cssText = 'position:fixed;inset:0;z-index:100600;background:rgba(40,25,32,.38);display:flex;align-items:flex-end;justify-content:center;padding:18px;padding-bottom:calc(18px + env(safe-area-inset-bottom))';
             el.innerHTML =
                 '<div style="width:min(94vw,440px);background:linear-gradient(180deg,#fff7fb,#fffdf4);border-radius:20px;box-shadow:0 20px 60px rgba(120,70,90,.32);padding:16px 16px 14px">' +
                     '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">' +
-                        '<div style="font-size:14px;font-weight:800;color:#b23a5b">回复 ' + escSS(name) + '</div>' +
+                        '<div id="ssReplyTitle" style="font-size:14px;font-weight:800;color:#b23a5b">回复 ' + escSS(name) + '</div>' +
                         '<button id="ssReplyClose" style="margin-left:auto;border:0;background:#ffe1ea;color:#b23a5b;border-radius:12px;padding:6px 12px;font-size:12px;font-weight:700">关闭</button>' +
                     '</div>' +
                     '<textarea id="ssReplyInput" placeholder="说点什么…" rows="3" style="width:100%;box-sizing:border-box;border:1px solid rgba(210,160,180,.4);border-radius:14px;padding:11px 12px;font-size:15px;line-height:1.5;color:#4a353f;background:#fff;resize:none;outline:none;font-family:inherit"></textarea>' +
                     '<button id="ssReplySend" style="margin-top:10px;width:100%;height:44px;border:0;border-radius:14px;background:linear-gradient(120deg,#ffb0cd,#ef8fb8);color:#fff;font-size:15px;font-weight:800">发送</button>' +
                 '</div>';
             document.body.appendChild(el);
+            if (name === 'TA') {
+                lookupCharNameFromDB(chatId).then(function (realName) {
+                    if (!realName) return;
+                    var titleEl = document.getElementById('ssReplyTitle');
+                    if (titleEl) titleEl.textContent = '回复 ' + realName;
+                }).catch(function () {});
+            }
             var ta = el.querySelector('#ssReplyInput');
             var close = function () { try { el.remove(); } catch (e) {} };
             el.querySelector('#ssReplyClose').onclick = close;
@@ -3659,12 +3714,33 @@ setTimeout(function () {
                 }
             }
 
-            // 线下 → 直接退出：回到聊天列表，并记住该角色「下次直接进线下」
+            // 线下 → 直接退出：回到聊天 App 的第一个按钮页面（好友区域）
             if (data.type === 'nanoOfflineExitToChat') {
                 try { localStorage.setItem('nano_chat_mode_' + (data.chatId || 'default'), 'offline'); } catch (e) {}
-                // 直接退出线下：回到这个角色的聊天页（不是手机桌面 home）
-                try { currentOverlaySource = 'chat_inner'; } catch (e) {}
-                try { closeFullscreen(); } catch (e) {}
+                // 聊天列表帧在打开线下时已被复用，这里重新打开聊天 App，而不是关闭到手机桌面；
+                // 同时记住「聊天 + 好友」，确保重新加载后落在第一个按钮页面。
+                try { sessionStorage.setItem('nano_chat_active_page', JSON.stringify({ page: 'chat', tab: 'friends', at: Date.now() })); } catch (e) {}
+                try { currentOverlaySource = 'main'; } catch (e) {}
+                try { openFullscreen('chat.html', '', false, 'main'); } catch (e) {}
+                var goChatFriends = function () {
+                    try {
+                        var cands = [overlayFrame, overlayFrameA, overlayFrameB];
+                        try {
+                            var c = document.getElementById('iframeChat');
+                            var f = c ? c.querySelector('iframe') : null;
+                            if (f) cands.push(f);
+                        } catch (e) {}
+                        for (var i = 0; i < cands.length; i++) {
+                            var fr = cands[i];
+                            if (fr && frameBase(fr) === 'chat.html' && fr.contentWindow) {
+                                fr.contentWindow.postMessage({ type: 'nanoChatGoHome', tab: 'friends' }, '*');
+                                break;
+                            }
+                        }
+                    } catch (e) {}
+                };
+                setTimeout(goChatFriends, 120);
+                setTimeout(goChatFriends, 600);
                 return;
             }
 
@@ -4204,14 +4280,14 @@ setTimeout(function () {
 <script src="js/mem-link.js?v=20261006a"></script>
 <script src="js/aux-memory.js?v=20261021k"></script>
 <script src="js/user-scope.js?v=20261020j"></script>
-<script src="js/nano-notify.js?v=20261023g"></script>
+<script src="js/nano-notify.js?v=20261023i"></script>
 <script src="js/nano-push.js?v=20261021b"></script>
 <script src="swipe-back.js"></script>
 <script src="js/keep-alive.js?v=20261023a"></script>
 <script src="js/char-takeover.js?v=20261020c"></script>
 <script src="js/nano-prompts.js?v=20261023a"></script>
-<script src="js/screen-share.js?v=20261023b"></script>
-<script src="js/ios-bridge.js?v=20261021b"></script>
+<script src="js/screen-share.js?v=20261023c"></script>
+<script src="js/ios-bridge.js?v=20261023c"></script>
 <script src="js/auto-push-bridge.js?v=20261021b"></script>
 <script src="js/online-catchup.js?v=20261018c"></script>
 </div>

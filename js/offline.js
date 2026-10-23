@@ -3538,6 +3538,17 @@ sendBtn.onclick = send;
 
 // ===== 根据当前场景文生图 =====
 const genImageBtn = document.getElementById('genImageBtn');
+const genStatusEl = document.getElementById('genStatus');
+function setGenStatus(on) {
+  if (genStatusEl) {
+    genStatusEl.hidden = !on;
+    try { genStatusEl.setAttribute('aria-busy', on ? 'true' : 'false'); } catch (e) {}
+  }
+  if (genImageBtn) {
+    genImageBtn.disabled = !!on;
+    genImageBtn.style.opacity = on ? '.5' : '';
+  }
+}
 async function generateSceneImage() {
   if (window.__offlineGenBusy) return;
   if (!window.NanoImage) { showToast('生图模块未加载'); return; }
@@ -3552,9 +3563,7 @@ async function generateSceneImage() {
     var fr = localStorage.getItem('chat_setting_faceRef_' + (offlineChatId || ''));
     if (fr) { try { faceRef = JSON.parse(fr); } catch (e) { faceRef = fr; } }
   } catch (e) {}
-  genImageBtn.disabled = true;
-  genImageBtn.style.opacity = '.5';
-  showToast('正在根据当前场景生图…');
+  setGenStatus(true);
   try {
     const url = await window.NanoImage.generate(prompt, { faceRef: faceRef });
     try { if (window.NanoGallery) window.NanoGallery.add({ url: url, source: '线下', charName: charName, prompt: prompt }); } catch (e) {}
@@ -3563,7 +3572,7 @@ async function generateSceneImage() {
     showErrorModal('生图失败：' + (e && e.message ? e.message : e));
   } finally {
     window.__offlineGenBusy = false;
-    if (genImageBtn) { genImageBtn.disabled = false; genImageBtn.style.opacity = ''; }
+    setGenStatus(false);
   }
 }
 function openOfflineGallery() {
