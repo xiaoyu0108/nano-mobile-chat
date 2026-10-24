@@ -1,0 +1,23 @@
+# 测试用 Worker：nano-test-ceshi
+# 只部署到 workers.dev，不绑定任何自定义域名，不影响正式 Worker。
+name = "nano-test-ceshi"
+main = "dist/index.js"
+compatibility_date = "2025-01-01"
+preview_urls = false
+workers_dev = true
+
+kv_namespaces = [
+  { binding = "PUSH_KV", id = "258a9b79d41c4099bdf9fc618401eff2" }
+]
+
+[triggers]
+crons = ["*/5 * * * *"]
+
+[vars]
+INCLUDE_LEGACY_MARKET = "1"
+# 可选：点 Bark 通知后打开你的站点（不填会回到作者默认地址）
+# APP_URL = "https://你的站点/"
+
+# PEEK_PUBLIC 是现有 secret，部署时保留，不要写进这里。
+# 这个测试 Worker 已删除 PUSH_TOKEN：否则公用模式下 autoOk 只认 PUSH_TOKEN，
+# 其他用户的 pk 会被 /auto/config 拒绝，Web Push 后台消息配不上。

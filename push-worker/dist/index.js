@@ -2134,6 +2134,24 @@ var index_default = {
       const count = await sendAll(env, { title: "Nano", body: "\u6D4B\u8BD5\u63A8\u9001\uFF1A\u6536\u5230\u5C31\u6210\u529F\u4E86", target: "" });
       return json({ ok: true, count });
     }
+    if ((pathname === "/peek" || pathname === "/peek/health") && request.method === "GET") {
+      const publicMode = peekPublic(env);
+      return json({
+        ok: true,
+        service: "nano-peek",
+        build: "2026-10-24-bark-post",
+        method: "POST /peek",
+        publicMode: publicMode,
+        tokenConfigured: !!env.PEEK_TOKEN,
+        tokenRequired: !publicMode && !!env.PEEK_TOKEN,
+        kvBound: !!env.PUSH_KV,
+        d1Bound: !!env.nano_db,
+        envApiConfigured: !!(env.PEEK_API_URL && env.PEEK_API_KEY && env.PEEK_MODEL),
+        note: publicMode
+          ? "公用模式：快捷指令 token 至少 8 位；模型 API 由 Nano 同步，没同步会 502。"
+          : "私用模式：快捷指令 token 必须和 Worker 的 PEEK_TOKEN 完全一致。"
+      });
+    }
     if (pathname === "/peek" && request.method === "POST") {
       let body = {};
       try {
@@ -2823,7 +2841,7 @@ var index_default = {
         return json({ ok: false, error: "fetch failed: " + (e && e.message ? e.message : e) }, 502);
       }
     }
-    return json({ ok: true, info: "nano-push alive" });
+    return json({ ok: true, info: "nano-push alive", build: "2026-10-24-bark-post" });
   },
   // 每 5 分钟触发：到点给 Bark 发提醒 + 处理 KV 里的预约任务
   async scheduled(event, env, ctx) {

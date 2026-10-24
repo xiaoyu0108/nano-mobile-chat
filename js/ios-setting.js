@@ -141,21 +141,20 @@
         var t = '';
         try { t = localStorage.getItem(PEEK_TOKEN_KEY) || ''; } catch (e) {}
         if (!t) {
-            // 第一次生成时记下这个站点/浏览器的初始令牌，方便之后「还原初始」。
+            // 第一次生成时记下这个站点/浏览器的初始令牌，仅用于旧数据迁移。
             try { t = localStorage.getItem(PEEK_INIT_TOKEN_KEY) || ''; } catch (e) {}
             if (!t) t = newPeekToken();
             try { localStorage.setItem(PEEK_TOKEN_KEY, t); } catch (e) {}
         }
-        // 老版本已有令牌的用户：把当前令牌补记为初始令牌，还原时不会突然换新。
+        // 老版本已有令牌的用户：补记初始令牌，避免 localStorage 被清后换掉旧数据分区。
         try {
             if (!localStorage.getItem(PEEK_INIT_TOKEN_KEY)) localStorage.setItem(PEEK_INIT_TOKEN_KEY, t);
         } catch (e) {}
         return t;
     }
     function resetPeekConfig() {
-        var tok = '';
-        try { tok = localStorage.getItem(PEEK_INIT_TOKEN_KEY) || ''; } catch (e) {}
-        if (!tok) tok = newPeekToken();
+        // 每次还原都换一枚新 pk：旧快捷指令/旧 PEEK_TOKEN 立即失效，避免“还原了但看起来没变”。
+        var tok = newPeekToken();
         try {
             localStorage.setItem(PEEK_INIT_TOKEN_KEY, tok);
             localStorage.setItem(PEEK_TOKEN_KEY, tok);
@@ -175,7 +174,7 @@
         if (urlInput) urlInput.value = PEEK_DEFAULT_URL;
         rememberChat(selectedId);
         refresh();
-        toast('已还原初始地址和令牌');
+        toast('已还原地址并生成新的 pk');
     }
     function rememberChat(id) {
         id = String(id || '');
@@ -443,7 +442,7 @@
         if (guideBtn) guideBtn.addEventListener('click', function () { copy(guideText()); });
         var peekRestore = $('isPeekRestore');
         if (peekRestore) peekRestore.addEventListener('click', function () {
-            if (confirm('还原成默认服务端地址和初始令牌？当前快捷指令里的旧地址/令牌会失效，需要重新复制。')) resetPeekConfig();
+            if (confirm('还原成默认服务端地址，并生成新的 pk？当前快捷指令里的旧地址/令牌会失效，需要重新复制；如果 Worker 设了 PEEK_TOKEN，也要同步改成新 pk。')) resetPeekConfig();
         });
         var peekSave = $('isPeekSave');
         if (peekSave) peekSave.addEventListener('click', function () {

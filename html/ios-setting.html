@@ -130,7 +130,7 @@
           <button class="sk-copy-btn" id="isPeekSave" style="flex:1" type="button">保存配置</button>
           <button class="sk-copy-btn" id="isPeekRestore" style="background:#fff;color:var(--sk-pink-deep);border:1px solid var(--sk-line);box-shadow:none" type="button">还原初始</button>
         </div>
-        <div class="sk-note">「还原初始」会把服务端地址恢复成默认 Worker，并恢复这个站点第一次生成的 pk 令牌；还原后要重新复制快捷指令里的地址 / 令牌 / JSON。<br>这个地址会同时用于「窥屏」和「Web Push」。保存后去 <b>设置 → 其他 → Web Push</b> 点一次「开启 / 重新订阅」；VAPID 公钥会自动从 Worker 的 <code>/vapid</code> 获取。<br>默认用作者的公用 Worker 就能玩；如果经常失败、额度不足，或想和朋友隔离数据，可以换成自己的 Worker，详细步骤见下面的 <b>「自己部署 Worker（详细教程）」</b>。<br>给其他人公用时，在 Worker 里设置 <code>PEEK_PUBLIC=1</code>，每个浏览器的令牌会把数据彼此隔离。<br>公用模式不会使用站长的模型 API：每个人都要在自己的 Nano 里配置主 API，否则只会收到“请先配置你自己的 API”的提示。</div>
+        <div class="sk-note">「还原初始」会把服务端地址恢复成默认 Worker，并<b>重新生成一枚 pk</b>（所以旧 pk 一定会变）；还原后要重新复制快捷指令里的地址 / 令牌 / JSON。如果 Worker 设了 <code>PEEK_TOKEN</code>，还要把 Worker 的 secret 改成新 pk；公用模式（<code>PEEK_PUBLIC=1</code>）不用改 Worker。<br>这个地址会同时用于「窥屏」和「Web Push」。保存后去 <b>设置 → 其他 → Web Push</b> 点一次「开启 / 重新订阅」；VAPID 公钥会自动从 Worker 的 <code>/vapid</code> 获取。<br>默认用作者的公用 Worker 就能玩；如果经常失败、额度不足，或想和朋友隔离数据，可以换成自己的 Worker，详细步骤见下面的 <b>「自己部署 Worker（详细教程）」</b>。<br>给其他人公用时，在 Worker 里设置 <code>PEEK_PUBLIC=1</code>，每个浏览器的令牌会把数据彼此隔离。<br>公用模式不会使用站长的模型 API：每个人都要在自己的 Nano 里配置主 API，否则只会收到“请先配置你自己的 API”的提示。</div>
       </div>
     </details>
 
@@ -307,7 +307,7 @@ wrangler secret put PUSH_TOKEN</pre>
 
   <div class="sk-toast" id="isToast"></div>
   <script src="../js/nano-prompts.js?v=20261023a"></script>
-<script src="../js/ios-setting.js?v=20261023m"></script>
+<script src="../js/ios-setting.js?v=20261024a"></script>
   <script src="../swipe-back.js"></script>
 </body>
 </html>
