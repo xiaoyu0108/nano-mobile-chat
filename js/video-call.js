@@ -86,7 +86,7 @@
 
     // ===== 接通提示音（WebAudio 简单回铃）=====
     var ringCtx = null, ringTimer = null;
-    function startRing() {
+    function playDefaultRing() {
         try {
             var AC = window.AudioContext || window.webkitAudioContext;
             if (!AC) return;
@@ -107,7 +107,14 @@
             ringTimer = setInterval(ring, 2200);
         } catch (e) {}
     }
+    function startRing() {
+        try {
+            if (window.NanoCallRingtone && window.NanoCallRingtone.start(playDefaultRing)) return;
+        } catch (e) {}
+        playDefaultRing();
+    }
     function stopRing() {
+        try { if (window.NanoCallRingtone) window.NanoCallRingtone.stop(); } catch (e) {}
         try { clearInterval(ringTimer); } catch (e) {}
         ringTimer = null;
         try { if (ringCtx) { ringCtx.close(); ringCtx = null; } } catch (e) { ringCtx = null; }
@@ -235,6 +242,7 @@
 
     // ===== 背景 =====
     function applyBg(val) {
+        try { if (window.NanoCallBg) window.NanoCallBg.stopVideo(); } catch (e) {}
         var remote = $('remoteBox');
         if (!remote) return;
         if (!val || val === 'avatar') {
@@ -287,6 +295,17 @@
         }).catch(function () {
             try { return localStorage.getItem(BG_KEY) || ''; } catch (e) { return ''; }
         }).then(function (v) { applyBg(v); });
+    }
+    function loadCallBg() {
+        var api = window.NanoCallBg;
+        if (api && api.load) {
+            return api.load(chatId).then(function (item) {
+                if (item && item.kind === 'video' && item.blob && api.showVideo(item.blob)) return;
+                if (item && item.kind === 'image' && item.value) { applyBg(item.value); return; }
+                return loadBg();
+            }).catch(function () { return loadBg(); });
+        }
+        return loadBg();
     }
     function saveBg(v) {
         v = v || '';
@@ -1376,7 +1395,7 @@
     }).then(loadContext).then(function () {
         unlockAudio();
         applyAvatars();
-        loadBg();
+        loadCallBg();
         // 默认不开摄像头：本地小窗显示「我」的头像；点了摄像头按钮才出实时画面
         localVideo.style.display = 'none';
         localOff.style.display = 'flex';

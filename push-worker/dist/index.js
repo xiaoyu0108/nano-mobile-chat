@@ -2250,10 +2250,17 @@ var index_default = {
       }
       if (!reply) {
         const hasEnvApi = !peekPublic(env) && !!(env.PEEK_API_URL && env.PEEK_API_KEY && env.PEEK_MODEL);
+        if (!apiCfg) {
+          return json({
+            ok: false,
+            error: "no_api",
+            reply: peekPublic(env) ? "没有在这个令牌分区找到模型 API。请先在自己的 Nano 里配置主 API，然后在窥屏页选择角色、填好服务端地址并点一次「保存配置」，让页面调用 /peek/persona 把 Key 同步到当前 pk 的分区。" : "服务端还没有模型 API：请在 Nano 里打开一次聊天同步主 API，或在 Worker 配置 PEEK_API_URL / PEEK_API_KEY / PEEK_MODEL。"
+          }, 502);
+        }
         return json({
           ok: false,
           error: "model",
-          reply: peekPublic(env) ? "\u516C\u7528\u7AA5\u5C4F\u4E0D\u4F1A\u4F7F\u7528\u7AD9\u957F\u7684 API\uFF1A\u8BF7\u5728\u4F60\u81EA\u5DF1\u7684 Nano \u91CC\u914D\u7F6E\u4E3B API\uFF08\u6700\u597D\u652F\u6301\u8BC6\u56FE\uFF09\uFF0C\u5E76\u6253\u5F00\u4E00\u6B21\u804A\u5929\u6216\u7AA5\u5C4F\u9875\u4FDD\u5B58\u914D\u7F6E\uFF0C\u628A Key \u540C\u6B65\u5230\u4F60\u81EA\u5DF1\u7684\u4EE4\u724C\u5206\u533A\u3002\u5982\u679C\u5DF2\u7ECF\u914D\u7F6E\uFF0C\u8BF7\u68C0\u67E5\u6A21\u578B\u662F\u5426\u652F\u6301\u56FE\u7247\u3002" : hasEnvApi ? "\u6A21\u578B\u6CA1\u6709\u8FD4\u56DE\u5185\u5BB9\uFF1A\u8BF7\u68C0\u67E5 PEEK_API_URL / PEEK_API_KEY / PEEK_MODEL \u6216\u6A21\u578B\u662F\u5426\u652F\u6301\u8BC6\u56FE\u3002" : "\u670D\u52A1\u7AEF\u8FD8\u6CA1\u6709\u6A21\u578B API\uFF1A\u8BF7\u5728 Nano \u91CC\u6253\u5F00\u4E00\u6B21\u804A\u5929\u540C\u6B65\u4E3B API\uFF0C\u6216\u5728 Worker \u914D\u7F6E PEEK_API_URL / PEEK_API_KEY / PEEK_MODEL\u3002"
+          reply: peekPublic(env) ? "已经有模型 API，但模型没有返回内容。常见原因：模型不支持图片、Key/额度/中转地址错误，或上游超时。先用纯文字测试，再换一个支持识图的模型。" : hasEnvApi ? "模型没有返回内容：请检查 PEEK_API_URL / PEEK_API_KEY / PEEK_MODEL 或模型是否支持识图。" : "服务端还没有模型 API：请在 Nano 里打开一次聊天同步主 API，或在 Worker 配置 PEEK_API_URL / PEEK_API_KEY / PEEK_MODEL。"
         }, 502);
       }
       const MAX_IMAGE_CHARS = 4 * 1024 * 1024;

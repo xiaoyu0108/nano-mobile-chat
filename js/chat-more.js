@@ -6,7 +6,7 @@
 
     const moreBtn = document.getElementById('moreBtn');
     const moreOverlay = document.getElementById('moreOverlay');
-    const IS_NANO = (function () { try { return new URLSearchParams(location.search).get('chat') === 'nano_ai'; } catch (e) { return false; } })();
+    const IS_NANO = (function () { try { var c = new URLSearchParams(location.search).get('chat') || ''; return c === 'nano_ai' || c.indexOf('nano_ai_') === 0; } catch (e) { return false; } })();
 
     // ===== 默认菜单配置（viewBox 0 0 24 24，stroke-width 2.5） =====
     const DEFAULT_MENU_ITEMS = [

@@ -5,7 +5,10 @@
   var KB = window.NANO_ASSISTANT_KB || { about: [], scopes: [], pages: [], storage: {}, commands: [], worldbookEntryFields: [] };
   var NANO_ID = 'nano_ai';
 
-  function isNano(chatId) { return String(chatId || '') === NANO_ID; }
+  function isNano(chatId) {
+    var s = String(chatId || '');
+    return s === NANO_ID || s.indexOf(NANO_ID + '_') === 0;
+  }
 
   function systemPrompt() {
     var lines = [];
@@ -24,6 +27,9 @@
     lines.push('9. 每次 apply_beautify 都会自动存成一个「可切换的预设」（在对应美化页里能选），所以 name 要起一个简短好认的名字，方便用户之后切换。若用户说「改我那个叫 XX 的预设」，就把 name 填成 XX —— 同名会直接更新那个预设，不会再多出一个。');
     lines.push('10. 用户让你「用我刚发的图当头像/换成我发的这张」时，用 set_avatar（args:{"useLast":true}），不要用 apply_beautify 硬套图片地址（iOS 上本地图片地址塞进 CSS/JSON 会失效）。');
     lines.push('11. 只回答用户当前问的这一个问题，问什么就答什么；**不要反复回答之前已经回答过的问题**，不要每轮都把上一条结论再复述一遍，也不要把无关的旧内容重新倒出来。');
+    lines.push('12. 用户说「执行框」「执行气泡」「放进执行框」「给我文件/生成文件」时，意思是让你把结果做成可执行动作：必须在回复里输出 <action> 块；需要文件就用 create_file，并把完整内容放进 content。不要只发纯文本、也不要让用户自己去复制。');
+    lines.push('13. 在现有预设、角色卡、人设、世界书、美化的基础上「新增细节 / 加一点 / 补充」时，用 append:true（或 args 里 addDetails:true），只追加新内容，绝不重写掉原来的内容。只有用户明确说「重写 / 替换 / 改成新的」时才覆盖。');
+    lines.push('14. 例：用户说「把这份 CSS 放进执行框，给我文件」→ 必须输出 <action>{"tool":"create_file","args":{"name":"theme.css","content":"完整 CSS","ext":"css"}}</action>；用户说「在现有角色卡上加一段细节」→ 用 <action>{"tool":"edit_persona","args":{"name":"角色名","setting":"新增的那段细节","append":true}}</action>。');
     lines.push('');
     lines.push('【不限于美化 · 你还能做的装修】');
     lines.push('· 线下美化：apply_beautify（scope:"offline"），写入线下 customCSS，重新打开线下即生效。');
@@ -39,7 +45,7 @@
     lines.push('· 线下规则与状态栏：list_offline_rules / read_offline_rules 读取；add_offline_status 写入/覆盖自定义状态栏；add_offline_rule 写入规则。');
     lines.push('· AppStore：list_apps / read_app 读取；create_app（args:{id,name,icon,color,desc,html}）直接创建并安装一个应用。');
     lines.push('· 文件库：list_files / read_generated_file 读取 Nano 生成或归档的所有文件。');
-    lines.push('【最高权限】你可以读取并修改 Nano 里的角色、人设、预设、美化、世界书、线下规则/状态栏、AppStore 应用和文件。修改前先读取原内容；修改人设必须保留历史版本；保存预设时同名会直接覆盖原版。每次生成或修改内容的动作都会自动归档成文件，出现在 Nano 文件页。');
+    lines.push('【最高权限】你可以读取并修改 Nano 里的角色、人设、预设、美化、世界书、线下规则/状态栏、AppStore 应用和文件。修改前先读取原内容；修改人设必须保留历史版本；保存预设时同名会直接覆盖原版（用户说「新增细节」时传 append:true，只追加不覆盖）。每次生成或修改内容的动作都会自动归档成文件，出现在 Nano 文件页。');
     lines.push('');
     lines.push('【执行动作的方式】');
     lines.push('需要真正修改时，在回复里输出代码块（用户会看到确认按钮，确认后才生效）：');
@@ -203,7 +209,7 @@
   }
   // 同名预设直接覆盖（更新），不存在才新建 —— 这样用户说「改我的某个预设」时，
   // 纳米是修改那一个预设，而不是每问一次就多出一个新预设。
-  function savePreset(category, name, code) {
+  function savePreset(category, name, code, append) {
     try {
       var req = indexedDB.open('BeautifyAppDB', 1);
       req.onupgradeneeded = function (e) {
@@ -226,7 +232,7 @@
             for (var i = 0; i < list.length; i++) {
               if (list[i] && list[i].category === category && list[i].name === name2) { found = list[i]; break; }
             }
-            if (found) { found.code = code; found.updatedAt = Date.now(); store.put(found); }
+            if (found) { found.code = append ? appendText(found.code, code) : code; found.updatedAt = Date.now(); store.put(found); }
             else store.put({ category: category, name: name2, code: code, createdAt: Date.now() });
           };
           tx.oncomplete = function () { db.close(); };
@@ -510,15 +516,26 @@
     return true;
   }
 
-  async function applyBeautify(scope, name, css) {
+  async function applyBeautify(scope, name, css, append) {
     css = String(css || '');
     name = String(name || '').trim() || '纳米预设';
+    if (append) {
+      var prev = '';
+      try {
+        if (scope === 'global') prev = localStorage.getItem('beautify_global_v2') || localStorage.getItem('beautify_global') || '';
+        else if (scope === 'chat') prev = localStorage.getItem('beautify_chat_v2') || localStorage.getItem('beautify_chat') || '';
+        else if (scope === 'chat-avatar') prev = localStorage.getItem('beautify_chat_avatar') || '';
+        else if (scope === 'heart') prev = localStorage.getItem('nano_voice_applied_css') || '';
+        else if (scope === 'offline') prev = await readOfflineCss();
+      } catch (e) {}
+      if (prev) css = prev + '\n' + css;
+    }
     if (scope === 'global') {
       localStorage.setItem('beautify_global_v2', css); localStorage.setItem('beautify_global', css);
-      savePreset('global', name, css); broadcast('global', css);
+      savePreset('global', name, css, append); broadcast('global', css);
     } else if (scope === 'chat') {
       localStorage.setItem('beautify_chat_v2', css); localStorage.setItem('beautify_chat', css);
-      savePreset('chat', name, css); broadcast('chat', css);
+      savePreset('chat', name, css, append); broadcast('chat', css);
     } else if (scope === 'chat-avatar') {
       localStorage.setItem('beautify_chat_avatar', css);
       // 顺带把头像框地址写进 nano_avatar_frame，实时聊天才会插入真实叠加元素
@@ -531,7 +548,7 @@
           localStorage.removeItem('nano_avatar_frame');
         }
       } catch (e) {}
-      savePreset('chat-avatar', name, css); broadcast('chat-avatar', css);
+      savePreset('chat-avatar', name, css, append); broadcast('chat-avatar', css);
     } else if (scope === 'heart') {
       localStorage.setItem('nano_voice_applied_css', css);
       // 写进心声自己的模板库，心声面板下拉里就能看到并切换
@@ -539,7 +556,7 @@
       try { window.parent.postMessage({ type: 'nanoVoiceCss', css: css, name: name }, '*'); } catch (e) {}
     } else if (scope === 'offline') {
       await setOfflineCss(css);
-      savePreset('offline', name, css);
+      savePreset('offline', name, css, append);
       // 通知已打开的线下页立即重读设置并套用（不用退出重进）
       try { window.parent.postMessage({ type: 'offlineSettingsChanged' }, '*'); } catch (e) {}
     } else {
@@ -699,6 +716,17 @@
     }
     return (data.masks[0] && data.masks[0].id) ? data.masks[0].id : '';
   }
+  function appendText(base, add) {
+    base = String(base || '').trim();
+    add = String(add || '').trim();
+    if (!add) return base;
+    if (!base) return add;
+    return base + '\n\n【补充细节】\n' + add;
+  }
+  function wantsAppend(args) {
+    args = args || {};
+    return args.append === true || args.add === true || args.addDetails === true || args.merge === true;
+  }
   async function createCharacter(args) {
     args = args || {};
     var name = String(args.name || args.title || '').trim();
@@ -708,7 +736,7 @@
     var existing = await findCharacter(args.id || name);
     if (existing) {
       pushVersion(existing.id, existing.name, existing.setting || '');
-      existing.setting = setting;
+      existing.setting = wantsAppend(args) ? appendText(existing.setting, setting) : setting;
       if (args.gender) existing.gender = String(args.gender);
       if (args.nationality) existing.nationality = String(args.nationality);
       if (args.avatar) existing.avatar = String(args.avatar);
@@ -807,7 +835,7 @@
     else if (scope === 'offline') { return setOfflineCss('').then(function () { try { window.parent.postMessage({ type: 'offlineSettingsChanged' }, '*'); } catch (e) {} }); }
     else throw new Error('未知 scope：' + scope);
   }
-  async function editPersona(key, setting) {
+  async function editPersona(key, setting, append) {
     setting = String(setting || '');
     if (!setting.trim()) throw new Error('人设内容为空，已取消写入（避免把人设清空）');
     var c = await findCharacter(key);
@@ -817,10 +845,10 @@
       return { ok: true, created: true, id: made.id, name: made.name };
     }
     pushVersion(c.id, c.name, c.setting || '');
-    c.setting = setting;
+    c.setting = append ? appendText(c.setting, setting) : setting;
     await putCharacter(c);
     notifyCharsChanged();
-    return { ok: true, id: c.id, name: c.name };
+    return { ok: true, id: c.id, name: c.name, appended: !!append };
   }
   async function savePersonaVersion(key) {
     var c = await findCharacter(key);
@@ -971,7 +999,7 @@
     return hit.content || '';
   }
 
-  async function presetSave(scope, name, content) {
+  async function presetSave(scope, name, content, append) {
     scope = String(scope || '').trim();
     name = String(name || '').trim();
     content = String(content || '');
@@ -983,7 +1011,7 @@
       var rec = recs.find(function (r) { return r && r.id === cfg.id; }) || { id: cfg.id, presets: [] };
       if (!Array.isArray(rec.presets)) rec.presets = [];
       var found = rec.presets.find(function (p) { return p && p.name === name; });
-      if (found) { found.content = content; } else { rec.presets.push({ name: name, content: content }); }
+      if (found) { found.content = append ? appendText(found.content, content) : content; } else { rec.presets.push({ name: name, content: content }); }
       await idbPut(mdb, cfg.store, rec);
       if (mdb) mdb.close();
       return true;
@@ -994,14 +1022,14 @@
       var key = 'nano_' + name;
       var hit = list.find(function (t) { return t && (t.name === name || t.id === key); });
       var rid = hit ? hit.id : key;
-      await idbPut(vdb, 'templates', { id: rid, name: name, css: content });
+      await idbPut(vdb, 'templates', { id: rid, name: name, css: append ? appendText(hit ? hit.css : '', content) : content });
       if (vdb) vdb.close();
       return true;
     }
     if (scope === 'menu-plugin') {
       var arr = menuPluginList();
       var f = arr.find(function (p) { return (p.name || '') === name; });
-      if (f) { f.js = content; } else { arr.push({ name: name, js: content }); }
+      if (f) { f.js = append ? appendText(f.js, content) : content; } else { arr.push({ name: name, js: content }); }
       menuPluginWrite(arr);
       try { window.parent.postMessage({ type: 'offlineMenuPluginsChanged' }, '*'); } catch (e) {}
       return true;
@@ -1010,7 +1038,7 @@
       var bdb = await openVersionedDB('BeautifyAppDB', 1, ensureBeautifyStores);
       var all = await idbAll(bdb, 'presets');
       var ex = all.find(function (p) { return p && p.category === scope && p.name === name; });
-      if (ex) { ex.code = content; ex.updatedAt = Date.now(); await idbPut(bdb, 'presets', ex); }
+      if (ex) { ex.code = append ? appendText(ex.code, content) : content; ex.updatedAt = Date.now(); await idbPut(bdb, 'presets', ex); }
       else { await idbPut(bdb, 'presets', { category: scope, name: name, code: content, createdAt: Date.now() }); }
       if (bdb) bdb.close();
       return true;
@@ -1501,17 +1529,17 @@
     if (a.tool === 'create_character') return createCharacter(args);
     if (a.tool === 'create_mask' || a.tool === 'edit_mask') return createMask(args);
     if (a.tool === 'bind_character') return bindCharacter(args.name || args.char || args.id, args.mask || args.maskName || args.user);
-    if (a.tool === 'edit_persona' || a.tool === 'write_persona') return editPersona(args.name || args.id || args.char || args.character, personaTextOf(args));
+    if (a.tool === 'edit_persona' || a.tool === 'write_persona') return editPersona(args.name || args.id || args.char || args.character, personaTextOf(args), wantsAppend(args));
     if (a.tool === 'save_persona_version') return savePersonaVersion(args.name || args.id || args.char);
     if (a.tool === 'list_persona_versions') return listPersonaVersions(args.name || args.id || args.char);
     if (a.tool === 'restore_persona_version') return restorePersonaVersion(args.name || args.id || args.char, args.index);
-    if (a.tool === 'apply_beautify') return applyBeautify(args.scope, args.name, args.css);
+    if (a.tool === 'apply_beautify') return applyBeautify(args.scope, args.name, args.css, wantsAppend(args));
     if (a.tool === 'add_worldbook') return addWorldbook(args.name, args.entries, args.worldbook || args.target, args.group);
     if (a.tool === 'add_emoji') return addEmoji(args.group || args.name, args.emojis || args.items);
     if (a.tool === 'set_chat_background') return setChatBackground(args.color, args.image);
     if (a.tool === 'set_avatar') return setAvatar(args);
     if (a.tool === 'open_page') return openPage(args.url);
-    if (a.tool === 'save_preset') return presetSave(args.scope, args.name, args.content != null ? args.content : args.code);
+    if (a.tool === 'save_preset') return presetSave(args.scope, args.name, args.content != null ? args.content : args.code, wantsAppend(args));
     if (a.tool === 'delete_preset') return presetDelete(args.scope, args.name);
     if (a.tool === 'add_offline_rule') return addOfflineRule(args.group, args.name, args.content);
     if (a.tool === 'add_menu_plugin') return addMenuPlugin(args.name, args.js);

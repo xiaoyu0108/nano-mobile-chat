@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Nano</title>
-  <link rel="stylesheet" href="../css/nano.css?v=20261021c">
+  <link rel="stylesheet" href="../css/nano.css?v=20261024h">
   <script src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
 </head>
 <body class="nc-body">
@@ -43,6 +43,13 @@
         </button>
       </div>
 
+      <section class="nc-card nc-sessions">
+        <div class="nc-card-head"><b>对话窗口</b><button id="ncNewSession">＋ 新对话</button></div>
+        <div class="nc-session-list" id="ncSessionList">
+          <div class="nc-empty">还没有对话窗口，点「新对话」开始。</div>
+        </div>
+      </section>
+
       <section class="nc-card">
         <div class="nc-card-head"><b>最近对话</b><button id="ncOpenChat">继续聊 ›</button></div>
         <div class="nc-msgs" id="ncMessages">
@@ -72,7 +79,7 @@
   <div class="nc-toast" id="ncToast"></div>
 
   <script src="../js/nano-files.js?v=20261023a"></script>
-  <script src="../js/nano-app.js?v=20261021c"></script>
+  <script src="../js/nano-app.js?v=20261024h"></script>
   <script src="../swipe-back.js"></script>
 </body>
 </html>

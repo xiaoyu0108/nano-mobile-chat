@@ -1,10 +1,14 @@
 # 测试用 Worker：nano-test-ceshi
-# 只部署到 workers.dev，不绑定任何自定义域名，不影响正式 Worker。
+# 同时绑定 workers.dev 和自定义域名 peek-test.nano315.online，不影响正式 Worker。
 name = "nano-test-ceshi"
 main = "dist/index.js"
 compatibility_date = "2025-01-01"
 preview_urls = false
 workers_dev = true
+
+routes = [
+  { pattern = "peek-test.nano315.online", custom_domain = true }
+]
 
 kv_namespaces = [
   { binding = "PUSH_KV", id = "258a9b79d41c4099bdf9fc618401eff2" }

@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>聊天设置</title>
-    <link rel="stylesheet" href="../css/inner-setting.css">
+    <link rel="stylesheet" href="../css/inner-setting.css?v=20261024h">
     <link rel="preconnect" href="https://cdn.jsdelivr.net">
     <link rel="dns-prefetch" href="https://unpkg.com">
     <script src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
@@ -85,6 +85,20 @@
                 </div>
                 <div class="item-right">
                     <span id="bgDisplay">默认</span>
+                    <svg class="chevron-right" viewBox="0 0 8 13" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M1.5 1.5L6.5 6.5L1.5 11.5" stroke="#C6C6C8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </div>
+            </div>
+            <div class="list-item" id="callSettingItem">
+                <div class="item-left">
+                    <div class="item-icon" style="color: #34c759;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.05 12.05 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.05 12.05 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
+                    </div>
+                    <div class="item-text">通话设置</div>
+                </div>
+                <div class="item-right">
+                    <span id="callSettingPreview">铃声 / 背景</span>
                     <svg class="chevron-right" viewBox="0 0 8 13" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <path d="M1.5 1.5L6.5 6.5L1.5 11.5" stroke="#C6C6C8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                     </svg>
@@ -559,6 +573,42 @@
         </div>
     </div>
 
+    <!-- ===== 弹窗：通话设置 ===== -->
+    <div class="modal-overlay" id="callSettingModal">
+        <div class="modal-content call-setting-modal">
+            <div class="modal-header">
+                <div class="modal-title">通话设置</div>
+            </div>
+            <div class="modal-body">
+                <div class="call-set-label">谁先说话</div>
+                <div class="call-choice" id="callFirstSpeaker">
+                    <button type="button" data-call-first="me">我先说</button>
+                    <button type="button" data-call-first="char">对方先说</button>
+                </div>
+                <div class="call-set-label">来电铃声</div>
+                <div class="call-choice">
+                    <button type="button" id="ringtonePick">选择 MP3</button>
+                    <button type="button" id="ringtoneReset">恢复默认</button>
+                </div>
+                <div class="call-set-name" id="ringtoneName">默认铃声</div>
+                <input type="file" id="ringtoneInput" accept="audio/mpeg,audio/mp3,.mp3" hidden>
+                <div class="call-set-label">通话背景</div>
+                <div class="preview-box" id="callBgPreview">
+                    <video id="callBgPreviewVideo" muted loop playsinline></video>
+                    <span id="callBgPreviewText">默认（角色头像）</span>
+                </div>
+                <label class="custom-file-upload">
+                    <input type="file" id="callBgUpload" accept="image/*,video/*">
+                    选择图片 / GIF / Live 视频
+                </label>
+                <button class="btn-reset" id="callBgReset">恢复默认背景</button>
+            </div>
+            <div class="modal-footer">
+                <button class="modal-btn bold" id="callSettingDone" data-close>完成</button>
+            </div>
+        </div>
+    </div>
+
     <!-- ===== 弹窗 3：查找聊天记录 ===== -->
     <div class="modal-overlay" id="searchModal">
         <div class="modal-content">
@@ -684,7 +734,9 @@
     </div>
 
     <script src="../js/nano-tts.js?v=20261024e"></script>
-    <script src="../js/inner-setting.js?v=20261023c"></script>
+    <script src="../js/nano-call-ringtone.js?v=20261024a"></script>
+    <script src="../js/nano-call-bg.js?v=20261024b"></script>
+    <script src="../js/inner-setting.js?v=20261024e"></script>
 
 <script src="../js/api-float.js?v=20261023a"></script>
 <script src="../swipe-back.js"></script>

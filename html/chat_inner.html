@@ -11,7 +11,7 @@
     <link rel="preconnect" href="https://cdn.jsdelivr.net">
     <link rel="dns-prefetch" href="https://unpkg.com">
     <script src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
-    <script src="../js/appearance.js?v=20261021c"></script>
+    <script src="../js/appearance.js?v=20261024h"></script>
 <script src="../js/nano-notify.js?v=20261023j"></script>
 <script src="../js/reroll-reason.js?v=20261022a"></script>
 <script src="../js/cycle-store.js?v=20261021b"></script>
@@ -20,6 +20,19 @@
 <script src="../js/nano-call-audio.js?v=20261024e"></script>
 <script src="../js/group-store.js?v=20261021a"></script>
     <script src="../js/nano-gallery.js?v=20261023e"></script>
+    <script>
+    (function () {
+        try {
+            var c = new URLSearchParams(location.search).get('chat') || '';
+            if (c === 'nano_ai' || c.indexOf('nano_ai_') === 0) {
+                var l = document.createElement('link');
+                l.rel = 'stylesheet';
+                l.href = '../css/nano-chat-theme.css?v=20261024a';
+                document.head.appendChild(l);
+            }
+        } catch (e) {}
+    })();
+    </script>
 </head>
 <body class="nano-chat-inner">
 <div class="chat-container" id="app">
@@ -466,9 +479,9 @@
 
 <!-- ===== 引入拆分后的 JS 文件 ===== -->
     <script src="../js/nano-tts.js?v=20261024e"></script>
-<script src="../js/nano-assistant-knowledge.js?v=20261021d"></script>
+<script src="../js/nano-assistant-knowledge.js?v=20261024h"></script>
 <script src="../js/nano-files.js?v=20261023a"></script>
-<script src="../js/nano-assistant-tools.js?v=20261023a"></script>
+<script src="../js/nano-assistant-tools.js?v=20261024h"></script>
 <script src="../js/family-card-store.js?v=20261006a"></script>
 <script src="../js/nano-pay.js?v=20261020j"></script>
     <script src="../js/mem-link.js?v=20261006a"></script>
@@ -479,12 +492,12 @@
 <script src="../js/schedule-bridge.js?v=20261019d"></script>
         <script src="../js/nano-card-ui.js?v=20261021c"></script>
     <script src="../js/nano-prompts.js?v=20261023a"></script>
-    <script src="../js/chat-core.js?v=20261024e"></script>
+    <script src="../js/chat-core.js?v=20261024i"></script>
     <script src="../js/roleplay-prompt.js?v=20261023a"></script>
 <script src="../js/chat-transfer.js?v=20261020j"></script>
 <script src="../js/chat-gift.js"></script>
     <script src="../js/chat-image.js?v=20261013a"></script>
-    <script src="../js/chat-more.js?v=20261022a"></script>
+    <script src="../js/chat-more.js?v=20261024i"></script>
 <script src="../js/chat-place.js"></script>
 <script src="../js/chat-voice.js"></script>
     <script src="../js/nano-export.js?v=20261015a"></script>

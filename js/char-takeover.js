@@ -705,7 +705,7 @@
         console.log('[TK] start called', info.id, info.name);
         if (!info.id) return;
         // 纳米是助手，不允许它发起「反查 / 接管手机」
-        if (info.id === 'nano_ai' || info.nanoAssistant) { console.log('[TK] refuse nano'); return; }
+        if (info.id === 'nano_ai' || String(info.id || '').indexOf('nano_ai_') === 0 || info.nanoAssistant) { console.log('[TK] refuse nano'); return; }
         // 已在进行中 / 已有确认弹窗 / 已开始 → 忽略重复触发（避免二次 buildUi 把状态重置成"准备中"）
         if (TK.active || TK.begun || TK.confirmEl) { console.log('[TK] start ignored'); return; }
         confirmDialog(info, function () {
@@ -730,7 +730,7 @@
         try {
             var lc = JSON.parse(localStorage.getItem('nano_last_chat') || 'null');
             if (!lc || !lc.id) return false;
-            if (lc.id === 'nano_ai') return false;   // 纳米不参与反查
+            if (lc.id === 'nano_ai' || String(lc.id || '').indexOf('nano_ai_') === 0) return false;   // 纳米不参与反查
             start({ id: lc.id, name: lc.name || 'TA', avatar: lc.avatar || '' });
             return true;
         } catch (e) { return false; }
@@ -744,7 +744,7 @@
             var dayKey = d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
             if (localStorage.getItem('nano_takeover_day') === dayKey) return;
             var lc = JSON.parse(localStorage.getItem('nano_last_chat') || 'null');
-            if (!lc || !lc.id || lc.id === 'nano_ai') return;   // 纳米不参与反查
+            if (!lc || !lc.id || lc.id === 'nano_ai' || String(lc.id || '').indexOf('nano_ai_') === 0) return;   // 纳米不参与反查
             // 同一角色 14 天内只被反查一次
             var perChar = parseInt(localStorage.getItem('nano_takeover_char_at_' + lc.id) || '0', 10) || 0;
             if (Date.now() - perChar < 14 * 24 * 3600 * 1000) return;

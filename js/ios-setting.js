@@ -162,13 +162,8 @@
             // Web Push 和窥屏共用同一个 Worker，地址一起还原
             localStorage.setItem('nano_push_endpoint', PEEK_DEFAULT_URL);
             localStorage.removeItem('nano_push_vapid');
-            // 清掉人设同步缓存，下一次会用初始令牌重新同步
-            var stale = [];
-            for (var i = 0; i < localStorage.length; i++) {
-                var k = localStorage.key(i);
-                if (k && (k.indexOf('nano_peek_page_sig_') === 0 || k.indexOf('nano_peek_page_at_') === 0)) stale.push(k);
-            }
-            stale.forEach(function (k) { try { localStorage.removeItem(k); } catch (e) {} });
+            // 清掉人设同步缓存，下一次会用新令牌重新同步
+            clearPeekSyncCache();
         } catch (e) {}
         var urlInput = $('isPeekUrl');
         if (urlInput) urlInput.value = PEEK_DEFAULT_URL;
@@ -289,6 +284,8 @@
             + '<ol>'
             + '<li>打开「快捷指令」App，右上角 <b>+</b> 新建，命名「窥屏」。</li>'
             + '<li>添加动作 <code>截屏</code>。</li>'
+            + '<li>添加动作 <code>调整图像大小</code>：宽度填 <b>900</b>，高度留空（自动）。原图直接 Base64 经常会导致请求超时。</li>'
+            + '<li>添加动作 <code>转换图像</code>：格式选 <b>JPEG</b>，质量 <b>0.7</b>。</li>'
             + '<li>添加动作 <code>Base64 编码</code>，关闭「行长度换行」。</li>'
             + '<li>添加动作 <code>获取 URL 内容</code>：<br>'
             + '地址：<code>' + esc(ep || '（先填服务端地址）') + '</code><br>'
@@ -339,11 +336,13 @@
             '',
             '具体步骤：',
             '1. 打开「快捷指令」App，右上角 + 新建，命名「窥屏」。',
-            '2. 添加动作：截屏 → Base64 编码（关闭行长度换行）。',
+            '2. 添加动作：截屏 → 调整图像大小（宽 900，高留空）→ 转换图像（JPEG 0.7）→ Base64 编码（关闭行长度换行）。',
+            '   原图直接 Base64 很容易请求超时；一定要先缩放和压成 JPEG。',
             '3. 添加「获取 URL 内容」：地址填上面的接口地址，方法 POST，请求体选「文件」，引用一个「文本」动作，内容粘贴上面的截图 JSON。',
             '   把 <把上一步的 Base64 结果插到这里> 替换成 Base64 变量。',
             '4. 添加「获取字典值」：reply → 显示提醒。',
-            '5. 运行。TA 的回复会弹出；回到 Nano 打开这个角色的私聊，消息会自动补进来。',
+            '5. 先测纯文字：把截图 JSON 里的 image 换成 text: "测试"，确认能收到 reply；再加图片，便于区分是网络超时还是图片/模型超时。',
+            '6. 运行。TA 的回复会弹出；回到 Nano 打开这个角色的私聊，消息会自动补进来。',
             '',
             '想连续聊：再加「要求输入」拿到文字，用回话 JSON 再发一轮（把占位符换成输入的文字）。',
             '想更快：设置 → 辅助功能 → 触控 → 轻点背面 → 双击 → 选这个快捷指令。'
@@ -382,6 +381,17 @@
         pushPersona();
     }
 
+    function clearPeekSyncCache() {
+        try {
+            var stale = [];
+            for (var i = 0; i < localStorage.length; i++) {
+                var k = localStorage.key(i);
+                if (k && (k.indexOf('nano_peek_page_sig_') === 0 || k.indexOf('nano_peek_page_at_') === 0)) stale.push(k);
+            }
+            stale.forEach(function (k) { try { localStorage.removeItem(k); } catch (e) {} });
+        } catch (e) {}
+    }
+
     // 把当前所选角色的人设同步到服务端，快捷指令就不需要内置人设（切角色后即时生效）
     function pushPersona() {
         try {
@@ -395,7 +405,11 @@
                 ? { url: apiCfg.mainUrl, key: apiCfg.mainKey, model: apiCfg.mainModel }
                 : null;
             var hist = recentContext();
-            var sig = sys + '|' + (api ? (api.url + '|' + api.model + '|' + String(api.key).slice(-6)) : '');
+            // 签名必须带上服务端地址 / 令牌 / appId：只换 Worker 时人设没变，
+            // 旧逻辑会误判“已经同步过”而跳过，导致新 Worker 的分区里一直没有 API。
+            var sig = baseUrl + '|' + getPeekToken() + '|' + appId() + '|' + String(selectedId || '')
+                + '|' + deviceId() + '|' + currentUserId() + '|' + sys
+                + '|' + (api ? (api.url + '|' + api.model + '|' + String(api.key).slice(-6)) : '');
             var sigKey = 'nano_peek_page_sig_' + String(selectedId || 'latest');
             var atKey = 'nano_peek_page_at_' + String(selectedId || 'latest');
             try {
@@ -454,8 +468,11 @@
                 localStorage.setItem(PEEK_URL_KEY, next);
                 // Web Push 和窥屏用同一个 Worker：保存一次，两边都生效
                 localStorage.setItem('nano_push_endpoint', next);
-                // 换了 Worker，旧的 VAPID 公钥 / 旧订阅不能用，清掉让页面重新获取
-                if (old && next && old !== next) localStorage.removeItem('nano_push_vapid');
+                // 换了 Worker，旧的 VAPID 公钥 / 旧订阅 / 人设同步缓存都不能用
+                if (old && next && old !== next) {
+                    localStorage.removeItem('nano_push_vapid');
+                    clearPeekSyncCache();
+                }
             } catch (e) {}
             var pt = $('isPushToken');
             try {
@@ -475,7 +492,10 @@
             try {
                 localStorage.setItem(PEEK_URL_KEY, next);
                 localStorage.setItem('nano_push_endpoint', next);
-                if (old && next && old !== next) localStorage.removeItem('nano_push_vapid');
+                if (old && next && old !== next) {
+                    localStorage.removeItem('nano_push_vapid');
+                    clearPeekSyncCache();
+                }
             } catch (e) {}
             renderInfo();
         });

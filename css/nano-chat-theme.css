@@ -1,0 +1,161 @@
+/* Nano 专属对话主题 · 参考 DeepSeek 官网的清爽蓝白风格
+   只在 nano_ai / nano_ai_* 会话加载，不跟随聊天美化。 */
+
+body.nano-chat-inner {
+    background: #f7f8fb !important;
+    color: #1f2328;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif;
+}
+
+body.nano-chat-inner .chat-bg {
+    background: linear-gradient(180deg, #fbfcff 0%, #f5f7fb 100%) !important;
+    opacity: 1 !important;
+}
+
+body.nano-chat-inner .topbar {
+    background: rgba(255, 255, 255, 0.92) !important;
+    border-bottom: 0.5px solid #e9ebf2 !important;
+    backdrop-filter: saturate(180%) blur(14px);
+    -webkit-backdrop-filter: saturate(180%) blur(14px);
+    color: #1f2328 !important;
+}
+
+body.nano-chat-inner .topbar-title {
+    color: #1f2328 !important;
+    font-size: 16px !important;
+    font-weight: 650 !important;
+    letter-spacing: -0.01em;
+}
+
+body.nano-chat-inner .topbar .back-btn,
+body.nano-chat-inner .topbar svg {
+    color: #3b3f4a !important;
+    stroke: #3b3f4a !important;
+}
+
+body.nano-chat-inner .topbar-avatar,
+body.nano-chat-inner .message-avatar,
+body.nano-chat-inner .typing-indicator .ti-avatar {
+    display: none !important;
+}
+
+body.nano-chat-inner .message-scroll {
+    background: transparent !important;
+}
+
+body.nano-chat-inner .message-row {
+    padding-left: 14px !important;
+    padding-right: 14px !important;
+}
+
+body.nano-chat-inner .message-content {
+    max-width: 86% !important;
+}
+
+body.nano-chat-inner .bubble {
+    font-size: 15px !important;
+    line-height: 1.68 !important;
+    padding: 10px 14px !important;
+    border-radius: 17px !important;
+    box-shadow: none !important;
+    border: 1px solid transparent;
+    word-break: break-word;
+}
+
+body.nano-chat-inner .bubble.other {
+    background: #ffffff !important;
+    color: #1f2328 !important;
+    border-color: #ececf1 !important;
+}
+
+body.nano-chat-inner .bubble.me {
+    background: #4d6bfe !important;
+    color: #ffffff !important;
+    border-color: #4d6bfe !important;
+}
+
+body.nano-chat-inner .bubble.other::after,
+body.nano-chat-inner .bubble.me::after,
+body.nano-chat-inner .bubble.other::before,
+body.nano-chat-inner .bubble.me::before {
+    display: none !important;
+    border: 0 !important;
+    background: none !important;
+}
+
+body.nano-chat-inner .date-label {
+    background: #eef0f6 !important;
+    color: #8b91a1 !important;
+    border-radius: 999px;
+    font-size: 11px !important;
+    padding: 3px 10px;
+    box-shadow: none !important;
+}
+
+body.nano-chat-inner .typing-indicator .ti-bubble {
+    background: #fff !important;
+    border: 1px solid #ececf1 !important;
+    box-shadow: none !important;
+}
+
+body.nano-chat-inner .typing-indicator .dot {
+    background: #a9afbd !important;
+}
+
+body.nano-chat-inner .bottom-bar {
+    background: rgba(255, 255, 255, 0.96) !important;
+    border-top: 0.5px solid #e9ebf2 !important;
+    backdrop-filter: saturate(180%) blur(14px);
+    -webkit-backdrop-filter: saturate(180%) blur(14px);
+}
+
+body.nano-chat-inner .input-shell {
+    background: #f2f4f8 !important;
+    border-radius: 22px !important;
+    border: 1px solid #e8eaf1 !important;
+    box-shadow: none !important;
+}
+
+body.nano-chat-inner .input {
+    background: transparent !important;
+    color: #1f2328 !important;
+    font-size: 15px !important;
+}
+
+body.nano-chat-inner .input::placeholder {
+    color: #a2a8b6 !important;
+}
+
+body.nano-chat-inner .send-btn {
+    background: #4d6bfe !important;
+    color: #ffffff !important;
+    border: none !important;
+    box-shadow: 0 4px 12px rgba(77, 107, 254, 0.28) !important;
+}
+
+body.nano-chat-inner .send-btn i {
+    color: #ffffff !important;
+}
+
+body.nano-chat-inner .more-btn,
+body.nano-chat-inner .emoji-btn,
+body.nano-chat-inner .voice-btn {
+    color: #6b7280 !important;
+}
+
+body.nano-chat-inner .emoji-recommend,
+body.nano-chat-inner .quote-bar {
+    background: #f2f4f8 !important;
+    border-color: #e6e8ef !important;
+}
+
+body.nano-chat-inner .sys-notice,
+body.nano-chat-inner .system-notice {
+    color: #8b91a1 !important;
+    background: transparent !important;
+}
+
+body.nano-chat-inner .bubble a {
+    color: inherit !important;
+    text-decoration: underline;
+}

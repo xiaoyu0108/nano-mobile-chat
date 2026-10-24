@@ -1778,11 +1778,21 @@ export default {
       try { reply = await peekModel(env, system, text, image, history, apiCfg, context); } catch (e) {}
       if (!reply) {
         const hasEnvApi = !peekPublic(env) && !!(env.PEEK_API_URL && env.PEEK_API_KEY && env.PEEK_MODEL);
+        // 区分「没找到你这个令牌分区的 API」和「API 找到了但模型没返回」，不要再混成一句话。
+        if (!apiCfg) {
+          return json({
+            ok: false,
+            error: 'no_api',
+            reply: peekPublic(env)
+              ? '没有在这个令牌分区找到模型 API。请先在自己的 Nano 里配置主 API，然后在窥屏页选择角色、填好服务端地址并点一次「保存配置」，让页面调用 /peek/persona 把 Key 同步到当前 pk 的分区。'
+              : '服务端还没有模型 API：请在 Nano 里打开一次聊天同步主 API，或在 Worker 配置 PEEK_API_URL / PEEK_API_KEY / PEEK_MODEL。'
+          }, 502);
+        }
         return json({
           ok: false,
           error: 'model',
           reply: peekPublic(env)
-            ? '公用窥屏不会使用站长的 API：请在你自己的 Nano 里配置主 API（最好支持识图），并打开一次聊天或窥屏页保存配置，把 Key 同步到你自己的令牌分区。如果已经配置，请检查模型是否支持图片。'
+            ? '已经有模型 API，但模型没有返回内容。常见原因：模型不支持图片、Key/额度/中转地址错误，或上游超时。先用纯文字测试，再换一个支持识图的模型。'
             : (hasEnvApi
               ? '模型没有返回内容：请检查 PEEK_API_URL / PEEK_API_KEY / PEEK_MODEL 或模型是否支持识图。'
               : '服务端还没有模型 API：请在 Nano 里打开一次聊天同步主 API，或在 Worker 配置 PEEK_API_URL / PEEK_API_KEY / PEEK_MODEL。')

@@ -548,7 +548,7 @@ function hideInputArea() {
     // ===== 模拟接通（接通等待） =====
     // ===== 接通提示音 =====
     var ringCtx = null, ringTimer = null;
-    function startRing() {
+    function playDefaultRing() {
         try {
             var AC = window.AudioContext || window.webkitAudioContext;
             if (!AC) return;
@@ -568,7 +568,14 @@ function hideInputArea() {
             ringTimer = setInterval(ring, 2200);
         } catch (e) {}
     }
+    function startRing() {
+        try {
+            if (window.NanoCallRingtone && window.NanoCallRingtone.start(playDefaultRing)) return;
+        } catch (e) {}
+        playDefaultRing();
+    }
     function stopRing() {
+        try { if (window.NanoCallRingtone) window.NanoCallRingtone.stop(); } catch (e) {}
         try { clearInterval(ringTimer); } catch (e) {}
         ringTimer = null;
         try { if (ringCtx) { ringCtx.close(); ringCtx = null; } } catch (e) { ringCtx = null; }
@@ -1573,6 +1580,7 @@ function showToast(text) {
     function setDarkBg(isDark) { try { document.body.classList.toggle('dark-bg', !!isDark); } catch (e) {} }
 
     function setBg(color) {
+        try { if (window.NanoCallBg) window.NanoCallBg.stopVideo(); } catch (e) {}
         currentBg = color;
         customBg = null;
         if (color === 'avatar') setDarkBg(true);
@@ -1612,6 +1620,7 @@ function showToast(text) {
     }
 
     function setCustomBg(imageData) {
+        try { if (window.NanoCallBg) window.NanoCallBg.stopVideo(); } catch (e) {}
         customBg = imageData;
         setDarkBg(true);
         document.body.style.backgroundImage = 'url(' + imageData + ')';
@@ -1686,11 +1695,7 @@ function showToast(text) {
     }
 
     // ===== 初始化 =====
-    function init() {
-    contextReady = loadContext();
-    updateCallStatus();
-
-    loadBg().then(function(bg) {
+    function applyLoadedBg(bg) {
         if (bg) {
             if (bg.startsWith('data:image') || bg.startsWith('http')) {
                 customBg = bg;
@@ -1709,7 +1714,23 @@ function showToast(text) {
             // 默认：头像背景
             setBg('avatar');
         }
-    });
+    }
+    function loadCallBg() {
+        var api = window.NanoCallBg;
+        if (api && api.load) {
+            return api.load(chatId).then(function(item) {
+                if (item && item.kind === 'video' && item.blob && api.showVideo(item.blob)) return;
+                if (item && item.kind === 'image' && item.value) { setCustomBg(item.value); return; }
+                return loadBg().then(applyLoadedBg);
+            }).catch(function() { return loadBg().then(applyLoadedBg); });
+        }
+        return loadBg().then(applyLoadedBg);
+    }
+    function init() {
+    contextReady = loadContext();
+    updateCallStatus();
+
+    loadCallBg();
 
     // ===== 每次新建通话，不加载旧消息 =====
     messages = [];

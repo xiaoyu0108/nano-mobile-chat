@@ -162,6 +162,13 @@
     // 聊天内页：单聊(chat_inner) / 群聊(groups) 需要注入「聊天 CSS」
     var isChatInterior = fileName === 'chat_inner.html' ||
         fileName.indexOf('groups') === 0;
+    function isNanoChatPage() {
+        if (fileName !== 'chat_inner.html') return false;
+        try {
+            var c = new URLSearchParams(location.search).get('chat') || '';
+            return c === 'nano_ai' || c.indexOf('nano_ai_') === 0;
+        } catch (e) { return false; }
+    }
 
     function getEl(id) {
         return document.getElementById(id);
@@ -218,6 +225,8 @@
     }
     function applyGlobalCss(css) {
         if (!isGlobalTargetPage()) return;
+        // 纳米助手使用专属主题，不跟随全局/聊天美化
+        if (isNanoChatPage()) return;
         applyStyle('nano-beautify-global', css || '');
         reorderChatLayers();
         bringAvatarToFront();
@@ -330,6 +339,14 @@
     function applyChatCss(css) {
         // 聊天 CSS 仅作用于单聊/群聊内页（额外的聊天专用覆盖）
         if (!isChatInterior) return;
+        if (isNanoChatPage()) {
+            // Nano 专属主题：清掉用户聊天/全局美化，只保留必要的浮动结构与安全区修正
+            applyStyle('nano-beautify-chat', '');
+            applyStyle('nano-beautify-chat-fix', CHAT_STRUCT_FIX);
+            applyStyle('nano-chat-float', NANO_CHAT_FLOAT_CSS);
+            reorderChatLayers();
+            return;
+        }
         applyStyle('nano-beautify-chat', css || '');
         applyStyle('nano-beautify-chat-fix', CHAT_STRUCT_FIX + legacyCardCompatCss(css));
         applyStyle('nano-chat-float', NANO_CHAT_FLOAT_CSS);
@@ -343,6 +360,7 @@
     // 头像「方圆 / 大小」调节（美化页滑杆生成，作用聊天内页；优先级高于聊天 CSS）
     function applyChatAvatarCss(css) {
         if (!isChatInterior) return;
+        if (isNanoChatPage()) return;
         applyStyle('nano-beautify-chat-avatar', css || '');
         // 头像样式必须放在最后，优先级高于聊天 CSS / 全局 CSS，否则头像框会被后面的样式盖掉
         bringAvatarToFront();

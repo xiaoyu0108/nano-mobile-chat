@@ -98,7 +98,7 @@ window.NANO_ASSISTANT_KB = {
 
   // 助手可以下发的动作（写进 <action>...</action> 代码块）
   commands: [
-    { tool: 'apply_beautify', args: { scope: 'global|chat|chat-avatar|heart|offline', name: '预设名', css: '完整 CSS' }, note: '覆盖对应美化并存成可切换预设；若同名预设已存在则直接更新它（用户说「改我的某个预设」时，name 填那个预设的名字即可）' },
+    { tool: 'apply_beautify', args: { scope: 'global|chat|chat-avatar|heart|offline', name: '预设名', css: '完整 CSS', append: '（可选）true = 在现有 CSS 后追加细节，不覆盖原内容' }, note: '覆盖对应美化并存成可切换预设；若同名预设已存在则直接更新它（用户说「改我的某个预设」时，name 填那个预设的名字即可）。用户说「在现有基础上加细节」时 append:true' },
     { tool: 'add_worldbook', args: { name: '世界书名', worldbook: '（可选）要填入的已有世界书名或 id，填了就追加条目而不是新建', group: '（可选）分组名', entries: [{ title: '条目名', keywords: '触发词', content: '内容' }] }, note: '新增一本世界书，或把条目追加进已有世界书（worldbook 填书名）；用户发来文件/长文本要求「分条做世界书 / 填入世界书」时用这个，条目多时分批输出多个 action' },
     { tool: 'add_emoji', args: { group: '分组名', emojis: [{ name: '表情名', url: '图片地址' }] }, note: '把「名字:图片链接」清单加入表情包（用户说加表情包时用这个，不要用 add_worldbook）' },
     { tool: 'set_chat_background', args: { color: '#ffffff', image: '图片URL（可选）' }, note: '直接更换当前聊天背景（颜色或图片）；用户说“换背景”优先用这个' },
@@ -107,15 +107,15 @@ window.NANO_ASSISTANT_KB = {
     { tool: 'create_file', args: { name: '文件名（如 theme.css）', content: '完整文件内容', ext: 'txt|md|css|html|js|json' }, note: '把生成的文件保存到 Nano 文件库，并生成聊天文件卡片。文件独立于聊天消息，删除消息也不会丢。用户说导出/生成/保存文件时用这个' },
     { tool: 'open_page', args: { url: 'beautify.html' }, note: '帮用户打开对应页面' },
   { tool: 'clear_beautify', args: { scope: 'chat|groups|heart|offline|global' }, note: '清空对应范围的美化，恢复默认样式（用户说「清空线上/群聊/心声/线下/全局美化」时用这个）' },
-  { tool: 'create_character', args: { name: '角色名', setting: '完整人设文本', gender: '（可选）性别', nationality: '（可选）国籍', bindUser: '（可选）绑定到哪个 user 面具，默认当前面具', avatar: '（可选）头像URL' }, note: '新建一个角色并写入完整人设；同名/同 id 已存在时更新该角色。会写入角色库并自动归档文件，用户说「写一个新角色 / 写角色人设」时用这个，不要只 create_file' },
-  { tool: 'edit_persona', args: { name: '角色名或id', setting: '新的完整人设文本' }, note: '修改某个角色的完整人设（会自动先存一个历史版本，可回退）；角色不存在时会自动新建' },
+  { tool: 'create_character', args: { name: '角色名', setting: '完整人设文本', gender: '（可选）性别', nationality: '（可选）国籍', bindUser: '（可选）绑定到哪个 user 面具，默认当前面具', avatar: '（可选）头像URL', append: '（可选）true = 在已有角色人设后追加细节' }, note: '新建一个角色并写入完整人设；同名/同 id 已存在时更新该角色。会写入角色库并自动归档文件，用户说「写一个新角色 / 写角色人设」时用这个，不要只 create_file。用户说「给现有角色加细节」时 append:true' },
+  { tool: 'edit_persona', args: { name: '角色名或id', setting: '新的人设文本', append: '（可选）true = 只追加补充细节，不覆盖旧人设' }, note: '修改某个角色的完整人设（会自动先存一个历史版本，可回退）；角色不存在时会自动新建。用户说「新增细节」时 append:true' },
   { tool: 'create_mask', args: { name: '面具名', setting: '完整 user 人设文本', gender: '（可选）性别', wechat: '（可选）微信号', current: false }, note: '新建或更新一个 user 面具（localStorage nano_mask_data + IndexedDB）；current=true 时切换为当前面具。用户说「给 user 写面具 / 写我的马甲」时用这个' },
   { tool: 'edit_mask', args: { name: '面具名或id', setting: '新的完整 user 人设文本', gender: '（可选）性别', wechat: '（可选）微信号', current: false }, note: '修改已有 user 面具；与 create_mask 相同，同名直接更新' },
   { tool: 'bind_character', args: { name: '角色名或id', mask: '面具名或id（留空则绑定当前面具）' }, note: '把一个角色绑定到指定 user 面具（写入角色的 bindUser），绑定后该面具下才能看到这个角色' },
   { tool: 'save_persona_version', args: { name: '角色名或id' }, note: '为某角色人设手动存一个历史版本' },
   { tool: 'list_persona_versions', args: { name: '角色名或id' }, note: '列出某角色保存过的人设历史版本（含版本号，用于回退）' },
   { tool: 'restore_persona_version', args: { name: '角色名或id', index: 1 }, note: '把某角色人设回退到第 index 个历史版本（index 从 1 开始，1=最新保存的版本）' },
-  { tool: 'save_preset', args: { scope: 'global|chat|chat-avatar|offline|heart|offline-style|offline-cot|offline-css', name: '预设名', content: '预设内容' }, note: '保存/覆盖一个预设。全局、聊天、聊天头像、线下美化存到 BeautifyAppDB（不会自动应用，只进预设列表）；heart 存心声模板；offline-style/offline-cot/offline-css 存线下「文风/思维链/美化」预设；menu-plugin 用 add_menu_plugin' },
+  { tool: 'save_preset', args: { scope: 'global|chat|chat-avatar|offline|heart|offline-style|offline-cot|offline-css', name: '预设名', content: '预设内容', append: '（可选）true = 在已有预设后追加细节' }, note: '保存/覆盖一个预设。全局、聊天、聊天头像、线下美化存到 BeautifyAppDB（不会自动应用，只进预设列表）；heart 存心声模板；offline-style/offline-cot/offline-css 存线下「文风/思维链/美化」预设；menu-plugin 用 add_menu_plugin。用户说「在现有预设上加细节」时 append:true' },
   { tool: 'delete_preset', args: { scope: '同上', name: '预设名' }, note: '删除某个已保存的预设' },
   { tool: 'add_offline_rule', args: { group: '规则组名（可新建）', name: '规则名', content: '规则内容' }, note: '给线下「规则」新增一条规则；group 填已有组名（如“行为规则”）或新组名。用户说“给规则加一条/加个规则”时用这个' },
   { tool: 'add_menu_plugin', args: { name: '插件名', js: '插件 JS 代码' }, note: '给线下输入框头像菜单添加一个 JS 插件按钮。js 里用 api.addItem({label,icon,run}) 注册按钮，可用 api.toast/getMessages/scrollToFloor/reroll 等。用户说“给线下加个插件/加个按钮功能”时用这个' },

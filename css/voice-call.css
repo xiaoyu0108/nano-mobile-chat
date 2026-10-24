@@ -855,6 +855,10 @@ body.dark-bg .name-display, body.dark-bg .status-display { color: #ffffff; }
 .first-speaker{display:flex;gap:8px}
 .first-speaker button{flex:1;border:1px solid rgba(0,0,0,.08);background:rgba(255,255,255,.55);color:#1c1c1e;border-radius:12px;padding:8px 10px;font-size:12px;font-weight:600}
 .first-speaker button.active{background:#34c759;border-color:#34c759;color:#fff}
+.ringtone-row{display:flex;gap:8px}
+.ringtone-row button{flex:1;border:1px solid rgba(0,0,0,.08);background:rgba(255,255,255,.55);color:#1c1c1e;border-radius:12px;padding:8px 10px;font-size:12px;font-weight:600}
+.ringtone-row button:active{transform:scale(.96)}
+.ringtone-name{margin-top:6px;font-size:11px;color:#8e8e93;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* 本轮语音：只挂在最后一个角色气泡上，按钮放在气泡右侧外部 */
 .message.has-audio { border-radius: 16px; }
 .message.has-audio .msg-audio {
@@ -900,3 +904,8 @@ body.dark-bg .name-display, body.dark-bg .status-display { color: #ffffff; }
     fill: #ffffff;
     stroke: none;
 }
+
+/* 通话背景视频 / Live 图 */
+.call-bg-video{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:-1;pointer-events:none;display:none}
+body.has-call-video-bg{background:transparent!important;background-image:none!important}
+body.has-call-video-bg .call-bg-video{display:block}

@@ -1383,6 +1383,104 @@
         this.value = '';
     });
 
+    // ===== 通话设置（从聊天设置直接调节） =====
+    (function bindCallSettings() {
+        var item = document.getElementById('callSettingItem');
+        var modal = document.getElementById('callSettingModal');
+        if (!item || !modal) return;
+        var firstBox = document.getElementById('callFirstSpeaker');
+        var bgUpload = document.getElementById('callBgUpload');
+        var bgReset = document.getElementById('callBgReset');
+        var previewBox = document.getElementById('callBgPreview');
+        var previewVideo = document.getElementById('callBgPreviewVideo');
+        var previewText = document.getElementById('callBgPreviewText');
+        var previewUrl = '';
+
+        function firstKey() { return 'nano_call_first_' + chatId; }
+        function applyFirstSpeaker() {
+            var cur = 'char';
+            try { cur = localStorage.getItem(firstKey()) === 'me' ? 'me' : 'char'; } catch (e) {}
+            if (firstBox) {
+                Array.prototype.forEach.call(firstBox.querySelectorAll('[data-call-first]'), function (btn) {
+                    btn.classList.toggle('active', btn.getAttribute('data-call-first') === cur);
+                });
+            }
+        }
+        if (firstBox) {
+            firstBox.addEventListener('click', function (e) {
+                var btn = e.target && e.target.closest ? e.target.closest('[data-call-first]') : null;
+                if (!btn) return;
+                var val = btn.getAttribute('data-call-first') === 'me' ? 'me' : 'char';
+                try { localStorage.setItem(firstKey(), val); } catch (err) {}
+                applyFirstSpeaker();
+            });
+        }
+
+        function renderPreview() {
+            if (previewUrl) { try { URL.revokeObjectURL(previewUrl); } catch (e) {} previewUrl = ''; }
+            if (previewVideo) {
+                try { previewVideo.pause(); previewVideo.removeAttribute('src'); previewVideo.load(); } catch (e) {}
+                previewVideo.style.display = 'none';
+            }
+            if (!previewBox) return;
+            previewBox.style.backgroundImage = 'none';
+            previewBox.style.backgroundColor = '#111';
+            if (previewText) previewText.style.display = '';
+            if (!window.NanoCallBg) return;
+            window.NanoCallBg.load(chatId).then(function (bg) {
+                if (!bg) {
+                    if (previewText) previewText.textContent = '默认（角色头像）';
+                    return;
+                }
+                if (bg.kind === 'video' && bg.blob && previewVideo) {
+                    try {
+                        previewUrl = URL.createObjectURL(bg.blob);
+                        previewVideo.src = previewUrl;
+                        previewVideo.style.display = 'block';
+                        previewVideo.play().catch(function () {});
+                    } catch (e) {}
+                    if (previewText) previewText.textContent = '已选择：Live 视频';
+                } else if (bg.kind === 'image' && bg.value) {
+                    previewBox.style.backgroundImage = 'url(' + bg.value + ')';
+                    previewBox.style.backgroundSize = 'cover';
+                    previewBox.style.backgroundPosition = 'center';
+                    if (previewText) previewText.textContent = '已选择：图片 / 动图';
+                }
+            }).catch(function () {});
+        }
+
+        item.addEventListener('click', function () {
+            modal.classList.add('active');
+            applyFirstSpeaker();
+            renderPreview();
+        });
+        modal.addEventListener('click', function (e) {
+            if (e.target === modal) modal.classList.remove('active');
+        });
+        var done = document.getElementById('callSettingDone');
+        if (done) done.addEventListener('click', function () { modal.classList.remove('active'); });
+
+        if (bgUpload) bgUpload.addEventListener('change', function (e) {
+            var file = e.target.files && e.target.files[0];
+            e.target.value = '';
+            if (!file || !window.NanoCallBg) return;
+            var isVideo = /^video\//i.test(file.type || '') || /\.(mp4|mov|m4v|webm)$/i.test(file.name || '');
+            if (isVideo) {
+                window.NanoCallBg.setVideo(file, file.name, chatId).then(renderPreview);
+                return;
+            }
+            var reader = new FileReader();
+            reader.onload = function (ev) {
+                window.NanoCallBg.setImage(String(ev.target.result || ''), chatId).then(renderPreview);
+            };
+            reader.readAsDataURL(file);
+        });
+        if (bgReset) bgReset.addEventListener('click', function () {
+            if (window.NanoCallBg) window.NanoCallBg.clear(chatId).then(renderPreview);
+        });
+        applyFirstSpeaker();
+    })();
+
     timeToggle.addEventListener('change', function(e) {
         var enabled = e.target.checked;
         timeStatus.textContent = enabled ? '开启' : '关闭';

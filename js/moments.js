@@ -70,6 +70,11 @@
         var changed = false;
         (items || []).forEach(function (it) {
             if (!it || !it.id) return;
+            // 旧版自动生成的朋友圈没有头像：补一个按名字固定的彩色头像，避免全是默认灰头像
+            if (!it.avatar && it.author && normName(it.author) !== normName(currentUser && currentUser.name)) {
+                it.avatar = generatedAvatar(it.author);
+                changed = true;
+            }
             if (!it.maskId) { it.maskId = mid; changed = true; mine.push(it); return; }
             if (String(it.maskId) === mid) mine.push(it);
         });
@@ -226,7 +231,10 @@
 
     // 动态头像：用户自己的动态始终用当前面具头像；其它人没有头像则用「灰底首字」（方形）
     function isInitialAvatar(url) {
-        return !url || String(url).indexOf('data:image/svg+xml') === 0;
+        if (!url) return true;
+        var s = String(url);
+        if (s.indexOf('data:image/svg+xml') !== 0) return false;
+        return s.indexOf('nano-generated-avatar') < 0;
     }
     function itemAvatarSrc(item) {
         if (!item) return initialAvatar('?');
@@ -245,6 +253,29 @@
             '<rect width="120" height="120" fill="#c7c7cc"/>' +
             '<text x="60" y="60" dy="0.36em" text-anchor="middle" font-size="52" fill="#ffffff" ' +
             'font-family="-apple-system,BlinkMacSystemFont,PingFang SC,sans-serif">' + escapeXmlText(ch) + '</text></svg>';
+        return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+    }
+    // 自动生成的 NPC 头像：按名字固定配色，避免朋友圈里全是同一张默认头像
+    function generatedAvatar(name, gender) {
+        var n = String(name || '?').trim() || '?';
+        var h = 0;
+        for (var i = 0; i < n.length; i++) h = (h * 31 + n.charCodeAt(i)) >>> 0;
+        var palettes = [
+            ['#ffb8d2', '#ff6fa5'], ['#b8d8ff', '#6f9cff'], ['#c8f0d8', '#51c98b'],
+            ['#ffe1a8', '#ffb340'], ['#d9c8ff', '#9b7bff'], ['#ffd0b8', '#ff8a5c'],
+            ['#b8f0ef', '#4ec8ce'], ['#ffc8e8', '#d96fd6']
+        ];
+        var p = palettes[h % palettes.length];
+        var ch = n.charAt(0) || '?';
+        var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">' +
+            '<desc>nano-generated-avatar</desc>' +
+            '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">' +
+            '<stop offset="0" stop-color="' + p[0] + '"/><stop offset="1" stop-color="' + p[1] + '"/></linearGradient></defs>' +
+            '<rect width="120" height="120" rx="26" fill="url(#g)"/>' +
+            '<circle cx="91" cy="29" r="18" fill="#ffffff" opacity="0.18"/>' +
+            '<circle cx="24" cy="100" r="26" fill="#ffffff" opacity="0.12"/>' +
+            '<text x="60" y="62" dy="0.36em" text-anchor="middle" font-size="50" fill="#ffffff" ' +
+            'font-weight="600" font-family="-apple-system,BlinkMacSystemFont,PingFang SC,sans-serif">' + escapeXmlText(ch) + '</text></svg>';
         return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
     }
     function avatarSrcFor(name, avatar) {
@@ -520,7 +551,7 @@
             return {
                 id: c.id || ('npc_' + c.name),
                 name: c.name,
-                avatar: c.avatar || '',
+                avatar: c.avatar || generatedAvatar(c.name, c.gender),
                 type: 'npc',
                 isContext: true,
                 isNpc: true,
@@ -536,7 +567,7 @@
             return {
                 id: n.id || ('npc_' + n.name),
                 name: n.name,
-                avatar: n.avatar || '',
+                avatar: n.avatar || generatedAvatar(n.name, n.gender),
                 type: 'npc',
                 isContext: true,
                 isNpc: true,
@@ -1697,6 +1728,7 @@
             out.push({
                 id: 'npc_' + normName(name),
                 name: name,
+                avatar: generatedAvatar(name, String(n.gender || '').trim()),
                 relation: String(n.relation || '').trim(),
                 setting: String(n.setting || '').trim(),
                 gender: String(n.gender || '').trim()
@@ -2001,7 +2033,7 @@
                 var np = findNpcByName(npcs, p.author);
                 if (!ch && !np) continue; // 丢弃花名册以外的路人甲
                 var cn = ch ? ch.name : np.name;
-                var ca = (ch && ch.avatar) ? ch.avatar : ((np && np.avatar) ? np.avatar : '');
+                var ca = (ch && ch.avatar) ? ch.avatar : ((np && np.avatar) ? np.avatar : generatedAvatar(ch ? ch.name : (np ? np.name : p.author), (ch && ch.gender) || (np && np.gender) || ''));
                 var authorObj = ch || { id: np.id, name: np.name, setting: np.setting, relation: np.relation };
 
                 var likes = (p.likes || []).map(function(n) {

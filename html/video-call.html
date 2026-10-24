@@ -5,12 +5,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>视频通话</title>
-    <link rel="stylesheet" href="../css/video-call.css?v=20261024f">
+    <link rel="stylesheet" href="../css/video-call.css?v=20261024i">
     <link rel="preconnect" href="https://cdn.jsdelivr.net">
     <script src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
     <script src="../js/appearance.js"></script>
 </head>
 <body class="vc-body">
+
+    <video class="call-bg-video" id="callBgVideo" muted loop playsinline autoplay></video>
 
     <!-- 接通中：居中头像 -->
     <div class="vc-connecting" id="vcConnecting">
@@ -93,6 +95,15 @@
                 <button type="button" data-first-speaker="char">对方先说</button>
             </div>
         </div>
+        <div class="call-setting-block">
+            <div class="call-setting-label">来电铃声</div>
+            <div class="ringtone-row">
+                <button type="button" id="ringtonePick">选择 MP3</button>
+                <button type="button" id="ringtoneReset">默认</button>
+            </div>
+            <div class="ringtone-name" id="ringtoneName">默认铃声</div>
+            <input type="file" id="ringtoneInput" accept="audio/mpeg,audio/mp3,.mp3" hidden>
+        </div>
         <div class="call-setting-label">通话背景</div>
         <div class="vc-bg-options">
             <div class="vc-bg-opt vc-bg-avatar active" id="bgOptAvatar" data-bg="avatar" title="头像"><span>头像</span></div>
@@ -158,9 +169,11 @@
 
     <script src="../js/nano-tts.js?v=20261024f"></script>
 <script src="../js/nano-call-audio.js?v=20261024f"></script>
+<script src="../js/nano-call-ringtone.js?v=20261024a"></script>
+<script src="../js/nano-call-bg.js?v=20261024b"></script>
 <script src="../js/reroll-reason.js?v=20261022a"></script>
 <script src="../js/nano-prompts.js?v=20261023a"></script>
-<script src="../js/video-call.js?v=20261024g"></script>
+<script src="../js/video-call.js?v=20261024j"></script>
     <script src="../swipe-back.js"></script>
 </body>
 </html>

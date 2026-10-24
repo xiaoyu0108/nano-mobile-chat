@@ -25,12 +25,92 @@
     }
     location.href = url;
   }
-  function openChat(name, avatar) {
+  var SESSION_KEY = 'nano_chat_sessions_v1';
+  var CURRENT_KEY = 'nano_current_session';
+
+  function loadSessions() {
+    var list = [];
+    try { list = JSON.parse(localStorage.getItem(SESSION_KEY) || '[]'); } catch (e) { list = []; }
+    if (!Array.isArray(list)) list = [];
+    list = list.filter(function (s) { return s && s.id; });
+    if (!list.some(function (s) { return s.id === NANO_ID; })) {
+      list.unshift({ id: NANO_ID, title: '主对话', createdAt: Date.now(), updatedAt: Date.now() });
+    }
+    list.sort(function (a, b) { return (b.updatedAt || 0) - (a.updatedAt || 0); });
+    return list;
+  }
+  function saveSessions(list) {
+    try { localStorage.setItem(SESSION_KEY, JSON.stringify((list || []).slice(0, 40))); } catch (e) {}
+  }
+  function currentSessionId() {
+    var id = '';
+    try { id = localStorage.getItem(CURRENT_KEY) || ''; } catch (e) {}
+    if (!id) id = NANO_ID;
+    var list = loadSessions();
+    if (!list.some(function (s) { return s.id === id; })) {
+      id = NANO_ID;
+      try { localStorage.setItem(CURRENT_KEY, id); } catch (e) {}
+    }
+    return id;
+  }
+  function touchSession(id, title) {
+    if (!id) return;
+    var list = loadSessions();
+    var hit = list.find(function (s) { return s.id === id; });
+    if (!hit) { hit = { id: id, title: title || '新对话', createdAt: Date.now() }; list.unshift(hit); }
+    if (title) hit.title = title;
+    hit.updatedAt = Date.now();
+    saveSessions(list);
+  }
+  function newSession() {
+    var id = NANO_ID + '_' + Date.now().toString(36);
+    var list = loadSessions();
+    list.unshift({ id: id, title: '新对话', createdAt: Date.now(), updatedAt: Date.now() });
+    saveSessions(list);
+    try { localStorage.setItem(CURRENT_KEY, id); } catch (e) {}
+    openChat(current.name, current.avatar, id);
+  }
+  function deleteSession(id) {
+    if (!id || id === NANO_ID) { toast('主对话不能删除'); return; }
+    if (!confirm('删除这个对话窗口？聊天记录会一起删除。')) return;
+    var list = loadSessions().filter(function (s) { return s.id !== id; });
+    saveSessions(list);
+    var key = 'chat_messages_' + id;
+    try { localStorage.removeItem(key); } catch (e) {}
+    try { if (window.localforage) localforage.removeItem(key).catch(function () {}); } catch (e) {}
+    if (currentSessionId() === id) { try { localStorage.setItem(CURRENT_KEY, NANO_ID); } catch (e) {} }
+    refresh();
+  }
+  function titleFromMessages(msgs) {
+    var list = Array.isArray(msgs) ? msgs : [];
+    for (var i = 0; i < list.length; i++) {
+      var m = list[i];
+      if (m && m.type === 'right' && m.text && !m.isCard) return String(m.text).replace(/\s+/g, ' ').trim().slice(0, 18);
+    }
+    for (var j = 0; j < list.length; j++) {
+      var n = list[j];
+      if (n && n.text && !n.isCard) return String(n.text).replace(/\s+/g, ' ').trim().slice(0, 18);
+    }
+    return '';
+  }
+  function timeLabel(ts) {
+    var d = new Date(ts || Date.now());
+    var now = new Date();
+    var sameDay = d.toDateString() === now.toDateString();
+    var hh = String(d.getHours()).padStart(2, '0');
+    var mm = String(d.getMinutes()).padStart(2, '0');
+    return sameDay ? (hh + ':' + mm) : ((d.getMonth() + 1) + '/' + d.getDate());
+  }
+
+  function openChat(name, avatar, sessionId) {
+    sessionId = sessionId || currentSessionId();
+    try { localStorage.setItem(CURRENT_KEY, sessionId); } catch (e) {}
+    touchSession(sessionId);
     if (window.parent && window.parent !== window) {
-      post({ type: 'openChat', chatId: NANO_ID, chatName: name || '纳米', chatAvatar: avatar || '' });
+      post({ type: 'openChat', chatId: sessionId, chatName: name || '纳米', chatAvatar: avatar || '' });
       return;
     }
-    location.href = 'chat_inner.html?chat=' + encodeURIComponent(NANO_ID) + '&name=' + encodeURIComponent(name || '纳米');
+    location.href = 'chat_inner.html?chat=' + encodeURIComponent(sessionId) + '&name=' + encodeURIComponent(name || '纳米');
   }
 
   function getChar() {
@@ -54,9 +134,9 @@
     });
   }
 
-  function getMessages() {
+  function getMessagesFor(sessionId) {
     return new Promise(function (resolve) {
-      var key = 'chat_messages_' + NANO_ID;
+      var key = 'chat_messages_' + (sessionId || NANO_ID);
       try {
         if (window.localforage) {
           localforage.getItem(key).then(function (v) {
@@ -71,6 +151,7 @@
       try { resolve(JSON.parse(localStorage.getItem(key) || '[]') || []); } catch (e) { resolve([]); }
     });
   }
+  function getMessages() { return getMessagesFor(currentSessionId()); }
 
   var current = { name: '纳米', avatar: DEFAULT_AVATAR };
 
@@ -87,6 +168,49 @@
       return '<div class="nc-msg ' + (m.type === 'right' ? 'me' : '') + '"><span class="nc-msg-role">' + who + '</span><span class="nc-msg-t">' + esc(text) + '</span></div>';
     }).join('');
   }
+
+  function renderSessions(rows, activeId) {
+    var box = $('ncSessionList'); if (!box) return;
+    rows = Array.isArray(rows) ? rows : [];
+    if (!rows.length) {
+      box.innerHTML = '<div class="nc-empty">还没有对话窗口，点「新对话」开始。</div>';
+      return;
+    }
+    box.innerHTML = rows.map(function (s) {
+      var active = s.id === activeId;
+      var isMain = s.id === NANO_ID;
+      return '<div class="nc-session' + (active ? ' active' : '') + '">' +
+        '<button type="button" class="nc-session-main" data-session="' + esc(s.id) + '">' +
+        '<span class="nc-session-title">' + esc(s.title || '新对话') + '</span>' +
+        '<span class="nc-session-meta">' + (s.count || 0) + ' 条消息 · ' + timeLabel(s.updatedAt) + (active ? ' · 当前窗口' : '') + '</span>' +
+        '</button>' +
+        (isMain ? '' : '<button type="button" class="nc-session-del" data-del-session="' + esc(s.id) + '" aria-label="删除">×</button>') +
+        '</div>';
+    }).join('');
+  }
+
+  async function refreshSessions() {
+    var list = loadSessions();
+    var active = currentSessionId();
+    var rows = [];
+    for (var i = 0; i < Math.min(list.length, 10); i++) {
+      var s = list[i];
+      var msgs = await getMessagesFor(s.id);
+      var autoTitle = titleFromMessages(msgs);
+      var title = s.title || '';
+      if ((!title || title === '新对话') && autoTitle) {
+        title = autoTitle;
+        s.title = title;
+        s.updatedAt = s.updatedAt || Date.now();
+        var all = loadSessions();
+        var hit = all.find(function (x) { return x.id === s.id; });
+        if (hit) { hit.title = title; saveSessions(all); }
+      }
+      rows.push({ id: s.id, title: title || '新对话', updatedAt: s.updatedAt, count: (Array.isArray(msgs) ? msgs.length : 0) });
+    }
+    renderSessions(rows, active);
+  }
+
 
   function renderFiles(files) {
     var box = $('ncFilesList'); if (!box) return;
@@ -111,6 +235,16 @@
     $('ncIntro').textContent = '你的专属 Nano 助手 · 美化 / 世界书 / 人设 / 文件';
     var msgs = await getMessages();
     renderMessages(msgs);
+    var sid = currentSessionId();
+    var autoTitle = titleFromMessages(msgs);
+    var sessions = loadSessions();
+    var hit = sessions.find(function (s) { return s.id === sid; });
+    if (hit && (!hit.title || hit.title === '新对话') && autoTitle) {
+      hit.title = autoTitle;
+      hit.updatedAt = Date.now();
+      saveSessions(sessions);
+    }
+    try { await refreshSessions(); } catch (e) {}
     try {
       if (window.NanoFiles) {
         var imports = (Array.isArray(msgs) ? msgs : []).filter(function (m) {
@@ -138,6 +272,19 @@
   });
   $('ncChat').addEventListener('click', function () { openChat(current.name, current.avatar); });
   $('ncOpenChat').addEventListener('click', function () { openChat(current.name, current.avatar); });
+  var newSessionBtn = $('ncNewSession');
+  if (newSessionBtn) newSessionBtn.addEventListener('click', function () { newSession(); });
+  var sessionListEl = $('ncSessionList');
+  if (sessionListEl) sessionListEl.addEventListener('click', function (e) {
+    var del = e.target && e.target.closest ? e.target.closest('[data-del-session]') : null;
+    if (del) {
+      e.stopPropagation();
+      deleteSession(del.getAttribute('data-del-session'));
+      return;
+    }
+    var row = e.target && e.target.closest ? e.target.closest('[data-session]') : null;
+    if (row) openChat(current.name, current.avatar, row.getAttribute('data-session'));
+  });
   $('ncSettings').addEventListener('click', function () { openPage('nano-setting.html', 'Nano 设置'); });
   $('ncSettings2').addEventListener('click', function () { openPage('nano-setting.html', 'Nano 设置'); });
   $('ncFiles').addEventListener('click', function () { openPage('nano-files.html', 'Nano 文件'); });

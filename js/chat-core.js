@@ -16,6 +16,13 @@
     const jumpMsgId = getQueryParam('jump') || '';
     // 纳米助手会话：走独立系统提示词 + 可执行动作
     const isNanoChat = !!(window.NanoAssistant && window.NanoAssistant.isNano(chatId));
+    const NANO_DEFAULT_AVATAR = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80">' +
+        '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff9ecb"/><stop offset="1" stop-color="#ff4d94"/></linearGradient></defs>' +
+        '<rect width="80" height="80" rx="20" fill="url(#g)"/>' +
+        '<rect x="18" y="24" width="44" height="34" rx="12" fill="#fff" opacity="0.95"/>' +
+        '<circle cx="32" cy="41" r="4.5" fill="#ff4d94"/><circle cx="48" cy="41" r="4.5" fill="#ff4d94"/>' +
+        '<rect x="38" y="12" width="4" height="10" rx="2" fill="#fff"/><circle cx="40" cy="11" r="4" fill="#fff"/></svg>');
 
     // ===== 从 IndexedDB 读取角色（和 character.js 共用数据源） =====
     let allCharacters = [];
@@ -55,6 +62,15 @@
     }
 
     function getCharacterFromLibrary(charName) {
+        // 纳米助手是独立的内置角色：绝对不能被「同名角色」或「当前 user 绑定的角色」顶替，
+        // 否则顶栏会显示成别的 char 的昵称/头像。
+        if (isNanoChat) {
+            const nano = allCharacters.find(c => c && c.nanoAssistant) ||
+                         allCharacters.find(c => c && String(c.id) === 'nano_ai') ||
+                         allCharacters.find(c => c && String(c.id) === String(chatId));
+            if (nano) return Object.assign({}, nano, { name: nano.name || '纳米', nanoAssistant: true, isNpc: true });
+            return { id: chatId, name: '纳米', setting: '', avatar: NANO_DEFAULT_AVATAR, nanoAssistant: true, isNpc: true, bindUser: '' };
+        }
         // 优先用聊天 id 精确匹配：同名角色可能存在多个，按名字匹配会串到别的角色，
         // 表现就是「明明设定是韩国人，角色却自称中国人」（读到了另一个同名角色）。
         const char = allCharacters.find(c => String(c.id) === String(chatId)) ||
@@ -2109,7 +2125,8 @@
                 avatarSrc = characterData.avatar;
             }
         }
-        if (!avatarSrc || avatarSrc.trim() === '') {
+        if (isNanoChat && (!avatarSrc || avatarSrc.trim() === '')) avatarSrc = NANO_DEFAULT_AVATAR;
+        if (!isNanoChat && (!avatarSrc || avatarSrc.trim() === '')) {
             try {
                 const info = JSON.parse(sessionStorage.getItem('last_chat_info') || 'null');
                 if (info && info.chatAvatar) {
@@ -5093,7 +5110,7 @@
         const isScreen = screenRe.test(body);
         if (!phoneRe.test(body) && !isScreen) return { body: body, settled: 0 };
         // 纳米是应用助手，不允许它申请「查看手机 / 屏幕共享」：只把标记去掉，不发起申请
-        if (String(chatId) === 'nano_ai' || !!(characterData && characterData.nanoAssistant)) {
+        if (isNanoChat || !!(characterData && characterData.nanoAssistant)) {
             body = body.replace(/\[(查看手机|看手机|查手机|接管手机|接管我的手机|看你手机|看屏幕|掌心窗|共享屏幕|看你屏幕)\]/gi, '').replace(/\n{3,}/g, '\n\n').trim();
             return { body: body, settled: 0 };
         }
@@ -11324,6 +11341,10 @@ if (callCard) {
         if (data.type === 'NANO_PEEK_UPDATED') {
             if (data.chatId && String(data.chatId) !== String(chatId)) return;
             try { if (isStorageReady) consumePendingPeekTurns(); } catch (e) {}
+            // 顶部桥接可能还没拉到服务端：当前聊天自己也补拉一次，避免「有通知、私聊没内容」
+            pullPeekTurnsForCurrentChat().then(function () {
+                try { consumePendingPeekTurns(); } catch (e) {}
+            }).catch(function () {});
             return;
         }
 
@@ -11730,6 +11751,21 @@ if (data.type === 'NANO_VOICE_CALL_CARD' || data.type === 'NANO_VIDEO_CALL_CARD'
             pullPeekTurnsForCurrentChat().then(function () {
                 try { consumePendingPeekTurns(); } catch (e) {}
             });
+            // 窥屏轮次兜底轮询：快捷指令在后台跑完后，回到聊天页最多 12 秒内一定能看到
+            try {
+                setInterval(function () {
+                    if (document.hidden || !isStorageReady) return;
+                    pullPeekTurnsForCurrentChat().then(function () {
+                        try { consumePendingPeekTurns(); } catch (e) {}
+                    }).catch(function () {});
+                }, 12000);
+                document.addEventListener('visibilitychange', function () {
+                    if (document.hidden || !isStorageReady) return;
+                    pullPeekTurnsForCurrentChat().then(function () {
+                        try { consumePendingPeekTurns(); } catch (e) {}
+                    }).catch(function () {});
+                });
+            } catch (e) {}
             if (jumpMsgId) {
                 setTimeout(function() { jumpToMessage(jumpMsgId); }, 100);
             }
