@@ -513,6 +513,7 @@ input[type="file"] {
 /* ===== 通话设置 ===== */
 .call-setting-modal { width: 330px; }
 .call-set-label { font-size: 12px; font-weight: 600; color: #8e8e93; margin: 12px 0 6px; }
+.call-set-hint { margin-top: 6px; font-size: 11px; line-height: 1.45; color: #8e8e93; text-align: left; }
 .call-choice { display: flex; gap: 8px; }
 .call-choice button {
     flex: 1; border: 0.5px solid #d1d1d6; background: #fff; border-radius: 8px;

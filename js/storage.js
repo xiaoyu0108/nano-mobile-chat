@@ -678,7 +678,7 @@ function goBack() {
             return;
         }
     } catch (e) {}
-    window.location.href = 'more.html';
+    window.location.href = 'home.html';
 }
 
 function refreshPage() {

@@ -1460,21 +1460,26 @@
         var done = document.getElementById('callSettingDone');
         if (done) done.addEventListener('click', function () { modal.classList.remove('active'); });
 
-        if (bgUpload) bgUpload.addEventListener('change', function (e) {
-            var file = e.target.files && e.target.files[0];
-            e.target.value = '';
-            if (!file || !window.NanoCallBg) return;
-            var isVideo = /^video\//i.test(file.type || '') || /\.(mp4|mov|m4v|webm)$/i.test(file.name || '');
-            if (isVideo) {
-                window.NanoCallBg.setVideo(file, file.name, chatId).then(renderPreview);
-                return;
-            }
-            var reader = new FileReader();
-            reader.onload = function (ev) {
-                window.NanoCallBg.setImage(String(ev.target.result || ''), chatId).then(renderPreview);
+        if (bgUpload) {
+            var bgVideoUpload = document.getElementById('callBgVideoUpload');
+            var handleBgFile = function (e) {
+                var file = e.target.files && e.target.files[0];
+                e.target.value = '';
+                if (!file || !window.NanoCallBg) return;
+                var isVideo = /^video\//i.test(file.type || '') || /\.(mp4|mov|m4v|webm)$/i.test(file.name || '');
+                if (isVideo) {
+                    window.NanoCallBg.setVideo(file, file.name, chatId).then(renderPreview);
+                    return;
+                }
+                var reader = new FileReader();
+                reader.onload = function (ev) {
+                    window.NanoCallBg.setImage(String(ev.target.result || ''), chatId).then(renderPreview);
+                };
+                reader.readAsDataURL(file);
             };
-            reader.readAsDataURL(file);
-        });
+            bgUpload.addEventListener('change', handleBgFile);
+            if (bgVideoUpload) bgVideoUpload.addEventListener('change', handleBgFile);
+        }
         if (bgReset) bgReset.addEventListener('click', function () {
             if (window.NanoCallBg) window.NanoCallBg.clear(chatId).then(renderPreview);
         });

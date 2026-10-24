@@ -1393,6 +1393,7 @@
         return '[表情包：' + label + ']';
       }
       if (m.text && /^\[表情包[:：]/.test(m.text)) return m.text;
+      if (m.imageData && m.imageData.video) return '[视频]';
       return '[图片]';
     }
     if (m.isCard) {

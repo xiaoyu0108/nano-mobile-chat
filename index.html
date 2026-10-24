@@ -820,181 +820,120 @@
     </style>
 
     <!-- ============================================================
-         开场动画样式（原 开场.html 的 <style>，已内联）
+         开场动画（nano-splash，已内联）
          ============================================================ -->
     <style>
-        :root { --ink: #090909; }
-
-        #nano-opening {
-            position: fixed; inset: 0; z-index: 99999; background: #fff;
-            display: flex; justify-content: center; align-items: center;
-            overflow: hidden; isolation: isolate;
-            transition: opacity 0.6s ease-in-out;
-            cursor: pointer;
-        }
-        #nano-opening.fade-out { opacity: 0; pointer-events: none; }
-
-        #nano-opening .scene {
-            position: relative;
-            width: 100vw;
-            height: 100vh;
-            max-width: none; max-height: none;
-        }
-
-        #nano-opening svg { width: 100%; height: 100%; display: block; overflow: visible; }
-
-        #nano-opening .orbits { opacity: 0; animation: orbitsIn 0.8s cubic-bezier(.16,1,.3,1) 0.1s forwards; }
-        #nano-opening .orbit { fill: none; stroke: var(--ink); stroke-linecap: round; }
-        #nano-opening .orbit.back  { stroke-width: 1;    opacity: .15; stroke-dasharray: 2 12; }
-        #nano-opening .orbit.mid   { stroke-width: 1.15; opacity: .5;  stroke-dasharray: 380 1000; }
-        #nano-opening .orbit.front { stroke-width: 1.25; opacity: .75; stroke-dasharray: 480 1100; }
-        #nano-opening .o1 { animation: orbitFlow1 5s  linear 0.8s infinite; }
-        #nano-opening .o2 { animation: orbitFlow2 6s  linear 0.8s infinite; }
-        #nano-opening .o3 { animation: orbitFlow3 7s  linear 0.9s infinite; }
-        #nano-opening .o4 { animation: orbitFlow4 5.5s linear 1s   infinite; }
-
-        #nano-opening .planet {
-            fill: var(--ink); transform-box: fill-box; transform-origin: center;
-            opacity: 0;
-            animation: planetIn .5s cubic-bezier(.16,1,.3,1) var(--d) forwards,
-                       planetPulse 2.5s ease-in-out var(--p) infinite;
-        }
-        #nano-opening .planet.glow { filter: url(#planetGlow); }
-
-        #nano-opening .star {
-            fill: var(--ink); opacity: 0; transform-box: fill-box; transform-origin: center;
-            animation: starIn .5s cubic-bezier(.16,1,.3,1) var(--d) forwards,
-                       starPulse 3s ease-in-out var(--p) infinite;
-        }
-
-        #nano-opening .dust {
-            fill: var(--ink); opacity: 0;
-            animation: dustIn .6s ease-out var(--d) forwards;
-        }
-
-        #nano-opening .axis { stroke: var(--ink); stroke-width: 1; opacity: .7; stroke-linecap: round; }
-        #nano-opening .axis.top    { stroke-dasharray: 7 18; animation: axisTop    1.2s cubic-bezier(.16,1,.3,1) 0.05s both; }
-        #nano-opening .axis.bottom { stroke-dasharray: 7 18; animation: axisBottom 1.2s cubic-bezier(.16,1,.3,1) 0.05s both; }
-        #nano-opening .diamond { fill: var(--ink); transform-box: fill-box; transform-origin: center;
-                     animation: diamondIn .4s cubic-bezier(.16,1,.3,1) var(--d) both; }
-
-        #nano-opening .brand-container {
-            position: absolute; top: 50%; left: 50%;
-            transform: translate(-50%, -50%) skewX(-8deg);
-            display: flex; align-items: baseline;
-            z-index: 20;
-            white-space: nowrap;
-        }
-
-        #nano-opening .letter {
-            display: inline-block;
-            font-family: "Avenir Next", "Helvetica Neue", Helvetica, Arial, sans-serif;
-            font-size: 170px;
-            font-weight: 800;
-            letter-spacing: -6px;
-            color: var(--ink);
-            line-height: 1;
-            opacity: 0;
-            filter: blur(10px);
-            animation: letterReveal 0.8s cubic-bezier(.16,1,.3,1) forwards;
-            text-shadow: 0 4px 20px rgba(0,0,0,.08);
-        }
-
-        #nano-opening .letter:nth-child(1) { animation-delay: 0.60s; }
-        #nano-opening .letter:nth-child(2) { animation-delay: 0.85s; }
-        #nano-opening .letter:nth-child(3) { animation-delay: 1.10s; }
-        #nano-opening .letter:nth-child(4) { animation-delay: 1.35s; margin-left: -2px; }
-
-        #nano-opening .letter.o {
-            position: relative;
-            width: 150px; height: 150px;
-            display: flex; justify-content: center; align-items: center;
-            border: 14px solid var(--ink);
-            border-radius: 50%;
+        /* ===== 开场动画样式 ===== */
+        #nano-splash {
+            position: fixed; top: 0; left: 50%;
+            width: 100%; max-width: 480px;
+            height: 100vh; height: 100dvh;
+            transform: translateX(-50%);
+            z-index: 2147483000;
             box-sizing: border-box;
-            margin-left: 6px;
-            font-size: 0;
-            text-shadow: none;
-            animation: letterReveal 0.8s cubic-bezier(.16,1,.3,1) 1.35s forwards,
-                       oBreath 3s ease-in-out 2.2s infinite;
+            background: radial-gradient(ellipse at 50% 25%, #fffdfe 0, #fff6fa 45%, #ffeef5 100%);
+            overflow: hidden; display: flex; align-items: center; justify-content: center;
+            padding: env(safe-area-inset-top, 0) 0 env(safe-area-inset-bottom, 0);
+            font-family: 'Arial Rounded MT Bold', 'Hiragino Maru Gothic ProN', 'PingFang SC', system-ui, sans-serif;
+            touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+            transition: opacity .45s ease;
+            --ns-p1: #ffe6ef; --ns-p2: #ffd5e5; --ns-p3: #f9c6da; --ns-txt: #eba4c0;
+        }
+        #nano-splash.ns-out { opacity: 0; pointer-events: none; }
+        #nano-splash * { box-sizing: border-box; }
+
+        #nano-splash .ns-blob { position: absolute; border-radius: 50%; filter: blur(40px); opacity: .7; }
+        #nano-splash .ns-cloud {
+            position: absolute; background: #fff; border-radius: 99px;
+            box-shadow: 0 10px 24px rgba(247,190,214,.35);
+            animation: nsDrift 12s ease-in-out infinite alternate;
+        }
+        #nano-splash .ns-cloud::before, #nano-splash .ns-cloud::after {
+            content: ""; position: absolute; background: #fff; border-radius: 50%;
+        }
+        #nano-splash .ns-cloud::before { width: 44%; height: 160%; left: 14%; top: -72%; }
+        #nano-splash .ns-cloud::after { width: 36%; height: 125%; right: 16%; top: -46%; }
+        #nano-splash .ns-deco {
+            position: absolute; animation: nsFloat 5.5s ease-in-out infinite;
+            filter: drop-shadow(0 6px 8px rgba(247,190,214,.4));
+        }
+        #nano-splash .ns-dot {
+            position: absolute; border-radius: 50%; background: #fff;
+            box-shadow: 0 0 10px #fff; animation: nsTw 3s ease-in-out infinite;
         }
 
-        #nano-opening .o-planet-system {
-            width: 110%;
-            height: 110%;
-            position: absolute;
-            top: -5%;
-            left: -5%;
-            overflow: visible;
+        #nano-splash .ns-stage { position: relative; width: min(440px, 90%); text-align: center; z-index: 2; }
+        #nano-splash .ns-title {
+            display: flex; justify-content: center; align-items: center;
+            font-size: min(30vw, 140px); font-weight: 700; line-height: 1;
+            color: var(--ns-p1); letter-spacing: -.02em;
+            animation: nsEnter 1s cubic-bezier(.2,1.4,.4,1) both;
+        }
+        #nano-splash .ns-title span {
+            display: inline-block; -webkit-text-stroke: 11px #fff; paint-order: stroke fill;
+            filter: drop-shadow(0 7px 0 var(--ns-p3)) drop-shadow(0 12px 14px rgba(240,170,200,.35));
+            animation: nsPop 2.6s ease-in-out infinite;
+        }
+        #nano-splash .ns-title span:nth-child(2) { animation-delay: .14s; }
+        #nano-splash .ns-title span:nth-child(3) { animation-delay: .28s; }
+        #nano-splash .ns-title svg {
+            width: .8em; height: .8em; margin-left: .05em;
+            filter: drop-shadow(0 7px 0 var(--ns-p3)) drop-shadow(0 12px 14px rgba(240,170,200,.35));
+            animation: nsPop 2.6s .42s ease-in-out infinite;
         }
 
-        #nano-opening .o-center-planet {
-            fill: var(--ink);
-            transform-box: fill-box;
-            transform-origin: center;
-            animation: oCenterPulse 2s ease-in-out infinite;
+        #nano-splash .ns-bar { position: relative; margin: 42px 4% 0; height: 34px; }
+        #nano-splash .ns-track {
+            position: absolute; inset: 0; border-radius: 99px; background: #fff;
+            box-shadow: inset 0 3px 8px rgba(240,170,200,.28), 0 6px 18px rgba(247,190,214,.3);
+        }
+        #nano-splash .ns-fill {
+            position: absolute; left: 3px; top: 3px; bottom: 3px; width: 0;
+            border-radius: 99px; background: linear-gradient(180deg, #ffeaf2, #ffd3e4);
+            box-shadow: 0 3px 0 #f7bdd3; overflow: hidden;
+        }
+        #nano-splash .ns-fill::before {
+            content: ""; position: absolute; inset: 0;
+            background: repeating-linear-gradient(-45deg, rgba(255,255,255,.55) 0 9px, transparent 9px 18px);
+            background-size: 25px 25px; animation: nsStripe 1s linear infinite;
+        }
+        #nano-splash .ns-fill::after {
+            content: ""; position: absolute; left: 10px; right: 14px; top: 4px; height: 6px;
+            border-radius: 9px; background: rgba(255,255,255,.8);
+        }
+        #nano-splash .ns-head {
+            position: absolute; top: 50%; left: 0; width: 34px; height: 34px; margin: -17px 0 0 -17px;
+            filter: drop-shadow(0 3px 0 #f7bdd3) drop-shadow(0 4px 6px rgba(240,170,200,.45));
+        }
+        #nano-splash .ns-head svg { width: 100%; height: 100%; overflow: visible; display: block; }
+        #nano-splash #nsBall { transform-box: view-box; transform-origin: 17px 17px; }
+        #nano-splash .ns-pct {
+            margin-top: 34px; color: var(--ns-txt); font-weight: 600;
+            font-size: 17px; letter-spacing: .2em;
+        }
+        #nano-splash .ns-spark {
+            position: absolute; pointer-events: none; font-size: 18px;
+            animation: nsSp 1s ease-out forwards;
         }
 
-        #nano-opening .o-orbit {
-            fill: none;
-            stroke: var(--ink);
-            stroke-width: 1.2;
-            opacity: 0.55;
+        @keyframes nsDrift { to { transform: translateX(46px); } }
+        @keyframes nsFloat { 50% { transform: translateY(-14px) rotate(7deg); } }
+        @keyframes nsTw { 50% { opacity: .25; transform: scale(.6); } }
+        @keyframes nsEnter { from { transform: scale(.6) translateY(30px); opacity: 0; } }
+        @keyframes nsPop {
+            0%, 60%, 100% { transform: translateY(0) scale(1); }
+            22% { transform: translateY(-.1em) scale(1.05,.96); }
+            38% { transform: translateY(0) scale(.97,1.04); }
         }
-        #nano-opening .o-orbit-1 { animation: oOrbitSpin1 4s linear infinite; transform-origin: 50px 50px; }
-        #nano-opening .o-orbit-2 { animation: oOrbitSpin2 6s linear infinite reverse; transform-origin: 50px 50px; }
-
-        #nano-opening .o-mini-planet {
-            fill: var(--ink);
-            transform-box: fill-box;
-            transform-origin: center;
+        @keyframes nsStripe { to { background-position: 25px 0; } }
+        @keyframes nsSp {
+            to {
+                transform: translate(var(--ns-dx, -26px), var(--ns-dy, -36px)) scale(.3) rotate(90deg);
+                opacity: 0;
+            }
         }
-
-        @keyframes letterReveal {
-            0%   { opacity: 0; filter: blur(10px); transform: translateY(24px); }
-            100% { opacity: 1; filter: blur(0);    transform: translateY(0); }
-        }
-
-        @keyframes oBreath {
-            0%, 100% { transform: scale(1); }
-            50%      { transform: scale(1.05); }
-        }
-
-        @keyframes oCenterPulse {
-            0%, 100% { transform: scale(1); }
-            50%      { transform: scale(1.3); }
-        }
-
-        @keyframes oOrbitSpin1 {
-            0%   { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        @keyframes oOrbitSpin2 {
-            0%   { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        @keyframes orbitsIn { from { opacity: 0; transform: scale(.85) rotate(-3deg); } to { opacity: 1; transform: scale(1) rotate(0); } }
-        @keyframes orbitFlow1 { to { stroke-dashoffset: -1330; } }
-        @keyframes orbitFlow2 { to { stroke-dashoffset:  1520; } }
-        @keyframes orbitFlow3 { to { stroke-dashoffset: -1750; } }
-        @keyframes orbitFlow4 { to { stroke-dashoffset:  1450; } }
-
-        @keyframes axisTop    { from { stroke-dashoffset:  80; opacity: 0; } to { stroke-dashoffset: 0; opacity: .7; } }
-        @keyframes axisBottom { from { stroke-dashoffset: -80; opacity: 0; } to { stroke-dashoffset: 0; opacity: .7; } }
-        @keyframes diamondIn  { from { opacity: 0; transform: scale(0) rotate(45deg); } to { opacity: 1; transform: scale(1) rotate(45deg); } }
-
-        @keyframes planetIn    { from { opacity: 0; transform: scale(0); } to { opacity: 1; transform: scale(1); } }
-        @keyframes planetPulse { 0%,100% { filter: brightness(1); transform: scale(1); } 50% { filter: brightness(.78); transform: scale(1.07); } }
-        @keyframes starIn      { from { opacity: 0; transform: scale(0) rotate(45deg); } to { opacity: .8; transform: scale(1) rotate(45deg); } }
-        @keyframes starPulse   { 0%,100% { opacity: .5; } 50% { opacity: .95; } }
-        @keyframes dustIn      { from { opacity: 0; } to { opacity: .55; } }
-
-        @media (max-width: 768px) {
-            #nano-opening .letter { font-size: 88px; letter-spacing: -3px; }
-            #nano-opening .letter.o { width: 78px; height: 78px; border-width: 8px; margin-left: 3px; }
-            #nano-opening .o-planet-system { width: 110%; height: 110%; top: -5%; left: -5%; }
-            #nano-opening .scene { width: 130vw; height: 130vw; }
+        @media (prefers-reduced-motion: reduce) {
+            #nano-splash * { animation-duration: 0s !important; }
         }
 
         /* ===== 纳米主界面外壳 ===== */
@@ -1002,9 +941,8 @@
         .home-shell iframe { width: 100%; height: 100%; border: 0; display: block; background: #fff; }
         .home-shell.pre-splash { visibility: hidden; }
         .hidden-shell { display: none !important; }
-
     </style>
-    <!-- 开场动画样式结束 -->
+
 
     <script src="js/appearance.js"></script>
 </head>
@@ -1044,20 +982,14 @@
 <div class="bg"></div>
 <script src="bg.js"></script>
 
-<!-- ============================================================
-     开场动画（原 开场.html 的 <body>，已内联）
-     ============================================================ -->
-
-
 <div class="home-shell pre-splash" id="homeShell">
-    <iframe id="homeFrame" src="html/home.html?v=20261023a" title="Nano桌面"></iframe>
+    <iframe id="homeFrame" src="html/home.html?v=20261024a" title="Nano桌面"></iframe>
 </div>
 <div class="app hidden-shell" id="legacyShell" aria-hidden="true">
   <div class="app-container">
     <div class="app-content" id="appContent">
       <div class="iframe-container" id="iframeChat"><iframe data-src="html/chat.html"></iframe></div>
       <div class="iframe-container" id="iframeApi"><iframe data-src="html/api.html"></iframe></div>
-      <div class="iframe-container" id="iframeMore"><iframe data-src="html/more.html"></iframe></div>
       <div class="iframe-container" id="iframeDiscover"><iframe data-src="html/discover.html"></iframe></div>
     </div>
     <div class="bottom-actions" id="bottomBar" style="display:none">
@@ -1065,157 +997,163 @@
         <button class="capsule-btn active-btn" data-page="chat" id="navChat"></button>
         <button class="capsule-btn" data-page="api" id="navApi"></button>
         <button class="capsule-btn" data-page="discover" id="navDiscover"></button>
-        <button class="capsule-btn" data-page="more" id="navMore"></button>
       </div>
       <div class="circle-more" id="circleMore"></div>
     </div>
   </div>
 </div>
 <div class="notch-tap" id="notchTap" aria-hidden="true"></div>
-<!-- ============ 开屏动画（nano-splash.html）复制从这里开始 ============ -->
+<!-- ============ 开场动画（nano-splash） ============ -->
+<div id="nano-splash" aria-hidden="true">
+  <div class="ns-blob" style="width:300px;height:300px;background:#ffe0ec;left:-80px;top:-60px"></div>
+  <div class="ns-blob" style="width:340px;height:340px;background:#fff0d9;right:-100px;bottom:-80px;opacity:.55"></div>
+  <div class="ns-blob" style="width:260px;height:260px;background:#e8f0ff;right:6%;top:-70px;opacity:.5"></div>
+
+  <div class="ns-cloud" style="width:180px;height:50px;left:5%;top:13%"></div>
+  <div class="ns-cloud" style="width:120px;height:36px;right:7%;top:24%;animation-delay:-4s"></div>
+  <div class="ns-cloud" style="width:230px;height:58px;right:10%;bottom:9%;animation-delay:-7s"></div>
+  <div class="ns-cloud" style="width:140px;height:40px;left:9%;bottom:15%;animation-delay:-2s"></div>
+
+  <!-- lollipop -->
+  <svg class="ns-deco" style="left:7%;top:38%" width="62" height="114" viewBox="0 0 60 110"><rect x="27" y="48" width="6" height="58" rx="3" fill="#fff" stroke="#ffe0ec" stroke-width="2"/><circle cx="30" cy="30" r="26" fill="#ffd9e8"/><path d="M30 10a20 20 0 1 1-14 6M30 19a11 11 0 1 1-8 3" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round"/><ellipse cx="20" cy="18" rx="5" ry="3" transform="rotate(-35 20 18)" fill="#fff" opacity=".8"/></svg>
+  <!-- wrapped candy -->
+  <svg class="ns-deco" style="right:6%;top:46%;animation-delay:-2s" width="88" height="50" viewBox="0 0 84 48"><path d="M24 24L2 8v32zM60 24l22-16v32z" fill="#fff0f5" stroke="#ffe0ec" stroke-width="2" stroke-linejoin="round"/><ellipse cx="42" cy="24" rx="24" ry="18" fill="#ffd3e4"/><path d="M34 8q-6 16 0 32M46 6q-6 18 0 36" stroke="#fff" stroke-width="4" fill="none" stroke-linecap="round" opacity=".8"/></svg>
+  <!-- cotton candy -->
+  <svg class="ns-deco" style="left:15%;top:70%;animation-delay:-3s" width="72" height="104" viewBox="0 0 70 100"><rect x="32" y="52" width="6" height="44" rx="3" fill="#fff" stroke="#ffe0ec" stroke-width="2"/><g fill="#ffe4ee"><circle cx="35" cy="32" r="22"/><circle cx="18" cy="40" r="15"/><circle cx="52" cy="40" r="15"/><circle cx="35" cy="48" r="14"/></g><path d="M22 30q10-10 22 0M26 42q10-8 20 0" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round"/></svg>
+  <!-- mini donut -->
+  <svg class="ns-deco" style="right:16%;top:7%;animation-delay:-1s" width="58" height="58" viewBox="0 0 100 100"><circle cx="50" cy="52" r="40" fill="#fbe6cd"/><circle cx="50" cy="48" r="37" fill="#ffd9e8"/><circle cx="50" cy="50" r="12" fill="#fff6fa"/><path d="M24 36q8-14 24-14" stroke="#fff" stroke-width="6" stroke-linecap="round" fill="none" opacity=".8"/></svg>
+  <!-- cloud sweet -->
+  <svg class="ns-deco" style="left:32%;top:7%;animation-delay:-4s" width="64" height="44" viewBox="0 0 64 44"><g fill="#fff"><circle cx="20" cy="26" r="14"/><circle cx="34" cy="18" r="16"/><circle cx="48" cy="27" r="12"/><rect x="8" y="26" width="48" height="13" rx="6"/></g></svg>
+  <svg class="ns-deco" style="right:32%;bottom:6%;animation-delay:-1.5s" width="26" height="26" viewBox="0 0 30 30"><path d="M15 2l3.5 8.5L27 12l-6.5 5.5L22 27l-7-4.5L8 27l1.5-9.5L3 12l8.5-1.5z" fill="#fff0c9"/></svg>
+  <div class="ns-dot" style="width:8px;height:8px;left:24%;top:30%"></div><div class="ns-dot" style="width:6px;height:6px;right:24%;top:36%;animation-delay:-1s"></div><div class="ns-dot" style="width:10px;height:10px;left:40%;bottom:10%;animation-delay:-2s"></div><div class="ns-dot" style="width:7px;height:7px;right:40%;top:10%;animation-delay:-.5s"></div>
+
+  <div class="ns-stage">
+    <div class="ns-title">
+      <span>N</span><span>a</span><span>n</span>
+      <svg viewBox="0 0 100 100">
+        <circle cx="50" cy="50" r="48" fill="#fff"/>
+        <circle cx="50" cy="52" r="41" fill="#f9dfc1"/>
+        <circle cx="50" cy="48" r="40" fill="#ffd9e8"/>
+        <circle cx="50" cy="48" r="14" fill="#fff"/>
+        <circle cx="50" cy="48" r="11" fill="#fff6fa"/>
+        <path d="M22 36q8-16 26-17" stroke="#fff" stroke-width="5" stroke-linecap="round" fill="none" opacity=".85"/>
+        <g stroke-linecap="round" stroke-width="5">
+          <path d="M27 31l5-3" stroke="#fff"/><path d="M71 27l4 5" stroke="#ffe3a8"/><path d="M82 52l-6 2" stroke="#fff"/>
+          <path d="M71 72l-4-4" stroke="#c4e2ff"/><path d="M30 72l5-3" stroke="#ffe3a8"/><path d="M17 52l6-1" stroke="#d8ccff"/>
+          <path d="M50 17l1 6" stroke="#c4f0da"/><path d="M52 80l1-6" stroke="#fff"/>
+        </g>
+      </svg>
+    </div>
+
+    <div class="ns-bar">
+      <div class="ns-track"></div>
+      <div class="ns-fill" id="nsFill"></div>
+      <div class="ns-head" id="nsHead">
+        <svg viewBox="0 0 34 34">
+          <circle cx="17" cy="17" r="17" fill="#fff"/>
+          <circle cx="17" cy="17" r="15.4" fill="#ffdcea"/>
+          <g id="nsBall"><path transform="translate(17 17) scale(.6) translate(-30 -30)" d="M30 30m0-3a3 3 0 1 1-3 3 7 7 0 1 1 7 7 12 12 0 1 1-12-12 17 17 0 1 1 17 17" fill="none" stroke="#fff" stroke-width="3.8" stroke-linecap="round"/>
+            <path transform="translate(17 17) scale(.6) translate(-30 -30)" d="M30 30m0-3a3 3 0 1 1-3 3 7 7 0 1 1 7 7 12 12 0 1 1-12-12 17 17 0 1 1 17 17" fill="none" stroke="#ffbcd5" stroke-width="1" stroke-linecap="round" stroke-dasharray="0 6" opacity=".0"/></g>
+          <circle cx="17" cy="17" r="15.4" fill="none" stroke="#ffc3da" stroke-width=".8"/>
+          <ellipse cx="11" cy="10" rx="3.8" ry="1.9" transform="rotate(-40 11 10)" fill="#fff" opacity=".95"/>
+          <circle cx="21.5" cy="25" r="1" fill="#fff" opacity=".9"/>
+        </svg>
+      </div>
+    </div>
+    <div class="ns-pct" id="nsPct">LOADING 0%</div>
+  </div>
+</div>
 <script>
 (function () {
-  var TOTAL = 2800;   // 总载入时长（毫秒）
-  var HOP   = 1800;   // 兔兔跳进场时长（毫秒）
-  var FAST  = 5;      // 点击后的加速倍数
-  var SEGS  = 20;     // 进度条格数（像素风分段）
-  var INK = '#4a4850', PINK = '#f9c4de', CHEEK = '#fcd5e5';
-
-  // 15 x 16 像素米菲兔头  # 描边  p 粉  w 白  c 腮红
-  var GRID = [
-    '...###...###...',
-    '..#..##.#...#..',
-    '..#...#.#...#..',
-    '..#...#.#...#..',
-    '..#...#.#...#..',
-    '..#...#.#...#..',
-    '..#p..#.#...#..',
-    '..pwp..#....#..',
-    '.pwpwp.......#.',
-    '.#pwp........#.',
-    '#..p..........#',
-    '#...#.....#...#',
-    '#...#.....#...#',
-    '.#.cc..#..cc.#.',
-    '..#.........#..',
-    '...#########...'
-  ];
-  var COLOR = { '#': INK, p: PINK, w: '#fff', c: CHEEK };
-  var rects = '';
-  GRID.forEach(function (row, y) {
-    for (var x = 0; x < row.length; x++) {
-      var c = COLOR[row[x]];
-      if (c) rects += '<rect x="' + x + '" y="' + y + '" width="1" height="1" fill="' + c + '"/>';
-    }
-  });
-
-  var css =
-    '#nano-splash{position:fixed;top:0;left:0;right:0;bottom:0;z-index:2147483000;background:#fff;' +
-      'display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;' +
-      'touch-action:manipulation;-webkit-tap-highlight-color:transparent;transition:opacity .4s ease}' +
-    '#nano-splash.out{opacity:0;pointer-events:none}' +
-    '#nano-splash .ns-run{display:flex;flex-direction:column;align-items:center}' +
-    '#nano-splash .ns-hop{width:90px;height:96px;transform-origin:50% 100%}' +
-    '#nano-splash .ns-hop.idle{animation:ns-idle 1.4s ease-in-out infinite}' +
-    '#nano-splash svg{display:block;width:100%;height:100%;shape-rendering:crispEdges}' +
-    '#nano-splash .ns-shadow{width:64px;height:6px;margin-top:6px;border-radius:50%;background:rgba(74,72,80,.12)}' +
-    '#nano-splash .ns-barwrap{display:flex;justify-content:center;margin-top:20px}' +
-    '#nano-splash .ns-bar{box-sizing:border-box;width:min(44vw,170px);height:14px;padding:2px;' +
-      'border:2px solid ' + INK + ';background:#fff}' +
-    '#nano-splash .ns-fill{height:100%;width:0;background:' + PINK + '}' +
-    '@keyframes ns-idle{0%,100%{transform:scale(1,1)}50%{transform:scale(1.03,.96)}}';
-
-  function init() {
-    var style = document.createElement('style');
-    style.textContent = css;
-    document.head.appendChild(style);
-
-    var el = document.createElement('div');
-    el.id = 'nano-splash';
-    el.innerHTML =
-      '<div class="ns-run">' +
-        '<div class="ns-hop"><svg viewBox="0 0 15 16" xmlns="http://www.w3.org/2000/svg">' + rects + '</svg></div>' +
-        '<div class="ns-shadow"></div>' +
-      '</div>' +
-      '<div class="ns-barwrap"><div class="ns-bar"><div class="ns-fill"></div></div></div>';
-    document.body.insertBefore(el, document.body.firstChild);
-
-    var run = el.querySelector('.ns-run');
-    var hop = el.querySelector('.ns-hop');
-    var shadow = el.querySelector('.ns-shadow');
-    var fill = el.querySelector('.ns-fill');
-
-    // 从屏幕左侧外面，三连跳到中间
-    var startX = -(window.innerWidth / 2 + 100);
-    var anims = [];
-    anims.push(run.animate(
-      [{ transform: 'translateX(' + startX + 'px)' }, { transform: 'translateX(0)' }],
-      { duration: HOP, easing: 'cubic-bezier(.25,.5,.5,1)', fill: 'both' }
-    ));
-
-    var hopFrames = [{ offset: 0, transform: 'translateY(0) scale(1,1)', easing: 'ease-out' }];
-    var shFrames  = [{ offset: 0, transform: 'scale(1)', opacity: 1, easing: 'ease-out' }];
-    for (var i = 0; i < 3; i++) {
-      var b = i / 3;
-      hopFrames.push(
-        { offset: b + 0.05, transform: 'translateY(0) scale(1.12,.86)',   easing: 'ease-out' },
-        { offset: b + 0.17, transform: 'translateY(-34px) scale(.92,1.1)', easing: 'ease-in' },
-        { offset: b + 0.30, transform: 'translateY(0) scale(1.14,.84)',   easing: 'ease-out' }
-      );
-      shFrames.push(
-        { offset: b + 0.05, transform: 'scale(1)',  opacity: 1,  easing: 'ease-out' },
-        { offset: b + 0.17, transform: 'scale(.6)', opacity: .5, easing: 'ease-in' },
-        { offset: b + 0.30, transform: 'scale(1)',  opacity: 1,  easing: 'ease-out' }
-      );
-    }
-    hopFrames.push({ offset: 1, transform: 'translateY(0) scale(1,1)' });
-    shFrames.push({ offset: 1, transform: 'scale(1)', opacity: 1 });
-
-    var hopAnim = hop.animate(hopFrames, { duration: HOP });
-    anims.push(hopAnim);
-    anims.push(shadow.animate(shFrames, { duration: HOP }));
-    hopAnim.onfinish = function () { hop.classList.add('idle'); };
-
-    // 进度条
-    var t = 0, last = performance.now(), speed = 1, finished = false;
-    function ease(x) { return x < .5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2; }
-    function tick(now) {
-      var dt = Math.min(now - last, 100);
-      last = now;
-      t += dt * speed;
-      var p = Math.min(1, t / TOTAL);
-      fill.style.width = (Math.floor(ease(p) * SEGS) / SEGS * 100) + '%';
-      if (p >= 1) finish(); else requestAnimationFrame(tick);
-    }
-    requestAnimationFrame(tick);
-
-    function finish() {
-      if (finished) return;
-      finished = true;
-      setTimeout(function () {
-        el.classList.add('out');
-        setTimeout(function () {
-          if (el.parentNode) el.parentNode.removeChild(el);
-          document.dispatchEvent(new Event('nano-splash-done'));
-        }, 450);
-      }, 200 / speed);
-    }
-
-    // 点屏幕任意位置：加速跳过
-    function skip() {
-      if (speed === FAST) return;
-      speed = FAST;
-      anims.forEach(function (a) { a.playbackRate = FAST; });
-    }
-    el.addEventListener('pointerdown', skip);
-    window.NanoSplash = { skip: skip };
+  var root = document.getElementById('nano-splash');
+  if (!root) return;
+  var fill = document.getElementById('nsFill');
+  var head = document.getElementById('nsHead');
+  var ball = document.getElementById('nsBall');
+  var pct  = document.getElementById('nsPct');
+  var bar  = fill ? fill.parentNode : null;
+  if (!fill || !head || !ball || !pct || !bar) {
+    if (root.parentNode) root.parentNode.removeChild(root);
+    document.dispatchEvent(new Event('nano-splash-done'));
+    return;
   }
 
-  if (document.body) init();
-  else document.addEventListener('DOMContentLoaded', init);
+  var DUR = 3600, READY_HOLD = 900;
+  var t0 = performance.now(), lastSp = 0, burst = false, done = false, raf = 0;
+  var G = ['♡', '✦', '✧', '●'], COL = ['#ffc2d9', '#ffd7a8', '#cfe4ff', '#fff', '#e2d6ff'];
+
+  function ease(x) { return x < .5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2; }
+
+  function spark(x, dx, dy) {
+    var s = document.createElement('div');
+    s.className = 'ns-spark';
+    s.textContent = G[Math.floor(Math.random() * G.length)];
+    s.style.left = x + 'px';
+    s.style.top = '6px';
+    s.style.color = COL[Math.floor(Math.random() * COL.length)];
+    s.style.setProperty('--ns-dx', dx + 'px');
+    s.style.setProperty('--ns-dy', dy + 'px');
+    bar.appendChild(s);
+    setTimeout(function () { if (s.parentNode) s.parentNode.removeChild(s); }, 1000);
+  }
+
+  function removeSplash() {
+    if (!root || root.__nsRemoved) return;
+    root.__nsRemoved = true;
+    if (raf) { try { cancelAnimationFrame(raf); } catch (e) {} }
+    root.classList.add('ns-out');
+    setTimeout(function () {
+      if (root.parentNode) root.parentNode.removeChild(root);
+      document.dispatchEvent(new Event('nano-splash-done'));
+    }, 460);
+  }
+
+  function finish(instant) {
+    if (done) return;
+    done = true;
+    if (raf) { try { cancelAnimationFrame(raf); } catch (e) {} }
+    pct.textContent = 'READY ♡  100%';
+    setTimeout(removeSplash, instant ? 120 : READY_HOLD);
+  }
+
+  function frame(now) {
+    if (done) return;
+    var p = Math.min((now - t0) / DUR, 1);
+    var v = ease(p);
+    var w = bar.clientWidth;
+    var x = v * (w - 40);
+    fill.style.width = (x + 20) + 'px';
+    head.style.left = (x + 20) + 'px';
+    ball.style.transform = 'rotate(' + (x * 3.4) + 'deg)';
+    pct.textContent = (p >= 1 ? 'READY ♡  ' : 'LOADING  ') + Math.round(v * 100) + '%';
+    if (p < 1) {
+      if (now - lastSp > 130) {
+        lastSp = now;
+        spark(x + 6, -30 - Math.random() * 20, -30 - Math.random() * 20);
+      }
+      raf = requestAnimationFrame(frame);
+    } else {
+      if (!burst) {
+        burst = true;
+        for (var i = 0; i < 14; i++) spark(w - 20, (Math.random() - .5) * 160, -30 - Math.random() * 70);
+      }
+      finish();
+    }
+  }
+
+  function skip() {
+    if (done) return;
+    finish(true);
+  }
+
+  root.addEventListener('pointerdown', skip);
+  window.addEventListener('keydown', function (e) { if (e.key === 'Escape') skip(); });
+  window.NanoSplash = { skip: skip, done: removeSplash };
+  raf = requestAnimationFrame(frame);
 })();
 </script>
-<!-- ============ 开屏动画复制到这里结束 ============ -->
+<!-- ============ 开场动画结束 ============ -->
+
 <script>
 document.addEventListener('nano-splash-done', function () {
   var h = document.getElementById('homeShell');
@@ -1224,7 +1162,7 @@ document.addEventListener('nano-splash-done', function () {
 setTimeout(function () {
   var h = document.getElementById('homeShell');
   if (h) h.classList.remove('pre-splash');
-}, 5200);
+}, 6500);
 </script>
 
 
@@ -1323,8 +1261,7 @@ setTimeout(function () {
         const pageConfig = {
             'chat': { mode: 'home', title: '', container: 'iframeChat' },
             'api': { mode: 'api', title: 'API', container: 'iframeApi' },
-            'discover': { mode: 'more', title: '发现', container: 'iframeDiscover' },
-            'more': { mode: 'more', title: '更多', container: 'iframeMore' }
+            'discover': { mode: 'more', title: '发现', container: 'iframeDiscover' }
         };
 
         let currentPage = 'chat';
@@ -1686,7 +1623,7 @@ setTimeout(function () {
         // 这些页面自己会用 --safe-top 给顶栏留白 —— 顶栏背景能一直铺到刘海里去
         const SELF_SAFE_PAGES = ['home.html', 'chat.html', 'chat_inner.html', 'groups.html', 'group-setting.html',
             'mask.html', 'character.html', 'favorite.html', 'emoji.html', 'memory.html', 'worldbook.html',
-            'music.html', 'voice-call.html', 'video-call.html', 'storage.html', 'backup.html', 'other.html', 'more.html',
+            'music.html', 'voice-call.html', 'video-call.html', 'storage.html', 'backup.html', 'other.html',
             'discover.html', 'api.html', 'moments.html', 'ins.html', 'inner-setting.html', 'beautify.html',
             'books.html', 'couple-spaces.html', 'halo.html', 'offline.html', 'offline-setting.html',
             'heart-setting.html', 'market.html', 'mcp.html', 'settings.html', 'settings-logs.html', 'gallery.html', 'settings-desktop.html', 'settings-notifications.html', 'settings-prompts.html', 'settings-other.html', 'schedule.html',
@@ -1854,7 +1791,7 @@ setTimeout(function () {
                 showOverlayFrame();
                 // 同一个页面且已加载过 → 直接复用（切换更快）；正在后台生成 → 也必须复用（否则中断生成）
                 reuseOrLoadOverlayFrame(url);
-                const ownNavPages = ['chat.html', 'api.html', 'more.html', 'settings.html', 'settings-logs.html', 'gallery.html', 'settings-desktop.html', 'settings-notifications.html', 'settings-prompts.html', 'settings-other.html', 'beautify.html', 'schedule.html', 'worldbook.html', 'emoji.html', 'favorite.html', 'offline.html', 'offline-setting.html', 'moments.html', 'groups.html', 'group-setting.html', 'other.html', 'storage.html', 'backup.html', 'phone.html', 'ins.html', 'couple-spaces.html', 'halo.html', 'books.html', 'mask.html', 'character.html', 'inner-setting.html', 'nano-setting.html', 'nano-files.html', 'ios-setting.html', 'assistant.html', 'family-card.html', 'wallet.html', 'appstore.html', 'cycle.html', 'fanfic.html', 'fanfic-create.html', 'fanfic-read.html', 'market.html', 'mcp.html', 'heart-setting.html', 'imessage.html', 'memory palace.html', 'app-host.html', 'meet.html', 'mall.html', 'qa.html', 'pomodoro.html', 'nano.html'];
+                const ownNavPages = ['chat.html', 'api.html', 'settings.html', 'settings-logs.html', 'gallery.html', 'settings-desktop.html', 'settings-notifications.html', 'settings-prompts.html', 'settings-other.html', 'beautify.html', 'schedule.html', 'worldbook.html', 'emoji.html', 'favorite.html', 'offline.html', 'offline-setting.html', 'moments.html', 'groups.html', 'group-setting.html', 'other.html', 'storage.html', 'backup.html', 'phone.html', 'ins.html', 'couple-spaces.html', 'halo.html', 'books.html', 'mask.html', 'character.html', 'inner-setting.html', 'nano-setting.html', 'nano-files.html', 'ios-setting.html', 'assistant.html', 'family-card.html', 'wallet.html', 'appstore.html', 'cycle.html', 'fanfic.html', 'fanfic-create.html', 'fanfic-read.html', 'market.html', 'mcp.html', 'heart-setting.html', 'imessage.html', 'memory palace.html', 'app-host.html', 'meet.html', 'mall.html', 'qa.html', 'pomodoro.html', 'nano.html'];
                 const hasOwnNav = ownNavPages.indexOf(pageName) !== -1;
                 const noOuterHeader = hasOwnNav || pageName === 'mall.html' || (showBack === false && !(title || ''));
                 if (noOuterHeader) {
@@ -4181,33 +4118,6 @@ setTimeout(function () {
 
     })();
 
-    // ===== 开场动画逻辑（原 开场.html 的脚本，已内联）=====
-    (function () {
-        const intro = document.getElementById('nano-opening');
-        if (!intro) return;
-
-        function skipIntro() {
-            if (intro.classList.contains('fade-out')) return;
-            intro.classList.add('fade-out');
-            setTimeout(function () {
-                if (intro.parentNode) intro.remove();
-                console.log('开场动画已跳过，进入主界面');
-            }, 450);
-        }
-
-        document.body.addEventListener('click', skipIntro);
-        document.body.addEventListener('touchstart', skipIntro);
-
-        const autoSkipTimer = setTimeout(skipIntro, 1200);
-
-        document.body.addEventListener('click', function () {
-            clearTimeout(autoSkipTimer);
-        }, { once: true });
-
-        window.addEventListener('keydown', function (e) {
-            if (e.key === 'Escape') skipIntro();
-        });
-    })();
 
     // ===== 后台预热：等界面空闲后，把常用页面逐个拉进 SW 缓存 =====
     // 目的：第一次打开这些页也不用等整页网络往返，切换几乎没有加载感。
@@ -4220,7 +4130,7 @@ setTimeout(function () {
                 'moments.html', 'halo.html', 'books.html', 'character.html', 'mask.html', 'favorite.html',
                 'emoji.html', 'worldbook.html', 'memory.html', 'phone.html', 'offline.html',
                 'offline-setting.html', 'couple-spaces.html', 'voice-call.html', 'video-call.html', 'api.html', 'cycle.html', 'fanfic.html', 'fanfic-create.html', 'fanfic-read.html',
-                'discover.html', 'more.html', 'qa.html', 'pomodoro.html', 'nano.html'];
+                'discover.html', 'qa.html', 'pomodoro.html', 'nano.html'];
             var i = 0;
             function next() {
                 if (i >= pages.length) return;
@@ -4304,11 +4214,11 @@ setTimeout(function () {
 <script src="js/mem-link.js?v=20261006a"></script>
 <script src="js/aux-memory.js?v=20261021k"></script>
 <script src="js/user-scope.js?v=20261020j"></script>
-<script src="js/nano-notify.js?v=20261023j"></script>
+<script src="js/nano-notify.js?v=20261024b"></script>
 <script src="js/nano-push.js?v=20261021b"></script>
 <script src="swipe-back.js"></script>
 <script src="js/keep-alive.js?v=20261023a"></script>
-<script src="js/char-takeover.js?v=20261023a"></script>
+<script src="js/char-takeover.js?v=20261024a"></script>
 <script src="js/nano-prompts.js?v=20261023a"></script>
 <script src="js/screen-share.js?v=20261023c"></script>
 <script src="js/ios-bridge.js?v=20261023c"></script>

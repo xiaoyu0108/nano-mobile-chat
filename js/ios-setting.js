@@ -236,7 +236,33 @@
                 return (m.role === 'user' ? '对方：' : name + '：') + m.content;
             }).join('\n').slice(0, 3500) + '\n';
         }
+        p += '\n保持人设，绝不 OOC，不要 AI 助手腔，不要替对方说话。';
         p += '\n现在你看到了对方手机屏幕上的画面/文字。用你的人设自然点评 2~3 句，像真人随口说，不要像 AI 助手汇报。';
+        return p;
+    }
+
+    // 把私聊里的世界书 / 长期记忆也带上。只有一句人设时，快捷指令最容易 OOC。
+    async function fullPeekSystemAsync() {
+        var p = fullPeekSystem();
+        var c = currentChar();
+        var ctx = recentContext().map(function (m) { return m.content; }).join('\n');
+        try {
+            if (window.QABridge && QABridge.getWorldbookText && c) {
+                var wb = await QABridge.getWorldbookText(c, ctx);
+                if (wb && String(wb).trim()) p += '\n【世界书 · 必须遵守】\n' + String(wb).slice(0, 2600);
+            }
+        } catch (e) {}
+        try {
+            if (window.QABridge && QABridge.getMemoryText && selectedId) {
+                var mem = await QABridge.getMemoryText(selectedId, 8);
+                if (mem && String(mem).trim()) p += '\n【长期记忆】\n' + String(mem).slice(0, 1600);
+            }
+        } catch (e) {}
+        try {
+            if (c && QABridge && QABridge.inferLang && QABridge.inferLang(c) && QABridge.inferLang(c) !== '中文') {
+                p += '\n说台词时用你的母语，并在括号里附中文翻译；旁白、动作和描写用中文。';
+            }
+        } catch (e) {}
         return p;
     }
 
@@ -393,14 +419,14 @@
     }
 
     // 把当前所选角色的人设同步到服务端，快捷指令就不需要内置人设（切角色后即时生效）
-    function pushPersona() {
+    async function pushPersona() {
         try {
             var c = currentChar();
             if (!c || !selectedId) return;
             rememberChat(selectedId);
             var baseUrl = peekBase(getPeekUrl());
             if (!baseUrl) return;
-            var sys = fullPeekSystem();
+            var sys = await fullPeekSystemAsync();
             var api = (apiCfg && apiCfg.mainUrl && apiCfg.mainKey && apiCfg.mainModel)
                 ? { url: apiCfg.mainUrl, key: apiCfg.mainKey, model: apiCfg.mainModel }
                 : null;

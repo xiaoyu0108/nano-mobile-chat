@@ -8,11 +8,23 @@
   var currentCharAvatar = '';
   var DEFAULT_AVATAR = 'data:image/svg+xml;utf8,' + encodeURIComponent(
     '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80">' +
-    '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff9ecb"/><stop offset="1" stop-color="#ff4d94"/></linearGradient></defs>' +
-    '<rect width="80" height="80" rx="20" fill="url(#g)"/>' +
-    '<rect x="18" y="24" width="44" height="34" rx="12" fill="#fff" opacity="0.95"/>' +
-    '<circle cx="32" cy="41" r="4.5" fill="#ff4d94"/><circle cx="48" cy="41" r="4.5" fill="#ff4d94"/>' +
-    '<rect x="38" y="12" width="4" height="10" rx="2" fill="#fff"/><circle cx="40" cy="11" r="4" fill="#fff"/></svg>');
+    '<defs><linearGradient id="g" x1="8" y1="6" x2="72" y2="74" gradientUnits="userSpaceOnUse"><stop stop-color="#FFA6C5"/><stop offset=".55" stop-color="#F06A97"/><stop offset="1" stop-color="#CB3F72"/></linearGradient>' +
+    '<radialGradient id="h" cx="0" cy="0" r="1" gradientTransform="translate(59 17) rotate(133) scale(54)"><stop stop-color="#fff" stop-opacity=".55"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient></defs>' +
+    '<rect width="80" height="80" rx="22" fill="url(#g)"/>' +
+    '<rect width="80" height="80" rx="22" fill="url(#h)"/>' +
+    '<path d="M27 56V24l26 32V24" fill="none" stroke="#fff" stroke-width="5.4" stroke-linecap="round" stroke-linejoin="round" opacity=".97"/>' +
+    '<path d="M60.5 15.4c.72 4.4 4 7.68 8.4 8.4-4.4.72-7.68 4-8.4 8.4-.72-4.4-4-7.68-8.4-8.4 4.4-.72 7.68-4 8.4-8.4z" fill="#fff" opacity=".9"/>' +
+    '<rect x="2.5" y="2.5" width="75" height="75" rx="20" fill="none" stroke="#fff" stroke-opacity=".25"/></svg>');
+
+  function nanoAvatar(a) {
+    var s = String(a || '');
+    if (!s) return DEFAULT_AVATAR;
+    if (s.indexOf('data:image/svg+xml') === 0 && s.indexOf('ff4d94') !== -1 &&
+        (s.indexOf('ff9ecb') !== -1 || s.indexOf('x%3D%2218%22') !== -1 || s.indexOf('x="18"') !== -1)) {
+      return DEFAULT_AVATAR;
+    }
+    return s;
+  }
 
   function $(id) { return document.getElementById(id); }
   function toast(t) { var el = $('nsToast'); el.textContent = t; el.classList.add('show'); clearTimeout(el._t); el._t = setTimeout(function () { el.classList.remove('show'); }, 1500); }
@@ -150,9 +162,9 @@
     var char = await getChar();
     if (char) {
       currentCharName = char.name || '纳米';
-      currentCharAvatar = char.avatar || '';
+      currentCharAvatar = nanoAvatar(char.avatar);
       $('nsName').value = char.name || '纳米';
-      $('nsAvatar').src = char.avatar || DEFAULT_AVATAR;
+      $('nsAvatar').src = nanoAvatar(char.avatar);
     } else {
       $('nsName').value = '纳米';
       $('nsAvatar').src = DEFAULT_AVATAR;

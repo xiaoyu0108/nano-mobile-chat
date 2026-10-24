@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Nano</title>
-  <link rel="stylesheet" href="../css/nano.css?v=20261024h">
+  <link rel="stylesheet" href="../css/nano.css?v=20261024i">
   <script src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
 </head>
 <body class="nc-body">
@@ -14,7 +14,10 @@
       <button class="nc-back" id="ncBack" data-back aria-label="返回">
         <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
-      <div class="nc-brand">Nano</div>
+      <div class="nc-brand">
+        <span class="nc-brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 2c.8 5.2 4.8 9.2 10 10-5.2.8-9.2 4.8-10 10-.8-5.2-4.8-9.2-10-10 5.2-.8 9.2-4.8 10-10z" fill="currentColor"/></svg></span>
+        <span>Nano</span>
+      </div>
       <button class="nc-settings" id="ncSettings" aria-label="设置">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.64 8.9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c.14.63.66 1.11 1.31 1.21H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
@@ -25,6 +28,7 @@
         <div class="nc-hero-bg"></div>
         <div class="nc-avatar-wrap"><img id="ncAvatar" alt=""></div>
         <div class="nc-hero-main">
+          <div class="nc-hero-kicker">Personal Assistant</div>
           <div class="nc-hero-row"><h1 id="ncName">纳米</h1><span class="nc-online"><i></i>在线</span></div>
           <p id="ncIntro">你的专属 Nano 助手 · 美化 / 世界书 / 人设 / 文件</p>
         </div>
@@ -36,29 +40,32 @@
 
       <div class="nc-quick">
         <button id="ncFiles" class="nc-quick-item">
-          <span class="nc-qi-icon">▤</span><span><b>文件库</b><small>生成的文件永久保存</small></span><em id="ncFileCount">0</em>
+          <span class="nc-qi-icon"><svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M14 3v5h5M9 13h6M9 17h4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          <span><b>文件库</b><small>生成的文件永久保存</small></span><em id="ncFileCount">0</em>
         </button>
         <button id="ncSettings2" class="nc-quick-item">
-          <span class="nc-qi-icon">✦</span><span><b>助手设置</b><small>头像、提示词、生成偏好</small></span><em>›</em>
+          <span class="nc-qi-icon"><svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10M4 12h4M12 12h8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="16" cy="7" r="2" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="8" cy="17" r="2" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="10" cy="12" r="2" fill="none" stroke="currentColor" stroke-width="1.8"/></svg></span>
+          <span><b>助手设置</b><small>头像、提示词、生成偏好</small></span>
+          <svg class="nc-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
       </div>
 
       <section class="nc-card nc-sessions">
-        <div class="nc-card-head"><b>对话窗口</b><button id="ncNewSession">＋ 新对话</button></div>
+        <div class="nc-card-head"><b>对话窗口</b><button id="ncNewSession"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>新对话</span></button></div>
         <div class="nc-session-list" id="ncSessionList">
           <div class="nc-empty">还没有对话窗口，点「新对话」开始。</div>
         </div>
       </section>
 
       <section class="nc-card">
-        <div class="nc-card-head"><b>最近对话</b><button id="ncOpenChat">继续聊 ›</button></div>
+        <div class="nc-card-head"><b>最近对话</b><button id="ncOpenChat"><span>继续聊</span><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
         <div class="nc-msgs" id="ncMessages">
           <div class="nc-empty">还没有对话，点「开始对话」找 Nano。</div>
         </div>
       </section>
 
       <section class="nc-card">
-        <div class="nc-card-head"><b>最近文件</b><button id="ncOpenFiles">全部文件 ›</button></div>
+        <div class="nc-card-head"><b>最近文件</b><button id="ncOpenFiles"><span>全部文件</span><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
         <div class="nc-files" id="ncFilesList">
           <div class="nc-empty">还没有生成文件。让 Nano 帮你导出 CSS、文本或代码，就会出现在这里。</div>
         </div>
@@ -79,7 +86,7 @@
   <div class="nc-toast" id="ncToast"></div>
 
   <script src="../js/nano-files.js?v=20261023a"></script>
-  <script src="../js/nano-app.js?v=20261024h"></script>
+  <script src="../js/nano-app.js?v=20261024j"></script>
   <script src="../swipe-back.js"></script>
 </body>
 </html>

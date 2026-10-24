@@ -1277,12 +1277,14 @@ async function sendBarkKey(env, key, payload) {
     }
   }
   // 标题优先用角色昵称，正文用真实气泡内容；避免只推 "Nano / 你有一条新消息"。
-  const title = pushText(payload.name || payload.title, 'Nano');
+  let title = pushText(payload.name || payload.title, 'Nano');
+  if (/^(title|body|undefined|null)$/i.test(title)) title = pushText(payload.name, 'Nano');
   let body = '';
   if (Array.isArray(payload.bubbles) && payload.bubbles.length) {
     body = payload.bubbles.map(function (b) { return pushText(b, ''); }).filter(Boolean).join('\n');
   }
   body = pushText(body || payload.body || payload.text || payload.preview, '').slice(0, 300);
+  if (/^(title|body|undefined|null)$/i.test(body)) body = '';
   // 没有真实内容就不发：宁可交给 Web Push，也不要用通用占位文案刷屏。
   if (!body) return false;
   const group = pushText(payload.name || payload.title || payload.channel, 'Nano');
@@ -1301,11 +1303,12 @@ async function sendBarkKey(env, key, payload) {
       'sound=none'
     ];
     if (openUrl) q.push('url=' + encodeURIComponent(openUrl));
+    if (payload.icon && /^https?:/i.test(String(payload.icon))) q.push('icon=' + encodeURIComponent(payload.icon));
     url += '?' + q.join('&');
     try {
       const resp = await fetch(url);
       if (!resp || !resp.ok) return false;
-      // Bark 正常返回 { code: 200 }；非 200 视为失败，交给 Web Push 兜底。
+      // Bark 正常返回 { code: 200 }；非 200 视为失败，交给 POST / Web Push 兜底。
       try {
         const data = await resp.json();
         if (data && data.code != null && Number(data.code) !== 200) return false;
@@ -1314,29 +1317,31 @@ async function sendBarkKey(env, key, payload) {
     } catch (e) { return false; }
   }
 
-  // 优先 POST /push：正文里的 / ? # 和换行不会破坏 Bark 的路径解析，title/body 不会再丢；
-  // 旧版 Bark 不支持 POST 时自动退回 GET。
-  if (devKey) {
+  // GET 路径接口优先：官方 Bark 和多数自建 Bark 都能正确带上标题/正文。
+  // POST /push 只作兜底——有些自建服务接受 POST 却丢掉 title/body，会弹出没有名字和内容的通知。
+  if (devKey && await barkGet()) return true;
+  if (!devKey) return false;
+  try {
+    const postUrl = root.replace(/\/+$/, '') + '/push';
+    const resp = await fetch(postUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        device_key: devKey, title: title, body: body,
+        group: group, level: 'active', sound: 'none',
+        url: openUrl || undefined,
+        icon: (payload.icon && /^https?:/i.test(String(payload.icon))) ? String(payload.icon) : undefined
+      })
+    });
+    if (!resp || !resp.ok) return false;
     try {
-      const postUrl = root.replace(/\/+$/, '') + '/push';
-      const resp = await fetch(postUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          device_key: devKey, title: title, body: body,
-          group: group, level: 'active', sound: 'none',
-          url: openUrl || undefined
-        })
-      });
-      if (resp && resp.ok) {
-        try {
-          const data = await resp.json();
-          if (!data || data.code == null || Number(data.code) === 200) return true;
-        } catch (e) { return true; }
-      }
-    } catch (e) {}
-  }
-  return await barkGet();
+      const data = await resp.json();
+      return !data || data.code == null || Number(data.code) === 200;
+    } catch (e) {
+      // 返回 HTML/空内容说明服务端没真正接收 JSON 推送，不能当成功。
+      return false;
+    }
+  } catch (e) { return false; }
 }
 __name(sendBarkKey, "sendBarkKey");
 async function autoNotify(env, cfg, subs, payload) {
@@ -2139,7 +2144,7 @@ var index_default = {
       return json({
         ok: true,
         service: "nano-peek",
-        build: "2026-10-24-bark-post",
+        build: "2026-10-24-bark-get",
         method: "POST /peek",
         publicMode: publicMode,
         tokenConfigured: !!env.PEEK_TOKEN,
@@ -2350,6 +2355,34 @@ var index_default = {
       }
       return json({ ok: true });
     }
+    if (pathname === "/peek/context" && request.method === "POST") {
+      let body = {};
+      try {
+        body = await request.json();
+      } catch (e) {
+      }
+      if (!peekOk(request, env, body)) return json({ ok: false, error: "unauthorized" }, 401);
+      const token = peekTokenValue(request, body);
+      const realAppId = cleanAppId(body.appId);
+      const scope = peekScope(env, realAppId, token);
+      const chatId = String(body.chatId || "").trim();
+      if (!chatId) return json({ ok: false, error: "no chatId" }, 400);
+      const history = Array.isArray(body.history) ? body.history.slice(-12).map(function(m) {
+        return {
+          role: m && m.role === "assistant" ? "assistant" : "user",
+          content: String(m && m.content || "").slice(0, 1200)
+        };
+      }).filter(function(m) {
+        return m.content;
+      }) : [];
+      const ttl = 60 * 60 * 24 * 30;
+      try {
+        await kv(env).put(peekBase(scope, "context:" + chatId), JSON.stringify(history), { expirationTtl: ttl });
+        await kv(env).put(peekBase(scope, "context:latest"), JSON.stringify(history), { expirationTtl: ttl });
+      } catch (e) {
+      }
+      return json({ ok: true });
+    }
     if (pathname === "/peek/pending" && (request.method === "GET" || request.method === "POST")) {
       let body = {};
       if (request.method === "POST") {
@@ -2378,6 +2411,19 @@ var index_default = {
       const scope = peekScope(env, appId, token);
       let turns = await peekTurns(env, chatId, scope);
       if (!turns.length) {
+        try {
+          const rawOwner = await kv(env).get(peekOwnerKey(env, token, chatId));
+          if (rawOwner) {
+            const o = JSON.parse(rawOwner);
+            if (o && o.appId) {
+              const os = peekScope(env, o.appId, token);
+              if (os !== scope) turns = await peekTurns(env, chatId, os);
+            }
+          }
+        } catch (e) {
+        }
+      }
+      if (!turns.length) {
         const legacyScope = peekScope(env, "legacy", token);
         if (legacyScope !== scope) turns = await peekTurns(env, chatId, legacyScope);
       }
@@ -2395,6 +2441,17 @@ var index_default = {
         const token = peekTokenValue(request, body);
         const scope = peekScope(env, body.appId, token);
         await peekSave(env, chatId, [], scope);
+        try {
+          const rawOwner = await kv(env).get(peekOwnerKey(env, token, chatId));
+          if (rawOwner) {
+            const o = JSON.parse(rawOwner);
+            if (o && o.appId) {
+              const os = peekScope(env, o.appId, token);
+              if (os !== scope) await peekSave(env, chatId, [], os);
+            }
+          }
+        } catch (e) {
+        }
         const legacyScope = peekScope(env, "legacy", token);
         if (legacyScope !== scope) await peekSave(env, chatId, [], legacyScope);
       }
@@ -2848,7 +2905,7 @@ var index_default = {
         return json({ ok: false, error: "fetch failed: " + (e && e.message ? e.message : e) }, 502);
       }
     }
-    return json({ ok: true, info: "nano-push alive", build: "2026-10-24-bark-post" });
+    return json({ ok: true, info: "nano-push alive", build: "2026-10-24-bark-get" });
   },
   // 每 5 分钟触发：到点给 Bark 发提醒 + 处理 KV 里的预约任务
   async scheduled(event, env, ctx) {

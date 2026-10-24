@@ -60,7 +60,6 @@ window.NANO_ASSISTANT_KB = {
     { file: 'js/offline.js', name: '线下逻辑', note: '线下设置/记忆/小剧场' },
     { file: 'inner-setting.html', name: '聊天设置' },
     { file: 'js/inner-setting.js', name: '聊天设置逻辑' },
-    { file: 'more.html', name: '更多' },
     { file: 'js/worldbook.js', name: '世界书', note: '数据结构与导入导出' },
     { file: 'js/beautify.js', name: '美化编辑器' },
     { file: 'js/appearance.js', name: '外观注入', note: '读取 beautify_* 存储并注入样式' },

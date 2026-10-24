@@ -218,7 +218,7 @@
     // 其他功能页保持不动，避免被全局样式误改
     var GLOBAL_TARGET_PAGES = [
         'index.html', 'home.html', 'chat.html', 'chat_inner.html', 'groups.html',
-        'group-chat.html', 'discover.html', 'more.html', 'api.html'
+        'group-chat.html', 'discover.html', 'api.html'
     ];
     function isGlobalTargetPage() {
         return GLOBAL_TARGET_PAGES.indexOf(fileName) !== -1;

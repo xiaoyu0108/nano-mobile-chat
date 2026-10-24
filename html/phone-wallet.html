@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<script src="../js/nano-runtime.js?v=20261023a"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>钱包</title>
+<link rel="stylesheet" href="../css/phone-wallet.css?v=20261024c">
+<script src="../js/appearance.js"></script>
+</head>
+<body>
+<div class="w-app">
+    <header class="w-top">
+        <button class="w-icon" id="backBtn" type="button" aria-label="返回">
+            <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <div class="w-title">钱包</div>
+        <button class="w-icon" id="refreshBtn" type="button" aria-label="刷新">
+            <svg viewBox="0 0 24 24">
+                <path d="M20 11a8 8 0 0 0-14.7-4.2L4 9"/>
+                <path d="M4 5v4h4"/>
+                <path d="M4 13a8 8 0 0 0 14.7 4.2L20 15"/>
+                <path d="M20 19v-4h-4"/>
+            </svg>
+        </button>
+    </header>
+
+    <main class="w-scroll">
+        <section class="w-card">
+            <div class="w-card-glow"></div>
+            <div class="w-card-top">
+                <span>储蓄卡</span>
+                <span class="w-brand">NANO</span>
+            </div>
+            <div class="w-chip"></div>
+            <div class="w-balance-label">银行卡余额</div>
+            <div class="w-balance" id="balance">¥0.00</div>
+            <div class="w-card-number" id="cardNumber">**** **** **** 0000</div>
+            <div class="w-card-bottom">
+                <span id="cardName">对方</span>
+                <span class="w-card-type">借记卡</span>
+            </div>
+        </section>
+
+        <section class="w-stats">
+            <div class="w-stat">
+                <span class="w-stat-label">收入</span>
+                <span class="w-stat-value income" id="income">+¥0.00</span>
+            </div>
+            <div class="w-stat-sep"></div>
+            <div class="w-stat">
+                <span class="w-stat-label">支出</span>
+                <span class="w-stat-value" id="expense">-¥0.00</span>
+            </div>
+        </section>
+
+        <section class="w-section">
+            <div class="w-section-head">
+                <span>最近流水</span>
+                <span class="w-count" id="txCount">0 笔</span>
+            </div>
+            <div class="w-list" id="txList"></div>
+        </section>
+    </main>
+
+    <div class="w-toast" id="toast"></div>
+</div>
+<script src="../js/phone-wallet.js?v=20261024d"></script>
+</body>
+</html>

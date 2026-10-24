@@ -18,11 +18,13 @@
     const isNanoChat = !!(window.NanoAssistant && window.NanoAssistant.isNano(chatId));
     const NANO_DEFAULT_AVATAR = 'data:image/svg+xml;utf8,' + encodeURIComponent(
         '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80">' +
-        '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff9ecb"/><stop offset="1" stop-color="#ff4d94"/></linearGradient></defs>' +
-        '<rect width="80" height="80" rx="20" fill="url(#g)"/>' +
-        '<rect x="18" y="24" width="44" height="34" rx="12" fill="#fff" opacity="0.95"/>' +
-        '<circle cx="32" cy="41" r="4.5" fill="#ff4d94"/><circle cx="48" cy="41" r="4.5" fill="#ff4d94"/>' +
-        '<rect x="38" y="12" width="4" height="10" rx="2" fill="#fff"/><circle cx="40" cy="11" r="4" fill="#fff"/></svg>');
+        '<defs><linearGradient id="g" x1="8" y1="6" x2="72" y2="74" gradientUnits="userSpaceOnUse"><stop stop-color="#FFA6C5"/><stop offset=".55" stop-color="#F06A97"/><stop offset="1" stop-color="#CB3F72"/></linearGradient>' +
+        '<radialGradient id="h" cx="0" cy="0" r="1" gradientTransform="translate(59 17) rotate(133) scale(54)"><stop stop-color="#fff" stop-opacity=".55"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient></defs>' +
+        '<rect width="80" height="80" rx="22" fill="url(#g)"/>' +
+        '<rect width="80" height="80" rx="22" fill="url(#h)"/>' +
+        '<path d="M27 56V24l26 32V24" fill="none" stroke="#fff" stroke-width="5.4" stroke-linecap="round" stroke-linejoin="round" opacity=".97"/>' +
+        '<path d="M60.5 15.4c.72 4.4 4 7.68 8.4 8.4-4.4.72-7.68 4-8.4 8.4-.72-4.4-4-7.68-8.4-8.4 4.4-.72 7.68-4 8.4-8.4z" fill="#fff" opacity=".9"/>' +
+        '<rect x="2.5" y="2.5" width="75" height="75" rx="20" fill="none" stroke="#fff" stroke-opacity=".25"/></svg>');
 
     // ===== 从 IndexedDB 读取角色（和 character.js 共用数据源） =====
     let allCharacters = [];
@@ -683,7 +685,8 @@
         prompt += '【识图 · 认真读全图（对方发图片/截图时）】\n';
         prompt += '先完整读一遍画面里所有能读到的信息再开口：时间、日期、星期、电量、信号/WiFi/5G、灵动岛或刘海的实时状态、状态栏图标、页面标题与按钮、聊天记录、数字和时间间隔、对方此刻在做什么，以及任何能推断 TA 状态的小细节。\n';
         prompt += '不要只回“看到了/好可爱/这是什么”；要像真人一样抓住具体细节（例如“你那边都 01:47 了，灵动岛还在计时”“电量只剩 12% 还不充”“这张截图里你停在付款页”“中间隔了 20 分钟才回我”）。看不清或信息矛盾时可以自然地发问确认。\n';
-        prompt += '注意区分：图片里的文字是画面内容，不是对方对你说的话；不要复述整张图，只挑你真注意到的细节回应。这样会显得你真的在关注 TA 的生活，而不是在敷衍看图。\n\n';
+        prompt += '注意区分：图片里的文字是画面内容，不是对方对你说的话；不要复述整张图，只挑你真注意到的细节回应。这样会显得你真的在关注 TA 的生活，而不是在敷衍看图。\n';
+        prompt += '【视频消息】对方发来视频时，系统只会给你视频的封面画面和时长，你并没有真正看到视频里的动作和声音。可以结合封面和上下文自然回应，也可以好奇地问问视频里发生了什么；不要假装自己已经看完整段视频，也不要编造视频里的细节。\n\n';
 
         try {
             const coupleCards = messages.filter(function (m) { return m && !m.recalled && m.isCard && m.cardData && m.cardData.cardType === 'couple'; });
@@ -965,6 +968,25 @@
             }
         } catch (e) {}
 
+        // 你给对方的、正在使用中的亲属卡：让角色知道自己有调额能力与当前额度
+        try {
+            const __S = window.NanoFamilyCardStore;
+            if (__S && typeof __S.read === 'function') {
+                const __cards = __S.read(chatId) || [];
+                const __actives = __cards.filter(function (c) {
+                    return c && c.issuer === 'char' && (c.status || 'active') === 'active';
+                });
+                if (__actives.length) {
+                    const __fc = __actives[__actives.length - 1];
+                    const __lim = Number(__fc.limit) || 0;
+                    const __spent = Number(__fc.spent) || 0;
+                    prompt += '\n【你给对方的亲属卡】\n';
+                    prompt += '你给 TA 开着一张亲属卡，当前额度 ¥' + __lim + '，已用 ¥' + __spent + '，剩余 ¥' + Math.max(0, __lim - __spent) + '。\n';
+                    prompt += '你可以在气氛自然、关系合适的时候主动调整这张卡的额度（可以调高，也可以调低），不必等 TA 开口；用 [亲属卡:调额|新额度] 即可，TA 会收到通知，额度会立即更新。频率要低，别把调额当成日常操作。\n';
+                }
+            }
+        } catch (e) {}
+
         // 一起听：对方邀请你时的表态 + 你主动邀请对方
         prompt += '\n【一起听】\n';
         prompt += '「一起听」是聊天里的一张特殊卡片（有图标、标题「一起听」和歌名），不是空白消息，也不是对方发错了。对方发这张卡片，就是在邀请你一起听歌。\n';
@@ -1188,6 +1210,22 @@
             }
         });
     }
+    // 纳米助手：输入框换成可自适应的 textarea（仍然复用同一个 id / 值读写逻辑）
+    if (isNanoChat) {
+        try {
+            const __oldInput = document.getElementById('messageInput');
+            if (__oldInput && __oldInput.tagName === 'INPUT') {
+                const __ta = document.createElement('textarea');
+                __ta.id = 'messageInput';
+                __ta.className = 'input';
+                __ta.rows = 1;
+                __ta.placeholder = '给纳米发消息';
+                __ta.autocomplete = 'off';
+                __ta.setAttribute('aria-label', '消息输入框');
+                __oldInput.parentNode.replaceChild(__ta, __oldInput);
+            }
+        } catch (e) {}
+    }
     const messageInput = document.getElementById('messageInput');
     const sendBtn = document.getElementById('sendBtn');
     const moreBtn = document.getElementById('moreBtn');
@@ -1205,11 +1243,17 @@
     const quoteText = document.getElementById('quoteText');
     const quoteCancel = document.getElementById('quoteCancel');
 
+    // 纳米助手：顶栏玻璃胶囊 / 底部输入卡片 / 消息操作图标
+    if (isNanoChat) {
+        try { nanoSetupUI(); } catch (e) { console.warn('[NanoUI] init failed', e); }
+    }
+
     // ===== 状态 =====
     let messages = [];
     // 从线下返回时带回来的「最新一轮」，下次线上回复时作为衔接上下文注入
     let offlineRoundHint = null;
     let isWaitingForReply = false;
+    let nanoSendLockUntil = 0;
     let isMultiSelect = false;
     let selectedMessages = new Set();
     let longpressTarget = null;
@@ -1396,6 +1440,7 @@
                             direction: msg.cardData.direction,
                             toName: msg.cardData.toName,
                             systemNotice: msg.cardData.systemNotice,
+                            nanoError: msg.cardData.nanoError,
                             coupleKind: msg.cardData.coupleKind,
                             coupleSummary: msg.cardData.coupleSummary,
                             coupleDetail: msg.cardData.coupleDetail,
@@ -1417,7 +1462,9 @@
                             urls: (Array.isArray(msg.imageData.urls) && msg.imageData.urls.length) ? msg.imageData.urls.filter(function (u) { return typeof u === 'string' && u.indexOf('data:') !== 0; }) : undefined,
                             desc: msg.imageData.desc,
                             emojiName: msg.imageData.emojiName,
-                            isEmoji: msg.imageData.isEmoji || false
+                            isEmoji: msg.imageData.isEmoji || false,
+                            video: msg.imageData.video || false,
+                            duration: msg.imageData.duration || 0
                         } : null,
                         linkPreview: msg.linkPreview ? {
                             url: msg.linkPreview.url,
@@ -1432,6 +1479,8 @@
                         tools: (msg.tools && msg.tools.length) ? msg.tools : null,
                         heart: msg.heart || null,
                         recalled: msg.recalled || false,
+                        rating: msg.rating || null,
+                        nanoError: msg.nanoError || false,
                         nanoActions: (msg.nanoActions && msg.nanoActions.length) ? msg.nanoActions : null
                     };
                 });
@@ -1447,17 +1496,19 @@
                             isImage: msg.isImage || false,
                             isCard: msg.isCard || false,
                             isVoice: msg.isVoice || false,
-                            cardData: msg.cardData ? { cardType: msg.cardData.cardType, missed: msg.cardData.missed, claimed: msg.cardData.claimed, status: msg.cardData.status, response: msg.cardData.response, amount: msg.cardData.amount, issuer: msg.cardData.issuer, holder: msg.cardData.holder, familyId: msg.cardData.familyId, limit: msg.cardData.limit, food: msg.cardData.food, shop: msg.cardData.shop, price: msg.cardData.price, note: msg.cardData.note, place: msg.cardData.place, lat: msg.cardData.lat, lng: msg.cardData.lng, distance: msg.cardData.distance, eta: msg.cardData.eta, paidBy: msg.cardData.paidBy, action: msg.cardData.action, altName: msg.cardData.altName, altSetting: msg.cardData.altSetting, altFirst: msg.cardData.altFirst, title: msg.cardData.title, sub: msg.cardData.sub, footer: msg.cardData.footer, storyId: msg.cardData.storyId, excerpt: msg.cardData.excerpt, content: msg.cardData.content, genres: msg.cardData.genres, chapters: msg.cardData.chapters, ending: msg.cardData.ending, callId: msg.cardData.callId, video: msg.cardData.video, duration: msg.cardData.duration, direction: msg.cardData.direction, toName: msg.cardData.toName, systemNotice: msg.cardData.systemNotice, coupleKind: msg.cardData.coupleKind, coupleSummary: msg.cardData.coupleSummary, coupleDetail: msg.cardData.coupleDetail, shareId: msg.cardData.shareId, eventId: msg.cardData.eventId, date: msg.cardData.date, start: msg.cardData.start, end: msg.cardData.end, mood: msg.cardData.mood, img: (typeof msg.cardData.img === 'string' && msg.cardData.img.indexOf('data:') !== 0) ? msg.cardData.img : null } : null,
+                            cardData: msg.cardData ? { cardType: msg.cardData.cardType, missed: msg.cardData.missed, claimed: msg.cardData.claimed, status: msg.cardData.status, response: msg.cardData.response, amount: msg.cardData.amount, issuer: msg.cardData.issuer, holder: msg.cardData.holder, familyId: msg.cardData.familyId, limit: msg.cardData.limit, food: msg.cardData.food, shop: msg.cardData.shop, price: msg.cardData.price, note: msg.cardData.note, place: msg.cardData.place, lat: msg.cardData.lat, lng: msg.cardData.lng, distance: msg.cardData.distance, eta: msg.cardData.eta, paidBy: msg.cardData.paidBy, action: msg.cardData.action, altName: msg.cardData.altName, altSetting: msg.cardData.altSetting, altFirst: msg.cardData.altFirst, title: msg.cardData.title, sub: msg.cardData.sub, footer: msg.cardData.footer, storyId: msg.cardData.storyId, excerpt: msg.cardData.excerpt, content: msg.cardData.content, genres: msg.cardData.genres, chapters: msg.cardData.chapters, ending: msg.cardData.ending, callId: msg.cardData.callId, video: msg.cardData.video, duration: msg.cardData.duration, direction: msg.cardData.direction, toName: msg.cardData.toName, systemNotice: msg.cardData.systemNotice, nanoError: msg.cardData.nanoError, coupleKind: msg.cardData.coupleKind, coupleSummary: msg.cardData.coupleSummary, coupleDetail: msg.cardData.coupleDetail, shareId: msg.cardData.shareId, eventId: msg.cardData.eventId, date: msg.cardData.date, start: msg.cardData.start, end: msg.cardData.end, mood: msg.cardData.mood, img: (typeof msg.cardData.img === 'string' && msg.cardData.img.indexOf('data:') !== 0) ? msg.cardData.img : null } : null,
                             voiceData: msg.voiceData ? { duration: msg.voiceData.duration, ttsText: msg.voiceData.ttsText || '' } : null,
                             transcript: msg.transcript || null,
                             translation: msg.translation || null,
                             // 兜底副本也要保留「表情包」标记，否则 localStorage 满时聊天列表里表情包会变成「图片」
-                            imageData: msg.imageData ? { textImage: msg.imageData.textImage, desc: msg.imageData.desc, emojiName: msg.imageData.emojiName, isEmoji: msg.imageData.isEmoji || false } : null,
+                            imageData: msg.imageData ? { textImage: msg.imageData.textImage, desc: msg.imageData.desc, emojiName: msg.imageData.emojiName, isEmoji: msg.imageData.isEmoji || false, video: msg.imageData.video || false, duration: msg.imageData.duration || 0 } : null,
                             linkPreview: msg.linkPreview ? { url: msg.linkPreview.url, site: msg.linkPreview.site, title: msg.linkPreview.title, desc: msg.linkPreview.desc, image: msg.linkPreview.image, imageMsgId: msg.linkPreview.imageMsgId || '', price: msg.linkPreview.price } : null,
                             think: msg.think || null,
                         tools: (msg.tools && msg.tools.length) ? msg.tools : null,
                             heart: msg.heart || null,
                             recalled: msg.recalled || false,
+                            rating: msg.rating || null,
+                            nanoError: msg.nanoError || false,
                             nanoActions: (msg.nanoActions && msg.nanoActions.length) ? msg.nanoActions : null
                         };
                     });
@@ -1927,7 +1978,7 @@
                     else if (cd.cardType === 'gift') content = '[礼物: ' + (cd.title || '') + ']';
                     else if (cd.cardType === 'call') content = '[通话] ' + (cd.missed ? '未接来电' : cd.duration || '');
                 }
-                if (m.isImage) content = '[图片] ' + ((m.imageData && m.imageData.desc) || '');
+                if (m.isImage) content = (m.imageData && m.imageData.video ? '[视频] ' : '[图片] ') + ((m.imageData && m.imageData.desc) || '');
                 if (m.isVoice) content = '[语音] ' + ((m.voiceData && m.voiceData.duration) || 3) + '秒';
                 return (m.type === 'right' ? currentUser : charName) + '：' + content;
             }).join('\n');
@@ -2822,6 +2873,7 @@
     // ===== 创建消息行 =====
     function buildRecallContent(text, isCard, cardData, isVoice, transcript, isImage, imageData) {
         if (isImage) {
+            if (imageData && imageData.video) return '一段视频';
             const desc = (imageData && (imageData.desc || (imageData.textImage ? '文字图片' : ''))) || '';
             return desc || '一张照片';
         }
@@ -2967,7 +3019,9 @@
         if (isCard && cardData && cardData.centered) row.classList.add('centered');
         // 系统提示（一起听等）：居中灰框，不带气泡
         if (cardData && cardData.systemNotice) row.classList.add('centered', 'sys-notice');
+        if (cardData && cardData.nanoError) row.classList.add('nano-error');
         if (cardData && cardData.action) row.classList.add('action-note');
+        if (isNanoChat && isCard) row.classList.add('nano-card-row');
 
         const avatar = document.createElement('div');
         avatar.className = 'message-avatar';
@@ -3088,6 +3142,34 @@
                     openImageViewer('', id, { text: text || (imageData && imageData.desc) || '' });
                 });
                 content.appendChild(tib);
+            } else if (imageData && imageData.video && imageData.url) {
+                const vb = document.createElement('div');
+                vb.className = 'image-bubble video ' + type;
+                const video = document.createElement('video');
+                const vurl = imageData.url;
+                if (/^data:/i.test(vurl)) {
+                    try {
+                        fetch(vurl).then(function (r) { return r.blob(); }).then(function (b) {
+                            try { video.src = URL.createObjectURL(b); } catch (e) { video.src = vurl; }
+                        }).catch(function () { video.src = vurl; });
+                    } catch (e) { video.src = vurl; }
+                } else {
+                    video.src = vurl;
+                }
+                if (imageData.poster) video.poster = imageData.poster;
+                video.controls = true;
+                video.preload = 'metadata';
+                video.setAttribute('playsinline', '');
+                video.setAttribute('webkit-playsinline', '');
+                vb.appendChild(video);
+                const secs = Math.max(0, Math.round(Number(imageData.duration) || 0));
+                if (secs) {
+                    const dur = document.createElement('span');
+                    dur.className = 'video-duration';
+                    dur.textContent = Math.floor(secs / 60) + ':' + String(secs % 60).padStart(2, '0');
+                    vb.appendChild(dur);
+                }
+                content.appendChild(vb);
             } else if (imageData && ((imageData.urls && imageData.urls.length) || imageData.url)) {
                 const urls = (imageData.urls && imageData.urls.length)
                     ? imageData.urls.slice()
@@ -3314,6 +3396,7 @@
         }
 
         const existing = messages.find(m => m.id === rowId);
+        if (isNanoChat && existing && existing.nanoError) row.classList.add('nano-error');
         if (!existing) {
             messages.push({
                 id: rowId, type, text, time, status,
@@ -3329,6 +3412,7 @@
                 imageData: imageData || null,
                 linkPreview: linkPreview || null,
                 favorite: false,
+                rating: null,
                 turn: null,
                 ts: Date.now(),
                 think: thinkText || null,
@@ -3347,6 +3431,17 @@
                 if (!a || a.status === 'dismissed') return;
                 try { content.appendChild(makeNanoActionCard(a, existing)); } catch (e) {}
             });
+        }
+
+        // 纳米助手：每条文字回复下方的一排小图标（复制 / 引用 / 赞踩 / 重生成 / 删除）
+        if (isNanoChat && type === 'left' && !recalled && !isCard && !isImage && !isVoice && String(text || '').trim()) {
+            row.classList.add('nano-text-row');
+            if (!(existing && existing.nanoError)) {
+                try { content.appendChild(buildNanoActions(rowId, existing || null)); } catch (e) {}
+            }
+        }
+        if (isNanoChat && type === 'right' && !recalled && !isCard && !isImage && !isVoice && String(text || '').trim()) {
+            row.classList.add('nano-user-row');
         }
 
         // 左滑直接引用（清理旧的 hide 逻辑）
@@ -3748,6 +3843,16 @@
     });
 
     function showTyping() {
+        if (isNanoChat) {
+            try {
+                typingIndicator.classList.add('nano-thinking');
+                if (typingAvatar) typingAvatar.style.display = 'none';
+                const tb = typingIndicator.querySelector('.ti-bubble');
+                if (tb && !tb.querySelector('.nano-think-star')) {
+                    tb.innerHTML = nanoSvg('spark', 'nano-think-star') + '<span>纳米正在想</span>';
+                }
+            } catch (e) {}
+        }
         try {
             if (typingAvatar) {
                 if (avatarSrc && String(avatarSrc).trim() !== '') {
@@ -3802,7 +3907,7 @@
     function addMessage(type, text, time, status, recalled, isCard, cardData, transcript, translation, quote, isVoice, voiceData, isImage, imageData, linkPreview) {
         // 记录用户最近发来的图片，供纳米助手 set_avatar 使用（iOS 上模型拿不到图片字节，只能靠这里）
         try {
-            if (isImage && type === 'right' && imageData && imageData.url) window.__nanoLastImage = imageData.url;
+            if (isImage && type === 'right' && imageData && imageData.url && !imageData.video) window.__nanoLastImage = imageData.url;
         } catch (e) {}
         // 卡片消息永不合并：连续两次通话/转账/外卖等要各自成卡，不能被“同侧合并”吃掉
         const grouped = !isCard && !recalled && messages.length > 0 && messages[messages.length - 1].type === type;
@@ -3838,7 +3943,7 @@
             }
         }
         // 链接后补发截图：自动作为该链接卡片的封面
-        if (isImage && type === 'right' && row && row.dataset && row.dataset.id) {
+        if (isImage && type === 'right' && !(imageData && imageData.video) && row && row.dataset && row.dataset.id) {
             try { attachScreenshotCover(row.dataset.id); } catch (e) {}
         }
         renderMessages();
@@ -3998,6 +4103,8 @@
         } else if (scrollMode !== 'keep') {
             scrollToBottom();
         }
+        // 每条新消息都通知窥屏上下文（700ms 防抖），快捷指令才能接上私聊。
+        try { pushPeekContext(); } catch (e) {}
     }
 
     function splitMessages(text) {
@@ -4143,19 +4250,43 @@
         if (/调额|调整额度|adjust/i.test(action)) {
             const lim = limit || 0;
             if (lim <= 0) return;
-            // 角色主动调高/调整给用户用的那张卡（issuer=char）
+            // 角色主动调整「自己开给用户、正在使用」的那张亲属卡
+            let targetId = '';
+            if (S && typeof S.read === 'function') {
+                const list = S.read(chatId) || [];
+                const actives = list.filter(function (c) {
+                    return c && c.issuer === 'char' && (c.status || 'active') === 'active';
+                });
+                if (actives.length) {
+                    const target = actives[actives.length - 1];
+                    targetId = target.id;
+                    S.update(chatId, targetId, { limit: lim });
+                }
+            }
+            // 同步聊天里那张卡片；如果历史里已经没有这张卡，就补一条新的卡面消息
+            let updated = false;
             for (let i = messages.length - 1; i >= 0; i--) {
                 const m = messages[i];
                 if (m && m.isCard && m.cardData && m.cardData.cardType === 'familycard' &&
-                    m.cardData.issuer === 'char' && m.cardData.status === 'active' &&
-                    (m.cardData.limit || 0) !== lim) {
+                    m.cardData.issuer === 'char' &&
+                    (!targetId || m.cardData.familyId === targetId) &&
+                    (targetId || (m.cardData.status === 'active' && (m.cardData.limit || 0) !== lim))) {
                     m.cardData.limit = lim;
-                    if (S && m.cardData.familyId) S.update(chatId, m.cardData.familyId, { limit: lim });
-                    addSystemNotice('对方把亲属卡额度调整为 ¥' + lim);
-                    renderMessages();
-                    saveMessages();
+                    m.cardData.status = 'active';
+                    updated = true;
                     break;
                 }
+            }
+            if (!updated && targetId) {
+                addMessage('left', '', timeStr, null, false, true, {
+                    cardType: 'familycard', familyId: targetId, issuer: 'char', holder: 'user',
+                    limit: lim, status: 'active', response: true
+                });
+            }
+            if (updated || targetId) {
+                addSystemNotice('对方把亲属卡额度调整为 ¥' + lim);
+                renderMessages();
+                saveMessages();
             }
             return;
         }
@@ -4742,7 +4873,7 @@
         for (let i = messages.length - 1; i >= 0; i--) {
             const m = messages[i];
             if (!m || m.recalled) continue;
-            if (m.type === 'right' && m.isImage && m.imageData && m.imageData.url) return m.imageData.url;
+            if (m.type === 'right' && m.isImage && m.imageData && m.imageData.url && !m.imageData.video) return m.imageData.url;
         }
         return '';
     }
@@ -6308,8 +6439,12 @@
         messageInput.value = '';
         hideEmojiRecommend();
         isWaitingForReply = true;
-        sendBtn.classList.add('reply-mode');
-        sendBtn.innerHTML = '<i class="fas fa-reply"></i>';
+        if (isNanoChat) {
+            try { nanoAutoSize(); updateSendButtonMode(); } catch (e) {}
+        } else {
+            sendBtn.classList.add('reply-mode');
+            sendBtn.innerHTML = '<i class="fas fa-reply"></i>';
+        }
         scrollToBottom();
         closeVoiceSheet();
         console.log('[Chat] 用户发送语音气泡', transcript);
@@ -6517,8 +6652,12 @@
         hideEmojiRecommend();
         if (messageInput) messageInput.value = '';
         isWaitingForReply = true;
-        sendBtn.classList.add('reply-mode');
-        sendBtn.innerHTML = '<i class="fas fa-reply"></i>';
+        if (isNanoChat) {
+            try { nanoAutoSize(); updateSendButtonMode(); } catch (e) {}
+        } else {
+            sendBtn.classList.add('reply-mode');
+            sendBtn.innerHTML = '<i class="fas fa-reply"></i>';
+        }
         scrollToBottom();
     }
 
@@ -6544,6 +6683,7 @@
     }
 
     function updateEmojiRecommend() {
+        if (isNanoChat) { hideEmojiRecommend(); return; }
         const text = messageInput.value.trim();
         if (!text) { hideEmojiRecommend(); return; }
         getEmojiData().then(function(d) {
@@ -6635,8 +6775,12 @@
         messageInput.value = '';
         hideEmojiRecommend();
         isWaitingForReply = true;
-        sendBtn.classList.add('reply-mode');
-        sendBtn.innerHTML = '<i class="fas fa-reply"></i>';
+        if (isNanoChat) {
+            try { nanoAutoSize(); updateSendButtonMode(); } catch (e) {}
+        } else {
+            sendBtn.classList.add('reply-mode');
+            sendBtn.innerHTML = '<i class="fas fa-reply"></i>';
+        }
         scrollToBottom();
         // 分享链接：后台读取标题/正文/价格/配图，填成真实卡片（不打开网页）
         try {
@@ -6919,6 +7063,11 @@
                 const en = (m.imageData.emojiName || m.imageData.desc || '').trim();
                 const nameTxt = (en && en !== '表情包' && en !== '表情') ? '（备注「' + en + '」）' : '';
                 return who + '发来一张表情包' + nameTxt + '，只是随手表达一点情绪，不用解读画面或备注，也不用把它当成现实里发生的事。';
+            }
+            if (m.imageData && m.imageData.video) {
+                const secs = Math.max(0, Math.round(Number(m.imageData.duration) || 0));
+                return '用户发来一段视频' + (secs ? '（时长约 ' + secs + ' 秒）' : '') +
+                    '，你只能看到视频封面，并没有真正看完整段视频。结合封面和上下文自然回应，不要假装看过视频里的动作或声音。';
             }
             if (m.text && m.text.trim()) return m.text;
             if (m.imageData) {
@@ -7655,6 +7804,10 @@
             // 一张消息可能带多张图（多选发送），全部收集，保证模型能识别每张图
             function pickImageUrls(m) {
                 if (!m || !m.isImage || !m.imageData) return [];
+                if (m.imageData.video) {
+                    return (typeof m.imageData.poster === 'string' && m.imageData.poster.indexOf('data:image') === 0)
+                        ? [m.imageData.poster] : [];
+                }
                 let list = [];
                 if (Array.isArray(m.imageData.urls) && m.imageData.urls.length) list = m.imageData.urls.slice();
                 else if (m.imageData.url) list = [m.imageData.url];
@@ -7664,6 +7817,7 @@
             let userMessages = [];
             for (let i = messages.length - 1; i >= 0; i--) {
                 const m = messages[i];
+                if (nanoIsErrorMsg(m)) continue;
                 if (m.type === 'left' && !m.recalled) {
                     break;
                 }
@@ -7781,6 +7935,7 @@
             let foundAI = false;
             for (let i = messages.length - 1; i >= 0; i--) {
                 const m = messages[i];
+                if (nanoIsErrorMsg(m)) continue;
                 if (!foundAI && m.type === 'left' && !m.recalled) {
                     // 找到最近一条 AI 回复：把它也纳入历史，模型才知道自己上一句说了什么
                     foundAI = true;
@@ -7810,6 +7965,7 @@
                     for (let i = messages.length - 1; i >= 0; i--) {
                         const _m = messages[i];
                         if (!_m) continue;
+                        if (nanoIsErrorMsg(_m)) continue;
                         if (_m.type === 'left') break;          // 已有回复，说明文件已处理过
                         if (_m.isCard && _m.cardData && _m.cardData.cardType === 'file' && _m.cardData.content) {
                             history.push({ role: 'user', content: '用户发来的文件「' + (_m.cardData.name || '文件') + '」内容如下：\n' + String(_m.cardData.content) });
@@ -8560,6 +8716,12 @@
     async function processNanoReply(reply, depth) {
         var NA = window.NanoAssistant;
         if (!NA) return;
+        // 这一轮已经有新回复了：清掉之前留在列表里的失败提示
+        try {
+            for (var __ei = messages.length - 1; __ei >= 0; __ei--) {
+                if (nanoIsErrorMsg(messages[__ei])) messages.splice(__ei, 1);
+            }
+        } catch (e) {}
         // 必须先解析原始回复里的 <action>：cleanReplyText 会移除所有 <...> 标签，
         // 之前先 stripThinkBlocks 再解析，会把 <action> 连同动作一起删掉，
         // 导致界面不再出现「复制 / 立即执行」卡片（并让动作 JSON 当正文显示）。
@@ -9254,8 +9416,559 @@
         }
     }
 
+    // ============================================================
+    // 纳米助手 UI：图标 / 悬浮顶栏 / 输入卡片 / 消息操作
+    // ============================================================
+    function nanoSvg(name, cls) {
+        const paths = {
+            back: '<path d="M15 5l-7 7 7 7"/>',
+            menu: '<path d="M4 7h16M4 12h16M4 17h10"/>',
+            new: '<path d="M11 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5"/><path d="M18.5 2.5a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4z"/>',
+            set: '<path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/>',
+            plus: '<path d="M12 5v14M5 12h14"/>',
+            mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
+            send: '<path d="M12 19V5M5 12l7-7 7 7"/>',
+            copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/>',
+            apply: '<path d="M12 4v10M8 10l4 4 4-4M5 19h14"/>',
+            up: '<path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.3a2 2 0 0 0 2-1.7l1.4-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/>',
+            down: '<path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.3a2 2 0 0 0 2-1.7l1.4-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/>',
+            redo: '<path d="M20 11a8 8 0 0 0-14.9-3M4 4v4h4M4 13a8 8 0 0 0 14.9 3M20 20v-4h-4"/>',
+            del: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/>',
+            check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+            x: '<path d="M6 6l12 12M18 6L6 18"/>',
+            chat: '<path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.4 8.6 8.6 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8A8.4 8.4 0 0 1 12.5 3 8.4 8.4 0 0 1 21 11.5z"/>',
+            quote: '<path d="M9 17l-5-5 5-5"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/>',
+            spark: '<path d="M12 2c.8 5.2 4.8 9.2 10 10-5.2.8-9.2 4.8-10 10-.8-5.2-4.8-9.2-10-10 5.2-.8 9.2-4.8 10-10z"/>'
+        };
+        return '<svg viewBox="0 0 24 24"' + (cls ? ' class="' + cls + '"' : '') +
+            ' aria-hidden="true" focusable="false">' + (paths[name] || '') + '</svg>';
+    }
+
+    function nanoDivider() {
+        const i = document.createElement('i');
+        i.className = 'nano-divider';
+        return i;
+    }
+
+    function nanoIsErrorMsg(m) {
+        return !!(m && (m.nanoError || (m.cardData && m.cardData.nanoError)));
+    }
+
+    function nanoHasPendingUserReply() {
+        for (let i = messages.length - 1; i >= 0; i--) {
+            const m = messages[i];
+            if (!m || m.recalled || nanoIsErrorMsg(m)) continue;
+            if (m.isCard && m.cardData && m.cardData.systemNotice) continue;
+            return m.type === 'right';
+        }
+        return false;
+    }
+
+    function nanoAutoSize() {
+        if (!messageInput || messageInput.tagName !== 'TEXTAREA') return;
+        messageInput.style.height = 'auto';
+        const h = Math.min(Math.max(messageInput.scrollHeight || 26, 26), 140);
+        messageInput.style.height = h + 'px';
+    }
+
+    function nanoEnsureComposerLayout() {
+        const row = document.querySelector('.nano-composer-row');
+        const right = document.querySelector('.nano-composer-right');
+        if (!row || !right) return;
+        row.style.order = '3';
+        const inputRow = document.querySelector('.nano-dock-box .input-row');
+        if (inputRow) inputRow.style.order = '1';
+        if (sendBtn && sendBtn.parentElement !== right) right.appendChild(sendBtn);
+        if (voiceBtn && voiceBtn.parentElement !== right) right.appendChild(voiceBtn);
+        if (moreBtn && moreBtn.parentElement !== row) row.insertBefore(moreBtn, right);
+    }
+
+    function updateNanoSendButton() {
+        if (!sendBtn) return;
+        nanoEnsureComposerLayout();
+        const hasText = !!(messageInput && messageInput.value && messageInput.value.trim());
+        const mode = isProcessingApi ? 'busy' : (hasText ? 'send' : (nanoHasPendingUserReply() ? 'reply' : 'idle'));
+        sendBtn.className = 'send-btn nano-send ' + mode;
+        sendBtn.disabled = (mode === 'busy' || mode === 'idle');
+        sendBtn.setAttribute('aria-label', mode === 'send' ? '发送' : (mode === 'busy' ? '回复中' : '回复'));
+        sendBtn.setAttribute('aria-busy', mode === 'busy' ? 'true' : 'false');
+        sendBtn.innerHTML = nanoSvg('send');
+    }
+
+    function nanoCopyText(text) {
+        const str = String(text || '');
+        return new Promise(function (resolve) {
+            try {
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(str).then(resolve, function () {
+                        try {
+                            const ta = document.createElement('textarea');
+                            ta.value = str; ta.style.cssText = 'position:fixed;left:-9999px;top:0;';
+                            document.body.appendChild(ta); ta.select();
+                            document.execCommand('copy'); ta.remove(); resolve();
+                        } catch (e) { resolve(); }
+                    });
+                    return;
+                }
+            } catch (e) {}
+            try {
+                const ta = document.createElement('textarea');
+                ta.value = str; ta.style.cssText = 'position:fixed;left:-9999px;top:0;';
+                document.body.appendChild(ta); ta.select();
+                document.execCommand('copy'); ta.remove();
+            } catch (e) {}
+            resolve();
+        });
+    }
+
+    function nanoFlashAction(btn, iconName) {
+        if (!btn) return;
+        const original = nanoSvg(iconName || btn.dataset.act || 'check');
+        btn.classList.add('copied');
+        btn.innerHTML = nanoSvg('check');
+        setTimeout(function () {
+            btn.classList.remove('copied');
+            btn.innerHTML = original;
+        }, 1200);
+    }
+
+    function buildNanoActions(rowId, msg) {
+        const box = document.createElement('div');
+        box.className = 'nano-msg-acts';
+        box.dataset.msgId = rowId;
+        const acts = [
+            ['copy', '复制'],
+            ['quote', '引用'],
+            ['up', '有帮助'],
+            ['down', '没帮助'],
+            ['redo', '重新生成'],
+            ['del', '删除']
+        ];
+        acts.forEach(function (pair) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'nano-act-btn';
+            btn.dataset.act = pair[0];
+            btn.setAttribute('aria-label', pair[1]);
+            btn.title = pair[1];
+            if (pair[0] === 'down') btn.classList.add('nano-act-down');
+            if (msg && msg.rating && msg.rating === pair[0]) btn.classList.add('on');
+            btn.innerHTML = nanoSvg(pair[0]);
+            box.appendChild(btn);
+        });
+        // 双击图标区不触发气泡菜单
+        box.addEventListener('dblclick', function (e) { e.stopPropagation(); });
+        return box;
+    }
+
+    function nanoHandleAction(btn) {
+        if (!btn) return;
+        const row = btn.closest('.message-row');
+        if (!row) return;
+        const id = row.dataset.id;
+        const msg = messages.find(function (m) { return m.id === id; });
+        if (!msg) return;
+        const act = btn.dataset.act;
+        if (act === 'copy') {
+            nanoCopyText(msg.text || msg.transcript || '').then(function () { nanoFlashAction(btn, 'copy'); });
+        } else if (act === 'quote') {
+            try {
+                setQuote(msg.id, msg.text || msg.transcript || '');
+                if (messageInput && messageInput.focus) messageInput.focus();
+            } catch (e) {}
+        } else if (act === 'up' || act === 'down') {
+            msg.rating = msg.rating === act ? null : act;
+            const box = btn.closest('.nano-msg-acts');
+            if (box) {
+                box.querySelectorAll('[data-act="up"],[data-act="down"]').forEach(function (b) {
+                    b.classList.toggle('on', b.dataset.act === msg.rating);
+                });
+            }
+            try { saveMessages(); } catch (e) {}
+        } else if (act === 'redo') {
+            if (isProcessingApi) return;
+            const idx = messages.indexOf(msg);
+            if (idx < 0) return;
+            messages.splice(idx, 1);
+            try { renderMessages(); saveMessages(); } catch (e) {}
+            try { updateSendButtonMode(); } catch (e) {}
+            setTimeout(function () { try { triggerReply(); } catch (e) {} }, 40);
+        } else if (act === 'del') {
+            const idx = messages.indexOf(msg);
+            if (idx < 0) return;
+            messages.splice(idx, 1);
+            try { renderMessages(); saveMessages(); } catch (e) {}
+            try { updateSendButtonMode(); } catch (e) {}
+        }
+    }
+
+    function ensureNanoWelcome() {
+        if (!isNanoChat || messages.length) return;
+        try {
+            const nm = displayName || '纳米';
+            addMessage('left', '你好，我是' + nm + '。\n可以帮你美化聊天、整理人设、写 CSS，或管理生成的文件。想先从哪件事开始？', nowHHMM());
+        } catch (e) {}
+    }
+
+    function addNanoErrorNotice() {
+        try {
+            for (let i = messages.length - 1; i >= 0; i--) {
+                if (nanoIsErrorMsg(messages[i])) messages.splice(i, 1);
+            }
+        } catch (e) {}
+        try {
+            messages.push({
+                id: 'msg_' + (++messageIdCounter),
+                type: 'left',
+                text: '这次没有回复成功，请再点一次“回复”。',
+                time: nowHHMM(),
+                status: null,
+                recalled: false,
+                isCard: false,
+                cardData: null,
+                transcript: null,
+                translation: null,
+                quote: null,
+                isVoice: false,
+                voiceData: null,
+                isImage: false,
+                imageData: null,
+                linkPreview: null,
+                favorite: false,
+                rating: null,
+                turn: null,
+                ts: Date.now(),
+                think: null,
+                tools: null,
+                nanoError: true
+            });
+            renderMessages();
+            saveMessages();
+        } catch (e) {}
+        try { updateSendButtonMode(); } catch (e) {}
+    }
+
+    function nanoSessionTime(ts) {
+        const d = new Date(Number(ts) || Date.now());
+        const now = new Date();
+        const hh = String(d.getHours()).padStart(2, '0');
+        const mm = String(d.getMinutes()).padStart(2, '0');
+        if (d.toDateString() === now.toDateString()) return hh + ':' + mm;
+        return (d.getMonth() + 1) + '/' + d.getDate();
+    }
+
+    function nanoSessionPreview(id) {
+        try {
+            const raw = localStorage.getItem('chat_messages_' + id);
+            if (!raw) return { title: '', count: 0 };
+            const arr = JSON.parse(raw);
+            if (!Array.isArray(arr)) return { title: '', count: 0 };
+            let title = '';
+            let count = 0;
+            for (let i = 0; i < arr.length; i++) {
+                const m = arr[i];
+                if (!m || m.recalled || m.isCard || m.isImage || m.isVoice) continue;
+                const t = String(m.text || '').replace(/\s+/g, ' ').trim();
+                if (!t) continue;
+                count++;
+                if (m.type === 'right' && !title) title = t.slice(0, 24);
+            }
+            return { title: title, count: count };
+        } catch (e) { return { title: '', count: 0 }; }
+    }
+
+    function nanoLoadSessions() {
+        let list = [];
+        try { list = JSON.parse(localStorage.getItem('nano_chat_sessions_v1') || '[]'); } catch (e) { list = []; }
+        if (!Array.isArray(list)) list = [];
+        list = list.filter(function (s) { return s && s.id; });
+        if (!list.some(function (s) { return s.id === 'nano_ai'; })) {
+            list.unshift({ id: 'nano_ai', title: '主对话', createdAt: Date.now(), updatedAt: Date.now() });
+        }
+        list.sort(function (a, b) { return (b.updatedAt || 0) - (a.updatedAt || 0); });
+        return list;
+    }
+
+    function nanoOpenSession(id, name) {
+        id = String(id || '');
+        if (!id) return;
+        if (id === String(chatId)) return;
+        try { localStorage.setItem('nano_current_session', id); } catch (e) {}
+        const nm = name || displayName || '纳米';
+        if (window.parent && window.parent !== window) {
+            window.parent.postMessage({ type: 'openChat', chatId: id, chatName: nm, chatAvatar: avatarSrc || '' }, '*');
+        } else {
+            location.href = 'chat_inner.html?chat=' + encodeURIComponent(id) + '&name=' + encodeURIComponent(nm);
+        }
+    }
+
+    function nanoDeleteSession(id) {
+        id = String(id || '');
+        if (!id || id === 'nano_ai') return;
+        if (!confirm('删除这个对话窗口？聊天记录会一起删除。')) return;
+        try {
+            const list = nanoLoadSessions().filter(function (s) { return String(s.id) !== id; });
+            localStorage.setItem('nano_chat_sessions_v1', JSON.stringify(list.slice(0, 40)));
+        } catch (e) {}
+        const key = 'chat_messages_' + id;
+        try { localStorage.removeItem(key); } catch (e) {}
+        try { if (window.localforage) localforage.removeItem(key).catch(function () {}); } catch (e) {}
+        if (String(chatId) === id) {
+            try { localStorage.setItem('nano_current_session', 'nano_ai'); } catch (e) {}
+            nanoCloseHistory();
+            nanoOpenSession('nano_ai');
+        } else {
+            nanoRenderHistory();
+        }
+    }
+
+    function nanoRenderHistory() {
+        const listEl = document.querySelector('.nano-history-list');
+        if (!listEl) return;
+        listEl.innerHTML = '';
+        const sessions = nanoLoadSessions();
+        if (!sessions.length) {
+            const empty = document.createElement('div');
+            empty.className = 'nano-history-empty';
+            empty.textContent = '还没有对话，点上面新建一个。';
+            listEl.appendChild(empty);
+            return;
+        }
+        sessions.forEach(function (s) {
+            const preview = nanoSessionPreview(s.id);
+            const title = String(s.title || '').trim();
+            const label = (title && title !== '新对话') ? title : (preview.title || '新对话');
+            const isMain = String(s.id) === 'nano_ai';
+            const item = document.createElement('div');
+            item.className = 'nano-history-item' + (String(s.id) === String(chatId) ? ' active' : '');
+            item.dataset.sessionId = s.id;
+            item.dataset.sessionName = label;
+            item.setAttribute('role', 'button');
+            item.setAttribute('tabindex', '0');
+            item.innerHTML = '<span class="nano-history-ic">' + nanoSvg('chat') + '</span>' +
+                '<span class="nano-history-main"><b></b><small></small></span>' +
+                '<span class="nano-history-dot"></span>' +
+                (isMain ? '' : '<button type="button" class="nano-history-del" aria-label="删除对话">' + nanoSvg('del') + '</button>');
+            item.querySelector('b').textContent = label;
+            item.querySelector('small').textContent = nanoSessionTime(s.updatedAt) + (preview.count ? (' · ' + preview.count + ' 条') : '');
+            const openThis = function () {
+                nanoCloseHistory();
+                nanoOpenSession(s.id);
+            };
+            item.addEventListener('click', function (e) {
+                if (e.target && e.target.closest && e.target.closest('.nano-history-del')) return;
+                openThis();
+            });
+            item.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    openThis();
+                }
+            });
+            const del = item.querySelector('.nano-history-del');
+            if (del) del.addEventListener('click', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                nanoDeleteSession(s.id);
+            });
+            listEl.appendChild(item);
+        });
+    }
+
+    function nanoOpenHistory() {
+        try {
+            let layer = document.getElementById('nanoHistoryLayer');
+            if (!layer) {
+                layer = document.createElement('div');
+                layer.id = 'nanoHistoryLayer';
+                layer.className = 'nano-history-layer';
+                layer.innerHTML = '<div class="nano-history-mask" data-history-close></div>' +
+                    '<aside class="nano-history-drawer" role="dialog" aria-modal="true" aria-label="历史对话">' +
+                    '<div class="nano-history-head"><span class="nano-history-title">历史对话</span>' +
+                    '<button type="button" class="nano-history-x" data-history-close aria-label="关闭">' + nanoSvg('x') + '</button></div>' +
+                    '<button type="button" class="nano-history-new">' + nanoSvg('plus') + '<span>新建对话</span></button>' +
+                    '<div class="nano-history-list"></div>' +
+                    '<div class="nano-history-foot">Nano · 仅保存在当前设备</div>' +
+                    '</aside>';
+                layer.querySelectorAll('[data-history-close]').forEach(function (b) {
+                    b.addEventListener('click', nanoCloseHistory);
+                });
+                const newBtn = layer.querySelector('.nano-history-new');
+                if (newBtn) newBtn.addEventListener('click', function () {
+                    nanoCloseHistory();
+                    nanoStartNewChat();
+                });
+                document.body.appendChild(layer);
+            }
+            nanoRenderHistory();
+            layer.classList.add('open');
+            layer.setAttribute('aria-hidden', 'false');
+            setTimeout(function () {
+                const x = layer.querySelector('.nano-history-x');
+                if (x) { try { x.focus({ preventScroll: true }); } catch (e) {} }
+            }, 60);
+        } catch (e) {}
+    }
+
+    function nanoCloseHistory() {
+        try {
+            const layer = document.getElementById('nanoHistoryLayer');
+            if (!layer) return;
+            layer.classList.remove('open');
+            layer.setAttribute('aria-hidden', 'true');
+        } catch (e) {}
+    }
+
+    function nanoBindHistoryGlobal() {
+        if (window.__nanoHistoryBound) return;
+        window.__nanoHistoryBound = true;
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') {
+                const layer = document.getElementById('nanoHistoryLayer');
+                if (layer && layer.classList.contains('open')) nanoCloseHistory();
+            }
+        });
+    }
+
+    function nanoStartNewChat() {
+        const id = 'nano_ai_' + Date.now().toString(36);
+        let list = [];
+        try { list = JSON.parse(localStorage.getItem('nano_chat_sessions_v1') || '[]'); } catch (e) { list = []; }
+        if (!Array.isArray(list)) list = [];
+        list.unshift({ id: id, title: '新对话', createdAt: Date.now(), updatedAt: Date.now() });
+        try {
+            localStorage.setItem('nano_chat_sessions_v1', JSON.stringify(list.slice(0, 40)));
+            localStorage.setItem('nano_current_session', id);
+        } catch (e) {}
+        const name = displayName || chatName || '纳米';
+        const avatar = avatarSrc || '';
+        if (window.parent && window.parent !== window) {
+            window.parent.postMessage({ type: 'openChat', chatId: id, chatName: name, chatAvatar: avatar }, '*');
+        } else {
+            location.href = 'chat_inner.html?chat=' + encodeURIComponent(id) + '&name=' + encodeURIComponent(name);
+        }
+    }
+
+    function nanoSetupUI() {
+        try { document.body.classList.add('nano-ai-ui'); } catch (e) {}
+        try { nanoBindHistoryGlobal(); } catch (e) {}
+
+        // 顶栏：返回 + 历史 / 新建 + 设置
+        try {
+            const topbar = document.getElementById('topbar');
+            if (topbar && !topbar.querySelector('.nano-pill')) {
+                const left = document.createElement('div');
+                left.className = 'nano-pill nano-top-left';
+                if (backBtn) {
+                    backBtn.innerHTML = nanoSvg('back');
+                    left.appendChild(backBtn);
+                }
+                left.appendChild(nanoDivider());
+                const historyBtn = document.createElement('button');
+                historyBtn.type = 'button';
+                historyBtn.className = 'nano-icon-btn';
+                historyBtn.setAttribute('aria-label', '历史对话');
+                historyBtn.title = '历史对话';
+                historyBtn.innerHTML = nanoSvg('menu');
+                historyBtn.addEventListener('click', nanoOpenHistory);
+                left.appendChild(historyBtn);
+
+                const right = document.createElement('div');
+                right.className = 'nano-pill nano-top-right';
+                const newBtn = document.createElement('button');
+                newBtn.type = 'button';
+                newBtn.className = 'nano-icon-btn';
+                newBtn.setAttribute('aria-label', '新建聊天');
+                newBtn.title = '新建聊天';
+                newBtn.innerHTML = nanoSvg('new');
+                newBtn.addEventListener('click', nanoStartNewChat);
+                right.appendChild(newBtn);
+                right.appendChild(nanoDivider());
+                const settingsBtn = document.createElement('button');
+                settingsBtn.type = 'button';
+                settingsBtn.className = 'nano-icon-btn';
+                settingsBtn.setAttribute('aria-label', '设置');
+                settingsBtn.title = '设置';
+                settingsBtn.innerHTML = nanoSvg('set');
+                settingsBtn.addEventListener('click', function () {
+                    const av = document.getElementById('topbarAvatar');
+                    if (av) av.click();
+                });
+                right.appendChild(settingsBtn);
+
+                topbar.appendChild(left);
+                topbar.appendChild(right);
+            }
+        } catch (e) {}
+
+        // 底栏：一张大圆角卡片，上一行输入，下一行 加号 / 录音 / 发送
+        try {
+            const footer = document.querySelector('.bottom-bar');
+            const shell = document.querySelector('.input-shell');
+            if (footer && shell && !shell.querySelector('.nano-composer-row')) {
+                footer.classList.add('nano-dock');
+                shell.classList.add('nano-dock-box');
+                const row = document.createElement('div');
+                row.className = 'nano-composer-row';
+
+                if (moreBtn) {
+                    moreBtn.classList.add('nano-plus-btn');
+                    row.appendChild(moreBtn);
+                }
+                const right = document.createElement('div');
+                right.className = 'nano-composer-right';
+                if (voiceBtn) {
+                    voiceBtn.classList.add('nano-mic-btn');
+                    voiceBtn.innerHTML = nanoSvg('mic');
+                    right.appendChild(voiceBtn);
+                }
+                if (sendBtn) {
+                    sendBtn.classList.add('nano-send');
+                    right.appendChild(sendBtn);
+                }
+                row.appendChild(right);
+                shell.appendChild(row);
+            }
+        } catch (e) {}
+        try { nanoEnsureComposerLayout(); } catch (e) {}
+        try {
+            const dock = document.querySelector('.nano-dock-box');
+            if (dock && !dock.__nanoOrderObserved) {
+                dock.__nanoOrderObserved = true;
+                const mo = new MutationObserver(function () { nanoEnsureComposerLayout(); });
+                mo.observe(dock, { childList: true, subtree: true });
+                setTimeout(nanoEnsureComposerLayout, 350);
+                setTimeout(nanoEnsureComposerLayout, 1200);
+            }
+        } catch (e) {}
+
+        // textarea 自适应高度
+        try {
+            if (messageInput && messageInput.tagName === 'TEXTAREA' && !messageInput.__nanoAutoSizeBound) {
+                messageInput.__nanoAutoSizeBound = true;
+                messageInput.addEventListener('input', nanoAutoSize);
+                nanoAutoSize();
+            }
+        } catch (e) {}
+
+        // 消息操作按钮（事件委托）
+        try {
+            if (messageContainer && !messageContainer.__nanoActsBound) {
+                messageContainer.__nanoActsBound = true;
+                messageContainer.addEventListener('click', function (e) {
+                    const btn = e.target && e.target.closest ? e.target.closest('.nano-act-btn') : null;
+                    if (!btn || !messageContainer.contains(btn)) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    nanoHandleAction(btn);
+                });
+            }
+        } catch (e) {}
+    }
+
     // 发送按钮形态：输入框有字=发送（上箭头），无字=回复（回箭头）
     function updateSendButtonMode() {
+        if (isNanoChat) { updateNanoSendButton(); return; }
         if (isProcessingApi) return;
         const hasText = !!(messageInput && messageInput.value && messageInput.value.trim());
         sendBtn.classList.remove('disabled');
@@ -9296,14 +10009,22 @@
         genCancelled = false;
         isProcessingApi = true;
         showTyping();
-        sendBtn.classList.add('disabled');
-        sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        if (isNanoChat) {
+            try { updateSendButtonMode(); } catch (e) {}
+        } else {
+            sendBtn.classList.add('disabled');
+            sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        }
         try {
             const result = await sendChatRequest(stored);
             if (genCancelled) return;
             if (!result || !result.ok) {
                 if (result && result.aborted) return;
-                if (result && result.error) showAlert('网络错误', '无法连接 API 服务器\n' + result.error);
+                if (isNanoChat) {
+                    addNanoErrorNotice();
+                } else if (result && result.error) {
+                    showAlert('网络错误', '无法连接 API 服务器\n' + result.error);
+                }
                 return;
             }
             let content = null;
@@ -9311,12 +10032,16 @@
                 const data = JSON.parse(result.text || '{}');
                 content = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
             } catch (e) {}
-            if (!content) return;
+            if (!content) {
+                if (isNanoChat) addNanoErrorNotice();
+                return;
+            }
             if (genCancelled) return;
             const lastUserMsg = [...messages].reverse().find(m => m.type === 'right' && !m.recalled) || null;
             await processReply(content, lastUserMsg);
         } catch (error) {
             console.error('[Chat] 断点续生成异常', error);
+            if (isNanoChat && !genCancelled) addNanoErrorNotice();
         } finally {
             clearChatRequest();
             chatPendingSet(false);
@@ -9413,6 +10138,7 @@
             if (c) { try { addCharSaid(c); } catch (e) {} }
         });
         try { scrollToBottom(); } catch (e) {}
+        try { pushPeekContext(true); } catch (e) {}
     }
     async function pullPeekTurnsForCurrentChat() {
         try {
@@ -9440,6 +10166,7 @@
 
     // 把「当前角色的人设」同步到窥屏服务端，快捷指令就不需要内置人设，切人设后自动生效
     function pushPeekPersona() {
+        try { pushPeekContext(); } catch (e) {}
         try {
             var cid = '';
             try { cid = new URLSearchParams(location.search).get('chat') || ''; } catch (e) {}
@@ -9447,11 +10174,30 @@
             var base = peekBaseUrl();
             var token = peekToken();
             if (!base) return;
-            var setting = (characterData && (characterData.setting || characterData.desc || characterData.persona)) || '';
-            var sys = '你是「' + (displayName || '角色') + '」，一个真实的人，不是 AI、不是助手。\n' + String(setting);
+            var charRec = null;
+            try {
+                charRec = (allCharacters || []).find(function (x) { return x && String(x.id) === String(chatId); }) || characterData;
+            } catch (e) { charRec = characterData; }
+            var setting = (charRec && (charRec.setting || charRec.desc || charRec.persona)) || '';
+            var sys = '你是「' + (displayName || (charRec && charRec.name) || '角色') + '」，一个真实的人，不是 AI、不是助手。\n' + String(setting);
+            // 和私聊同一套世界书 / 长期记忆：只靠一句人设，快捷指令很容易 OOC。
+            try {
+                var wb = getWorldbookText(chatId);
+                var wbText = [wb.front, wb.middle, wb.back].filter(Boolean).join('\n').slice(0, 2600);
+                if (wbText) sys += '\n【世界书 · 必须遵守】\n' + wbText;
+            } catch (e) {}
+            try {
+                if (__memHints) sys += '\n【长期记忆】\n' + String(__memHints).slice(0, 1600);
+            } catch (e) {}
             try {
                 if (window.NanoPrompts && NanoPrompts.appendTo) sys = NanoPrompts.appendTo(sys, 'online');
             } catch (e) {}
+            try {
+                if (window.isForeignChar ? window.isForeignChar() : (typeof isForeignChar === 'function' && isForeignChar())) {
+                    sys += '\n说台词时用你的母语，并在括号里附中文翻译；旁白、动作和描写用中文。';
+                }
+            } catch (e) {}
+            sys += '\n保持人设，绝不 OOC，不要 AI 助手腔，不要替对方说话。';
             sys += '\n如果对方给你看了手机屏幕截图，用你的人设自然点评 2~3 句，像真人随口说，不要像 AI 助手汇报。';
             var peekHistory = [];
             try {
@@ -9469,7 +10215,10 @@
                 var api = (cfg && cfg.mainUrl && cfg.mainKey && cfg.mainModel)
                     ? { url: cfg.mainUrl, key: cfg.mainKey, model: cfg.mainModel }
                     : null;
-                var sig = sys + '|' + (api ? (api.url + '|' + api.model + '|' + String(api.key).slice(-6)) : '');
+                // 必须带上 Worker/令牌/角色：只换服务端地址时人设没变，
+                // 旧签名会误判“已同步”而跳过，新 Worker 的分区就一直没有 API。
+                var sig = base + '|' + token + '|' + autoAppId() + '|' + cid + '|' + sys
+                    + '|' + (api ? (api.url + '|' + api.model + '|' + String(api.key).slice(-6)) : '');
                 try {
                     var oldSig = localStorage.getItem(sigKey) || '';
                     var oldAt = parseInt(localStorage.getItem(atKey) || '0', 10) || 0;
@@ -9486,6 +10235,39 @@
                     try { localStorage.setItem(sigKey, sig); localStorage.setItem(atKey, String(Date.now())); } catch (e) {}
                 });
             }).catch(function () {});
+        } catch (e) {}
+    }
+
+    // 私聊上下文同步：只写 context 两个 key，不走 persona/API 的 6 小时缓存。
+    // 这样快捷指令每次都能看到你们刚聊过的内容，而不是只看到一份旧人设。
+    let peekCtxTimer = null, peekCtxSig = '';
+    function pushPeekContext(force) {
+        try {
+            if (peekCtxTimer) clearTimeout(peekCtxTimer);
+            peekCtxTimer = setTimeout(function () {
+                peekCtxTimer = null;
+                try {
+                    var cid = '';
+                    try { cid = new URLSearchParams(location.search).get('chat') || ''; } catch (e) {}
+                    if (!cid) cid = String(chatId || '');
+                    var base = peekBaseUrl(), token = peekToken();
+                    if (!cid || !base || !token) return;
+                    var hist = (messages || []).filter(function (m) {
+                        return m && m.text && !m.isCard && !m.recalled && (m.type === 'left' || m.type === 'right');
+                    }).slice(-12).map(function (m) {
+                        return { role: m.type === 'right' ? 'user' : 'assistant', content: String(m.text).slice(0, 900) };
+                    });
+                    var sig = hist.map(function (m) { return m.role + ':' + m.content; }).join('\n');
+                    if (!force && sig === peekCtxSig) return;
+                    fetch(base + '/peek/context', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ token: token, appId: autoAppId(), deviceId: autoDeviceId(), chatId: cid, history: hist })
+                    }).then(function (r) {
+                        if (r && r.ok) peekCtxSig = sig;
+                    }).catch(function () {});
+                } catch (e) {}
+            }, 700);
         } catch (e) {}
     }
 
@@ -9815,8 +10597,12 @@
         isProcessingApi = true;
         chatPendingSet(true);
         showTyping();
-        sendBtn.classList.add('disabled');
-        sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        if (isNanoChat) {
+            try { updateSendButtonMode(); } catch (e) {}
+        } else {
+            sendBtn.classList.add('disabled');
+            sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        }
 
         try {
             // 用户明确要「文字图」：直接发文字图，不需要生图 API
@@ -9852,7 +10638,10 @@
             try { pushPeekPersona(); } catch (e) {}
             let reply = await callApi(describeMsgForAI(lastUserMsg) || lastUserMsg.text, __mcpCtx || undefined);
             if (genCancelled) return;
-            if (!reply) return;
+            if (!reply) {
+                if (isNanoChat) addNanoErrorNotice();
+                return;
+            }
             // char 主动调用 MCP：解析 <tool> 标签 → 执行 → 继续生成最终回复
             if (window.NanoMcpChat && (__mcpCtx || /<\s*(tool|mcp)\s*>/i.test(reply))) {
                 try {
@@ -9864,11 +10653,18 @@
                 } catch (e) { console.warn('[MCP] 工具调用失败', e); }
             }
             if (genCancelled) return;
-            if (!reply) return;
+            if (!reply) {
+                if (isNanoChat) addNanoErrorNotice();
+                return;
+            }
             await processReply(reply, lastUserMsg);
         } catch (error) {
             console.error('[Chat] 触发回复异常', error);
-            showAlert('错误', error.message || '未知错误');
+            if (isNanoChat) {
+                if (!genCancelled) addNanoErrorNotice();
+            } else {
+                showAlert('错误', error.message || '未知错误');
+            }
         } finally {
             clearChatRequest();
             chatPendingSet(false);
@@ -10005,8 +10801,12 @@
 
         if (lastUserMsg) {
             isWaitingForReply = true;
-            sendBtn.classList.add('reply-mode');
-            sendBtn.innerHTML = '<i class="fas fa-reply"></i>';
+            if (isNanoChat) {
+                try { updateSendButtonMode(); } catch (e) {}
+            } else {
+                sendBtn.classList.add('reply-mode');
+                sendBtn.innerHTML = '<i class="fas fa-reply"></i>';
+            }
             setTimeout(() => {
                 triggerReply();
             }, 300);
@@ -10205,13 +11005,17 @@ if (callCard) {
     });
 
     sendBtn.addEventListener('click', function() {
+        if (sendBtn.disabled) return;
+        if (isNanoChat && Date.now() < nanoSendLockUntil) return;
         const text = messageInput.value.trim();
         function proceed() {
             // 输入框为空：点发送/回复按钮 = 让角色回复；有内容 = 只发送，不自动回复
             if (!text) {
+                if (isNanoChat && !nanoHasPendingUserReply()) return;
                 triggerReply();
                 return;
             }
+            if (isNanoChat) nanoSendLockUntil = Date.now() + 350;
             sendMessage();
         }
         // 深夜角色正在睡觉时，先问用户要不要叫醒；叫醒后角色会知道是用户叫醒的
@@ -10225,6 +11029,7 @@ if (callCard) {
     });
 
     sendBtn.addEventListener('dblclick', function(e) {
+        if (isNanoChat) return;
         e.preventDefault();
         e.stopPropagation();
         const sleepModal = document.getElementById('nanoScheduleSleepModal');
@@ -10240,7 +11045,18 @@ if (callCard) {
     });
 
     messageInput.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter' && !e.shiftKey) {
+        if (e.key !== 'Enter') return;
+        if (isNanoChat) {
+            // 桌面端 Enter 发送、Shift+Enter 换行；手机端 Enter 一律换行
+            if (e.shiftKey || e.isComposing) return;
+            let desktop = false;
+            try { desktop = window.matchMedia('(hover: hover) and (pointer: fine)').matches; } catch (err) {}
+            if (!desktop) return;
+            e.preventDefault();
+            if (this.value.trim()) sendBtn.click();
+            return;
+        }
+        if (!e.shiftKey) {
             e.preventDefault();
             const text = this.value.trim();
             if (!text) {
@@ -11697,7 +12513,7 @@ if (data.type === 'NANO_VOICE_CALL_CARD' || data.type === 'NANO_VIDEO_CALL_CARD'
                     var mm = messages[mi];
                     if (!mm || mm.recalled) continue;
                     var who = mm.type === 'right' ? (currentUserName || '用户') : (displayName || '我');
-                    var txt = String(mm.text || (mm.isImage ? '[图片]' : (mm.isCard ? '[卡片]' : ''))).trim();
+                    var txt = String(mm.text || (mm.isImage ? (mm.imageData && mm.imageData.video ? '[视频]' : '[图片]') : (mm.isCard ? '[卡片]' : ''))).trim();
                     if (txt) rec.unshift(who + '：' + txt);
                 }
                 out.recent = rec.join('\n');
@@ -11744,6 +12560,7 @@ if (data.type === 'NANO_VOICE_CALL_CARD' || data.type === 'NANO_VIDEO_CALL_CARD'
                 saveMessages();
             }
             isStorageReady = true;
+            if (isNanoChat && messages.length === 0) ensureNanoWelcome();
             window.__nanoChatReady = true;
             window.__nanoChatReadyChat = String(chatId || '');
             // 屏幕速聊：先合并本机暂存，再拉一次服务端（两处都幂等）

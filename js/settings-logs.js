@@ -60,7 +60,6 @@
     'storage.html': '储存',
     'backup.html': '备份',
     'ios-setting.html': 'iOS 设置',
-    'more.html': '更多',
     'character.html': '角色',
     'heart-setting.html': '心声设置',
     'inner-setting.html': '内心设置',

@@ -1133,6 +1133,7 @@ body.nano-chat-inner .longpress-menu .menu-divider { background: rgba(0, 0, 0, 0
   // 避免某些页面读不到 :root 的 --nano-trans-separate 时退回合并样式。
   try { window.NANO_TRANSLATION_SEPARATE = 1; } catch (e) {}
   var isPrivate = document.body && document.body.classList.contains('nano-chat-inner');
+  var isNewNanoUI = document.body && document.body.classList.contains('nano-ai-ui');
   var title = document.getElementById('chatTitle');
   var img = document.getElementById('avatarImage');
   var ph = document.getElementById('avatarPlaceholder');
@@ -1221,17 +1222,17 @@ body.nano-chat-inner .longpress-menu .menu-divider { background: rgba(0, 0, 0, 0
   } catch (e) {}
 
   // 输入框与话筒/发送按钮同处一颗胶囊；加号留在外面
-  if (isPrivate && sendBtn && inputRow && sendBtn.parentNode !== inputRow) {
+  if (isPrivate && !isNewNanoUI && sendBtn && inputRow && sendBtn.parentNode !== inputRow) {
     inputRow.appendChild(sendBtn);
     movedSend = true;
   }
   function onInput() { syncComposer(); }
-  if (isPrivate && input) {
+  if (isPrivate && !isNewNanoUI && input) {
     ['input', 'change', 'keyup', 'compositionend', 'paste', 'cut'].forEach(function (ev) {
       input.addEventListener(ev, onInput);
     });
   }
-  if (isPrivate) interval = setInterval(syncComposer, 350);
+  if (isPrivate && !isNewNanoUI) interval = setInterval(syncComposer, 350);
 
   // 顶栏右侧视频按钮 = 设置页（独立打开 chat_inner 时也能跳转）
   var gear = document.getElementById('topbarAvatar');

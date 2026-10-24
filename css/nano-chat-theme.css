@@ -1,161 +1,984 @@
-/* Nano 专属对话主题 · 参考 DeepSeek 官网的清爽蓝白风格
-   只在 nano_ai / nano_ai_* 会话加载，不跟随聊天美化。 */
+/* ============================================================
+   Nano 助手聊天主题（参考 nano-chat-ui 设计稿）
+   只在 nano_ai / nano_ai_* 会话加载，不影响普通私聊与群聊。
+   ------------------------------------------------------------
+   · 顶栏 / 底栏：透明悬浮，玻璃胶囊
+   · 气泡：我的消息浅粉，纳米消息无底色整行排版
+   · 输入栏：Claude 风格大圆角卡片 + 自适应高度输入框
+   ============================================================ */
+
+:root {
+    --n-bg: #FFFFFF;
+    --n-surface: #FFFFFF;
+    --n-ink: #2B2026;
+    --n-muted: #92808A;
+    --n-line: rgba(140, 70, 100, .14);
+    --n-bubble: #FFF2F7;
+    --n-bubble-line: rgba(232, 92, 138, .13);
+    --n-bubble-ink: #3D1D2B;
+    --n-accent: #E85C8A;
+    --n-on-accent: #FFFFFF;
+    --n-accent-soft: #FFE6EE;
+    --n-shadow: 0 4px 16px rgba(190, 80, 120, .12);
+    --n-g1: rgba(255, 255, 255, .60);
+    --n-g2: rgba(255, 255, 255, .14);
+    --n-hi: rgba(255, 255, 255, .95);
+    --n-gedge: rgba(90, 40, 65, .14);
+    color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --n-bg: #1A1418;
+        --n-surface: #2A2025;
+        --n-ink: #F6EBF0;
+        --n-muted: #A8949F;
+        --n-line: rgba(255, 200, 220, .14);
+        --n-bubble: #4A2A3A;
+        --n-bubble-line: rgba(255, 160, 195, .18);
+        --n-bubble-ink: #FFEAF2;
+        --n-accent: #FF7FA8;
+        --n-on-accent: #3A1526;
+        --n-accent-soft: #3D2430;
+        --n-shadow: 0 4px 16px rgba(0, 0, 0, .40);
+        --n-g1: rgba(255, 255, 255, .16);
+        --n-g2: rgba(255, 255, 255, .04);
+        --n-hi: rgba(255, 255, 255, .28);
+        --n-gedge: rgba(255, 255, 255, .12);
+        color-scheme: dark;
+    }
+}
+
+html,
+body.nano-chat-inner {
+    background: var(--n-bg) !important;
+    color: var(--n-ink);
+}
 
 body.nano-chat-inner {
-    background: #f7f8fb !important;
-    color: #1f2328;
-    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC",
+        "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+}
+
+body.nano-chat-inner .chat-container {
+    max-width: 760px;
+    background: var(--n-bg) !important;
+    --chat-top-extra: 20px;
 }
 
 body.nano-chat-inner .chat-bg {
-    background: linear-gradient(180deg, #fbfcff 0%, #f5f7fb 100%) !important;
+    background: var(--n-bg) !important;
     opacity: 1 !important;
 }
 
+/* ============================================================
+   顶栏：两个透明玻璃胶囊，消息从下方滑过
+   ============================================================ */
 body.nano-chat-inner .topbar {
-    background: rgba(255, 255, 255, 0.92) !important;
-    border-bottom: 0.5px solid #e9ebf2 !important;
-    backdrop-filter: saturate(180%) blur(14px);
-    -webkit-backdrop-filter: saturate(180%) blur(14px);
-    color: #1f2328 !important;
+    background: none !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    padding: calc(max(var(--safe-top, 0px), env(safe-area-inset-top, 0px)) + 12px) 12px 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 10px !important;
+    pointer-events: none;
+    z-index: 30;
 }
 
-body.nano-chat-inner .topbar-title {
-    color: #1f2328 !important;
-    font-size: 16px !important;
-    font-weight: 650 !important;
-    letter-spacing: -0.01em;
+body.nano-chat-inner .topbar-title,
+body.nano-chat-inner .topbar-avatar {
+    display: none !important;
 }
 
-body.nano-chat-inner .topbar .back-btn,
-body.nano-chat-inner .topbar svg {
-    color: #3b3f4a !important;
-    stroke: #3b3f4a !important;
+body.nano-chat-inner .nano-pill {
+    pointer-events: auto;
+    display: flex;
+    align-items: center;
+    height: 44px;
+    border-radius: 22px;
+    flex: none;
+    background: linear-gradient(135deg, var(--n-g1), var(--n-g2));
+    -webkit-backdrop-filter: blur(16px) saturate(180%);
+    backdrop-filter: blur(16px) saturate(180%);
+    box-shadow:
+        0 8px 24px rgba(120, 60, 90, .13),
+        inset 0 1px 0 var(--n-hi),
+        inset 0 -1px 0 var(--n-g2),
+        inset 0 0 0 1px var(--n-g1),
+        0 0 0 .5px var(--n-gedge);
 }
 
-body.nano-chat-inner .topbar-avatar,
-body.nano-chat-inner .message-avatar,
+body.nano-chat-inner .nano-pill .nano-divider {
+    width: 1px;
+    height: 20px;
+    background: var(--n-line);
+    flex: none;
+}
+
+body.nano-chat-inner .nano-pill .back-btn,
+body.nano-chat-inner .nano-icon-btn {
+    appearance: none;
+    -webkit-appearance: none;
+    border: 0 !important;
+    background: none !important;
+    box-shadow: none !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+    color: var(--n-ink) !important;
+    width: 46px;
+    height: 44px;
+    border-radius: 22px;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    padding: 0;
+    -webkit-tap-highlight-color: transparent;
+    transition: background .15s ease, transform .15s ease;
+}
+
+body.nano-chat-inner .nano-pill .back-btn:active,
+body.nano-chat-inner .nano-icon-btn:active {
+    background: rgba(120, 90, 105, .10) !important;
+    transform: scale(.94);
+}
+
+@media (hover: hover) {
+    body.nano-chat-inner .nano-pill .back-btn:hover,
+    body.nano-chat-inner .nano-icon-btn:hover {
+        background: rgba(120, 90, 105, .08) !important;
+    }
+}
+
+body.nano-chat-inner .nano-pill .back-btn i {
+    display: none !important;
+}
+
+body.nano-chat-inner .nano-pill svg {
+    width: 22px;
+    height: 22px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    pointer-events: none;
+}
+
+body.nano-chat-inner .nano-pill .back-btn:focus-visible,
+body.nano-chat-inner .nano-icon-btn:focus-visible {
+    outline: 2px solid rgba(120, 90, 105, .35);
+    outline-offset: -3px;
+}
+
+body.nano-chat-inner .nano-send:focus-visible,
+body.nano-chat-inner .nano-act-btn:focus-visible {
+    outline: 2px solid var(--n-accent);
+    outline-offset: -3px;
+}
+
+/* ============================================================
+   消息区 / 气泡
+   ============================================================ */
+body.nano-chat-inner .message-scroll {
+    padding-left: 18px !important;
+    padding-right: 18px !important;
+}
+
+body.nano-chat-inner .message-row {
+    margin-bottom: 24px;
+    align-items: flex-start;
+}
+
+/* 执行卡 / 文件卡沿用原有间距与位置，不参与气泡排版 */
+body.nano-chat-inner .message-row.nano-card-row {
+    margin-bottom: 6px;
+}
+
+body.nano-chat-inner .message-avatar {
+    display: none !important;
+}
+
+body.nano-chat-inner .message-content {
+    min-width: 0;
+}
+
+body.nano-chat-inner .message-row.nano-text-row .message-content {
+    width: 100%;
+    max-width: 100% !important;
+    align-items: stretch;
+}
+
+body.nano-chat-inner .message-row.nano-text-row .bubble.other {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: none !important;
+    color: var(--n-ink) !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    font-size: 16px;
+    line-height: 1.7;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+body.nano-chat-inner .message-row.nano-text-row .bubble.other::before,
+body.nano-chat-inner .message-row.nano-text-row .bubble.other::after {
+    display: none !important;
+}
+
+body.nano-chat-inner .bubble.me {
+    max-width: 82% !important;
+    padding: 10px 16px !important;
+    background: var(--n-bubble) !important;
+    color: var(--n-bubble-ink) !important;
+    border: 0 !important;
+    border-radius: 22px 22px 6px 22px !important;
+    box-shadow: inset 0 0 0 1px var(--n-bubble-line) !important;
+    font-size: 16px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: normal;
+    overflow-wrap: break-word;
+}
+
+body.nano-chat-inner .bubble.me::before,
+body.nano-chat-inner .bubble.me::after {
+    display: none !important;
+}
+
+body.nano-chat-inner .message-row.right .message-content {
+    align-items: flex-end;
+}
+
+body.nano-chat-inner .message-row.nano-user-row .message-content {
+    width: fit-content;
+    max-width: 82% !important;
+    flex: 0 1 auto;
+}
+
+body.nano-chat-inner .message-row.nano-user-row .bubble.me {
+    width: max-content !important;
+    max-width: 100% !important;
+    display: block;
+}
+
+body.nano-chat-inner .bubble .translation-text {
+    color: var(--n-muted);
+    border-top-color: var(--n-line);
+}
+
+/* 纳米消息下方的操作图标 */
+body.nano-chat-inner .nano-msg-acts {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    margin: 2px 0 0 -8px;
+    color: var(--n-muted);
+    align-self: flex-start;
+}
+
+body.nano-chat-inner .nano-act-btn {
+    appearance: none;
+    -webkit-appearance: none;
+    border: 0;
+    background: none;
+    color: inherit;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: color .15s ease, background .15s ease, transform .15s ease;
+}
+
+body.nano-chat-inner .nano-act-btn:active {
+    background: var(--n-accent-soft);
+    transform: scale(.92);
+}
+
+@media (hover: hover) {
+    body.nano-chat-inner .nano-act-btn:hover {
+        background: var(--n-accent-soft);
+    }
+}
+
+body.nano-chat-inner .nano-act-btn svg {
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    pointer-events: none;
+}
+
+body.nano-chat-inner .nano-act-btn.on,
+body.nano-chat-inner .nano-act-btn.copied {
+    color: var(--n-accent);
+}
+
+body.nano-chat-inner .nano-act-btn[data-act="down"] svg {
+    transform: rotate(180deg);
+}
+
+/* 文字回复里的执行卡保持原来的宽度与位置（宽气泡不把卡片一起拉满） */
+body.nano-chat-inner .message-row.nano-text-row .nano-action {
+    width: 78%;
+    max-width: 78%;
+}
+
+/* 错误提示（请求失败）保持低调，不占气泡 */
+body.nano-chat-inner .message-row.nano-error .bubble.other {
+    color: var(--n-muted) !important;
+}
+
+body.nano-chat-inner .message-row.nano-error .recall-notice {
+    background: color-mix(in srgb, var(--n-accent) 8%, transparent);
+    color: var(--n-muted);
+}
+
+/* ============================================================
+   底栏：Claude 风格大圆角输入卡片
+   ============================================================ */
+body.nano-chat-inner .bottom-bar.nano-dock {
+    display: block !important;
+    background: linear-gradient(transparent, var(--n-bg) 34%) !important;
+    border: 0 !important;
+    padding: 28px 12px calc(10px + var(--nano-safe-bottom, env(safe-area-inset-bottom, 0px))) !important;
+    pointer-events: none;
+}
+
+/* 键盘弹出时安全区已被键盘覆盖，不再额外留白 */
+html.keyboard-open body.nano-chat-inner .bottom-bar.nano-dock {
+    padding-bottom: 10px !important;
+}
+
+body.nano-chat-inner .nano-dock-box.input-shell {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+    padding: 14px 12px 10px 16px !important;
+    background: var(--n-surface) !important;
+    border: 0 !important;
+    border-radius: 26px !important;
+    box-shadow: var(--n-shadow), 0 0 0 1px var(--n-line) !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+    justify-content: flex-start;
+}
+
+body.nano-chat-inner .nano-dock-box .above-input {
+    order: 0;
+}
+
+body.nano-chat-inner .nano-dock-box .input-row {
+    order: 1;
+    display: flex;
+    align-items: flex-end;
+    align-self: stretch;
+    width: 100%;
+    gap: 4px;
+}
+
+body.nano-chat-inner .nano-dock-box .input {
+    display: block;
+    flex: 1 1 auto;
+    width: 100%;
+    min-width: 0;
+    min-height: 26px;
+    max-height: 140px;
+    padding: 0 4px 0 0;
+    border: 0 !important;
+    outline: 0 !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    color: var(--n-ink) !important;
+    font: inherit;
+    font-size: 16px;
+    line-height: 1.6;
+    resize: none;
+    overflow-y: auto;
+    overflow-wrap: break-word;
+    word-break: normal;
+    white-space: pre-wrap;
+}
+
+body.nano-chat-inner .nano-dock-box .input:focus,
+body.nano-chat-inner .nano-dock-box .input:focus-visible {
+    outline: 0 !important;
+    box-shadow: none !important;
+    border: 0 !important;
+}
+
+body.nano-chat-inner .nano-dock-box .input::placeholder {
+    color: var(--n-muted);
+}
+
+body.nano-chat-inner .nano-dock-box .emoji-voice-group {
+    display: none !important;
+}
+
+body.nano-chat-inner .nano-composer-row {
+    order: 2;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 0;
+}
+
+body.nano-chat-inner .nano-composer-right {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+}
+
+body.nano-chat-inner .nano-composer-row .more-btn.nano-plus-btn {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 38px;
+    height: 38px;
+    border: 0 !important;
+    border-radius: 50%;
+    background: transparent !important;
+    box-shadow: inset 0 0 0 1px var(--n-line) !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+    color: var(--n-ink) !important;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    flex: none;
+    padding: 0;
+    transition: background .15s ease, transform .15s ease;
+}
+
+body.nano-chat-inner .nano-composer-row .more-btn.nano-plus-btn:active {
+    transform: scale(.9);
+    background: var(--n-accent-soft) !important;
+}
+
+body.nano-chat-inner .nano-composer-row .more-btn.nano-plus-btn svg {
+    width: 20px;
+    height: 20px;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    fill: none;
+}
+
+body.nano-chat-inner .nano-composer-row .voice-btn.nano-mic-btn {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 38px;
+    height: 38px;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--n-ink);
+    display: grid;
+    place-items: center;
+    padding: 0;
+    cursor: pointer;
+    flex: none;
+    font-size: 0;
+    transition: background .15s ease, transform .15s ease;
+}
+
+body.nano-chat-inner .nano-composer-row .voice-btn.nano-mic-btn:active {
+    background: var(--n-accent-soft);
+    transform: scale(.9);
+}
+
+body.nano-chat-inner .nano-composer-row .voice-btn.nano-mic-btn.active {
+    color: var(--n-accent) !important;
+    background: var(--n-accent-soft) !important;
+}
+
+body.nano-chat-inner .nano-composer-row .voice-btn.nano-mic-btn svg {
+    width: 21px;
+    height: 21px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+body.nano-chat-inner .nano-send {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 38px !important;
+    height: 38px !important;
+    min-width: 38px !important;
+    margin-left: 0 !important;
+    border: 0;
+    border-radius: 50%;
+    background: var(--n-accent) !important;
+    color: var(--n-on-accent) !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding: 0;
+    cursor: pointer;
+    flex: none;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1;
+    box-shadow: 0 4px 14px rgba(232, 92, 138, .28) !important;
+    transition: background .15s ease, color .15s ease, opacity .15s ease, transform .15s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+
+body.nano-chat-inner .nano-send:active:not(:disabled) {
+    transform: scale(.92);
+}
+
+body.nano-chat-inner .nano-send.reply,
+body.nano-chat-inner .nano-send.busy {
+    width: 38px !important;
+    height: 38px !important;
+    min-width: 38px !important;
+    padding: 0;
+    border-radius: 50%;
+    background: rgba(232, 92, 138, .14) !important;
+    color: var(--n-accent) !important;
+    box-shadow: none !important;
+}
+
+body.nano-chat-inner .nano-send.idle {
+    background: rgba(146, 128, 138, .16) !important;
+    color: var(--n-muted) !important;
+    box-shadow: none !important;
+    cursor: default;
+}
+
+body.nano-chat-inner .nano-send.busy {
+    opacity: .75;
+    cursor: default;
+}
+
+/* 防止旧美化主题把 Nano 的发送按钮改成绿色/透明 */
+body.nano-chat-inner .nano-dock-box .nano-composer-row .nano-composer-right .nano-send.send {
+    background: var(--n-accent) !important;
+    color: var(--n-on-accent) !important;
+    box-shadow: 0 4px 14px rgba(232, 92, 138, .28) !important;
+}
+
+body.nano-chat-inner .nano-dock-box .nano-composer-row .nano-composer-right .nano-send.reply,
+body.nano-chat-inner .nano-dock-box .nano-composer-row .nano-composer-right .nano-send.busy {
+    background: rgba(232, 92, 138, .14) !important;
+    color: var(--n-accent) !important;
+    box-shadow: none !important;
+}
+
+body.nano-chat-inner .nano-dock-box .nano-composer-row .nano-composer-right .nano-send.idle {
+    background: rgba(146, 128, 138, .16) !important;
+    color: var(--n-muted) !important;
+    box-shadow: none !important;
+}
+
+body.nano-chat-inner .nano-send.disabled {
+    pointer-events: none;
+}
+
+body.nano-chat-inner .nano-send svg {
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+body.nano-chat-inner .nano-send span {
+    white-space: nowrap;
+    line-height: 1;
+}
+
+@media (prefers-color-scheme: dark) {
+    body.nano-chat-inner .nano-send.reply,
+    body.nano-chat-inner .nano-send.busy {
+        background: rgba(255, 127, 168, .16) !important;
+        box-shadow: none !important;
+    }
+
+    body.nano-chat-inner .nano-send.idle {
+        background: rgba(255, 255, 255, .08) !important;
+        color: var(--n-muted) !important;
+    }
+
+    body.nano-chat-inner .nano-dock-box .nano-composer-row .nano-composer-right .nano-send.send {
+        background: var(--n-accent) !important;
+        color: var(--n-on-accent) !important;
+    }
+
+    body.nano-chat-inner .nano-dock-box .nano-composer-row .nano-composer-right .nano-send.reply,
+    body.nano-chat-inner .nano-dock-box .nano-composer-row .nano-composer-right .nano-send.busy {
+        background: rgba(255, 127, 168, .16) !important;
+        color: var(--n-accent) !important;
+    }
+
+    body.nano-chat-inner .nano-dock-box .nano-composer-row .nano-composer-right .nano-send.idle {
+        background: rgba(255, 255, 255, .08) !important;
+        color: var(--n-muted) !important;
+    }
+}
+
+/* 引用条跟随输入卡片 */
+body.nano-chat-inner .nano-dock-box .quote-bar {
+    background: var(--n-accent-soft) !important;
+    border-color: var(--n-bubble-line) !important;
+    color: var(--n-ink) !important;
+}
+
+/* ============================================================
+   「纳米正在想」呼吸星
+   ============================================================ */
+body.nano-chat-inner .typing-indicator {
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0 6px;
+}
+
 body.nano-chat-inner .typing-indicator .ti-avatar {
     display: none !important;
 }
 
-body.nano-chat-inner .message-scroll {
-    background: transparent !important;
-}
-
-body.nano-chat-inner .message-row {
-    padding-left: 14px !important;
-    padding-right: 14px !important;
-}
-
-body.nano-chat-inner .message-content {
-    max-width: 86% !important;
-}
-
-body.nano-chat-inner .bubble {
-    font-size: 15px !important;
-    line-height: 1.68 !important;
-    padding: 10px 14px !important;
-    border-radius: 17px !important;
-    box-shadow: none !important;
-    border: 1px solid transparent;
-    word-break: break-word;
-}
-
-body.nano-chat-inner .bubble.other {
-    background: #ffffff !important;
-    color: #1f2328 !important;
-    border-color: #ececf1 !important;
-}
-
-body.nano-chat-inner .bubble.me {
-    background: #4d6bfe !important;
-    color: #ffffff !important;
-    border-color: #4d6bfe !important;
-}
-
-body.nano-chat-inner .bubble.other::after,
-body.nano-chat-inner .bubble.me::after,
-body.nano-chat-inner .bubble.other::before,
-body.nano-chat-inner .bubble.me::before {
-    display: none !important;
-    border: 0 !important;
-    background: none !important;
-}
-
-body.nano-chat-inner .date-label {
-    background: #eef0f6 !important;
-    color: #8b91a1 !important;
-    border-radius: 999px;
-    font-size: 11px !important;
-    padding: 3px 10px;
-    box-shadow: none !important;
-}
-
 body.nano-chat-inner .typing-indicator .ti-bubble {
-    background: #fff !important;
-    border: 1px solid #ececf1 !important;
+    background: none !important;
+    border: 0 !important;
     box-shadow: none !important;
+    padding: 0 !important;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--n-muted);
+    font-size: 15px;
 }
 
 body.nano-chat-inner .typing-indicator .dot {
-    background: #a9afbd !important;
+    display: none;
 }
 
-body.nano-chat-inner .bottom-bar {
-    background: rgba(255, 255, 255, 0.96) !important;
-    border-top: 0.5px solid #e9ebf2 !important;
-    backdrop-filter: saturate(180%) blur(14px);
-    -webkit-backdrop-filter: saturate(180%) blur(14px);
+body.nano-chat-inner .nano-think-star {
+    width: 20px;
+    height: 20px;
+    flex: none;
+    fill: var(--n-accent);
+    animation: nanoStarPulse 1.6s ease-in-out infinite;
 }
 
-body.nano-chat-inner .input-shell {
-    background: #f2f4f8 !important;
-    border-radius: 22px !important;
-    border: 1px solid #e8eaf1 !important;
-    box-shadow: none !important;
+body.nano-chat-inner .typing-indicator .ti-stop {
+    background: var(--n-accent);
+    box-shadow: 0 2px 6px rgba(232, 92, 138, .35);
 }
 
-body.nano-chat-inner .input {
-    background: transparent !important;
-    color: #1f2328 !important;
-    font-size: 15px !important;
+@keyframes nanoStarPulse {
+    50% {
+        transform: scale(.7);
+        opacity: .55;
+    }
 }
 
-body.nano-chat-inner .input::placeholder {
-    color: #a2a8b6 !important;
+@media (prefers-reduced-motion: reduce) {
+    body.nano-chat-inner .nano-think-star,
+    body.nano-chat-inner .typing-indicator .dot {
+        animation: none !important;
+    }
+
+    body.nano-chat-inner .nano-send,
+    body.nano-chat-inner .nano-act-btn {
+        transition: none !important;
+    }
 }
 
-body.nano-chat-inner .send-btn {
-    background: #4d6bfe !important;
-    color: #ffffff !important;
-    border: none !important;
-    box-shadow: 0 4px 12px rgba(77, 107, 254, 0.28) !important;
+/* ============================================================
+   历史对话抽屉（从左侧滑出）
+   ============================================================ */
+body .nano-history-layer {
+    position: fixed;
+    inset: 0;
+    z-index: 220;
+    pointer-events: none;
+    visibility: hidden;
 }
 
-body.nano-chat-inner .send-btn i {
-    color: #ffffff !important;
+body .nano-history-layer.open {
+    pointer-events: auto;
+    visibility: visible;
 }
 
-body.nano-chat-inner .more-btn,
-body.nano-chat-inner .emoji-btn,
-body.nano-chat-inner .voice-btn {
-    color: #6b7280 !important;
+body .nano-history-mask {
+    position: absolute;
+    inset: 0;
+    background: rgba(36, 20, 28, .30);
+    opacity: 0;
+    transition: opacity .24s ease;
+    -webkit-backdrop-filter: blur(2px);
+    backdrop-filter: blur(2px);
 }
 
-body.nano-chat-inner .emoji-recommend,
-body.nano-chat-inner .quote-bar {
-    background: #f2f4f8 !important;
-    border-color: #e6e8ef !important;
+body .nano-history-layer.open .nano-history-mask {
+    opacity: 1;
 }
 
-body.nano-chat-inner .sys-notice,
-body.nano-chat-inner .system-notice {
-    color: #8b91a1 !important;
-    background: transparent !important;
+body .nano-history-drawer {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: min(84vw, 340px);
+    display: flex;
+    flex-direction: column;
+    padding: calc(14px + max(var(--safe-top, 0px), env(safe-area-inset-top, 0px))) 14px calc(12px + var(--nano-safe-bottom, env(safe-area-inset-bottom, 0px)));
+    background: var(--n-surface);
+    color: var(--n-ink);
+    border-right: 1px solid var(--n-line);
+    border-radius: 0 26px 26px 0;
+    box-shadow: 18px 0 50px rgba(45, 20, 35, .20);
+    transform: translateX(-102%);
+    transition: transform .28s cubic-bezier(.22, .8, .3, 1);
+    will-change: transform;
 }
 
-body.nano-chat-inner .bubble a {
-    color: inherit !important;
-    text-decoration: underline;
+body .nano-history-layer.open .nano-history-drawer {
+    transform: translateX(0);
+}
+
+body .nano-history-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 0 2px 4px;
+}
+
+body .nano-history-title {
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: -.01em;
+}
+
+body .nano-history-x {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 36px;
+    height: 36px;
+    border: 0;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--n-muted) 10%, transparent);
+    color: var(--n-ink);
+    display: grid;
+    place-items: center;
+    padding: 0;
+    cursor: pointer;
+}
+
+body .nano-history-x svg {
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+body .nano-history-new {
+    appearance: none;
+    -webkit-appearance: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    width: 100%;
+    height: 40px;
+    margin: 10px 0 12px;
+    border: 1px solid var(--n-bubble-line);
+    border-radius: 13px;
+    background: var(--n-accent-soft);
+    color: var(--n-accent);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 650;
+    cursor: pointer;
+}
+
+body .nano-history-new svg {
+    width: 17px;
+    height: 17px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+}
+
+body .nano-history-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding-right: 1px;
+}
+
+body .nano-history-item {
+    appearance: none;
+    -webkit-appearance: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 10px;
+    border: 1px solid transparent;
+    border-radius: 15px;
+    background: transparent;
+    color: var(--n-ink);
+    text-align: left;
+    font: inherit;
+    cursor: pointer;
+    transition: background .15s ease, border-color .15s ease;
+}
+
+body .nano-history-item:active,
+body .nano-history-item.active {
+    background: var(--n-accent-soft);
+    border-color: var(--n-bubble-line);
+}
+
+body .nano-history-ic {
+    width: 34px;
+    height: 34px;
+    flex: none;
+    display: grid;
+    place-items: center;
+    border-radius: 11px;
+    background: color-mix(in srgb, var(--n-accent) 10%, transparent);
+    color: var(--n-accent);
+}
+
+body .nano-history-ic svg {
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+body .nano-history-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+body .nano-history-main b {
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+body .nano-history-main small {
+    font-size: 10.5px;
+    color: var(--n-muted);
+}
+
+body .nano-history-dot {
+    width: 6px;
+    height: 6px;
+    flex: none;
+    border-radius: 50%;
+    background: var(--n-accent);
+    opacity: 0;
+}
+
+body .nano-history-item.active .nano-history-dot {
+    opacity: 1;
+}
+
+body .nano-history-del {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 28px;
+    height: 28px;
+    flex: none;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--n-muted);
+    cursor: pointer;
+    transition: background .15s ease, color .15s ease;
+}
+
+body .nano-history-del:hover,
+body .nano-history-del:active {
+    background: rgba(140, 70, 100, .10);
+    color: var(--n-ink);
+}
+
+body .nano-history-del svg {
+    width: 15px;
+    height: 15px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+body .nano-history-empty {
+    padding: 22px 8px;
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--n-muted);
+    text-align: center;
+}
+
+body .nano-history-foot {
+    padding-top: 10px;
+    font-size: 10px;
+    letter-spacing: .04em;
+    color: var(--n-muted);
+    text-align: center;
+}
+
+@media (prefers-color-scheme: dark) {
+    body .nano-history-mask {
+        background: rgba(0, 0, 0, .48);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    body .nano-history-mask,
+    body .nano-history-drawer,
+    body .nano-history-item {
+        transition: none !important;
+    }
 }

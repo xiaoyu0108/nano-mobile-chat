@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#ffffff">
 <title>亲属卡</title>
-<link rel="stylesheet" href="../css/family-card.css?v=20261006c">
+    <link rel="stylesheet" href="../css/family-card.css?v=20261024c">
 <script src="../js/appearance.js"></script>
 </head>
 <body class="nano-family-card">
@@ -86,11 +86,43 @@
     </div>
 </div>
 
+<div class="fc-modal" id="refreshModal">
+    <div class="fc-modal-card">
+        <div class="fc-modal-title">刷新对方银行卡</div>
+        <div class="fc-modal-desc">让角色按人设、世界书和记忆库生成最近约 10 条收支，或直接随机刷新。</div>
+        <div class="fc-refresh-options">
+            <button class="fc-refresh-opt" id="refreshApiBtn" type="button">
+                <span class="opt-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3M12 18v3M4.2 7.5l2.6 1.5M17.2 15l2.6 1.5M4.2 16.5l2.6-1.5M17.2 9l2.6-1.5"/><circle cx="12" cy="12" r="3.2"/></svg>
+                </span>
+                <span class="opt-copy">
+                    <span class="opt-title">智能刷新</span>
+                    <span class="opt-sub">调用一次 API · 贴合人设、世界书与记忆</span>
+                </span>
+            </button>
+            <button class="fc-refresh-opt" id="refreshRandomBtn" type="button">
+                <span class="opt-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="3"/><circle cx="9" cy="9" r="1"/><circle cx="15" cy="9" r="1"/><circle cx="9" cy="15" r="1"/><circle cx="15" cy="15" r="1"/></svg>
+                </span>
+                <span class="opt-copy">
+                    <span class="opt-title">随机刷新</span>
+                    <span class="opt-sub">不用 API · 收支都可能出现</span>
+                </span>
+            </button>
+        </div>
+        <div class="fc-refresh-status" id="refreshStatus"></div>
+        <div class="fc-modal-actions">
+            <button class="fc-btn ghost" id="refreshCancel">取消</button>
+        </div>
+    </div>
+</div>
+
 <div class="fc-toast" id="fcToast"></div>
 
 <script src="../js/bank-theme.js?v=20261006a"></script>
 <script src="../js/family-card-store.js?v=20261006a"></script>
-<script src="../js/family-card.js?v=20261006c"></script>
+<script src="../js/char-context.js?v=20261024a"></script>
+<script src="../js/family-card.js?v=20261024i"></script>
 <script src="../swipe-back.js"></script>
 </body>
 </html>

@@ -4,11 +4,24 @@
   var NANO_ID = 'nano_ai';
   var DEFAULT_AVATAR = 'data:image/svg+xml;utf8,' + encodeURIComponent(
     '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80">' +
-    '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff9ecb"/><stop offset="1" stop-color="#ff4d94"/></linearGradient></defs>' +
-    '<rect width="80" height="80" rx="20" fill="url(#g)"/>' +
-    '<rect x="18" y="24" width="44" height="34" rx="12" fill="#fff" opacity="0.95"/>' +
-    '<circle cx="32" cy="41" r="4.5" fill="#ff4d94"/><circle cx="48" cy="41" r="4.5" fill="#ff4d94"/>' +
-    '<rect x="38" y="12" width="4" height="10" rx="2" fill="#fff"/><circle cx="40" cy="11" r="4" fill="#fff"/></svg>');
+    '<defs><linearGradient id="g" x1="8" y1="6" x2="72" y2="74" gradientUnits="userSpaceOnUse"><stop stop-color="#FFA6C5"/><stop offset=".55" stop-color="#F06A97"/><stop offset="1" stop-color="#CB3F72"/></linearGradient>' +
+    '<radialGradient id="h" cx="0" cy="0" r="1" gradientTransform="translate(59 17) rotate(133) scale(54)"><stop stop-color="#fff" stop-opacity=".55"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient></defs>' +
+    '<rect width="80" height="80" rx="22" fill="url(#g)"/>' +
+    '<rect width="80" height="80" rx="22" fill="url(#h)"/>' +
+    '<path d="M27 56V24l26 32V24" fill="none" stroke="#fff" stroke-width="5.4" stroke-linecap="round" stroke-linejoin="round" opacity=".97"/>' +
+    '<path d="M60.5 15.4c.72 4.4 4 7.68 8.4 8.4-4.4.72-7.68 4-8.4 8.4-.72-4.4-4-7.68-8.4-8.4 4.4-.72 7.68-4 8.4-8.4z" fill="#fff" opacity=".9"/>' +
+    '<rect x="2.5" y="2.5" width="75" height="75" rx="20" fill="none" stroke="#fff" stroke-opacity=".25"/></svg>');
+
+  function nanoAvatar(a) {
+    var s = String(a || '');
+    if (!s) return DEFAULT_AVATAR;
+    // 旧版默认头像是低分辨率机器人脸：自动替换成新的品牌图标，不影响用户自定义头像
+    if (s.indexOf('data:image/svg+xml') === 0 && s.indexOf('ff4d94') !== -1 &&
+        (s.indexOf('ff9ecb') !== -1 || s.indexOf('x%3D%2218%22') !== -1 || s.indexOf('x="18"') !== -1)) {
+      return DEFAULT_AVATAR;
+    }
+    return s;
+  }
 
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -154,6 +167,10 @@
   function getMessages() { return getMessagesFor(currentSessionId()); }
 
   var current = { name: '纳米', avatar: DEFAULT_AVATAR };
+  var NC_ICON = {
+    x: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>',
+    chev: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+  };
 
   function renderMessages(msgs) {
     var box = $('ncMessages'); if (!box) return;
@@ -184,7 +201,7 @@
         '<span class="nc-session-title">' + esc(s.title || '新对话') + '</span>' +
         '<span class="nc-session-meta">' + (s.count || 0) + ' 条消息 · ' + timeLabel(s.updatedAt) + (active ? ' · 当前窗口' : '') + '</span>' +
         '</button>' +
-        (isMain ? '' : '<button type="button" class="nc-session-del" data-del-session="' + esc(s.id) + '" aria-label="删除">×</button>') +
+        (isMain ? '' : '<button type="button" class="nc-session-del" data-del-session="' + esc(s.id) + '" aria-label="删除">' + NC_ICON.x + '</button>') +
         '</div>';
     }).join('');
   }
@@ -222,14 +239,14 @@
     }
     box.innerHTML = list.map(function (f) {
       var ext = String(f.ext || 'txt').toUpperCase().slice(0, 4);
-      return '<button class="nc-file" data-file="1"><span class="nc-file-icon">' + esc(ext) + '</span><span class="nc-file-main"><span class="nc-file-name">' + esc(f.name) + '</span><span class="nc-file-meta">' + (f.source === 'user' ? '我发送' : 'Nano 生成') + ' · ' + NanoFiles.formatSize(f.size) + '</span></span><span class="nc-file-arrow">›</span></button>';
+      return '<button class="nc-file" data-file="1"><span class="nc-file-icon">' + esc(ext) + '</span><span class="nc-file-main"><span class="nc-file-name">' + esc(f.name) + '</span><span class="nc-file-meta">' + (f.source === 'user' ? '我发送' : 'Nano 生成') + ' · ' + NanoFiles.formatSize(f.size) + '</span></span><span class="nc-file-arrow">' + NC_ICON.chev + '</span></button>';
     }).join('');
   }
 
   async function refresh() {
     var char = await getChar();
     current.name = (char && char.name) || '纳米';
-    current.avatar = (char && char.avatar) || DEFAULT_AVATAR;
+    current.avatar = nanoAvatar(char && char.avatar);
     $('ncName').textContent = current.name;
     $('ncAvatar').src = current.avatar;
     $('ncIntro').textContent = '你的专属 Nano 助手 · 美化 / 世界书 / 人设 / 文件';

@@ -257,6 +257,8 @@
     const maskList = document.getElementById('maskList');
     const emptyState = document.getElementById('emptyState');
     const backBtn = document.getElementById('backBtn');
+    const pageHeader = document.getElementById('pageHeader');
+    const editControls = document.getElementById('editControls');
     const addBtn = document.getElementById('addBtn');
     const editModeBtn = document.getElementById('editModeBtn');
     const cancelEditBtn = document.getElementById('cancelEditBtn');
@@ -434,6 +436,8 @@
     }
 
     function updateUI() {
+        if (pageHeader) pageHeader.classList.toggle('hidden', isEditMode);
+        if (editControls) editControls.classList.toggle('show', isEditMode);
         if (isEditMode) {
             editModeBtn.classList.add('active');
             editModeBtn.innerHTML =

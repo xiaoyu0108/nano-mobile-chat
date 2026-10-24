@@ -5,22 +5,20 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>表情包</title>
-    <link rel="stylesheet" href="../css/emoji.css?v=20261018c">
+    <link rel="stylesheet" href="../css/emoji.css?v=20261024b">
     <script src="../js/appearance.js"></script>
 </head>
 <body>
 <div class="phone" id="app">
 
     <header class="nav-bar">
-        <button class="nav-back" id="backBtn" data-back>
+        <button class="nav-back" id="backBtn" data-back aria-label="返回">
             <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="15 18 9 12 15 6"/>
             </svg>
         </button>
         <span class="nav-title" id="pageTitle">表情包</span>
-        <div id="actionContainer" style="display:flex;gap:6px;align-items:center;">
-            <button class="nav-action" id="actionBtn">+</button>
-        </div>
+        <div id="actionContainer"></div>
     </header>
 
     <div class="edit-actions-bar" id="editActionsBar"></div>
@@ -165,7 +163,7 @@
 
 </div>
 
-<script src="../js/emoji.js?v=20261020b"></script>
+<script src="../js/emoji.js?v=20261024a"></script>
 
 <script src="../js/api-float.js"></script>
 <script src="../swipe-back.js"></script>

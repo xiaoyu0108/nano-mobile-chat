@@ -595,7 +595,7 @@
         if (!editMode) {
             editActionsBar.classList.remove('show');
             var exportBtn = document.createElement('button');
-            exportBtn.className = 'nav-action';
+            exportBtn.className = 'nav-action icon';
             exportBtn.title = '导出该分组';
             exportBtn.setAttribute('aria-label', '导出该分组');
             exportBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;display:block;margin:0 auto;"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M5 20h14"/></svg>';
@@ -606,7 +606,7 @@
             actionContainer.appendChild(exportBtn);
 
             var editBtn = document.createElement('button');
-            editBtn.className = 'nav-action';
+            editBtn.className = 'nav-action text';
             editBtn.textContent = '编辑';
             editBtn.addEventListener('click', function() {
                 isEditMode = true;
@@ -620,7 +620,7 @@
             actionContainer.appendChild(editBtn);
         } else {
             var doneBtn = document.createElement('button');
-            doneBtn.className = 'nav-action';
+            doneBtn.className = 'nav-action text';
             doneBtn.textContent = '完成';
             doneBtn.addEventListener('click', function() {
                 isEditMode = false;
@@ -692,7 +692,7 @@
         renderHome();
         actionContainer.innerHTML = '';
         var addBtn = document.createElement('button');
-        addBtn.className = 'nav-action';
+        addBtn.className = 'nav-action icon';
         addBtn.textContent = '+';
         addBtn.addEventListener('click', function() {
             openAddModal(null);
@@ -1532,7 +1532,7 @@
         renderHome();
         actionContainer.innerHTML = '';
         var addBtn = document.createElement('button');
-        addBtn.className = 'nav-action';
+        addBtn.className = 'nav-action icon';
         addBtn.textContent = '+';
         addBtn.addEventListener('click', function() {
             openAddModal(null);

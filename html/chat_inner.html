@@ -6,13 +6,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>聊天</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" media="print" onload="this.media='all'">
-    <link rel="stylesheet" href="../css/chat-inner.css?v=20261024e">
+    <link rel="stylesheet" href="../css/chat-inner.css?v=20261024g">
     <link rel="stylesheet" href="../css/heart.css?v=20261006a">
     <link rel="preconnect" href="https://cdn.jsdelivr.net">
     <link rel="dns-prefetch" href="https://unpkg.com">
     <script src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
     <script src="../js/appearance.js?v=20261024h"></script>
-<script src="../js/nano-notify.js?v=20261023j"></script>
+<script src="../js/nano-notify.js?v=20261024b"></script>
 <script src="../js/reroll-reason.js?v=20261022a"></script>
 <script src="../js/cycle-store.js?v=20261021b"></script>
 <script src="../js/nano-badge.js?v=20261023a"></script>
@@ -27,7 +27,7 @@
             if (c === 'nano_ai' || c.indexOf('nano_ai_') === 0) {
                 var l = document.createElement('link');
                 l.rel = 'stylesheet';
-                l.href = '../css/nano-chat-theme.css?v=20261024a';
+                l.href = '../css/nano-chat-theme.css?v=20261024d';
                 document.head.appendChild(l);
             }
         } catch (e) {}
@@ -131,12 +131,12 @@
     <div class="ios-popup-overlay" id="imagePopup">
         <div class="ios-popup-card">
             <div class="ios-popup-header">
-                <div class="ios-popup-title">发送图片</div>
-                <div class="ios-popup-subtitle">选择一种图片方式</div>
+                <div class="ios-popup-title">发送图片 / 视频</div>
+                <div class="ios-popup-subtitle">选择一种发送方式</div>
             </div>
             <div class="vs-tabs">
                 <button class="vs-tab active" id="imgTabText">文字图</button>
-                <button class="vs-tab" id="imgTabFile">真实图片</button>
+                <button class="vs-tab" id="imgTabFile">照片 / 视频</button>
             </div>
             <div class="ios-popup-body">
                 <div id="imgPaneText">
@@ -153,9 +153,9 @@
                             <span class="ios-popup-label">相册</span>
                             <div class="ios-photo-picker">
                                 <label for="imageFileInput" class="ios-picker-btn">
-                                    <span>选择照片...</span>
+                                    <span>选择照片 / 视频...</span>
                                 </label>
-                                <input type="file" id="imageFileInput" accept="image/*" multiple style="display:none;" />
+                                <input type="file" id="imageFileInput" accept="image/*,video/*" multiple style="display:none;" />
                                 <div class="ios-img-preview-box" id="imagePreviewBox">
                                     <img id="imagePreview" src="" alt="预览">
                                     <div class="ios-img-thumbs" id="imageThumbs"></div>
@@ -163,6 +163,7 @@
                             </div>
                         </div>
                     </div>
+                    <div class="ios-picker-hint">支持照片、视频（视频≤60秒 / 25MB）；实况照片会以封面图发送</div>
                 </div>
             </div>
             <div class="ios-popup-actions">
@@ -492,11 +493,11 @@
 <script src="../js/schedule-bridge.js?v=20261019d"></script>
         <script src="../js/nano-card-ui.js?v=20261021c"></script>
     <script src="../js/nano-prompts.js?v=20261023a"></script>
-    <script src="../js/chat-core.js?v=20261024i"></script>
+    <script src="../js/chat-core.js?v=20261024q"></script>
     <script src="../js/roleplay-prompt.js?v=20261023a"></script>
 <script src="../js/chat-transfer.js?v=20261020j"></script>
 <script src="../js/chat-gift.js"></script>
-    <script src="../js/chat-image.js?v=20261013a"></script>
+    <script src="../js/chat-image.js?v=20261024a"></script>
     <script src="../js/chat-more.js?v=20261024i"></script>
 <script src="../js/chat-place.js"></script>
 <script src="../js/chat-voice.js"></script>

@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Nano 设置</title>
-  <link rel="stylesheet" href="../css/nano-setting.css?v=20261021c">
+  <link rel="stylesheet" href="../css/nano-setting.css?v=20261024b">
   <script src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
   <script src="../js/appearance.js"></script>
 </head>
@@ -16,7 +16,7 @@
         <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
       <span class="ns-title">Nano 设置</span>
-      <span style="width:36px"></span>
+      <span style="width:44px"></span>
     </header>
 
     <div class="ns-scroll">
@@ -24,7 +24,7 @@
         <div class="ns-hero-glow"></div>
         <button class="ns-avatar" id="nsAvatarBtn" aria-label="更换头像">
           <img id="nsAvatar" alt="">
-          <span class="ns-avatar-edit">换</span>
+          <span class="ns-avatar-edit" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17v3z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M13.5 6.5l3 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>
         </button>
         <div class="ns-profile-main">
           <input class="ns-name" id="nsName" maxlength="16" placeholder="纳米">
@@ -35,12 +35,12 @@
       <input type="file" id="nsAvatarFile" accept="image/*" style="display:none">
 
       <div class="ns-quickrow">
-        <button id="nsOpenChat" class="ns-quick-btn"><span>✦</span><b>打开对话</b><small>直接和 Nano 聊天</small></button>
-        <button id="nsOpenFiles2" class="ns-quick-btn"><span>▤</span><b>文件库</b><small>独立保存生成文件</small></button>
+        <button id="nsOpenChat" class="ns-quick-btn"><span class="ns-qi"><svg viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.4 8.6 8.6 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8A8.4 8.4 0 0 1 12.5 3 8.4 8.4 0 0 1 21 11.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span><b>打开对话</b><small>直接和 Nano 聊天</small></button>
+        <button id="nsOpenFiles2" class="ns-quick-btn"><span class="ns-qi"><svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M14 3v5h5M9 13h6M9 17h4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span><b>文件库</b><small>独立保存生成文件</small></button>
       </div>
 
       <section class="ns-card">
-        <div class="ns-card-title"><span class="ns-ic">◐</span>头像与背景</div>
+        <div class="ns-card-title"><span class="ns-ic"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="9" cy="10" r="1.6" fill="currentColor"/><path d="M4.5 18l5.2-5.2 3.4 3.4 2.2-2.2 4.2 4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span>头像与背景</div>
         <div class="ns-row" id="nsAvatarUrlRow">
           <input class="ns-input" id="nsAvatarUrl" placeholder="输入头像图片 URL">
           <button class="ns-mini-btn" id="nsAvatarUrlSave">使用</button>
@@ -57,7 +57,7 @@
       </section>
 
       <section class="ns-card">
-        <div class="ns-card-title"><span class="ns-ic">✎</span>对话与生成</div>
+        <div class="ns-card-title"><span class="ns-ic"><svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10M4 12h4M12 12h8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="16" cy="7" r="2" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="8" cy="17" r="2" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="10" cy="12" r="2" fill="none" stroke="currentColor" stroke-width="1.8"/></svg></span>对话与生成</div>
         <label class="ns-label">内置提示词 <span>每次生成都会遵守</span></label>
         <textarea class="ns-textarea" id="nsPrompt" placeholder="例如：回答尽量精简；CSS 主题优先用莫兰迪色系；必须给出可复制的完整 CSS。"></textarea>
         <button class="ns-primary" id="nsPromptSave">保存提示词</button>
@@ -73,7 +73,7 @@
       </section>
 
       <section class="ns-card">
-        <div class="ns-card-title"><span class="ns-ic">▦</span>数据概览</div>
+        <div class="ns-card-title"><span class="ns-ic"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20V7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>数据概览</div>
         <div class="ns-stats">
           <div class="ns-stat"><b id="stMsgs">0</b><span>消息</span></div>
           <div class="ns-stat"><b id="stFloor">0</b><span>楼层</span></div>
@@ -84,14 +84,14 @@
       </section>
 
       <section class="ns-card">
-        <div class="ns-card-title"><span class="ns-ic">⌕</span><span style="flex:1">查找聊天记录</span><button class="ns-danger" id="nsDeleteAll">删除聊天</button></div>
+        <div class="ns-card-title"><span class="ns-ic"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M16 16l4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span><span style="flex:1">查找聊天记录</span><button class="ns-danger" id="nsDeleteAll">删除聊天</button></div>
         <input class="ns-input" id="nsSearchInput" placeholder="输入关键词，查找历史消息">
         <div class="ns-hint">只删除聊天和记忆，不会删除「Nano 文件」里的文件。</div>
         <div class="ns-search-results" id="nsSearchResults"></div>
       </section>
 
       <section class="ns-card ns-about">
-        <div class="ns-card-title"><span class="ns-ic">✦</span>Nano 能做什么</div>
+        <div class="ns-card-title"><span class="ns-ic"><svg viewBox="0 0 24 24"><path d="M12 2c.8 5.2 4.8 9.2 10 10-5.2.8-9.2 4.8-10 10-.8-5.2-4.8-9.2-10-10 5.2-.8 9.2-4.8 10-10z" fill="currentColor"/></svg></span>Nano 能做什么</div>
         <div class="ns-feat-item">美化：线上聊天 / 群聊 / 线下 / 心声的 CSS 都能帮你写和改</div>
         <div class="ns-feat-item">装修：改头像、昵称、背景、气泡，重排顶栏与底栏</div>
         <div class="ns-feat-item">世界书 / 记忆 / 人设：按你的要求生成与整理</div>
@@ -106,7 +106,7 @@
   </div>
 
   <script src="../js/nano-files.js?v=20261021c"></script>
-  <script src="../js/nano-setting.js?v=20261021c"></script>
+  <script src="../js/nano-setting.js?v=20261024b"></script>
   <script src="../swipe-back.js"></script>
 </body>
 </html>

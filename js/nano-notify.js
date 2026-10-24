@@ -400,9 +400,11 @@
             });
         }
 
-        // 优先 POST /push：正文里的 / ? # 和换行不会破坏 Bark 的路径解析，
-        // 标题和正文一定能带上；旧版 Bark 不支持 POST 时自动退回 GET 路径接口。
-        if (devKey) {
+        // POST /push 只作兜底：部分自建 Bark 服务会接受 POST 却把 title/body 丢掉，
+        // 表现就是「有通知但没名字、没内容」。GET 路径接口（标题和正文都已 encodeURIComponent）
+        // 在官方和自建 Bark 上都更稳定，所以先走 GET，失败后再试 POST。
+        function barkPost() {
+            if (!devKey) return Promise.resolve({ ok: false, error: 'no-key' });
             var payload = {
                 device_key: devKey, title: title, body: bodyText,
                 group: group, level: level, sound: sound
@@ -417,14 +419,24 @@
                 cache: 'no-store',
                 keepalive: true
             }).then(function (r) {
-                return r.json().catch(function () { return {}; });
-            }).then(function (j) {
-                var ok = !(j && j.code && Number(j.code) !== 200);
-                if (ok) return { ok: true, resp: j, url: postUrl, method: 'POST' };
-                return barkGet();
-            }).catch(function () { return barkGet(); });
+                if (!r || !r.ok) return { ok: false, url: postUrl, method: 'POST', error: 'HTTP ' + (r && r.status) };
+                return r.json().catch(function () { return null; }).then(function (j) {
+                    // 返回 HTML / 空响应说明服务端没真正接收 JSON 推送，不能当作成功。
+                    if (!j) return { ok: false, url: postUrl, method: 'POST', error: 'bad-response' };
+                    var ok = !(j && j.code && Number(j.code) !== 200);
+                    return {
+                        ok: ok, resp: j, url: postUrl, method: 'POST',
+                        error: ok ? '' : String((j && (j.message || j.error)) || ('Bark code ' + j.code))
+                    };
+                });
+            }).catch(function (e) {
+                return { ok: false, url: postUrl, method: 'POST', error: String((e && e.message) || e || 'network') };
+            });
         }
-        return barkGet();
+        return barkGet().then(function (r) {
+            if (r && r.ok) return r;
+            return barkPost().then(function (p) { return (p && p.ok) ? p : r; });
+        });
     }
 
     function nanoIconUrl() {
@@ -524,7 +536,6 @@
         var icon = opts.icon || defIcon;
         var badge = opts.badge || defIcon;
         // Bark：应用退到后台/锁屏时，通过苹果推送弹真正的系统通知（国内可用）
-        var barkSent = false;
         try {
             var hidden = !isForeground();
             if (barkOn && (hidden || opts.force || opts.bark)) {
@@ -534,14 +545,22 @@
                     preview: body,
                     group: opts.group || opts.name || title || 'Nano'
                 });
-                barkPush(title, body, bopts);
-                barkSent = true;
+                // 等 Bark 真正返回结果：失败时退回系统通知，避免整条消息被吞掉。
+                var barkJob = barkPush(title, body, bopts);
+                if (barkJob && barkJob.then) {
+                    barkJob.then(function (r) {
+                        if (r && r.ok) return;
+                        if (inApp) systemNotify();
+                    }).catch(function () { if (inApp) systemNotify(); });
+                }
+                return;
             }
         } catch (e) {}
-        // Bark 已经弹过系统通知：不再走 ServiceWorker / new Notification，避免同一条弹两次
-        if (barkSent) return;
         // 只开了 Bark、没有开「允许通知」时，不再走浏览器通知
         if (!inApp) return;
+        systemNotify();
+
+        function systemNotify() {
         // 已按要求去掉应用内的黑色横幅（appNotify）；前台只保留提示音 + 未读红点
         var payload = {
             body: String(body || '').slice(0, 120),
@@ -597,6 +616,7 @@
                 legacy();
             }
         } catch (e) {}
+        }
     }
 
     // 启动时把 IndexedDB 里的 Bark 密钥读进缓存（localStorage 写满时的兜底），

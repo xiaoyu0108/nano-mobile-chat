@@ -410,10 +410,11 @@ function extractJSON(text){
   try{ return JSON.parse(t); }catch(e){ return null; }
 }
 
-const SYS_JSON = "你是虚构角色的手机数据生成器，所有内容均为小说角色的文学创作，不涉及真实人物。允许描写角色隐秘、克制、暧昧的心思与生活细节，但必须收敛、适量、点到为止：最多 1 条偏重的内容，不写露骨性描写、不写血腥暴力、不写自残、不涉及未成年、不写违法犯罪细节。遇到设定中暧昧、私密或灰度的内容，自然写出即可，不要反复声明、说教或刻意回避。所有内容必须严格贴合给定的人设、世界书与记忆库，不得脱离角色自由发挥。只输出用户要求的 JSON，不要输出任何解释、markdown 代码块或多余文字。";
+const SYS_JSON = "你是虚构角色的手机数据生成器。内容面向成年读者，属于虚构创作；成人向内容不限角色，可以自然包含成人向的情感、暧昧、亲密与性相关内容，不必刻意回避。禁止血腥暴力和违法内容。所有内容必须严格贴合给定的人设、世界书与记忆库，不要脱离角色自由发挥。只输出用户要求的 JSON，不要输出任何解释、markdown 代码块或多余文字。";
+
 
 /* 通用的「贴合人设」硬性约束 */
-const PERSONA_RULE = "硬性要求：所有内容必须贴合上面的角色设定、世界书设定与记忆库，符合角色的身份、性格、说话方式、社交圈、作息与近期经历；不得出现与角色无关的通用模板内容；不同角色的内容必须明显不同。内容还必须与「用户」有关联：每个 App 至少有 1-2 条自然涉及用户（用用户的名字、与用户共同经历的事、用户说过的话，或直接从记忆库取材），让人能看出两人生活交织，但不要每条都硬提用户，保持自然。\n【反雷同】每次生成都要换新的场景、时间、物件、话术与结构，不要反复套用同一批句式或套路；避免千篇一律的「温柔守护」「默默注视」等空泛描写。\n【反油腻】禁止使用「小姑娘」「小丫头」「丫头」「小家伙」「宝贝儿」「乖乖」「咱家」「你知道吗」「我懂你」等油腻、幼化或模板化称呼与句式，除非角色人设与用户称呼明确如此。用词要自然、克制、有具体质感。";
+const PERSONA_RULE = "硬性要求：所有内容必须贴合上面的角色设定、世界书设定与记忆库，符合角色的身份、性格、说话方式、社交圈、作息与近期经历；不得出现与角色无关的通用模板内容；不同角色的内容必须明显不同。内容要自然与「用户」产生关联：每个 App 至少有 1-2 条自然涉及用户（用用户的名字、与用户共同经历的事、用户说过的话，或直接从记忆库取材），但不要每条都硬提用户，保持自然。\n【反雷同】每次生成都要换新的场景、时间、物件、话术与结构，避免反复套用同一批句式或套路；避免千篇一律的空泛描写。\n【自然表达】称呼与用词要自然、克制、有具体质感，避免过度亲昵或模板化。";
 
 /* =========================================================
    7.5 人设 / 世界书 读取
@@ -555,6 +556,23 @@ async function buildCharContext(char){
   if(wb.length) parts.push("【世界书设定】\n" + wb.map(w => (w.title ? "· " + w.title + "：" : "· ") + w.content).join("\n"));
   const mem = await readMemoryForChar(char);
   if(mem.length) parts.push("【记忆库（你与用户共同经历 / 已知的事）】\n" + mem.map(m => "· " + m).join("\n"));
+  return parts.join("\n\n");
+}
+
+/* 内容受限时的轻量上下文：去掉世界书、记忆库和用户设定，只保留脱敏后的角色概况 */
+function sanitizeContextText(s, max){
+  const bad = /(裸体|裸照|强奸|幼女|正太|血腥|肢解|自残|自杀|毒品|犯罪|虐待|)/i;
+  const lines = String(s || "").split(/\n+/).filter(line => line && !bad.test(line));
+  return lines.join("\n").slice(0, max || 1000);
+}
+function buildLiteContext(char){
+  const user = readUserProfile();
+  const parts = [];
+  if(user && user.name) parts.push("【用户称呼】" + user.name);
+  parts.push("【角色姓名】" + ((char && char.name) || ""));
+  const st = sanitizeContextText(char && (char.setting || char.desc), 1000);
+  if(st) parts.push("【角色概况】\n" + st);
+  parts.push("【生成范围】只写日常、工作、消费、社交和个人随想，生活化，若是情侣关系，爱人之间的秘密通常也被记录。");
   return parts.join("\n\n");
 }
 
@@ -710,7 +728,7 @@ ${PERSONA_RULE}
 
 请生成 4-5 条「${char.name}」的浏览器搜索/访问记录。
 要求：
-1. 内容符合角色兴趣与生活，可包含 1 条略显私密但克制的搜索。
+1. 内容符合角色兴趣与生活，可包含 1 条角色私下查过的日常问题。
 2. 网址像真实域名。
 3. 字段：
    - keyword: 搜索词或页面标题（显示在列表第一行）
@@ -764,30 +782,70 @@ ${PERSONA_RULE}
 
 async function genPrivate(api, char){
   const ctx = await buildCharContext(char);
-  const user = `你是「${char.name}」的私密档案生成器。
+  const user = `你是「${char.name}」的私事整理器。
 ${ctx}
 
 ${PERSONA_RULE}
 
-请生成 4 条「${char.name}」绝不会说出口的秘密，必须贴合其人设与经历。
+请整理 4 条「${char.name}」不为人说的私事，贴合其人设与经历。
 要求：
-1. 按档位分配（务必收敛，重档最多 1 条）：
-   - 轻 ×2：小虚荣、藏起来的喜好、不敢承认的念头
-   - 中 ×1：对某人的隐秘情绪、不愿被知道的行为
-   - 重 ×1：阴暗的念头或不堪的往事（点到为止，不写血腥/违法/露骨细节）
+1. 角色可以写不愿公开的亲密关系、欲望与性相关的私事，语气自然，不要刻意回避。
 2. 每条包含：
    - type: 序号，如 "PRIVATE / 01"
    - time: 时间，如 "23:41"
-   - title: 秘密标题（6-14 字）
-   - preview: 模糊区的一句话（15-30 字，第一人称）
-   - detail: 窥探后显示的隐藏细节（20-50 字）
-   - tags: 2 个短标签数组，如 ["记忆","未公开"]
-   - level: "轻" / "中" / "重"
-只输出 JSON 数组，形如 [{"type":"PRIVATE / 01","time":"23:41","title":"...","preview":"...","detail":"...","tags":["记忆","未公开"],"level":"轻"}]`;
+   - title: 标题（6-14 字）
+   - preview: 一句隐晦的概述（15-30 字，第一人称）
+   - detail: 不为人说的具体内容（20-60 字）
+   - tags: 2 个短标签数组，如 ["心事","私密"]
+   - level: "轻" 或 "中"（默认 "轻"）
+只输出 JSON 数组，形如 [{"type":"PRIVATE / 01","time":"23:41","title":"...","preview":"...","detail":"...","tags":["心事","私密"],"level":"轻"}]`;
   const t = await callAPI(api, SYS_JSON, user);
   const a = extractJSON(t);
   if(!Array.isArray(a) || !a.length) throw new Error("私密数据格式错误");
-  return a.slice(0, 4);
+  return a.slice(0, 6);
+}
+
+/* 内容策略拦截时，用本地模板补上「个人随想」，保证查手机不会因为一个 App 整页失败 */
+function genPrivateLocal(char){
+  const user = readUserProfile();
+  const uname = (user && user.name) || "你";
+  const st = String((char && (char.setting || char.desc)) || "");
+  const pool = [
+    { title: "没说出口的话", preview: "有些话到了嘴边，又觉得不必说了。", detail: "今天路过一家店，突然想起" + uname + "提过喜欢的东西。当时没接话，后来一直记着。", tags: ["日常", "随想"] },
+    { title: "一个人的时候", preview: "其实也没有那么喜欢独处。", detail: "回到家把灯都打开，才觉得安静得有点过头。想找人说句话，又不知道从哪句开始。", tags: ["夜晚", "心事"] },
+    { title: "装作不在意", preview: "有件事我还在意，只是没说。", detail: "白天表现得很平常，晚上又想起来。可能下次见面还是会装作已经过去了。", tags: ["心事", "日常"] },
+    { title: "反复看过的消息", preview: "你发来的那句话，我看了好几遍。", detail: "明明只是一句很普通的话，却让我停了一会儿。回得太快显得奇怪，就隔了几分钟才回。", tags: ["关系", "随想"] },
+    { title: "最近有点累", preview: "累是真的，但不想让你担心。", detail: "今天事情很多，回到家只想躺着。有人问起的时候，还是习惯说“还好”。", tags: ["工作", "日常"] },
+    { title: "还没想好", preview: "关于以后的事，我还没想清楚。", detail: "偶尔会想到很远的以后，但每次想到一半就停下来了。等想明白了，再告诉你。", tags: ["未来", "心事"] },
+    { title: "想起一件小事", preview: "今天突然想起很久以前的一句话。", detail: "是很小的事，小到当时没觉得重要。现在想起来，却记得很清楚。", tags: ["记忆", "日常"] },
+    { title: "不太习惯被看见", preview: "我也会有不确定的时候。", detail: "只是不太习惯让别人看见。大多数时候，把情绪收一收，就过去了。", tags: ["情绪", "随想"] },
+    { title: "没发出去的消息", preview: "有一段话打完了，又删掉了。", detail: "其实很想直接告诉你，但又怕太明显。最后只留下一个很普通的晚安。", tags: ["心事", "关系"] },
+    { title: "不想让人知道", preview: "有些念头，我只敢在夜里想一想。", detail: "白天可以装作什么都没发生，晚上却会反复想起。第二天还是会照常起床。", tags: ["夜晚", "私密"] },
+    { title: "离你近一点", preview: "今天有一瞬间，很想离你再近一点。", detail: "不是非要说出口，只是那一刻身体比脑子先动了一下。后来又装作没事。", tags: ["关系", "私密"] },
+    { title: "没说出口的喜欢", preview: "其实有句话，我很想问。", detail: "又怕问了就回不去。于是话到嘴边，还是换成了别的话题。", tags: ["心事", "关系"] }
+  ];
+  if (/设计|画|稿|创作|写/.test(st)) {
+    pool.push({ title: "没完成的那一点", preview: "改了又改，还是觉得差一点。", detail: "其实可以交差了，但自己那关过不去。想听听" + uname + "的意见，又怕显得太在意。", tags: ["工作", "随想"] });
+  }
+  if (/学生|考试|论文|学校/.test(st)) {
+    pool.push({ title: "没说出口的压力", preview: "最近的事比说出来的多。", detail: "别人问起就说还好。其实有点慌，只是不想把这种情绪分给别人。", tags: ["学校", "心事"] });
+  }
+  const shuffled = pool.slice().sort(function () { return Math.random() - 0.5; }).slice(0, 4);
+  return shuffled.map(function (it, i) {
+    var h = 21 + Math.floor(Math.random() * 4);
+    if (h >= 24) h -= 24;
+    var hh = String(h).padStart(2, "0");
+    var mm = String(Math.floor(Math.random() * 60)).padStart(2, "0");
+    return {
+      type: "PRIVATE / " + String(i + 1).padStart(2, "0"),
+      time: hh + ":" + mm,
+      title: it.title,
+      preview: it.preview,
+      detail: it.detail,
+      tags: it.tags,
+      level: "轻"
+    };
+  });
 }
 
 async function genChat(api, char){
@@ -2323,7 +2381,7 @@ const SETTINGS_APPS = [
   {id:"game",name:"游戏"},{id:"mail",name:"邮箱"},{id:"settings",name:"设置"},
   {id:"video",name:"视频"},{id:"diary",name:"日记"},{id:"private",name:"私密"},
   {id:"health",name:"健康"},{id:"chat",name:"聊天"},
-  {id:"doubao",name:"豆包"},{id:"taobao",name:"淘宝"},{id:"mapcal",name:"地图日程"},
+  {id:"doubao",name:"豆包"},{id:"taobao",name:"淘宝"},{id:"mapcal",name:"地图日程"},{id:"wallet",name:"钱包"},
   {id:"album",name:"相册"},{id:"memo",name:"备忘录"},{id:"browser",name:"浏览器"}
 ];
 
@@ -2797,7 +2855,7 @@ function exitPhone(){
     }
   }catch(e){}
   if(history.length > 1) history.back();
-  else window.location.href = "more.html";
+  else window.location.href = "home.html";
 }
 
 document.getElementById("checkBack").onclick = exitPhone;
@@ -2880,31 +2938,45 @@ const MULTI_SPEC = {
   health:`"health":{"steps":{"total":8426,"goal":10000,"hours":[24个整数]},"distance":{"total":"5.80","kcal":318},"sleep":{"score":92,"duration":"8小时12分","deep":"1h 48m","weekly":[7个0-100]},"screen":{"hours":3,"minutes":46,"weekly":[7个整数分钟]}}`,
   browser:`"browser":[{"keyword":"搜索词","url":"https://example.com/a","site":"网站名","title":"网页标题","time":"今天 22:06","visits":3,"intro":"页面摘要","quote":"引用句","points":["要点一","要点二","要点三"]}]`,
   game:`"game":[{"name":"中文游戏名","id":"4827 1936","winRate":68,"matches":327,"wins":222,"losses":105,"rank":"大师","rating":2847,"rankMark":"III","recent":[{"result":"W","mode":"排位赛","time":"今天 · 21:42","kda":"18 / 6 / 11"}],"habit":"隐藏游戏习惯","weekly":[35,55,43,75,100,67,46]}]`,
-  private:`"private":[{"type":"PRIVATE / 01","time":"23:41","title":"标题","preview":"模糊区一句话","detail":"隐藏细节","tags":["记忆","未公开"],"level":"轻"}]`,
+  private:`"private":[{"type":"PRIVATE / 01","time":"23:41","title":"标题","preview":"一句隐晦的概述","detail":"不为人说的具体内容","tags":["心事","私密"],"level":"轻"}]`,
   chat:`"chat":[{"name":"NPC名字","lastMsg":"最后一条","time":"昨天 22:13","unread":0,"messages":[{"side":"left","text":"消息"}]}]`,
   doubao:`"doubao":[{"role":"char","content":"角色问豆包的问题"},{"role":"ai","content":"豆包的回答"}]`,
   taobao:`"taobao":{"cart":[{"name":"商品名","shop":"店铺","spec":"规格","price":"129"}],"orders":[{"shop":"店铺","name":"商品名","spec":"规格","price":"129","status":"交易成功","time":"8月27日"}],"food":[{"restaurant":"店名","dish":"菜品","price":"26.8","status":"已送达","time":"今天 12:18"}]}`,
   store:`"store":{"cart":[{"name":"商品名","shop":"店铺","spec":"规格","price":"129"}],"orders":[{"shop":"店铺","name":"商品名","spec":"规格","price":"129","status":"交易成功","time":"8月27日"}],"food":[{"restaurant":"店名","dish":"菜品","price":"26.8","status":"已送达","time":"今天 12:18"}]}`,
-  mapcal:`"mapcal":{"places":[{"name":"地点名","address":"地址或区域","time":"今天 14:20","note":"搜索或导航备注"}],"events":[{"date":"10月4日","day":"星期六","time":"15:30","title":"安排标题","info":"地点或说明","tag":"工作"}]}`
+  mapcal:`"mapcal":{"places":[{"name":"地点名","address":"地址或区域","time":"今天 14:20","note":"搜索或导航备注"}],"events":[{"date":"10月4日","day":"星期六","time":"15:30","title":"安排标题","info":"地点或说明","tag":"工作"}]}`,
+  wallet:`"wallet":{"balance":12800.5,"transactions":[{"type":"expense","desc":"星巴克","amount":32,"time":"2026-10-24T10:15:00"},{"type":"income","desc":"工资入账","amount":12800,"time":"2026-10-23T08:00:00"}]}`
 };
 const MULTI_COUNT = {
   video:"video 3 条", diary:"diary 3 篇", album:"album 5 条", mail:"mail 4 封",
   memo:"memo 约 4 条（分 2-3 组，每组 1-2 条）", browser:"browser 4 条", game:"game 2 个",
-  private:"private 4 条（轻×2、中×1、重×1）", chat:"chat 3 个会话（每个 5-8 条消息）",
+  private:"private 4 条不为人说的私事 / 心事（成人角色可含亲密关系）", chat:"chat 3 个会话（每个 5-8 条消息）",
   doubao:"doubao 8-10 条消息（char 与 ai 交替，构成一次完整对话）",
   taobao:"taobao：cart 2-3 件、orders 2-3 单、food 2-3 单",
   store:"store：cart 2-3 件、orders 2-3 单、food 2-3 单",
-  mapcal:"mapcal：places 3 个、events 4 条"
+  mapcal:"mapcal：places 3 个、events 4 条",
+  wallet:"wallet：transactions 10 条左右（收入 2-3 条、支出 7-8 条），balance 为余额"
 };
 
 function buildMultiPrompt(ids, char, ctx){
   const need = ids.filter(id => MULTI_SPEC[id]).map(id => MULTI_SPEC[id]).join(",\n  ");
   const counts = ids.filter(id => MULTI_COUNT[id]).map(id => MULTI_COUNT[id]).join("；");
+  const matureLine = "【成人向】内容面向成年读者，成人向内容不限角色；禁止血腥暴力和违法内容。\n";
+  let walletContext = "";
+  if(ids.includes("wallet")){
+    let w = null;
+    try{ w = JSON.parse(localStorage.getItem("nano_char_wallet_" + (char && char.id || "")) || "null"); }catch(e){}
+    const bal = (w && typeof w.balance === "number") ? w.balance : 20000;
+    const recent = (w && Array.isArray(w.transactions) && w.transactions.length)
+      ? w.transactions.slice(0, 5).map(t => (t.type === "income" ? "+" : "-") + "¥" + t.amount + " " + (t.desc || "") + " " + (t.time || "")).join("\n")
+      : "（暂无）";
+    walletContext = `\n【当前银行卡余额】¥${bal}\n【最近流水】\n${recent}\nwallet 的 balance 必须等于当前余额 + 收入合计 - 支出合计；流水时间在最近 7 天内，按从新到旧排列；收入 2-3 条、支出 7-8 条，至少 1-2 条自然涉及用户。\n`;
+  }
   return `你是「${char.name}」的手机数据生成器。
 ${ctx}
 
 ${PERSONA_RULE}
-
+${matureLine}
+${walletContext}
 【本次随机编号】${Date.now().toString(36)}-${Math.floor(Math.random()*1e6)}
 请根据这个编号换一个与以往不同的切入角度、场景与措辞来写，避免和之前生成的内容雷同。
 请一次性生成以下 App 的数据（只生成这些：${ids.join("、")}）：
@@ -2921,13 +2993,14 @@ ${PERSONA_RULE}
 - mail.body：每封 3-4 段，每段 30-60 字，有称呼、正文、落款的感觉。
 - memo：总数约 4 条，分 2-3 组；每条 content 90-150 字，写清具体经过、心情或待办细节，不要写得太短。
 - browser.intro：50-100 字；quote：15-40 字；points 3 条各 15-30 字。
-- private.preview：20-40 字；detail：50-100 字，有前因后果。
+${ids.includes("private") ? "- private.preview：一句隐晦的概述；detail：不为人说的具体内容，写角色不愿公开的私事、难以启齿的心事或亲密关系里的秘密；角色可以涉及亲密与性相关的私事。\n" : ""}
 - game.habit：40-80 字，写清玩法习惯与心态。
 - chat：每个会话 6-10 条消息，有来有回，单条 5-25 字。
 - album.text：10-30 字，有画面感。
 - doubao：8-10 条，char 提问与 ai 回答交替；问题贴合角色当下生活与困惑，ai 回答口语化、可带分点，单条 20-60 字。
 - taobao / store：商品名、店铺、规格、价格要像真实电商；外卖写清店名、菜品、时间与配送状态；cart/orders/food 都要有数据。
 - mapcal.places：写角色搜索或导航过的、有真实感的地点；events：写接下来的日程，含时间、地点、类型标签。
+${ids.includes("wallet") ? "- wallet：10 条左右收支，收入 2-3 条（工资、稿费、项目结款、分红、报销、退款、红包等），支出 7-8 条；金额、店铺、时间必须符合角色的身份与消费水平；至少 1-2 条自然涉及用户；时间在最近 7 天内，按从新到旧排列；balance 与流水收支一致，不能为负。\n" : ""}
 每个 App 的数据格式必须严格符合示例字段名，只输出一个 JSON 对象，不要解释、不要代码块。
 输出必须紧凑：字段之间不要换行、不要缩进，正文尽量简短。`;
 }
@@ -2961,8 +3034,8 @@ function extractAppValue(raw, id){
   return undefined;
 }
 
-async function genMulti(api, char, ids){
-  const ctx = await buildCharContext(char);
+async function genMulti(api, char, ids, opts){
+  const ctx = (opts && opts.lite) ? buildLiteContext(char) : await buildCharContext(char);
   const user = buildMultiPrompt(ids, char, ctx);
   const endpoint = buildChatEndpoint(api.url);
   let __sysJson = SYS_JSON;
@@ -3034,6 +3107,7 @@ async function genMulti(api, char, ids){
     if(id === "health" && (!data || typeof data !== "object" || !data.steps)){ valid = false; reason = "缺少 steps"; }
     if((id === "taobao" || id === "store") && (!data || typeof data !== "object" || !(Array.isArray(data.cart) || Array.isArray(data.orders) || Array.isArray(data.food)))){ valid = false; reason = "缺少 cart/orders/food"; }
     if(id === "mapcal" && (!data || typeof data !== "object" || !(Array.isArray(data.places) || Array.isArray(data.events)))){ valid = false; reason = "缺少 places/events"; }
+    if(id === "wallet" && (!data || typeof data !== "object" || !Array.isArray(data.transactions) || !data.transactions.length)){ valid = false; reason = "缺少 transactions"; }
     if(!valid){ log.push({t:"err", s:`${id}: 校验失败（${reason}）`}); continue; }
     ok[id] = {type:id, data};
     log.push({t:"ok", s:`${id}: OK（${Array.isArray(data)?data.length+" 条":"对象"}）`});
@@ -3056,10 +3130,51 @@ function showGenFail(msg){
   document.getElementById("genFailSheet").classList.remove("hidden");
 }
 function hideGenFail(){ document.getElementById("genFailSheet").classList.add("hidden"); }
+function isContentBlocked(s){
+  return /内容被拦截|FAILED_PRECONDITION|content[\s_-]*(block|policy|filter)|safety/i.test(String(s || ""));
+}
 
 async function reRenderCurrentApp(){
   if(!appHost.classList.contains("show") || !currentAppId) return;
   try{ await renderAppById(currentAppId); }catch(e){}
+}
+
+// 把生成的钱包流水合并进角色银行卡（亲属卡「他的」共用同一份数据）
+function mergeWalletForChar(charId, data) {
+  const key = "nano_char_wallet_" + (charId || "default");
+  let cur = { balance: 20000, transactions: [] };
+  try{
+    const w = JSON.parse(localStorage.getItem(key) || "null");
+    if(w && typeof w === "object"){
+      cur.balance = Number(w.balance) || 0;
+      cur.transactions = Array.isArray(w.transactions) ? w.transactions : [];
+    }
+  }catch(e){}
+  const now = Date.now();
+  const txs = [];
+  (Array.isArray(data && data.transactions) ? data.transactions : []).forEach(function(t, i){
+    if(!t || typeof t !== "object") return;
+    const type = t.type === "income" ? "income" : "expense";
+    const amount = Math.round((parseFloat(t.amount) || 0) * 100) / 100;
+    if(!(amount > 0)) return;
+    let time = t.time || t.date || new Date(now - i * 3600000).toISOString();
+    const d = new Date(time);
+    if(isNaN(d.getTime())) time = new Date(now - i * 3600000).toISOString();
+    txs.push({
+      id: "ctx_" + now + "_" + Math.random().toString(36).slice(2, 7),
+      type: type,
+      amount: amount,
+      desc: String(t.desc || t.name || "").trim() || (type === "income" ? "收入" : "支出"),
+      time: time
+    });
+  });
+  txs.sort(function(a, b){ return new Date(b.time) - new Date(a.time); });
+  let net = 0;
+  txs.forEach(function(t){ net += (t.type === "income" ? t.amount : -t.amount); });
+  const balance = Math.max(0, Math.round((cur.balance + net) * 100) / 100);
+  const merged = { balance: balance, transactions: txs.slice(0, 500) };
+  try{ localStorage.setItem(key, JSON.stringify(merged)); }catch(e){}
+  return merged;
 }
 
 async function startGeneration(ids){
@@ -3068,7 +3183,6 @@ async function startGeneration(ids){
   if(!ids.length) return;
   const api = await getApiInfo();
   if(!api) return;
-
   genState.running = true;
   try{ if(window.NanoRefresh) NanoRefresh.start({ key:'gen', label:'生成内容' }); }catch(e){}
   genState.ids = ids.slice();
@@ -3083,6 +3197,8 @@ async function startGeneration(ids){
      改为弹出失败面板，由用户自己点「重新生成」再补，绝不在背后多扣 API。 */
   const okAll = {};
   const fatalMsgs = [];
+  let blockedSkipped = false;
+  let liteUsed = false;
 
   const runBatch = async (batch, label) => {
     showGenToast(label);
@@ -3096,11 +3212,58 @@ async function startGeneration(ids){
 
     genState.log.push({t:"sec", s:label});
     (r.log || []).forEach(l => genState.log.push(l));
+
+    /* 生成服务的内容安全策略偶尔会把整段请求拦掉。
+       处理顺序：先去掉「私密」重试；如果还被拦，再用不含世界书/记忆的轻量上下文重试。
+       其它错误不自动重试，避免在背后多扣一次 API。 */
+    if(r.fatal && isContentBlocked(r.fatal)){
+      let retryBatch = batch;
+      if(retryBatch.indexOf("private") >= 0){
+        blockedSkipped = true;
+        retryBatch = retryBatch.filter(id => id !== "private");
+        genState.log.push({t:"warn", s:"内容被安全策略拦截，自动去掉「私密」再试一次…"});
+        if(retryBatch.length){
+          try{
+            r = await genMulti(api, currentChar, retryBatch);
+          }catch(e){
+            r = {ok:{}, log:[], fatal:(e && e.message) || String(e)};
+          }
+          genState.log.push({t:"sec", s:label + "（已跳过私密）"});
+          (r.log || []).forEach(l => genState.log.push(l));
+        }
+      }
+      if(r.fatal && isContentBlocked(r.fatal) && retryBatch.length){
+        liteUsed = true;
+        genState.log.push({t:"warn", s:"仍被拦截，改用轻量上下文（不含世界书 / 记忆）重试…"});
+        try{
+          r = await genMulti(api, currentChar, retryBatch, { lite: true });
+        }catch(e){
+          r = {ok:{}, log:[], fatal:(e && e.message) || String(e)};
+        }
+        genState.log.push({t:"sec", s:label + "（轻量上下文）"});
+        (r.log || []).forEach(l => genState.log.push(l));
+      }
+    }
+    /* 私密被拦时不拖垮整页：用本地个人随想补齐 */
+    if(batch.indexOf("private") >= 0 && !(r.ok && r.ok.private) && blockedSkipped){
+      if(!r.ok) r.ok = {};
+      r.ok.private = { type: "private", data: genPrivateLocal(currentChar) };
+      genState.log.push({t:"warn", s:"私密：已用本地个人随想补充（不消耗 API）"});
+    }
     if(r.fatal) fatalMsgs.push(`${label}：${r.fatal}`);
 
     /* 生成完就立刻落盘 */
     for(const id of Object.keys(r.ok)){
-      try{ await dataSet(`app_${currentChar.id}_${id}`, r.ok[id]); okAll[id] = r.ok[id]; }
+      try{
+        let payload = r.ok[id];
+        if(id === "wallet"){
+          const merged = mergeWalletForChar(currentChar.id, payload.data);
+          payload = { type: "wallet", data: merged };
+          r.ok[id] = payload;
+        }
+        await dataSet(`app_${currentChar.id}_${id}`, payload);
+        okAll[id] = payload;
+      }
       catch(e){ genState.log.push({t:"err", s:`写入 ${id} 失败: ${e.message}`}); }
     }
     await reRenderCurrentApp();
@@ -3122,6 +3285,7 @@ async function startGeneration(ids){
     const names = failed.map(id => { const a = all.find(x => x.id === id); return a ? a.name : id; });
     const done = ids.length - failed.length;
     const msg = (done ? `已保存 ${done} 个 App 的内容。\n` : "") +
+      ((blockedSkipped || liteUsed) ? `模型安全策略拦截了部分内容${blockedSkipped ? "，「私密」已用本地随想补充" : ""}${liteUsed ? "，并用轻量上下文重试" : ""}；如果仍有失败，可调整人设 / 世界书后再试。\n` : "") +
       (fatalMsgs.length ? fatalMsgs.join("\n") + "\n" : "") +
       `以下 App 生成失败：${names.join("、")}\n` +
       `可点「重新生成」只补失败的部分。`;
@@ -3192,6 +3356,11 @@ function openDoubao(){ return openHostedApp("doubao", "doubao.html", "renderDoub
 function openTaobao(){ return openHostedApp("taobao", "taobao.html", "renderCharShopping"); }
 function openStore(){ return openHostedApp("store", "taobao.html", "renderCharShopping"); }
 function openMapcal(){ return openHostedApp("mapcal", "mapcal.html", "renderCharMapCalendar"); }
+function openWallet(){
+  const id = currentChar ? currentChar.id : "";
+  const nm = currentChar ? currentChar.name : "";
+  return openHostedApp("wallet", "phone-wallet.html?chat=" + encodeURIComponent(id) + "&name=" + encodeURIComponent(nm), "renderCharWallet");
+}
 
 /* 窥屏配置：内嵌在本 App 内，返回时回到「设置」而不是退出手机 */
 async function openScreenSetup(){
@@ -3221,6 +3390,7 @@ window.addEventListener("message", e => {
   const d = e && e.data;
   if(d && d.type === "phoneAppClose") closeApp();
   else if(d && d.type === "screenSetupClose"){ try{ openSettings(); }catch(err){} }
+  else if(d && d.type === "phoneAppRefresh"){ try{ startGeneration([currentAppId || "wallet"]); }catch(err){} }
   else if(d && d.type === "startScreenShare"){
     // 窥屏页嵌在「查手机」里时，把共享请求继续交给外壳
     try{
@@ -3246,6 +3416,7 @@ async function renderAppById(appId){
   else if(appId === "taobao")  await openTaobao();
   else if(appId === "store")   await openStore();
   else if(appId === "mapcal")  await openMapcal();
+  else if(appId === "wallet")  await openWallet();
   else if(appId === "settings") await openSettings();
 }
 
@@ -3268,7 +3439,7 @@ document.querySelectorAll('#phoneHome .app[data-app], #phoneHome .dock-slot[data
   el.addEventListener("click", e => {
     if(el.dataset.justDragged === "1"){ el.dataset.justDragged = "0"; return; }
     const id = el.dataset.app;
-    if(["video","diary","album","mail","memo","health","browser","game","private","chat","doubao","taobao","store","mapcal","settings"].includes(id)){
+    if(["video","diary","album","mail","memo","health","browser","game","private","chat","doubao","taobao","store","mapcal","wallet","settings"].includes(id)){
       e.preventDefault();
       e.stopPropagation();
       openApp(id);

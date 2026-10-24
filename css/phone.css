@@ -414,6 +414,7 @@ input,textarea{font-family:inherit}
 .pos-doubao{grid-column:1;grid-row:1}
 .pos-taobao{grid-column:2;grid-row:1}
 .pos-mapcal{grid-column:3;grid-row:1}
+.pos-wallet{grid-column:4;grid-row:1}
 
 .pos-chat-widget,
 .pos-widget-polaroid{
@@ -676,6 +677,8 @@ input,textarea{font-family:inherit}
   display:none;flex-direction:column;overflow:hidden;
 }
 #appHost.show{display:flex}
+/* 进入手机内页后隐藏全局 API 浮球，避免遮挡 App 内容 */
+body:has(#appHost.show) .ab-ball { display: none !important; }
 .app-frame{position:absolute;inset:0;width:100%;height:100%;border:0;display:block;background:#fff;z-index:1}
 
 .app-empty{text-align:center;color:var(--muted);padding:40px 0;font-size:13px}

@@ -5,47 +5,58 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>人设</title>
-    <link rel="stylesheet" href="../css/mask.css?v=20261018b">
+    <link rel="stylesheet" href="../css/mask.css?v=20261024b">
     <script src="../js/appearance.js"></script>
 </head>
 <body>
 <div class="app-container" id="app">
 
-    <!-- ===== 顶栏：返回 + 标题 ===== -->
+    <!-- ===== 顶栏：返回 + 面具 + 标题 + @ ===== -->
     <div class="nav-bar">
-        <button class="nav-back" id="backBtn" type="button" aria-label="返回" data-back>
-            <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
-        </button>
-        <span class="nav-title">mask</span>
+        <div class="page-header" id="pageHeader">
+            <button class="page-back" id="backBtn" type="button" aria-label="返回" data-back>
+                <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
+            <span class="page-title">Mask</span>
+            <button class="at-btn" id="atBtn" type="button" aria-label="更多操作" aria-expanded="false">
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.6"/><path d="M15.6 8.4v5.1a2.6 2.6 0 0 0 5.2 0V12a8.8 8.8 0 1 0-3.4 6.95"/></svg>
+            </button>
+        </div>
+        <div class="edit-controls" id="editControls">
+            <button class="edit-btn cancel-btn" id="cancelEditBtn">取消</button>
+            <span class="edit-title">编辑</span>
+            <button class="action-btn edit-btn" id="editModeBtn" type="button" aria-label="删除所选"></button>
+        </div>
     </div>
 
     <div class="content" id="content">
         <div class="mask-list" id="maskList"></div>
 
         <div class="empty-state" id="emptyState">
-            <span class="empty-icon">◇</span>
+            <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20.6 14.6A8.7 8.7 0 0 1 9.4 3.4a8.7 8.7 0 1 0 11.2 11.2Z"/>
+            </svg>
             <div class="empty-title">还没有人设</div>
-            <div class="empty-desc">点击左下角 + 创建</div>
-        </div>
-
-        <div class="bottom-actions">
-            <button class="action-btn add-btn" id="addBtn">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                    <line x1="12" y1="5" x2="12" y2="19"/>
-                    <line x1="5" y1="12" x2="19" y2="12"/>
-                </svg>
-            </button>
-            <div style="display:flex;gap:8px;align-items:center;position:relative;">
-                <button class="cancel-edit-btn" id="cancelEditBtn">取消</button>
-                <button class="action-btn edit-btn" id="editModeBtn">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                    </svg>
-                </button>
-            </div>
+            <div class="empty-desc">点击右上角 @ 创建</div>
         </div>
     </div>
+
+    <!-- ===== 点击右上角 @ 展开的操作 ===== -->
+    <div class="scrim" id="railScrim"></div>
+    <nav class="rail" id="rail" aria-label="操作">
+        <span class="lens" id="railLens"></span>
+        <button class="action-btn" id="editEntryBtn" type="button" title="编辑" aria-label="编辑">
+            <svg viewBox="0 0 24 24">
+                <path d="M11 4H6.5A2.5 2.5 0 0 0 4 6.5v11A2.5 2.5 0 0 0 6.5 20h11a2.5 2.5 0 0 0 2.5-2.5V13"/>
+                <path d="M17.8 3.7a1.8 1.8 0 0 1 2.5 2.5L12 14.5l-3.4.9.9-3.4z"/>
+            </svg>
+        </button>
+        <button class="action-btn add-btn" id="addBtn" type="button" title="新增人设" aria-label="新增人设">
+            <svg viewBox="0 0 24 24">
+                <path d="M12 5v14M5 12h14"/>
+            </svg>
+        </button>
+    </nav>
 
     <!-- 编辑弹窗（整页：顶栏返回 + 标题 + 保存） -->
     <div class="modal-overlay" id="editModal">
@@ -176,9 +187,68 @@
     <input type="file" class="file-input-hidden" id="importFileInput" accept=".txt,.json,.doc,.docx">
 </div>
 
-<script src="../js/mask.js?v=20261018b"></script>
+<script src="../js/mask.js?v=20261024a"></script>
 
 <script src="../js/api-float.js"></script>
 <script src="../swipe-back.js"></script>
+
+<script>
+(function(){
+    var rail = document.getElementById('rail');
+    var atBtn = document.getElementById('atBtn');
+    var scrim = document.getElementById('railScrim');
+    var lens = document.getElementById('railLens');
+    var editEntry = document.getElementById('editEntryBtn');
+    if (!rail || !atBtn) return;
+
+    var btns = [].slice.call(rail.querySelectorAll('button'));
+    var cur = null;
+
+    function release() {
+        cur = null;
+        btns.forEach(function(b){ b.classList.remove('hot'); });
+        if (lens) lens.classList.remove('show');
+    }
+
+    function toggle(force) {
+        var open = typeof force === 'boolean' ? force : !rail.classList.contains('open');
+        rail.classList.toggle('open', open);
+        atBtn.classList.toggle('on', open);
+        atBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        if (scrim) scrim.classList.toggle('show', open);
+        if (!open) release();
+    }
+
+    atBtn.addEventListener('click', function(e){ e.stopPropagation(); toggle(); });
+    if (scrim) scrim.addEventListener('click', function(){ toggle(false); });
+
+    function focusBtn(b) {
+        if (!lens || b === cur) return;
+        cur = b;
+        btns.forEach(function(x){ x.classList.toggle('hot', x === b); });
+        lens.style.setProperty('--y', (b.offsetTop - 7) + 'px');
+        lens.classList.add('show');
+    }
+    function hit(e) {
+        var el = document.elementFromPoint(e.clientX, e.clientY);
+        return el && el.closest ? el.closest('#rail button') : null;
+    }
+    rail.addEventListener('pointerdown', function(e){ var b = hit(e); if (b) focusBtn(b); });
+    rail.addEventListener('pointermove', function(e){ if (cur) { var b = hit(e); if (b) focusBtn(b); } });
+    window.addEventListener('pointerup', function(){ if (cur) setTimeout(release, 160); });
+    window.addEventListener('pointercancel', release);
+
+    if (editEntry) {
+        editEntry.addEventListener('click', function(){
+            var b = document.getElementById('editModeBtn');
+            if (b) b.click();
+        });
+    }
+
+    btns.forEach(function(b){
+        b.addEventListener('click', function(){ setTimeout(function(){ toggle(false); }, 120); });
+    });
+})();
+</script>
 </body>
 </html>
