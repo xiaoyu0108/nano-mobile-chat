@@ -355,8 +355,12 @@ function peekCharName(system) {
 function modelEndpoint(raw) {
   let s = String(raw || '').trim().replace(/\/+$/, '');
   if (!s) return '';
-  if (!/\/v1$/i.test(s)) s += '/v1';
-  return s + '/chat/completions';
+  // 用户可能填的是完整接口地址，也可能只填到 /v1，不能重复拼路径
+  if (/\/chat\/completions$/i.test(s)) return s;
+  if (/\/responses$/i.test(s)) return s;
+  if (/\/v1$/i.test(s)) return s + '/chat/completions';
+  if (/\/v1\//i.test(s)) return s;
+  return s + '/v1/chat/completions';
 }
 
 async function peekTurns(env, chatId, appId) {
@@ -1018,6 +1022,32 @@ async function runAutoPush(env, appId, deviceId, userId) {
 // 用服务端保存的 key 调主模型（Key 不出服务器），支持纯文本与「截图 + 文本」。
 // 优先用 PEEK_* 专用配置；没有时复用 App 同步上来的主 API（cfg.api），
 // 这样用户不用再额外配一套 PEEK_API_URL / PEEK_API_KEY / PEEK_MODEL。
+function peekModelText(data) {
+  if (!data) return '';
+  const msg = data.choices && data.choices[0] && data.choices[0].message;
+  let c = msg && msg.content;
+  if (Array.isArray(c)) {
+    c = c.map(function (x) {
+      if (typeof x === 'string') return x;
+      return (x && (x.text || x.content)) || '';
+    }).join('');
+  }
+  if (typeof c === 'string' && c.trim()) return c.trim();
+  const alt = data.choices && data.choices[0] && data.choices[0].text;
+  if (typeof alt === 'string' && alt.trim()) return alt.trim();
+  if (typeof data.output_text === 'string' && data.output_text.trim()) return data.output_text.trim();
+  if (Array.isArray(data.output)) {
+    const parts = [];
+    data.output.forEach(function (o) {
+      (o && Array.isArray(o.content) ? o.content : []).forEach(function (p) {
+        if (p && typeof p.text === 'string') parts.push(p.text);
+      });
+    });
+    if (parts.join('').trim()) return parts.join('').trim();
+  }
+  return '';
+}
+
 async function peekModel(env, system, text, image, history, apiCfg, context) {
   // 公用模式绝对不回退到站长的 PEEK_API_*：别人来玩只能用他们自己同步上来的 Key。
   const allowEnvApi = !peekPublic(env);
@@ -1025,36 +1055,73 @@ async function peekModel(env, system, text, image, history, apiCfg, context) {
   const key = (allowEnvApi ? env.PEEK_API_KEY : '') || (apiCfg && apiCfg.key) || '';
   const model = (allowEnvApi ? env.PEEK_MODEL : '') || (apiCfg && apiCfg.model) || '';
   if (!url || !key || !model) return null;
-  let content;
-  if (image) {
-    content = [
-      { type: 'text', text: text || '看看我现在屏幕上是什么，用你的人设随口说一句。' },
-      { type: 'image_url', image_url: { url: image } }
-    ];
-  } else {
-    content = text || '用你的人设随口说一句。';
+  const isResponses = /\/responses$/i.test(url);
+
+  function buildBody(useImage, tokenField) {
+    const messages = [];
+    if (system) messages.push({ role: 'system', content: system });
+    (context || []).forEach(function (m) {
+      if (!m || !m.content) return;
+      messages.push({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content).slice(0, 1200) });
+    });
+    (history || []).forEach(function (t) {
+      if (t.user) messages.push({ role: 'user', content: String(t.user) });
+      if (t.char) messages.push({ role: 'assistant', content: String(t.char) });
+    });
+    let content;
+    if (useImage && image) {
+      content = [
+        { type: 'text', text: text || '看看我现在屏幕上是什么，用你的人设随口说一句。' },
+        { type: 'image_url', image_url: { url: image } }
+      ];
+    } else {
+      content = text || '看看我现在屏幕上是什么，用你的人设随口说一句。';
+    }
+    messages.push({ role: 'user', content: content });
+    if (isResponses) {
+      let input = '';
+      messages.forEach(function (m) {
+        const c = Array.isArray(m.content)
+          ? m.content.map(function (x) { return x.text || ''; }).join(' ')
+          : m.content;
+        if (c) input += (m.role === 'assistant' ? 'Assistant: ' : (m.role === 'system' ? 'System: ' : 'User: ')) + c + '\n';
+      });
+      return { model: model, input: input.trim(), max_output_tokens: 1200 };
+    }
+    const body = { model: model, messages: messages, temperature: 0.9, stream: false };
+    body[tokenField || 'max_tokens'] = 1200;
+    return body;
   }
-  const messages = [];
-  if (system) messages.push({ role: 'system', content: system });
-  // App 同步过来的最近聊天上下文：让 TA 接得上你们刚聊过的话题，而不是像陌生人。
-  (context || []).forEach(function (m) {
-    if (!m || !m.content) return;
-    messages.push({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content).slice(0, 1200) });
-  });
-  (history || []).forEach(function (t) {
-    if (t.user) messages.push({ role: 'user', content: String(t.user) });
-    if (t.char) messages.push({ role: 'assistant', content: String(t.char) });
-  });
-  messages.push({ role: 'user', content });
-  const resp = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
-    body: JSON.stringify({ model, messages, max_tokens: 900, temperature: 0.9 })
-  });
-  if (!resp.ok) return null;
-  const data = await resp.json();
-  const c = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
-  return c ? String(c).trim() : null;
+
+  async function call(payload) {
+    try {
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
+        body: JSON.stringify(payload)
+      });
+      if (!resp.ok) {
+        let detail = '';
+        try { detail = (await resp.text()).slice(0, 240); } catch (e) {}
+        return { text: '', error: 'HTTP ' + resp.status + ' ' + detail };
+      }
+      const data = await resp.json();
+      return { text: peekModelText(data), error: '' };
+    } catch (e) {
+      return { text: '', error: String((e && e.message) || e || '') };
+    }
+  }
+
+  let r = await call(buildBody(!!image, 'max_tokens'));
+  // 模型不支持图片 / 图片太大导致失败时，退化为纯文字再试一次，避免有内容却报“未返回”
+  if (!isResponses && image && !r.text) {
+    r = await call(buildBody(false, 'max_tokens'));
+  }
+  // 新模型只接受 max_completion_tokens（或 max_tokens 被拒绝/耗尽）时再试一次
+  if (!isResponses && !r.text && /max_tokens|max_completion_tokens|unsupported|invalid|reasoning/i.test(r.error || '')) {
+    r = await call(buildBody(false, 'max_completion_tokens'));
+  }
+  return r.text ? String(r.text).trim() : null;
 }
 
 // ===== 分享链接解析（服务端抓取，绕开浏览器 CORS；只允许常见分享站点，避免变成开放代理） =====
@@ -1591,6 +1658,102 @@ async function accAdminAccess(request, env, body, auth) {
   if (auth && accRole(auth.user) === 'admin') return { ok: true, by: 'role' };
   return accAdminOk(request, env, body);
 }
+function accCode(prefix, groups) {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let out = String(prefix || 'NANO').toUpperCase();
+  for (let g = 0; g < (groups || 3); g++) {
+    const b = new Uint8Array(4);
+    crypto.getRandomValues(b);
+    let part = '';
+    for (let i = 0; i < 4; i++) part += alphabet[b[i] % alphabet.length];
+    out += '-' + part;
+  }
+  return out;
+}
+function accDeviceKey(user, deviceId) {
+  return 'acct:dev:' + accLowerName(user.u) + ':' + String(deviceId || '');
+}
+async function accReadDevice(env, user, deviceId) {
+  if (!user || !deviceId) return null;
+  const raw = await kv(env).get(accDeviceKey(user, deviceId));
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch (e) { return null; }
+}
+function accPublicDevice(dev) {
+  if (!dev) return null;
+  return {
+    deviceId: dev.deviceId || '',
+    deviceName: dev.deviceName || '未知设备',
+    deviceCode: dev.deviceCode || '',
+    activated: dev.activated === true,
+    at: dev.at || 0,
+    lastSeen: dev.lastSeen || dev.at || 0
+  };
+}
+function accAdminDevice(dev, user) {
+  if (!dev) return null;
+  return Object.assign(accPublicDevice(dev), {
+    username: user ? user.u : '',
+    activationCode: dev.activationCode || '',
+    activationAt: dev.activationAt || 0
+  });
+}
+async function accReadDeviceByCode(env, code) {
+  const c = String(code || '').trim().toUpperCase().replace(/\s+/g, '');
+  if (!c) return null;
+  const raw = await kv(env).get('acct:devcode:' + c);
+  if (!raw) return null;
+  try {
+    const idx = JSON.parse(raw);
+    const user = await accReadUser(env, idx.u);
+    if (!user) return null;
+    const dev = await accReadDevice(env, user, idx.deviceId);
+    return dev ? { user, dev, code: c } : null;
+  } catch (e) { return null; }
+}
+async function accNewActivationCode(env, user, deviceId) {
+  for (let i = 0; i < 10; i++) {
+    const code = accCode('ACT', 2);
+    const exists = await kv(env).get('acct:actcode:' + code);
+    if (!exists) {
+      await kv(env).put('acct:actcode:' + code, JSON.stringify({ u: user.u, deviceId: deviceId }));
+      return code;
+    }
+  }
+  return accCode('ACT', 3);
+}
+
+async function accEnsureDevice(env, user, deviceId, deviceName) {
+  if (!user || !deviceId) return null;
+  const now = Date.now();
+  let dev = await accReadDevice(env, user, deviceId);
+  if (!dev) {
+    let deviceCode = accCode('DEV', 2);
+    let tries = 0;
+    while (tries < 6 && await kv(env).get('acct:devcode:' + deviceCode)) {
+      deviceCode = accCode('DEV', 2);
+      tries++;
+    }
+    dev = {
+      deviceId: deviceId,
+      deviceName: deviceName || '未知设备',
+      deviceCode: deviceCode,
+      activated: false,
+      activationCode: '',
+      at: now,
+      lastSeen: now
+    };
+    await kv(env).put(accDeviceKey(user, deviceId), JSON.stringify(dev));
+    await kv(env).put('acct:devcode:' + deviceCode, JSON.stringify({ u: user.u, deviceId: deviceId }));
+    return dev;
+  }
+  let changed = false;
+  if (deviceName && dev.deviceName !== deviceName) { dev.deviceName = deviceName; changed = true; }
+  if (now - Number(dev.lastSeen || 0) > 60 * 60 * 1000) { dev.lastSeen = now; changed = true; }
+  if (changed) await kv(env).put(accDeviceKey(user, deviceId), JSON.stringify(dev));
+  return dev;
+}
+
 async function accHandle(request, env, pathname) {
   if (!pathname.startsWith('/account/') && !pathname.startsWith('/gate/')) return null;
   const method = request.method;
@@ -1607,9 +1770,11 @@ async function accHandle(request, env, pathname) {
     if (await accReadUser(env, name)) return json({ ok: false, error: '这个用户名已经被注册' }, 409);
     const salt = accB64(crypto.getRandomValues(new Uint8Array(16)));
     const hash = await accHash(password, salt);
-    const user = { u: name, salt: salt, hash: hash, at: Date.now(), role: 'user' };
+    const regDeviceId = String(body.deviceId || '').trim() || accRandomHex(8);
+    const user = { u: name, salt: salt, hash: hash, at: Date.now(), role: 'user', lastLoginAt: Date.now(), lastDeviceName: body.deviceName || '' };
     await kv(env).put(accUserKey(name), JSON.stringify(user));
-    const issued = await accIssueSession(env, user, body);
+    const dev = await accEnsureDevice(env, user, regDeviceId, body.deviceName);
+    const issued = await accIssueSession(env, user, Object.assign({}, body, { deviceId: regDeviceId }));
     return json({
       ok: true,
       token: issued.session.token,
@@ -1617,7 +1782,9 @@ async function accHandle(request, env, pathname) {
       role: accRole(user),
       sid: issued.session.sid,
       sessions: accPublicSessions(issued.sessions, issued.session.sid),
-      evicted: issued.evicted
+      evicted: issued.evicted,
+      device: accPublicDevice(dev),
+      needsActivation: true
     });
   }
 
@@ -1630,7 +1797,15 @@ async function accHandle(request, env, pathname) {
     if (!user) return json({ ok: false, error: '账号或密码不正确' }, 401);
     const hash = await accHash(password, user.salt);
     if (hash !== user.hash) return json({ ok: false, error: '账号或密码不正确' }, 401);
-    const issued = await accIssueSession(env, user, body);
+    if (user.banned === true) return json({ ok: false, error: '该账号已被停用，请联系管理员' }, 403);
+    const loginDeviceId = String(body.deviceId || '').trim() || accRandomHex(8);
+    user.lastLoginAt = Date.now();
+    user.lastDeviceName = body.deviceName || '';
+    user.lastDeviceId = loginDeviceId;
+    await kv(env).put(accUserKey(user.u), JSON.stringify(user));
+    const dev = await accEnsureDevice(env, user, loginDeviceId, body.deviceName);
+    const issued = await accIssueSession(env, user, Object.assign({}, body, { deviceId: loginDeviceId }));
+    const isAdmin = accRole(user) === 'admin';
     return json({
       ok: true,
       token: issued.session.token,
@@ -1638,7 +1813,9 @@ async function accHandle(request, env, pathname) {
       role: accRole(user),
       sid: issued.session.sid,
       sessions: accPublicSessions(issued.sessions, issued.session.sid),
-      evicted: issued.evicted
+      evicted: issued.evicted,
+      device: accPublicDevice(dev),
+      needsActivation: !isAdmin && !(dev && dev.activated === true)
     });
   }
 
@@ -1661,6 +1838,9 @@ async function accHandle(request, env, pathname) {
     });
     if (changed) await accSaveSessions(env, auth.user.u, list);
     const policy = await accReadPolicy(env);
+    const deviceId = auth.session.deviceId || '';
+    const dev = await accEnsureDevice(env, auth.user, deviceId, auth.session.deviceName);
+    const isAdmin = accRole(auth.user) === 'admin';
     return json({
       ok: true,
       username: auth.user.u,
@@ -1668,11 +1848,37 @@ async function accHandle(request, env, pathname) {
       sid: auth.session.sid,
       sessions: accPublicSessions(list, auth.session.sid),
       maxDevices: ACC_MAX_DEVICES,
-      policy: policy
+      policy: policy,
+      device: accPublicDevice(dev),
+      needsActivation: !isAdmin && !(dev && dev.activated === true)
     });
   }
 
   // ---- 退出当前设备 ----
+  // ---- 激活本机：输入管理员生成的激活码 ----
+  if (pathname === '/account/activate-device' && method === 'POST') {
+    const auth = await accAuth(env, body.token);
+    if (!auth) return json({ ok: false, error: '请先登录账号' }, 401);
+    if (auth.user.banned === true) return json({ ok: false, error: '该账号已被停用' }, 403);
+    const deviceId = auth.session.deviceId || '';
+    if (!deviceId) return json({ ok: false, error: '本机没有设备标识，请退出后重新登录' }, 400);
+    let dev = await accReadDevice(env, auth.user, deviceId);
+    if (!dev) dev = await accEnsureDevice(env, auth.user, deviceId, auth.session.deviceName);
+    if (dev.activated === true) return json({ ok: true, device: accPublicDevice(dev), needsActivation: false });
+    if (!dev.activationCode) {
+      return json({ ok: false, error: '本机还没有生成激活码。请把设备码发给管理员，由管理员生成。' }, 403);
+    }
+    const code = String(body.code || '').trim().toUpperCase().replace(/\s+/g, '');
+    if (!code || code !== String(dev.activationCode || '').toUpperCase()) {
+      return json({ ok: false, error: '激活码不正确，请向管理员确认' }, 403);
+    }
+    dev.activated = true;
+    dev.activationAt = Date.now();
+    dev.lastSeen = Date.now();
+    await kv(env).put(accDeviceKey(auth.user, deviceId), JSON.stringify(dev));
+    return json({ ok: true, device: accPublicDevice(dev), needsActivation: false });
+  }
+
   if (pathname === '/account/logout' && method === 'POST') {
     const auth = await accAuth(env, body.token);
     if (!auth) return json({ ok: true });
@@ -1711,6 +1917,136 @@ async function accHandle(request, env, pathname) {
   }
 
   // ---- 管理员：用管理员密钥把自己的账号升级为管理员 ----
+  // ---- 管理员：设备列表 / 生成激活码 / 撤销 ----
+  if (pathname === '/account/admin/devices' && method === 'POST') {
+    const auth = await accAuth(env, body.token);
+    const admin = await accAdminAccess(request, env, body, auth);
+    if (!admin.ok) return json({ ok: false, error: admin.error }, 403);
+    const listed = await kv(env).list({ prefix: 'acct:devcode:', limit: 300 });
+    const out = [];
+    for (const k of (listed.keys || [])) {
+      try {
+        const idx = JSON.parse(await kv(env).get(k.name) || 'null');
+        if (!idx || !idx.u || !idx.deviceId) continue;
+        const user = await accReadUser(env, idx.u);
+        if (!user) continue;
+        const dev = await accReadDevice(env, user, idx.deviceId);
+        if (!dev) continue;
+        out.push(accAdminDevice(dev, user));
+      } catch (e) {}
+    }
+    out.sort(function (a, b) { return (b.lastSeen || b.at || 0) - (a.lastSeen || a.at || 0); });
+    return json({ ok: true, devices: out.slice(0, 200) });
+  }
+
+  if (pathname === '/account/admin/device-key' && method === 'POST') {
+    const auth = await accAuth(env, body.token);
+    const admin = await accAdminAccess(request, env, body, auth);
+    if (!admin.ok) return json({ ok: false, error: admin.error }, 403);
+    const hit = await accReadDeviceByCode(env, body.deviceCode);
+    if (!hit) return json({ ok: false, error: '没有找到这个设备码，让用户刷新账号页后重试' }, 404);
+    let dev = hit.dev;
+    let needNew = !dev.activationCode || body.force === true;
+    if (!needNew && dev.activationCode) {
+      const rawIdx = await kv(env).get('acct:actcode:' + dev.activationCode);
+      if (!rawIdx) {
+        await kv(env).put('acct:actcode:' + dev.activationCode, JSON.stringify({ u: hit.user.u, deviceId: dev.deviceId }));
+      } else {
+        try {
+          const idx = JSON.parse(rawIdx);
+          if (!idx || idx.u !== hit.user.u || idx.deviceId !== dev.deviceId) needNew = true;
+        } catch (e) { needNew = true; }
+      }
+    }
+    if (needNew) {
+      if (dev.activationCode) await kv(env).delete('acct:actcode:' + dev.activationCode);
+      dev.activationCode = await accNewActivationCode(env, hit.user, dev.deviceId);
+      dev.activated = false;
+      dev.activationAt = 0;
+      await kv(env).put(accDeviceKey(hit.user, dev.deviceId), JSON.stringify(dev));
+    }
+    return json({ ok: true, username: hit.user.u, device: accAdminDevice(dev, hit.user) });
+  }
+
+  if (pathname === '/account/admin/device-revoke' && method === 'POST') {
+    const auth = await accAuth(env, body.token);
+    const admin = await accAdminAccess(request, env, body, auth);
+    if (!admin.ok) return json({ ok: false, error: admin.error }, 403);
+    const hit = await accReadDeviceByCode(env, body.deviceCode);
+    if (!hit) return json({ ok: false, error: '设备不存在' }, 404);
+    hit.dev.activated = false;
+    hit.dev.activationAt = 0;
+    await kv(env).put(accDeviceKey(hit.user, hit.dev.deviceId), JSON.stringify(hit.dev));
+    return json({ ok: true, username: hit.user.u, device: accAdminDevice(hit.dev, hit.user) });
+  }
+
+  // ---- 管理员：用户列表 / 踢下线 / 封禁 ----
+  if (pathname === '/account/admin/users' && method === 'POST') {
+    const auth = await accAuth(env, body.token);
+    const admin = await accAdminAccess(request, env, body, auth);
+    if (!admin.ok) return json({ ok: false, error: admin.error }, 403);
+    const listed = await kv(env).list({ prefix: 'acct:user:', limit: 300 });
+    const out = [];
+    for (const k of (listed.keys || [])) {
+      try {
+        const user = JSON.parse(await kv(env).get(k.name) || 'null');
+        if (!user || !user.u) continue;
+        const sessions = await accReadSessions(env, user.u);
+        out.push({
+          username: user.u,
+          role: accRole(user),
+          banned: user.banned === true,
+          at: user.at || 0,
+          lastLoginAt: user.lastLoginAt || 0,
+          lastDeviceName: user.lastDeviceName || '',
+          sessions: sessions.length
+        });
+      } catch (e) {}
+    }
+    out.sort(function (a, b) { return (b.lastLoginAt || b.at || 0) - (a.lastLoginAt || a.at || 0); });
+    return json({ ok: true, users: out.slice(0, 200) });
+  }
+
+  if (pathname === '/account/admin/kick' && method === 'POST') {
+    const auth = await accAuth(env, body.token);
+    const admin = await accAdminAccess(request, env, body, auth);
+    if (!admin.ok) return json({ ok: false, error: admin.error }, 403);
+    const user = await accReadUser(env, body.username);
+    if (!user) return json({ ok: false, error: '账号不存在' }, 404);
+    const sessions = await accReadSessions(env, user.u);
+    for (const s of sessions) await accDropSession(env, user.u, s);
+    await kv(env).delete(accSessKey(user.u));
+    return json({ ok: true, username: user.u, removed: sessions.length });
+  }
+
+  if (pathname === '/account/admin/ban' && method === 'POST') {
+    const auth = await accAuth(env, body.token);
+    const admin = await accAdminAccess(request, env, body, auth);
+    if (!admin.ok) return json({ ok: false, error: admin.error }, 403);
+    const user = await accReadUser(env, body.username);
+    if (!user) return json({ ok: false, error: '账号不存在' }, 404);
+    user.banned = body.banned === true;
+    await kv(env).put(accUserKey(user.u), JSON.stringify(user));
+    if (user.banned) {
+      const sessions = await accReadSessions(env, user.u);
+      for (const s of sessions) await accDropSession(env, user.u, s);
+      await kv(env).delete(accSessKey(user.u));
+    }
+    return json({ ok: true, username: user.u, banned: user.banned });
+  }
+
+  // ---- 管理员：退出管理员模式 ----
+  if (pathname === '/account/admin-exit' && method === 'POST') {
+    const auth = await accAuth(env, body.token);
+    if (!auth) return json({ ok: false, error: '请先登录账号' }, 401);
+    const user = auth.user;
+    if (accRole(user) === 'admin') {
+      user.role = 'user';
+      await kv(env).put(accUserKey(user.u), JSON.stringify(user));
+    }
+    return json({ ok: true, username: user.u, role: 'user' });
+  }
+
   if (pathname === '/account/admin-claim' && method === 'POST') {
     const auth = await accAuth(env, body.token);
     if (!auth) return json({ ok: false, error: '请先登录账号' }, 401);
@@ -1743,6 +2079,18 @@ async function accHandle(request, env, pathname) {
     if (!user) return json({ ok: false, error: '账号不存在' }, 404);
     const sessions = await accReadSessions(env, user.u);
     for (const s of sessions) await accDropSession(env, user.u, s);
+    const devPrefix = 'acct:dev:' + accLowerName(user.u) + ':';
+    try {
+      const devList = await kv(env).list({ prefix: devPrefix, limit: 1000 });
+      for (const d of (devList.keys || [])) {
+        try {
+          const dv = JSON.parse(await kv(env).get(d.name) || 'null');
+          if (dv && dv.deviceCode) await kv(env).delete('acct:devcode:' + dv.deviceCode);
+          if (dv && dv.activationCode) await kv(env).delete('acct:actcode:' + dv.activationCode);
+        } catch (e) {}
+        await kv(env).delete(d.name);
+      }
+    } catch (e) {}
     await kv(env).delete(accSessKey(user.u));
     await kv(env).delete(accUserKey(user.u));
     return json({ ok: true, username: user.u, removedSessions: sessions.length });
@@ -1753,8 +2101,24 @@ async function accHandle(request, env, pathname) {
   if ((pathname === '/gate/check' || pathname === '/gate/import') && method === 'POST') {
     const auth = await accAuth(env, body.token);
     if (!auth) return json({ ok: false, error: '请先登录账号' }, 401);
-    const policy = await accReadPolicy(env);
+    if (auth.user.banned === true) {
+      return json({ ok: false, error: '该账号已被停用', code: 'ACCOUNT_BANNED' }, 403);
+    }
+    const deviceId = auth.session.deviceId || '';
+    let dev = await accReadDevice(env, auth.user, deviceId);
     const role = accRole(auth.user);
+    // 仅当客户端明确要求时校验设备激活（PNG 导入）。TXT / DOC / DOCX / JSON 不强制激活。
+    const needActivation = body.needActivation === true;
+    if (role !== 'admin' && needActivation && (!dev || dev.activated !== true)) {
+      return json({
+        ok: false,
+        error: '本机还没有获得 PNG 导入授权。请把设备码发给管理员，拿到激活码后在「账号与设备」输入。',
+        code: 'DEVICE_LOCKED',
+        needsActivation: true,
+        device: accPublicDevice(dev)
+      }, 403);
+    }
+    const policy = await accReadPolicy(env);
     const allowed = role === 'admin' || policy.allowUserImport === true;
     if (!allowed) {
       return json({
@@ -1765,7 +2129,14 @@ async function accHandle(request, env, pathname) {
         policy: policy
       }, 403);
     }
-    return json({ ok: true, role: role, policy: policy, mode: role === 'admin' ? 'admin' : 'policy' });
+    return json({
+      ok: true,
+      role: role,
+      policy: policy,
+      mode: role === 'admin' ? 'admin' : 'policy',
+      needsActivation: role !== 'admin' && (!dev || dev.activated !== true),
+      device: accPublicDevice(dev)
+    });
   }
 
   return json({ ok: false, error: 'not found' }, 404);

@@ -171,8 +171,21 @@
 
 .nacc-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 9px;
   margin-top: 4px;
+}
+
+.nacc-actions > .nacc-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.nacc-actions > .nacc-field {
+  flex: 1 1 100%;
+  width: 100%;
 }
 
 .nacc-btn {

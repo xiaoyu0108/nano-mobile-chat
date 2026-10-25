@@ -329,7 +329,7 @@
   $('ncSettings').addEventListener('click', function () { openPage('nano-setting.html', 'Nano 设置'); });
   $('ncSettings2').addEventListener('click', function () { openPage('nano-setting.html', 'Nano 设置'); });
   var imageBtn = $('ncImage');
-  if (imageBtn) imageBtn.addEventListener('click', function () { openPage('nano-image.html', 'Nano 绘图'); });
+    if (imageBtn) imageBtn.addEventListener('click', function () { openPage('nano-image.html', 'Nano 生图室'); });
   $('ncFiles').addEventListener('click', function () { openPage('nano-files.html', 'Nano 文件'); });
   $('ncOpenFiles').addEventListener('click', function () { openPage('nano-files.html', 'Nano 文件'); });
   $('ncFilesList').addEventListener('click', function () { openPage('nano-files.html', 'Nano 文件'); });

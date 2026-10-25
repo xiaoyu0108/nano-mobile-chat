@@ -731,7 +731,14 @@
         openAvatarModal();
     };
 
-    importBtn.onclick = function() {
+    importBtn.onclick = async function() {
+        let importGate = null;
+        try { importGate = (window.parent && window.parent.NanoImportGate) || window.NanoImportGate; } catch (err) { importGate = window.NanoImportGate; }
+        if (importGate && importGate.ensure) {
+            let gateOk = false;
+            try { gateOk = await importGate.ensure(); } catch (err) { gateOk = false; }
+            if (!gateOk) return;
+        }
         importFileInput.click();
     };
 

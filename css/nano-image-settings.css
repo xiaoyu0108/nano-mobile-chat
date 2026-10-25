@@ -1,0 +1,135 @@
+/* nano-image-settings.css — Nano 生图设置独立页面 */
+.nis-hero {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.nis-hero-main {
+  min-width: 0;
+}
+
+.nis-hero-main b {
+  display: block;
+  font-size: 17px;
+  font-weight: 760;
+  color: var(--n-ink);
+}
+
+.nis-hero-main span {
+  display: block;
+  margin-top: 4px;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--n-muted);
+}
+
+.nis-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.nis-prompt-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.nis-import-btn {
+  display: flex;
+  width: 100%;
+  height: 40px;
+  margin-top: 12px;
+  padding: 0 12px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid var(--n-bubble-line);
+  border-radius: 12px;
+  background: var(--n-accent-soft);
+  color: var(--n-accent);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.nis-import-btn svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+.nis-clear {
+  display: flex;
+  width: 100%;
+  height: 40px;
+  margin-top: 12px;
+  padding: 0 12px;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.nis-field {
+  min-width: 0;
+}
+
+.nis-textarea {
+  min-height: 168px;
+  resize: vertical;
+}
+
+.nis-select {
+  width: 100%;
+  height: 44px;
+  margin-top: 10px;
+  padding: 0 12px;
+  border: 1px solid var(--n-line);
+  border-radius: 13px;
+  background: var(--n-subtle);
+  color: var(--n-ink);
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+}
+
+.nis-select:focus {
+  border-color: var(--n-accent);
+  background: var(--n-surface);
+}
+
+.nis-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.nis-action {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 38px;
+  justify-content: center;
+  padding: 0 6px;
+  white-space: nowrap;
+}
+
+.nis-danger {
+  color: #c05c6b;
+  background: #fff1f2;
+}
+
+.nis-saved {
+  margin: 16px 0 28px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--n-muted);
+}
+
+@media (max-width: 520px) {
+  .nis-grid { grid-template-columns: 1fr; }
+  .nis-textarea { min-height: 132px; }
+}

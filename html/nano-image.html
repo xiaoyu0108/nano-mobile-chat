@@ -4,9 +4,9 @@
   <script src="../js/nano-runtime.js?v=20261023a"></script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>Nano 绘图</title>
+  <title>Nano 生图室</title>
   <link rel="stylesheet" href="../css/nano.css?v=20261025b">
-  <link rel="stylesheet" href="../css/nano-image.css?v=20261025c">
+  <link rel="stylesheet" href="../css/nano-image.css?v=20261025j">
   <script src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
 </head>
 <body class="ni-body">
@@ -16,11 +16,11 @@
         <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
       <div class="ni-title">
-        <b>Nano 绘图</b>
-        <small id="niSub">独立生图窗口</small>
+        <b>Nano 生图室</b>
+        <small id="niSub">聊天 · 生图 · 风格参考</small>
       </div>
       <button class="ni-top-btn" id="niSessionsBtn">窗口</button>
-      <button class="ni-top-btn" id="niSettingsBtn">提示词</button>
+      <button class="ni-top-btn" id="niSettingsBtn">设置</button>
     </header>
 
     <div class="ni-scroll" id="niScroll">
@@ -28,7 +28,7 @@
         <div class="ni-hero-head">
           <div class="ni-hero-main">
             <span>当前窗口</span>
-            <b id="niSessionName">绘图 1</b>
+            <b id="niSessionName">生图 1</b>
           </div>
           <button class="ni-mini-btn" id="niRenameBtn">改名</button>
         </div>
@@ -37,22 +37,26 @@
 
       <div class="ni-feed" id="niFeed"></div>
       <div class="ni-empty" id="niEmpty">
-        <b>把画面描述给 Nano</b>
-        可以直接输入指令生成图片。想固定画风时，打开「提示词」设置基础提示词或复用生图 API 的提示词。
+        <b>和 Nano 聊天，或直接说「画一张…」</b>
+        可以正常聊天，也可以发图片让 Nano 识别画风；生成的图片会自动保存到图库。
       </div>
     </div>
 
     <div class="ni-composer">
       <div class="ni-composer-box">
-        <textarea id="niPrompt" placeholder="描述画面，例如：雨后夜晚的东京街头，电影感，浅景深" rows="2"></textarea>
+        <div class="ni-attach-preview" id="niAttachPreview" hidden>
+          <img id="niAttachThumb" alt="">
+          <button type="button" class="ni-attach-remove" id="niAttachRemove" aria-label="移除图片">×</button>
+        </div>
+        <textarea id="niPrompt" placeholder="和 Nano 聊天，或直接说「画一张雨夜东京街头的照片」…" rows="2"></textarea>
         <div class="ni-composer-tools">
-          <select class="ni-size" id="niSize" aria-label="图片比例">
-            <option value="1024x1024">1:1</option>
-            <option value="1024x1536">2:3</option>
-            <option value="1536x1024">3:2</option>
-            <option value="768x1344">9:16</option>
-          </select>
-          <button class="ni-generate" id="niGenerate">生成</button>
+          <button type="button" class="ni-tool-btn ni-plus-btn" id="niPlusBtn" aria-label="更多" title="更多">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+          <input type="file" id="niImageFile" accept="image/*" hidden>
+          <input type="file" id="niDocFile" accept=".txt,.doc,.docx,.json,.md" hidden>
+          <span class="ni-composer-spacer"></span>
+          <button class="ni-generate" id="niGenerate">发送</button>
         </div>
       </div>
     </div>
@@ -62,47 +66,70 @@
   <div class="ni-sheet" id="niSessionSheet">
     <div class="ni-sheet-card">
       <div class="ni-sheet-head">
-        <b>绘图窗口</b>
+        <b>生图窗口</b>
         <button class="ni-close" id="niSessionClose" aria-label="关闭">✕</button>
       </div>
       <div id="niSessionList"></div>
       <button class="ni-mini-btn primary" id="niNewSession" style="width:100%;height:40px;margin-top:6px">＋ 新建窗口</button>
-      <div class="ni-hint">每个窗口独立保存生成记录，可随时改名或删除。</div>
+      <div class="ni-hint">每个窗口独立保存聊天与生成记录，可随时改名或删除。</div>
     </div>
   </div>
 
-  <!-- 提示词设置 -->
-  <div class="ni-sheet" id="niSettingsSheet">
-    <div class="ni-sheet-card">
-      <div class="ni-sheet-head">
-        <b>提示词设置</b>
-        <button class="ni-close" id="niSettingsClose" aria-label="关闭">✕</button>
+  <!-- 更多 -->
+  <div class="ni-sheet ni-more-sheet" id="niMoreSheet">
+    <div class="ni-more-card">
+      <div class="ni-more-grid">
+        <button type="button" class="ni-more-item" data-more="reroll">
+          <span class="ni-more-icon" style="background:#007AFF"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.6 6.4"/><path d="M20 4v7h-7"/></svg></span>
+          <span>重roll</span>
+        </button>
+        <button type="button" class="ni-more-item" data-more="image">
+          <span class="ni-more-icon" style="background:#FF9500"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5-5 5-3-3-5 5"/></svg></span>
+          <span>图片</span>
+        </button>
+        <button type="button" class="ni-more-item" data-more="file">
+          <span class="ni-more-icon" style="background:#FF4D94"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h4"/></svg></span>
+          <span>文件</span>
+        </button>
+        <button type="button" class="ni-more-item" data-more="settings">
+          <span class="ni-more-icon" style="background:#5856D6"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h10M18 7h2M4 17h2M10 17h10M4 12h4M12 12h8"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/><circle cx="10" cy="12" r="2"/></svg></span>
+          <span>设置</span>
+        </button>
+        <button type="button" class="ni-more-item" data-more="sessions">
+          <span class="ni-more-icon" style="background:#34C759"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
+          <span>窗口</span>
+        </button>
+        <button type="button" class="ni-more-item" data-more="clear">
+          <span class="ni-more-icon" style="background:#FF3B30"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"/></svg></span>
+          <span>清空</span>
+        </button>
       </div>
+      <button type="button" class="ni-more-cancel" id="niMoreCancel">取消</button>
+    </div>
+  </div>
 
-      <label class="ni-switch-row">
-        <span class="ni-switch-main"><b>使用 Nano 提示词</b><small>正面 + 反面；只用于 Nano 绘图，不会改动其他生图</small></span>
-        <span class="ni-switch"><input type="checkbox" id="niUseBase"><i></i></span>
-      </label>
-      <div class="ni-field">
-        <div class="ni-field-label">正面提示词 <span id="niBaseState">可留空，直接写指令也能生成</span></div>
-        <textarea class="ni-textarea" id="niBasePositive" placeholder="自己填写想固定的画风 / 光线 / 质感。（下面的灰色文字只是示例，不是内置提示词）"></textarea>
+  <!-- 消息菜单 -->
+  <div class="ni-sheet ni-msg-sheet" id="niMsgSheet">
+    <div class="ni-msg-card">
+      <div class="ni-msg-head">
+        <b id="niMsgTitle">消息</b>
+        <span id="niMsgPreview"></span>
       </div>
-      <div class="ni-field">
-        <div class="ni-field-label">反面提示词 <span>避免出现的画面</span></div>
-        <textarea class="ni-textarea ni-textarea-sm" id="niBaseNegative" placeholder="例如：模糊、畸变、多余手指、文字水印"></textarea>
+      <div class="ni-msg-actions">
+        <button type="button" data-msg-act="copy">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          复制
+        </button>
+        <button type="button" data-msg-act="reroll" id="niMsgReroll">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.6 6.4"/><path d="M20 4v7h-7"/></svg>
+          重roll
+        </button>
+        <button type="button" data-msg-act="delete" class="danger">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"/></svg>
+          删除
+        </button>
       </div>
-      <div class="ni-field">
-        <div class="ni-field-label">提示词预设 <span>Nano 预设可直接用；生图 API 预设只读导入</span></div>
-        <select class="ni-select" id="niBasePreset"></select>
-        <div class="ni-preset-row">
-          <button class="ni-mini-btn" id="niPresetSave" title="把当前正面 / 反面存为新预设">新增</button>
-          <button class="ni-mini-btn" id="niPresetUpdate" title="覆盖选中预设">保存</button>
-          <button class="ni-mini-btn danger" id="niPresetDelete" title="删除选中预设">删除</button>
-        </div>
-        <div class="ni-hint" id="niApiHint">正在读取生图 API 的提示词预设…</div>
-      </div>
-
-      <button class="ni-mini-btn primary" id="niSettingsDone" style="width:100%;height:40px;margin-top:16px">完成</button>
+      <button type="button" class="ni-more-cancel" id="niMsgCancel">取消</button>
     </div>
   </div>
 
@@ -110,7 +137,7 @@
 
   <script src="../js/nano-gallery.js?v=20261023e"></script>
   <script src="../js/nano-image.js?v=20261024a"></script>
-  <script src="../js/nano-image-studio.js?v=20261025d"></script>
+  <script src="../js/nano-image-studio.js?v=20261025s"></script>
   <script src="../swipe-back.js"></script>
 </body>
 </html>

@@ -164,7 +164,7 @@
   <button class="sheet-btn primary" id="addGroupBtn">+ 添加规则组</button>
   <label class="import-label sheet-btn">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 15V4"/><path d="m7.5 8.5 4.5-4.5 4.5 4.5"/><path d="M5 14.5v4A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5v-4"/></svg>
-    导入<input id="importFile" type="file" accept=".json,.txt,.docx">
+    导入<input id="importFile" type="file" accept=".png,.json,.txt,.doc,.docx">
   </label>
   <button class="sheet-btn" id="exportBtn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 4v12"/><path d="m8 12 4 4 4-4"/><path d="M5 18v2a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2"/></svg> 导出</button>
   <button class="sheet-btn" id="expandAllBtn">全部展开</button>
@@ -194,7 +194,7 @@
 <div class="file-import">
 <label class="import-label">
 <svg class="svg-mini" viewBox="0 0 24 24"><path d="M12 15V4"/><path d="m7.5 8.5 4.5-4.5 4.5 4.5"/><path d="M5 14.5v4A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5v-4"/></svg>
-导入 TXT / DOCX<input id="styleFile" type="file" accept=".txt,.docx,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+ 导入 TXT / DOCX<input id="styleFile" type="file" accept=".txt,.doc,.docx,text/plain,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
 </label>
 <span id="styleFileName" style="font-size:10px;color:var(--sub)"></span>
 </div>
@@ -222,7 +222,7 @@
 <div class="file-import">
 <label class="import-label">
 <svg class="svg-mini" viewBox="0 0 24 24"><path d="M12 15V4"/><path d="m7.5 8.5 4.5-4.5 4.5 4.5"/><path d="M5 14.5v4A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5v-4"/></svg>
-导入 TXT / DOCX<input id="cotFile" type="file" accept=".txt,.docx,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+ 导入 TXT / DOCX<input id="cotFile" type="file" accept=".txt,.doc,.docx,text/plain,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
 </label>
 <span id="cotFileName" style="font-size:10px;color:var(--sub)"></span>
 </div>
@@ -386,10 +386,11 @@
     <script src="../js/offline-themes.js?v=20261022f"></script>
     <script src="../js/nano-export.js?v=20261015a"></script>
     <script src="../js/nano-status-bar.js?v=20261015a"></script>
-    <script src="../js/offline-setting.js?v=20261025b"></script>
+    <script src="../js/nano-png-json.js?v=20261025a"></script>
+<script src="../js/offline-setting.js?v=20261025g"></script>
 <script src="../js/avatar-frame.js?v=20261010a"></script>
 <script src="../js/api-float.js"></script>
 <script src="../swipe-back.js"></script>
-<script src="../js/account.js?v=20261025k"></script>
+<script src="../js/account.js?v=20261025u"></script>
 </body>
 </html>

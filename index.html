@@ -9,7 +9,7 @@
     (function () {
         try {
             var KEY = 'nano_build';
-            var CUR = 'nano-2026-10-23-10';
+            var CUR = 'nano-2026-10-25-1';
             var prev = null, ok = false;
             try { prev = localStorage.getItem(KEY); } catch (e) {}
             if (prev === CUR) return;
@@ -42,6 +42,9 @@
     <link rel="apple-touch-icon" sizes="512x512" href="icons/icon-512.png">
     <link rel="manifest" href="manifest.json">
     <title>Nano</title>
+    <link rel="prefetch" href="html/chat.html">
+    <link rel="prefetch" href="html/nano.html">
+    <link rel="prefetch" href="html/nano-image.html">
     <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
     <!-- 聊天/通话/设置页会同步加载 localforage；在这里提前拉，避免它们卡在 CDN 往返上 -->
@@ -335,6 +338,37 @@
             height: 100%;
             border: none;
             background: transparent;
+        }
+        .overlay-loading {
+            position: absolute;
+            inset: 0;
+            z-index: 40;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 13px;
+            background:
+                radial-gradient(90% 60% at 50% 0%, #ffe6ef 0%, transparent 70%),
+                #fff9fc;
+            color: #2b2026;
+            font-size: 13px;
+            font-weight: 650;
+            letter-spacing: .02em;
+        }
+        .overlay-loading.show { display: flex; }
+        .overlay-loading-spin {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            border: 2.5px solid rgba(232, 92, 138, .18);
+            border-top-color: #e85c8a;
+            animation: overlaySpin .72s linear infinite;
+        }
+        @keyframes overlaySpin { to { transform: rotate(360deg); } }
+        @media (prefers-color-scheme: dark) {
+            .overlay-loading { background: #1a1418; color: #f6ebf0; }
+            .overlay-loading-spin { border-color: rgba(255, 127, 168, .2); border-top-color: #ff7fa8; }
         }
         #voiceCallFrame {
             position: absolute;
@@ -1183,6 +1217,10 @@ setTimeout(function () {
             <iframe id="musicFrame" src="about:blank"></iframe>
             <iframe id="momentsFrame" src="about:blank"></iframe>
             <iframe id="insFrame" src="about:blank"></iframe>
+            <div class="overlay-loading" id="overlayLoading">
+                <div class="overlay-loading-spin"></div>
+                <b id="overlayLoadingText">正在打开…</b>
+            </div>
         </div>
     </div>
 </div>
@@ -1252,11 +1290,41 @@ setTimeout(function () {
         const overlayFrameA = document.getElementById('overlayFrame');
         const overlayFrameB = document.getElementById('overlayFrame2');
         let overlayFrame = overlayFrameA;
+        const overlayLoading = document.getElementById('overlayLoading');
+        const overlayLoadingText = document.getElementById('overlayLoadingText');
+        let overlayLoadingTimer = null;
+        function showPageLoading(text) {
+            if (!overlayLoading) return;
+            if (overlayLoadingText && text) overlayLoadingText.textContent = text;
+            overlayLoading.classList.add('show');
+            clearTimeout(overlayLoadingTimer);
+            overlayLoadingTimer = setTimeout(function () {
+                if (overlayLoading && overlayLoading.classList.contains('show') && overlayLoadingText) {
+                    overlayLoadingText.textContent = '正在打开，请稍候…';
+                }
+            }, 2200);
+        }
+        function hidePageLoading() {
+            clearTimeout(overlayLoadingTimer);
+            if (overlayLoading) overlayLoading.classList.remove('show');
+        }
+        [overlayFrameA, overlayFrameB].forEach(function (f) {
+            if (!f) return;
+            f.addEventListener('load', function () {
+                if (f === overlayFrame) hidePageLoading();
+            });
+        });
         const voiceCallFrame = document.getElementById('voiceCallFrame');
         const chatInnerFrame = document.getElementById('chatInnerFrame');
         const musicFrame = document.getElementById('musicFrame');
         const momentsFrame = document.getElementById('momentsFrame');
         const insFrame = document.getElementById('insFrame');
+        [chatInnerFrame, voiceCallFrame, musicFrame, momentsFrame, insFrame].forEach(function (f) {
+            if (!f) return;
+            f.addEventListener('load', function () {
+                if (f.style.display !== 'none') hidePageLoading();
+            });
+        });
         const overlayBack = document.getElementById('overlayBack');
         const overlayTitle = document.getElementById('overlayTitle');
 
@@ -1483,6 +1551,11 @@ setTimeout(function () {
             // 已加载同一应用的帧优先复用
             if (frameBase(overlayFrameA) === want) { overlayFrame = overlayFrameA; return; }
             if (overlayFrameB && frameBase(overlayFrameB) === want) { overlayFrame = overlayFrameB; return; }
+            // 聊天大厅常驻缓存：打开其他页面时不要覆盖聊天帧，切回聊天可以秒开
+            if (want !== 'chat.html' && frameBase(overlayFrame) === 'chat.html') {
+                const other = (overlayFrame === overlayFrameA) ? overlayFrameB : overlayFrameA;
+                if (other) overlayFrame = other;
+            }
             // 否则挑一个没有在后台生成任务的帧，避免销毁正在生成的那个
             const aBusy = hasActiveRefreshForFrame(overlayFrameA);
             const bBusy = overlayFrameB ? hasActiveRefreshForFrame(overlayFrameB) : false;
@@ -1491,6 +1564,10 @@ setTimeout(function () {
             // 群聊页常驻：从群聊打开别的页面时用另一个帧，别把还在后台生成的群聊销毁
             const other = (overlayFrame === overlayFrameA) ? overlayFrameB : overlayFrameA;
             if (frameBase(overlayFrame) === 'groups.html' && other && !hasActiveRefreshForFrame(other)) {
+                overlayFrame = other;
+            }
+            // 再次确认：非聊天页不要占用聊天缓存帧
+            if (want !== 'chat.html' && frameBase(overlayFrame) === 'chat.html' && other && !hasActiveRefreshForFrame(other)) {
                 overlayFrame = other;
             }
         }
@@ -1519,19 +1596,24 @@ setTimeout(function () {
         // 通用全屏帧：这些页面已加载同一 URL 时直接复用（不重载），切换更快；
         // 未列出的页面仍按原逻辑加载，避免停留在旧子页面。
         // 注意：与 user（人设/马甲）强相关的页面不能复用缓存帧，否则切换 user 后仍显示上一个 user 的数据
-        const REUSE_SAFE_PAGES = ['other.html', 'emoji.html', 'inner-setting.html', 'nano-setting.html',
+        const REUSE_SAFE_PAGES = ['chat.html', 'other.html', 'emoji.html', 'inner-setting.html', 'nano-setting.html',
             'groups.html', 'group-setting.html', 'imessage.html', 'storage.html', 'backup.html',
-            'wallet.html', 'appstore.html', 'family-card.html', 'pomodoro.html', 'nano.html', 'nano-image.html'];
+            'wallet.html', 'appstore.html', 'family-card.html', 'pomodoro.html', 'nano.html', 'nano-image.html', 'nano-image-settings.html'];
         function reuseOrLoadOverlayFrame(url) {
             const base = baseName(url);
             // data-loaded-url 可能残留，但 iframe 已经被重置为 about:blank；
             // 必须同时确认当前 src 仍是目标页面，否则返回后会白屏。
             const loadedExact = overlayFrame.getAttribute('data-loaded-url') === url && frameBase(overlayFrame) === base;
             if (loadedExact && REUSE_SAFE_PAGES.indexOf(base) !== -1) {
+                hidePageLoading();
                 try { overlayFrame.contentWindow.postMessage({ type: 'nanoOverlayReopen' }, '*'); } catch (e) {}
                 return;
             }
-            if (frameBase(overlayFrame) === base && hasActiveRefreshForFrame(overlayFrame)) return;
+            if (frameBase(overlayFrame) === base && hasActiveRefreshForFrame(overlayFrame)) {
+                hidePageLoading();
+                return;
+            }
+            showPageLoading('正在打开…');
             overlayFrame.setAttribute('data-loaded-url', url);
             overlayFrame.src = url;
         }
@@ -1630,7 +1712,7 @@ setTimeout(function () {
             'books.html', 'couple-spaces.html', 'halo.html', 'offline.html', 'offline-setting.html',
             'heart-setting.html', 'market.html', 'mcp.html', 'settings.html', 'settings-logs.html', 'gallery.html', 'settings-desktop.html', 'settings-notifications.html', 'settings-prompts.html', 'settings-other.html', 'settings-account.html', 'schedule.html',
             'phone.html', 'assistant.html', 'nano-setting.html', 'family-card.html', 'wallet.html', 'appstore.html',
-            'cycle.html', 'fanfic.html', 'fanfic-create.html', 'fanfic-read.html', 'imessage.html', 'memory palace.html', 'app-host.html', 'meet.html', 'mall.html', 'qa.html', 'pomodoro.html', 'nano.html', 'nano-image.html', 'nano-files.html', 'ios-setting.html'];
+            'cycle.html', 'fanfic.html', 'fanfic-create.html', 'fanfic-read.html', 'imessage.html', 'memory palace.html', 'app-host.html', 'meet.html', 'mall.html', 'qa.html', 'pomodoro.html', 'nano.html', 'nano-image.html', 'nano-image-settings.html', 'nano-files.html', 'ios-setting.html'];
         // 其余页面（发现/更多/API/moments/ins/…）兜底：内容整体让到灵动岛下面
         function applySafeFallback(f) {
             try {
@@ -1739,6 +1821,7 @@ setTimeout(function () {
                     };
                 } catch (e) {}
                 showVoiceFrame();
+                showPageLoading('正在接通…');
                 voiceCallFrame.src = url;
                 overlay.classList.add('no-header');
                 overlayTitle.textContent = '';
@@ -1746,7 +1829,10 @@ setTimeout(function () {
             } else if (pageName === 'music.html') {
                 showMusicFrame();
                 if (frameBase(musicFrame) !== 'music.html') {
+                    showPageLoading('正在打开…');
                     musicFrame.src = url;
+                } else {
+                    hidePageLoading();
                 }
                 overlay.classList.add('no-header');
                 overlayTitle.textContent = '';
@@ -1755,8 +1841,11 @@ setTimeout(function () {
                 showChatInnerFrame();
                 // 同一个聊天且 iframe 还活着就不重载，直接复用（切换更快）
                 if (chatInnerFrame.getAttribute('data-loaded-url') !== url) {
+                    showPageLoading('正在打开聊天…');
                     chatInnerFrame.setAttribute('data-loaded-url', url);
                     chatInnerFrame.src = url;
+                } else {
+                    hidePageLoading();
                 }
                 overlay.classList.add('no-header');
                 overlayTitle.textContent = '';
@@ -1771,8 +1860,10 @@ setTimeout(function () {
             } else if (pageName === 'moments.html') {
                 showMomentsFrame();
                 if (frameBase(momentsFrame) !== 'moments.html') {
+                    showPageLoading('正在打开…');
                     momentsFrame.src = url;
                 } else {
+                    hidePageLoading();
                     try { momentsFrame.contentWindow.postMessage({ type: 'nano:momentsShown' }, '*'); } catch (e) {}
                 }
                 overlay.classList.add('no-header');
@@ -1781,8 +1872,10 @@ setTimeout(function () {
             } else if (pageName === 'ins.html') {
                 showInsFrame();
                 if (frameBase(insFrame) !== 'ins.html') {
+                    showPageLoading('正在打开…');
                     insFrame.src = url;
                 } else {
+                    hidePageLoading();
                     try { insFrame.contentWindow.postMessage({ type: 'nano:insShown' }, '*'); } catch (e) {}
                 }
                 overlay.classList.add('no-header');
@@ -1793,7 +1886,7 @@ setTimeout(function () {
                 showOverlayFrame();
                 // 同一个页面且已加载过 → 直接复用（切换更快）；正在后台生成 → 也必须复用（否则中断生成）
                 reuseOrLoadOverlayFrame(url);
-                const ownNavPages = ['chat.html', 'api.html', 'settings.html', 'settings-logs.html', 'gallery.html', 'settings-desktop.html', 'settings-notifications.html', 'settings-prompts.html', 'settings-other.html', 'settings-account.html', 'beautify.html', 'schedule.html', 'worldbook.html', 'emoji.html', 'favorite.html', 'offline.html', 'offline-setting.html', 'moments.html', 'groups.html', 'group-setting.html', 'other.html', 'storage.html', 'backup.html', 'phone.html', 'ins.html', 'couple-spaces.html', 'halo.html', 'books.html', 'mask.html', 'character.html', 'inner-setting.html', 'nano-setting.html', 'nano-files.html', 'ios-setting.html', 'assistant.html', 'family-card.html', 'wallet.html', 'appstore.html', 'cycle.html', 'fanfic.html', 'fanfic-create.html', 'fanfic-read.html', 'market.html', 'mcp.html', 'heart-setting.html', 'imessage.html', 'memory palace.html', 'app-host.html', 'meet.html', 'mall.html', 'qa.html', 'pomodoro.html', 'nano.html', 'nano-image.html'];
+                const ownNavPages = ['chat.html', 'api.html', 'settings.html', 'settings-logs.html', 'gallery.html', 'settings-desktop.html', 'settings-notifications.html', 'settings-prompts.html', 'settings-other.html', 'settings-account.html', 'beautify.html', 'schedule.html', 'worldbook.html', 'emoji.html', 'favorite.html', 'offline.html', 'offline-setting.html', 'moments.html', 'groups.html', 'group-setting.html', 'other.html', 'storage.html', 'backup.html', 'phone.html', 'ins.html', 'couple-spaces.html', 'halo.html', 'books.html', 'mask.html', 'character.html', 'inner-setting.html', 'nano-setting.html', 'nano-files.html', 'ios-setting.html', 'assistant.html', 'family-card.html', 'wallet.html', 'appstore.html', 'cycle.html', 'fanfic.html', 'fanfic-create.html', 'fanfic-read.html', 'market.html', 'mcp.html', 'heart-setting.html', 'imessage.html', 'memory palace.html', 'app-host.html', 'meet.html', 'mall.html', 'qa.html', 'pomodoro.html', 'nano.html', 'nano-image.html', 'nano-image-settings.html'];
                 const hasOwnNav = ownNavPages.indexOf(pageName) !== -1;
                 const noOuterHeader = hasOwnNav || pageName === 'mall.html' || (showBack === false && !(title || ''));
                 if (noOuterHeader) {
@@ -1827,6 +1920,7 @@ setTimeout(function () {
         }
 
         function closeFullscreen() {
+            hidePageLoading();
             const wasOverlaySource = currentOverlaySource;
             const hadJump = !!pendingJumpMsgId;
 
@@ -2035,7 +2129,16 @@ setTimeout(function () {
             // 从聊天列表/聊天资料打开的功能页：关闭后回到聊天列表
             try {
                 if (wasOverlaySource === 'chat') {
-                    overlayFrame.src = withBuild('chat.html');
+                    const liveChat = (frameBase(overlayFrameA) === 'chat.html') ? overlayFrameA
+                        : ((overlayFrameB && frameBase(overlayFrameB) === 'chat.html') ? overlayFrameB : null);
+                    if (liveChat) {
+                        overlayFrame = liveChat;
+                        hidePageLoading();
+                        try { overlayFrame.contentWindow.postMessage({ type: 'nanoOverlayReopen' }, '*'); } catch (e) {}
+                    } else {
+                        showPageLoading('正在打开…');
+                        overlayFrame.src = withBuild('chat.html');
+                    }
                     showOverlayFrame();
                     overlay.classList.add('active');
                     overlay.classList.add('no-header');
@@ -2622,10 +2725,16 @@ setTimeout(function () {
             try {
                 if (overlayFrame && hasActiveRefreshForFrame(overlayFrame)) {
                     overlayFrame.style.display = 'none';
-            hideOtherGenericFrame();
+                    hideOtherGenericFrame();
                     return;
                 }
             } catch (e) {}
+            // 聊天大厅保留在后台，退出后再次进入不需要重新加载
+            if (frameBase(overlayFrame) === 'chat.html') {
+                overlayFrame.style.display = 'none';
+                hideOtherGenericFrame();
+                return;
+            }
             overlayFrame.style.display = 'none';
             hideOtherGenericFrame();
             try { overlayFrame.removeAttribute('data-loaded-url'); } catch (e) {}
@@ -4360,7 +4469,7 @@ setTimeout(function () {
         } catch (e) {}
     })();
     </script>
-    <script src="js/adult-gate.js?v=20261025c"></script>
-    <script src="js/account.js?v=20261025k"></script>
+<script src="js/adult-gate.js?v=20261025g"></script>
+<script src="js/account.js?v=20261025t"></script>
 </body>
 </html>

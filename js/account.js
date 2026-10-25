@@ -20,6 +20,8 @@
   var LS_ROLE = 'nano_account_role';
   var LS_POLICY = 'nano_account_policy';
   var LS_CHECKED = 'nano_account_checked_at';
+  var LS_DEVICE = 'nano_account_device';
+  var LS_NEEDS = 'nano_account_needs_activation';
   var LS_API = 'nano_account_api';
   var SESSION_VERIFY_MS = 0;
 
@@ -60,7 +62,7 @@
   }
 
   function apiBase() {
-    var v = lsGet(LS_API) || lsGet('nano_push_endpoint') || API_DEFAULT;
+    var v = lsGet(LS_API) || API_DEFAULT;
     v = String(v || '').trim().replace(/\/+$/, '');
     if (!/^https?:\/\//i.test(v)) v = API_DEFAULT;
     return v;
@@ -124,6 +126,13 @@
     writeJSON(LS_POLICY, { allowUserImport: p.allowUserImport === true });
   }
 
+  function currentDevice() {
+    var d = readJSON(LS_DEVICE, null);
+    return d && typeof d === 'object' ? d : null;
+  }
+  function needsActivation() {
+    return lsGet(LS_NEEDS) === '1';
+  }
   function applyAuth(data) {
     if (!data || !data.token || !data.username) return;
     lsSet(LS_TOKEN, data.token);
@@ -131,6 +140,8 @@
     lsSet(LS_SID, data.sid || '');
     if (data.role) lsSet(LS_ROLE, data.role);
     if (data.policy) applyPolicy(data.policy);
+    if (data.device) writeJSON(LS_DEVICE, data.device);
+    lsSet(LS_NEEDS, data.needsActivation ? '1' : '0');
     lsSet(LS_CHECKED, Date.now());
     if (data.sessions) applySessions(data.sessions);
   }
@@ -139,6 +150,8 @@
     if (data && Array.isArray(data.sessions)) writeJSON(LS_SESS, data.sessions);
     if (data && data.role) lsSet(LS_ROLE, data.role);
     if (data && data.policy) applyPolicy(data.policy);
+    if (data && data.device) writeJSON(LS_DEVICE, data.device);
+    if (data && typeof data.needsActivation !== 'undefined') lsSet(LS_NEEDS, data.needsActivation ? '1' : '0');
     lsSet(LS_CHECKED, Date.now());
   }
 
@@ -150,6 +163,8 @@
     lsDel(LS_POLICY);
     lsDel(LS_SESS);
     lsDel(LS_CHECKED);
+    lsDel(LS_DEVICE);
+    lsDel(LS_NEEDS);
     try { localStorage.removeItem('nano_account_saved'); } catch (e) {}
   }
 
@@ -163,6 +178,32 @@
     toastEl.classList.add('show');
     clearTimeout(toastTimer);
     toastTimer = setTimeout(function () { toastEl.classList.remove('show'); }, ms || 2200);
+  }
+
+  function resetServer() {
+    lsDel(LS_API);
+    toast('已还原默认账号服务器');
+  }
+
+  function copyText(text) {
+    text = String(text || '');
+    if (!text) return;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { toast('已复制'); }).catch(function () { fallbackCopy(text); });
+    } else fallbackCopy(text);
+  }
+  function fallbackCopy(text) {
+    try {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      toast('已复制');
+    } catch (e) { toast('复制失败，请手动选择'); }
   }
 
   function request(path, body, opts) {
@@ -285,12 +326,66 @@
     });
   }
 
-  function checkImport() {
+  function activateDevice(code) {
     var auth = currentAuth();
     if (!auth) return Promise.reject(new Error('请先登录账号'));
-    return request('/gate/check', { token: auth.token }).then(function (data) {
+    return request('/account/activate-device', { token: auth.token, code: code }).then(function (data) {
+      if (data.device) writeJSON(LS_DEVICE, data.device);
+      lsSet(LS_NEEDS, '0');
+      return data;
+    });
+  }
+
+  function exitAdmin() {
+    var auth = currentAuth();
+    if (!auth) return Promise.reject(new Error('未登录'));
+    return request('/account/admin-exit', { token: auth.token }).then(function (data) {
+      lsSet(LS_ROLE, 'user');
+      return data;
+    });
+  }
+
+  function adminDevices() {
+    var auth = currentAuth();
+    if (!auth) return Promise.reject(new Error('未登录'));
+    return request('/account/admin/devices', { token: auth.token });
+  }
+  function adminDeviceKey(deviceCode, force) {
+    var auth = currentAuth();
+    if (!auth) return Promise.reject(new Error('未登录'));
+    return request('/account/admin/device-key', { token: auth.token, deviceCode: deviceCode, force: !!force });
+  }
+  function adminDeviceRevoke(deviceCode) {
+    var auth = currentAuth();
+    if (!auth) return Promise.reject(new Error('未登录'));
+    return request('/account/admin/device-revoke', { token: auth.token, deviceCode: deviceCode });
+  }
+  function adminUsers() {
+    var auth = currentAuth();
+    if (!auth) return Promise.reject(new Error('未登录'));
+    return request('/account/admin/users', { token: auth.token });
+  }
+  function adminKick(username) {
+    var auth = currentAuth();
+    if (!auth) return Promise.reject(new Error('未登录'));
+    return request('/account/admin/kick', { token: auth.token, username: username });
+  }
+  function adminBan(username, banned) {
+    var auth = currentAuth();
+    if (!auth) return Promise.reject(new Error('未登录'));
+    return request('/account/admin/ban', { token: auth.token, username: username, banned: !!banned });
+  }
+
+  function checkImport(opts) {
+    opts = opts || {};
+    var auth = currentAuth();
+    if (!auth) return Promise.reject(new Error('请先登录账号'));
+    var needActivation = opts.needActivation !== false;
+    return request('/gate/check', { token: auth.token, needActivation: needActivation }).then(function (data) {
       if (data.role) lsSet(LS_ROLE, data.role);
       if (data.policy) applyPolicy(data.policy);
+      if (data.device) writeJSON(LS_DEVICE, data.device);
+      if (typeof data.needsActivation !== 'undefined') lsSet(LS_NEEDS, data.needsActivation ? '1' : '0');
       return data;
     });
   }
@@ -371,7 +466,8 @@
               '<button type="button" class="nacc-tab" data-mode="register">注册</button>' +
             '</div>' +
             '<div class="nacc-error" id="naccErr"></div>' +
-            '<div style="display:flex;justify-content:flex-end;margin:-4px 0 8px">' +
+            '<div class="nacc-actions" style="margin:-4px 0 8px">' +
+              '<button type="button" class="nacc-btn nacc-btn-soft" id="naccResetServerBtn" style="min-height:30px;padding:0 10px;font-size:11px">还原默认</button>' +
               '<button type="button" class="nacc-btn nacc-btn-soft" id="naccServerBtn" style="min-height:30px;padding:0 10px;font-size:11px">服务器设置</button>' +
             '</div>' +
             '<div id="naccForm"></div>' +
@@ -393,6 +489,11 @@
         lsSet(LS_API, v);
         showErr('');
         toast('已保存服务器地址，请重新登录');
+      });
+      var resetServerBtn = ui.el.querySelector('#naccResetServerBtn');
+      if (resetServerBtn) resetServerBtn.addEventListener('click', function () {
+        resetServer();
+        showErr('');
       });
 
       function showErr(msg) {
@@ -450,7 +551,7 @@
         var task = mode === 'register' ? register(username, password, invite) : login(username, password);
         task.then(function (data) {
           ui.close();
-          toast('已登录：' + data.username);
+          toast('已登录：' + data.username + (data.needsActivation ? '（本机未激活，PNG 导入前需激活）' : ''));
           resolve(true);
         }).catch(function (err) {
           btn.disabled = false;
@@ -475,6 +576,60 @@
     });
   }
 
+  function activationOverlay(message) {
+    return new Promise(function (resolve) {
+      var html = '' +
+        '<div class="nacc-card" role="dialog" aria-modal="true">' +
+          '<div class="nacc-head">' +
+            '<button type="button" class="nacc-close" data-nacc-close aria-label="关闭">×</button>' +
+            '<h2 class="nacc-title">激活本机</h2>' +
+            '<div class="nacc-sub">' + esc(message || '把本机设备码发给管理员，拿到激活码后在这里输入。') + '</div>' +
+          '</div>' +
+          '<div class="nacc-body">' +
+            '<div class="nacc-error" id="naccActErr"></div>' +
+            '<label class="nacc-field"><span class="nacc-field-label">管理员给你的激活码</span>' +
+              '<input class="nacc-input" id="naccActCode" autocapitalize="characters" spellcheck="false" placeholder="ACT-XXXX-XXXX"></label>' +
+            '<div class="nacc-actions">' +
+              '<button type="button" class="nacc-btn nacc-btn-ghost" id="naccActCancel">取消</button>' +
+              '<button type="button" class="nacc-btn nacc-btn-primary" id="naccActOk">激活本机</button>' +
+            '</div>' +
+            '<p class="nacc-hint">设备码在「设置 → 账号与设备 → 本机设备与导入授权」里。激活码只由管理员生成。PNG 图片导入需要激活，并且只允许导入作者允许导入的文件。</p>' +
+          '</div>' +
+        '</div>';
+      var ui = overlay(html, { onCancel: function () { resolve(false); } });
+      if (!ui) { resolve(false); return; }
+      var errEl = ui.el.querySelector('#naccActErr');
+      var input = ui.el.querySelector('#naccActCode');
+      var ok = ui.el.querySelector('#naccActOk');
+      function showErr(msg) {
+        errEl.textContent = msg || '';
+        errEl.classList.toggle('show', !!msg);
+      }
+      ui.el.querySelector('#naccActCancel').addEventListener('click', function () {
+        ui.close();
+        resolve(false);
+      });
+      function submit() {
+        var code = (input.value || '').trim().toUpperCase();
+        if (!code) { showErr('请输入管理员给你的激活码'); return; }
+        ok.disabled = true;
+        ok.textContent = '激活中…';
+        activateDevice(code).then(function () {
+          ui.close();
+          toast('本机已激活');
+          resolve(true);
+        }).catch(function (err) {
+          ok.disabled = false;
+          ok.textContent = '激活本机';
+          showErr((err && err.message) || '激活失败');
+        });
+      }
+      ok.addEventListener('click', submit);
+      input.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); submit(); } });
+      setTimeout(function () { input.focus({ preventScroll: true }); }, 80);
+    });
+  }
+
   function noticeOverlay(title, message) {
     return new Promise(function (resolve) {
       var html = '' +
@@ -494,7 +649,43 @@
     });
   }
 
-  function ensureImport() {
+  function confirmImportPolicy() {
+    var KEY = 'nano_import_policy_ack_v1';
+    try { if (sessionStorage.getItem(KEY) === '1') return Promise.resolve(true); } catch (e) {}
+    return new Promise(function (resolve) {
+      var html = '' +
+        '<div class="nacc-card" role="dialog" aria-modal="true">' +
+          '<div class="nacc-head"><h2 class="nacc-title">导入须知</h2>' +
+          '<div class="nacc-sub">文件导入 / PNG 导入前请确认</div></div>' +
+          '<div class="nacc-body">' +
+            '<p class="nacc-section-desc" style="font-size:12.5px;line-height:1.8;margin:0 0 14px">' +
+              '只允许导入<strong>作者明确允许导入</strong>、且你有权使用的文件与资源。' +
+              '未经作者允许，<strong>不得私自导入、搬运、二传、转售或公开分享</strong>任何角色卡、世界书、规则、图片与资源；' +
+              '也不得绕过作者的授权限制。继续即表示你已获得相应授权，并自行承担由此产生的责任。' +
+            '</p>' +
+            '<div class="nacc-actions">' +
+              '<button type="button" class="nacc-btn nacc-btn-ghost" id="naccPolicyCancel">取消</button>' +
+              '<button type="button" class="nacc-btn nacc-btn-primary" id="naccPolicyOk">我已知晓，继续</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>';
+      var ui = overlay(html, { onCancel: function () { resolve(false); } });
+      if (!ui) { resolve(true); return; }
+      ui.el.querySelector('#naccPolicyCancel').addEventListener('click', function () {
+        ui.close();
+        resolve(false);
+      });
+      ui.el.querySelector('#naccPolicyOk').addEventListener('click', function () {
+        try { sessionStorage.setItem(KEY, '1'); } catch (e) {}
+        ui.close();
+        resolve(true);
+      });
+    });
+  }
+
+  function ensureImport(opts) {
+    opts = opts || {};
+    var needActivation = opts.needActivation === true;
     function attempt(retry) {
       if (!currentAuth()) {
         return loginOverlay({ reason: '导入前请先登录账号。' }).then(function (ok) {
@@ -502,8 +693,8 @@
           return attempt(false);
         });
       }
-      return checkImport().then(function () {
-        return true;
+      return checkImport({ needActivation: needActivation }).then(function () {
+        return confirmImportPolicy();
       }).catch(function (err) {
         if (err && err.status === 401 && retry) {
           clearAuth();
@@ -512,8 +703,19 @@
             return attempt(false);
           });
         }
+        if (err && err.code === 'DEVICE_LOCKED') {
+          var lockMsg = (err && err.message) || '本机还没有获得导入授权。';
+          var lockedCode = err && err.data && err.data.device && err.data.device.deviceCode;
+          if (lockedCode) lockMsg += ' 本机设备码：' + lockedCode;
+          return activationOverlay(lockMsg).then(function (ok) {
+            if (!ok) return false;
+            return attempt(false);
+          });
+        }
         if (err && (err.status === 403 || err.code === 'IMPORT_FORBIDDEN')) {
-          return noticeOverlay('没有导入权限', err.message || '当前账号没有导入权限，请联系管理员。').then(function () { return false; });
+          var denyMsg = (err.message || '当前账号没有导入权限，请联系管理员。') +
+            '\n\n提醒：只允许导入作者明确允许导入、且你有权使用的文件；未经作者允许，不得私自导入、搬运、二传、转售或公开分享任何角色卡、世界书、规则、图片与资源。';
+          return noticeOverlay('没有导入权限', denyMsg).then(function () { return false; });
         }
         toast((err && err.message) || '无法连接账号服务器，暂不能导入');
         return false;
@@ -598,6 +800,38 @@
         '<button type="button" class="nacc-btn nacc-btn-primary" id="naccLogin">登录 / 注册</button></div>';
     }
 
+    var dev = currentDevice();
+    var needs = needsActivation();
+    var activationHtml = '';
+    if (!auth) {
+      activationHtml = pageSection('本机设备与导入授权', '登录后查看设备码和导入授权状态。',
+        '<div class="nacc-empty">登录后显示</div>');
+    } else {
+      var inner = '';
+      inner += '<div class="nacc-row"><div class="nacc-row-main">' +
+        '<div class="nacc-row-label">本机设备码</div>' +
+        '<div class="nacc-row-sub">把这个码发给管理员，用来申请导入授权</div></div>' +
+        '<div class="nacc-row-value">' + esc(dev && dev.deviceCode ? dev.deviceCode : '读取中') + '</div>' +
+        (dev && dev.deviceCode ? '<button type="button" class="nacc-mini-btn" data-copy="' + esc(dev.deviceCode) + '">复制</button>' : '') +
+        '</div>';
+      var statusText = admin ? '管理员账号可直接导入（无需激活码）' : (needs ? '未激活： PNG 导入受限' : '已激活：PNG 导入已授权');
+      var statusColor = admin ? '#eef8f0' : (needs ? '#fff4e5' : '#eef8f0');
+      var statusInk = admin ? '#3f8b53' : (needs ? '#a56a1a' : '#3f8b53');
+      inner += '<div class="nacc-row"><div class="nacc-row-main">' +
+        '<div class="nacc-row-label">导入授权状态</div>' +
+        '<div class="nacc-row-sub"> PNG 导入需要激活</div></div>' +
+        '<span class="nacc-badge-now" style="background:' + statusColor + ';color:' + statusInk + '">' + esc(statusText) + '</span>' +
+        '</div>';
+      if (needs && !admin) {
+        inner += '<div class="nacc-actions" style="margin-top:10px;flex-direction:column;align-items:stretch">' +
+          '<label class="nacc-field" style="margin:0 0 8px"><span class="nacc-field-label">输入管理员给你的激活码</span>' +
+          '<input class="nacc-input" id="naccActivateInput" autocapitalize="characters" spellcheck="false" placeholder="例如 ACT-XXXX-XXXX"></label>' +
+          '<button type="button" class="nacc-btn nacc-btn-primary" id="naccActivateBtn">提交激活码</button></div>' +
+          '<p class="nacc-hint">激活码只由管理员生成和保管；用户端不会显示已保存的激活码。</p>';
+      }
+      activationHtml = pageSection('本机设备与导入授权', ' PNG 导入需要设备激活。设备码不是密码，不能直接用于登录。', inner);
+    }
+
     var deviceHtml = sessions.length ? sessions.map(function (s) {
       return '<div class="nacc-device">' +
         '<div class="nacc-device-icon"><svg viewBox="0 0 24 24"><rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M10 18.5h4"/></svg></div>' +
@@ -615,15 +849,23 @@
           '<div class="nacc-row"><div class="nacc-row-main"><div class="nacc-row-label">允许普通账号导入</div>' +
           '<div class="nacc-row-sub">' + (policy.allowUserImport ? '已开启：所有登录用户都能导入' : '已关闭：仅管理员可导入') + '</div></div>' +
           '<label class="nacc-switch"><input type="checkbox" id="naccAllowImport"' + (policy.allowUserImport ? ' checked' : '') + '><i></i></label></div>') +
-        pageSection('管理员工具', '删除账号会同时下线该账号所有设备，用于处理忘记密码。',
-          '<label class="nacc-field"><span class="nacc-field-label">要删除的账号</span>' +
-          '<input class="nacc-input" id="naccResetUser" autocapitalize="none" spellcheck="false" placeholder="用户名"></label>' +
-          '<div class="nacc-actions"><button type="button" class="nacc-btn nacc-btn-danger" id="naccResetAccount">删除账号</button></div>') +
-        pageSection('账号服务器', '账号、设备与导入权限都保存在这台 Worker 的 D1 / KV 里。',
+        pageSection('管理员模式', '退出后当前账号变回普通用户，需要 ACCOUNT_ADMIN_TOKEN 才能重新升级。', '<div class="nacc-actions"><button type="button" class="nacc-btn nacc-btn-danger" id="naccExitAdmin">退出管理员模式</button></div>') +
+        pageSection('设备授权', '把用户发来的设备码填进来，生成激活码。激活码只在这里显示，用户端看不到。',
+          '<label class="nacc-field"><span class="nacc-field-label">设备码</span>' +
+          '<input class="nacc-input" id="naccAdminDeviceCode" autocapitalize="characters" spellcheck="false" placeholder="DEV-XXXX-XXXX"></label>' +
+          '<div class="nacc-actions"><button type="button" class="nacc-btn nacc-btn-primary" id="naccMakeKey">生成 / 查看激活码</button>' +
+          '<button type="button" class="nacc-btn nacc-btn-soft" id="naccRefreshDevices">刷新设备列表</button></div>' +
+          '<div id="naccAdminKeyOut" class="nacc-codes" style="min-height:0;white-space:pre-wrap">输入设备码后点「生成 / 查看激活码」</div>' +
+          '<div id="naccAdminDeviceList" style="margin-top:10px"></div>') +
+        pageSection('用户管理', '查看账号、最后登录和在线设备；可踢下线、封禁或删除。',
+          '<div class="nacc-actions"><button type="button" class="nacc-btn nacc-btn-soft" id="naccRefreshUsers">刷新用户列表</button></div>' +
+          '<div id="naccAdminUserList" style="margin-top:10px"></div>') +
+        pageSection('账号服务器', '账号、设备、激活码与导入权限都保存在这台 Worker 的 D1 / KV 里。',
           '<label class="nacc-field"><span class="nacc-field-label">服务器地址</span>' +
           '<input class="nacc-input" id="naccApiBase" type="url" autocapitalize="none" spellcheck="false" placeholder="https://你的worker.workers.dev" value="' + esc(apiBase()) + '"></label>' +
           '<div class="nacc-actions"><button type="button" class="nacc-btn nacc-btn-soft" id="naccSaveApi">保存地址</button>' +
-          '<button type="button" class="nacc-btn nacc-btn-soft" id="naccTestApi">测试连接</button></div>' +
+          '<button type="button" class="nacc-btn nacc-btn-soft" id="naccTestApi">测试连接</button>' +
+          '<button type="button" class="nacc-btn nacc-btn-soft" id="naccResetApi">还原默认</button></div>' +
           '<p class="nacc-hint">部署时给 Worker 加 secret：<b>ACCOUNT_ADMIN_TOKEN</b>；想限制注册再加 <b>ACCOUNT_REGISTER_CODE</b>。</p>');
     }
 
@@ -637,6 +879,7 @@
 
     root.innerHTML = '<div class="nacc-page">' +
       pageSection('当前账号', '一个账号对应一个密码；同一账号最多 3 台设备在线，第 4 台会自动顶掉最久未活动的一台。', profile) +
+      activationHtml +
       pageSection('设备管理', '这里只显示当前账号的设备。点击“下线”后，那台设备需要重新输入密码。', deviceHtml +
         '<div class="nacc-actions" style="margin-top:12px">' +
         '<button type="button" class="nacc-btn nacc-btn-soft" id="naccRefresh">刷新设备</button>' +
@@ -644,7 +887,7 @@
         '</div>') +
       adminHtml +
       claimHtml +
-      pageSection('免责声明', '18+ 年龄要求、虚拟游戏声明与账号保管责任。', '<div class="nacc-actions"><button type="button" class="nacc-btn nacc-btn-soft" id="naccShowTerms">重新查看免责声明</button></div>') +
+      pageSection('免责声明', '18+ 年龄要求、导入授权与内容版权、虚拟游戏声明与账号保管责任。', '<div class="nacc-actions"><button type="button" class="nacc-btn nacc-btn-soft" id="naccShowTerms">重新查看免责声明</button></div>') +
       '</div>';
 
     bindPage();
@@ -654,7 +897,6 @@
     var root = document.getElementById('naccRoot');
     if (!root) return;
     var auth = currentAuth();
-    var admin = isAdmin();
 
     var loginBtn = root.querySelector('#naccLogin');
     if (loginBtn) loginBtn.addEventListener('click', function () {
@@ -666,6 +908,25 @@
       logout().then(function () {
         toast('已退出登录');
         setTimeout(function () { location.reload(); }, 300);
+      });
+    });
+    root.querySelectorAll('[data-copy]').forEach(function (b) {
+      b.addEventListener('click', function () { copyText(b.getAttribute('data-copy')); });
+    });
+    var actBtn = root.querySelector('#naccActivateBtn');
+    if (actBtn) actBtn.addEventListener('click', function () {
+      var input = root.querySelector('#naccActivateInput');
+      var code = input ? (input.value || '').trim().toUpperCase() : '';
+      if (!code) { toast('请输入管理员给你的激活码'); return; }
+      actBtn.disabled = true;
+      actBtn.textContent = '激活中…';
+      activateDevice(code).then(function () {
+        toast('本机已激活');
+        renderPage();
+      }).catch(function (err) {
+        actBtn.disabled = false;
+        actBtn.textContent = '激活本机';
+        toast((err && err.message) || '激活失败');
       });
     });
     var refresh = root.querySelector('#naccRefresh');
@@ -714,6 +975,126 @@
         toast((err && err.message) || '保存失败');
       });
     });
+    var exitAdminBtn = root.querySelector('#naccExitAdmin');
+    if (exitAdminBtn) exitAdminBtn.addEventListener('click', function () {
+      if (!confirm('退出管理员模式？当前账号会变回普通用户。')) return;
+      exitAdminBtn.disabled = true;
+      exitAdmin().then(function () {
+        toast('已退出管理员模式');
+        refreshSessions().catch(function () {}).then(function () { renderPage(); });
+      }).catch(function (err) {
+        exitAdminBtn.disabled = false;
+        toast((err && err.message) || '操作失败');
+      });
+    });
+
+    var adminKeyOut = root.querySelector('#naccAdminKeyOut');
+    var adminDeviceInput = root.querySelector('#naccAdminDeviceCode');
+    function showAdminKey(data) {
+      if (!adminKeyOut) return;
+      var d = data.device || {};
+      adminKeyOut.innerHTML =
+        '<div>用户：' + esc(data.username || '') + '</div>' +
+        '<div>设备码：' + esc(d.deviceCode || '') + '</div>' +
+        '<div>激活码：<b>' + esc(d.activationCode || '') + '</b></div>' +
+        '<div>状态：' + (d.activated ? '已授权' : '未授权') + '</div>' +
+        (d.activationCode ? '<div class="nacc-actions" style="margin-top:8px"><button type="button" class="nacc-btn nacc-btn-soft" id="naccCopyAdminKey">复制激活码</button></div>' : '');
+      var copy = adminKeyOut.querySelector('#naccCopyAdminKey');
+      if (copy) copy.addEventListener('click', function () { copyText(d.activationCode); });
+    }
+    function makeDeviceKey(code) {
+      if (!code) { toast('请输入设备码'); return; }
+      adminDeviceInput.value = code;
+      adminDeviceKey(code).then(function (data) {
+        showAdminKey(data);
+        toast('激活码已生成');
+      }).catch(function (err) { toast((err && err.message) || '生成失败'); });
+    }
+    function loadAdminDevices() {
+      var box = root.querySelector('#naccAdminDeviceList');
+      if (!box) return;
+      box.innerHTML = '<div class="nacc-empty">加载中…</div>';
+      adminDevices().then(function (data) {
+        var list = data.devices || [];
+        if (!list.length) { box.innerHTML = '<div class="nacc-empty">还没有设备</div>'; return; }
+        box.innerHTML = list.map(function (d) {
+          return '<div class="nacc-row">' +
+            '<div class="nacc-row-main"><div class="nacc-row-label">' + esc(d.username) + ' · ' + esc(d.deviceName || '未知设备') + '</div>' +
+            '<div class="nacc-row-sub">' + esc(d.deviceCode) + ' · ' + (d.activated ? '已授权' : '未授权') + ' · ' + esc(fmtTime(d.lastSeen || d.at)) + '</div></div>' +
+            '<button type="button" class="nacc-mini-btn" data-make-key="' + esc(d.deviceCode) + '">激活码</button>' +
+            '<button type="button" class="nacc-mini-btn" data-revoke-key="' + esc(d.deviceCode) + '" style="border-color:#eee;background:#fafafa;color:#8e8e93">撤销</button>' +
+            '</div>';
+        }).join('');
+        box.querySelectorAll('[data-make-key]').forEach(function (b) {
+          b.addEventListener('click', function () { makeDeviceKey(b.getAttribute('data-make-key')); });
+        });
+        box.querySelectorAll('[data-revoke-key]').forEach(function (b) {
+          b.addEventListener('click', function () {
+            var code = b.getAttribute('data-revoke-key');
+            if (!confirm('撤销这个设备的导入授权？设备需要重新输入同一个激活码才能恢复。')) return;
+            adminDeviceRevoke(code).then(function () { toast('已撤销授权'); loadAdminDevices(); })
+              .catch(function (err) { toast((err && err.message) || '撤销失败'); });
+          });
+        });
+      }).catch(function (err) {
+        box.innerHTML = '<div class="nacc-empty">' + esc((err && err.message) || '加载失败') + '</div>';
+      });
+    }
+    function loadAdminUsers() {
+      var box = root.querySelector('#naccAdminUserList');
+      if (!box) return;
+      box.innerHTML = '<div class="nacc-empty">加载中…</div>';
+      adminUsers().then(function (data) {
+        var list = data.users || [];
+        if (!list.length) { box.innerHTML = '<div class="nacc-empty">还没有用户</div>'; return; }
+        box.innerHTML = list.map(function (u) {
+          return '<div class="nacc-row">' +
+            '<div class="nacc-row-main"><div class="nacc-row-label">' + esc(u.username) +
+            (u.role === 'admin' ? ' · 管理员' : '') + (u.banned ? ' · 已封禁' : '') + '</div>' +
+            '<div class="nacc-row-sub">最后登录：' + esc(fmtTime(u.lastLoginAt || u.at)) + ' · 在线设备：' + (u.sessions || 0) + '</div></div>' +
+            '<button type="button" class="nacc-mini-btn" data-kick-user="' + esc(u.username) + '">踢下线</button>' +
+            '<button type="button" class="nacc-mini-btn" data-ban-user="' + esc(u.username) + '" data-banned="' + (u.banned ? '1' : '0') + '" style="border-color:#f2e3b8;background:#fff9e9;color:#8a6d1f">' + (u.banned ? '解封' : '封禁') + '</button>' +
+            '<button type="button" class="nacc-mini-btn" data-del-user="' + esc(u.username) + '" style="border-color:#f0d9de;background:#fff7f9;color:#b45462">删除</button>' +
+            '</div>';
+        }).join('');
+        box.querySelectorAll('[data-kick-user]').forEach(function (b) {
+          b.addEventListener('click', function () {
+            var u = b.getAttribute('data-kick-user');
+            if (!confirm('把 ' + u + ' 的所有设备踢下线？')) return;
+            adminKick(u).then(function () { toast('已踢下线'); loadAdminUsers(); })
+              .catch(function (err) { toast((err && err.message) || '操作失败'); });
+          });
+        });
+        box.querySelectorAll('[data-ban-user]').forEach(function (b) {
+          b.addEventListener('click', function () {
+            var u = b.getAttribute('data-ban-user');
+            var banned = b.getAttribute('data-banned') === '1';
+            if (!confirm((banned ? '解封 ' : '封禁 ') + u + '？')) return;
+            adminBan(u, !banned).then(function () { toast(banned ? '已解封' : '已封禁'); loadAdminUsers(); })
+              .catch(function (err) { toast((err && err.message) || '操作失败'); });
+          });
+        });
+        box.querySelectorAll('[data-del-user]').forEach(function (b) {
+          b.addEventListener('click', function () {
+            var u = b.getAttribute('data-del-user');
+            if (!confirm('删除账号 ' + u + '？所有设备都会下线，且无法恢复。')) return;
+            resetAccount('', u).then(function () { toast('已删除账号'); loadAdminUsers(); })
+              .catch(function (err) { toast((err && err.message) || '删除失败'); });
+          });
+        });
+      }).catch(function (err) {
+        box.innerHTML = '<div class="nacc-empty">' + esc((err && err.message) || '加载失败') + '</div>';
+      });
+    }
+    var makeKeyBtn = root.querySelector('#naccMakeKey');
+    if (makeKeyBtn) makeKeyBtn.addEventListener('click', function () {
+      makeDeviceKey(adminDeviceInput ? adminDeviceInput.value.trim().toUpperCase() : '');
+    });
+    var refreshDevices = root.querySelector('#naccRefreshDevices');
+    if (refreshDevices) refreshDevices.addEventListener('click', loadAdminDevices);
+    var refreshUsers = root.querySelector('#naccRefreshUsers');
+    if (refreshUsers) refreshUsers.addEventListener('click', loadAdminUsers);
+
     var resetBtn = root.querySelector('#naccResetAccount');
     if (resetBtn) resetBtn.addEventListener('click', function () {
       var username = (root.querySelector('#naccResetUser').value || '').trim();
@@ -736,6 +1117,12 @@
       if (!/^https?:\/\//i.test(v)) { toast('请输入 http(s) 地址'); return; }
       lsSet(LS_API, v);
       toast('已保存账号服务器地址');
+    });
+    var resetApi = root.querySelector('#naccResetApi');
+    if (resetApi) resetApi.addEventListener('click', function () {
+      resetServer();
+      var input = root.querySelector('#naccApiBase');
+      if (input) input.value = apiBase();
     });
     var testApi = root.querySelector('#naccTestApi');
     if (testApi) testApi.addEventListener('click', function () {
@@ -826,9 +1213,19 @@
     logoutOthers: logoutOthers,
     logoutDevice: logoutDevice,
     checkImport: checkImport,
+    activateDevice: activateDevice,
+    currentDevice: currentDevice,
+    needsActivation: needsActivation,
     claimAdmin: claimAdmin,
     setUserImportPolicy: setUserImportPolicy,
     resetAccount: resetAccount,
+    exitAdmin: exitAdmin,
+    adminDevices: adminDevices,
+    adminDeviceKey: adminDeviceKey,
+    adminDeviceRevoke: adminDeviceRevoke,
+    adminUsers: adminUsers,
+    adminKick: adminKick,
+    adminBan: adminBan,
     openLogin: loginOverlay,
     renderPage: renderPage,
     toast: toast,

@@ -1481,8 +1481,8 @@
         if (data && (data.type === 'currentMaskChanged' || data.type === 'homeDataUpdated' || data.type === 'contactsDataUpdated' || data.type === 'groupsDataUpdated')) {
             renderAll();
         }
-        // 从会话内页返回：立即刷新，清掉已读的红点
-        if (data && (data.type === 'nanoOverlayClosed' || data.type === 'nanoOverlayOpen')) {
+        // 从会话内页或缓存帧返回：立即刷新，清掉已读的红点
+        if (data && (data.type === 'nanoOverlayClosed' || data.type === 'nanoOverlayOpen' || data.type === 'nanoOverlayReopen')) {
             renderAll();
         }
         // 角色头像/昵称实时更新：直接换掉好友区卡片的头像，无需重开页面

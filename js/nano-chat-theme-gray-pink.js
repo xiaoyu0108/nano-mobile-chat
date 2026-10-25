@@ -1127,6 +1127,53 @@ body.nano-chat-inner .longpress-menu .menu-item.danger,
 body.nano-chat-inner .longpress-menu .menu-item.danger .mi-icon { color: #ff3b30 !important; }
 body.nano-chat-inner .longpress-menu .menu-divider { background: rgba(0, 0, 0, 0.06) !important; margin: 4px 10px !important; }
 
+/* ============================================================
+   外卖 / 定位卡片：各自独立，不套用转账卡片模板
+   ============================================================ */
+body.nano-chat-inner .bubble-card.takeout {
+  width: var(--card-width, 268px);
+  background: linear-gradient(180deg, #fffdfb, #fdf3e9);
+  border: 0.5px solid #edd7c4;
+  border-radius: 18px;
+  box-shadow: 0 8px 22px rgba(150, 110, 80, 0.10);
+  color: #4b3a30;
+  font-size: 12.5px;
+}
+body.nano-chat-inner .bubble-card.takeout .tk-bubble-head { padding: 13px 14px 10px; }
+body.nano-chat-inner .bubble-card.takeout .tk-bubble-food { color: #4b3a30; font-size: 17px; font-weight: 750; }
+body.nano-chat-inner .bubble-card.takeout .tk-bubble-shop { color: #a58a79; }
+body.nano-chat-inner .bubble-card.takeout .tk-bubble-note {
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px dashed #ecd8c8;
+  color: #8d7565;
+}
+body.nano-chat-inner .bubble-card.takeout .tk-bubble-map {
+  background: linear-gradient(135deg, #eef4ee, #e3edf5 55%, #f3f1ee);
+  border: 1px solid rgba(80, 90, 100, 0.08);
+}
+body.nano-chat-inner .bubble-card.takeout .tk-bubble-btn {
+  background: #e9a36b;
+  color: #fff;
+}
+body.nano-chat-inner .bubble-card.takeout .tk-bubble-status { color: #a58a79; }
+
+body.nano-chat-inner .bubble-card.location {
+  width: var(--card-width, 258px);
+  background: linear-gradient(180deg, #f9fcfd, #edf5fa);
+  border: 0.5px solid #d7e5ee;
+  border-radius: 18px;
+  box-shadow: 0 8px 22px rgba(70, 110, 135, 0.09);
+  color: #33505f;
+  font-size: 12.5px;
+}
+body.nano-chat-inner .bubble-card.location .loc-bubble-head { padding: 12px 14px 10px; }
+body.nano-chat-inner .bubble-card.location .loc-bubble-place { color: #33505f; font-size: 16px; font-weight: 750; }
+body.nano-chat-inner .bubble-card.location .loc-bubble-dist { color: #7f9aa8; }
+body.nano-chat-inner .bubble-card.location .loc-bubble-map {
+  background: linear-gradient(135deg, #eaf3f0, #e1edf5 55%, #eef4f7);
+  border: 1px solid rgba(70, 100, 120, 0.08);
+}
+
 /* @js
 (function () {
   // 灰粉固定采用「外文气泡 + 下方独立译文」结构；显式声明一次，

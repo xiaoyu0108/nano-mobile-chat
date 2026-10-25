@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>视频通话</title>
-    <link rel="stylesheet" href="../css/video-call.css?v=20261025b">
+    <link rel="stylesheet" href="../css/video-call.css?v=20261025c">
     <link rel="preconnect" href="https://cdn.jsdelivr.net">
     <script src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
     <script src="../js/appearance.js"></script>
@@ -114,6 +114,11 @@
                 <input type="file" id="bgUpload" accept="image/*,video/*" hidden>
             </label>
         </div>
+        <div class="vc-bg-video-row">
+            <button type="button" class="vc-bg-video-btn" id="bgVideoPick">选择动态视频背景</button>
+            <span>MP4 / WebM / GIF</span>
+        </div>
+        <input type="file" id="bgVideoUpload" accept="video/*,image/gif" hidden>
     </div>
 
     <!-- 字幕消息区 -->
@@ -173,7 +178,7 @@
 <script src="../js/nano-call-bg.js?v=20261025b"></script>
 <script src="../js/reroll-reason.js?v=20261022a"></script>
 <script src="../js/nano-prompts.js?v=20261023a"></script>
-<script src="../js/video-call.js?v=20261025b"></script>
+<script src="../js/video-call.js?v=20261025c"></script>
     <script src="../swipe-back.js"></script>
 </body>
 </html>

@@ -173,39 +173,8 @@
     });
 
 
-    // ===== 兜住 iOS 系统边缘手势 / 浏览器「返回」=====
-    // 不加这层的话：手指停几秒再滑，iOS 会自己执行「返回上一页」（历史后退），
-    // 而不是走本页的返回按钮逻辑。这里把历史后退拦下来，改成本页返回按钮逻辑。
-    var backGuardBusy = false;
-    function installHistoryGuard() {
-        try {
-            // 只在最外层文档安装这层拦截。
-            // iframe 里的页面再 pushState，会把「历史返回」搅乱：
-            // 之后页面自己的 history.back() 会先撞到被拦截的假状态，
-            // 结果返回到「上一次打开的页面 / about:blank」而不是绑定的目标页。
-            if (window.parent !== window) return;
-            if (!document.querySelector('[data-back]') && !document.querySelector('[data-close]')) return;
-            history.pushState({ nanoBackGuard: 1 }, '');
-            window.addEventListener('popstate', function () {
-                if (backGuardBusy) return;
-                backGuardBusy = true;
-                setTimeout(function () { backGuardBusy = false; }, 400);
-                try { history.pushState({ nanoBackGuard: 1 }, ''); } catch (e) {}
-                try { trigger(); } catch (e) {}
-            });
-        } catch (e) {}
-    }
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', installHistoryGuard);
-    } else {
-        installHistoryGuard();
-    }
-
-    // ===== 边缘右滑手势已停用 =====
-    // 之前「起点 <30px + 横向位移」的手势在多数页面不稳定（有输入框、滚动容器、
-    // 收藏层时容易误判），已改为由「API 悬浮球 → 环形菜单 → 返回」统一提供返回。
-    // 这里保留 trigger / handleBackRequest / 系统返回守卫，供浮层与 iOS 系统返回复用。
-
-    // 便于调试/其它脚本主动触发
+    // ===== 已关闭边缘右滑 / 系统返回手势 =====
+    // 不再安装 history guard，避免 iOS 边缘右滑触发页面返回；
+    // 页面内只保留显式返回按钮、关闭按钮和父级 nanoRequestBack 消息。
     window.__nanoSwipeBack = { trigger: trigger };
 })();

@@ -6743,6 +6743,8 @@
     function sendMessage() {
         let text = messageInput.value.trim();
         if (!text) return;
+        // 回到私聊后先合并窥屏暂存轮次，再插入这条新消息，保证上下文顺序正确
+        try { if (isStorageReady) consumePendingPeekTurns(); } catch (e) {}
         let quoteObj = null;
         if (quoteTargetId) {
             const quotedMsg = messages.find(m => m.id === quoteTargetId);
@@ -7931,31 +7933,32 @@
             history.push({ role: 'system', content: __sys });
             if (avatarImageMsg) history.push(avatarImageMsg);
 
-            let previousMessages = [];
-            let foundAI = false;
+            // 历史上下文：把「最近一条 AI 回复」之前的用户和角色两侧都带上，
+            // 这样窥屏/屏幕速聊里聊过的内容回到私聊后也能被模型读到，
+            // 而不是只看到角色自己的回复、看不到用户在窥屏里说了什么。
+            let lastAIIdx = -1;
             for (let i = messages.length - 1; i >= 0; i--) {
                 const m = messages[i];
                 if (nanoIsErrorMsg(m)) continue;
-                if (!foundAI && m.type === 'left' && !m.recalled) {
-                    // 找到最近一条 AI 回复：把它也纳入历史，模型才知道自己上一句说了什么
-                    foundAI = true;
-                }
-                if (foundAI) {
-                    previousMessages.unshift(m);
-                }
+                if (m.type === 'left' && !m.recalled) { lastAIIdx = i; break; }
             }
 
             let prevCount = 0;
-            for (let i = previousMessages.length - 1; i >= 0; i--) {
-                const m = previousMessages[i];
-                // previousMessages 从「最近一条 AI 回复」开始收集，因此它末尾会带上用户刚发的消息；
-                // 而下面的 userMessages 会把同一批用户消息再追加一次。这里只保留 AI 侧历史，
-                // 避免同一句用户消息在请求里出现两次，导致小助手反复对同一句作答。
-                if (m.type !== 'left') continue;
-                const desc = describeMsgForAI(m);
-                if (!m.recalled && desc && prevCount < __memContextLimit) {
-                    history.push({ role: 'assistant', content: desc });
-                    prevCount++;
+            if (lastAIIdx >= 0) {
+                const histLimit = Math.max(40, Number(__memContextLimit) || 0);
+                const histStart = Math.max(0, lastAIIdx - histLimit + 1);
+                for (let i = histStart; i <= lastAIIdx; i++) {
+                    const m = messages[i];
+                    if (!m || m.recalled || nanoIsErrorMsg(m)) continue;
+                    const desc = describeMsgForAI(m);
+                    if (!desc) continue;
+                    if (m.type === 'left') {
+                        history.push({ role: 'assistant', content: desc });
+                        prevCount++;
+                    } else if (m.type === 'right') {
+                        history.push({ role: 'user', content: desc });
+                        prevCount++;
+                    }
                 }
             }
 

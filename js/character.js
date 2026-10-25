@@ -1240,15 +1240,7 @@
         const file = this.files[0];
         if (!file) return;
 
-        // 导入门槛：角色设定 / JSON / DOCX 也属于受控导入
-        let importGate = null;
-        try { importGate = (window.parent && window.parent.NanoImportGate) || window.NanoImportGate; } catch (err) { importGate = window.NanoImportGate; }
-        if (importGate && importGate.ensure) {
-            let gateOk = false;
-            try { gateOk = await importGate.ensure(); } catch (err) { gateOk = false; }
-            if (!gateOk) { fileInput.value = ''; return; }
-        }
-        
+        // 只有 PNG 角色卡导入需要设备激活；TXT / DOC / DOCX / JSON 不限制。
         // ===== 处理 DOC / DOCX 文件（按需加载解析库，不影响页面加载速度） =====
         const lowerName = (file.name || '').toLowerCase();
         if (lowerName.endsWith('.doc') || lowerName.endsWith('.docx')) {
@@ -1422,22 +1414,26 @@
 
     avatarPicker.addEventListener('click', openAvatarModal);
 
-    importBtn.addEventListener('click', function() { fileInput.click(); });
+    importBtn.addEventListener('click', async function() {
+        fileInput.click();
+    });
 
-    importPngBtn.addEventListener('click', function() { importPngFileInput.click(); });
+    importPngBtn.addEventListener('click', async function() {
+        // 点击导入按钮就先检查设备激活；未激活直接弹激活窗，不打开文件选择
+        let gate = null;
+        try { gate = (window.parent && window.parent.NanoImportGate) || window.NanoImportGate; } catch (e) { gate = window.NanoImportGate; }
+        if (gate && gate.ensure) {
+            let ok = false;
+            try { ok = await gate.ensure({ needActivation: true }); } catch (e2) { ok = false; }
+            if (!ok) return;
+        }
+        importPngFileInput.click();
+    });
 
     importPngFileInput.addEventListener('change', async function(e) {
         const file = this.files[0];
         if (!file) return;
         importPngFileInput.value = '';
-        // 导入门槛：开启后需要登录并验证服务端卡密
-        let importGate = null;
-        try { importGate = (window.parent && window.parent.NanoImportGate) || window.NanoImportGate; } catch (err) { importGate = window.NanoImportGate; }
-        if (importGate && importGate.ensure) {
-            let gateOk = false;
-            try { gateOk = await importGate.ensure(); } catch (err) { gateOk = false; }
-            if (!gateOk) return;
-        }
         // ===== 兼容直接导入 JSON 角色卡文件 =====
         const isJson = /\.json$/i.test(file.name || '') || file.type === 'application/json';
         if (isJson) {

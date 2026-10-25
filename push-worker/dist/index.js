@@ -1,6 +1,3 @@
-var __defProp = Object.defineProperty;
-var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
-
 // node_modules/uint8array-extras/index.js
 var objectToString = Object.prototype.toString;
 var uint8ArrayStringified = "[object Uint8Array]";
@@ -14,29 +11,23 @@ function isType(value, typeConstructor, typeStringified) {
   }
   return objectToString.call(value) === typeStringified;
 }
-__name(isType, "isType");
 function isUint8Array(value) {
   return isType(value, Uint8Array, uint8ArrayStringified);
 }
-__name(isUint8Array, "isUint8Array");
 function isArrayBuffer(value) {
   return isType(value, ArrayBuffer, arrayBufferStringified);
 }
-__name(isArrayBuffer, "isArrayBuffer");
 function isUint8ArrayOrArrayBuffer(value) {
   return isUint8Array(value) || isArrayBuffer(value);
 }
-__name(isUint8ArrayOrArrayBuffer, "isUint8ArrayOrArrayBuffer");
 function toUint8ArrayIfArrayBuffer(value) {
   return isArrayBuffer(value) ? new Uint8Array(value) : value;
 }
-__name(toUint8ArrayIfArrayBuffer, "toUint8ArrayIfArrayBuffer");
 function assertUint8ArrayOrArrayBuffer(value) {
   if (!isUint8ArrayOrArrayBuffer(value)) {
     throw new TypeError(`Expected \`Uint8Array\` or \`ArrayBuffer\`, got \`${typeof value}\``);
   }
 }
-__name(assertUint8ArrayOrArrayBuffer, "assertUint8ArrayOrArrayBuffer");
 function toUint8Array(value) {
   if (value instanceof ArrayBuffer) {
     return new Uint8Array(value);
@@ -46,7 +37,6 @@ function toUint8Array(value) {
   }
   throw new TypeError(`Unsupported value, got \`${typeof value}\`.`);
 }
-__name(toUint8Array, "toUint8Array");
 function concatUint8Arrays(arrays, totalLength) {
   if (arrays.length === 0) {
     return new Uint8Array(0);
@@ -62,7 +52,6 @@ function concatUint8Arrays(arrays, totalLength) {
   }
   return returnValue;
 }
-__name(concatUint8Arrays, "concatUint8Arrays");
 var cachedDecoders = {
   utf8: new globalThis.TextDecoder("utf8")
 };
@@ -71,23 +60,19 @@ function assertString(value) {
     throw new TypeError(`Expected \`string\`, got \`${typeof value}\``);
   }
 }
-__name(assertString, "assertString");
 var cachedEncoder = new globalThis.TextEncoder();
 function stringToUint8Array(string) {
   assertString(string);
   return cachedEncoder.encode(string);
 }
-__name(stringToUint8Array, "stringToUint8Array");
 function base64ToBase64Url(base64) {
   return base64.replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
 }
-__name(base64ToBase64Url, "base64ToBase64Url");
 function base64UrlToBase64(base64url) {
   const base64 = base64url.replaceAll("-", "+").replaceAll("_", "/");
   const padding = (4 - base64.length % 4) % 4;
   return base64 + "=".repeat(padding);
 }
-__name(base64UrlToBase64, "base64UrlToBase64");
 var MAX_BLOCK_SIZE = 65535;
 function uint8ArrayToBase64(array, { urlSafe = false } = {}) {
   assertUint8ArrayOrArrayBuffer(array);
@@ -99,12 +84,10 @@ function uint8ArrayToBase64(array, { urlSafe = false } = {}) {
   }
   return urlSafe ? base64ToBase64Url(base64) : base64;
 }
-__name(uint8ArrayToBase64, "uint8ArrayToBase64");
 function base64ToUint8Array(base64String) {
   assertString(base64String);
   return Uint8Array.from(globalThis.atob(base64UrlToBase64(base64String)), (x) => x.codePointAt(0));
 }
-__name(base64ToUint8Array, "base64ToUint8Array");
 var byteToHexLookupTable = Array.from({ length: 256 }, (_, index) => index.toString(16).padStart(2, "0"));
 
 // node_modules/@block65/webcrypto-web-push/dist/lib/utils.js
@@ -113,13 +96,11 @@ function encodeRecordSize(size) {
   new DataView(bytes.buffer).setUint32(0, size);
   return bytes;
 }
-__name(encodeRecordSize, "encodeRecordSize");
 function invariant(condition, message) {
   if (!condition) {
     throw new Error(message);
   }
 }
-__name(invariant, "invariant");
 
 // node_modules/@block65/webcrypto-web-push/dist/lib/client-keys.js
 async function deriveClientKeys(sub) {
@@ -136,7 +117,6 @@ async function deriveClientKeys(sub) {
     authSecretBytes
   };
 }
-__name(deriveClientKeys, "deriveClientKeys");
 
 // node_modules/@block65/webcrypto-web-push/dist/lib/hkdf.js
 function createHMAC(data) {
@@ -145,17 +125,16 @@ function createHMAC(data) {
     hash: "SHA-256"
   }, false, ["sign"]);
   return {
-    hash: /* @__PURE__ */ __name(async (input) => {
+    hash: async (input) => {
       const k = await keyPromise;
       return crypto.subtle.sign("HMAC", k, input);
-    }, "hash")
+    }
   };
 }
-__name(createHMAC, "createHMAC");
 async function hkdf(salt, ikm) {
   const prkhPromise = createHMAC(salt).hash(ikm).then((prk) => createHMAC(prk));
   return {
-    extract: /* @__PURE__ */ __name(async (info, len) => {
+    extract: async (info, len) => {
       const prkh = await prkhPromise;
       const blocks = await Array.from({ length: Math.ceil(len / 32) }, (_, i) => i).reduce(async (acc, i) => {
         const previous = await acc;
@@ -163,10 +142,9 @@ async function hkdf(salt, ikm) {
         return [...previous, new Uint8Array(hash)];
       }, Promise.resolve([]));
       return concatUint8Arrays(blocks).slice(0, len);
-    }, "extract")
+    }
   };
 }
-__name(hkdf, "hkdf");
 
 // node_modules/@block65/webcrypto-web-push/dist/lib/info.js
 function createKeyInfo(clientPublic, serverPublic) {
@@ -176,11 +154,9 @@ function createKeyInfo(clientPublic, serverPublic) {
     ...serverPublic
   ]);
 }
-__name(createKeyInfo, "createKeyInfo");
 function createInfo(type) {
   return stringToUint8Array(`Content-Encoding: ${type}\0`);
 }
-__name(createInfo, "createInfo");
 
 // node_modules/@block65/webcrypto-web-push/dist/lib/local-keys.js
 async function generateLocalKeys() {
@@ -193,13 +169,11 @@ async function generateLocalKeys() {
     publicKeyBytes: new Uint8Array(await crypto.subtle.exportKey("raw", keyPair.publicKey))
   };
 }
-__name(generateLocalKeys, "generateLocalKeys");
 
 // node_modules/@block65/webcrypto-web-push/dist/lib/salt.js
 async function getSalt() {
   return crypto.getRandomValues(new Uint8Array(16));
 }
-__name(getSalt, "getSalt");
 
 // node_modules/@block65/webcrypto-web-push/dist/lib/encrypt.js
 var recordSize = 4096;
@@ -242,17 +216,14 @@ async function encryptNotification(subscription, plaintext, options = {}) {
     ...new Uint8Array(encrypted)
   ]);
 }
-__name(encryptNotification, "encryptNotification");
 
 // node_modules/@block65/webcrypto-web-push/dist/lib/base64.js
 function encodeBase64Url(value) {
   return uint8ArrayToBase64(toUint8Array(value), { urlSafe: true });
 }
-__name(encodeBase64Url, "encodeBase64Url");
 function objectToBase64Url(obj) {
   return encodeBase64Url(stringToUint8Array(JSON.stringify(obj)));
 }
-__name(objectToBase64Url, "objectToBase64Url");
 
 // node_modules/@block65/webcrypto-web-push/dist/lib/jwt.js
 async function sign(payload, key) {
@@ -271,7 +242,6 @@ async function sign(payload, key) {
   }, key, stringToUint8Array(dataStr));
   return `${dataStr}.${encodeBase64Url(signature)}`;
 }
-__name(sign, "sign");
 
 // node_modules/@block65/webcrypto-web-push/dist/lib/vapid.js
 async function vapidHeaders(subscription, vapid) {
@@ -302,7 +272,6 @@ async function vapidHeaders(subscription, vapid) {
     }
   };
 }
-__name(vapidHeaders, "vapidHeaders");
 
 // node_modules/@block65/webcrypto-web-push/dist/lib/payload.js
 async function buildPushPayload(message, subscription, vapid) {
@@ -329,13 +298,12 @@ async function buildPushPayload(message, subscription, vapid) {
     body
   };
 }
-__name(buildPushPayload, "buildPushPayload");
 
 // src/index.js
 var CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, Model, model, X-Push-Token, X-Peek-Token, X-Nano-App, X-Nano-Kind, X-Admin-Token, xi-api-key",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, Model, model, X-Push-Token, X-Peek-Token, X-Nano-App, X-Nano-Kind, X-Admin-Token, xi-api-key",
   "Access-Control-Max-Age": "86400"
 };
 function d1Kv(db) {
@@ -377,7 +345,6 @@ function d1Kv(db) {
     }
   };
 }
-__name(d1Kv, "d1Kv");
 var D1_READY = /* @__PURE__ */ new WeakMap();
 function d1Ready(db) {
   let p = D1_READY.get(db);
@@ -390,23 +357,19 @@ function d1Ready(db) {
   }
   return p;
 }
-__name(d1Ready, "d1Ready");
 function kv(env) {
   const db = env && (env.DB || env.nano_db);
   return db ? d1Kv(db) : env.PUSH_KV;
 }
-__name(kv, "kv");
 function marketKv(env) {
   return env && env.PUSH_KV ? env.PUSH_KV : kv(env);
 }
-__name(marketKv, "marketKv");
-var json = /* @__PURE__ */ __name((o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { ...CORS, "Content-Type": "application/json" } }), "json");
+var json = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { ...CORS, "Content-Type": "application/json" } });
 function supabaseConf(env) {
   const url = String(env && env.SUPABASE_URL || "").replace(/\/+$/, "");
   const key = String(env && env.SUPABASE_SERVICE_ROLE_KEY || "");
   return url && key ? { url, key } : null;
 }
-__name(supabaseConf, "supabaseConf");
 async function supabase(env, path, opts) {
   const c = supabaseConf(env);
   if (!c) throw new Error("supabase not configured");
@@ -436,7 +399,6 @@ async function supabase(env, path, opts) {
   }
   return data;
 }
-__name(supabase, "supabase");
 function marketRowToSummary(row) {
   const s = Object.assign({}, row && row.summary || {});
   s.id = row && row.id || s.id;
@@ -445,7 +407,6 @@ function marketRowToSummary(row) {
   s.imports = Number(row && row.imports) || 0;
   return s;
 }
-__name(marketRowToSummary, "marketRowToSummary");
 function marketRowToItem(row) {
   const it = Object.assign({}, row && row.item || {});
   it.id = row && row.id || it.id;
@@ -454,51 +415,40 @@ function marketRowToItem(row) {
   it.imports = Number(row && row.imports) || 0;
   return it;
 }
-__name(marketRowToItem, "marketRowToItem");
 function subId(endpoint) {
   return "sub:" + btoa(endpoint).replace(/[^a-zA-Z0-9]/g, "").slice(-48);
 }
-__name(subId, "subId");
 function subKey(endpoint, appId, deviceId, userId) {
   return "sub2:" + cleanAppId(appId) + ":" + cleanDeviceId(deviceId) + ":" + cleanUserId(userId) + ":" + subId(endpoint).slice(4);
 }
-__name(subKey, "subKey");
 function cleanPart(v, fallback, max) {
   const s = String(v == null ? "" : v).replace(/[^a-zA-Z0-9_.-]/g, "").slice(0, max || 80);
   return s || fallback;
 }
-__name(cleanPart, "cleanPart");
 function cleanAppId(v) {
   return cleanPart(v, "legacy", 48);
 }
-__name(cleanAppId, "cleanAppId");
 function cleanDeviceId(v) {
   return cleanPart(v, "default", 80);
 }
-__name(cleanDeviceId, "cleanDeviceId");
 function cleanUserId(v) {
   const s = String(v == null ? "" : v).replace(/:/g, "_").slice(0, 80);
   return s || "default";
 }
-__name(cleanUserId, "cleanUserId");
 function autoScope(appId, deviceId, userId) {
   return cleanAppId(appId) + ":" + cleanDeviceId(deviceId) + ":" + cleanUserId(userId);
 }
-__name(autoScope, "autoScope");
 function autoKey(kind, appId, deviceId, userId) {
   return "auto2:" + kind + ":" + autoScope(appId, deviceId, userId);
 }
-__name(autoKey, "autoKey");
 function autoActiveKey(appId, deviceId) {
   return "auto2:active:" + cleanAppId(appId) + ":" + cleanDeviceId(deviceId);
 }
-__name(autoActiveKey, "autoActiveKey");
 var AUTO_INDEX_KEY = "auto2:_index";
 var JOB_INDEX_KEY = "job:_index";
 function autoScopeOf(appId, deviceId, userId) {
   return cleanAppId(appId) + ":" + cleanDeviceId(deviceId) + ":" + cleanUserId(userId);
 }
-__name(autoScopeOf, "autoScopeOf");
 async function readIndex(env, key) {
   try {
     const raw = await kv(env).get(key);
@@ -509,7 +459,6 @@ async function readIndex(env, key) {
     return null;
   }
 }
-__name(readIndex, "readIndex");
 async function writeIndex(env, key, arr) {
   const clean = Array.from(new Set((arr || []).filter(Boolean))).slice(-300);
   try {
@@ -518,13 +467,11 @@ async function writeIndex(env, key, arr) {
   }
   return clean;
 }
-__name(writeIndex, "writeIndex");
 async function addAutoScope(env, scope) {
   const arr = await readIndex(env, AUTO_INDEX_KEY);
   if (arr === null) return;
   if (arr.indexOf(scope) === -1) await writeIndex(env, AUTO_INDEX_KEY, arr.concat(scope));
 }
-__name(addAutoScope, "addAutoScope");
 async function removeAutoScope(env, scope) {
   const arr = await readIndex(env, AUTO_INDEX_KEY);
   if (arr === null) return;
@@ -532,7 +479,6 @@ async function removeAutoScope(env, scope) {
     return x !== scope;
   }));
 }
-__name(removeAutoScope, "removeAutoScope");
 async function getAutoScopes(env) {
   const arr = await readIndex(env, AUTO_INDEX_KEY);
   if (arr !== null) return arr;
@@ -547,13 +493,11 @@ async function getAutoScopes(env) {
     return [];
   }
 }
-__name(getAutoScopes, "getAutoScopes");
 async function addJobId(env, id) {
   const arr = await readIndex(env, JOB_INDEX_KEY);
   if (arr === null) return;
   if (arr.indexOf(id) === -1) await writeIndex(env, JOB_INDEX_KEY, arr.concat(id));
 }
-__name(addJobId, "addJobId");
 var ACTIVE_CACHE = /* @__PURE__ */ new Map();
 async function touchActive(env, appId, deviceId, userId, force) {
   appId = cleanAppId(appId);
@@ -588,7 +532,6 @@ async function touchActive(env, appId, deviceId, userId, force) {
   } catch (e) {
   }
 }
-__name(touchActive, "touchActive");
 function autoConfigSig(cfg) {
   try {
     const c = Object.assign({}, cfg || {});
@@ -598,20 +541,17 @@ function autoConfigSig(cfg) {
     return "";
   }
 }
-__name(autoConfigSig, "autoConfigSig");
 function peekBase(appId, chatId) {
   const a = cleanAppId(appId);
   const c = String(chatId || "default");
   return a === "legacy" ? "peek:" + c : "peek2:" + a + ":" + c;
 }
-__name(peekBase, "peekBase");
 function b64urlEncode(bytes) {
   let s = "";
   const arr = new Uint8Array(bytes || []);
   for (let i = 0; i < arr.length; i++) s += String.fromCharCode(arr[i]);
   return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
-__name(b64urlEncode, "b64urlEncode");
 function b64urlDecode(str) {
   const s = String(str || "").replace(/-/g, "+").replace(/_/g, "/");
   const pad = s.length % 4 ? new Array(5 - s.length % 4).join("=") : "";
@@ -620,7 +560,6 @@ function b64urlDecode(str) {
   for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
   return out;
 }
-__name(b64urlDecode, "b64urlDecode");
 async function ensureVapid(env) {
   if (env.VAPID_PUBLIC && env.VAPID_PRIVATE) {
     return {
@@ -666,17 +605,14 @@ async function ensureVapid(env) {
     return null;
   }
 }
-__name(ensureVapid, "ensureVapid");
 function tokenOk(request, env) {
   if (!env.PUSH_TOKEN) return true;
   return request.headers.get("X-Push-Token") === env.PUSH_TOKEN;
 }
-__name(tokenOk, "tokenOk");
 function peekPublic(env) {
   const v = String(env.PEEK_PUBLIC || "").toLowerCase();
   return v === "1" || v === "true" || v === "yes" || v === "on";
 }
-__name(peekPublic, "peekPublic");
 function peekTokenValue(request, body) {
   let h = "";
   try {
@@ -691,7 +627,6 @@ function peekTokenValue(request, body) {
   const b = body && body.token ? String(body.token) : "";
   return String(h || q || b || "").trim();
 }
-__name(peekTokenValue, "peekTokenValue");
 function peekTokenHash(token) {
   const s = String(token || "");
   let h = 2166136261;
@@ -701,38 +636,35 @@ function peekTokenHash(token) {
   }
   return (h >>> 0).toString(36);
 }
-__name(peekTokenHash, "peekTokenHash");
 function peekScope(env, appId, token) {
   const a = cleanAppId(appId);
   if (!peekPublic(env)) return a;
   return a + "." + peekTokenHash(token || "anon");
 }
-__name(peekScope, "peekScope");
 function peekOwnerKey(env, token, chatId) {
   chatId = String(chatId || "default");
   if (!peekPublic(env)) return "peek2:owner:" + chatId;
   return "peek2:owner:" + peekTokenHash(token || "anon") + ":" + chatId;
 }
-__name(peekOwnerKey, "peekOwnerKey");
 function peekOk(request, env, body) {
   const t = peekTokenValue(request, body);
   if (peekPublic(env)) return t.length >= 8;
   if (!env.PEEK_TOKEN) return true;
   return t === env.PEEK_TOKEN;
 }
-__name(peekOk, "peekOk");
 function peekCharName(system) {
   const m = String(system || "").match(/你是[「"]([^」"]{1,40})[」"]/);
   return m ? String(m[1]).trim() : "";
 }
-__name(peekCharName, "peekCharName");
 function modelEndpoint(raw) {
   let s = String(raw || "").trim().replace(/\/+$/, "");
   if (!s) return "";
-  if (!/\/v1$/i.test(s)) s += "/v1";
-  return s + "/chat/completions";
+  if (/\/chat\/completions$/i.test(s)) return s;
+  if (/\/responses$/i.test(s)) return s;
+  if (/\/v1$/i.test(s)) return s + "/chat/completions";
+  if (/\/v1\//i.test(s)) return s;
+  return s + "/v1/chat/completions";
 }
-__name(modelEndpoint, "modelEndpoint");
 async function peekTurns(env, chatId, appId) {
   try {
     const raw = await kv(env).get(peekBase(appId, chatId));
@@ -743,22 +675,20 @@ async function peekTurns(env, chatId, appId) {
     return [];
   }
 }
-__name(peekTurns, "peekTurns");
 async function peekSave(env, chatId, turns, appId) {
   try {
     await kv(env).put(peekBase(appId, chatId), JSON.stringify(turns.slice(-40)), { expirationTtl: 60 * 60 * 24 * 7 });
   } catch (e) {
   }
 }
-__name(peekSave, "peekSave");
 async function peekApiConfig(env, appId, chatId, body, owner, realAppId) {
-  const cleanApi = /* @__PURE__ */ __name(function(v) {
+  const cleanApi = function(v) {
     if (!v || typeof v !== "object") return null;
     const url = String(v.url || "").trim();
     const key = String(v.key || "").trim();
     const model = String(v.model || "").trim();
     return url && key && model ? { url, key, model } : null;
-  }, "cleanApi");
+  };
   const deviceId = cleanDeviceId(owner && owner.deviceId || body && body.deviceId || "default");
   let userId = cleanUserId(owner && owner.userId || body && body.userId || "");
   if (!userId || userId === "default") {
@@ -798,7 +728,6 @@ async function peekApiConfig(env, appId, chatId, body, owner, realAppId) {
   }
   return null;
 }
-__name(peekApiConfig, "peekApiConfig");
 function autoOk(request, env, body) {
   const tokens = [env.PUSH_TOKEN, env.PEEK_TOKEN].filter(Boolean);
   if (!tokens.length) return true;
@@ -815,13 +744,11 @@ function autoOk(request, env, body) {
   const b = body && body.token ? String(body.token) : "";
   return tokens.indexOf(h) >= 0 || tokens.indexOf(q) >= 0 || tokens.indexOf(b) >= 0;
 }
-__name(autoOk, "autoOk");
 function clampNum(n, min, max, dflt) {
   n = Number(n);
   if (!isFinite(n) || n <= 0) n = dflt;
   return Math.max(min, Math.min(max, n));
 }
-__name(clampNum, "clampNum");
 function sanitizeAutoConfig(body) {
   body = body || {};
   const chars = Array.isArray(body.chars) ? body.chars.slice(0, 30).map(function(c) {
@@ -887,7 +814,6 @@ function sanitizeAutoConfig(body) {
     updatedAt: Date.now()
   };
 }
-__name(sanitizeAutoConfig, "sanitizeAutoConfig");
 async function autoChat(env, cfg, messages, maxTokens, temperature) {
   const url = modelEndpoint(env.AUTO_API_URL || env.PEEK_API_URL || cfg.api && cfg.api.url || "");
   const key = env.AUTO_API_KEY || env.PEEK_API_KEY || cfg.api && cfg.api.key || "";
@@ -912,7 +838,6 @@ async function autoChat(env, cfg, messages, maxTokens, temperature) {
     return null;
   }
 }
-__name(autoChat, "autoChat");
 function pickRandom(arr, n) {
   const copy = arr.slice();
   for (let i = copy.length - 1; i > 0; i--) {
@@ -923,17 +848,14 @@ function pickRandom(arr, n) {
   }
   return copy.slice(0, n);
 }
-__name(pickRandom, "pickRandom");
 function splitAutoBubbles(text) {
   return String(text || "").split(/\n+/).map(function(s) {
     return s.trim();
   }).filter(Boolean).slice(0, 3);
 }
-__name(splitAutoBubbles, "splitAutoBubbles");
 function cleanBubble(s) {
   return String(s == null ? "" : s).replace(/^```[a-zA-Z]*\s*/, "").replace(/```\s*$/, "").replace(/^\s*(?:你|角色|消息|气泡)\s*[:：]\s*/, "").replace(/^["'“”]+|["'“”]+$/g, "").trim();
 }
-__name(cleanBubble, "cleanBubble");
 function ensureBubbles(raw, max) {
   let list = [];
   if (Array.isArray(raw)) list = raw.map(cleanBubble).filter(Boolean);
@@ -950,7 +872,6 @@ function ensureBubbles(raw, max) {
   });
   return out.slice(0, max);
 }
-__name(ensureBubbles, "ensureBubbles");
 function parseHeart(raw) {
   if (!raw) return null;
   if (typeof raw === "object") {
@@ -963,7 +884,6 @@ function parseHeart(raw) {
   const sep = s.indexOf("||");
   return sep > -1 ? { subject: s.slice(0, sep).trim(), thought: s.slice(sep + 2).trim() } : { subject: "", thought: s };
 }
-__name(parseHeart, "parseHeart");
 function parseAutoReply(raw) {
   let text = String(raw || "").trim();
   if (!text) return null;
@@ -998,7 +918,6 @@ function parseAutoReply(raw) {
   if (!bubbles.length) return null;
   return { think, heart, bubbles };
 }
-__name(parseAutoReply, "parseAutoReply");
 function recentBlock(c) {
   const r = c && Array.isArray(c.recent) ? c.recent : [];
   if (!r.length) return "";
@@ -1006,26 +925,21 @@ function recentBlock(c) {
     return (x.who === "user" ? "\u7528\u6237\uFF1A" : "\u4F60\uFF1A") + x.text;
   }).join("\n") + "\n\u3010\u5F3A\u76F8\u5173\u8981\u6C42\u3011\u8FD9\u8F6E\u4E3B\u52A8\u6D88\u606F\u5FC5\u987B\u81EA\u7136\u63A5\u4F4F\u4E0A\u9762\u6700\u540E\u7684\u8BDD\u9898\u3001\u60C5\u7EEA\u6216\u8FD8\u6CA1\u8BF4\u5B8C\u7684\u4E8B\uFF1B\u4E0D\u8981\u53E6\u8D77\u65E0\u5173\u8BDD\u9898\u3002";
 }
-__name(recentBlock, "recentBlock");
 function beijingToday() {
   return new Date(Date.now() + 8 * 3600 * 1e3).toISOString().slice(0, 10);
 }
-__name(beijingToday, "beijingToday");
 function parseYmd(s) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || ""));
   if (!m) return 0;
   return Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
 }
-__name(parseYmd, "parseYmd");
 function addDaysMs(ms, n) {
   return ms + n * 864e5;
 }
-__name(addDaysMs, "addDaysMs");
 function fmtCn(ms) {
   const d = new Date(ms);
   return d.getUTCMonth() + 1 + "\u6708" + d.getUTCDate() + "\u65E5";
 }
-__name(fmtCn, "fmtCn");
 function autoLangName(c) {
   if (!c) return "";
   if (c.forceTranslate && c.forceLang) return String(c.forceLang).trim();
@@ -1068,7 +982,6 @@ function autoLangName(c) {
   for (const k of Object.keys(map)) if (nat.indexOf(k) > -1) return map[k];
   return "\u82F1\u6587";
 }
-__name(autoLangName, "autoLangName");
 function autoIsForeign(c) {
   if (!c) return false;
   if (c.forceTranslate) return true;
@@ -1076,14 +989,12 @@ function autoIsForeign(c) {
   const nat = String(c.nationality || "").trim();
   return !!(nat && nat !== "\u672A\u77E5" && nat !== "\u672A\u8BBE\u5B9A" && !/(中国|中國|china|chinese|香港|澳门|澳門|台湾|台灣)/i.test(nat));
 }
-__name(autoIsForeign, "autoIsForeign");
 function autoLangBlock(c) {
   if (!autoIsForeign(c)) return "";
   const lang = autoLangName(c);
   const trans = /粤语|粵語|cantonese/i.test(lang) ? "\u666E\u901A\u8BDD" : "\u4E2D\u6587";
   return "\u3010\u8BED\u8A00 \xB7 \u6700\u9AD8\u4F18\u5148\u7EA7\u3011\u4F60\u662F" + (c.nationality || "\u5916\u56FD") + "\u4EBA\uFF0C\u6BCD\u8BED\u662F" + lang + "\u3002\u672C\u8F6E\u4E3B\u52A8\u6D88\u606F\u7684\u6B63\u6587\u5FC5\u987B\u53EA\u7528" + lang + "\u5199\uFF0C\u7EDD\u4E0D\u80FD\u7528\u4E2D\u6587\u5F53\u6B63\u6587\uFF1B\u5373\u4F7F\u4EBA\u8BBE\u6216\u4E0A\u9762\u7684\u8BF4\u660E\u662F\u4E2D\u6587\uFF0C\u4E5F\u4E0D\u8981\u6539\u53D8\u3002\u6BCF\u884C\u4E00\u6761\u6C14\u6CE1\uFF0C\u4E25\u683C\u6309\u300C" + lang + "\u539F\u6587||" + trans + "\u7FFB\u8BD1\u300D\u7684\u683C\u5F0F\u8F93\u51FA\uFF0C\u7528 || \u5206\u9694\uFF1B" + trans + "\u53EA\u80FD\u51FA\u73B0\u5728 || \u53F3\u8FB9\u4F5C\u4E3A\u7FFB\u8BD1\uFF0C\u7FFB\u8BD1\u8981\u81EA\u7136\u53E3\u8BED\u5316\u3002\n";
 }
-__name(autoLangBlock, "autoLangBlock");
 function cycleBlock(c) {
   const cy = c && c.cycle;
   if (!cy || !cy.lastStart) return "";
@@ -1114,7 +1025,6 @@ function cycleBlock(c) {
   }
   return s;
 }
-__name(cycleBlock, "cycleBlock");
 async function generateAutoMessages(env, cfg, busyChatId, avoidId) {
   const pool = cfg.chars.filter(function(c) {
     return c.id !== busyChatId && !c.isNpc;
@@ -1155,7 +1065,6 @@ async function generateAutoMessages(env, cfg, busyChatId, avoidId) {
   }
   return out;
 }
-__name(generateAutoMessages, "generateAutoMessages");
 async function generateAutoMoments(env, cfg, busyChatId, maxChars) {
   const pool = cfg.chars.filter(function(c) {
     return c.id !== busyChatId && !c.isNpc;
@@ -1194,14 +1103,14 @@ async function generateAutoMoments(env, cfg, busyChatId, maxChars) {
   names.forEach(function(n) {
     nameSet[n] = true;
   });
-  const pickName = /* @__PURE__ */ __name(function(raw) {
+  const pickName = function(raw) {
     const n = String(raw == null ? "" : raw).trim();
     if (!n) return "";
     if (nameSet[n]) return n;
     return names.find(function(x) {
       return x && (x.indexOf(n) > -1 || n.indexOf(x) > -1);
     }) || "";
-  }, "pickName");
+  };
   const out = [];
   const now = Date.now();
   const canned = ["\u8FD9\u6761\u4E5F\u592A\u771F\u5B9E\u4E86", "\u54C8\u54C8\u54C8\u54C8", "\u6211\u4E5F\u60F3\u53BB", "\u6CE8\u610F\u4F11\u606F\u5440", "\u597D\u770B", "\u4E0B\u6B21\u5E26\u6211"];
@@ -1251,7 +1160,6 @@ async function generateAutoMoments(env, cfg, busyChatId, maxChars) {
   });
   return out;
 }
-__name(generateAutoMoments, "generateAutoMoments");
 function pushText(v, fallback) {
   let s = "";
   if (v && typeof v === "object") s = v.body || v.text || v.message || v.content || v.title || "";
@@ -1259,78 +1167,76 @@ function pushText(v, fallback) {
   s = String(s || "").replace(/\s*\|\|\s*/g, " / ").trim();
   return s || String(fallback || "");
 }
-__name(pushText, "pushText");
 async function sendBarkKey(env, key, payload) {
-  key = String(key || '').trim();
+  key = String(key || "").trim();
   if (!key) return false;
-  // 允许直接粘贴完整 Bark 地址（可能自带 ?group=...）。拆出 server 根路径和设备 key，
-  // 这样 GET 路径和 POST /push 都能正确拼装，标题/正文不会再被查询串吞掉。
-  let root = 'https://api.day.app', devKey = key;
-  if (key.indexOf('http') === 0) {
+  let root = "https://api.day.app", devKey = key;
+  if (key.indexOf("http") === 0) {
     try {
       const u = new URL(key);
-      const segs = u.pathname.split('/').filter(Boolean);
-      devKey = segs.length ? segs.pop() : '';
-      root = u.origin + (segs.length ? '/' + segs.join('/') : '');
+      const segs = u.pathname.split("/").filter(Boolean);
+      devKey = segs.length ? segs.pop() : "";
+      root = u.origin + (segs.length ? "/" + segs.join("/") : "");
     } catch (e) {
-      root = 'https://api.day.app';
+      root = "https://api.day.app";
     }
   }
-  // 标题优先用角色昵称，正文用真实气泡内容；避免只推 "Nano / 你有一条新消息"。
-  let title = pushText(payload.name || payload.title, 'Nano');
-  if (/^(title|body|undefined|null)$/i.test(title)) title = pushText(payload.name, 'Nano');
-  let body = '';
+  let title = pushText(payload.name || payload.title, "Nano");
+  if (/^(title|body|undefined|null)$/i.test(title)) title = pushText(payload.name, "Nano");
+  let body = "";
   if (Array.isArray(payload.bubbles) && payload.bubbles.length) {
-    body = payload.bubbles.map(function (b) { return pushText(b, ''); }).filter(Boolean).join('\n');
+    body = payload.bubbles.map(function(b) {
+      return pushText(b, "");
+    }).filter(Boolean).join("\n");
   }
-  body = pushText(body || payload.body || payload.text || payload.preview, '').slice(0, 300);
-  if (/^(title|body|undefined|null)$/i.test(body)) body = '';
-  // 没有真实内容就不发：宁可交给 Web Push，也不要用通用占位文案刷屏。
+  body = pushText(body || payload.body || payload.text || payload.preview, "").slice(0, 300);
+  if (/^(title|body|undefined|null)$/i.test(body)) body = "";
   if (!body) return false;
-  const group = pushText(payload.name || payload.title || payload.channel, 'Nano');
-  let openUrl = '';
+  const group = pushText(payload.name || payload.title || payload.channel, "Nano");
+  let openUrl = "";
   if (payload.target) {
-    const app = String(env.APP_URL || 'https://xiaoyu0108.github.io/nano-mobile-chat/').replace(/\/+$/, '');
-    openUrl = app + '/index.html?open=' + encodeURIComponent(payload.target);
+    const app = String(env.APP_URL || "https://xiaoyu0108.github.io/nano-mobile-chat/").replace(/\/+$/, "");
+    openUrl = app + "/index.html?open=" + encodeURIComponent(payload.target);
   }
-
   async function barkGet() {
-    let url = root + '/' + encodeURIComponent(devKey || '') + '/' + encodeURIComponent(title) + '/' + encodeURIComponent(body);
-    // active 才会在锁屏/后台弹横幅；sound=none 关掉提示音（避免保活时又响又震）
+    let url = root + "/" + encodeURIComponent(devKey || "") + "/" + encodeURIComponent(title) + "/" + encodeURIComponent(body);
     const q = [
-      'group=' + encodeURIComponent(group),
-      'level=active',
-      'sound=none'
+      "group=" + encodeURIComponent(group),
+      "level=active",
+      "sound=none"
     ];
-    if (openUrl) q.push('url=' + encodeURIComponent(openUrl));
-    if (payload.icon && /^https?:/i.test(String(payload.icon))) q.push('icon=' + encodeURIComponent(payload.icon));
-    url += '?' + q.join('&');
+    if (openUrl) q.push("url=" + encodeURIComponent(openUrl));
+    if (payload.icon && /^https?:/i.test(String(payload.icon))) q.push("icon=" + encodeURIComponent(payload.icon));
+    url += "?" + q.join("&");
     try {
       const resp = await fetch(url);
       if (!resp || !resp.ok) return false;
-      // Bark 正常返回 { code: 200 }；非 200 视为失败，交给 POST / Web Push 兜底。
       try {
         const data = await resp.json();
         if (data && data.code != null && Number(data.code) !== 200) return false;
-      } catch (e) {}
+      } catch (e) {
+      }
       return true;
-    } catch (e) { return false; }
+    } catch (e) {
+      return false;
+    }
   }
-
-  // GET 路径接口优先：官方 Bark 和多数自建 Bark 都能正确带上标题/正文。
-  // POST /push 只作兜底——有些自建服务接受 POST 却丢掉 title/body，会弹出没有名字和内容的通知。
   if (devKey && await barkGet()) return true;
   if (!devKey) return false;
   try {
-    const postUrl = root.replace(/\/+$/, '') + '/push';
+    const postUrl = root.replace(/\/+$/, "") + "/push";
     const resp = await fetch(postUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        device_key: devKey, title: title, body: body,
-        group: group, level: 'active', sound: 'none',
-        url: openUrl || undefined,
-        icon: (payload.icon && /^https?:/i.test(String(payload.icon))) ? String(payload.icon) : undefined
+        device_key: devKey,
+        title,
+        body,
+        group,
+        level: "active",
+        sound: "none",
+        url: openUrl || void 0,
+        icon: payload.icon && /^https?:/i.test(String(payload.icon)) ? String(payload.icon) : void 0
       })
     });
     if (!resp || !resp.ok) return false;
@@ -1338,12 +1244,12 @@ async function sendBarkKey(env, key, payload) {
       const data = await resp.json();
       return !data || data.code == null || Number(data.code) === 200;
     } catch (e) {
-      // 返回 HTML/空内容说明服务端没真正接收 JSON 推送，不能当成功。
       return false;
     }
-  } catch (e) { return false; }
+  } catch (e) {
+    return false;
+  }
 }
-__name(sendBarkKey, "sendBarkKey");
 async function autoNotify(env, cfg, subs, payload) {
   const key = String(cfg && cfg.barkKey || "").trim();
   if (key) {
@@ -1359,7 +1265,6 @@ async function autoNotify(env, cfg, subs, payload) {
   }
   return 0;
 }
-__name(autoNotify, "autoNotify");
 async function runAutoPush(env, appId, deviceId, userId) {
   appId = cleanAppId(appId);
   deviceId = cleanDeviceId(deviceId);
@@ -1403,7 +1308,6 @@ async function runAutoPush(env, appId, deviceId, userId) {
     subsCache = await getSubs(env, userId, deviceId, appId);
     return subsCache;
   }
-  __name(subsOnce, "subsOnce");
   let busyChatId = "";
   try {
     busyChatId = String(await kv(env).get("auto2:call:" + cleanAppId(appId) + ":" + userId) || "");
@@ -1490,49 +1394,107 @@ async function runAutoPush(env, appId, deviceId, userId) {
   }
   if (dirty) await kv(env).put(autoKey("state", appId, deviceId, userId), JSON.stringify(state));
 }
-__name(runAutoPush, "runAutoPush");
+function peekModelText(data) {
+  if (!data) return "";
+  const msg = data.choices && data.choices[0] && data.choices[0].message;
+  let c = msg && msg.content;
+  if (Array.isArray(c)) {
+    c = c.map(function(x) {
+      if (typeof x === "string") return x;
+      return x && (x.text || x.content) || "";
+    }).join("");
+  }
+  if (typeof c === "string" && c.trim()) return c.trim();
+  const alt = data.choices && data.choices[0] && data.choices[0].text;
+  if (typeof alt === "string" && alt.trim()) return alt.trim();
+  if (typeof data.output_text === "string" && data.output_text.trim()) return data.output_text.trim();
+  if (Array.isArray(data.output)) {
+    const parts = [];
+    data.output.forEach(function(o) {
+      (o && Array.isArray(o.content) ? o.content : []).forEach(function(p) {
+        if (p && typeof p.text === "string") parts.push(p.text);
+      });
+    });
+    if (parts.join("").trim()) return parts.join("").trim();
+  }
+  return "";
+}
 async function peekModel(env, system, text, image, history, apiCfg, context) {
   const allowEnvApi = !peekPublic(env);
   const url = modelEndpoint((allowEnvApi ? env.PEEK_API_URL : "") || apiCfg && apiCfg.url || "");
   const key = (allowEnvApi ? env.PEEK_API_KEY : "") || apiCfg && apiCfg.key || "";
   const model = (allowEnvApi ? env.PEEK_MODEL : "") || apiCfg && apiCfg.model || "";
   if (!url || !key || !model) return null;
-  let content;
-  if (image) {
-    content = [
-      { type: "text", text: text || "\u770B\u770B\u6211\u73B0\u5728\u5C4F\u5E55\u4E0A\u662F\u4EC0\u4E48\uFF0C\u7528\u4F60\u7684\u4EBA\u8BBE\u968F\u53E3\u8BF4\u4E00\u53E5\u3002" },
-      { type: "image_url", image_url: { url: image } }
-    ];
-  } else {
-    content = text || "\u7528\u4F60\u7684\u4EBA\u8BBE\u968F\u53E3\u8BF4\u4E00\u53E5\u3002";
+  const isResponses = /\/responses$/i.test(url);
+  function buildBody(useImage, tokenField) {
+    const messages = [];
+    if (system) messages.push({ role: "system", content: system });
+    (context || []).forEach(function(m) {
+      if (!m || !m.content) return;
+      messages.push({ role: m.role === "assistant" ? "assistant" : "user", content: String(m.content).slice(0, 1200) });
+    });
+    (history || []).forEach(function(t) {
+      if (t.user) messages.push({ role: "user", content: String(t.user) });
+      if (t.char) messages.push({ role: "assistant", content: String(t.char) });
+    });
+    let content;
+    if (useImage && image) {
+      content = [
+        { type: "text", text: text || "\u770B\u770B\u6211\u73B0\u5728\u5C4F\u5E55\u4E0A\u662F\u4EC0\u4E48\uFF0C\u7528\u4F60\u7684\u4EBA\u8BBE\u968F\u53E3\u8BF4\u4E00\u53E5\u3002" },
+        { type: "image_url", image_url: { url: image } }
+      ];
+    } else {
+      content = text || "\u770B\u770B\u6211\u73B0\u5728\u5C4F\u5E55\u4E0A\u662F\u4EC0\u4E48\uFF0C\u7528\u4F60\u7684\u4EBA\u8BBE\u968F\u53E3\u8BF4\u4E00\u53E5\u3002";
+    }
+    messages.push({ role: "user", content });
+    if (isResponses) {
+      let input = "";
+      messages.forEach(function(m) {
+        const c = Array.isArray(m.content) ? m.content.map(function(x) {
+          return x.text || "";
+        }).join(" ") : m.content;
+        if (c) input += (m.role === "assistant" ? "Assistant: " : m.role === "system" ? "System: " : "User: ") + c + "\n";
+      });
+      return { model, input: input.trim(), max_output_tokens: 1200 };
+    }
+    const body = { model, messages, temperature: 0.9, stream: false };
+    body[tokenField || "max_tokens"] = 1200;
+    return body;
   }
-  const messages = [];
-  if (system) messages.push({ role: "system", content: system });
-  (context || []).forEach(function(m) {
-    if (!m || !m.content) return;
-    messages.push({ role: m.role === "assistant" ? "assistant" : "user", content: String(m.content).slice(0, 1200) });
-  });
-  (history || []).forEach(function(t) {
-    if (t.user) messages.push({ role: "user", content: String(t.user) });
-    if (t.char) messages.push({ role: "assistant", content: String(t.char) });
-  });
-  messages.push({ role: "user", content });
-  const resp = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "Authorization": "Bearer " + key },
-    body: JSON.stringify({ model, messages, max_tokens: 900, temperature: 0.9 })
-  });
-  if (!resp.ok) return null;
-  const data = await resp.json();
-  const c = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
-  return c ? String(c).trim() : null;
+  async function call(payload) {
+    try {
+      const resp = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + key },
+        body: JSON.stringify(payload)
+      });
+      if (!resp.ok) {
+        let detail = "";
+        try {
+          detail = (await resp.text()).slice(0, 240);
+        } catch (e) {
+        }
+        return { text: "", error: "HTTP " + resp.status + " " + detail };
+      }
+      const data = await resp.json();
+      return { text: peekModelText(data), error: "" };
+    } catch (e) {
+      return { text: "", error: String(e && e.message || e || "") };
+    }
+  }
+  let r = await call(buildBody(!!image, "max_tokens"));
+  if (!isResponses && image && !r.text) {
+    r = await call(buildBody(false, "max_tokens"));
+  }
+  if (!isResponses && !r.text && /max_tokens|max_completion_tokens|unsupported|invalid|reasoning/i.test(r.error || "")) {
+    r = await call(buildBody(false, "max_completion_tokens"));
+  }
+  return r.text ? String(r.text).trim() : null;
 }
-__name(peekModel, "peekModel");
 var LINK_HOST_RE = /(^|\.)(xiaohongshu\.com|xhslink\.[a-z.]+|xhs\.cn|douyin\.com|iesdouyin\.com|taobao\.com|tmall\.com|tb\.cn|jd\.com|3\.cn|bilibili\.com|b23\.tv|weibo\.com|weibo\.cn)$/i;
 function linkHostAllowed(host) {
   return LINK_HOST_RE.test(String(host || "").toLowerCase());
 }
-__name(linkHostAllowed, "linkHostAllowed");
 function linkDecodeHtml(s) {
   return String(s || "").replace(/&quot;/g, '"').replace(/&#0?39;/g, "'").replace(/&#x27;/gi, "'").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&nbsp;/g, " ").replace(/\\u([\dA-Fa-f]{4})/g, function(_, h) {
     try {
@@ -1542,7 +1504,6 @@ function linkDecodeHtml(s) {
     }
   }).replace(/\s+/g, " ").trim();
 }
-__name(linkDecodeHtml, "linkDecodeHtml");
 function linkAbsImg(u) {
   u = linkDecodeHtml(String(u || "")).replace(/\\\//g, "/").replace(/&amp;/g, "&");
   if (!u) return "";
@@ -1551,23 +1512,19 @@ function linkAbsImg(u) {
   if (!/^https?:\/\//i.test(u)) return "";
   return u;
 }
-__name(linkAbsImg, "linkAbsImg");
 function linkCleanText(s) {
   return String(s || "").replace(/!\[[^\]]*\]\([^)]*\)/g, " ").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/<[^>]+>/g, " ").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").replace(/[ \t]{2,}/g, " ").trim();
 }
-__name(linkCleanText, "linkCleanText");
 function parseLinkPage(html) {
   html = String(html || "").replace(/\\u002F/gi, "/").replace(/\\\//g, "/");
   function pick(re2) {
     const m2 = html.match(re2);
     return m2 ? m2[1] : "";
   }
-  __name(pick, "pick");
   function jsonField(name) {
     const m2 = html.match(new RegExp('"' + name + '"\\s*:\\s*"([^"]{2,})"', "i"));
     return m2 ? linkDecodeHtml(String(m2[1]).replace(/\\n/g, " ")) : "";
   }
-  __name(jsonField, "jsonField");
   const docTitle = pick(/<meta[^>]+(?:property|name)=["'](?:og:title|twitter:title)["'][^>]*content=["']([\s\S]*?)["']/i) || pick(/<meta[^>]+content=["']([\s\S]*?)["'][^>]*(?:property|name)=["'](?:og:title|twitter:title)["']/i) || pick(/<title[^>]*>([\s\S]*?)<\/title>/i);
   const jsonTitle = jsonField("title") || jsonField("noteTitle") || jsonField("displayTitle");
   let title = docTitle;
@@ -1584,7 +1541,6 @@ function parseLinkPage(html) {
     seen[u] = 1;
     if (imgs.length < 6) imgs.push(u);
   }
-  __name(addImg, "addImg");
   let re = /<meta[^>]+(?:property|name)=["'](?:og:image(?::secure_url)?|twitter:image)["'][^>]*content=["']([^"']+)["']/gi, m;
   while (m = re.exec(html)) addImg(m[1]);
   re = /<meta[^>]+content=["']([^"']+)["'][^>]*(?:property|name)=["'](?:og:image(?::secure_url)?|twitter:image)["']/gi;
@@ -1613,7 +1569,6 @@ function parseLinkPage(html) {
   const body = [jsonTitle, jsonField("desc"), jsonField("share_title"), jsonField("description"), desc, visible].filter(Boolean).join("\n").slice(0, 7e3);
   return { title, desc, content: body, images: imgs, price };
 }
-__name(parseLinkPage, "parseLinkPage");
 function linkLooksBlocked(finalUrl, data) {
   if (/website-login|captcha|verify|\/login|signin/i.test(String(finalUrl || ""))) return true;
   const title = String(data && data.title || "");
@@ -1622,7 +1577,6 @@ function linkLooksBlocked(finalUrl, data) {
   if (/滑动验证|请登录|安全验证|访问异常|captcha|想了解些什么|登录后|扫码登录|登录小红书|亲，请登录|扫码查看|商品不存在|商品已下架|您查看的宝贝不存在|页面不存在/i.test(content)) return true;
   return false;
 }
-__name(linkLooksBlocked, "linkLooksBlocked");
 function xhsDirectUrls(finalUrl) {
   const out = [];
   try {
@@ -1641,7 +1595,6 @@ function xhsDirectUrls(finalUrl) {
   }
   return out;
 }
-__name(xhsDirectUrls, "xhsDirectUrls");
 function parseJinaText(raw) {
   raw = String(raw || "");
   const tm = raw.match(/^\s*Title\s*:\s*(.+)$/im);
@@ -1666,7 +1619,6 @@ function parseJinaText(raw) {
     price: ""
   };
 }
-__name(parseJinaText, "parseJinaText");
 async function fetchTextWithTimeout(target, headers, ms) {
   const controller = new AbortController();
   const timer = setTimeout(function() {
@@ -1685,7 +1637,6 @@ async function fetchTextWithTimeout(target, headers, ms) {
     clearTimeout(timer);
   }
 }
-__name(fetchTextWithTimeout, "fetchTextWithTimeout");
 async function fetchLinkPreview(url) {
   let u;
   try {
@@ -1805,7 +1756,6 @@ async function fetchLinkPreview(url) {
   }
   return null;
 }
-__name(fetchLinkPreview, "fetchLinkPreview");
 var HOT_LABEL = { weibo: "\u5FAE\u535A", douyin: "\u6296\u97F3", baidu: "\u767E\u5EA6", toutiao: "\u4ECA\u65E5\u5934\u6761", bilibili: "B\u7AD9" };
 var HOT_DESKTOP_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 var HOT_MOBILE_UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1";
@@ -1814,7 +1764,6 @@ function hotItem(title, hot, url) {
   if (!title) return null;
   return { title: title.slice(0, 160), hot: Number(hot) || 0, url: String(url || "") };
 }
-__name(hotItem, "hotItem");
 async function hotWeibo() {
   const r = await fetchTextWithTimeout("https://weibo.com/ajax/statuses/hot_band", {
     "User-Agent": HOT_DESKTOP_UA,
@@ -1828,7 +1777,6 @@ async function hotWeibo() {
     return hotItem(x.word || x.note, x.num, "https://s.weibo.com/weibo?q=" + encodeURIComponent(x.word_scheme || x.word || ""));
   }).filter(Boolean).slice(0, 20);
 }
-__name(hotWeibo, "hotWeibo");
 async function hotDouyin() {
   const r = await fetchTextWithTimeout("https://www.iesdouyin.com/web/api/v2/hotsearch/billboard/word/", {
     "User-Agent": HOT_MOBILE_UA,
@@ -1841,7 +1789,6 @@ async function hotDouyin() {
     return hotItem(x.word, x.hot_value, "https://www.douyin.com/search/" + encodeURIComponent(x.word || ""));
   }).filter(Boolean).slice(0, 20);
 }
-__name(hotDouyin, "hotDouyin");
 async function hotBaidu() {
   const r = await fetchTextWithTimeout("https://top.baidu.com/api/board?platform=wise&tab=realtime", {
     "User-Agent": HOT_MOBILE_UA,
@@ -1851,7 +1798,7 @@ async function hotBaidu() {
   if (!r) return [];
   const j = JSON.parse(r.text);
   const out = [], seen = {};
-  (/* @__PURE__ */ __name((function walk(o) {
+  (function walk(o) {
     if (!o || out.length >= 20) return;
     if (Array.isArray(o)) {
       o.forEach(walk);
@@ -1865,10 +1812,9 @@ async function hotBaidu() {
     Object.keys(o).forEach(function(k) {
       walk(o[k]);
     });
-  }), "walk"))(j);
+  })(j);
   return out.filter(Boolean).slice(0, 20);
 }
-__name(hotBaidu, "hotBaidu");
 async function hotToutiao() {
   const r = await fetchTextWithTimeout("https://www.toutiao.com/hot-event/hot-board/?origin=toutiao_pc", {
     "User-Agent": HOT_DESKTOP_UA,
@@ -1881,7 +1827,6 @@ async function hotToutiao() {
     return hotItem(x.Title, x.HotValue, x.Url);
   }).filter(Boolean).slice(0, 20);
 }
-__name(hotToutiao, "hotToutiao");
 async function hotBilibili() {
   const r = await fetchTextWithTimeout("https://s.search.bilibili.com/main/hotword", {
     "User-Agent": HOT_DESKTOP_UA,
@@ -1895,7 +1840,6 @@ async function hotBilibili() {
     return hotItem(word, x.heat_score, "https://search.bilibili.com/all?keyword=" + encodeURIComponent(word));
   }).filter(Boolean).slice(0, 20);
 }
-__name(hotBilibili, "hotBilibili");
 var HOT_SOURCES = { weibo: hotWeibo, douyin: hotDouyin, baidu: hotBaidu, toutiao: hotToutiao, bilibili: hotBilibili };
 async function getHotTopics(source) {
   source = String(source || "").trim().toLowerCase();
@@ -1909,18 +1853,14 @@ async function getHotTopics(source) {
     }
   }));
 }
-__name(getHotTopics, "getHotTopics");
-// ===== 账号 / 设备会话 / 导入卡密 =====
-// 复用同一份 KV/D1：绑定了 D1 就写 D1 的 kv 表，否则回退 KV。
-const ACC_SESSION_TTL = 30 * 24 * 60 * 60;
-const ACC_MAX_DEVICES = 3;
-const ACC_PBKDF2_ITER = 30000;
-const ACC_TOKEN_PREFIX = 'acct:tok:';
-const ACC_SESS_PREFIX = 'acct:sess:';
-const ACC_USER_PREFIX = 'acct:user:';
-
+var ACC_SESSION_TTL = 30 * 24 * 60 * 60;
+var ACC_MAX_DEVICES = 3;
+var ACC_PBKDF2_ITER = 3e4;
+var ACC_TOKEN_PREFIX = "acct:tok:";
+var ACC_SESS_PREFIX = "acct:sess:";
+var ACC_USER_PREFIX = "acct:user:";
 function accNormName(v) {
-  return String(v == null ? '' : v).trim();
+  return String(v == null ? "" : v).trim();
 }
 function accLowerName(v) {
   return accNormName(v).toLowerCase();
@@ -1933,12 +1873,12 @@ function accSessKey(name) {
 }
 function accB64(buf) {
   const bytes = new Uint8Array(buf);
-  let s = '';
+  let s = "";
   for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
   return btoa(s);
 }
 function accUnb64(str) {
-  const bin = atob(String(str || ''));
+  const bin = atob(String(str || ""));
   const out = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
   return out;
@@ -1946,116 +1886,139 @@ function accUnb64(str) {
 function accRandomHex(bytes) {
   const b = new Uint8Array(bytes || 16);
   crypto.getRandomValues(b);
-  return Array.prototype.map.call(b, function (x) { return x.toString(16).padStart(2, '0'); }).join('');
+  return Array.prototype.map.call(b, function(x) {
+    return x.toString(16).padStart(2, "0");
+  }).join("");
 }
 async function accHash(password, saltB64) {
   const enc = new TextEncoder();
-  const key = await crypto.subtle.importKey('raw', enc.encode(String(password)), 'PBKDF2', false, ['deriveBits']);
+  const key = await crypto.subtle.importKey("raw", enc.encode(String(password)), "PBKDF2", false, ["deriveBits"]);
   const bits = await crypto.subtle.deriveBits({
-    name: 'PBKDF2',
+    name: "PBKDF2",
     salt: accUnb64(saltB64),
     iterations: ACC_PBKDF2_ITER,
-    hash: 'SHA-256'
+    hash: "SHA-256"
   }, key, 256);
   return accB64(bits);
 }
 function accCleanSessions(list) {
   const now = Date.now();
-  return (Array.isArray(list) ? list : []).filter(function (s) {
+  return (Array.isArray(list) ? list : []).filter(function(s) {
     return s && s.token && (!s.exp || Number(s.exp) > now);
   });
 }
 function accPublicSessions(list, currentSid) {
-  return (Array.isArray(list) ? list : []).map(function (s) {
+  return (Array.isArray(list) ? list : []).map(function(s) {
     return {
       sid: s.sid,
-      deviceId: s.deviceId || '',
-      deviceName: s.deviceName || '未知设备',
+      deviceId: s.deviceId || "",
+      deviceName: s.deviceName || "\u672A\u77E5\u8BBE\u5907",
       at: s.at || 0,
       lastSeen: s.lastSeen || s.at || 0,
       current: !!currentSid && s.sid === currentSid
     };
-  }).sort(function (a, b) { return (b.lastSeen || 0) - (a.lastSeen || 0); });
+  }).sort(function(a, b) {
+    return (b.lastSeen || 0) - (a.lastSeen || 0);
+  });
 }
 async function accReadUser(env, name) {
   const raw = await kv(env).get(accUserKey(name));
   if (!raw) return null;
-  try { return JSON.parse(raw); } catch (e) { return null; }
+  try {
+    return JSON.parse(raw);
+  } catch (e) {
+    return null;
+  }
 }
 async function accReadSessions(env, name) {
   const raw = await kv(env).get(accSessKey(name));
   if (!raw) return [];
-  try { return accCleanSessions(JSON.parse(raw)); } catch (e) { return []; }
+  try {
+    return accCleanSessions(JSON.parse(raw));
+  } catch (e) {
+    return [];
+  }
 }
 async function accSaveSessions(env, name, list) {
   await kv(env).put(accSessKey(name), JSON.stringify(accCleanSessions(list)));
 }
 async function accDropSession(env, name, sess) {
   if (!sess) return;
-  try { await kv(env).delete(ACC_TOKEN_PREFIX + sess.token); } catch (e) {}
+  try {
+    await kv(env).delete(ACC_TOKEN_PREFIX + sess.token);
+  } catch (e) {
+  }
 }
 async function accIssueSession(env, user, body) {
   const now = Date.now();
-  const deviceId = String((body && body.deviceId) || '').slice(0, 80) || accRandomHex(8);
-  const deviceName = String((body && body.deviceName) || '').slice(0, 80) || '未知设备';
-  const ua = String((body && body.ua) || '').slice(0, 300);
+  const deviceId = String(body && body.deviceId || "").slice(0, 80) || accRandomHex(8);
+  const deviceName = String(body && body.deviceName || "").slice(0, 80) || "\u672A\u77E5\u8BBE\u5907";
+  const ua = String(body && body.ua || "").slice(0, 300);
   let list = await accReadSessions(env, user.u);
-  // 同一设备重新登录：替换旧会话，不占新的设备名额。
-  list = list.filter(function (s) { return !(deviceId && s.deviceId === deviceId); });
+  list = list.filter(function(s) {
+    return !(deviceId && s.deviceId === deviceId);
+  });
   const evicted = [];
-  // 设备轮流更替：第 4 台登录时自动顶掉最久没活动的一台。
   while (list.length >= ACC_MAX_DEVICES) {
-    list.sort(function (a, b) { return (a.lastSeen || a.at || 0) - (b.lastSeen || b.at || 0); });
+    list.sort(function(a, b) {
+      return (a.lastSeen || a.at || 0) - (b.lastSeen || b.at || 0);
+    });
     const old = list.shift();
     if (old) {
-      evicted.push({ deviceName: old.deviceName || '未知设备', deviceId: old.deviceId || '' });
+      evicted.push({ deviceName: old.deviceName || "\u672A\u77E5\u8BBE\u5907", deviceId: old.deviceId || "" });
       await accDropSession(env, user.u, old);
     }
   }
   const sid = accRandomHex(6);
   const token = accRandomHex(32);
   const sess = {
-    sid: sid,
-    token: token,
-    deviceId: deviceId,
-    deviceName: deviceName,
-    ua: ua,
+    sid,
+    token,
+    deviceId,
+    deviceName,
+    ua,
     at: now,
     lastSeen: now,
-    exp: now + ACC_SESSION_TTL * 1000
+    exp: now + ACC_SESSION_TTL * 1e3
   };
   list.push(sess);
   await accSaveSessions(env, user.u, list);
   await kv(env).put(ACC_TOKEN_PREFIX + token, JSON.stringify({
     u: user.u,
-    sid: sid,
+    sid,
     exp: sess.exp
   }), { expirationTtl: ACC_SESSION_TTL });
-  return { session: sess, sessions: list, evicted: evicted };
+  return { session: sess, sessions: list, evicted };
 }
 async function accAuth(env, token) {
-  token = String(token || '').trim();
+  token = String(token || "").trim();
   if (!token) return null;
   const raw = await kv(env).get(ACC_TOKEN_PREFIX + token);
   if (!raw) return null;
   let rec = null;
-  try { rec = JSON.parse(raw); } catch (e) { return null; }
-  if (!rec || !rec.u || (rec.exp && Number(rec.exp) <= Date.now())) return null;
+  try {
+    rec = JSON.parse(raw);
+  } catch (e) {
+    return null;
+  }
+  if (!rec || !rec.u || rec.exp && Number(rec.exp) <= Date.now()) return null;
   const user = await accReadUser(env, rec.u);
   if (!user) return null;
   const list = await accReadSessions(env, user.u);
-  const sess = list.find(function (s) { return s.token === token; });
+  const sess = list.find(function(s) {
+    return s.token === token;
+  });
   if (!sess) return null;
-  return { user: user, session: sess, sessions: list, token: token };
+  return { user, session: sess, sessions: list, token };
 }
 function accAdminOk(request, env, body) {
-  const need = String((env && env.ACCOUNT_ADMIN_TOKEN) || '');
-  if (!need) return { ok: false, error: '服务端未配置 ACCOUNT_ADMIN_TOKEN' };
-  const got = String(request.headers.get('X-Admin-Token') || (body && body.adminToken) || '');
-  if (!got || got.length !== need.length) return { ok: false, error: '管理员密钥错误' };
+  const need = String(env && env.ACCOUNT_ADMIN_TOKEN || "");
+  if (!need) return { ok: false, error: "\u670D\u52A1\u7AEF\u672A\u914D\u7F6E ACCOUNT_ADMIN_TOKEN" };
+  const got = String(request.headers.get("X-Admin-Token") || body && body.adminToken || "");
+  if (!got || got.length !== need.length) return { ok: false, error: "\u7BA1\u7406\u5458\u5BC6\u94A5\u9519\u8BEF" };
   let diff = 0;
   for (let i = 0; i < need.length; i++) diff |= got.charCodeAt(i) ^ need.charCodeAt(i);
-  return diff === 0 ? { ok: true } : { ok: false, error: '管理员密钥错误' };
+  return diff === 0 ? { ok: true } : { ok: false, error: "\u7BA1\u7406\u5458\u5BC6\u94A5\u9519\u8BEF" };
 }
 function accValidName(name) {
   return /^[a-zA-Z0-9_\u4e00-\u9fa5.-]{2,24}$/.test(name);
@@ -2077,25 +2040,133 @@ async function accAdminAccess(request, env, body, auth) {
   if (auth && accRole(auth.user) === "admin") return { ok: true, by: "role" };
   return accAdminOk(request, env, body);
 }
+function accCode(prefix, groups) {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let out = String(prefix || "NANO").toUpperCase();
+  for (let g = 0; g < (groups || 3); g++) {
+    const b = new Uint8Array(4);
+    crypto.getRandomValues(b);
+    let part = "";
+    for (let i = 0; i < 4; i++) part += alphabet[b[i] % alphabet.length];
+    out += "-" + part;
+  }
+  return out;
+}
+function accDeviceKey(user, deviceId) {
+  return "acct:dev:" + accLowerName(user.u) + ":" + String(deviceId || "");
+}
+async function accReadDevice(env, user, deviceId) {
+  if (!user || !deviceId) return null;
+  const raw = await kv(env).get(accDeviceKey(user, deviceId));
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch (e) {
+    return null;
+  }
+}
+function accPublicDevice(dev) {
+  if (!dev) return null;
+  return {
+    deviceId: dev.deviceId || "",
+    deviceName: dev.deviceName || "\u672A\u77E5\u8BBE\u5907",
+    deviceCode: dev.deviceCode || "",
+    activated: dev.activated === true,
+    at: dev.at || 0,
+    lastSeen: dev.lastSeen || dev.at || 0
+  };
+}
+function accAdminDevice(dev, user) {
+  if (!dev) return null;
+  return Object.assign(accPublicDevice(dev), {
+    username: user ? user.u : "",
+    activationCode: dev.activationCode || "",
+    activationAt: dev.activationAt || 0
+  });
+}
+async function accReadDeviceByCode(env, code) {
+  const c = String(code || "").trim().toUpperCase().replace(/\s+/g, "");
+  if (!c) return null;
+  const raw = await kv(env).get("acct:devcode:" + c);
+  if (!raw) return null;
+  try {
+    const idx = JSON.parse(raw);
+    const user = await accReadUser(env, idx.u);
+    if (!user) return null;
+    const dev = await accReadDevice(env, user, idx.deviceId);
+    return dev ? { user, dev, code: c } : null;
+  } catch (e) {
+    return null;
+  }
+}
+async function accNewActivationCode(env, user, deviceId) {
+  for (let i = 0; i < 10; i++) {
+    const code = accCode("ACT", 2);
+    const exists = await kv(env).get("acct:actcode:" + code);
+    if (!exists) {
+      await kv(env).put("acct:actcode:" + code, JSON.stringify({ u: user.u, deviceId }));
+      return code;
+    }
+  }
+  return accCode("ACT", 3);
+}
+async function accEnsureDevice(env, user, deviceId, deviceName) {
+  if (!user || !deviceId) return null;
+  const now = Date.now();
+  let dev = await accReadDevice(env, user, deviceId);
+  if (!dev) {
+    let deviceCode = accCode("DEV", 2);
+    let tries = 0;
+    while (tries < 6 && await kv(env).get("acct:devcode:" + deviceCode)) {
+      deviceCode = accCode("DEV", 2);
+      tries++;
+    }
+    dev = {
+      deviceId,
+      deviceName: deviceName || "\u672A\u77E5\u8BBE\u5907",
+      deviceCode,
+      activated: false,
+      activationCode: "",
+      at: now,
+      lastSeen: now
+    };
+    await kv(env).put(accDeviceKey(user, deviceId), JSON.stringify(dev));
+    await kv(env).put("acct:devcode:" + deviceCode, JSON.stringify({ u: user.u, deviceId }));
+    return dev;
+  }
+  let changed = false;
+  if (deviceName && dev.deviceName !== deviceName) {
+    dev.deviceName = deviceName;
+    changed = true;
+  }
+  if (now - Number(dev.lastSeen || 0) > 60 * 60 * 1e3) {
+    dev.lastSeen = now;
+    changed = true;
+  }
+  if (changed) await kv(env).put(accDeviceKey(user, deviceId), JSON.stringify(dev));
+  return dev;
+}
 async function accHandle(request, env, pathname) {
-  if (!pathname.startsWith('/account/') && !pathname.startsWith('/gate/')) return null;
+  if (!pathname.startsWith("/account/") && !pathname.startsWith("/gate/")) return null;
   const method = request.method;
-  const body = (method === 'POST') ? await request.json().catch(function () { return {}; }) : {};
-
-  // ---- 注册 ----
-  if (pathname === '/account/register' && method === 'POST') {
+  const body = method === "POST" ? await request.json().catch(function() {
+    return {};
+  }) : {};
+  if (pathname === "/account/register" && method === "POST") {
     const name = accNormName(body.username);
-    const password = String(body.password || '');
-    if (!accValidName(name)) return json({ ok: false, error: '用户名需 2-24 位，可用中英文、数字、下划线、点和横线' }, 400);
-    if (password.length < 6 || password.length > 128) return json({ ok: false, error: '密码需 6-128 位' }, 400);
-    const inviteNeed = String(env.ACCOUNT_REGISTER_CODE || '');
-    if (inviteNeed && String(body.invite || '') !== inviteNeed) return json({ ok: false, error: '注册邀请码不正确' }, 403);
-    if (await accReadUser(env, name)) return json({ ok: false, error: '这个用户名已经被注册' }, 409);
+    const password = String(body.password || "");
+    if (!accValidName(name)) return json({ ok: false, error: "\u7528\u6237\u540D\u9700 2-24 \u4F4D\uFF0C\u53EF\u7528\u4E2D\u82F1\u6587\u3001\u6570\u5B57\u3001\u4E0B\u5212\u7EBF\u3001\u70B9\u548C\u6A2A\u7EBF" }, 400);
+    if (password.length < 6 || password.length > 128) return json({ ok: false, error: "\u5BC6\u7801\u9700 6-128 \u4F4D" }, 400);
+    const inviteNeed = String(env.ACCOUNT_REGISTER_CODE || "");
+    if (inviteNeed && String(body.invite || "") !== inviteNeed) return json({ ok: false, error: "\u6CE8\u518C\u9080\u8BF7\u7801\u4E0D\u6B63\u786E" }, 403);
+    if (await accReadUser(env, name)) return json({ ok: false, error: "\u8FD9\u4E2A\u7528\u6237\u540D\u5DF2\u7ECF\u88AB\u6CE8\u518C" }, 409);
     const salt = accB64(crypto.getRandomValues(new Uint8Array(16)));
     const hash = await accHash(password, salt);
-    const user = { u: name, salt: salt, hash: hash, at: Date.now(), role: "user" };
+    const regDeviceId = String(body.deviceId || "").trim() || accRandomHex(8);
+    const user = { u: name, salt, hash, at: Date.now(), role: "user", lastLoginAt: Date.now(), lastDeviceName: body.deviceName || "" };
     await kv(env).put(accUserKey(name), JSON.stringify(user));
-    const issued = await accIssueSession(env, user, body);
+    const dev = await accEnsureDevice(env, user, regDeviceId, body.deviceName);
+    const issued = await accIssueSession(env, user, Object.assign({}, body, { deviceId: regDeviceId }));
     return json({
       ok: true,
       token: issued.session.token,
@@ -2103,20 +2174,28 @@ async function accHandle(request, env, pathname) {
       role: accRole(user),
       sid: issued.session.sid,
       sessions: accPublicSessions(issued.sessions, issued.session.sid),
-      evicted: issued.evicted
+      evicted: issued.evicted,
+      device: accPublicDevice(dev),
+      needsActivation: true
     });
   }
-
-  // ---- 登录 ----
-  if (pathname === '/account/login' && method === 'POST') {
+  if (pathname === "/account/login" && method === "POST") {
     const name = accNormName(body.username);
-    const password = String(body.password || '');
-    if (!name || !password) return json({ ok: false, error: '请输入账号和密码' }, 400);
+    const password = String(body.password || "");
+    if (!name || !password) return json({ ok: false, error: "\u8BF7\u8F93\u5165\u8D26\u53F7\u548C\u5BC6\u7801" }, 400);
     const user = await accReadUser(env, name);
-    if (!user) return json({ ok: false, error: '账号或密码不正确' }, 401);
+    if (!user) return json({ ok: false, error: "\u8D26\u53F7\u6216\u5BC6\u7801\u4E0D\u6B63\u786E" }, 401);
     const hash = await accHash(password, user.salt);
-    if (hash !== user.hash) return json({ ok: false, error: '账号或密码不正确' }, 401);
-    const issued = await accIssueSession(env, user, body);
+    if (hash !== user.hash) return json({ ok: false, error: "\u8D26\u53F7\u6216\u5BC6\u7801\u4E0D\u6B63\u786E" }, 401);
+    if (user.banned === true) return json({ ok: false, error: "\u8BE5\u8D26\u53F7\u5DF2\u88AB\u505C\u7528\uFF0C\u8BF7\u8054\u7CFB\u7BA1\u7406\u5458" }, 403);
+    const loginDeviceId = String(body.deviceId || "").trim() || accRandomHex(8);
+    user.lastLoginAt = Date.now();
+    user.lastDeviceName = body.deviceName || "";
+    user.lastDeviceId = loginDeviceId;
+    await kv(env).put(accUserKey(user.u), JSON.stringify(user));
+    const dev = await accEnsureDevice(env, user, loginDeviceId, body.deviceName);
+    const issued = await accIssueSession(env, user, Object.assign({}, body, { deviceId: loginDeviceId }));
+    const isAdmin = accRole(user) === "admin";
     return json({
       ok: true,
       token: issued.session.token,
@@ -2124,29 +2203,29 @@ async function accHandle(request, env, pathname) {
       role: accRole(user),
       sid: issued.session.sid,
       sessions: accPublicSessions(issued.sessions, issued.session.sid),
-      evicted: issued.evicted
+      evicted: issued.evicted,
+      device: accPublicDevice(dev),
+      needsActivation: !isAdmin && !(dev && dev.activated === true)
     });
   }
-
-  // ---- 会话列表 / 续期 ----
-  if (pathname === '/account/sessions' && (method === 'GET' || method === 'POST')) {
-    const token = method === 'GET'
-      ? new URL(request.url).searchParams.get('token')
-      : body.token;
+  if (pathname === "/account/sessions" && (method === "GET" || method === "POST")) {
+    const token = method === "GET" ? new URL(request.url).searchParams.get("token") : body.token;
     const auth = await accAuth(env, token);
-    if (!auth) return json({ ok: false, error: '登录已失效，请重新登录' }, 401);
-    // 只有查看设备列表时才更新 lastSeen，避免每次请求都写库。
+    if (!auth) return json({ ok: false, error: "\u767B\u5F55\u5DF2\u5931\u6548\uFF0C\u8BF7\u91CD\u65B0\u767B\u5F55" }, 401);
     const list = await accReadSessions(env, auth.user.u);
     const now = Date.now();
     let changed = false;
-    list.forEach(function (s) {
-      if (s.sid === auth.session.sid && now - (s.lastSeen || 0) > 60 * 60 * 1000) {
+    list.forEach(function(s) {
+      if (s.sid === auth.session.sid && now - (s.lastSeen || 0) > 60 * 60 * 1e3) {
         s.lastSeen = now;
         changed = true;
       }
     });
     if (changed) await accSaveSessions(env, auth.user.u, list);
     const policy = await accReadPolicy(env);
+    const deviceId = auth.session.deviceId || "";
+    const dev = await accEnsureDevice(env, auth.user, deviceId, auth.session.deviceName);
+    const isAdmin = accRole(auth.user) === "admin";
     return json({
       ok: true,
       username: auth.user.u,
@@ -2154,40 +2233,66 @@ async function accHandle(request, env, pathname) {
       sid: auth.session.sid,
       sessions: accPublicSessions(list, auth.session.sid),
       maxDevices: ACC_MAX_DEVICES,
-      policy: policy
+      policy,
+      device: accPublicDevice(dev),
+      needsActivation: !isAdmin && !(dev && dev.activated === true)
     });
   }
-
-  // ---- 退出当前设备 ----
-  if (pathname === '/account/logout' && method === 'POST') {
+  if (pathname === "/account/activate-device" && method === "POST") {
+    const auth = await accAuth(env, body.token);
+    if (!auth) return json({ ok: false, error: "\u8BF7\u5148\u767B\u5F55\u8D26\u53F7" }, 401);
+    if (auth.user.banned === true) return json({ ok: false, error: "\u8BE5\u8D26\u53F7\u5DF2\u88AB\u505C\u7528" }, 403);
+    const deviceId = auth.session.deviceId || "";
+    if (!deviceId) return json({ ok: false, error: "\u672C\u673A\u6CA1\u6709\u8BBE\u5907\u6807\u8BC6\uFF0C\u8BF7\u9000\u51FA\u540E\u91CD\u65B0\u767B\u5F55" }, 400);
+    let dev = await accReadDevice(env, auth.user, deviceId);
+    if (!dev) dev = await accEnsureDevice(env, auth.user, deviceId, auth.session.deviceName);
+    if (dev.activated === true) return json({ ok: true, device: accPublicDevice(dev), needsActivation: false });
+    if (!dev.activationCode) {
+      return json({ ok: false, error: "\u672C\u673A\u8FD8\u6CA1\u6709\u751F\u6210\u6FC0\u6D3B\u7801\u3002\u8BF7\u628A\u8BBE\u5907\u7801\u53D1\u7ED9\u7BA1\u7406\u5458\uFF0C\u7531\u7BA1\u7406\u5458\u751F\u6210\u3002" }, 403);
+    }
+    const code = String(body.code || "").trim().toUpperCase().replace(/\s+/g, "");
+    if (!code || code !== String(dev.activationCode || "").toUpperCase()) {
+      return json({ ok: false, error: "\u6FC0\u6D3B\u7801\u4E0D\u6B63\u786E\uFF0C\u8BF7\u5411\u7BA1\u7406\u5458\u786E\u8BA4" }, 403);
+    }
+    dev.activated = true;
+    dev.activationAt = Date.now();
+    dev.lastSeen = Date.now();
+    await kv(env).put(accDeviceKey(auth.user, deviceId), JSON.stringify(dev));
+    return json({ ok: true, device: accPublicDevice(dev), needsActivation: false });
+  }
+  if (pathname === "/account/logout" && method === "POST") {
     const auth = await accAuth(env, body.token);
     if (!auth) return json({ ok: true });
-    const list = (await accReadSessions(env, auth.user.u)).filter(function (s) { return s.sid !== auth.session.sid; });
+    const list = (await accReadSessions(env, auth.user.u)).filter(function(s) {
+      return s.sid !== auth.session.sid;
+    });
     await accDropSession(env, auth.user.u, auth.session);
     await accSaveSessions(env, auth.user.u, list);
     return json({ ok: true });
   }
-
-  // ---- 下线指定设备 ----
-  if (pathname === '/account/logout-device' && method === 'POST') {
+  if (pathname === "/account/logout-device" && method === "POST") {
     const auth = await accAuth(env, body.token);
-    if (!auth) return json({ ok: false, error: '登录已失效，请重新登录' }, 401);
-    const sid = String(body.sid || '');
-    if (!sid) return json({ ok: false, error: '缺少设备 ID' }, 400);
-    const target = auth.sessions.find(function (s) { return s.sid === sid; });
-    if (!target) return json({ ok: false, error: '设备不存在或已下线' }, 404);
-    if (target.sid === auth.session.sid) return json({ ok: false, error: '当前设备不能在这里下线，请用「退出登录」' }, 400);
-    const list = auth.sessions.filter(function (s) { return s.sid !== sid; });
+    if (!auth) return json({ ok: false, error: "\u767B\u5F55\u5DF2\u5931\u6548\uFF0C\u8BF7\u91CD\u65B0\u767B\u5F55" }, 401);
+    const sid = String(body.sid || "");
+    if (!sid) return json({ ok: false, error: "\u7F3A\u5C11\u8BBE\u5907 ID" }, 400);
+    const target = auth.sessions.find(function(s) {
+      return s.sid === sid;
+    });
+    if (!target) return json({ ok: false, error: "\u8BBE\u5907\u4E0D\u5B58\u5728\u6216\u5DF2\u4E0B\u7EBF" }, 404);
+    if (target.sid === auth.session.sid) return json({ ok: false, error: "\u5F53\u524D\u8BBE\u5907\u4E0D\u80FD\u5728\u8FD9\u91CC\u4E0B\u7EBF\uFF0C\u8BF7\u7528\u300C\u9000\u51FA\u767B\u5F55\u300D" }, 400);
+    const list = auth.sessions.filter(function(s) {
+      return s.sid !== sid;
+    });
     await accDropSession(env, auth.user.u, target);
     await accSaveSessions(env, auth.user.u, list);
     return json({ ok: true, sessions: accPublicSessions(list, auth.session.sid) });
   }
-
-  // ---- 下线其他所有设备 ----
-  if (pathname === '/account/logout-others' && method === 'POST') {
+  if (pathname === "/account/logout-others" && method === "POST") {
     const auth = await accAuth(env, body.token);
-    if (!auth) return json({ ok: false, error: '登录已失效，请重新登录' }, 401);
-    const keep = auth.sessions.find(function (s) { return s.sid === auth.session.sid; });
+    if (!auth) return json({ ok: false, error: "\u767B\u5F55\u5DF2\u5931\u6548\uFF0C\u8BF7\u91CD\u65B0\u767B\u5F55" }, 401);
+    const keep = auth.sessions.find(function(s) {
+      return s.sid === auth.session.sid;
+    });
     for (const s of auth.sessions) {
       if (!keep || s.sid !== keep.sid) await accDropSession(env, auth.user.u, s);
     }
@@ -2195,66 +2300,221 @@ async function accHandle(request, env, pathname) {
     await accSaveSessions(env, auth.user.u, list);
     return json({ ok: true, sessions: accPublicSessions(list, auth.session.sid) });
   }
-
-  // ---- 管理员：删除账号（忘记密码时重置）----
-  if (pathname === '/account/admin-claim' && method === 'POST') {
+  if (pathname === "/account/admin/devices" && method === "POST") {
     const auth = await accAuth(env, body.token);
-    if (!auth) return json({ ok: false, error: '请先登录账号' }, 401);
+    const admin = await accAdminAccess(request, env, body, auth);
+    if (!admin.ok) return json({ ok: false, error: admin.error }, 403);
+    const listed = await kv(env).list({ prefix: "acct:devcode:", limit: 300 });
+    const out = [];
+    for (const k of listed.keys || []) {
+      try {
+        const idx = JSON.parse(await kv(env).get(k.name) || "null");
+        if (!idx || !idx.u || !idx.deviceId) continue;
+        const user = await accReadUser(env, idx.u);
+        if (!user) continue;
+        const dev = await accReadDevice(env, user, idx.deviceId);
+        if (!dev) continue;
+        out.push(accAdminDevice(dev, user));
+      } catch (e) {
+      }
+    }
+    out.sort(function(a, b) {
+      return (b.lastSeen || b.at || 0) - (a.lastSeen || a.at || 0);
+    });
+    return json({ ok: true, devices: out.slice(0, 200) });
+  }
+  if (pathname === "/account/admin/device-key" && method === "POST") {
+    const auth = await accAuth(env, body.token);
+    const admin = await accAdminAccess(request, env, body, auth);
+    if (!admin.ok) return json({ ok: false, error: admin.error }, 403);
+    const hit = await accReadDeviceByCode(env, body.deviceCode);
+    if (!hit) return json({ ok: false, error: "\u6CA1\u6709\u627E\u5230\u8FD9\u4E2A\u8BBE\u5907\u7801\uFF0C\u8BA9\u7528\u6237\u5237\u65B0\u8D26\u53F7\u9875\u540E\u91CD\u8BD5" }, 404);
+    let dev = hit.dev;
+    let needNew = !dev.activationCode || body.force === true;
+    if (!needNew && dev.activationCode) {
+      const rawIdx = await kv(env).get("acct:actcode:" + dev.activationCode);
+      if (!rawIdx) {
+        await kv(env).put("acct:actcode:" + dev.activationCode, JSON.stringify({ u: hit.user.u, deviceId: dev.deviceId }));
+      } else {
+        try {
+          const idx = JSON.parse(rawIdx);
+          if (!idx || idx.u !== hit.user.u || idx.deviceId !== dev.deviceId) needNew = true;
+        } catch (e) {
+          needNew = true;
+        }
+      }
+    }
+    if (needNew) {
+      if (dev.activationCode) await kv(env).delete("acct:actcode:" + dev.activationCode);
+      dev.activationCode = await accNewActivationCode(env, hit.user, dev.deviceId);
+      dev.activated = false;
+      dev.activationAt = 0;
+      await kv(env).put(accDeviceKey(hit.user, dev.deviceId), JSON.stringify(dev));
+    }
+    return json({ ok: true, username: hit.user.u, device: accAdminDevice(dev, hit.user) });
+  }
+  if (pathname === "/account/admin/device-revoke" && method === "POST") {
+    const auth = await accAuth(env, body.token);
+    const admin = await accAdminAccess(request, env, body, auth);
+    if (!admin.ok) return json({ ok: false, error: admin.error }, 403);
+    const hit = await accReadDeviceByCode(env, body.deviceCode);
+    if (!hit) return json({ ok: false, error: "\u8BBE\u5907\u4E0D\u5B58\u5728" }, 404);
+    hit.dev.activated = false;
+    hit.dev.activationAt = 0;
+    await kv(env).put(accDeviceKey(hit.user, hit.dev.deviceId), JSON.stringify(hit.dev));
+    return json({ ok: true, username: hit.user.u, device: accAdminDevice(hit.dev, hit.user) });
+  }
+  if (pathname === "/account/admin/users" && method === "POST") {
+    const auth = await accAuth(env, body.token);
+    const admin = await accAdminAccess(request, env, body, auth);
+    if (!admin.ok) return json({ ok: false, error: admin.error }, 403);
+    const listed = await kv(env).list({ prefix: "acct:user:", limit: 300 });
+    const out = [];
+    for (const k of listed.keys || []) {
+      try {
+        const user = JSON.parse(await kv(env).get(k.name) || "null");
+        if (!user || !user.u) continue;
+        const sessions = await accReadSessions(env, user.u);
+        out.push({
+          username: user.u,
+          role: accRole(user),
+          banned: user.banned === true,
+          at: user.at || 0,
+          lastLoginAt: user.lastLoginAt || 0,
+          lastDeviceName: user.lastDeviceName || "",
+          sessions: sessions.length
+        });
+      } catch (e) {
+      }
+    }
+    out.sort(function(a, b) {
+      return (b.lastLoginAt || b.at || 0) - (a.lastLoginAt || a.at || 0);
+    });
+    return json({ ok: true, users: out.slice(0, 200) });
+  }
+  if (pathname === "/account/admin/kick" && method === "POST") {
+    const auth = await accAuth(env, body.token);
+    const admin = await accAdminAccess(request, env, body, auth);
+    if (!admin.ok) return json({ ok: false, error: admin.error }, 403);
+    const user = await accReadUser(env, body.username);
+    if (!user) return json({ ok: false, error: "\u8D26\u53F7\u4E0D\u5B58\u5728" }, 404);
+    const sessions = await accReadSessions(env, user.u);
+    for (const s of sessions) await accDropSession(env, user.u, s);
+    await kv(env).delete(accSessKey(user.u));
+    return json({ ok: true, username: user.u, removed: sessions.length });
+  }
+  if (pathname === "/account/admin/ban" && method === "POST") {
+    const auth = await accAuth(env, body.token);
+    const admin = await accAdminAccess(request, env, body, auth);
+    if (!admin.ok) return json({ ok: false, error: admin.error }, 403);
+    const user = await accReadUser(env, body.username);
+    if (!user) return json({ ok: false, error: "\u8D26\u53F7\u4E0D\u5B58\u5728" }, 404);
+    user.banned = body.banned === true;
+    await kv(env).put(accUserKey(user.u), JSON.stringify(user));
+    if (user.banned) {
+      const sessions = await accReadSessions(env, user.u);
+      for (const s of sessions) await accDropSession(env, user.u, s);
+      await kv(env).delete(accSessKey(user.u));
+    }
+    return json({ ok: true, username: user.u, banned: user.banned });
+  }
+  if (pathname === "/account/admin-exit" && method === "POST") {
+    const auth = await accAuth(env, body.token);
+    if (!auth) return json({ ok: false, error: "\u8BF7\u5148\u767B\u5F55\u8D26\u53F7" }, 401);
+    const user = auth.user;
+    if (accRole(user) === "admin") {
+      user.role = "user";
+      await kv(env).put(accUserKey(user.u), JSON.stringify(user));
+    }
+    return json({ ok: true, username: user.u, role: "user" });
+  }
+  if (pathname === "/account/admin-claim" && method === "POST") {
+    const auth = await accAuth(env, body.token);
+    if (!auth) return json({ ok: false, error: "\u8BF7\u5148\u767B\u5F55\u8D26\u53F7" }, 401);
     const admin = accAdminOk(request, env, body);
     if (!admin.ok) return json({ ok: false, error: admin.error }, 403);
     const user = auth.user;
-    user.role = 'admin';
+    user.role = "admin";
     await kv(env).put(accUserKey(user.u), JSON.stringify(user));
-    return json({ ok: true, username: user.u, role: 'admin' });
+    return json({ ok: true, username: user.u, role: "admin" });
   }
-
-  if (pathname === '/account/admin/policy' && method === 'POST') {
+  if (pathname === "/account/admin/policy" && method === "POST") {
     const auth = await accAuth(env, body.token);
     const admin = await accAdminAccess(request, env, body, auth);
     if (!admin.ok) return json({ ok: false, error: admin.error }, 403);
     const policy = { allowUserImport: body.allowUserImport === true, updatedAt: Date.now() };
-    await kv(env).put('acct:policy', JSON.stringify(policy));
-    return json({ ok: true, policy: policy });
+    await kv(env).put("acct:policy", JSON.stringify(policy));
+    return json({ ok: true, policy });
   }
-
-  if (pathname === '/account/admin-reset' && method === 'POST') {
+  if (pathname === "/account/admin-reset" && method === "POST") {
     const auth = await accAuth(env, body.token);
     const admin = await accAdminAccess(request, env, body, auth);
     if (!admin.ok) return json({ ok: false, error: admin.error }, 403);
     const name = accNormName(body.username);
-    if (!name) return json({ ok: false, error: '缺少账号名' }, 400);
+    if (!name) return json({ ok: false, error: "\u7F3A\u5C11\u8D26\u53F7\u540D" }, 400);
     const user = await accReadUser(env, name);
-    if (!user) return json({ ok: false, error: '账号不存在' }, 404);
+    if (!user) return json({ ok: false, error: "\u8D26\u53F7\u4E0D\u5B58\u5728" }, 404);
     const sessions = await accReadSessions(env, user.u);
     for (const s of sessions) await accDropSession(env, user.u, s);
+    const devPrefix = "acct:dev:" + accLowerName(user.u) + ":";
+    try {
+      const devList = await kv(env).list({ prefix: devPrefix, limit: 1e3 });
+      for (const d of devList.keys || []) {
+        try {
+          const dv = JSON.parse(await kv(env).get(d.name) || "null");
+          if (dv && dv.deviceCode) await kv(env).delete("acct:devcode:" + dv.deviceCode);
+          if (dv && dv.activationCode) await kv(env).delete("acct:actcode:" + dv.activationCode);
+        } catch (e) {
+        }
+        await kv(env).delete(d.name);
+      }
+    } catch (e) {
+    }
     await kv(env).delete(accSessKey(user.u));
     await kv(env).delete(accUserKey(user.u));
     return json({ ok: true, username: user.u, removedSessions: sessions.length });
   }
-
-
-  // ---- 导入权限检查：默认仅管理员可导入；管理员可一键放开给所有登录用户 ----
-  if ((pathname === '/gate/check' || pathname === '/gate/import') && method === 'POST') {
+  if ((pathname === "/gate/check" || pathname === "/gate/import") && method === "POST") {
     const auth = await accAuth(env, body.token);
-    if (!auth) return json({ ok: false, error: '请先登录账号' }, 401);
-    const policy = await accReadPolicy(env);
+    if (!auth) return json({ ok: false, error: "\u8BF7\u5148\u767B\u5F55\u8D26\u53F7" }, 401);
+    if (auth.user.banned === true) {
+      return json({ ok: false, error: "\u8BE5\u8D26\u53F7\u5DF2\u88AB\u505C\u7528", code: "ACCOUNT_BANNED" }, 403);
+    }
+    const deviceId = auth.session.deviceId || "";
+    let dev = await accReadDevice(env, auth.user, deviceId);
     const role = accRole(auth.user);
-    const allowed = role === 'admin' || policy.allowUserImport === true;
+    const needActivation = body.needActivation === true;
+    if (role !== "admin" && needActivation && (!dev || dev.activated !== true)) {
+      return json({
+        ok: false,
+        error: "\u672C\u673A\u8FD8\u6CA1\u6709\u83B7\u5F97 PNG \u5BFC\u5165\u6388\u6743\u3002\u8BF7\u628A\u8BBE\u5907\u7801\u53D1\u7ED9\u7BA1\u7406\u5458\uFF0C\u62FF\u5230\u6FC0\u6D3B\u7801\u540E\u5728\u300C\u8D26\u53F7\u4E0E\u8BBE\u5907\u300D\u8F93\u5165\u3002",
+        code: "DEVICE_LOCKED",
+        needsActivation: true,
+        device: accPublicDevice(dev)
+      }, 403);
+    }
+    const policy = await accReadPolicy(env);
+    const allowed = role === "admin" || policy.allowUserImport === true;
     if (!allowed) {
       return json({
         ok: false,
-        error: '当前账号没有导入权限。角色卡、世界书、规则等导入仅限管理员。',
-        code: 'IMPORT_FORBIDDEN',
-        role: role,
-        policy: policy
+        error: "\u5F53\u524D\u8D26\u53F7\u6CA1\u6709\u5BFC\u5165\u6743\u9650\u3002\u89D2\u8272\u5361\u3001\u4E16\u754C\u4E66\u3001\u89C4\u5219\u7B49\u5BFC\u5165\u4EC5\u9650\u7BA1\u7406\u5458\u3002",
+        code: "IMPORT_FORBIDDEN",
+        role,
+        policy
       }, 403);
     }
-    return json({ ok: true, role: role, policy: policy, mode: role === 'admin' ? 'admin' : 'policy' });
+    return json({
+      ok: true,
+      role,
+      policy,
+      mode: role === "admin" ? "admin" : "policy",
+      needsActivation: role !== "admin" && (!dev || dev.activated !== true),
+      device: accPublicDevice(dev)
+    });
   }
-
-  return json({ ok: false, error: 'not found' }, 404);
+  return json({ ok: false, error: "not found" }, 404);
 }
-
 var index_default = {
   async fetch(request, env) {
     if (request.method === "OPTIONS") return new Response(null, { headers: CORS });
@@ -2493,15 +2753,13 @@ var index_default = {
         service: "nano-peek",
         build: "2026-10-24-bark-get",
         method: "POST /peek",
-        publicMode: publicMode,
+        publicMode,
         tokenConfigured: !!env.PEEK_TOKEN,
         tokenRequired: !publicMode && !!env.PEEK_TOKEN,
         kvBound: !!env.PUSH_KV,
         d1Bound: !!env.nano_db,
         envApiConfigured: !!(env.PEEK_API_URL && env.PEEK_API_KEY && env.PEEK_MODEL),
-        note: publicMode
-          ? "公用模式：快捷指令 token 至少 8 位；模型 API 由 Nano 同步，没同步会 502。"
-          : "私用模式：快捷指令 token 必须和 Worker 的 PEEK_TOKEN 完全一致。"
+        note: publicMode ? "\u516C\u7528\u6A21\u5F0F\uFF1A\u5FEB\u6377\u6307\u4EE4 token \u81F3\u5C11 8 \u4F4D\uFF1B\u6A21\u578B API \u7531 Nano \u540C\u6B65\uFF0C\u6CA1\u540C\u6B65\u4F1A 502\u3002" : "\u79C1\u7528\u6A21\u5F0F\uFF1A\u5FEB\u6377\u6307\u4EE4 token \u5FC5\u987B\u548C Worker \u7684 PEEK_TOKEN \u5B8C\u5168\u4E00\u81F4\u3002"
       });
     }
     if (pathname === "/peek" && request.method === "POST") {
@@ -2606,13 +2864,13 @@ var index_default = {
           return json({
             ok: false,
             error: "no_api",
-            reply: peekPublic(env) ? "没有在这个令牌分区找到模型 API。请先在自己的 Nano 里配置主 API，然后在窥屏页选择角色、填好服务端地址并点一次「保存配置」，让页面调用 /peek/persona 把 Key 同步到当前 pk 的分区。" : "服务端还没有模型 API：请在 Nano 里打开一次聊天同步主 API，或在 Worker 配置 PEEK_API_URL / PEEK_API_KEY / PEEK_MODEL。"
+            reply: peekPublic(env) ? "\u6CA1\u6709\u5728\u8FD9\u4E2A\u4EE4\u724C\u5206\u533A\u627E\u5230\u6A21\u578B API\u3002\u8BF7\u5148\u5728\u81EA\u5DF1\u7684 Nano \u91CC\u914D\u7F6E\u4E3B API\uFF0C\u7136\u540E\u5728\u7AA5\u5C4F\u9875\u9009\u62E9\u89D2\u8272\u3001\u586B\u597D\u670D\u52A1\u7AEF\u5730\u5740\u5E76\u70B9\u4E00\u6B21\u300C\u4FDD\u5B58\u914D\u7F6E\u300D\uFF0C\u8BA9\u9875\u9762\u8C03\u7528 /peek/persona \u628A Key \u540C\u6B65\u5230\u5F53\u524D pk \u7684\u5206\u533A\u3002" : "\u670D\u52A1\u7AEF\u8FD8\u6CA1\u6709\u6A21\u578B API\uFF1A\u8BF7\u5728 Nano \u91CC\u6253\u5F00\u4E00\u6B21\u804A\u5929\u540C\u6B65\u4E3B API\uFF0C\u6216\u5728 Worker \u914D\u7F6E PEEK_API_URL / PEEK_API_KEY / PEEK_MODEL\u3002"
           }, 502);
         }
         return json({
           ok: false,
           error: "model",
-          reply: peekPublic(env) ? "已经有模型 API，但模型没有返回内容。常见原因：模型不支持图片、Key/额度/中转地址错误，或上游超时。先用纯文字测试，再换一个支持识图的模型。" : hasEnvApi ? "模型没有返回内容：请检查 PEEK_API_URL / PEEK_API_KEY / PEEK_MODEL 或模型是否支持识图。" : "服务端还没有模型 API：请在 Nano 里打开一次聊天同步主 API，或在 Worker 配置 PEEK_API_URL / PEEK_API_KEY / PEEK_MODEL。"
+          reply: peekPublic(env) ? "\u5DF2\u7ECF\u6709\u6A21\u578B API\uFF0C\u4F46\u6A21\u578B\u6CA1\u6709\u8FD4\u56DE\u5185\u5BB9\u3002\u5E38\u89C1\u539F\u56E0\uFF1A\u6A21\u578B\u4E0D\u652F\u6301\u56FE\u7247\u3001Key/\u989D\u5EA6/\u4E2D\u8F6C\u5730\u5740\u9519\u8BEF\uFF0C\u6216\u4E0A\u6E38\u8D85\u65F6\u3002\u5148\u7528\u7EAF\u6587\u5B57\u6D4B\u8BD5\uFF0C\u518D\u6362\u4E00\u4E2A\u652F\u6301\u8BC6\u56FE\u7684\u6A21\u578B\u3002" : hasEnvApi ? "\u6A21\u578B\u6CA1\u6709\u8FD4\u56DE\u5185\u5BB9\uFF1A\u8BF7\u68C0\u67E5 PEEK_API_URL / PEEK_API_KEY / PEEK_MODEL \u6216\u6A21\u578B\u662F\u5426\u652F\u6301\u8BC6\u56FE\u3002" : "\u670D\u52A1\u7AEF\u8FD8\u6CA1\u6709\u6A21\u578B API\uFF1A\u8BF7\u5728 Nano \u91CC\u6253\u5F00\u4E00\u6B21\u804A\u5929\u540C\u6B65\u4E3B API\uFF0C\u6216\u5728 Worker \u914D\u7F6E PEEK_API_URL / PEEK_API_KEY / PEEK_MODEL\u3002"
         }, 502);
       }
       const MAX_IMAGE_CHARS = 4 * 1024 * 1024;
@@ -3014,7 +3272,6 @@ var index_default = {
         return {};
       }
     }
-    __name(readMarketCounts, "readMarketCounts");
     function mergeMarketCounts(item, counts) {
       if (!item || !item.id) return item;
       const c = counts && counts[item.id];
@@ -3025,7 +3282,6 @@ var index_default = {
       }
       return item;
     }
-    __name(mergeMarketCounts, "mergeMarketCounts");
     if (pathname === "/market/list" && request.method === "GET") {
       if (supabaseConf(env)) {
         try {
@@ -3305,7 +3561,6 @@ var index_default = {
       if (!subsCache[k]) subsCache[k] = await getSubs(env, job.userId || null, job.deviceId || null, jobApp);
       return subsCache[k];
     }
-    __name(jobSubs, "jobSubs");
     for (const id of dueIds) {
       let raw = "";
       try {
@@ -3369,7 +3624,6 @@ async function sendBarkReminder(env) {
   } catch (e) {
   }
 }
-__name(sendBarkReminder, "sendBarkReminder");
 async function getSubs(env, userId, deviceId, appId) {
   const out = [];
   const seen = {};
@@ -3409,7 +3663,6 @@ async function getSubs(env, userId, deviceId, appId) {
   }
   return out;
 }
-__name(getSubs, "getSubs");
 async function pushAll(subs, payload, env) {
   const vapid = await ensureVapid(env);
   if (!vapid) return 0;
@@ -3439,13 +3692,11 @@ async function pushAll(subs, payload, env) {
   }
   return sent;
 }
-__name(pushAll, "pushAll");
 async function sendAll(env, payload) {
   const subs = await getSubs(env);
   await pushAll(subs, payload, env);
   return subs.length;
 }
-__name(sendAll, "sendAll");
 export {
   index_default as default
 };

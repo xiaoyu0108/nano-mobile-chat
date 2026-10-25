@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <script src="../js/nano-runtime.js?v=20261023a"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>生图设置</title>
+  <link rel="stylesheet" href="../css/nano-setting.css?v=20261024b">
+  <link rel="stylesheet" href="../css/nano-image-settings.css?v=20261025e">
+  <script src="../js/appearance.js"></script>
+</head>
+<body class="nano-nsetting">
+  <div class="ns-app">
+    <header class="ns-topbar">
+      <button class="ns-back" id="nisBack" data-back aria-label="返回">
+        <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <span class="ns-title">生图设置</span>
+      <span style="width:44px"></span>
+    </header>
+
+    <div class="ns-scroll">
+      <section class="ns-card nis-hero">
+        <div class="nis-hero-main">
+          <b>Nano 生图室</b>
+          <span>正面与反面提示词、预设都保存在这里，不会影响其他生图。</span>
+        </div>
+      </section>
+
+      <section class="ns-card">
+        <div class="ns-card-title">提示词</div>
+        <label class="ns-switch-row">
+          <span><b>使用 Nano 提示词</b><small>开启后，每次生图都会带上下面的正面 / 反面提示词</small></span>
+          <span class="ns-switch"><input type="checkbox" id="nisUseBase"><i></i></span>
+        </label>
+        <button type="button" class="nis-import-btn" id="nisImport" title="导入提示词文件">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 20h16"/></svg>
+          导入提示词文件
+        </button>
+        <div class="nis-grid">
+          <div class="nis-field">
+            <label class="ns-label" for="nisPositive">正面提示词 <span>想固定的画风、光线、质感</span></label>
+            <textarea class="ns-textarea nis-textarea" id="nisPositive" placeholder="例如：柔和自然光，胶片质感，浅景深，细节丰富"></textarea>
+          </div>
+          <div class="nis-field">
+            <label class="ns-label" for="nisNegative">反面提示词 <span>不想出现的画面</span></label>
+            <textarea class="ns-textarea nis-textarea" id="nisNegative" placeholder="例如：模糊、畸变、多余手指、文字水印"></textarea>
+          </div>
+        </div>
+        <input type="file" id="nisImportFile" accept=".txt,.doc,.docx,.json" hidden>
+      </section>
+
+      <section class="ns-card">
+        <div class="ns-card-title">提示词预设</div>
+        <select class="nis-select" id="nisPreset" aria-label="提示词预设"></select>
+        <div class="nis-actions">
+          <button type="button" class="ns-mini-btn nis-action" id="nisAdd">新增</button>
+          <button type="button" class="ns-mini-btn nis-action" id="nisSave">保存</button>
+          <button type="button" class="ns-mini-btn nis-action nis-danger" id="nisDelete">删除</button>
+        </div>
+        <div class="ns-hint" id="nisPresetHint">正在读取生图 API 的提示词预设…</div>
+      </section>
+
+      <section class="ns-card">
+        <div class="ns-card-title">当前窗口</div>
+        <div class="ns-hint">只清空当前窗口的聊天和生成记录，其他窗口不受影响。</div>
+        <button type="button" class="ns-mini-btn nis-danger nis-clear" id="nisClearSession">清空本窗口记录</button>
+      </section>
+
+      <p class="nis-saved" id="nisSaved">修改会自动保存</p>
+    </div>
+  </div>
+
+  <script src="../js/nano-image-settings.js?v=20261025d"></script>
+  <script src="../swipe-back.js"></script>
+</body>
+</html>

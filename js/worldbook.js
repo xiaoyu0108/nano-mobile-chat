@@ -863,20 +863,74 @@
     // ============================================================
     // 文件导入（含 DOCX 支持）
     // ============================================================
+    async function worldbookImportGate(requireActivation) {
+        if (requireActivation !== true) return true;
+        var gate = null;
+        try { gate = (window.parent && window.parent.NanoImportGate) || window.NanoImportGate; } catch (e) { gate = window.NanoImportGate; }
+        if (!gate || !gate.ensure) return true;
+        try { return !!(await gate.ensure({ needActivation: true })); } catch (e) { return false; }
+    }
+
     async function handleFileSelected(event) {
         var file = event.target.files[0];
         if (!file) return;
-        // 导入门槛：世界书 / 条目文本 / SillyTavern JSON 属于受控导入
-        var importGate = null;
-        try { importGate = (window.parent && window.parent.NanoImportGate) || window.NanoImportGate; } catch (e) { importGate = window.NanoImportGate; }
-        if (importGate && importGate.ensure) {
-            var gateOk = false;
-            try { gateOk = await importGate.ensure(); } catch (e2) { gateOk = false; }
+        var ext = getFileExt(file.name);
+        // 只限制 PNG 导入；TXT / DOC / DOCX / JSON 不经过设备激活门槛。
+        if (ext === 'png') {
+            var gateOk = await worldbookImportGate(true);
             if (!gateOk) { event.target.value = ''; return; }
         }
-        var ext = getFileExt(file.name);
 
-        if (ext === 'txt' || ext === 'json') {
+        if (ext === 'png') {
+            if (window._importTargetId) {
+                event.target.value = '';
+                showAlert('提示', '条目内容导入请使用 TXT / DOCX；PNG 只用于整本世界书导入', null, null, [{ label: '确定', action: 'ok', type: 'confirm' }]);
+                return;
+            }
+            var pngTarget = event.target;
+            var pngReader = new FileReader();
+            pngReader.onload = function(e) {
+                var buffer = e.target.result;
+                if (!window.NanoPngJson || !window.NanoPngJson.extractWorldbook) {
+                    pngTarget.value = '';
+                    showAlert('错误', 'PNG 解析组件未加载', null, null, [{ label: '确定', action: 'ok', type: 'confirm' }]);
+                    return;
+                }
+                window.NanoPngJson.extractWorldbook(buffer).then(function(book) {
+                    pngTarget.value = '';
+                    if (!book || !book.entries || !book.entries.length) {
+                        showAlert('提示', '这个 PNG 里没有找到世界书 / 角色书数据', null, null, [{ label: '确定', action: 'ok', type: 'confirm' }]);
+                        return;
+                    }
+                    processImportedFile('imported.json', JSON.stringify(book));
+                }).catch(function(err) {
+                    pngTarget.value = '';
+                    showAlert('错误', '解析 PNG 失败：' + (err && err.message ? err.message : '未知错误'), null, null, [{ label: '确定', action: 'ok', type: 'confirm' }]);
+                });
+            };
+            pngReader.onerror = function() {
+                pngTarget.value = '';
+                showAlert('错误', '读取文件失败', null, null, [{ label: '确定', action: 'ok', type: 'confirm' }]);
+            };
+            pngReader.readAsArrayBuffer(file);
+            return;
+        }
+
+        if (ext === 'json') {
+            var jsonReader = new FileReader();
+            jsonReader.onload = function(e) {
+                processImportedFile(file.name, String(e.target.result || ''));
+                event.target.value = '';
+            };
+            jsonReader.onerror = function() {
+                showAlert('错误', '读取文件失败', null, null, [{ label: '确定', action: 'ok', type: 'confirm' }]);
+                event.target.value = '';
+            };
+            jsonReader.readAsText(file, 'UTF-8');
+            return;
+        }
+
+        if (ext === 'txt') {
             var reader = new FileReader();
             reader.onload = function(e) {
                 var content = e.target.result;
@@ -940,10 +994,14 @@
         var parsed = null;
         try { parsed = JSON.parse(content); } catch (e) { parsed = null; }
         if (!parsed) return { ok: false, entries: [] };
-        var rawEntries = Array.isArray(parsed) ? parsed : (parsed.entries || null);
-        if (!rawEntries || !rawEntries.length) return { ok: false, entries: [] };
+        var root = parsed && parsed.data && typeof parsed.data === 'object' ? parsed.data : parsed;
+        var raw = Array.isArray(root) ? root : root.entries;
+        if (raw && !Array.isArray(raw) && typeof raw === 'object') {
+            raw = Object.keys(raw).map(function(k) { return raw[k]; });
+        }
+        if (!raw || !raw.length) return { ok: false, entries: [] };
         var out = [];
-        rawEntries.forEach(function(e) {
+        raw.forEach(function(e) {
             if (!e || typeof e !== 'object') return;
             var stContent = (typeof e.content === 'string' ? e.content : '');
             if (!stContent || !stContent.trim()) return;
@@ -1542,7 +1600,7 @@
     // ============================================================
     // 内页事件委托
     // ============================================================
-    cardContainer.addEventListener('click', function(e) {
+    cardContainer.addEventListener('click', async function(e) {
         var target = e.target.closest('[data-id]');
         if (!target) return;
         var id = target.dataset.id;
@@ -1605,6 +1663,7 @@
 
         // 导入内容
         if (target.classList.contains('import-svg') || target.closest('.import-svg')) {
+            if (!(await worldbookImportGate(false))) return;
             window._importTargetId = id;
             fileInput.click();
             return;
@@ -1726,7 +1785,8 @@
     // ============================================================
     // 文件导入 (外页)
     // ============================================================
-    importBtn.addEventListener('click', function() {
+    importBtn.addEventListener('click', async function() {
+        if (!(await worldbookImportGate(false))) return;
         fileInput.click();
     });
 

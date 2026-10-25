@@ -1045,7 +1045,16 @@
   });
 
   // ===== 事件 =====
-  $importBtn.addEventListener('click', function () { $fileInput.click(); });
+  $importBtn.addEventListener('click', async function () {
+    var importGate = null;
+    try { importGate = (window.parent && window.parent.NanoImportGate) || window.NanoImportGate; } catch (e) { importGate = window.NanoImportGate; }
+    if (importGate && importGate.ensure) {
+      var gateOk = false;
+      try { gateOk = await importGate.ensure(); } catch (e2) { gateOk = false; }
+      if (!gateOk) return;
+    }
+    $fileInput.click();
+  });
   $fileInput.addEventListener('change', function (e) {
     var f = e.target.files && e.target.files[0];
     $fileInput.value = '';

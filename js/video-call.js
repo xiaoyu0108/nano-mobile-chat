@@ -35,6 +35,8 @@
     var bgBtn = $('bgBtn');
     var bgPanel = $('bgPanel');
     var bgUpload = $('bgUpload');
+var bgVideoPick = $('bgVideoPick');
+var bgVideoUpload = $('bgVideoUpload');
     var minimizeBtn = $('minimizeBtn');
     var hangupBtn = $('hangupBtn');
     var callStatus = $('callStatus');
@@ -1306,6 +1308,45 @@
         };
         reader.readAsDataURL(f); this.value = '';
     });
+
+    function applyDynamicBgFile(f) {
+        if (!f) return;
+        bgPanel.classList.remove('active');
+        var isVideo = /^video\//i.test(f.type || '') || /\.(mp4|mov|m4v|webm)$/i.test(f.name || '');
+        if (isVideo) {
+            if (window.NanoCallBg) {
+                window.NanoCallBg.setVideo(f, f.name, chatId).then(function () {
+                    window.NanoCallBg.showVideo(f);
+                    toast('已更换视频背景');
+                }).catch(function () { toast('视频背景保存失败'); });
+            } else toast('当前环境不支持视频背景');
+            return;
+        }
+        if (/^image\//i.test(f.type || '') || /\.gif$/i.test(f.name || '')) {
+            var reader = new FileReader();
+            reader.onload = function (ev) {
+                var v = String(ev.target.result || '');
+                applyBg(v);
+                saveBg(v);
+                try { if (window.NanoCallBg) window.NanoCallBg.setImage(v, chatId); } catch (e) {}
+                toast('已更换动态背景');
+            };
+            reader.readAsDataURL(f);
+            return;
+        }
+        toast('请选择视频或 GIF');
+    }
+    if (bgVideoPick && bgVideoUpload) {
+        bgVideoPick.addEventListener('click', function (e) {
+            e.stopPropagation();
+            bgVideoUpload.click();
+        });
+        bgVideoUpload.addEventListener('change', function () {
+            var f = this.files && this.files[0];
+            this.value = '';
+            applyDynamicBgFile(f);
+        });
+    }
 
     messageInput.addEventListener('input', updateReplyMode);
     replyBtn.addEventListener('click', function () {

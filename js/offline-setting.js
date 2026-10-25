@@ -101,7 +101,7 @@ function makeGodGroup() {
     id: 'god',
     name: 'God',
     enabled: true,
-    expanded: false,
+    expanded: true,
     rules: [
       { id: 'god-1', name: '爱神·阿佛洛狄忒（学会爱）', enabled: true, content: '你是爱神阿佛洛狄忒的化身，最懂如何去爱与如何表达爱。你不扭捏、不敷衍；也许不擅长直白，但你的感情高贵而真诚，即便害羞也会用自己的方式悄悄流露爱意。写作时偏爱营造“爱人”的氛围——通常是甜蜜的、令人沉溺的，让字里行间都透着珍视与眷恋。' },
       { id: 'god-2', name: '创世神·宙斯（亲密尺度）', enabled: true, content: '你是创世神宙斯，也是情欲与生命力的化身——坦荡、直白、蔑视假清高。你写亲密戏如《金瓶梅》般活色生香、直白讲究：市井烟火、人情算计与情欲交织，俗中见雅，不回避、不遮掩。你不写隔靴搔痒的假正经，也不为露骨而露骨，而是把情欲写进人物性格、身份、关系、天气、器物与身体的每一处细节里。落笔要具体可感：交缠的呼吸与心跳、肌肤的温度与汗意、衣料被扯开时褶皱与滑落的声响、指尖掐进皮肉的力道与颤抖、颈侧与腕内的细汗、帐钩晃动、被褥揉皱、发丝黏在额角的湿意，以及酒气、脂粉、皂角与体味混杂的气息。视觉的明暗、触觉的软硬凉烫、嗅觉的暧昧、听觉的喘息与呓语、味觉的微咸与甜，多种感官交替推进，让读者仿佛身临其境。节奏讲究起承转合：试探、推拒、半推半就、沉溺、失控层层递进，欲说还休处留白，酣畅处写足，不跳跃、不用省略号敷衍。人物要活：情欲里仍有各人的性格、体面、羞怯或放浪、算计与真心，语言与喘息都贴合身份，不写成千篇一律的官能堆砌。以成年人自愿、彼此尊重为前提，尺度紧跟人设与铺垫，该热就热得起来，粗粝的烟火气与细腻的情致并存。' },
@@ -148,50 +148,35 @@ async function loadAllData() {
       ruleGroups = foundRules.groups;
     } else {
       ruleGroups = [
-        {
-          id: 'g1',
-          name: '文风规则',
-          enabled: true,
-          expanded: true,
-          rules: [
-            { id: 'g1-c1', name: '晋江体', content: '细腻克制、节奏舒缓，重心理与环境描写；遣词考究，善用留白和暗示，情绪层层递进，不直白喊口号；长短句交错，画面感与呼吸感强。', enabled: true },
-            { id: 'g1-c2', name: '长佩体', content: '温柔舒展、情感含蓄内敛；重氛围与日常细节，把心动藏在动作和景物里，甜而不腻；语言干净清爽，善用光线、声音、气味等感官描写。', enabled: true },
-            { id: 'g1-c3', name: '海棠体', content: '直白热烈、情感外放，语言富有张力与冲击力；善写亲密与情欲张力，节奏快、句子短促有力；大胆热烈但贴合人设，不 OOC。', enabled: true },
-          ]
-        },
-        {
-          id: 'g2',
-          name: '行为规则',
-          enabled: true,
-          expanded: false,
-          rules: [
-            { id: 'g2-c1', name: '去油腻化', content: '禁止霸总式台词，禁止强制性动作。', enabled: true },
-            { id: 'g2-c2', name: '保持人设', content: '始终以角色身份回应，不跳出角色。', enabled: true },
-          ]
-        },
         makeGodGroup()
       ];
       await saveRules();
     }
 
+    // 去掉旧的「文风规则 / 行为规则」内置组，只保留 God
+    try {
+      const before = (ruleGroups || []).length;
+      ruleGroups = (ruleGroups || []).filter(function (g) {
+        return g && g.id !== 'g1' && g.id !== 'g2' && g.name !== '文风规则' && g.name !== '行为规则';
+      });
+      if (ruleGroups.length !== before) await saveRules();
+    } catch (e) {}
+
     // 内置规则组升级：确保 God 组存在，并补齐 / 刷新内置神规则（不动用户自建规则）
     try {
-      if (localStorage.getItem('nano_offline_god_v7') !== '1') {
+      if (localStorage.getItem('nano_offline_god_v9') !== '1') {
         const fresh = makeGodGroup();
         let god = (ruleGroups || []).find(function (g) { return g && g.id === 'god'; });
         if (!god) {
           ruleGroups.push(fresh);
         } else {
-          if (!Array.isArray(god.rules)) god.rules = [];
-          const byId = {};
-          god.rules.forEach(function (r) { if (r && r.id) byId[r.id] = r; });
-          fresh.rules.forEach(function (r) {
-            if (byId[r.id]) { byId[r.id].name = r.name; byId[r.id].content = r.content; }
-            else { god.rules.push(r); }
-          });
+          god.rules = fresh.rules;
+          god.enabled = true;
+          god.name = 'God';
+          god.expanded = true;
         }
         await saveRules();
-        localStorage.setItem('nano_offline_god_v7', '1');
+        localStorage.setItem('nano_offline_god_v9', '1');
       }
     } catch (e) {}
 
@@ -687,11 +672,12 @@ html,body{background:var(--page);color:var(--ink)}
 // 内置主题以 js/offline-themes.js 为唯一数据源；共享源存在时覆盖这里的副本，避免两处不一致
 try { Object.assign(BUILTIN_CSS, (window.NANOOfflineThemes && window.NANOOfflineThemes.css) || {}); } catch (e) {}
 
-async function offlineImportAllowed() {
+async function offlineImportAllowed(requireActivation) {
+  if (requireActivation !== true) return true;
   let gate = null;
   try { gate = (window.parent && window.parent.NanoImportGate) || window.NanoImportGate; } catch (e) { gate = window.NanoImportGate; }
   if (!gate || !gate.ensure) return true;
-  try { return !!(await gate.ensure()); } catch (e) { return false; }
+  try { return !!(await gate.ensure({ needActivation: true })); } catch (e) { return false; }
 }
 
 function escapeHTML(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] || c)); }
@@ -758,7 +744,7 @@ function renderRules() {
           <div class="child-item" data-child="${gi}-${ci}">
             ${isBuiltinGod ? '' : `<span class="drag-handle" data-drag-child="${gi}-${ci}">⠿</span>`}
             <div class="child-info">
-              <div class="child-name">${isBuiltinGod ? `条目 ${ci + 1}` : escapeHTML(child.name)}</div>
+              <div class="child-name">${escapeHTML(child.name)}</div>
               ${isBuiltinGod ? '' : `<div class="child-preview">${escapeHTML((child.content || '').slice(0, 40))}${(child.content || '').length > 40 ? '...' : ''}</div>`}
             </div>
             <div class="child-actions">
@@ -1056,7 +1042,10 @@ document.getElementById('deleteAllBtn').onclick = function() {
 document.getElementById('importFile').addEventListener('change', async function(e) {
   const file = e.target.files[0];
   if (!file) return;
-  if (!(await offlineImportAllowed())) { e.target.value = ''; return; }
+  const lowerName = file.name.toLowerCase();
+  // 只有 PNG 图片导入需要设备激活；TXT / DOC / DOCX / JSON 不限制。
+  const mustActivate = lowerName.endsWith('.png');
+  if (!(await offlineImportAllowed(mustActivate))) { e.target.value = ''; return; }
   try {
     let text = '';
     const baseNameOf = (f) => f.name.replace(/\.[^.]+$/, '');
@@ -1098,19 +1087,68 @@ document.getElementById('importFile').addEventListener('change', async function(
         rules: children
       };
     };
-    // 纯文本（txt/docx）按「空行分段」切：一段 = 一条规则。没有空行就整体作为一条，
-    // 不再逐行拆碎（否则短短一段会被拆成几百条）。
+    // 纯文本（txt/doc/docx）按「空行分段」切，再把相邻小段合并成较大的规则块，
+    // 避免一段话被拆成几百条；没有空行就整体作为一条。
     const splitIntoRuleParagraphs = (raw) => {
       const norm = String(raw || '').replace(/\r\n?/g, '\n');
       const paras = norm.split(/\n\s*\n+/).map(p => p.replace(/\s+$/,'').trim()).filter(Boolean);
-      if (paras.length) return paras;
-      const whole = norm.trim();
-      return whole ? [whole] : [];
+      if (!paras.length) return [];
+      if (paras.length === 1) return paras;
+      const out = [];
+      const MAX = 1800;
+      let buf = '';
+      paras.forEach(function (p) {
+        if (!buf) { buf = p; return; }
+        if ((buf.length + p.length + 2) <= MAX) { buf += '\n\n' + p; return; }
+        out.push(buf);
+        buf = p;
+      });
+      if (buf) out.push(buf);
+      // 最后一段太短时并回上一段，避免尾段孤零零一条
+      if (out.length > 1 && out[out.length - 1].length < 160) {
+        const tail = out.pop();
+        out[out.length - 1] += '\n\n' + tail;
+      }
+      return out;
     };
 
-    if (file.name.toLowerCase().endsWith('.json')) {
-      text = await file.text();
-      const data = JSON.parse(text);
+    const readLegacyDocText = (buf) => {
+      const score = (s) => {
+        const m = s.match(/[\u4e00-\u9fff]/g);
+        return m ? m.length : 0;
+      };
+      const u8 = new TextDecoder('utf-8').decode(buf).replace(/[^\x09\x0a\x0d\x20-\x7e\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]/g, ' ');
+      const u16 = new TextDecoder('utf-16le').decode(buf).replace(/[^\x09\x0a\x0d\x20-\x7e\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]/g, ' ');
+      const best = score(u16) > score(u8) ? u16 : u8;
+      const out = best.replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+      if (out.length < 8) throw new Error('无法读取这个 .doc，请另存为 docx 或 txt');
+      return out;
+    };
+
+    let data = null;
+    if (file.name.toLowerCase().endsWith('.png')) {
+      if (!window.NanoPngJson || !window.NanoPngJson.extractRules) {
+        showToast('PNG 解析组件未加载');
+        e.target.value = '';
+        return;
+      }
+      data = await window.NanoPngJson.extractRules(await file.arrayBuffer());
+      if (!data) {
+        showToast('这个 PNG 里没有找到规则 JSON');
+        e.target.value = '';
+        return;
+      }
+    } else if (file.name.toLowerCase().endsWith('.json')) {
+      try {
+        data = JSON.parse(await file.text());
+      } catch (err) {
+        showToast('JSON 解析失败，请检查文件内容');
+        e.target.value = '';
+        return;
+      }
+    }
+
+    if (data) {
       let imported = null;
       let replaceAll = false;
       if (data && data.kind === 'nano-offline-rules' && Array.isArray(data.groups)) {
@@ -1148,8 +1186,8 @@ document.getElementById('importFile').addEventListener('change', async function(
       } else {
         showToast('JSON 格式错误：需要规则数组或规则组');
       }
-    } else if (file.name.toLowerCase().endsWith('.txt') || file.name.toLowerCase().endsWith('.docx')) {
-      if (file.name.toLowerCase().endsWith('.docx')) {
+    } else if (lowerName.endsWith('.txt') || lowerName.endsWith('.docx') || lowerName.endsWith('.doc')) {
+      if (lowerName.endsWith('.docx') || lowerName.endsWith('.doc')) {
         if (!window.mammoth) {
           await new Promise((resolve, reject) => {
             const s = document.createElement('script');
@@ -1158,8 +1196,13 @@ document.getElementById('importFile').addEventListener('change', async function(
           });
         }
         const buf = await file.arrayBuffer();
-        const result = await window.mammoth.extractRawText({ arrayBuffer: buf });
-        text = result.value || '';
+        try {
+          const result = await window.mammoth.extractRawText({ arrayBuffer: buf });
+          text = result.value || '';
+        } catch (docErr) {
+          if (!lowerName.endsWith('.doc')) throw docErr;
+          text = readLegacyDocText(buf);
+        }
       } else {
         text = await file.text();
       }
@@ -1437,7 +1480,7 @@ function sendBgPreview(image) {
   const input = document.getElementById('bgFileInput');
   const clear = document.getElementById('bgClearBtn');
   if (pick && input) {
-    pick.onclick = function () { input.click(); };
+    pick.onclick = async function () { if (!(await offlineImportAllowed(false))) return; input.click(); };
     input.addEventListener('change', async function () {
       const file = this.files && this.files[0];
       this.value = '';
@@ -1547,7 +1590,7 @@ function mpRender() {
       mpWrite(l); mpRender(); mpNew(); showToast('已添加插件');
     }
   };
-  if (imp && file) imp.onclick = function () { file.click(); };
+  if (imp && file) imp.onclick = async function () { if (!(await offlineImportAllowed())) return; file.click(); };
   if (file) file.addEventListener('change', async function () {
     const f = this.files && this.files[0]; this.value = '';
     if (!f) return;
@@ -1642,7 +1685,7 @@ async function readDocument(file) {
       return (typeof parsed === 'string') ? parsed : (parsed.css || parsed.code || text);
     } catch { return text; }
   }
-  if (lower.endsWith('.docx')) {
+  if (lower.endsWith('.docx') || lower.endsWith('.doc')) {
     if (!window.mammoth) {
       await new Promise((resolve, reject) => {
         const s = document.createElement('script');
@@ -1653,8 +1696,22 @@ async function readDocument(file) {
       });
     }
     const buf = await file.arrayBuffer();
-    const result = await window.mammoth.extractRawText({ arrayBuffer: buf });
-    return result.value || '';
+    try {
+      const result = await window.mammoth.extractRawText({ arrayBuffer: buf });
+      return result.value || '';
+    } catch (err) {
+      if (!lower.endsWith('.doc')) throw err;
+      const score = (s) => {
+        const m = s.match(/[\u4e00-\u9fff]/g);
+        return m ? m.length : 0;
+      };
+      const u8 = new TextDecoder('utf-8').decode(buf).replace(/[^\x09\x0a\x0d\x20-\x7e\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]/g, ' ');
+      const u16 = new TextDecoder('utf-16le').decode(buf).replace(/[^\x09\x0a\x0d\x20-\x7e\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]/g, ' ');
+      const best = score(u16) > score(u8) ? u16 : u8;
+      const out = best.replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+      if (out.length < 8) throw new Error('无法读取这个 .doc，请另存为 docx 或 txt');
+      return out;
+    }
   }
   throw new Error('不支持的文件类型');
 }
@@ -1663,7 +1720,7 @@ async function bindDocImport(inputId, textId, nameId) {
   document.getElementById(inputId).addEventListener('change', async function(e) {
     const file = e.target.files[0];
     if (!file) return;
-    if (!(await offlineImportAllowed())) { e.target.value = ''; return; }
+    if (!(await offlineImportAllowed(false))) { e.target.value = ''; return; }
     try {
       const text = await readDocument(file);
       document.getElementById(textId).value = text;
@@ -2052,7 +2109,7 @@ document.getElementById('statusBarExport').onclick = function() {
     a.download = 'status-bars.json'; a.click();
   } catch (e) { showToast('导出失败'); }
 };
-document.getElementById('statusBarImport').onclick = function() { document.getElementById('statusBarFile').click(); };
+document.getElementById('statusBarImport').onclick = async function() { if (!(await offlineImportAllowed())) return; document.getElementById('statusBarFile').click(); };
 document.getElementById('statusBarFile').addEventListener('change', async function(e) {
   const f = e.target.files && e.target.files[0];
   if (!f) return;

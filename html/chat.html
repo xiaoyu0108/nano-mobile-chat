@@ -2124,6 +2124,17 @@
     window.addEventListener('message', function (e) {
       const d = e.data;
       if (!d || !d.type) return;
+      if (d.type === 'nanoOverlayReopen') {
+        loadMaskData().then(function (v) {
+          maskData = v;
+          currentUser = resolveCurrentUser();
+          renderAvatarSwitcher();
+          renderProfile();
+          loadGroups();
+          loadFriends().then(function () { renderCurrent(); });
+        });
+        return;
+      }
       if (d.type === 'currentMaskChanged' || d.type === 'homeDataUpdated') {
         if (d.data && Array.isArray(d.data.masks)) {
           maskData = d.data;
