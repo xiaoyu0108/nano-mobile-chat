@@ -465,7 +465,7 @@ function startPendingWatch() {
 }
 function notifyApp(title, body, opts) {
   opts = opts || {};
-  // 统一走内置通知栏（前台）/ 系统通知 + Bark（后台）
+  // 统一走内置通知栏（前台）/ 系统通知 + Web Push（后台）
   try {
     const nn = window.NanoNotify || (window.parent && window.parent.NanoNotify);
     if (nn && nn.notify) {

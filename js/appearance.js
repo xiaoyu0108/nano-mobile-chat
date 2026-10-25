@@ -336,7 +336,27 @@
             scope + '.bubble-card .message-box.card-note{background:transparent;margin:0;padding:0 14px 10px;max-height:none;border-radius:0;font-size:12px;color:inherit;opacity:.8;}';
     }
 
-    function applyChatCss(css) {
+    function grayPinkTakeoutFix(css) {
+    var s = String(css || '');
+    // 已保存的旧灰粉模板：补成新版灰粉方卡（上方餐品/店铺/价格，小字备注在地图上方，下方小地图 + 到达时间）
+    if (!/--gp-ink|--gp-pink|灰粉对话|gray-pink|#f9d5e0/i.test(s)) return '';
+    return '.nano-chat-inner .bubble-card.takeout{display:flex!important;flex-direction:column!important;width:206px!important;max-width:206px!important;min-height:188px!important;background:linear-gradient(180deg,#fffdfd 0%,#faf2f5 100%)!important;border:0.5px solid #eadde3!important;border-radius:18px!important;box-shadow:0 8px 24px rgba(150,120,135,.12)!important;color:#4a4a4a!important;font-size:12px!important;overflow:hidden!important;}' +
+        '.nano-chat-inner .bubble-card.takeout .main-section{order:1!important;padding:11px 12px 8px!important;gap:9px!important;border-bottom:0!important;}' +
+        '.nano-chat-inner .bubble-card.takeout .main-icon,.nano-chat-inner .bubble-card.takeout .icon-wrap{width:34px!important;height:34px!important;border-radius:11px!important;background:#f7e4ea!important;color:#b97e91!important;}' +
+        '.nano-chat-inner .bubble-card.takeout .main-title{font-size:14.5px!important;font-weight:700!important;line-height:1.3!important;color:#4a4a4a!important;white-space:normal!important;}' +
+        '.nano-chat-inner .bubble-card.takeout .main-sub{margin-top:2px!important;font-size:11px!important;font-weight:600!important;color:#b97e91!important;}' +
+        '.nano-chat-inner .bubble-card.takeout .info-section{display:none!important;}' +
+        '.nano-chat-inner .bubble-card.takeout .takeout-map{order:3!important;height:84px!important;margin:0 12px 8px!important;border-radius:14px!important;border:1px solid #ecdde3!important;background:repeating-linear-gradient(0deg,rgba(189,131,149,.08) 0 1px,transparent 1px 15px),repeating-linear-gradient(90deg,rgba(189,131,149,.08) 0 1px,transparent 1px 15px),linear-gradient(145deg,#fdf5f8,#f4e7ec 60%,#f9f0f3)!important;}' +
+        '.nano-chat-inner .bubble-card.takeout .tm-route{left:14%!important;top:63%!important;width:60%!important;height:2px!important;background:linear-gradient(90deg,rgba(185,126,145,.18),rgba(185,126,145,.68))!important;transform:rotate(-16deg)!important;}' +
+        '.nano-chat-inner .bubble-card.takeout .tm-route::after{background:#b97e91!important;box-shadow:0 0 0 3px rgba(185,126,145,.16)!important;}' +
+        '.nano-chat-inner .bubble-card.takeout .tm-pin{background:#b97e91!important;box-shadow:0 2px 6px rgba(150,90,110,.25)!important;}' +
+        '.nano-chat-inner .bubble-card.takeout .tm-eta{color:#7e4f60!important;font-size:11.5px!important;}' +
+        '.nano-chat-inner .bubble-card.takeout .tm-status{color:#9a7482!important;background:rgba(255,255,255,.72)!important;font-size:10px!important;}' +
+        '.nano-chat-inner .bubble-card.takeout .message-box{order:2!important;display:block!important;margin:0 12px 7px!important;padding:4px 8px!important;border:1px dashed #e8d3db!important;border-radius:9px!important;background:#fff9fb!important;color:#9a7886!important;font-size:10px!important;line-height:1.4!important;}' +
+        '.nano-chat-inner .bubble-card.takeout .card-footer{order:4!important;padding:0 10px 9px!important;}' +
+        '.nano-chat-inner .bubble-card.takeout .card-footer-text{color:#a1838e!important;font-size:10px!important;}';
+}
+function applyChatCss(css) {
         // 聊天 CSS 仅作用于单聊/群聊内页（额外的聊天专用覆盖）
         if (!isChatInterior) return;
         if (isNanoChatPage()) {
@@ -348,7 +368,7 @@
             return;
         }
         applyStyle('nano-beautify-chat', css || '');
-        applyStyle('nano-beautify-chat-fix', CHAT_STRUCT_FIX + legacyCardCompatCss(css));
+        applyStyle('nano-beautify-chat-fix', CHAT_STRUCT_FIX + legacyCardCompatCss(css) + grayPinkTakeoutFix(css));
         applyStyle('nano-chat-float', NANO_CHAT_FLOAT_CSS);
         reorderChatLayers();
         // 通知聊天页：模板 CSS 已更新（例如 --nano-trans-separate 改变了翻译 DOM 结构）

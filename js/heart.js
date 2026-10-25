@@ -344,14 +344,29 @@ function setupThoughtExpand(el) {
 /* @heart-sections
 */`;
 
-  // ===== 内置模板：只保留一个「完整」默认模板 =====
-  // 它是唯一内置、不可删除/改名的预设；所有视觉都能在本模板里改，改完点「应用」即可。
-  // 想保留自己的版本：改完在下面「模板名称」里起个名，点「保存」另存为普通预设。
+  // ===== 内置模板 =====
+  // 「默认模板（完整）」始终内置；其它内置美化（如粉色波点便签）来自
+  // js/nano-heart-builtin.js：缺失时补回，旧版本内置模板会刷新到最新。
   const BUILTIN_TEMPLATES = [
     { id: 'default', name: '默认模板（完整）', css: DEFAULT_CSS }
-  ];
+  ].concat(
+    (window.NANO_HEART_BUILTIN_TEMPLATES || []).filter(function (t) {
+      return t && t.id && t.css && t.id !== 'default';
+    })
+  );
   function isBuiltinTemplate(id) {
     return BUILTIN_TEMPLATES.some(function (b) { return b.id === id; });
+  }
+  // 下拉列表：默认模板第一，其次其它内置，最后用户预设
+  function sortTemplates(list) {
+    return (Array.isArray(list) ? list.slice() : []).sort(function (a, b) {
+      if (a.id === 'default') return -1;
+      if (b.id === 'default') return 1;
+      const ab = isBuiltinTemplate(a.id);
+      const bb = isBuiltinTemplate(b.id);
+      if (ab !== bb) return ab ? -1 : 1;
+      return String(a.name || '').localeCompare(String(b.name || ''), 'zh');
+    });
   }
   // 旧版内置模板 id：初始化时清掉，避免继续占用「内置」名额
   const LEGACY_BUILTIN_IDS = ['builtin_classic', 'builtin_minimal', 'builtin_free'];
@@ -424,17 +439,35 @@ function setupThoughtExpand(el) {
     const def = byId['default'];
     if (!def) {
       await saveTemplate('default', BUILTIN_TEMPLATES[0].name, DEFAULT_CSS);
-      return;
+    } else {
+      const css = String(def.css || '');
+      const isOld = css.indexOf('nano-heart-default:v4') === -1 ||
+        css.indexOf('狂野草书') !== -1 || css.indexOf('Snell Roundhand') !== -1;
+      if (isOld) await saveTemplate('default', BUILTIN_TEMPLATES[0].name, DEFAULT_CSS);
     }
-    const css = String(def.css || '');
-    const isOld = css.indexOf('nano-heart-default:v4') === -1 ||
-      css.indexOf('狂野草书') !== -1 || css.indexOf('Snell Roundhand') !== -1;
-    if (isOld) await saveTemplate('default', BUILTIN_TEMPLATES[0].name, DEFAULT_CSS);
+    // 其它内置美化：缺失时补回；同一内置模板升级时（版本标记还是旧版）刷新
+    for (var i = 1; i < BUILTIN_TEMPLATES.length; i++) {
+      var b = BUILTIN_TEMPLATES[i];
+      var cur = byId[b.id];
+      var need = !cur;
+      if (cur) {
+        var stored = String(cur.css || '');
+        var oldVer = stored.match(/nano-heart-pink-dots:v(\d+)/);
+        if (oldVer && Number(oldVer[1]) < Number(b.version || 1)) need = true;
+      }
+      if (need) {
+        try {
+          // 旧版内置刚好正在使用时，把已应用的 CSS 一起升级，避免模板变了但弹窗还是旧样式
+          if (cur && String(cur.css || '') === loadAppliedCss()) saveAppliedCss(b.css);
+        } catch (e) {}
+        try { await saveTemplate(b.id, b.name, b.css); } catch (e) {}
+      }
+    }
   }
 
   // ===== 渲染下拉列表 =====
   async function renderSelectOnly(selectedId) {
-    const all = await getAllTemplates();
+    const all = sortTemplates(await getAllTemplates());
     const select = $('ivTemplateSelect');
     const currentVal = selectedId || select.value || currentTemplateId;
 

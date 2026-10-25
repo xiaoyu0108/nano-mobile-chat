@@ -14,12 +14,14 @@ kv_namespaces = [
   { binding = "PUSH_KV", id = "258a9b79d41c4099bdf9fc618401eff2" }
 ]
 
-[triggers]
-crons = ["*/5 * * * *"]
+# 测试 Worker 不需要定时任务：cron 会读 KV / 执行主动消息，即使没人用也会消耗额度。
+# 需要测试 cron 时再临时打开，测完记得注释掉。
+# [triggers]
+# crons = ["*/5 * * * *"]
 
 [vars]
 INCLUDE_LEGACY_MARKET = "1"
-# 可选：点 Bark 通知后打开你的站点（不填会回到作者默认地址）
+# 可选：通知点击后打开你的站点（不填会回到作者默认地址）
 # APP_URL = "https://你的站点/"
 
 # PEEK_PUBLIC 是现有 secret，部署时保留，不要写进这里。

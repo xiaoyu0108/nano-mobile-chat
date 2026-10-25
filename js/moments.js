@@ -70,11 +70,6 @@
         var changed = false;
         (items || []).forEach(function (it) {
             if (!it || !it.id) return;
-            // 旧版自动生成的朋友圈没有头像：补一个按名字固定的彩色头像，避免全是默认灰头像
-            if (!it.avatar && it.author && normName(it.author) !== normName(currentUser && currentUser.name)) {
-                it.avatar = generatedAvatar(it.author);
-                changed = true;
-            }
             if (!it.maskId) { it.maskId = mid; changed = true; mine.push(it); return; }
             if (String(it.maskId) === mid) mine.push(it);
         });
@@ -239,7 +234,23 @@
     function itemAvatarSrc(item) {
         if (!item) return initialAvatar('?');
         if (normName(item.author) === normName(currentUser.name)) return avatarSrcFor(currentUser.name, currentUser.avatar);
-        return isInitialAvatar(item.avatar) ? initialAvatar(item.author) : item.avatar;
+        var av = item.avatar;
+        if (!av || isInitialAvatar(av)) {
+            var known = findCharAvatar(item.author);
+            if (known) av = known;
+        }
+        return (av && !isInitialAvatar(av)) ? av : initialAvatar(item.author);
+    }
+    function findCharAvatar(name) {
+        var n = normName(name);
+        if (!n) return '';
+        try {
+            var hit = (allAvailableChars || []).find(function (x) {
+                return x && normName(x.name) === n && x.avatar;
+            });
+            if (hit) return hit.avatar;
+        } catch (e) {}
+        return '';
     }
 
     // ===== 头像：没有头像时用「灰底 + 姓名首字」 =====
@@ -551,7 +562,7 @@
             return {
                 id: c.id || ('npc_' + c.name),
                 name: c.name,
-                avatar: c.avatar || generatedAvatar(c.name, c.gender),
+                avatar: c.avatar || '',
                 type: 'npc',
                 isContext: true,
                 isNpc: true,
@@ -567,7 +578,7 @@
             return {
                 id: n.id || ('npc_' + n.name),
                 name: n.name,
-                avatar: n.avatar || generatedAvatar(n.name, n.gender),
+                avatar: n.avatar || '',
                 type: 'npc',
                 isContext: true,
                 isNpc: true,
@@ -1602,13 +1613,16 @@
             seen[c.name] = 1;
             pool.push({ name: c.name, kind: kind });
         }
-        (npcs || []).forEach(function(n) { add(n, 'npc'); });
+        (npcs || []).forEach(function(n) {
+            // NPC 只在和发布者有关系、或用户本人发动态时才可评论
+            if (isUserPost || !author || npcMentionsChar(n, author.name) || !String(n && (n.relation || n.setting || '')).trim()) add(n, 'npc');
+        });
         if (!isUserPost && author && author.name) add(author, 'char');
         (bound || []).forEach(function(c) {
             if (!c || !c.name) return;
             if (!isUserPost && author && (c.id === author.id || c.name === author.name)) return;
             if (isUserPost) add(c, 'char');
-            else if (nameMentionedIn(author, c.name)) add(c, 'char');
+            else if (author && nameMentionedIn(author, c.name) && nameMentionedIn(c, author.name)) add(c, 'char');
         });
         return pool;
     }
@@ -1647,12 +1661,18 @@
             if (!c || !c.user) return false;
             if (normName(c.user) === normName(currentUser.name)) return false; // 不允许 AI 冒充用户
             var u = normName(c.user);
-            if (npcNames.some(function(n) { return normName(n) === u; })) return true;
+            var commenterNpc = (npcs || []).find(function(n) { return n && normName(n.name) === u; });
+            if (commenterNpc) {
+                if (isUserPost || !author) return true;
+                return npcMentionsChar(commenterNpc, author.name) || !String(commenterNpc.relation || commenterNpc.setting || commenterNpc.desc || '').trim();
+            }
             if (author && normName(author.name) === u) return true;
-            var isChar = charNames.some(function(n) { return normName(n) === u; });
+            var commenter = (bound || []).find(function(x) { return x && normName(x.name) === u; });
+            var isChar = !!commenter || charNames.some(function(n) { return normName(n) === u; });
             if (isChar) {
                 if (isUserPost) return true;
-                return !!nameMentionedIn(author, c.user);
+                // char 评论 char：必须双方人设里都明确提到对方，默认不熟
+                return !!(author && commenter && nameMentionedIn(author, commenter.name) && nameMentionedIn(commenter, author.name));
             }
             return false; // 不在花名册里的名字 → 路人甲，丢弃
         });
@@ -1680,7 +1700,8 @@
                     var isTarget = !!targets[normName(to)];
                     if (!isTarget) toAllowed = false;
                     if (toAllowed && !isUserPost && !(author && normName(author.name) === normName(to))) {
-                        toAllowed = !!nameMentionedIn(author, to);
+                        var toChar = (bound || []).find(function(x) { return x && normName(x.name) === normName(to); });
+                        toAllowed = !!(author && toChar && nameMentionedIn(author, toChar.name) && nameMentionedIn(toChar, author.name));
                     }
                     if (toAllowed) o.toUser = to;
                 } else if (npcNames.some(function(n) { return normName(n) === normName(to); })) {
@@ -1910,6 +1931,18 @@
         lines.push('- 内容是活人发的日常，别一板一眼：会有吐槽、碎碎念、吃到好吃的、遇到无语的人、和谁一起的瞬间、路边看到的风景……可以有 emoji、口语、网络用语；长度不一，有的就一句话，有的三五句，20~60 字为主；');
         lines.push('- 一部分是「配图动态」：MEDIA 写 image，并写 IMAGE 描述这张照片拍的是什么（吃的 / 风景 / 宠物 / 牵手 / 自拍等日常照）；其余是纯文字，MEDIA 写 text；这 ' + total + ' 条里至少 1 条 image、至少 1 条 text（除非只要求 1 条）；');
         lines.push('- 每条动态配 2~5 条评论，评论者只能从上面的名字里选，按各自人设与关系自然互动（说笑、抬杠、关心、接梗、互相回复都行）；');
+        lines.push('- 重点：不同 char 之间默认互不认识。只有双方人设/关系/世界书里都明确写了认识，才可以互相评论或回复；不认识的 char 绝对不要在同一个评论区出现，更不要互相接话。');
+        var relationHints = [];
+        (chars || []).forEach(function (a) {
+            if (!a || !a.name) return;
+            var known = (chars || []).filter(function (b) {
+                return b && b !== a && b.name && nameMentionedIn(a, b.name) && nameMentionedIn(b, a.name);
+            }).map(function (b) { return b.name; });
+            if (known.length) relationHints.push(a.name + ' ↔ ' + known.join('、'));
+        });
+        lines.push('- 已知互相认识的 char：' + (relationHints.length ? relationHints.join('；') : '没有。所有 char 之间默认不互动') + '。');
+        lines.push('- 每条动态的评论以「朋友 / NPC」为主（至少三分之二）；char 只有在上面明确互相认识时才出现，且不要每条动态都让同一批 char 互相捧场。');
+        lines.push('- 朋友 / NPC 也只在和发布者有关系时才评论；没有关系的 NPC 不要硬塞进评论区。');
         lines.push('- 只有明确认识、有关系的角色才会在同一条动态下互动，不要硬凑；名字必须原样使用名单里的名字；');
         lines.push('- 每条动态尽量都有人点赞：LIKES 写名字（从名单里选，不得包含用户）；');
         lines.push('- 评论者回复别人时写成「评论者|回复对象|内容」，不是回复则写成「评论者||内容」；');

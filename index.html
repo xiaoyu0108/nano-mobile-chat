@@ -380,7 +380,7 @@
             background: transparent;
             display: none;
         }
-        #chatInnerFrame {
+        .chat-inner-frame {
             position: absolute;
             top: 0;
             left: 0;
@@ -1213,7 +1213,9 @@ setTimeout(function () {
             <iframe id="overlayFrame" src="about:blank"></iframe>
             <iframe id="overlayFrame2" src="about:blank"></iframe>
             <iframe id="voiceCallFrame" src="about:blank"></iframe>
-            <iframe id="chatInnerFrame" src="about:blank"></iframe>
+            <iframe id="chatInnerFrame" class="chat-inner-frame" src="about:blank"></iframe>
+            <iframe id="chatInnerFrame2" class="chat-inner-frame" src="about:blank"></iframe>
+            <iframe id="chatInnerFrame3" class="chat-inner-frame" src="about:blank"></iframe>
             <iframe id="musicFrame" src="about:blank"></iframe>
             <iframe id="momentsFrame" src="about:blank"></iframe>
             <iframe id="insFrame" src="about:blank"></iframe>
@@ -1315,11 +1317,90 @@ setTimeout(function () {
             });
         });
         const voiceCallFrame = document.getElementById('voiceCallFrame');
-        const chatInnerFrame = document.getElementById('chatInnerFrame');
+        // 每个角色一个独立聊天帧：切换角色时只切换显示，不卸载正在生成的旧聊天。
+        // 最多同时保留 3 个，超过后复用最久未使用的那个（正在生成的聊天通常不会被立刻回收）。
+        const chatInnerFrames = ['chatInnerFrame', 'chatInnerFrame2', 'chatInnerFrame3']
+            .map(function (id) { return document.getElementById(id); })
+            .filter(Boolean);
+        let chatInnerFrame = chatInnerFrames[0];
+        const chatFrameUsedAt = {};
+        chatInnerFrames.forEach(function (f) { chatFrameUsedAt[f.id] = 0; });
+
+        function chatFrameChatId(f) {
+            try { return f ? String(f.getAttribute('data-chat-id') || '') : ''; } catch (e) { return ''; }
+        }
+        function chatFrameUrl(f) {
+            try { return f ? String(f.getAttribute('data-loaded-url') || '') : ''; } catch (e) { return ''; }
+        }
+        function chatIdFromUrl(url) {
+            try { return String(new URL(url, location.href).searchParams.get('chat') || 'default'); } catch (e) { return 'default'; }
+        }
+        function jumpFromUrl(url) {
+            try { return String(new URL(url, location.href).searchParams.get('jump') || ''); } catch (e) { return ''; }
+        }
+        function markChatFrameUsed(f) {
+            if (!f) return;
+            chatFrameUsedAt[f.id] = Date.now();
+        }
+        function findChatFrame(chatId) {
+            if (!chatId) return null;
+            for (let i = 0; i < chatInnerFrames.length; i++) {
+                const f = chatInnerFrames[i];
+                if (chatFrameChatId(f) === String(chatId)) return f;
+            }
+            return null;
+        }
+        function chatFrameFor(chatId) {
+            const hit = findChatFrame(chatId);
+            if (hit) return hit;
+            try {
+                if (chatInnerFrame && frameBase(chatInnerFrame) === 'chat_inner.html') return chatInnerFrame;
+            } catch (e) {}
+            return null;
+        }
+        function postToChatFrame(chatId, msg) {
+            const f = chatFrameFor(chatId);
+            if (!f || !f.contentWindow) return false;
+            try { f.contentWindow.postMessage(msg, '*'); return true; } catch (e) { return false; }
+        }
+        function broadcastToChatFrames(msg) {
+            chatInnerFrames.forEach(function (f) {
+                if (!f || !f.contentWindow) return;
+                try { if (frameBase(f) === 'chat_inner.html') f.contentWindow.postMessage(msg, '*'); } catch (e) {}
+            });
+        }
+        function pickChatFrame(chatId) {
+            const exact = findChatFrame(chatId);
+            if (exact) return { frame: exact, reuse: true };
+            // 先找从未用过的空白帧
+            for (let i = 0; i < chatInnerFrames.length; i++) {
+                const f = chatInnerFrames[i];
+                if (!chatFrameChatId(f) && !chatFrameUrl(f)) return { frame: f, reuse: false };
+            }
+            // 都在用：复用最久没打开过的（排除当前正在看的这个）
+            let best = null;
+            let bestAt = Infinity;
+            for (let i = 0; i < chatInnerFrames.length; i++) {
+                const f = chatInnerFrames[i];
+                if (f === chatInnerFrame) continue;
+                const at = Number(chatFrameUsedAt[f.id] || 0);
+                if (at < bestAt) { bestAt = at; best = f; }
+            }
+            return { frame: best || chatInnerFrame, reuse: false };
+        }
+        function activateChatFrame(f) {
+            if (!f) return null;
+            chatInnerFrame = f;
+            chatInnerFrames.forEach(function (x) {
+                try { x.style.display = (x === f) ? 'block' : 'none'; } catch (e) {}
+            });
+            markChatFrameUsed(f);
+            return f;
+        }
         const musicFrame = document.getElementById('musicFrame');
         const momentsFrame = document.getElementById('momentsFrame');
         const insFrame = document.getElementById('insFrame');
-        [chatInnerFrame, voiceCallFrame, musicFrame, momentsFrame, insFrame].forEach(function (f) {
+        chatInnerFrames.concat([voiceCallFrame, musicFrame, momentsFrame, insFrame]).forEach(function (f) {
             if (!f) return;
             f.addEventListener('load', function () {
                 if (f.style.display !== 'none') hidePageLoading();
@@ -1516,7 +1597,7 @@ setTimeout(function () {
         });
 
         function showChatInnerFrame() {
-            chatInnerFrame.style.display = 'block';
+            activateChatFrame(chatInnerFrame);
             // 回到单聊时让内页重读一遍已保存的美化（含头像框），避免实时广播漏掉时样式不生效
             try {
                 var _cw = chatInnerFrame.contentWindow;
@@ -1532,6 +1613,30 @@ setTimeout(function () {
             musicFrame.style.display = 'none';
             insFrame.style.display = 'none';
             isMusicFrameActive = false;
+        }
+        function openChatFrame(url) {
+            const chatId = chatIdFromUrl(url);
+            const pick = pickChatFrame(chatId);
+            const f = activateChatFrame(pick.frame);
+            if (!f) return null;
+            const sameChat = pick.reuse && frameBase(f) === 'chat_inner.html' && chatFrameChatId(f) === chatId;
+            if (sameChat) {
+                // 同一个角色的聊天页还在后台运行（可能正在生成）——直接切回来，绝不重载。
+                f.setAttribute('data-loaded-url', url);
+                hidePageLoading();
+                const jump = jumpFromUrl(url);
+                if (jump) {
+                    setTimeout(function () {
+                        try { f.contentWindow.postMessage({ type: 'jumpToMessage', msgId: jump }, '*'); } catch (e) {}
+                    }, 80);
+                }
+            } else {
+                showPageLoading('正在打开聊天…');
+                f.setAttribute('data-chat-id', chatId);
+                f.setAttribute('data-loaded-url', url);
+                f.src = url;
+            }
+            return f;
         }
         function showInsFrame() {
             insFrame.style.display = 'block';
@@ -1597,7 +1702,7 @@ setTimeout(function () {
         // 未列出的页面仍按原逻辑加载，避免停留在旧子页面。
         // 注意：与 user（人设/马甲）强相关的页面不能复用缓存帧，否则切换 user 后仍显示上一个 user 的数据
         const REUSE_SAFE_PAGES = ['chat.html', 'other.html', 'emoji.html', 'inner-setting.html', 'nano-setting.html',
-            'groups.html', 'group-setting.html', 'imessage.html', 'storage.html', 'backup.html',
+            'groups.html', 'group-setting.html', 'imessage.html', 'storage.html', 'backup.html', 'cloud-backup.html', 'char-relations.html', 'char-chats.html',
             'wallet.html', 'appstore.html', 'family-card.html', 'pomodoro.html', 'nano.html', 'nano-image.html', 'nano-image-settings.html'];
         function reuseOrLoadOverlayFrame(url) {
             const base = baseName(url);
@@ -1649,7 +1754,7 @@ setTimeout(function () {
             isMusicFrameActive = false;
         }
 
-        const OVERLAY_FRAME_IDS = ['overlayFrame', 'overlayFrame2', 'chatInnerFrame', 'voiceCallFrame', 'musicFrame', 'momentsFrame', 'insFrame'];
+        const OVERLAY_FRAME_IDS = ['overlayFrame', 'overlayFrame2', 'chatInnerFrame', 'chatInnerFrame2', 'chatInnerFrame3', 'voiceCallFrame', 'musicFrame', 'momentsFrame', 'insFrame'];
         function getSafeTopFrames() {
             const frames = [];
             OVERLAY_FRAME_IDS.forEach(function(id) {
@@ -1707,7 +1812,7 @@ setTimeout(function () {
         // 这些页面自己会用 --safe-top 给顶栏留白 —— 顶栏背景能一直铺到刘海里去
         const SELF_SAFE_PAGES = ['home.html', 'chat.html', 'chat_inner.html', 'groups.html', 'group-setting.html',
             'mask.html', 'character.html', 'favorite.html', 'emoji.html', 'memory.html', 'worldbook.html',
-            'music.html', 'voice-call.html', 'video-call.html', 'storage.html', 'backup.html', 'other.html',
+            'music.html', 'voice-call.html', 'video-call.html', 'storage.html', 'backup.html', 'cloud-backup.html', 'char-relations.html', 'char-chats.html', 'other.html',
             'discover.html', 'api.html', 'moments.html', 'ins.html', 'inner-setting.html', 'beautify.html',
             'books.html', 'couple-spaces.html', 'halo.html', 'offline.html', 'offline-setting.html',
             'heart-setting.html', 'market.html', 'mcp.html', 'settings.html', 'settings-logs.html', 'gallery.html', 'settings-desktop.html', 'settings-notifications.html', 'settings-prompts.html', 'settings-other.html', 'settings-account.html', 'schedule.html',
@@ -1838,15 +1943,7 @@ setTimeout(function () {
                 overlayTitle.textContent = '';
                 overlayBack.classList.add('hidden');
             } else if (pageName === 'chat_inner.html') {
-                showChatInnerFrame();
-                // 同一个聊天且 iframe 还活着就不重载，直接复用（切换更快）
-                if (chatInnerFrame.getAttribute('data-loaded-url') !== url) {
-                    showPageLoading('正在打开聊天…');
-                    chatInnerFrame.setAttribute('data-loaded-url', url);
-                    chatInnerFrame.src = url;
-                } else {
-                    hidePageLoading();
-                }
+                openChatFrame(url);
                 overlay.classList.add('no-header');
                 overlayTitle.textContent = '';
                 overlayBack.classList.add('hidden');
@@ -1886,7 +1983,7 @@ setTimeout(function () {
                 showOverlayFrame();
                 // 同一个页面且已加载过 → 直接复用（切换更快）；正在后台生成 → 也必须复用（否则中断生成）
                 reuseOrLoadOverlayFrame(url);
-                const ownNavPages = ['chat.html', 'api.html', 'settings.html', 'settings-logs.html', 'gallery.html', 'settings-desktop.html', 'settings-notifications.html', 'settings-prompts.html', 'settings-other.html', 'settings-account.html', 'beautify.html', 'schedule.html', 'worldbook.html', 'emoji.html', 'favorite.html', 'offline.html', 'offline-setting.html', 'moments.html', 'groups.html', 'group-setting.html', 'other.html', 'storage.html', 'backup.html', 'phone.html', 'ins.html', 'couple-spaces.html', 'halo.html', 'books.html', 'mask.html', 'character.html', 'inner-setting.html', 'nano-setting.html', 'nano-files.html', 'ios-setting.html', 'assistant.html', 'family-card.html', 'wallet.html', 'appstore.html', 'cycle.html', 'fanfic.html', 'fanfic-create.html', 'fanfic-read.html', 'market.html', 'mcp.html', 'heart-setting.html', 'imessage.html', 'memory palace.html', 'app-host.html', 'meet.html', 'mall.html', 'qa.html', 'pomodoro.html', 'nano.html', 'nano-image.html', 'nano-image-settings.html'];
+                const ownNavPages = ['chat.html', 'api.html', 'settings.html', 'settings-logs.html', 'gallery.html', 'settings-desktop.html', 'settings-notifications.html', 'settings-prompts.html', 'settings-other.html', 'settings-account.html', 'beautify.html', 'schedule.html', 'worldbook.html', 'emoji.html', 'favorite.html', 'offline.html', 'offline-setting.html', 'moments.html', 'groups.html', 'group-setting.html', 'other.html', 'storage.html', 'backup.html', 'cloud-backup.html', 'char-relations.html', 'char-chats.html', 'phone.html', 'ins.html', 'couple-spaces.html', 'halo.html', 'books.html', 'mask.html', 'character.html', 'inner-setting.html', 'nano-setting.html', 'nano-files.html', 'ios-setting.html', 'assistant.html', 'family-card.html', 'wallet.html', 'appstore.html', 'cycle.html', 'fanfic.html', 'fanfic-create.html', 'fanfic-read.html', 'market.html', 'mcp.html', 'heart-setting.html', 'imessage.html', 'memory palace.html', 'app-host.html', 'meet.html', 'mall.html', 'qa.html', 'pomodoro.html', 'nano.html', 'nano-image.html', 'nano-image-settings.html'];
                 const hasOwnNav = ownNavPages.indexOf(pageName) !== -1;
                 const noOuterHeader = hasOwnNav || pageName === 'mall.html' || (showBack === false && !(title || ''));
                 if (noOuterHeader) {
@@ -1946,7 +2043,7 @@ setTimeout(function () {
             voiceCallKeptAlive = keepActiveCall;
 
             try {
-                [document.getElementById('chatInnerFrame'), overlayFrame].forEach(function (fr) {
+                [chatInnerFrame, overlayFrame].forEach(function (fr) {
                     if (fr && fr.contentWindow) fr.contentWindow.postMessage({ type: 'nanoOverlayClosed' }, '*');
                 });
             } catch (e) {}
@@ -2007,9 +2104,7 @@ setTimeout(function () {
                     url += '&jump=' + encodeURIComponent(pendingJumpMsgId);
                     url = withBuild(url);
                     pendingJumpMsgId = null;
-                    showChatInnerFrame();
-                    chatInnerFrame.setAttribute('data-loaded-url', url);
-                    chatInnerFrame.src = url;
+                    openChatFrame(url);
                     overlay.classList.add('active');
                     overlay.classList.add('no-header');
                     overlayTitle.textContent = '';
@@ -2643,7 +2738,7 @@ setTimeout(function () {
                 var url = 'chat_inner.html?chat=' + encodeURIComponent(chatId) + '&name=' + encodeURIComponent(name || '');
                 openFullscreen(url, '', false, 'main');
                 setTimeout(function () {
-                    try { chatInnerFrame.contentWindow.postMessage({ type: 'NANO_CHAR_SAY', chatId: String(chatId), text: String(text || '') }, '*'); } catch (e) {}
+                    try { postToChatFrame(String(chatId), { type: 'NANO_CHAR_SAY', chatId: String(chatId), text: String(text || '') }); } catch (e) {}
                 }, 700);
                 return true;
             } catch (e) { return false; }
@@ -3340,7 +3435,7 @@ setTimeout(function () {
             schedule: 'schedule.html', mcp: 'mcp.html', tide: 'cycle.html', fanfic: 'fanfic.html',
             store: 'appstore.html', book: 'worldbook.html', beauty: 'beautify.html', phone: 'phone.html',
             settings: 'settings.html', friend: 'character.html', album: 'moments.html',
-            editprofile: 'mask.html', send: 'chat.html', qa: 'qa.html', pomodoro: 'pomodoro.html', nano: 'nano.html'
+            editprofile: 'mask.html', send: 'chat.html', qa: 'qa.html', pomodoro: 'pomodoro.html', nano: 'nano.html',
         };
         function openNanoApp(id, name) {
             const u = APP_ROUTES[id];
@@ -3443,7 +3538,7 @@ setTimeout(function () {
                         try { t.contentWindow.postMessage(data, '*'); } catch(e) {}
                     }
                 });
-                const c = document.getElementById('chatInnerFrame');
+                const c = chatInnerFrame;
                 if (c && frameBase(c) === 'chat_inner.html') {
                     try { c.contentWindow.postMessage(data, '*'); } catch(e) {}
                 }
@@ -3465,7 +3560,7 @@ setTimeout(function () {
 
             if (data.type === 'nanoCharUpdated') {
                 // 角色资料（头像/昵称）改动：同步给单聊页 + 聊天列表，实时换头像
-                const c = document.getElementById('chatInnerFrame');
+                const c = chatInnerFrame;
                 if (c && frameBase(c) === 'chat_inner.html') {
                     try { c.contentWindow.postMessage(data, '*'); } catch (e) {}
                 }
@@ -3480,7 +3575,7 @@ setTimeout(function () {
 
             const innerSettingTypes = ['autoMsgChanged', 'autoMsgIntervalChanged', 'autoMomentChanged', 'autoMomentIntervalChanged', 'autoSocialChanged', 'timeAwareChanged', 'allowImageChanged', 'allowMomentImageChanged', 'remarkChanged', 'cotChanged', 'messagesCleared', 'nanoTransMode', 'nanoForceTranslate', 'nanoBlockChanged', 'nanoCharBlocked', 'nanoCharUnblocked'];
             if (innerSettingTypes.indexOf(data.type) !== -1) {
-                const c = document.getElementById('chatInnerFrame');
+                const c = chatInnerFrame;
                 if (c && frameBase(c) === 'chat_inner.html') {
                     try { c.contentWindow.postMessage(data, '*'); } catch(e) {}
                 }
@@ -3526,10 +3621,7 @@ setTimeout(function () {
 
             // 心声美化：娜娜助手下发的 CSS，转发给正在打开的 chat_inner
             if (data.type === 'nanoVoiceCss') {
-                const cf = document.getElementById('chatInnerFrame');
-                if (cf && frameBase(cf) === 'chat_inner.html') {
-                    try { cf.contentWindow.postMessage({ type: 'nanoVoiceCss', css: data.css || '' }, '*'); } catch (e) {}
-                }
+                broadcastToChatFrames({ type: 'nanoVoiceCss', css: data.css || '' });
             }
 
             if (data.type === 'nanoBottomShift' || data.type === 'nanoTopShift') {
@@ -3601,7 +3693,7 @@ setTimeout(function () {
                     openFullscreen(url, cname, false, 'main');
                     setTimeout(function () {
                         try {
-                            const fr = document.getElementById('chatInnerFrame');
+                            const fr = chatInnerFrame;
                             if (fr && fr.contentWindow) {
                                 fr.contentWindow.postMessage({ type: 'nanoConsumeListenInvite', chatId: cid }, '*');
                             }
@@ -3639,7 +3731,7 @@ setTimeout(function () {
             }
 
             if (data.type === 'NANO_LISTEN_NOTICE') {
-                const nf = document.getElementById('chatInnerFrame');
+                const nf = chatInnerFrame;
                 if (nf && frameBase(nf) === 'chat_inner.html') {
                     try { nf.contentWindow.postMessage(data, '*'); } catch (e) {}
                 }
@@ -3647,7 +3739,7 @@ setTimeout(function () {
             }
 
             if (data.type === 'NANO_LISTEN_INVITE_CARD' || data.type === 'NANO_LISTEN_INVITE_RESULT') {
-                const cf = document.getElementById('chatInnerFrame');
+                const cf = chatInnerFrame;
                 if (cf && frameBase(cf) === 'chat_inner.html') {
                     try { cf.contentWindow.postMessage(data, '*'); } catch (e) {}
                 }
@@ -3655,7 +3747,7 @@ setTimeout(function () {
             }
 
             if (data.type === 'NANO_COUPLE_SHARE_CARD') {
-                const cf = document.getElementById('chatInnerFrame');
+                const cf = chatInnerFrame;
                 if (cf && frameBase(cf) === 'chat_inner.html') {
                     try { cf.contentWindow.postMessage(data, '*'); } catch (e) {}
                 }
@@ -3751,11 +3843,8 @@ setTimeout(function () {
             }
 
             if (data.type === 'backgroundChanged') {
-                const target = document.getElementById('chatInnerFrame');
-                if (target && frameBase(target) === 'chat_inner.html') {
-                    target.contentWindow.postMessage(data, '*');
-                    console.log('[Index] 转发背景更改到 chat_inner:', data.bgType);
-                }
+                // 背景是全局设置，所有还活着的聊天帧都要更新
+                broadcastToChatFrames(data);
             }
 
             if (data.type === 'NANO_MEMORY_UPDATED') {
@@ -3763,11 +3852,8 @@ setTimeout(function () {
                 if (target && frameBase(target) === 'memory.html') {
                     target.contentWindow.postMessage(data, '*');
                 }
-                // 记忆页增删改后，让正在打开的会话立即重载长期记忆
-                const cf = document.getElementById('chatInnerFrame');
-                if (cf && frameBase(cf) === 'chat_inner.html') {
-                    try { cf.contentWindow.postMessage(data, '*'); } catch (e) {}
-                }
+                // 记忆页增删改后，让所有还活着的会话立即重载长期记忆（包括后台正在生成的角色）
+                broadcastToChatFrames(data);
             }
 
             // 线下 → 直接退出：回到聊天 App 的第一个按钮页面（好友区域）
@@ -3814,11 +3900,12 @@ setTimeout(function () {
                         if (chatId && (lu || lc || (rounds && rounds.length))) win.postMessage({ type: 'NANO_OFFLINE_ROUND', chatId: chatId, lastUser: lu, lastChar: lc, rounds: rounds }, '*');
                     } catch (e) {}
                 };
-                const cf2 = document.getElementById('chatInnerFrame');
+                const cf2 = findChatFrame(chatId) || chatInnerFrame;
                 const expected = chatId ? ('chat=' + encodeURIComponent(chatId)) : '';
                 const loadedUrl = cf2 ? (cf2.getAttribute('data-loaded-url') || '') : '';
                 const aliveForChat = cf2 && frameBase(cf2) === 'chat_inner.html' && (!expected || loadedUrl.indexOf(expected) !== -1);
                 if (aliveForChat) {
+                    activateChatFrame(cf2);
                     currentOverlaySource = 'chat_inner';
                     closeFullscreen();
                     setTimeout(function () { deliver(cf2.contentWindow); }, 60);
@@ -3831,7 +3918,7 @@ setTimeout(function () {
                     let tries = 0;
                     (function waitReady() {
                         tries++;
-                        const f = document.getElementById('chatInnerFrame');
+                        const f = chatInnerFrame;
                         let ready = false;
                         try { ready = !!(f && f.contentWindow && f.contentWindow.document && f.contentWindow.document.readyState === 'complete'); } catch (e) {}
                         if (ready || tries > 12) { deliver(f && f.contentWindow); return; }
@@ -3918,7 +4005,7 @@ setTimeout(function () {
                 openFullscreen(url, '', false, 'main');
                 try {
                     setTimeout(function () {
-                        const fr = document.getElementById('chatInnerFrame');
+                        const fr = chatInnerFrame;
                         if (fr && fr.contentWindow) fr.contentWindow.postMessage({ type: 'nanoOverlayOpen', chatId: chatId }, '*');
                     }, 120);
                 } catch (e) {}
@@ -3952,7 +4039,7 @@ setTimeout(function () {
 
             // 亲属卡：页面在 overlay 里发起，必须转给正在打开的单聊内页（chatInnerFrame）
             if (data.type === 'NANO_FAMILY_CARD_SUBMIT' || data.type === 'NANO_FAMILY_CARD_RESULT' || data.type === 'NANO_FAMILY_SPEND_NOTICE') {
-                const frame = document.getElementById('chatInnerFrame');
+                const frame = chatInnerFrame;
                 if (frame && frameBase(frame) === 'chat_inner.html') {
                     try { frame.contentWindow.postMessage(data, '*'); } catch (e) {}
                 } else {
@@ -3998,7 +4085,7 @@ setTimeout(function () {
             }
 
             if (data.type === 'NANO_VOICE_CALL_CARD' || data.type === 'NANO_VIDEO_CALL_CARD' || data.type === 'NANO_CALL_REPLY') {
-                const frame = document.getElementById('chatInnerFrame');
+                const frame = chatInnerFrame;
                 if (frame && frameBase(frame) === 'chat_inner.html') {
                     frame.contentWindow.postMessage(data, '*');
                     console.log('[Index] 转发通话卡片到 chat_inner (chatInnerFrame)');
@@ -4058,15 +4145,13 @@ setTimeout(function () {
                 const _cm = window.__nanoActiveCall || {};
                 const _callCid = _cm.chatId || getChatId();
                 const _callName = _cm.name || getContactName();
-                const chatInnerAlive = frameBase(chatInnerFrame) === 'chat_inner.html';
-                if (!chatInnerAlive) {
-                    showChatInnerFrame();
-                    const _cu = withBuild('chat_inner.html?chat=' + encodeURIComponent(_callCid) + '&name=' + encodeURIComponent(_callName));
-                    chatInnerFrame.setAttribute('data-loaded-url', _cu);
-                    chatInnerFrame.src = _cu;
+                const _callFrame = findChatFrame(_callCid);
+                if (_callFrame && frameBase(_callFrame) === 'chat_inner.html') {
+                    activateChatFrame(_callFrame);
                 } else {
-                    showChatInnerFrame();
+                    openChatFrame(withBuild('chat_inner.html?chat=' + encodeURIComponent(_callCid) + '&name=' + encodeURIComponent(_callName)));
                 }
+                showChatInnerFrame();
                 overlay.classList.add('no-header');
                 overlayTitle.textContent = '';
                 overlayBack.classList.add('hidden');
@@ -4236,7 +4321,7 @@ setTimeout(function () {
         try {
             if (!navigator.serviceWorker) return;
             if (navigator.connection && (navigator.connection.saveData || /(^|-)2g$|slow-2g|(^|-)3g$/.test(navigator.connection.effectiveType || ''))) return;
-            var pages = ['chat_inner.html', 'storage.html', 'backup.html', 'other.html', 'beautify.html',
+            var pages = ['chat_inner.html', 'storage.html', 'backup.html', 'cloud-backup.html', 'char-relations.html', 'char-chats.html', 'other.html', 'beautify.html',
                 'inner-setting.html', 'groups.html', 'group-setting.html', 'music.html', 'ins.html',
                 'moments.html', 'halo.html', 'books.html', 'character.html', 'mask.html', 'favorite.html',
                 'emoji.html', 'worldbook.html', 'memory.html', 'phone.html', 'offline.html',
@@ -4321,7 +4406,7 @@ setTimeout(function () {
         }
     } catch (e) {}
 </script>
-    <script src="js/api-float.js?v=20261022f"></script>
+    <script src="js/api-float.js?v=20261025h"></script>
 <script src="js/mem-link.js?v=20261006a"></script>
 <script src="js/aux-memory.js?v=20261021k"></script>
 <script src="js/user-scope.js?v=20261020j"></script>
@@ -4332,9 +4417,10 @@ setTimeout(function () {
 <script src="js/char-takeover.js?v=20261024a"></script>
 <script src="js/nano-prompts.js?v=20261023a"></script>
 <script src="js/screen-share.js?v=20261023c"></script>
-<script src="js/ios-bridge.js?v=20261023c"></script>
+<script src="js/ios-bridge.js?v=20261025b"></script>
 <script src="js/auto-push-bridge.js?v=20261021b"></script>
 <script src="js/online-catchup.js?v=20261018c"></script>
+<script src="js/char-secret-chat.js?v=20261025i"></script>
 </div>
     <!-- 小号试探：居中弹窗（不暴露是谁）-->
     <div class="alt-probe-overlay" id="altProbeOverlay">

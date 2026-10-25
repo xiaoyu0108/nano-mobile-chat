@@ -32,16 +32,6 @@
 </div>
 </section>
 
-<!-- 文风 -->
-<section class="section">
-<div class="group">
-<button class="row" id="styleOpen">
-<div class="row-label">文风<span class="row-desc">输入文字，或导入 TXT / DOCX 作为文风参考</span></div>
-<div class="row-value" id="styleValue">未设置</div><span class="chevron">›</span>
-</button>
-</div>
-</section>
-
 <!-- 思维链预设（COT） -->
 <section class="section">
 <div class="group">
@@ -78,16 +68,6 @@
 </div>
 </section>
 
-<!-- 成人向尺度 -->
-<section class="section">
-<div class="group">
-<div class="row">
-            <div class="row-label">NSFW<span class="row-desc">开启后按剧情与氛围自然允许亲密 / 成人向描写，通用「禁止露骨」限制放宽、输出不截断；具体以人设、世界书与规则为准</span></div>
-<div class="switch" id="nsfwSwitch"><i></i></div>
-</div>
-</div>
-</section>
-
 <!-- 时间感知 -->
 <section class="section">
 <div class="group">
@@ -116,16 +96,6 @@
 </button>
 </div>
 </section>
-<!-- 记忆总结 -->
-<section class="section">
-<div class="group">
-<button class="row" id="memorySummaryOpen">
-<div class="row-label">记忆总结<span class="row-desc">线下对话也自动总结进记忆库，与线上互通</span></div>
-<span class="chevron">›</span>
-</button>
-</div>
-</section>
-
 <!-- 头像菜单插件 -->
 <section class="section">
 <div class="group">
@@ -172,34 +142,6 @@
   <button class="sheet-btn danger" id="deleteAllBtn" style="color:var(--danger)">清空</button>
 </div>
 <div id="ruleContainer"></div>
-</div>
-</div>
-</div>
-
-<!-- ===== 文风 Sheet ===== -->
-<div class="sheet-backdrop" id="styleSheet">
-<div class="sheet">
-<div class="sheet-head"><div class="sheet-title">文风</div><button class="sheet-close" data-close="styleSheet">完成</button></div>
-<div class="sheet-body">
-<div class="sheet-section">
-<div class="beautify-preset-row">
-  <select id="stylePresetSelect" style="flex:1;height:36px;border-radius:12px;border:1px solid var(--line2);padding:0 10px;background:#fff;font-size:12px;"></select>
-  <button class="sheet-btn" id="stylePresetDelete" style="color:var(--danger)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6v13a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg></button>
-</div>
-<div class="preset-name-row">
-  <input class="search-input" id="stylePresetName" placeholder="预设名称" style="height:34px;">
-  <button class="sheet-btn primary" id="stylePresetSave"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg></button>
-  <button class="sheet-btn" id="stylePresetUpdate"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 14.66V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5.34"/><polygon points="18 2 22 6 12 16 8 16 8 12 18 2"/></svg></button>
-</div>
-<div class="file-import">
-<label class="import-label">
-<svg class="svg-mini" viewBox="0 0 24 24"><path d="M12 15V4"/><path d="m7.5 8.5 4.5-4.5 4.5 4.5"/><path d="M5 14.5v4A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5v-4"/></svg>
- 导入 TXT / DOCX<input id="styleFile" type="file" accept=".txt,.doc,.docx,text/plain,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
-</label>
-<span id="styleFileName" style="font-size:10px;color:var(--sub)"></span>
-</div>
-<textarea class="textarea" id="styleText" placeholder="例如：文字细腻克制，节奏舒缓，注重环境与心理描写……"></textarea>
-</div>
 </div>
 </div>
 </div>
@@ -281,31 +223,6 @@
 </details>
 </div>
 </div>
-</div>
-</div>
-
-<!-- 记忆总结 -->
-<div class="sheet-backdrop" id="memorySheet">
-<div class="sheet">
-  <div class="sheet-head"><div class="sheet-title">记忆总结</div><button class="sheet-close" data-close="memorySheet">完成</button></div>
-  <div class="sheet-body">
-    <div class="sheet-section">
-      <div class="sheet-label">自动总结</div>
-      <div class="row" style="margin-bottom:6px">
-        <div class="row-label" style="flex:1">自动总结到记忆库<span class="row-desc">达到下方阈值后自动把线下对话总结进记忆（与线上/记忆 App 同一个库）</span></div>
-        <div class="switch" id="autoSummarySwitch"><i></i></div>
-      </div>
-      <div class="beautify-preset-row">
-        <input class="search-input" id="memThresholdInput" type="number" min="1" max="50" value="5" style="flex:1;height:36px;">
-        <button class="sheet-btn" id="memThresholdSave">保存阈值</button>
-      </div>
-    </div>
-    <div class="sheet-section">
-      <div class="sheet-label">手动总结（不管多少条，立即总结一次当前线下对话）</div>
-      <button class="sheet-btn primary" id="summarizeOfflineMemoryBtn" style="width:100%;height:42px;font-size:13px">立即总结线下记忆</button>
-      <div style="font-size:11px;color:var(--sub);margin-top:8px;line-height:1.5">总结结果写入记忆库 memlist，AI 每次回复都会把最近记忆注入提示词，线上/线下都能读到。</div>
-    </div>
-  </div>
 </div>
 </div>
 

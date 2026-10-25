@@ -1356,6 +1356,24 @@
     if (voiceCancel) voiceCancel.addEventListener('click', function() { if (voiceModal) voiceModal.classList.remove('active'); });
 
     document.getElementById('remarkItem').addEventListener('click', openRemarkModal);
+
+    // 角色关系 / 共享：打开独立页面（不阻塞当前聊天）
+    var relationsItem = document.getElementById('relationsItem');
+    if (relationsItem) relationsItem.addEventListener('click', function () {
+        try {
+            window.parent.postMessage({
+                type: 'openFullscreen',
+                url: 'char-relations.html?chat=' + encodeURIComponent(chatId) + '&name=' + encodeURIComponent(chatName || ''),
+                title: '角色关系',
+                source: 'chat_inner'
+            }, '*');
+        } catch (e) {}
+    });
+    try {
+        var _sc = JSON.parse(localStorage.getItem('nano_char_rel_' + chatId) || 'null');
+        var _pv = document.getElementById('relationsPreview');
+        if (_pv) _pv.textContent = (_sc && _sc.privateEnabled) ? '私下聊天已开' : ((_sc && _sc.shareEnabled) ? '共享已开' : '未设置');
+    } catch (e) {}
     remarkCancel.addEventListener('click', function() { remarkModal.classList.remove('active'); });
     remarkConfirm.addEventListener('click', saveRemark);
     remarkInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') saveRemark(); });

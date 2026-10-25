@@ -269,6 +269,9 @@ function base64ToArrayBuffer(b64) {
 
 // ================= 导出 =================
 
+// 这些是本机云端凭据，不属于用户数据，导出时一律跳过。
+const NANO_SECRET_LOCAL_KEYS = { nano_cloud_github: 1, nano_cloud_cloudflare: 1 };
+
 /**
  * 收集全站数据。
  * opts.binary 为 true 时把二进制转成 base64 内嵌（JSON 格式使用）；
@@ -356,8 +359,11 @@ async function collectAllData(opts = { binary: false }) {
     }
 
     // ---------- localStorage ----------
+    // 云端令牌属于本机凭据，任何形式的导出都不写入备份，避免把 GitHub Token /
+    // Cloudflare 密码跟着备份文件一起分享出去。
     for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);
+        if (NANO_SECRET_LOCAL_KEYS[k]) continue;
         data.localStorage[k] = localStorage.getItem(k);
     }
 
@@ -492,6 +498,7 @@ function collectStorage(storage) {
     try {
         for (let i = 0; i < storage.length; i++) {
             const k = storage.key(i);
+            if (storage === localStorage && NANO_SECRET_LOCAL_KEYS[k]) continue;
             out[k] = storage.getItem(k);
         }
     } catch {}

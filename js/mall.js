@@ -763,18 +763,60 @@
 
     function sendStoreCards(ctx, paymentLabel, recipientName) {
         try {
-            if (ctx.recipient !== 'self') {
+            if (ctx.recipient === 'self') return;
+            var foodItems = [], giftItems = [];
+            (ctx.items || []).forEach(function (it) {
+                var p = (it && it.product) || {};
+                if (p.type === 'food') foodItems.push(it);
+                else giftItems.push(it);
+            });
+
+            // 点外卖送给别人：外卖卡片（餐品 / 备注 / 金额），不是礼物卡片
+            if (foodItems.length) {
+                var foodTotal = 0;
+                var foodName = foodItems.map(function (it) {
+                    var p = it.product || {};
+                    foodTotal += Number(p.price || 0) * Number(it.qty || 1);
+                    return String(p.name || '外卖') + (Number(it.qty || 1) > 1 ? (' × ' + it.qty) : '');
+                }).join('、');
+                queueCard(ctx.recipient, {
+                    card: {
+                        cardType: 'takeout',
+                        food: foodName || '外卖',
+                        shop: 'Nano Store · 外卖',
+                        price: Math.round(foodTotal * 100) / 100,
+                        note: ctx.note || '',
+                        eta: 30,
+                        direction: 'user',
+                        status: 'pending',
+                        footer: '等待对方确认'
+                    },
+                    side: 'right',
+                    notice: '你给 ' + recipientName + ' 点了一份外卖'
+                });
+            }
+
+            // 商城商品送人：礼物卡片
+            if (giftItems.length) {
+                var giftTotal = 0;
+                var giftNames = giftItems.map(function (it) {
+                    var p = it.product || {};
+                    giftTotal += Number(p.price || 0) * Number(it.qty || 1);
+                    return String(p.name || '礼物') + (Number(it.qty || 1) > 1 ? (' × ' + it.qty) : '');
+                });
                 var giftCard = {
                     cardType: 'gift',
-                    title: ctx.items.length === 1 ? ctx.items[0].product.name : '商城礼物 · ' + ctx.items.length + ' 件',
+                    title: giftItems.length === 1 ? (giftItems[0].product.name || '商城礼物') : ('商城礼物 · ' + giftItems.length + ' 件'),
                     sub: '来自 ' + userName() + (ctx.note ? ' · ' + ctx.note : ''),
-                    amount: money(ctx.total),
+                    amount: money(giftTotal),
+                    items: giftItems.map(function (it) {
+                        return { name: it.product.name, price: Number(it.product.price || 0), qty: Number(it.qty || 1), image: it.product.image || '', cat: it.product.cat || 'gift' };
+                    }),
                     footer: '点击领取',
                     status: 'pending'
                 };
                 queueCard(ctx.recipient, { card: giftCard, side: 'right', notice: '你把商城礼物送给了 ' + recipientName });
             }
-
         } catch (e) {}
     }
 

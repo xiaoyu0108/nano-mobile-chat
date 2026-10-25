@@ -1253,9 +1253,11 @@ document.getElementById('exportBtn').onclick = function() {
 // ============================================================
 function populateStylePresets() {
   const sel = document.getElementById('stylePresetSelect');
+  if (!sel) return;
   sel.innerHTML = '<option value="">-- 选择预设 --</option>' + stylePresets.map((p, i) => `<option value="${i}">${escapeHTML(p.name)}</option>`).join('');
 }
 
+if (document.getElementById('stylePresetSave')) {
 document.getElementById('stylePresetSave').onclick = function() {
   const name = document.getElementById('stylePresetName').value.trim();
   const content = document.getElementById('styleText').value.trim();
@@ -1299,6 +1301,7 @@ document.getElementById('stylePresetSelect').onchange = function() {
   document.getElementById('styleText').value = p.content || '';
   document.getElementById('stylePresetName').value = p.name || '';
 };
+}
 
 // ============================================================
 //  8.5 思维链预设（COT）管理
@@ -1717,7 +1720,9 @@ async function readDocument(file) {
 }
 
 async function bindDocImport(inputId, textId, nameId) {
-  document.getElementById(inputId).addEventListener('change', async function(e) {
+  const inp = document.getElementById(inputId);
+  if (!inp) return;
+  inp.addEventListener('change', async function(e) {
     const file = e.target.files[0];
     if (!file) return;
     if (!(await offlineImportAllowed(false))) { e.target.value = ''; return; }
@@ -1880,7 +1885,8 @@ function updateSummary() {
   const activeCount = ruleGroups.filter(g => g.enabled !== false).length;
   const totalRules = ruleGroups.reduce((sum, g) => sum + (g.rules || []).length, 0);
   document.getElementById('rulesValue').textContent = ruleGroups.length ? `${activeCount}组/${totalRules}条` : '未设置';
-  document.getElementById('styleValue').textContent = settings.style ? settings.style.slice(0, 20) : '未设置';
+  const styleValEl = document.getElementById('styleValue');
+  if (styleValEl) styleValEl.textContent = settings.style ? settings.style.slice(0, 20) : '未设置';
   const cotValEl = document.getElementById('cotValue');
   if (cotValEl) cotValEl.textContent = settings.cot ? settings.cot.slice(0, 20) : '未设置';
   document.getElementById('cssValue').textContent = settings.customCSS ? '已自定义' : '默认';
@@ -1902,7 +1908,8 @@ function updateSummary() {
 }
 
 function fillSettings() {
-  document.getElementById('styleText').value = settings.style || '';
+  const styleTextEl = document.getElementById('styleText');
+  if (styleTextEl) styleTextEl.value = settings.style || '';
   const cotTextEl = document.getElementById('cotText');
   if (cotTextEl) cotTextEl.value = settings.cot || '';
   document.getElementById('cssText').value = settings.customCSS || '';
@@ -1928,7 +1935,8 @@ document.getElementById('rulesOpen').onclick = function() {
   openSheet('rulesSheet');
 };
 
-document.getElementById('styleOpen').onclick = function() {
+const styleOpenEl = document.getElementById('styleOpen');
+if (styleOpenEl) styleOpenEl.onclick = function() {
   document.getElementById('styleText').value = settings.style || '';
   populateStylePresets();
   openSheet('styleSheet');
@@ -2229,9 +2237,9 @@ const BODY_BAR_PROMPT = '每轮输出本回合的身体状态：①心跳（给�
 // ===== 记忆总结（线下→共享记忆库，与线上互通） =====
 const autoSummarySwitch = document.getElementById('autoSummarySwitch');
 function setAutoSwitchUI() {
-  autoSummarySwitch.classList.toggle('on', settings.autoSummary !== false);
+  if (autoSummarySwitch) autoSummarySwitch.classList.toggle('on', settings.autoSummary !== false);
 }
-autoSummarySwitch.addEventListener('click', function() {
+if (autoSummarySwitch) autoSummarySwitch.addEventListener('click', function() {
   settings.autoSummary = !autoSummarySwitch.classList.contains('on');
   saveSettings();
   setAutoSwitchUI();
@@ -2272,13 +2280,15 @@ if (builtinBodySwitch) {
     showToast(settings.builtinBody ? '身体状态栏已开启' : '身体状态栏已关闭');
   });
 }
-document.getElementById('memorySummaryOpen').onclick = function() {
+const memorySummaryOpenEl = document.getElementById('memorySummaryOpen');
+if (memorySummaryOpenEl) memorySummaryOpenEl.onclick = function() {
   const inp = document.getElementById('memThresholdInput');
   inp.value = settings.memThreshold || localStorage.getItem('offline_mem_threshold') || '5';
   setAutoSwitchUI();
   openSheet('memorySheet');
 };
-document.getElementById('memThresholdSave').onclick = function() {
+const memThresholdSaveEl = document.getElementById('memThresholdSave');
+if (memThresholdSaveEl) memThresholdSaveEl.onclick = function() {
   const v = parseInt(document.getElementById('memThresholdInput').value, 10) || 5;
   settings.memThreshold = v;
   try { localStorage.setItem('offline_mem_threshold', String(v)); } catch (e) {}
@@ -2330,7 +2340,8 @@ async function memExtract(text) {
   const data = await resp.json();
   return (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || '';
 }
-document.getElementById('summarizeOfflineMemoryBtn').onclick = async function() {
+const summarizeOfflineMemoryBtnEl = document.getElementById('summarizeOfflineMemoryBtn');
+if (summarizeOfflineMemoryBtnEl) summarizeOfflineMemoryBtnEl.onclick = async function() {
   const btn = this;
   btn.disabled = true; btn.style.opacity = '.55';
   try {
@@ -2394,7 +2405,8 @@ document.querySelectorAll('.sheet-backdrop').forEach(b => b.addEventListener('cl
 // ============================================================
 document.getElementById('saveBtn').onclick = function() {
   { const mt = document.getElementById('maxTokens'); if (mt) settings.maxTokens = mt.value; }
-  settings.style = document.getElementById('styleText').value.trim();
+  // 文风入口已移除：统一写在「规则」里，不再单独保存文风
+  settings.style = '';
   settings.cot = document.getElementById('cotText').value.trim();
   settings.customCSS = document.getElementById('cssText').value;
   settings.wordCount = document.getElementById('wordCount').value;

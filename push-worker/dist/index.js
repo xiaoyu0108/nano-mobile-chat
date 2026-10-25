@@ -1,3 +1,6 @@
+var __defProp = Object.defineProperty;
+var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
+
 // node_modules/uint8array-extras/index.js
 var objectToString = Object.prototype.toString;
 var uint8ArrayStringified = "[object Uint8Array]";
@@ -11,23 +14,29 @@ function isType(value, typeConstructor, typeStringified) {
   }
   return objectToString.call(value) === typeStringified;
 }
+__name(isType, "isType");
 function isUint8Array(value) {
   return isType(value, Uint8Array, uint8ArrayStringified);
 }
+__name(isUint8Array, "isUint8Array");
 function isArrayBuffer(value) {
   return isType(value, ArrayBuffer, arrayBufferStringified);
 }
+__name(isArrayBuffer, "isArrayBuffer");
 function isUint8ArrayOrArrayBuffer(value) {
   return isUint8Array(value) || isArrayBuffer(value);
 }
+__name(isUint8ArrayOrArrayBuffer, "isUint8ArrayOrArrayBuffer");
 function toUint8ArrayIfArrayBuffer(value) {
   return isArrayBuffer(value) ? new Uint8Array(value) : value;
 }
+__name(toUint8ArrayIfArrayBuffer, "toUint8ArrayIfArrayBuffer");
 function assertUint8ArrayOrArrayBuffer(value) {
   if (!isUint8ArrayOrArrayBuffer(value)) {
     throw new TypeError(`Expected \`Uint8Array\` or \`ArrayBuffer\`, got \`${typeof value}\``);
   }
 }
+__name(assertUint8ArrayOrArrayBuffer, "assertUint8ArrayOrArrayBuffer");
 function toUint8Array(value) {
   if (value instanceof ArrayBuffer) {
     return new Uint8Array(value);
@@ -37,6 +46,7 @@ function toUint8Array(value) {
   }
   throw new TypeError(`Unsupported value, got \`${typeof value}\`.`);
 }
+__name(toUint8Array, "toUint8Array");
 function concatUint8Arrays(arrays, totalLength) {
   if (arrays.length === 0) {
     return new Uint8Array(0);
@@ -52,6 +62,7 @@ function concatUint8Arrays(arrays, totalLength) {
   }
   return returnValue;
 }
+__name(concatUint8Arrays, "concatUint8Arrays");
 var cachedDecoders = {
   utf8: new globalThis.TextDecoder("utf8")
 };
@@ -60,19 +71,23 @@ function assertString(value) {
     throw new TypeError(`Expected \`string\`, got \`${typeof value}\``);
   }
 }
+__name(assertString, "assertString");
 var cachedEncoder = new globalThis.TextEncoder();
 function stringToUint8Array(string) {
   assertString(string);
   return cachedEncoder.encode(string);
 }
+__name(stringToUint8Array, "stringToUint8Array");
 function base64ToBase64Url(base64) {
   return base64.replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
 }
+__name(base64ToBase64Url, "base64ToBase64Url");
 function base64UrlToBase64(base64url) {
   const base64 = base64url.replaceAll("-", "+").replaceAll("_", "/");
   const padding = (4 - base64.length % 4) % 4;
   return base64 + "=".repeat(padding);
 }
+__name(base64UrlToBase64, "base64UrlToBase64");
 var MAX_BLOCK_SIZE = 65535;
 function uint8ArrayToBase64(array, { urlSafe = false } = {}) {
   assertUint8ArrayOrArrayBuffer(array);
@@ -84,10 +99,12 @@ function uint8ArrayToBase64(array, { urlSafe = false } = {}) {
   }
   return urlSafe ? base64ToBase64Url(base64) : base64;
 }
+__name(uint8ArrayToBase64, "uint8ArrayToBase64");
 function base64ToUint8Array(base64String) {
   assertString(base64String);
   return Uint8Array.from(globalThis.atob(base64UrlToBase64(base64String)), (x) => x.codePointAt(0));
 }
+__name(base64ToUint8Array, "base64ToUint8Array");
 var byteToHexLookupTable = Array.from({ length: 256 }, (_, index) => index.toString(16).padStart(2, "0"));
 
 // node_modules/@block65/webcrypto-web-push/dist/lib/utils.js
@@ -96,11 +113,13 @@ function encodeRecordSize(size) {
   new DataView(bytes.buffer).setUint32(0, size);
   return bytes;
 }
+__name(encodeRecordSize, "encodeRecordSize");
 function invariant(condition, message) {
   if (!condition) {
     throw new Error(message);
   }
 }
+__name(invariant, "invariant");
 
 // node_modules/@block65/webcrypto-web-push/dist/lib/client-keys.js
 async function deriveClientKeys(sub) {
@@ -117,6 +136,7 @@ async function deriveClientKeys(sub) {
     authSecretBytes
   };
 }
+__name(deriveClientKeys, "deriveClientKeys");
 
 // node_modules/@block65/webcrypto-web-push/dist/lib/hkdf.js
 function createHMAC(data) {
@@ -125,16 +145,17 @@ function createHMAC(data) {
     hash: "SHA-256"
   }, false, ["sign"]);
   return {
-    hash: async (input) => {
+    hash: /* @__PURE__ */ __name(async (input) => {
       const k = await keyPromise;
       return crypto.subtle.sign("HMAC", k, input);
-    }
+    }, "hash")
   };
 }
+__name(createHMAC, "createHMAC");
 async function hkdf(salt, ikm) {
   const prkhPromise = createHMAC(salt).hash(ikm).then((prk) => createHMAC(prk));
   return {
-    extract: async (info, len) => {
+    extract: /* @__PURE__ */ __name(async (info, len) => {
       const prkh = await prkhPromise;
       const blocks = await Array.from({ length: Math.ceil(len / 32) }, (_, i) => i).reduce(async (acc, i) => {
         const previous = await acc;
@@ -142,9 +163,10 @@ async function hkdf(salt, ikm) {
         return [...previous, new Uint8Array(hash)];
       }, Promise.resolve([]));
       return concatUint8Arrays(blocks).slice(0, len);
-    }
+    }, "extract")
   };
 }
+__name(hkdf, "hkdf");
 
 // node_modules/@block65/webcrypto-web-push/dist/lib/info.js
 function createKeyInfo(clientPublic, serverPublic) {
@@ -154,9 +176,11 @@ function createKeyInfo(clientPublic, serverPublic) {
     ...serverPublic
   ]);
 }
+__name(createKeyInfo, "createKeyInfo");
 function createInfo(type) {
   return stringToUint8Array(`Content-Encoding: ${type}\0`);
 }
+__name(createInfo, "createInfo");
 
 // node_modules/@block65/webcrypto-web-push/dist/lib/local-keys.js
 async function generateLocalKeys() {
@@ -169,11 +193,13 @@ async function generateLocalKeys() {
     publicKeyBytes: new Uint8Array(await crypto.subtle.exportKey("raw", keyPair.publicKey))
   };
 }
+__name(generateLocalKeys, "generateLocalKeys");
 
 // node_modules/@block65/webcrypto-web-push/dist/lib/salt.js
 async function getSalt() {
   return crypto.getRandomValues(new Uint8Array(16));
 }
+__name(getSalt, "getSalt");
 
 // node_modules/@block65/webcrypto-web-push/dist/lib/encrypt.js
 var recordSize = 4096;
@@ -216,14 +242,17 @@ async function encryptNotification(subscription, plaintext, options = {}) {
     ...new Uint8Array(encrypted)
   ]);
 }
+__name(encryptNotification, "encryptNotification");
 
 // node_modules/@block65/webcrypto-web-push/dist/lib/base64.js
 function encodeBase64Url(value) {
   return uint8ArrayToBase64(toUint8Array(value), { urlSafe: true });
 }
+__name(encodeBase64Url, "encodeBase64Url");
 function objectToBase64Url(obj) {
   return encodeBase64Url(stringToUint8Array(JSON.stringify(obj)));
 }
+__name(objectToBase64Url, "objectToBase64Url");
 
 // node_modules/@block65/webcrypto-web-push/dist/lib/jwt.js
 async function sign(payload, key) {
@@ -242,6 +271,7 @@ async function sign(payload, key) {
   }, key, stringToUint8Array(dataStr));
   return `${dataStr}.${encodeBase64Url(signature)}`;
 }
+__name(sign, "sign");
 
 // node_modules/@block65/webcrypto-web-push/dist/lib/vapid.js
 async function vapidHeaders(subscription, vapid) {
@@ -272,6 +302,7 @@ async function vapidHeaders(subscription, vapid) {
     }
   };
 }
+__name(vapidHeaders, "vapidHeaders");
 
 // node_modules/@block65/webcrypto-web-push/dist/lib/payload.js
 async function buildPushPayload(message, subscription, vapid) {
@@ -298,6 +329,7 @@ async function buildPushPayload(message, subscription, vapid) {
     body
   };
 }
+__name(buildPushPayload, "buildPushPayload");
 
 // src/index.js
 var CORS = {
@@ -345,6 +377,7 @@ function d1Kv(db) {
     }
   };
 }
+__name(d1Kv, "d1Kv");
 var D1_READY = /* @__PURE__ */ new WeakMap();
 function d1Ready(db) {
   let p = D1_READY.get(db);
@@ -357,19 +390,269 @@ function d1Ready(db) {
   }
   return p;
 }
+__name(d1Ready, "d1Ready");
 function kv(env) {
   const db = env && (env.DB || env.nano_db);
   return db ? d1Kv(db) : env.PUSH_KV;
 }
+__name(kv, "kv");
 function marketKv(env) {
-  return env && env.PUSH_KV ? env.PUSH_KV : kv(env);
+  return kv(env);
 }
-var json = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { ...CORS, "Content-Type": "application/json" } });
+__name(marketKv, "marketKv");
+function mediaPublicBase(env) {
+  return String(env && env.MEDIA_PUBLIC_BASE || "").trim().replace(/\/+$/, "");
+}
+__name(mediaPublicBase, "mediaPublicBase");
+function mediaUrl(env, request, key) {
+  const base = mediaPublicBase(env);
+  if (base) return base + "/" + key;
+  return new URL(request.url).origin + "/market/file?key=" + encodeURIComponent(key);
+}
+__name(mediaUrl, "mediaUrl");
+function mediaSafeId(id) {
+  return String(id || "post").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 80) || "post";
+}
+__name(mediaSafeId, "mediaSafeId");
+function mediaExt(mime, name) {
+  const m = String(mime || "").toLowerCase();
+  if (/png/.test(m)) return "png";
+  if (/jpe?g/.test(m)) return "jpg";
+  if (/webp/.test(m)) return "webp";
+  if (/gif/.test(m)) return "gif";
+  if (/svg/.test(m)) return "svg";
+  if (/pdf/.test(m)) return "pdf";
+  if (/json/.test(m)) return "json";
+  if (/zip/.test(m)) return "zip";
+  const n = String(name || "");
+  const dot = n.lastIndexOf(".");
+  if (dot > -1 && n.length - dot <= 9) {
+    const ext = n.slice(dot + 1).replace(/[^A-Za-z0-9]/g, "").toLowerCase();
+    if (ext) return ext;
+  }
+  return "bin";
+}
+__name(mediaExt, "mediaExt");
+function parseDataUrl(src) {
+  const m = /^data:([^;,]*)(;base64)?,([\s\S]*)$/i.exec(String(src || ""));
+  if (!m) return null;
+  try {
+    const raw = m[2] ? atob(m[3]) : decodeURIComponent(m[3]);
+    const bytes = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+    return { mime: m[1] || "application/octet-stream", bytes };
+  } catch (e) {
+    return null;
+  }
+}
+__name(parseDataUrl, "parseDataUrl");
+function supabaseMarketBucket(env) {
+  return String(env && env.SUPABASE_MARKET_BUCKET || "nano-market").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 60) || "nano-market";
+}
+__name(supabaseMarketBucket, "supabaseMarketBucket");
+function supabaseStoragePath(key) {
+  return String(key || "").split("/").map(encodeURIComponent).join("/");
+}
+__name(supabaseStoragePath, "supabaseStoragePath");
+async function putMarketBlob(env, request, key, dataUrl) {
+  const p = parseDataUrl(dataUrl);
+  if (!p) return "";
+  if (env.MEDIA) {
+    await env.MEDIA.put(key, p.bytes, { httpMetadata: { contentType: p.mime } });
+    return mediaUrl(env, request, key);
+  }
+  const c = supabaseConf(env);
+  if (!c) return "";
+  const bucket = supabaseMarketBucket(env);
+  const path = supabaseStoragePath(key);
+  const resp = await fetch(c.url + "/storage/v1/object/" + encodeURIComponent(bucket) + "/" + path, {
+    method: "POST",
+    headers: {
+      "Authorization": "Bearer " + c.key,
+      "apikey": c.key,
+      "Content-Type": p.mime,
+      "x-upsert": "true"
+    },
+    body: p.bytes
+  });
+  if (!resp.ok) throw new Error("supabase storage http " + resp.status);
+  return c.url + "/storage/v1/object/public/" + encodeURIComponent(bucket) + "/" + path;
+}
+__name(putMarketBlob, "putMarketBlob");
+async function deleteSupabaseStorageObject(env, key) {
+  const c = supabaseConf(env);
+  if (!c) return;
+  const bucket = supabaseMarketBucket(env);
+  const path = supabaseStoragePath(key);
+  try {
+    await fetch(c.url + "/storage/v1/object/" + encodeURIComponent(bucket) + "/" + path, {
+      method: "DELETE",
+      headers: { "Authorization": "Bearer " + c.key, "apikey": c.key }
+    });
+  } catch (e) {
+  }
+}
+__name(deleteSupabaseStorageObject, "deleteSupabaseStorageObject");
+async function offloadMarketItem(env, request, item, summary) {
+  if (!env || !item) return item;
+  if (!env.MEDIA && !supabaseConf(env)) return item;
+  const id = mediaSafeId(item.id);
+  const stamp = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  if (Array.isArray(item.images)) {
+    for (let i = 0; i < item.images.length; i++) {
+      const src = item.images[i];
+      if (typeof src !== "string" || !/^data:/i.test(src)) continue;
+      const p = parseDataUrl(src);
+      const key = "market/" + id + "/img-" + i + "-" + stamp + "." + mediaExt(p && p.mime, "");
+      try {
+        const url = await putMarketBlob(env, request, key, src);
+        if (url) item.images[i] = url;
+      } catch (e) {
+        console.warn("[market] r2 image failed:", e && e.message);
+      }
+    }
+  }
+  if (Array.isArray(item.files)) {
+    for (let i = 0; i < item.files.length; i++) {
+      const f = item.files[i];
+      if (!f || typeof f.data !== "string" || !/^data:/i.test(f.data)) continue;
+      const p = parseDataUrl(f.data);
+      const key = "market/" + id + "/file-" + i + "-" + stamp + "." + mediaExt(p && p.mime, f.name);
+      try {
+        const url = await putMarketBlob(env, request, key, f.data);
+        if (url) {
+          f.url = url;
+          delete f.data;
+        }
+      } catch (e) {
+        console.warn("[market] r2 file failed:", e && e.message);
+      }
+    }
+  }
+  if (typeof item.avatar === "string" && /^data:/i.test(item.avatar)) {
+    const p = parseDataUrl(item.avatar);
+    const key = "market/" + id + "/avatar-" + stamp + "." + mediaExt(p && p.mime, "");
+    try {
+      const url = await putMarketBlob(env, request, key, item.avatar);
+      if (url) item.avatar = url;
+    } catch (e) {
+    }
+  }
+  let coverUrl = "";
+  if (summary && typeof summary.cover === "string" && /^data:/i.test(summary.cover)) {
+    const p = parseDataUrl(summary.cover);
+    const key = "market/" + id + "/cover-" + stamp + "." + mediaExt(p && p.mime, "");
+    try {
+      const url = await putMarketBlob(env, request, key, summary.cover);
+      if (url) {
+        summary.cover = url;
+        coverUrl = url;
+      }
+    } catch (e) {
+    }
+  } else if (summary && typeof summary.cover === "string" && summary.cover) {
+    coverUrl = summary.cover;
+  }
+  if (!coverUrl && typeof item.cover === "string" && /^data:/i.test(item.cover)) {
+    const p = parseDataUrl(item.cover);
+    const key = "market/" + id + "/cover-" + stamp + "." + mediaExt(p && p.mime, "");
+    try {
+      const url = await putMarketBlob(env, request, key, item.cover);
+      if (url) {
+        item.cover = url;
+        coverUrl = url;
+      }
+    } catch (e) {
+    }
+  }
+  if (coverUrl) {
+    item.cover = coverUrl;
+    if (summary && !summary.cover) summary.cover = coverUrl;
+  } else if (summary && !summary.cover && Array.isArray(item.images) && item.images[0]) {
+    summary.cover = item.images[0];
+  }
+  return item;
+}
+__name(offloadMarketItem, "offloadMarketItem");
+function mediaRefFromUrl(env, url) {
+  const s = String(url || "");
+  const base = mediaPublicBase(env);
+  if (base && s.indexOf(base + "/") === 0) return { backend: "r2", key: s.slice(base.length + 1) };
+  try {
+    const u = new URL(s);
+    if (u.pathname === "/market/file") return { backend: "r2", key: u.searchParams.get("key") || "" };
+  } catch (e) {
+  }
+  const c = supabaseConf(env);
+  if (c) {
+    const bucket = supabaseMarketBucket(env);
+    const marker = c.url + "/storage/v1/object/public/" + encodeURIComponent(bucket) + "/";
+    if (s.indexOf(marker) === 0) {
+      try {
+        return { backend: "supabase", key: decodeURIComponent(s.slice(marker.length)) };
+      } catch (e) {
+      }
+    }
+  }
+  return null;
+}
+__name(mediaRefFromUrl, "mediaRefFromUrl");
+async function deleteMarketBlobs(env, item, summary) {
+  if (!env || !item) return;
+  const urls = [];
+  if (Array.isArray(item.images)) item.images.forEach(function(u) {
+    if (typeof u === "string") urls.push(u);
+  });
+  if (Array.isArray(item.files)) item.files.forEach(function(f) {
+    if (f && typeof f.url === "string") urls.push(f.url);
+  });
+  if (typeof item.avatar === "string") urls.push(item.avatar);
+  if (typeof item.cover === "string") urls.push(item.cover);
+  if (summary && typeof summary.cover === "string") urls.push(summary.cover);
+  const seen = {};
+  for (const u of urls) {
+    const ref = mediaRefFromUrl(env, u);
+    if (!ref || !ref.key || seen[ref.backend + ":" + ref.key]) continue;
+    seen[ref.backend + ":" + ref.key] = 1;
+    if (ref.backend === "r2") {
+      if (env.MEDIA && ref.key.indexOf("market/") === 0) {
+        try {
+          await env.MEDIA.delete(ref.key);
+        } catch (e) {
+        }
+      }
+    } else if (ref.backend === "supabase") {
+      await deleteSupabaseStorageObject(env, ref.key);
+    }
+  }
+}
+__name(deleteMarketBlobs, "deleteMarketBlobs");
+async function cleanupExpiredD1(env) {
+  const db = env && (env.DB || env.nano_db);
+  if (!db) return;
+  const now = Date.now();
+  let last = 0;
+  try {
+    last = Number(await kv(env).get("meta:cleanup_at") || 0) || 0;
+  } catch (e) {
+  }
+  if (last && now - last < 24 * 3600 * 1e3) return;
+  try {
+    await db.prepare(
+      "DELETE FROM kv WHERE key IN (SELECT key FROM kv WHERE expires_at > 0 AND expires_at <= ? ORDER BY expires_at LIMIT 800)"
+    ).bind(now).run();
+    await kv(env).put("meta:cleanup_at", String(now));
+  } catch (e) {
+  }
+}
+__name(cleanupExpiredD1, "cleanupExpiredD1");
+var json = /* @__PURE__ */ __name((o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { ...CORS, "Content-Type": "application/json" } }), "json");
 function supabaseConf(env) {
   const url = String(env && env.SUPABASE_URL || "").replace(/\/+$/, "");
   const key = String(env && env.SUPABASE_SERVICE_ROLE_KEY || "");
   return url && key ? { url, key } : null;
 }
+__name(supabaseConf, "supabaseConf");
 async function supabase(env, path, opts) {
   const c = supabaseConf(env);
   if (!c) throw new Error("supabase not configured");
@@ -399,6 +682,7 @@ async function supabase(env, path, opts) {
   }
   return data;
 }
+__name(supabase, "supabase");
 function marketRowToSummary(row) {
   const s = Object.assign({}, row && row.summary || {});
   s.id = row && row.id || s.id;
@@ -407,6 +691,7 @@ function marketRowToSummary(row) {
   s.imports = Number(row && row.imports) || 0;
   return s;
 }
+__name(marketRowToSummary, "marketRowToSummary");
 function marketRowToItem(row) {
   const it = Object.assign({}, row && row.item || {});
   it.id = row && row.id || it.id;
@@ -415,40 +700,51 @@ function marketRowToItem(row) {
   it.imports = Number(row && row.imports) || 0;
   return it;
 }
+__name(marketRowToItem, "marketRowToItem");
 function subId(endpoint) {
   return "sub:" + btoa(endpoint).replace(/[^a-zA-Z0-9]/g, "").slice(-48);
 }
+__name(subId, "subId");
 function subKey(endpoint, appId, deviceId, userId) {
   return "sub2:" + cleanAppId(appId) + ":" + cleanDeviceId(deviceId) + ":" + cleanUserId(userId) + ":" + subId(endpoint).slice(4);
 }
+__name(subKey, "subKey");
 function cleanPart(v, fallback, max) {
   const s = String(v == null ? "" : v).replace(/[^a-zA-Z0-9_.-]/g, "").slice(0, max || 80);
   return s || fallback;
 }
+__name(cleanPart, "cleanPart");
 function cleanAppId(v) {
   return cleanPart(v, "legacy", 48);
 }
+__name(cleanAppId, "cleanAppId");
 function cleanDeviceId(v) {
   return cleanPart(v, "default", 80);
 }
+__name(cleanDeviceId, "cleanDeviceId");
 function cleanUserId(v) {
   const s = String(v == null ? "" : v).replace(/:/g, "_").slice(0, 80);
   return s || "default";
 }
+__name(cleanUserId, "cleanUserId");
 function autoScope(appId, deviceId, userId) {
   return cleanAppId(appId) + ":" + cleanDeviceId(deviceId) + ":" + cleanUserId(userId);
 }
+__name(autoScope, "autoScope");
 function autoKey(kind, appId, deviceId, userId) {
   return "auto2:" + kind + ":" + autoScope(appId, deviceId, userId);
 }
+__name(autoKey, "autoKey");
 function autoActiveKey(appId, deviceId) {
   return "auto2:active:" + cleanAppId(appId) + ":" + cleanDeviceId(deviceId);
 }
+__name(autoActiveKey, "autoActiveKey");
 var AUTO_INDEX_KEY = "auto2:_index";
 var JOB_INDEX_KEY = "job:_index";
 function autoScopeOf(appId, deviceId, userId) {
   return cleanAppId(appId) + ":" + cleanDeviceId(deviceId) + ":" + cleanUserId(userId);
 }
+__name(autoScopeOf, "autoScopeOf");
 async function readIndex(env, key) {
   try {
     const raw = await kv(env).get(key);
@@ -459,6 +755,7 @@ async function readIndex(env, key) {
     return null;
   }
 }
+__name(readIndex, "readIndex");
 async function writeIndex(env, key, arr) {
   const clean = Array.from(new Set((arr || []).filter(Boolean))).slice(-300);
   try {
@@ -467,11 +764,13 @@ async function writeIndex(env, key, arr) {
   }
   return clean;
 }
+__name(writeIndex, "writeIndex");
 async function addAutoScope(env, scope) {
   const arr = await readIndex(env, AUTO_INDEX_KEY);
   if (arr === null) return;
   if (arr.indexOf(scope) === -1) await writeIndex(env, AUTO_INDEX_KEY, arr.concat(scope));
 }
+__name(addAutoScope, "addAutoScope");
 async function removeAutoScope(env, scope) {
   const arr = await readIndex(env, AUTO_INDEX_KEY);
   if (arr === null) return;
@@ -479,6 +778,7 @@ async function removeAutoScope(env, scope) {
     return x !== scope;
   }));
 }
+__name(removeAutoScope, "removeAutoScope");
 async function getAutoScopes(env) {
   const arr = await readIndex(env, AUTO_INDEX_KEY);
   if (arr !== null) return arr;
@@ -493,11 +793,13 @@ async function getAutoScopes(env) {
     return [];
   }
 }
+__name(getAutoScopes, "getAutoScopes");
 async function addJobId(env, id) {
   const arr = await readIndex(env, JOB_INDEX_KEY);
   if (arr === null) return;
   if (arr.indexOf(id) === -1) await writeIndex(env, JOB_INDEX_KEY, arr.concat(id));
 }
+__name(addJobId, "addJobId");
 var ACTIVE_CACHE = /* @__PURE__ */ new Map();
 async function touchActive(env, appId, deviceId, userId, force) {
   appId = cleanAppId(appId);
@@ -532,6 +834,7 @@ async function touchActive(env, appId, deviceId, userId, force) {
   } catch (e) {
   }
 }
+__name(touchActive, "touchActive");
 function autoConfigSig(cfg) {
   try {
     const c = Object.assign({}, cfg || {});
@@ -541,17 +844,20 @@ function autoConfigSig(cfg) {
     return "";
   }
 }
+__name(autoConfigSig, "autoConfigSig");
 function peekBase(appId, chatId) {
   const a = cleanAppId(appId);
   const c = String(chatId || "default");
   return a === "legacy" ? "peek:" + c : "peek2:" + a + ":" + c;
 }
+__name(peekBase, "peekBase");
 function b64urlEncode(bytes) {
   let s = "";
   const arr = new Uint8Array(bytes || []);
   for (let i = 0; i < arr.length; i++) s += String.fromCharCode(arr[i]);
   return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
+__name(b64urlEncode, "b64urlEncode");
 function b64urlDecode(str) {
   const s = String(str || "").replace(/-/g, "+").replace(/_/g, "/");
   const pad = s.length % 4 ? new Array(5 - s.length % 4).join("=") : "";
@@ -560,6 +866,7 @@ function b64urlDecode(str) {
   for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
   return out;
 }
+__name(b64urlDecode, "b64urlDecode");
 async function ensureVapid(env) {
   if (env.VAPID_PUBLIC && env.VAPID_PRIVATE) {
     return {
@@ -605,14 +912,17 @@ async function ensureVapid(env) {
     return null;
   }
 }
+__name(ensureVapid, "ensureVapid");
 function tokenOk(request, env) {
   if (!env.PUSH_TOKEN) return true;
   return request.headers.get("X-Push-Token") === env.PUSH_TOKEN;
 }
+__name(tokenOk, "tokenOk");
 function peekPublic(env) {
   const v = String(env.PEEK_PUBLIC || "").toLowerCase();
   return v === "1" || v === "true" || v === "yes" || v === "on";
 }
+__name(peekPublic, "peekPublic");
 function peekTokenValue(request, body) {
   let h = "";
   try {
@@ -627,6 +937,7 @@ function peekTokenValue(request, body) {
   const b = body && body.token ? String(body.token) : "";
   return String(h || q || b || "").trim();
 }
+__name(peekTokenValue, "peekTokenValue");
 function peekTokenHash(token) {
   const s = String(token || "");
   let h = 2166136261;
@@ -636,35 +947,42 @@ function peekTokenHash(token) {
   }
   return (h >>> 0).toString(36);
 }
+__name(peekTokenHash, "peekTokenHash");
 function peekScope(env, appId, token) {
   const a = cleanAppId(appId);
   if (!peekPublic(env)) return a;
   return a + "." + peekTokenHash(token || "anon");
 }
+__name(peekScope, "peekScope");
 function peekOwnerKey(env, token, chatId) {
   chatId = String(chatId || "default");
   if (!peekPublic(env)) return "peek2:owner:" + chatId;
   return "peek2:owner:" + peekTokenHash(token || "anon") + ":" + chatId;
 }
+__name(peekOwnerKey, "peekOwnerKey");
 function peekOk(request, env, body) {
   const t = peekTokenValue(request, body);
   if (peekPublic(env)) return t.length >= 8;
   if (!env.PEEK_TOKEN) return true;
   return t === env.PEEK_TOKEN;
 }
+__name(peekOk, "peekOk");
 function peekCharName(system) {
   const m = String(system || "").match(/你是[「"]([^」"]{1,40})[」"]/);
   return m ? String(m[1]).trim() : "";
 }
+__name(peekCharName, "peekCharName");
 function modelEndpoint(raw) {
   let s = String(raw || "").trim().replace(/\/+$/, "");
   if (!s) return "";
   if (/\/chat\/completions$/i.test(s)) return s;
   if (/\/responses$/i.test(s)) return s;
+  if (/\/openai$/i.test(s)) return s + "/chat/completions";
   if (/\/v1$/i.test(s)) return s + "/chat/completions";
   if (/\/v1\//i.test(s)) return s;
   return s + "/v1/chat/completions";
 }
+__name(modelEndpoint, "modelEndpoint");
 async function peekTurns(env, chatId, appId) {
   try {
     const raw = await kv(env).get(peekBase(appId, chatId));
@@ -675,20 +993,22 @@ async function peekTurns(env, chatId, appId) {
     return [];
   }
 }
+__name(peekTurns, "peekTurns");
 async function peekSave(env, chatId, turns, appId) {
   try {
     await kv(env).put(peekBase(appId, chatId), JSON.stringify(turns.slice(-40)), { expirationTtl: 60 * 60 * 24 * 7 });
   } catch (e) {
   }
 }
+__name(peekSave, "peekSave");
 async function peekApiConfig(env, appId, chatId, body, owner, realAppId) {
-  const cleanApi = function(v) {
+  const cleanApi = /* @__PURE__ */ __name(function(v) {
     if (!v || typeof v !== "object") return null;
     const url = String(v.url || "").trim();
     const key = String(v.key || "").trim();
     const model = String(v.model || "").trim();
     return url && key && model ? { url, key, model } : null;
-  };
+  }, "cleanApi");
   const deviceId = cleanDeviceId(owner && owner.deviceId || body && body.deviceId || "default");
   let userId = cleanUserId(owner && owner.userId || body && body.userId || "");
   if (!userId || userId === "default") {
@@ -728,6 +1048,7 @@ async function peekApiConfig(env, appId, chatId, body, owner, realAppId) {
   }
   return null;
 }
+__name(peekApiConfig, "peekApiConfig");
 function autoOk(request, env, body) {
   const tokens = [env.PUSH_TOKEN, env.PEEK_TOKEN].filter(Boolean);
   if (!tokens.length) return true;
@@ -744,11 +1065,13 @@ function autoOk(request, env, body) {
   const b = body && body.token ? String(body.token) : "";
   return tokens.indexOf(h) >= 0 || tokens.indexOf(q) >= 0 || tokens.indexOf(b) >= 0;
 }
+__name(autoOk, "autoOk");
 function clampNum(n, min, max, dflt) {
   n = Number(n);
   if (!isFinite(n) || n <= 0) n = dflt;
   return Math.max(min, Math.min(max, n));
 }
+__name(clampNum, "clampNum");
 function sanitizeAutoConfig(body) {
   body = body || {};
   const chars = Array.isArray(body.chars) ? body.chars.slice(0, 30).map(function(c) {
@@ -814,6 +1137,7 @@ function sanitizeAutoConfig(body) {
     updatedAt: Date.now()
   };
 }
+__name(sanitizeAutoConfig, "sanitizeAutoConfig");
 async function autoChat(env, cfg, messages, maxTokens, temperature) {
   const url = modelEndpoint(env.AUTO_API_URL || env.PEEK_API_URL || cfg.api && cfg.api.url || "");
   const key = env.AUTO_API_KEY || env.PEEK_API_KEY || cfg.api && cfg.api.key || "";
@@ -838,6 +1162,7 @@ async function autoChat(env, cfg, messages, maxTokens, temperature) {
     return null;
   }
 }
+__name(autoChat, "autoChat");
 function pickRandom(arr, n) {
   const copy = arr.slice();
   for (let i = copy.length - 1; i > 0; i--) {
@@ -848,14 +1173,17 @@ function pickRandom(arr, n) {
   }
   return copy.slice(0, n);
 }
+__name(pickRandom, "pickRandom");
 function splitAutoBubbles(text) {
   return String(text || "").split(/\n+/).map(function(s) {
     return s.trim();
   }).filter(Boolean).slice(0, 3);
 }
+__name(splitAutoBubbles, "splitAutoBubbles");
 function cleanBubble(s) {
   return String(s == null ? "" : s).replace(/^```[a-zA-Z]*\s*/, "").replace(/```\s*$/, "").replace(/^\s*(?:你|角色|消息|气泡)\s*[:：]\s*/, "").replace(/^["'“”]+|["'“”]+$/g, "").trim();
 }
+__name(cleanBubble, "cleanBubble");
 function ensureBubbles(raw, max) {
   let list = [];
   if (Array.isArray(raw)) list = raw.map(cleanBubble).filter(Boolean);
@@ -872,6 +1200,7 @@ function ensureBubbles(raw, max) {
   });
   return out.slice(0, max);
 }
+__name(ensureBubbles, "ensureBubbles");
 function parseHeart(raw) {
   if (!raw) return null;
   if (typeof raw === "object") {
@@ -884,6 +1213,7 @@ function parseHeart(raw) {
   const sep = s.indexOf("||");
   return sep > -1 ? { subject: s.slice(0, sep).trim(), thought: s.slice(sep + 2).trim() } : { subject: "", thought: s };
 }
+__name(parseHeart, "parseHeart");
 function parseAutoReply(raw) {
   let text = String(raw || "").trim();
   if (!text) return null;
@@ -918,6 +1248,7 @@ function parseAutoReply(raw) {
   if (!bubbles.length) return null;
   return { think, heart, bubbles };
 }
+__name(parseAutoReply, "parseAutoReply");
 function recentBlock(c) {
   const r = c && Array.isArray(c.recent) ? c.recent : [];
   if (!r.length) return "";
@@ -925,21 +1256,26 @@ function recentBlock(c) {
     return (x.who === "user" ? "\u7528\u6237\uFF1A" : "\u4F60\uFF1A") + x.text;
   }).join("\n") + "\n\u3010\u5F3A\u76F8\u5173\u8981\u6C42\u3011\u8FD9\u8F6E\u4E3B\u52A8\u6D88\u606F\u5FC5\u987B\u81EA\u7136\u63A5\u4F4F\u4E0A\u9762\u6700\u540E\u7684\u8BDD\u9898\u3001\u60C5\u7EEA\u6216\u8FD8\u6CA1\u8BF4\u5B8C\u7684\u4E8B\uFF1B\u4E0D\u8981\u53E6\u8D77\u65E0\u5173\u8BDD\u9898\u3002";
 }
+__name(recentBlock, "recentBlock");
 function beijingToday() {
   return new Date(Date.now() + 8 * 3600 * 1e3).toISOString().slice(0, 10);
 }
+__name(beijingToday, "beijingToday");
 function parseYmd(s) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || ""));
   if (!m) return 0;
   return Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
 }
+__name(parseYmd, "parseYmd");
 function addDaysMs(ms, n) {
   return ms + n * 864e5;
 }
+__name(addDaysMs, "addDaysMs");
 function fmtCn(ms) {
   const d = new Date(ms);
   return d.getUTCMonth() + 1 + "\u6708" + d.getUTCDate() + "\u65E5";
 }
+__name(fmtCn, "fmtCn");
 function autoLangName(c) {
   if (!c) return "";
   if (c.forceTranslate && c.forceLang) return String(c.forceLang).trim();
@@ -982,6 +1318,7 @@ function autoLangName(c) {
   for (const k of Object.keys(map)) if (nat.indexOf(k) > -1) return map[k];
   return "\u82F1\u6587";
 }
+__name(autoLangName, "autoLangName");
 function autoIsForeign(c) {
   if (!c) return false;
   if (c.forceTranslate) return true;
@@ -989,12 +1326,14 @@ function autoIsForeign(c) {
   const nat = String(c.nationality || "").trim();
   return !!(nat && nat !== "\u672A\u77E5" && nat !== "\u672A\u8BBE\u5B9A" && !/(中国|中國|china|chinese|香港|澳门|澳門|台湾|台灣)/i.test(nat));
 }
+__name(autoIsForeign, "autoIsForeign");
 function autoLangBlock(c) {
   if (!autoIsForeign(c)) return "";
   const lang = autoLangName(c);
   const trans = /粤语|粵語|cantonese/i.test(lang) ? "\u666E\u901A\u8BDD" : "\u4E2D\u6587";
   return "\u3010\u8BED\u8A00 \xB7 \u6700\u9AD8\u4F18\u5148\u7EA7\u3011\u4F60\u662F" + (c.nationality || "\u5916\u56FD") + "\u4EBA\uFF0C\u6BCD\u8BED\u662F" + lang + "\u3002\u672C\u8F6E\u4E3B\u52A8\u6D88\u606F\u7684\u6B63\u6587\u5FC5\u987B\u53EA\u7528" + lang + "\u5199\uFF0C\u7EDD\u4E0D\u80FD\u7528\u4E2D\u6587\u5F53\u6B63\u6587\uFF1B\u5373\u4F7F\u4EBA\u8BBE\u6216\u4E0A\u9762\u7684\u8BF4\u660E\u662F\u4E2D\u6587\uFF0C\u4E5F\u4E0D\u8981\u6539\u53D8\u3002\u6BCF\u884C\u4E00\u6761\u6C14\u6CE1\uFF0C\u4E25\u683C\u6309\u300C" + lang + "\u539F\u6587||" + trans + "\u7FFB\u8BD1\u300D\u7684\u683C\u5F0F\u8F93\u51FA\uFF0C\u7528 || \u5206\u9694\uFF1B" + trans + "\u53EA\u80FD\u51FA\u73B0\u5728 || \u53F3\u8FB9\u4F5C\u4E3A\u7FFB\u8BD1\uFF0C\u7FFB\u8BD1\u8981\u81EA\u7136\u53E3\u8BED\u5316\u3002\n";
 }
+__name(autoLangBlock, "autoLangBlock");
 function cycleBlock(c) {
   const cy = c && c.cycle;
   if (!cy || !cy.lastStart) return "";
@@ -1025,6 +1364,7 @@ function cycleBlock(c) {
   }
   return s;
 }
+__name(cycleBlock, "cycleBlock");
 async function generateAutoMessages(env, cfg, busyChatId, avoidId) {
   const pool = cfg.chars.filter(function(c) {
     return c.id !== busyChatId && !c.isNpc;
@@ -1065,6 +1405,7 @@ async function generateAutoMessages(env, cfg, busyChatId, avoidId) {
   }
   return out;
 }
+__name(generateAutoMessages, "generateAutoMessages");
 async function generateAutoMoments(env, cfg, busyChatId, maxChars) {
   const pool = cfg.chars.filter(function(c) {
     return c.id !== busyChatId && !c.isNpc;
@@ -1103,14 +1444,14 @@ async function generateAutoMoments(env, cfg, busyChatId, maxChars) {
   names.forEach(function(n) {
     nameSet[n] = true;
   });
-  const pickName = function(raw) {
+  const pickName = /* @__PURE__ */ __name(function(raw) {
     const n = String(raw == null ? "" : raw).trim();
     if (!n) return "";
     if (nameSet[n]) return n;
     return names.find(function(x) {
       return x && (x.indexOf(n) > -1 || n.indexOf(x) > -1);
     }) || "";
-  };
+  }, "pickName");
   const out = [];
   const now = Date.now();
   const canned = ["\u8FD9\u6761\u4E5F\u592A\u771F\u5B9E\u4E86", "\u54C8\u54C8\u54C8\u54C8", "\u6211\u4E5F\u60F3\u53BB", "\u6CE8\u610F\u4F11\u606F\u5440", "\u597D\u770B", "\u4E0B\u6B21\u5E26\u6211"];
@@ -1160,6 +1501,7 @@ async function generateAutoMoments(env, cfg, busyChatId, maxChars) {
   });
   return out;
 }
+__name(generateAutoMoments, "generateAutoMoments");
 function pushText(v, fallback) {
   let s = "";
   if (v && typeof v === "object") s = v.body || v.text || v.message || v.content || v.title || "";
@@ -1167,7 +1509,9 @@ function pushText(v, fallback) {
   s = String(s || "").replace(/\s*\|\|\s*/g, " / ").trim();
   return s || String(fallback || "");
 }
+__name(pushText, "pushText");
 async function sendBarkKey(env, key, payload) {
+  return false;
   key = String(key || "").trim();
   if (!key) return false;
   let root = "https://api.day.app", devKey = key;
@@ -1221,6 +1565,7 @@ async function sendBarkKey(env, key, payload) {
       return false;
     }
   }
+  __name(barkGet, "barkGet");
   if (devKey && await barkGet()) return true;
   if (!devKey) return false;
   try {
@@ -1250,6 +1595,7 @@ async function sendBarkKey(env, key, payload) {
     return false;
   }
 }
+__name(sendBarkKey, "sendBarkKey");
 async function autoNotify(env, cfg, subs, payload) {
   const key = String(cfg && cfg.barkKey || "").trim();
   if (key) {
@@ -1265,6 +1611,7 @@ async function autoNotify(env, cfg, subs, payload) {
   }
   return 0;
 }
+__name(autoNotify, "autoNotify");
 async function runAutoPush(env, appId, deviceId, userId) {
   appId = cleanAppId(appId);
   deviceId = cleanDeviceId(deviceId);
@@ -1308,6 +1655,7 @@ async function runAutoPush(env, appId, deviceId, userId) {
     subsCache = await getSubs(env, userId, deviceId, appId);
     return subsCache;
   }
+  __name(subsOnce, "subsOnce");
   let busyChatId = "";
   try {
     busyChatId = String(await kv(env).get("auto2:call:" + cleanAppId(appId) + ":" + userId) || "");
@@ -1394,6 +1742,7 @@ async function runAutoPush(env, appId, deviceId, userId) {
   }
   if (dirty) await kv(env).put(autoKey("state", appId, deviceId, userId), JSON.stringify(state));
 }
+__name(runAutoPush, "runAutoPush");
 function peekModelText(data) {
   if (!data) return "";
   const msg = data.choices && data.choices[0] && data.choices[0].message;
@@ -1417,55 +1766,101 @@ function peekModelText(data) {
     });
     if (parts.join("").trim()) return parts.join("").trim();
   }
+  if (Array.isArray(data.content)) {
+    const parts = data.content.map(function(x) {
+      if (typeof x === "string") return x;
+      return x && (x.text || x.content) || "";
+    }).join("");
+    if (parts.trim()) return parts.trim();
+  }
+  const cand = data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts;
+  if (Array.isArray(cand)) {
+    const parts = cand.map(function(x) {
+      return x && x.text || "";
+    }).join("");
+    if (parts.trim()) return parts.trim();
+  }
   return "";
 }
+__name(peekModelText, "peekModelText");
+function peekProvider(raw) {
+  const s = String(raw || "");
+  if (/\/chat\/completions$/i.test(s) || /\/responses$/i.test(s) || /\/openai(\/|$)/i.test(s)) return "openai";
+  let host = "";
+  try {
+    host = new URL(s).hostname.toLowerCase();
+  } catch (e) {
+  }
+  if (/(^|\.)api\.anthropic\.com$/.test(host) || /\/messages$/i.test(s)) return "anthropic";
+  if (/(^|\.)generativelanguage\.googleapis\.com$/.test(host) || /:generateContent/i.test(s)) return "gemini";
+  return "openai";
+}
+__name(peekProvider, "peekProvider");
+function peekAnthropicEndpoint(raw) {
+  let s = String(raw || "").trim().replace(/\/+$/, "");
+  if (/\/messages$/i.test(s)) return s;
+  if (/\/v1$/i.test(s)) return s + "/messages";
+  return s + "/v1/messages";
+}
+__name(peekAnthropicEndpoint, "peekAnthropicEndpoint");
+function peekGeminiEndpoint(raw, model) {
+  let s = String(raw || "").trim().replace(/\/+$/, "");
+  if (/:generateContent/i.test(s)) return s;
+  if (/\/models\//i.test(s)) return s + ":generateContent";
+  if (/\/v1beta$/i.test(s) || /\/v1$/i.test(s)) return s + "/models/" + encodeURIComponent(model) + ":generateContent";
+  return s + "/v1beta/models/" + encodeURIComponent(model) + ":generateContent";
+}
+__name(peekGeminiEndpoint, "peekGeminiEndpoint");
+function peekImageUrl(image) {
+  let s = String(image || "").trim();
+  if (!s) return "";
+  if (/^data:image\//i.test(s) || /^https?:\/\//i.test(s)) return s;
+  if (/^[A-Za-z0-9+/=\s]+$/.test(s) && s.length > 100) {
+    return "data:image/jpeg;base64," + s.replace(/\s+/g, "");
+  }
+  return s;
+}
+__name(peekImageUrl, "peekImageUrl");
+function peekDataUrl(image) {
+  const m = /^data:([^;,]+);base64,([\s\S]+)$/i.exec(String(image || ""));
+  return m ? { mime: m[1] || "image/jpeg", data: m[2].replace(/\s+/g, "") } : null;
+}
+__name(peekDataUrl, "peekDataUrl");
+function peekBase64(buf) {
+  const bytes = new Uint8Array(buf);
+  let out = "";
+  const chunk = 8192;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    out += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+  }
+  return btoa(out);
+}
+__name(peekBase64, "peekBase64");
 async function peekModel(env, system, text, image, history, apiCfg, context) {
   const allowEnvApi = !peekPublic(env);
-  const url = modelEndpoint((allowEnvApi ? env.PEEK_API_URL : "") || apiCfg && apiCfg.url || "");
+  const rawUrl = (allowEnvApi ? env.PEEK_API_URL : "") || apiCfg && apiCfg.url || "";
   const key = (allowEnvApi ? env.PEEK_API_KEY : "") || apiCfg && apiCfg.key || "";
   const model = (allowEnvApi ? env.PEEK_MODEL : "") || apiCfg && apiCfg.model || "";
-  if (!url || !key || !model) return null;
-  const isResponses = /\/responses$/i.test(url);
-  function buildBody(useImage, tokenField) {
-    const messages = [];
-    if (system) messages.push({ role: "system", content: system });
-    (context || []).forEach(function(m) {
-      if (!m || !m.content) return;
-      messages.push({ role: m.role === "assistant" ? "assistant" : "user", content: String(m.content).slice(0, 1200) });
-    });
-    (history || []).forEach(function(t) {
-      if (t.user) messages.push({ role: "user", content: String(t.user) });
-      if (t.char) messages.push({ role: "assistant", content: String(t.char) });
-    });
-    let content;
-    if (useImage && image) {
-      content = [
-        { type: "text", text: text || "\u770B\u770B\u6211\u73B0\u5728\u5C4F\u5E55\u4E0A\u662F\u4EC0\u4E48\uFF0C\u7528\u4F60\u7684\u4EBA\u8BBE\u968F\u53E3\u8BF4\u4E00\u53E5\u3002" },
-        { type: "image_url", image_url: { url: image } }
-      ];
-    } else {
-      content = text || "\u770B\u770B\u6211\u73B0\u5728\u5C4F\u5E55\u4E0A\u662F\u4EC0\u4E48\uFF0C\u7528\u4F60\u7684\u4EBA\u8BBE\u968F\u53E3\u8BF4\u4E00\u53E5\u3002";
-    }
-    messages.push({ role: "user", content });
-    if (isResponses) {
-      let input = "";
-      messages.forEach(function(m) {
-        const c = Array.isArray(m.content) ? m.content.map(function(x) {
-          return x.text || "";
-        }).join(" ") : m.content;
-        if (c) input += (m.role === "assistant" ? "Assistant: " : m.role === "system" ? "System: " : "User: ") + c + "\n";
-      });
-      return { model, input: input.trim(), max_output_tokens: 1200 };
-    }
-    const body = { model, messages, temperature: 0.9, stream: false };
-    body[tokenField || "max_tokens"] = 1200;
-    return body;
-  }
-  async function call(payload) {
+  if (!rawUrl || !key || !model) return null;
+  const provider = peekProvider(rawUrl);
+  const url = provider === "anthropic" ? peekAnthropicEndpoint(rawUrl) : provider === "gemini" ? peekGeminiEndpoint(rawUrl, model) : modelEndpoint(rawUrl);
+  const isResponses = provider === "openai" && /\/responses$/i.test(url);
+  const imageUrl = peekImageUrl(image);
+  const textPrompt = text || "\u770B\u770B\u6211\u73B0\u5728\u5C4F\u5E55\u4E0A\u662F\u4EC0\u4E48\uFF0C\u7528\u4F60\u7684\u4EBA\u8BBE\u968F\u53E3\u8BF4\u4E00\u53E5\u3002";
+  const baseMessages = [];
+  (context || []).forEach(function(m) {
+    if (!m || !m.content) return;
+    baseMessages.push({ role: m.role === "assistant" ? "assistant" : "user", content: String(m.content).slice(0, 1200) });
+  });
+  (history || []).forEach(function(t) {
+    if (t.user) baseMessages.push({ role: "user", content: String(t.user) });
+    if (t.char) baseMessages.push({ role: "assistant", content: String(t.char) });
+  });
+  async function send(payload, headers) {
     try {
       const resp = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + key },
+        headers: Object.assign({ "Content-Type": "application/json" }, headers || {}),
         body: JSON.stringify(payload)
       });
       if (!resp.ok) {
@@ -1482,19 +1877,123 @@ async function peekModel(env, system, text, image, history, apiCfg, context) {
       return { text: "", error: String(e && e.message || e || "") };
     }
   }
-  let r = await call(buildBody(!!image, "max_tokens"));
-  if (!isResponses && image && !r.text) {
-    r = await call(buildBody(false, "max_tokens"));
+  __name(send, "send");
+  function openAIContent(useImage, imageMode, imageFirst) {
+    if (!useImage || !imageUrl) return textPrompt;
+    let u = imageUrl;
+    if (imageMode === "raw") {
+      const d = peekDataUrl(imageUrl);
+      u = d ? d.data : imageUrl;
+    }
+    const part = imageMode === "string" ? { type: "image_url", image_url: u } : { type: "image_url", image_url: { url: u } };
+    const textPart = { type: "text", text: textPrompt };
+    return imageFirst ? [part, textPart] : [textPart, part];
   }
-  if (!isResponses && !r.text && /max_tokens|max_completion_tokens|unsupported|invalid|reasoning/i.test(r.error || "")) {
-    r = await call(buildBody(false, "max_completion_tokens"));
+  __name(openAIContent, "openAIContent");
+  async function callOpenAI(useImage, tokenField, imageMode, opts) {
+    opts = opts || {};
+    if (isResponses) {
+      let input = textPrompt;
+      if (useImage && imageUrl) {
+        input = [{
+          role: "user",
+          content: [
+            { type: "input_text", text: textPrompt },
+            { type: "input_image", image_url: imageUrl }
+          ]
+        }];
+      }
+      return send({ model, input, max_output_tokens: 1200 }, { "Authorization": "Bearer " + key });
+    }
+    const messages = [];
+    if (system) messages.push({ role: "system", content: system });
+    if (!opts.minimal) {
+      baseMessages.forEach(function(m) {
+        messages.push({ role: m.role, content: m.content });
+      });
+    }
+    messages.push({ role: "user", content: openAIContent(useImage, imageMode, opts.imageFirst) });
+    const body = { model, messages, stream: false };
+    if (opts.temperature !== false) body.temperature = 0.9;
+    body[tokenField || "max_tokens"] = 1200;
+    return send(body, { "Authorization": "Bearer " + key });
   }
-  return r.text ? String(r.text).trim() : null;
+  __name(callOpenAI, "callOpenAI");
+  async function callAnthropic(useImage) {
+    const messages = baseMessages.map(function(m) {
+      return { role: m.role === "assistant" ? "assistant" : "user", content: m.content };
+    });
+    let content = textPrompt;
+    if (useImage && imageUrl) {
+      const parts = [{ type: "text", text: textPrompt }];
+      const d = peekDataUrl(imageUrl);
+      if (d) {
+        parts.push({ type: "image", source: { type: "base64", media_type: d.mime, data: d.data } });
+      } else if (/^https?:\/\//i.test(imageUrl)) {
+        parts.push({ type: "image", source: { type: "url", url: imageUrl } });
+      }
+      content = parts;
+    }
+    messages.push({ role: "user", content });
+    const body = { model, max_tokens: 1200, temperature: 0.9, messages };
+    if (system) body.system = system;
+    return send(body, {
+      "x-api-key": key,
+      "anthropic-version": "2023-06-01",
+      "Authorization": "Bearer " + key
+    });
+  }
+  __name(callAnthropic, "callAnthropic");
+  async function callGemini(useImage) {
+    const contents = baseMessages.map(function(m) {
+      return { role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] };
+    });
+    const parts = [{ text: textPrompt }];
+    if (useImage && imageUrl) {
+      let d = peekDataUrl(imageUrl);
+      if (!d && /^https?:\/\//i.test(imageUrl)) {
+        try {
+          const ir = await fetch(imageUrl);
+          if (ir.ok) {
+            d = {
+              mime: ir.headers.get("content-type") || "image/jpeg",
+              data: peekBase64(await ir.arrayBuffer())
+            };
+          }
+        } catch (e) {
+        }
+      }
+      if (d) parts.push({ inlineData: { mimeType: d.mime, data: d.data } });
+    }
+    contents.push({ role: "user", parts });
+    const body = { contents, generationConfig: { temperature: 0.9, maxOutputTokens: 1200 } };
+    if (system) body.systemInstruction = { parts: [{ text: system }] };
+    return send(body, { "x-goog-api-key": key, "Authorization": "Bearer " + key });
+  }
+  __name(callGemini, "callGemini");
+  let r;
+  if (provider === "anthropic") {
+    r = await callAnthropic(!!imageUrl);
+  } else if (provider === "gemini") {
+    r = await callGemini(!!imageUrl);
+  } else {
+    r = await callOpenAI(!!imageUrl, "max_tokens", "object", {});
+    if (!r.text) r = await callOpenAI(!!imageUrl, "max_tokens", "object", { temperature: false });
+    if (!r.text && imageUrl) r = await callOpenAI(true, "max_tokens", "string", { temperature: false });
+    if (!r.text && imageUrl) r = await callOpenAI(true, "max_tokens", "raw", { temperature: false });
+    if (!r.text && imageUrl) r = await callOpenAI(true, "max_tokens", "object", { temperature: false, minimal: true, imageFirst: true });
+    if (!r.text && /max_tokens|max_completion_tokens|unsupported|invalid|reasoning|temperature/i.test(r.error || "")) {
+      r = await callOpenAI(!!imageUrl, "max_completion_tokens", "object", { temperature: false });
+    }
+  }
+  return { text: r.text ? String(r.text).trim() : "", error: r.error || "" };
 }
+__name(peekModel, "peekModel");
 var LINK_HOST_RE = /(^|\.)(xiaohongshu\.com|xhslink\.[a-z.]+|xhs\.cn|douyin\.com|iesdouyin\.com|taobao\.com|tmall\.com|tb\.cn|jd\.com|3\.cn|bilibili\.com|b23\.tv|weibo\.com|weibo\.cn)$/i;
 function linkHostAllowed(host) {
   return LINK_HOST_RE.test(String(host || "").toLowerCase());
 }
+__name(linkHostAllowed, "linkHostAllowed");
 function linkDecodeHtml(s) {
   return String(s || "").replace(/&quot;/g, '"').replace(/&#0?39;/g, "'").replace(/&#x27;/gi, "'").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&nbsp;/g, " ").replace(/\\u([\dA-Fa-f]{4})/g, function(_, h) {
     try {
@@ -1504,6 +2003,7 @@ function linkDecodeHtml(s) {
     }
   }).replace(/\s+/g, " ").trim();
 }
+__name(linkDecodeHtml, "linkDecodeHtml");
 function linkAbsImg(u) {
   u = linkDecodeHtml(String(u || "")).replace(/\\\//g, "/").replace(/&amp;/g, "&");
   if (!u) return "";
@@ -1512,19 +2012,23 @@ function linkAbsImg(u) {
   if (!/^https?:\/\//i.test(u)) return "";
   return u;
 }
+__name(linkAbsImg, "linkAbsImg");
 function linkCleanText(s) {
   return String(s || "").replace(/!\[[^\]]*\]\([^)]*\)/g, " ").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/<[^>]+>/g, " ").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").replace(/[ \t]{2,}/g, " ").trim();
 }
+__name(linkCleanText, "linkCleanText");
 function parseLinkPage(html) {
   html = String(html || "").replace(/\\u002F/gi, "/").replace(/\\\//g, "/");
   function pick(re2) {
     const m2 = html.match(re2);
     return m2 ? m2[1] : "";
   }
+  __name(pick, "pick");
   function jsonField(name) {
     const m2 = html.match(new RegExp('"' + name + '"\\s*:\\s*"([^"]{2,})"', "i"));
     return m2 ? linkDecodeHtml(String(m2[1]).replace(/\\n/g, " ")) : "";
   }
+  __name(jsonField, "jsonField");
   const docTitle = pick(/<meta[^>]+(?:property|name)=["'](?:og:title|twitter:title)["'][^>]*content=["']([\s\S]*?)["']/i) || pick(/<meta[^>]+content=["']([\s\S]*?)["'][^>]*(?:property|name)=["'](?:og:title|twitter:title)["']/i) || pick(/<title[^>]*>([\s\S]*?)<\/title>/i);
   const jsonTitle = jsonField("title") || jsonField("noteTitle") || jsonField("displayTitle");
   let title = docTitle;
@@ -1541,6 +2045,7 @@ function parseLinkPage(html) {
     seen[u] = 1;
     if (imgs.length < 6) imgs.push(u);
   }
+  __name(addImg, "addImg");
   let re = /<meta[^>]+(?:property|name)=["'](?:og:image(?::secure_url)?|twitter:image)["'][^>]*content=["']([^"']+)["']/gi, m;
   while (m = re.exec(html)) addImg(m[1]);
   re = /<meta[^>]+content=["']([^"']+)["'][^>]*(?:property|name)=["'](?:og:image(?::secure_url)?|twitter:image)["']/gi;
@@ -1569,6 +2074,7 @@ function parseLinkPage(html) {
   const body = [jsonTitle, jsonField("desc"), jsonField("share_title"), jsonField("description"), desc, visible].filter(Boolean).join("\n").slice(0, 7e3);
   return { title, desc, content: body, images: imgs, price };
 }
+__name(parseLinkPage, "parseLinkPage");
 function linkLooksBlocked(finalUrl, data) {
   if (/website-login|captcha|verify|\/login|signin/i.test(String(finalUrl || ""))) return true;
   const title = String(data && data.title || "");
@@ -1577,6 +2083,7 @@ function linkLooksBlocked(finalUrl, data) {
   if (/滑动验证|请登录|安全验证|访问异常|captcha|想了解些什么|登录后|扫码登录|登录小红书|亲，请登录|扫码查看|商品不存在|商品已下架|您查看的宝贝不存在|页面不存在/i.test(content)) return true;
   return false;
 }
+__name(linkLooksBlocked, "linkLooksBlocked");
 function xhsDirectUrls(finalUrl) {
   const out = [];
   try {
@@ -1595,6 +2102,7 @@ function xhsDirectUrls(finalUrl) {
   }
   return out;
 }
+__name(xhsDirectUrls, "xhsDirectUrls");
 function parseJinaText(raw) {
   raw = String(raw || "");
   const tm = raw.match(/^\s*Title\s*:\s*(.+)$/im);
@@ -1619,6 +2127,7 @@ function parseJinaText(raw) {
     price: ""
   };
 }
+__name(parseJinaText, "parseJinaText");
 async function fetchTextWithTimeout(target, headers, ms) {
   const controller = new AbortController();
   const timer = setTimeout(function() {
@@ -1637,6 +2146,7 @@ async function fetchTextWithTimeout(target, headers, ms) {
     clearTimeout(timer);
   }
 }
+__name(fetchTextWithTimeout, "fetchTextWithTimeout");
 async function fetchLinkPreview(url) {
   let u;
   try {
@@ -1756,6 +2266,7 @@ async function fetchLinkPreview(url) {
   }
   return null;
 }
+__name(fetchLinkPreview, "fetchLinkPreview");
 var HOT_LABEL = { weibo: "\u5FAE\u535A", douyin: "\u6296\u97F3", baidu: "\u767E\u5EA6", toutiao: "\u4ECA\u65E5\u5934\u6761", bilibili: "B\u7AD9" };
 var HOT_DESKTOP_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 var HOT_MOBILE_UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1";
@@ -1764,6 +2275,7 @@ function hotItem(title, hot, url) {
   if (!title) return null;
   return { title: title.slice(0, 160), hot: Number(hot) || 0, url: String(url || "") };
 }
+__name(hotItem, "hotItem");
 async function hotWeibo() {
   const r = await fetchTextWithTimeout("https://weibo.com/ajax/statuses/hot_band", {
     "User-Agent": HOT_DESKTOP_UA,
@@ -1777,6 +2289,7 @@ async function hotWeibo() {
     return hotItem(x.word || x.note, x.num, "https://s.weibo.com/weibo?q=" + encodeURIComponent(x.word_scheme || x.word || ""));
   }).filter(Boolean).slice(0, 20);
 }
+__name(hotWeibo, "hotWeibo");
 async function hotDouyin() {
   const r = await fetchTextWithTimeout("https://www.iesdouyin.com/web/api/v2/hotsearch/billboard/word/", {
     "User-Agent": HOT_MOBILE_UA,
@@ -1789,6 +2302,7 @@ async function hotDouyin() {
     return hotItem(x.word, x.hot_value, "https://www.douyin.com/search/" + encodeURIComponent(x.word || ""));
   }).filter(Boolean).slice(0, 20);
 }
+__name(hotDouyin, "hotDouyin");
 async function hotBaidu() {
   const r = await fetchTextWithTimeout("https://top.baidu.com/api/board?platform=wise&tab=realtime", {
     "User-Agent": HOT_MOBILE_UA,
@@ -1798,7 +2312,7 @@ async function hotBaidu() {
   if (!r) return [];
   const j = JSON.parse(r.text);
   const out = [], seen = {};
-  (function walk(o) {
+  (/* @__PURE__ */ __name((function walk(o) {
     if (!o || out.length >= 20) return;
     if (Array.isArray(o)) {
       o.forEach(walk);
@@ -1812,9 +2326,10 @@ async function hotBaidu() {
     Object.keys(o).forEach(function(k) {
       walk(o[k]);
     });
-  })(j);
+  }), "walk"))(j);
   return out.filter(Boolean).slice(0, 20);
 }
+__name(hotBaidu, "hotBaidu");
 async function hotToutiao() {
   const r = await fetchTextWithTimeout("https://www.toutiao.com/hot-event/hot-board/?origin=toutiao_pc", {
     "User-Agent": HOT_DESKTOP_UA,
@@ -1827,6 +2342,7 @@ async function hotToutiao() {
     return hotItem(x.Title, x.HotValue, x.Url);
   }).filter(Boolean).slice(0, 20);
 }
+__name(hotToutiao, "hotToutiao");
 async function hotBilibili() {
   const r = await fetchTextWithTimeout("https://s.search.bilibili.com/main/hotword", {
     "User-Agent": HOT_DESKTOP_UA,
@@ -1840,6 +2356,7 @@ async function hotBilibili() {
     return hotItem(word, x.heat_score, "https://search.bilibili.com/all?keyword=" + encodeURIComponent(word));
   }).filter(Boolean).slice(0, 20);
 }
+__name(hotBilibili, "hotBilibili");
 var HOT_SOURCES = { weibo: hotWeibo, douyin: hotDouyin, baidu: hotBaidu, toutiao: hotToutiao, bilibili: hotBilibili };
 async function getHotTopics(source) {
   source = String(source || "").trim().toLowerCase();
@@ -1853,6 +2370,7 @@ async function getHotTopics(source) {
     }
   }));
 }
+__name(getHotTopics, "getHotTopics");
 var ACC_SESSION_TTL = 30 * 24 * 60 * 60;
 var ACC_MAX_DEVICES = 3;
 var ACC_PBKDF2_ITER = 3e4;
@@ -1862,27 +2380,33 @@ var ACC_USER_PREFIX = "acct:user:";
 function accNormName(v) {
   return String(v == null ? "" : v).trim();
 }
+__name(accNormName, "accNormName");
 function accLowerName(v) {
   return accNormName(v).toLowerCase();
 }
+__name(accLowerName, "accLowerName");
 function accUserKey(name) {
   return ACC_USER_PREFIX + accLowerName(name);
 }
+__name(accUserKey, "accUserKey");
 function accSessKey(name) {
   return ACC_SESS_PREFIX + accLowerName(name);
 }
+__name(accSessKey, "accSessKey");
 function accB64(buf) {
   const bytes = new Uint8Array(buf);
   let s = "";
   for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
   return btoa(s);
 }
+__name(accB64, "accB64");
 function accUnb64(str) {
   const bin = atob(String(str || ""));
   const out = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
   return out;
 }
+__name(accUnb64, "accUnb64");
 function accRandomHex(bytes) {
   const b = new Uint8Array(bytes || 16);
   crypto.getRandomValues(b);
@@ -1890,6 +2414,7 @@ function accRandomHex(bytes) {
     return x.toString(16).padStart(2, "0");
   }).join("");
 }
+__name(accRandomHex, "accRandomHex");
 async function accHash(password, saltB64) {
   const enc = new TextEncoder();
   const key = await crypto.subtle.importKey("raw", enc.encode(String(password)), "PBKDF2", false, ["deriveBits"]);
@@ -1901,12 +2426,14 @@ async function accHash(password, saltB64) {
   }, key, 256);
   return accB64(bits);
 }
+__name(accHash, "accHash");
 function accCleanSessions(list) {
   const now = Date.now();
   return (Array.isArray(list) ? list : []).filter(function(s) {
     return s && s.token && (!s.exp || Number(s.exp) > now);
   });
 }
+__name(accCleanSessions, "accCleanSessions");
 function accPublicSessions(list, currentSid) {
   return (Array.isArray(list) ? list : []).map(function(s) {
     return {
@@ -1921,6 +2448,7 @@ function accPublicSessions(list, currentSid) {
     return (b.lastSeen || 0) - (a.lastSeen || 0);
   });
 }
+__name(accPublicSessions, "accPublicSessions");
 async function accReadUser(env, name) {
   const raw = await kv(env).get(accUserKey(name));
   if (!raw) return null;
@@ -1930,6 +2458,7 @@ async function accReadUser(env, name) {
     return null;
   }
 }
+__name(accReadUser, "accReadUser");
 async function accReadSessions(env, name) {
   const raw = await kv(env).get(accSessKey(name));
   if (!raw) return [];
@@ -1939,9 +2468,11 @@ async function accReadSessions(env, name) {
     return [];
   }
 }
+__name(accReadSessions, "accReadSessions");
 async function accSaveSessions(env, name, list) {
   await kv(env).put(accSessKey(name), JSON.stringify(accCleanSessions(list)));
 }
+__name(accSaveSessions, "accSaveSessions");
 async function accDropSession(env, name, sess) {
   if (!sess) return;
   try {
@@ -1949,6 +2480,7 @@ async function accDropSession(env, name, sess) {
   } catch (e) {
   }
 }
+__name(accDropSession, "accDropSession");
 async function accIssueSession(env, user, body) {
   const now = Date.now();
   const deviceId = String(body && body.deviceId || "").slice(0, 80) || accRandomHex(8);
@@ -1990,6 +2522,7 @@ async function accIssueSession(env, user, body) {
   }), { expirationTtl: ACC_SESSION_TTL });
   return { session: sess, sessions: list, evicted };
 }
+__name(accIssueSession, "accIssueSession");
 async function accAuth(env, token) {
   token = String(token || "").trim();
   if (!token) return null;
@@ -2011,6 +2544,7 @@ async function accAuth(env, token) {
   if (!sess) return null;
   return { user, session: sess, sessions: list, token };
 }
+__name(accAuth, "accAuth");
 function accAdminOk(request, env, body) {
   const need = String(env && env.ACCOUNT_ADMIN_TOKEN || "");
   if (!need) return { ok: false, error: "\u670D\u52A1\u7AEF\u672A\u914D\u7F6E ACCOUNT_ADMIN_TOKEN" };
@@ -2020,12 +2554,15 @@ function accAdminOk(request, env, body) {
   for (let i = 0; i < need.length; i++) diff |= got.charCodeAt(i) ^ need.charCodeAt(i);
   return diff === 0 ? { ok: true } : { ok: false, error: "\u7BA1\u7406\u5458\u5BC6\u94A5\u9519\u8BEF" };
 }
+__name(accAdminOk, "accAdminOk");
 function accValidName(name) {
   return /^[a-zA-Z0-9_\u4e00-\u9fa5.-]{2,24}$/.test(name);
 }
+__name(accValidName, "accValidName");
 function accRole(user) {
   return user && user.role === "admin" ? "admin" : "user";
 }
+__name(accRole, "accRole");
 async function accReadPolicy(env) {
   const raw = await kv(env).get("acct:policy");
   if (!raw) return { allowUserImport: false };
@@ -2036,10 +2573,12 @@ async function accReadPolicy(env) {
     return { allowUserImport: false };
   }
 }
+__name(accReadPolicy, "accReadPolicy");
 async function accAdminAccess(request, env, body, auth) {
   if (auth && accRole(auth.user) === "admin") return { ok: true, by: "role" };
   return accAdminOk(request, env, body);
 }
+__name(accAdminAccess, "accAdminAccess");
 function accCode(prefix, groups) {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let out = String(prefix || "NANO").toUpperCase();
@@ -2052,9 +2591,11 @@ function accCode(prefix, groups) {
   }
   return out;
 }
+__name(accCode, "accCode");
 function accDeviceKey(user, deviceId) {
   return "acct:dev:" + accLowerName(user.u) + ":" + String(deviceId || "");
 }
+__name(accDeviceKey, "accDeviceKey");
 async function accReadDevice(env, user, deviceId) {
   if (!user || !deviceId) return null;
   const raw = await kv(env).get(accDeviceKey(user, deviceId));
@@ -2065,6 +2606,7 @@ async function accReadDevice(env, user, deviceId) {
     return null;
   }
 }
+__name(accReadDevice, "accReadDevice");
 function accPublicDevice(dev) {
   if (!dev) return null;
   return {
@@ -2076,6 +2618,7 @@ function accPublicDevice(dev) {
     lastSeen: dev.lastSeen || dev.at || 0
   };
 }
+__name(accPublicDevice, "accPublicDevice");
 function accAdminDevice(dev, user) {
   if (!dev) return null;
   return Object.assign(accPublicDevice(dev), {
@@ -2084,6 +2627,7 @@ function accAdminDevice(dev, user) {
     activationAt: dev.activationAt || 0
   });
 }
+__name(accAdminDevice, "accAdminDevice");
 async function accReadDeviceByCode(env, code) {
   const c = String(code || "").trim().toUpperCase().replace(/\s+/g, "");
   if (!c) return null;
@@ -2099,6 +2643,7 @@ async function accReadDeviceByCode(env, code) {
     return null;
   }
 }
+__name(accReadDeviceByCode, "accReadDeviceByCode");
 async function accNewActivationCode(env, user, deviceId) {
   for (let i = 0; i < 10; i++) {
     const code = accCode("ACT", 2);
@@ -2110,6 +2655,7 @@ async function accNewActivationCode(env, user, deviceId) {
   }
   return accCode("ACT", 3);
 }
+__name(accNewActivationCode, "accNewActivationCode");
 async function accEnsureDevice(env, user, deviceId, deviceName) {
   if (!user || !deviceId) return null;
   const now = Date.now();
@@ -2146,6 +2692,7 @@ async function accEnsureDevice(env, user, deviceId, deviceName) {
   if (changed) await kv(env).put(accDeviceKey(user, deviceId), JSON.stringify(dev));
   return dev;
 }
+__name(accEnsureDevice, "accEnsureDevice");
 async function accHandle(request, env, pathname) {
   if (!pathname.startsWith("/account/") && !pathname.startsWith("/gate/")) return null;
   const method = request.method;
@@ -2515,6 +3062,7 @@ async function accHandle(request, env, pathname) {
   }
   return json({ ok: false, error: "not found" }, 404);
 }
+__name(accHandle, "accHandle");
 var index_default = {
   async fetch(request, env) {
     if (request.method === "OPTIONS") return new Response(null, { headers: CORS });
@@ -2751,13 +3299,14 @@ var index_default = {
       return json({
         ok: true,
         service: "nano-peek",
-        build: "2026-10-24-bark-get",
+        build: "2026-10-25-r2-live",
         method: "POST /peek",
         publicMode,
         tokenConfigured: !!env.PEEK_TOKEN,
         tokenRequired: !publicMode && !!env.PEEK_TOKEN,
         kvBound: !!env.PUSH_KV,
-        d1Bound: !!env.nano_db,
+        d1Bound: !!(env.DB || env.nano_db),
+        store: env.DB || env.nano_db ? "d1" : env.PUSH_KV ? "kv" : "none",
         envApiConfigured: !!(env.PEEK_API_URL && env.PEEK_API_KEY && env.PEEK_MODEL),
         note: publicMode ? "\u516C\u7528\u6A21\u5F0F\uFF1A\u5FEB\u6377\u6307\u4EE4 token \u81F3\u5C11 8 \u4F4D\uFF1B\u6A21\u578B API \u7531 Nano \u540C\u6B65\uFF0C\u6CA1\u540C\u6B65\u4F1A 502\u3002" : "\u79C1\u7528\u6A21\u5F0F\uFF1A\u5FEB\u6377\u6307\u4EE4 token \u5FC5\u987B\u548C Worker \u7684 PEEK_TOKEN \u5B8C\u5168\u4E00\u81F4\u3002"
       });
@@ -2854,12 +3403,19 @@ var index_default = {
       } catch (e) {
       }
       let reply = null;
+      let peekErr = "";
       try {
-        reply = await peekModel(env, system, text, image, history, apiCfg, context);
+        const out = await peekModel(env, system, text, image, history, apiCfg, context);
+        if (out) {
+          reply = out.text || null;
+          peekErr = out.error || "";
+        }
       } catch (e) {
+        peekErr = String(e && e.message || e || "");
       }
       if (!reply) {
         const hasEnvApi = !peekPublic(env) && !!(env.PEEK_API_URL && env.PEEK_API_KEY && env.PEEK_MODEL);
+        const errDetail = String(peekErr || "").replace(/\s+/g, " ").slice(0, 180);
         if (!apiCfg) {
           return json({
             ok: false,
@@ -2870,10 +3426,10 @@ var index_default = {
         return json({
           ok: false,
           error: "model",
-          reply: peekPublic(env) ? "\u5DF2\u7ECF\u6709\u6A21\u578B API\uFF0C\u4F46\u6A21\u578B\u6CA1\u6709\u8FD4\u56DE\u5185\u5BB9\u3002\u5E38\u89C1\u539F\u56E0\uFF1A\u6A21\u578B\u4E0D\u652F\u6301\u56FE\u7247\u3001Key/\u989D\u5EA6/\u4E2D\u8F6C\u5730\u5740\u9519\u8BEF\uFF0C\u6216\u4E0A\u6E38\u8D85\u65F6\u3002\u5148\u7528\u7EAF\u6587\u5B57\u6D4B\u8BD5\uFF0C\u518D\u6362\u4E00\u4E2A\u652F\u6301\u8BC6\u56FE\u7684\u6A21\u578B\u3002" : hasEnvApi ? "\u6A21\u578B\u6CA1\u6709\u8FD4\u56DE\u5185\u5BB9\uFF1A\u8BF7\u68C0\u67E5 PEEK_API_URL / PEEK_API_KEY / PEEK_MODEL \u6216\u6A21\u578B\u662F\u5426\u652F\u6301\u8BC6\u56FE\u3002" : "\u670D\u52A1\u7AEF\u8FD8\u6CA1\u6709\u6A21\u578B API\uFF1A\u8BF7\u5728 Nano \u91CC\u6253\u5F00\u4E00\u6B21\u804A\u5929\u540C\u6B65\u4E3B API\uFF0C\u6216\u5728 Worker \u914D\u7F6E PEEK_API_URL / PEEK_API_KEY / PEEK_MODEL\u3002"
+          reply: peekPublic(env) ? "\u5DF2\u7ECF\u6709\u6A21\u578B API\uFF0C\u4F46\u8FD9\u6B21\u6CA1\u6709\u62FF\u5230\u56DE\u590D" + (errDetail ? "\uFF08\u4E0A\u6E38\uFF1A" + errDetail + "\uFF09" : "") + "\u3002\u8BF7\u68C0\u67E5\u4E2D\u8F6C\u7AD9\u662F\u5426\u652F\u6301\u56FE\u7247\u8F93\u5165\u3001\u6A21\u578B\u662F\u5426\u771F\u7684\u652F\u6301\u8BC6\u56FE\uFF0C\u4EE5\u53CA Key/\u989D\u5EA6/\u63A5\u53E3\u5730\u5740\u3002" : hasEnvApi ? "\u6A21\u578B\u6CA1\u6709\u8FD4\u56DE\u5185\u5BB9" + (errDetail ? "\uFF08\u4E0A\u6E38\uFF1A" + errDetail + "\uFF09" : "") + "\uFF1A\u8BF7\u68C0\u67E5 PEEK_API_URL / PEEK_API_KEY / PEEK_MODEL \u6216\u6A21\u578B\u662F\u5426\u652F\u6301\u8BC6\u56FE\u3002" : "\u670D\u52A1\u7AEF\u8FD8\u6CA1\u6709\u6A21\u578B API\uFF1A\u8BF7\u5728 Nano \u91CC\u6253\u5F00\u4E00\u6B21\u804A\u5929\u540C\u6B65\u4E3B API\uFF0C\u6216\u5728 Worker \u914D\u7F6E PEEK_API_URL / PEEK_API_KEY / PEEK_MODEL\u3002"
         }, 502);
       }
-      const MAX_IMAGE_CHARS = 4 * 1024 * 1024;
+      const MAX_IMAGE_CHARS = env.DB || env.nano_db ? 480 * 1024 : 4 * 1024 * 1024;
       const imageStore = image && image.length <= MAX_IMAGE_CHARS ? image : "";
       history.push({
         user: text || (image ? "" : "[\u56FE\u7247]"),
@@ -3272,6 +3828,7 @@ var index_default = {
         return {};
       }
     }
+    __name(readMarketCounts, "readMarketCounts");
     function mergeMarketCounts(item, counts) {
       if (!item || !item.id) return item;
       const c = counts && counts[item.id];
@@ -3281,6 +3838,19 @@ var index_default = {
         if (c.imports != null) item.imports = Number(c.imports) || 0;
       }
       return item;
+    }
+    __name(mergeMarketCounts, "mergeMarketCounts");
+    if (pathname === "/market/file" && request.method === "GET") {
+      if (!env.MEDIA) return json({ ok: false, error: "no media" }, 404);
+      const key = new URL(request.url).searchParams.get("key") || "";
+      if (!/^market\/[A-Za-z0-9_-]+\//.test(key)) return json({ ok: false, error: "bad key" }, 400);
+      const obj = await env.MEDIA.get(key);
+      if (!obj) return new Response("not found", { status: 404, headers: CORS });
+      const headers = new Headers(CORS);
+      headers.set("Content-Type", obj.httpMetadata && obj.httpMetadata.contentType || "application/octet-stream");
+      headers.set("Cache-Control", "public, max-age=31536000, immutable");
+      if (obj.size) headers.set("Content-Length", String(obj.size));
+      return new Response(obj.body, { headers });
     }
     if (pathname === "/market/list" && request.method === "GET") {
       if (supabaseConf(env)) {
@@ -3352,6 +3922,13 @@ var index_default = {
       }
       const item = body.item, summary = body.summary, token = String(body.token || "");
       if (!item || !item.id) return json({ ok: false, error: "no item" }, 400);
+      if (env.MEDIA || supabaseConf(env)) {
+        try {
+          await offloadMarketItem(env, request, item, summary);
+        } catch (e) {
+          console.warn("[market] storage offload failed:", e && e.message);
+        }
+      }
       const payload = JSON.stringify({ item, tok: token });
       if (payload.length > 24 * 1024 * 1024) return json({ ok: false, error: "too large" }, 413);
       if (supabaseConf(env)) {
@@ -3439,9 +4016,15 @@ var index_default = {
       const id = String(body.id || ""), token = String(body.token || "");
       if (supabaseConf(env)) {
         try {
-          const rows = await supabase(env, "/rest/v1/market_items?id=eq." + encodeURIComponent(id) + "&select=token&limit=1");
+          const rows = await supabase(env, "/rest/v1/market_items?id=eq." + encodeURIComponent(id) + "&select=token,item,summary&limit=1");
           if (Array.isArray(rows) && rows[0]) {
             if (rows[0].token && rows[0].token !== token) return json({ ok: false, error: "forbidden" }, 403);
+            if (env.MEDIA || supabaseConf(env)) {
+              try {
+                await deleteMarketBlobs(env, rows[0].item, rows[0].summary);
+              } catch (e) {
+              }
+            }
             await supabase(env, "/rest/v1/market_items?id=eq." + encodeURIComponent(id), { method: "DELETE" });
             return json({ ok: true });
           }
@@ -3459,6 +4042,12 @@ var index_default = {
         return json({ ok: false }, 500);
       }
       if (rec.tok && rec.tok !== token) return json({ ok: false, error: "forbidden" }, 403);
+      if (env.MEDIA || supabaseConf(env)) {
+        try {
+          await deleteMarketBlobs(env, rec.item);
+        } catch (e) {
+        }
+      }
       await marketKv(env).delete(key);
       let items = [];
       try {
@@ -3508,12 +4097,16 @@ var index_default = {
         return json({ ok: false, error: "fetch failed: " + (e && e.message ? e.message : e) }, 502);
       }
     }
-    return json({ ok: true, info: "nano-push alive", build: "2026-10-24-bark-get" });
+    return json({ ok: true, info: "nano-push alive", build: "2026-10-25-r2-live" });
   },
   // 每 5 分钟触发：到点给 Bark 发提醒 + 处理 KV 里的预约任务
   async scheduled(event, env, ctx) {
     try {
       await sendBarkReminder(env);
+    } catch (e) {
+    }
+    try {
+      await cleanupExpiredD1(env);
     } catch (e) {
     }
     try {
@@ -3561,6 +4154,7 @@ var index_default = {
       if (!subsCache[k]) subsCache[k] = await getSubs(env, job.userId || null, job.deviceId || null, jobApp);
       return subsCache[k];
     }
+    __name(jobSubs, "jobSubs");
     for (const id of dueIds) {
       let raw = "";
       try {
@@ -3608,6 +4202,7 @@ var index_default = {
   }
 };
 async function sendBarkReminder(env) {
+  return;
   const key = env.BARK_KEY;
   if (!key) return;
   const times = String(env.REMIND_TIMES || "").split(",").map((s) => s.trim()).filter(Boolean);
@@ -3624,6 +4219,7 @@ async function sendBarkReminder(env) {
   } catch (e) {
   }
 }
+__name(sendBarkReminder, "sendBarkReminder");
 async function getSubs(env, userId, deviceId, appId) {
   const out = [];
   const seen = {};
@@ -3663,6 +4259,7 @@ async function getSubs(env, userId, deviceId, appId) {
   }
   return out;
 }
+__name(getSubs, "getSubs");
 async function pushAll(subs, payload, env) {
   const vapid = await ensureVapid(env);
   if (!vapid) return 0;
@@ -3692,11 +4289,13 @@ async function pushAll(subs, payload, env) {
   }
   return sent;
 }
+__name(pushAll, "pushAll");
 async function sendAll(env, payload) {
   const subs = await getSubs(env);
   await pushAll(subs, payload, env);
   return subs.length;
 }
+__name(sendAll, "sendAll");
 export {
   index_default as default
 };

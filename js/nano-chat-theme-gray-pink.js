@@ -1131,32 +1131,97 @@ body.nano-chat-inner .longpress-menu .menu-divider { background: rgba(0, 0, 0, 0
    外卖 / 定位卡片：各自独立，不套用转账卡片模板
    ============================================================ */
 body.nano-chat-inner .bubble-card.takeout {
-  width: var(--card-width, 268px);
-  background: linear-gradient(180deg, #fffdfb, #fdf3e9);
-  border: 0.5px solid #edd7c4;
+  display: flex;
+  flex-direction: column;
+  width: 206px;
+  max-width: 206px;
+  min-height: 188px;
+  background: linear-gradient(180deg, #fffdfd 0%, #faf2f5 100%);
+  border: 0.5px solid #eadde3;
   border-radius: 18px;
-  box-shadow: 0 8px 22px rgba(150, 110, 80, 0.10);
-  color: #4b3a30;
-  font-size: 12.5px;
+  box-shadow: 0 8px 24px rgba(150, 120, 135, 0.12);
+  color: #4a4a4a;
+  font-size: 12px;
+  overflow: hidden;
 }
-body.nano-chat-inner .bubble-card.takeout .tk-bubble-head { padding: 13px 14px 10px; }
-body.nano-chat-inner .bubble-card.takeout .tk-bubble-food { color: #4b3a30; font-size: 17px; font-weight: 750; }
-body.nano-chat-inner .bubble-card.takeout .tk-bubble-shop { color: #a58a79; }
-body.nano-chat-inner .bubble-card.takeout .tk-bubble-note {
+body.nano-chat-inner .bubble-card.takeout .main-section {
+  order: 1;
+  padding: 11px 12px 8px !important;
+  gap: 9px !important;
+  border-bottom: 0 !important;
+}
+body.nano-chat-inner .bubble-card.takeout .main-icon,
+body.nano-chat-inner .bubble-card.takeout .icon-wrap {
+  width: 34px !important;
+  height: 34px !important;
+  border-radius: 11px !important;
+  background: #f7e4ea !important;
+  color: #b97e91 !important;
+}
+body.nano-chat-inner .bubble-card.takeout .main-title {
+  font-size: 14.5px !important;
+  font-weight: 700 !important;
+  line-height: 1.3 !important;
+  color: #4a4a4a !important;
+  white-space: normal !important;
+}
+body.nano-chat-inner .bubble-card.takeout .main-sub {
+  margin-top: 2px !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  color: #b97e91 !important;
+}
+body.nano-chat-inner .bubble-card.takeout .info-section { display: none !important; }
+body.nano-chat-inner .bubble-card.takeout .takeout-map {
+  order: 3;
+  height: 84px;
+  margin: 0 12px 8px;
+  border-radius: 14px;
+  border: 1px solid #ecdde3;
+  background:
+    repeating-linear-gradient(0deg, rgba(189, 131, 149, 0.08) 0 1px, transparent 1px 15px),
+    repeating-linear-gradient(90deg, rgba(189, 131, 149, 0.08) 0 1px, transparent 1px 15px),
+    linear-gradient(145deg, #fdf5f8, #f4e7ec 60%, #f9f0f3);
+}
+body.nano-chat-inner .bubble-card.takeout .tm-route {
+  left: 14%;
+  top: 63%;
+  width: 60%;
+  height: 2px;
+  background: linear-gradient(90deg, rgba(185, 126, 145, 0.18), rgba(185, 126, 145, 0.68));
+  transform: rotate(-16deg);
+}
+body.nano-chat-inner .bubble-card.takeout .tm-route::after {
+  background: #b97e91;
+  box-shadow: 0 0 0 3px rgba(185, 126, 145, 0.16);
+}
+body.nano-chat-inner .bubble-card.takeout .tm-pin {
+  background: #b97e91;
+  box-shadow: 0 2px 6px rgba(150, 90, 110, 0.25);
+}
+body.nano-chat-inner .bubble-card.takeout .tm-eta {
+  color: #7e4f60;
+  font-size: 11.5px;
+}
+body.nano-chat-inner .bubble-card.takeout .tm-status {
+  color: #9a7482;
   background: rgba(255, 255, 255, 0.72);
-  border: 1px dashed #ecd8c8;
-  color: #8d7565;
+  font-size: 10px;
 }
-body.nano-chat-inner .bubble-card.takeout .tk-bubble-map {
-  background: linear-gradient(135deg, #eef4ee, #e3edf5 55%, #f3f1ee);
-  border: 1px solid rgba(80, 90, 100, 0.08);
+body.nano-chat-inner .bubble-card.takeout .message-box {
+  order: 2;
+  display: block !important;
+  margin: 0 12px 7px !important;
+  padding: 4px 8px !important;
+  border: 1px dashed #e8d3db !important;
+  border-radius: 9px !important;
+  background: #fff9fb !important;
+  color: #9a7886 !important;
+  font-size: 10px !important;
+  line-height: 1.4 !important;
 }
-body.nano-chat-inner .bubble-card.takeout .tk-bubble-btn {
-  background: #e9a36b;
-  color: #fff;
-}
-body.nano-chat-inner .bubble-card.takeout .tk-bubble-status { color: #a58a79; }
-
+body.nano-chat-inner .bubble-card.takeout .card-footer { order: 4; padding: 0 10px 9px !important; }
+body.nano-chat-inner .bubble-card.takeout .card-footer-text { color: #a1838e !important; font-size: 10px !important; }
 body.nano-chat-inner .bubble-card.location {
   width: var(--card-width, 258px);
   background: linear-gradient(180deg, #f9fcfd, #edf5fa);

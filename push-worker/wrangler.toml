@@ -11,9 +11,13 @@ routes = [
   { pattern = "music.nano315.online", custom_domain = true }
 ]
 
-kv_namespaces = [
-  { binding = "PUSH_KV", id = "2bd6299b03c442bd81cbf023ec6cfb92" }
-]
+# ===== 存储 =====
+# 生产已改为 D1 优先（账号 / 窥屏 / 订阅 / 主动消息 / 集市都走 D1），不再使用 KV。
+# 如果还需要对照旧数据，可以临时取消下面两行注释再部署；确认 24h KV 曲线归零、
+# 旧数据不需要迁移后，直接在 Cloudflare Dashboard 删除 PUSH_KV 命名空间即可。
+# kv_namespaces = [
+#   { binding = "PUSH_KV", id = "2bd6299b03c442bd81cbf023ec6cfb92" }
+# ]
 
 # ===== D1（已创建 nano-db）=====
 # 绑定后 Worker 会自动把所有 KV get/put/delete/list 切到 D1 的 kv 表；
@@ -24,17 +28,28 @@ binding = "nano_db"
 database_name = "nano-db"
 database_id = "8dba16fd-5976-4c57-a5cd-7313dc49c858"
 
+# ===== R2（集市图片/附件）=====
+# 已开通 R2：确认已创建 bucket「nano-media」后直接部署。
+# 没创建会部署失败；代码会优先 R2，没绑 R2 时自动退回 Supabase Storage。
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "nano-media"
+#
+# 可选：给桶绑定自定义域名（如 media.nano315.online）后，把 MEDIA_PUBLIC_BASE
+# 设成该域名，文件直接从 R2 出站，不占 Worker 请求；不设则走 Worker /market/file 代理。
+# 自定义域名需要在 R2 桶设置里配 CORS（允许你的站点域名 GET）。
+
 # ===== Supabase（共享集市）=====
 # 敏感项用 secret 设置，不要写进本文件：
 #   wrangler secret put SUPABASE_URL
 #   wrangler secret put SUPABASE_SERVICE_ROLE_KEY
 # 然后在 Supabase SQL Editor 执行 supabase-market.sql。
-# 没配置时共享集市仍回退到 KV。
+# 没配置时共享集市回退到 D1。
 
 [triggers]
 crons = ["*/5 * * * *"]
 
-# 定时提醒默认关闭：通用文案会让 Bark 看起来「只有标题没有内容」。
+# 定时提醒默认关闭：通用文案会让系统通知看起来「只有标题没有内容」。
 # 真实的主动消息 / 朋友圈由 Worker 到点生成，并带上角色昵称与第一条气泡内容。
 # 如确实需要固定提醒，再取消下面两行的注释并填写：
 # REMIND_TIMES = "09:00,12:30,20:00,23:00"
@@ -43,6 +58,10 @@ crons = ["*/5 * * * *"]
 # 设为 "0" 后，集市不再显示迁移前留在 KV 的旧帖子（数据仍在，只是隐藏）。
 # 想彻底删除旧 KV 帖子：Cloudflare Dashboard → KV → nano-push → 删除 market:* 键。
 INCLUDE_LEGACY_MARKET = "1"
+# 集市文件桶：Supabase Storage 的公开 bucket 名（在 supabase-market.sql 里创建）
+SUPABASE_MARKET_BUCKET = "nano-market"
+# R2 自定义域名：文件直接走 R2，不占 Worker 请求
+MEDIA_PUBLIC_BASE = "https://media.nano315.online"
 # Fish Audio TTS 反向代理（前端直连失败时会自动走 /fish-tts）
 # 默认 https://api.fish.audio；如改用第三方 Fish 代理，可取消下面一行注释：
 # FISH_API_ORIGIN = "https://api.fish.audio"

@@ -217,15 +217,12 @@
         if (!cfg.endpoint) return Promise.reject(new Error('未配置推送服务器'));
         var list = (Array.isArray(items) ? items : [items]).filter(function (it) { return it && it.at; });
         if (!list.length) return Promise.resolve({ ok: true, count: 0 });
-        var bark = '';
-        try { if (window.NanoNotify && NanoNotify.barkKey) bark = NanoNotify.barkKey() || ''; } catch (e) {}
         // 每条预约都绑定站点 / 设备 / 用户，服务端只投递给对应订阅，避免多开互相串。
         list = list.map(function (it) {
             return Object.assign({}, it, {
                 appId: appId(),
                 deviceId: autoDeviceId(),
-                userId: currentAutoUserId(),
-                barkKey: it.barkKey || bark
+                userId: currentAutoUserId()
             });
         });
         return postJSON(cfg.endpoint + '/schedule', { appId: appId(), deviceId: autoDeviceId(), userId: currentAutoUserId(), items: list });

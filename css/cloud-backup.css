@@ -1,0 +1,348 @@
+/* 云端备份页：沿用 backup.css 的 iOS 风格，只补充卡片 / 表单 / 教程 / 列表 */
+
+.cloud-main {
+    padding: 12px 0 36px;
+}
+
+.cloud-intro {
+    margin: 4px 16px 14px;
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, rgba(60, 60, 67, 0.08), rgba(120, 120, 128, 0.06));
+    color: #3a3a3c;
+    font-size: 12.5px;
+    line-height: 1.65;
+}
+.cloud-intro b { color: #3a3a3c; }
+
+.cloud-card {
+    margin: 16px 16px 0;
+    background: #fff;
+    border-radius: 18px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 18px rgba(0, 0, 0, 0.035);
+    overflow: hidden;
+}
+
+.cloud-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 15px 16px;
+    border-bottom: 0.5px solid var(--separator);
+}
+
+.cloud-logo {
+    width: 38px;
+    height: 38px;
+    border-radius: 11px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    flex-shrink: 0;
+}
+.cloud-logo.gh { background: #24292f; }
+.cloud-logo.cf { background: linear-gradient(145deg, #3a3a3c, #1c1c1e); }
+
+.cloud-title-wrap {
+    min-width: 0;
+    flex: 1;
+}
+.cloud-title {
+    font-size: 16.5px;
+    font-weight: 650;
+    letter-spacing: -0.2px;
+}
+.cloud-sub {
+    margin-top: 2px;
+    font-size: 12px;
+    color: var(--text-2);
+    line-height: 1.35;
+    word-break: break-all;
+}
+
+.cloud-badge {
+    flex-shrink: 0;
+    font-size: 11.5px;
+    font-weight: 600;
+    line-height: 1;
+    padding: 6px 9px;
+    border-radius: 20px;
+    background: rgba(120, 120, 128, 0.12);
+    color: #8e8e93;
+}
+.cloud-badge.ok {
+    background: rgba(60, 60, 67, 0.12);
+    color: #3a3a3c;
+}
+.cloud-badge.busy {
+    background: rgba(60, 60, 67, 0.12);
+    color: #3a3a3c;
+}
+
+.cloud-body { padding: 14px 16px 16px; }
+
+.field { display: block; margin-bottom: 12px; }
+.field-label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: #6c6c70;
+    margin: 0 2px 6px;
+}
+.field-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.field-input {
+    width: 100%;
+    height: 42px;
+    border: 1px solid rgba(60, 60, 67, 0.14);
+    background: #f7f7f9;
+    border-radius: 11px;
+    padding: 0 12px;
+    font-size: 14px;
+    color: #1c1c1e;
+    outline: none;
+    -webkit-appearance: none;
+    appearance: none;
+}
+.field-input:focus {
+    border-color: rgba(60, 60, 67, 0.5);
+    background: #fff;
+    box-shadow: 0 0 0 3px rgba(60, 60, 67, 0.1);
+}
+.field-input::placeholder { color: #b0b0b5; }
+
+.mini-btn {
+    flex-shrink: 0;
+    height: 38px;
+    padding: 0 12px;
+    border: none;
+    border-radius: 10px;
+    background: #eef0f4;
+    color: #3a3a3c;
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.mini-btn.dark { background: #1c1c1e; color: #fff; }
+.mini-btn:active { opacity: 0.65; }
+
+.btn-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 4px 0 6px;
+}
+.cloud-btn {
+    flex: 1 1 46%;
+    min-height: 40px;
+    padding: 9px 12px;
+    border: none;
+    border-radius: 11px;
+    background: #eef0f4;
+    color: #1c1c1e;
+    font-size: 13.5px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.cloud-btn.primary { background: #1c1c1e; color: #fff; }
+.cloud-btn.danger { color: #3a3a3c; }
+.cloud-btn.ghost { background: transparent; border: 1px solid rgba(60, 60, 67, 0.22); }
+.cloud-btn:disabled {
+    opacity: 0.38;
+    cursor: default;
+}
+.cloud-btn:not(:disabled):active { opacity: 0.68; }
+
+.cloud-list-title {
+    margin: 18px 2px 8px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #6c6c70;
+    letter-spacing: 0.02em;
+}
+
+.cloud-list {
+    border-radius: 13px;
+    background: #f7f7f9;
+    overflow: hidden;
+}
+
+.cloud-empty {
+    padding: 18px 14px;
+    text-align: center;
+    font-size: 12.5px;
+    color: #9a9aa0;
+}
+
+.cloud-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 13px;
+}
+.cloud-item + .cloud-item { border-top: 0.5px solid rgba(60, 60, 67, 0.11); }
+
+.cloud-item-main { flex: 1; min-width: 0; }
+.cloud-item-title {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: #1c1c1e;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.cloud-item-meta {
+    margin-top: 3px;
+    font-size: 11.5px;
+    color: #8e8e93;
+}
+.cloud-item-actions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+}
+.cloud-item-actions .mini-btn {
+    height: 32px;
+    padding: 0 10px;
+    font-size: 12px;
+    background: #fff;
+}
+.cloud-item-actions .mini-btn.del { color: #3a3a3c; }
+
+.tutorial {
+    margin-top: 16px;
+    border: 1px solid rgba(60, 60, 67, 0.16);
+    border-radius: 13px;
+    background: rgba(60, 60, 67, 0.035);
+    overflow: hidden;
+}
+.tutorial > summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 13px 14px;
+    font-size: 13px;
+    font-weight: 700;
+    color: #3a3a3c;
+    position: relative;
+}
+.tutorial > summary::-webkit-details-marker { display: none; }
+.tutorial > summary::after {
+    content: "›";
+    position: absolute;
+    right: 14px;
+    top: 50%;
+    transform: translateY(-50%) rotate(90deg);
+    font-size: 18px;
+    line-height: 1;
+    color: #3a3a3c;
+    transition: transform 0.2s;
+}
+.tutorial[open] > summary::after { transform: translateY(-50%) rotate(-90deg); }
+
+.tutorial ol {
+    margin: 0;
+    padding: 0 16px 4px 34px;
+    color: #3a3a3c;
+    font-size: 12.8px;
+    line-height: 1.75;
+}
+.tutorial li { margin: 0 0 7px; }
+.tutorial li:last-child { margin-bottom: 0; }
+.tutorial code,
+.tut-note code,
+.tut-warn code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.92em;
+    background: rgba(120, 120, 128, 0.14);
+    padding: 1px 4px;
+    border-radius: 4px;
+    word-break: break-all;
+}
+.tutorial b { color: #1c1c1e; }
+.tutorial strong { color: #3a3a3c; }
+
+.tut-note,
+.tut-warn {
+    margin: 10px 14px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    font-size: 12px;
+    line-height: 1.6;
+}
+.tut-note { background: rgba(60, 60, 67, 0.07); color: #3a3a3c; }
+.tut-warn { background: rgba(60, 60, 67, 0.08); color: #3a3a3c; margin-top: 10px; margin-bottom: 14px; }
+
+.code-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: 12px 14px 6px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #6c6c70;
+}
+.code-box {
+    margin: 0 14px 12px;
+    padding: 12px;
+    max-height: 300px;
+    overflow: auto;
+    background: #1c1c1e;
+    color: #e5e5ea;
+    border-radius: 11px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 10.5px;
+    line-height: 1.55;
+    white-space: pre;
+    -webkit-overflow-scrolling: touch;
+}
+
+.cloud-footer {
+    margin: 18px 20px 0;
+    font-size: 12px;
+    color: var(--text-2);
+    line-height: 1.6;
+    text-align: center;
+}
+.cloud-footer b { color: #1c1c1e; }
+
+.cloud-toast {
+    position: fixed;
+    left: 50%;
+    bottom: calc(28px + env(safe-area-inset-bottom, 0px));
+    transform: translate(-50%, 12px);
+    max-width: 82vw;
+    padding: 10px 16px;
+    border-radius: 22px;
+    background: rgba(28, 28, 30, 0.92);
+    color: #fff;
+    font-size: 13px;
+    line-height: 1.4;
+    text-align: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s, transform 0.2s;
+    z-index: 400;
+}
+.cloud-toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+.cloud-spin {
+    display: inline-block;
+    width: 13px;
+    height: 13px;
+    margin-right: 6px;
+    vertical-align: -2px;
+    border: 2px solid rgba(255, 255, 255, 0.4);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: cloudspin 0.8s linear infinite;
+}
+@keyframes cloudspin { to { transform: rotate(360deg); } }
+
+.cloud-backup-page .progress-fill{background:linear-gradient(90deg,#3a3a3c,#8e8e93);}
+
+.cloud-backup-page .nav-icon-btn{color:#3a3a3c;}
+

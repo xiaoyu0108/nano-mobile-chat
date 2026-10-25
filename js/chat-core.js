@@ -639,6 +639,130 @@
     // ===== 构建 System Prompt（新提示词） =====
     // 与用户的情侣纪念日（异步缓存，注入系统提示让角色「记得」这些日子）
     var coupleAnnivNotice = '';
+    // ===== 角色关系共享（用户手动开启并勾选角色后才生效） =====
+    // 只读取已勾选角色最近 N 轮的聊天摘要，以及双方私下聊天的记录。
+    // 默认关闭、默认不选任何人，绝不做随机匹配。
+    function __charSharingCfg() {
+        try {
+            let cfg = JSON.parse(localStorage.getItem('nano_char_rel_' + chatId) || 'null');
+            if (!cfg) {
+                // 兼容上一版全局共享设置
+                const old = JSON.parse(localStorage.getItem('nano_char_sharing') || 'null');
+                if (old && old.enabled && Array.isArray(old.ids) && old.ids.map(String).indexOf(String(chatId)) > -1) {
+                    cfg = { shareEnabled: true, rounds: old.rounds, relationIds: old.ids.filter(function (x) { return String(x) !== String(chatId); }) };
+                }
+            }
+            if (!cfg || !cfg.shareEnabled) return null;
+            const ids = (Array.isArray(cfg.relationIds) ? cfg.relationIds : []).map(String)
+                .filter(function (id) { return id && id !== String(chatId); });
+            if (!ids.length) return null;
+            return {
+                ids: ids,
+                rounds: Math.max(1, Math.min(10, parseInt(cfg.rounds, 10) || 3))
+            };
+        } catch (e) { return null; }
+    }
+
+    function __charSharingBlock() {
+        const cfg = __charSharingCfg();
+        const user = currentUserName || '用户';
+        const blocks = [];
+
+        if (cfg) {
+            const otherIds = cfg.ids.filter(function (id) { return String(id) !== String(chatId); });
+            otherIds.forEach(function (id) {
+                const other = (allCharacters || []).find(function (c) { return c && String(c.id) === String(id); });
+                const otherName = (other && other.name) || ('角色' + String(id).slice(-4));
+                let arr = [];
+                try { arr = JSON.parse(localStorage.getItem('chat_messages_' + id) || '[]') || []; } catch (e) { arr = []; }
+                const msgs = arr.filter(function (m) {
+                    return m && !m.recalled && !m.isCard && !m.isImage && !m.isVoice &&
+                        (m.type === 'left' || m.type === 'right') && String(m.text || '').trim();
+                }).slice(-(cfg.rounds * 2 + 2));
+                if (!msgs.length) return;
+                const lines = msgs.map(function (m) {
+                    const who = m.type === 'right' ? user : otherName;
+                    return who + '：' + String(m.text || '').replace(/\s+/g, ' ').slice(0, 280);
+                });
+                blocks.push('【' + otherName + ' 与' + user + '最近的聊天（约 ' + cfg.rounds + ' 轮）】\n' + lines.join('\n'));
+            });
+        }
+
+        // 你和这些角色私下聊过的内容：只要生成过，双方都记得。
+        // 不依赖「共享近况」开关，避免关掉共享后角色失忆。
+        try {
+            const secrets = JSON.parse(localStorage.getItem('nano_char_secret_chats') || '[]') || [];
+            const mine = (Array.isArray(secrets) ? secrets : []).filter(function (s) {
+                if (!s || !s.a || !s.b || !Array.isArray(s.lines)) return false;
+                if (s.maskId && currentUser && currentUser.id && String(s.maskId) !== String(currentUser.id)) return false;
+                const a = String(s.a.id), b = String(s.b.id);
+                return a === String(chatId) || b === String(chatId);
+            }).slice(-3);
+            mine.forEach(function (s) {
+                const other = String(s.a.id) === String(chatId) ? s.b : s.a;
+                const lines = s.lines.map(function (l) {
+                    return (l.name || '') + '：' + String(l.text || '').replace(/\s+/g, ' ').slice(0, 240);
+                }).filter(Boolean);
+                if (!lines.length) return;
+                blocks.push('【你和' + (other.name || '对方') + '私下聊过（你们双方都记得这段对话）】\n' + lines.join('\n'));
+            });
+        } catch (e) {}
+
+        if (!blocks.length) return '';
+        return '\n\n【角色共享情报 · 用户已授权 · 只在你们之间使用】\n'
+            + '下面是你熟悉的角色与用户最近的聊天，以及你和他们私下聊过的内容。你知道这些信息，但不要机械复述原文、不要说“系统告诉我的”；可以自然地提及、吃醋、试探、撒谎、利用信息，或按你的性格装作不知道。保持你的人设和关系分寸。\n\n'
+            + blocks.join('\n\n');
+    }
+
+    function __sameName(a, b) {
+        const clean = function (s) { return String(s == null ? '' : s).replace(/[\s~～!！?？.。·,，、]/g, '').toLowerCase(); };
+        return clean(a) === clean(b);
+    }
+
+    // ===== 朋友圈记忆（用户/自己发的动态 + 互动）=====
+    // 只读 localStorage 里的朋友圈数据，不额外调用 API；让角色在私聊里知道这些事。
+    function __momentsMemoryBlock() {
+        try {
+            const arr = JSON.parse(localStorage.getItem('nano_moments_data') || '[]');
+            if (!Array.isArray(arr) || !arr.length) return '';
+            const me = displayName || chatName || '';
+            const user = currentUserName || '用户';
+            const boundNames = [];
+            try {
+                (allCharacters || []).forEach(function (c) {
+                    if (c && c.name && (!currentUser || !currentUser.id || !c.bindUser || String(c.bindUser) === String(currentUser.id))) boundNames.push(c.name);
+                });
+            } catch (e) {}
+            const relevant = arr.filter(function (p) {
+                if (!p || !p.author) return false;
+                if (__sameName(p.author, user) || __sameName(p.author, me)) return true;
+                const likes = Array.isArray(p.likes) ? p.likes : [];
+                if (likes.some(function (n) { return __sameName(n, me) || __sameName(n, user) || boundNames.some(function (b) { return __sameName(n, b); }); })) return true;
+                const comments = Array.isArray(p.comments) ? p.comments : [];
+                return comments.some(function (c) {
+                    return c && (__sameName(c.user, me) || __sameName(c.user, user) || __sameName(c.toUser, me) || __sameName(c.toUser, user) ||
+                        boundNames.some(function (b) { return __sameName(c.user, b); }));
+                });
+            }).slice(0, 8);
+            if (!relevant.length) return '';
+            const blocks = relevant.map(function (p) {
+                const who = __sameName(p.author, user) ? user : p.author;
+                let s = '- ' + who + '发的朋友圈：' + String(p.text || '').replace(/\s+/g, ' ').slice(0, 180);
+                if (p.location) s += '（' + String(p.location).slice(0, 30) + '）';
+                const likes = (Array.isArray(p.likes) ? p.likes : []).slice(0, 8);
+                if (likes.length) s += '；点赞：' + likes.join('、');
+                const cs = (Array.isArray(p.comments) ? p.comments : []).slice(-4);
+                if (cs.length) {
+                    s += '；评论：' + cs.map(function (c) {
+                        return String(c.user || '') + (c.toUser ? (' 回复 ' + c.toUser) : '') + '：' + String(c.text || '').replace(/\s+/g, ' ').slice(0, 80);
+                    }).join(' / ');
+                }
+                return s;
+            });
+            return '\n\n【朋友圈 · 你记得的动态】\n以下是你自己、用户以及你认识的人最近的朋友圈和互动。你确实知道这些内容，可以在聊天里自然提起、吃醋、试探或装作不知道；不要机械复述，也不要说“系统告诉我的”。\n' + blocks.join('\n');
+        } catch (e) { return ''; }
+    }
+
     function buildSystemPrompt() {
         // 纳米助手：使用专属系统提示词（前端知识库 + 动作协议）
         if (isNanoChat && window.NanoAssistant) {
@@ -1426,7 +1550,7 @@
                             altSetting: msg.cardData.altSetting,
                             altFirst: msg.cardData.altFirst,
                             title: msg.cardData.title,
-                            sub: msg.cardData.sub,
+                            sub: msg.cardData.sub, secretRecordId: msg.cardData.secretRecordId, secretAt: msg.cardData.secretAt, secretLines: (Array.isArray(msg.cardData.secretLines) ? msg.cardData.secretLines.slice(0, 20).map(function(l){return {who:l.who,name:String(l.name||'').slice(0,40),text:String(l.text||'').slice(0,800),translation:String(l.translation||'').slice(0,800)};}) : null),
                             footer: msg.cardData.footer,
                             storyId: msg.cardData.storyId,
                             excerpt: msg.cardData.excerpt,
@@ -1496,7 +1620,7 @@
                             isImage: msg.isImage || false,
                             isCard: msg.isCard || false,
                             isVoice: msg.isVoice || false,
-                            cardData: msg.cardData ? { cardType: msg.cardData.cardType, missed: msg.cardData.missed, claimed: msg.cardData.claimed, status: msg.cardData.status, response: msg.cardData.response, amount: msg.cardData.amount, issuer: msg.cardData.issuer, holder: msg.cardData.holder, familyId: msg.cardData.familyId, limit: msg.cardData.limit, food: msg.cardData.food, shop: msg.cardData.shop, price: msg.cardData.price, note: msg.cardData.note, place: msg.cardData.place, lat: msg.cardData.lat, lng: msg.cardData.lng, distance: msg.cardData.distance, eta: msg.cardData.eta, paidBy: msg.cardData.paidBy, action: msg.cardData.action, altName: msg.cardData.altName, altSetting: msg.cardData.altSetting, altFirst: msg.cardData.altFirst, title: msg.cardData.title, sub: msg.cardData.sub, footer: msg.cardData.footer, storyId: msg.cardData.storyId, excerpt: msg.cardData.excerpt, content: msg.cardData.content, genres: msg.cardData.genres, chapters: msg.cardData.chapters, ending: msg.cardData.ending, callId: msg.cardData.callId, video: msg.cardData.video, duration: msg.cardData.duration, direction: msg.cardData.direction, toName: msg.cardData.toName, systemNotice: msg.cardData.systemNotice, nanoError: msg.cardData.nanoError, coupleKind: msg.cardData.coupleKind, coupleSummary: msg.cardData.coupleSummary, coupleDetail: msg.cardData.coupleDetail, shareId: msg.cardData.shareId, eventId: msg.cardData.eventId, date: msg.cardData.date, start: msg.cardData.start, end: msg.cardData.end, mood: msg.cardData.mood, img: (typeof msg.cardData.img === 'string' && msg.cardData.img.indexOf('data:') !== 0) ? msg.cardData.img : null } : null,
+                            cardData: msg.cardData ? { cardType: msg.cardData.cardType, missed: msg.cardData.missed, claimed: msg.cardData.claimed, status: msg.cardData.status, response: msg.cardData.response, amount: msg.cardData.amount, issuer: msg.cardData.issuer, holder: msg.cardData.holder, familyId: msg.cardData.familyId, limit: msg.cardData.limit, food: msg.cardData.food, shop: msg.cardData.shop, price: msg.cardData.price, note: msg.cardData.note, place: msg.cardData.place, lat: msg.cardData.lat, lng: msg.cardData.lng, distance: msg.cardData.distance, eta: msg.cardData.eta, paidBy: msg.cardData.paidBy, action: msg.cardData.action, altName: msg.cardData.altName, altSetting: msg.cardData.altSetting, altFirst: msg.cardData.altFirst, title: msg.cardData.title, sub: msg.cardData.sub, secretRecordId: msg.cardData.secretRecordId, secretAt: msg.cardData.secretAt, secretLines: (Array.isArray(msg.cardData.secretLines) ? msg.cardData.secretLines.slice(0, 20).map(function(l){return {who:l.who,name:String(l.name||'').slice(0,40),text:String(l.text||'').slice(0,800),translation:String(l.translation||'').slice(0,800)};}) : null), footer: msg.cardData.footer, storyId: msg.cardData.storyId, excerpt: msg.cardData.excerpt, content: msg.cardData.content, genres: msg.cardData.genres, chapters: msg.cardData.chapters, ending: msg.cardData.ending, callId: msg.cardData.callId, video: msg.cardData.video, duration: msg.cardData.duration, direction: msg.cardData.direction, toName: msg.cardData.toName, systemNotice: msg.cardData.systemNotice, nanoError: msg.cardData.nanoError, coupleKind: msg.cardData.coupleKind, coupleSummary: msg.cardData.coupleSummary, coupleDetail: msg.cardData.coupleDetail, shareId: msg.cardData.shareId, eventId: msg.cardData.eventId, date: msg.cardData.date, start: msg.cardData.start, end: msg.cardData.end, mood: msg.cardData.mood, img: (typeof msg.cardData.img === 'string' && msg.cardData.img.indexOf('data:') !== 0) ? msg.cardData.img : null } : null,
                             voiceData: msg.voiceData ? { duration: msg.voiceData.duration, ttsText: msg.voiceData.ttsText || '' } : null,
                             transcript: msg.transcript || null,
                             translation: msg.translation || null,
@@ -2575,6 +2699,51 @@
         return vb;
     }
 
+    function showCharSecretChatCard(cd) {
+        try {
+            const old = document.getElementById('nanoCharSecretViewer');
+            if (old) old.remove();
+            const lines = (cd && Array.isArray(cd.secretLines)) ? cd.secretLines : [];
+            if (!lines.length) { showAlert('角色悄悄话', '这条卡片没有可查看的对话内容。'); return; }
+            const ov = document.createElement('div');
+            ov.id = 'nanoCharSecretViewer';
+            ov.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.42);display:flex;align-items:center;justify-content:center;padding:20px;';
+            const card = document.createElement('div');
+            card.style.cssText = 'width:100%;max-width:440px;max-height:78vh;background:#fff;border-radius:18px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 24px 80px rgba(0,0,0,.28);';
+            const head = document.createElement('div');
+            head.style.cssText = 'padding:15px 17px 10px;font-size:15px;font-weight:700;color:#1c1c1e;border-bottom:1px solid #ececf0;';
+            head.textContent = cd.title || '角色悄悄话';
+            const body = document.createElement('div');
+            body.style.cssText = 'flex:1;overflow:auto;padding:14px 16px;background:#f7f7f9;-webkit-overflow-scrolling:touch;';
+            lines.forEach(function (l) {
+                const isA = l.who !== 'b';
+                const b = document.createElement('div');
+                b.style.cssText = 'max-width:86%;margin-bottom:10px;padding:10px 13px;border-radius:15px;font-size:13.5px;line-height:1.6;white-space:pre-wrap;word-break:break-word;' +
+                    (isA ? 'margin-right:auto;background:#fff;color:#1c1c1e;border-bottom-left-radius:5px;' : 'margin-left:auto;background:#1c1c1e;color:#fff;border-bottom-right-radius:5px;');
+                const nm = document.createElement('div');
+                nm.style.cssText = 'font-size:10.5px;font-weight:700;opacity:.6;margin-bottom:3px;';
+                nm.textContent = l.name || '';
+                b.appendChild(nm);
+                b.appendChild(document.createTextNode(l.text || ''));
+                if (l.translation) {
+                    const tr = document.createElement('div');
+                    tr.style.cssText = 'margin-top:6px;padding-top:5px;border-top:1px solid rgba(127,127,127,.18);font-size:11.5px;line-height:1.5;opacity:.72;';
+                    tr.textContent = '中文：' + l.translation;
+                    b.appendChild(tr);
+                }
+                body.appendChild(b);
+            });
+            const close = document.createElement('button');
+            close.type = 'button';
+            close.textContent = '关闭';
+            close.style.cssText = 'height:46px;border:none;border-top:1px solid #ececf0;background:#fff;color:#1c1c1e;font-size:14px;font-weight:600;cursor:pointer;';
+            close.onclick = function () { try { ov.remove(); } catch (e) {} };
+            card.appendChild(head); card.appendChild(body); card.appendChild(close);
+            ov.appendChild(card);
+            document.body.appendChild(ov);
+        } catch (e) {}
+    }
+
     // ===== 构建卡片 HTML =====
     function buildCardHTMLLegacy(cardData) {
         if (cardData.cardType === 'study') {
@@ -2809,6 +2978,11 @@
                 footer = '<span class="card-footer-text">等待 ' + (cardData.toName || '对方') + ' 回应（点右下角回复）</span>';
             }
             return '<div class="card-main"><div class="icon-wrap">' + icon + '</div><div><div class="card-title">一起听</div><div class="card-sub">' + sub + '</div></div></div><div class="card-footer">' + footer + '</div>';
+        } else if (cardData.cardType === 'charSecretChat') {
+            const clean = function (v) { return String(v == null ? '' : v).replace(/[<>&"]/g, ''); };
+            const icon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zM8 11c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>';
+            return '<div class="card-main"><div class="icon-wrap">' + icon + '</div><div><div class="card-title">' + clean(cardData.title || '角色悄悄话') + '</div><div class="card-sub">' + clean(cardData.sub || '点击查看完整对话') + '</div></div></div>' +
+                '<div class="card-footer"><span class="card-footer-text">点击查看他们的聊天记录</span></div>';
         } else if (cardData.cardType === 'couple') {
             // 情侣空间分享卡片
             const kind = cardData.coupleKind || '';
@@ -6002,9 +6176,9 @@
             // 通知只弹一条
             const who = String(arr[0] && arr[0].author || displayName || '好友');
             if (window.parent === window) {
-                try { if (window.NanoNotify) window.NanoNotify.notify('朋友圈', who + ' 等更新了朋友圈（' + arr.length + ' 条新动态）', { target: 'moments', channel: 'moment', avatar: String((arr[0] && arr[0].avatar) || ''), name: who }); } catch (e) {}
+                try { if (window.NanoNotify) window.NanoNotify.notify('朋友圈', who + ' 等更新了朋友圈（' + arr.length + ' 条新动态）', { target: 'moments', channel: 'moment', avatar: String((created[0] && created[0].avatar) || ''), name: who }); } catch (e) {}
             } else {
-                try { window.parent.postMessage({ type: 'NANO_GEN_NOTIFY', title: '朋友圈已更新', body: who + ' 等发了 ' + arr.length + ' 条新动态', avatar: String((arr[0] && arr[0].avatar) || ''), name: who, target: 'moments' }, '*'); } catch (e) {}
+                try { window.parent.postMessage({ type: 'NANO_GEN_NOTIFY', title: '朋友圈已更新', body: who + ' 等发了 ' + arr.length + ' 条新动态', avatar: String((created[0] && created[0].avatar) || ''), name: who, target: 'moments' }, '*'); } catch (e) {}
             }
         } finally { isProcessingApi = false; }
     }
@@ -7895,6 +8069,10 @@
                     + '\n请自然衔接这段线下的进展，继续线上聊天。';
                 offlineRoundHint = null;
             }
+            // 角色共享：只在用户开启并勾选了相关角色后注入
+            try { __sys += __charSharingBlock(); } catch (e) {}
+            // 朋友圈记忆：让角色记得用户/自己发的动态和互动
+            try { __sys += __momentsMemoryBlock(); } catch (e) {}
             // 可编辑的角色扮演 Prompt 模板（js/roleplay-prompt.js），用户可自行修改
             try {
                 const RP = window.NanoRoleplayPrompt;
@@ -10135,6 +10313,22 @@
         } catch (e) {}
     }
     function peekStashKey(id) { return 'nano_peek_pending_' + String(id || ''); }
+    // 只有真的配置过窥屏（有令牌）且这个角色被加进窥屏列表，才需要在进入聊天时补拉。
+    // 没配窥屏的用户不该在后台反复请求 /peek/pending。
+    function peekSyncEnabled(id) {
+        id = String(id || '');
+        if (!id) return false;
+        try {
+            var token = (localStorage.getItem('nano_peek_token') || localStorage.getItem('nano_push_token') || '').trim();
+            if (!token) return false;
+            var arr = JSON.parse(localStorage.getItem('nano_peek_chats') || '[]');
+            if (!Array.isArray(arr)) return false;
+            for (var i = 0; i < arr.length; i++) {
+                if (String(arr[i]) === id) return true;
+            }
+        } catch (e) {}
+        return false;
+    }
     function stashPeekTurns(id, turns) {
         id = String(id || '');
         if (!id || !Array.isArray(turns) || !turns.length) return false;
@@ -10515,15 +10709,6 @@
                 };
             });
             const canSend = chars.length > 0;
-            // 把 iPhone 的 Bark 密钥同步给 Worker：后台到点生成消息/朋友圈时由 Worker 直接推 Bark，
-            // 不再依赖网页还活着（这是「回前台才看到内置通知」的根因）。
-            let autoBarkKey = '';
-            try {
-                if (window.NanoNotify) {
-                    autoBarkKey = NanoNotify.barkKey ? (NanoNotify.barkKey() || '') : '';
-                    if (!autoBarkKey && NanoNotify.barkKeyAsync) autoBarkKey = (await NanoNotify.barkKeyAsync()) || '';
-                }
-            } catch (e) { autoBarkKey = ''; }
             const payload = {
                 token: autoPushToken(),
                 appId: autoAppId(),
@@ -10537,7 +10722,6 @@
                 user: { id: uid, name: (curUser && curUser.name) || currentUserName || '我' },
                 chars: chars,
                 api: (cfg && cfg.mainKey) ? { url: cfg.mainUrl || '', key: cfg.mainKey || '', model: cfg.mainModel || '' } : null,
-                barkKey: autoBarkKey,
                 reset: !!(opts && opts.reset)
             };
             const resp = await fetch(autoPushBase() + '/auto/config', {
@@ -11022,6 +11206,16 @@ if (callCard) {
                     takeoverLog: JSON.stringify([{ name: fMsg.cardData.name || '内容', bubbles: [String(fMsg.cardData.content)] }])
                 });
             }
+            return;
+        }
+
+        // ===== 角色悄悄话卡片点击：查看完整对话 =====
+        const secretCard = e.target.closest('.bubble-card.charSecretChat');
+        if (secretCard) {
+            if (isMultiSelect) return;
+            const sRow = secretCard.closest('.message-row');
+            const sMsg = sRow ? messages.find(m => m.id === sRow.dataset.id) : null;
+            if (sMsg && sMsg.cardData) showCharSecretChatCard(sMsg.cardData);
             return;
         }
 
@@ -12128,11 +12322,6 @@ if (callCard) {
             if (e && e.key === 'nano_pending_phone_share') { try { consumePendingPhoneShare(); } catch (err) {} }
             if (e && e.key === 'nano_pending_fanfic_card') { try { consumePendingFanficCard(); } catch (err) {} }
             if (e && e.key === 'nano_pending_store_cards') { try { consumePendingStoreCards(); } catch (err) {} }
-            // 设置页改了 Bark 密钥/开关后，立刻把新密钥同步给 Worker；
-            // 否则要等下一次聊天同步（最多 10 分钟），后台 Bark 会一直用旧配置。
-            if (e && (e.key === 'nano_bark_key' || e.key === 'nano_bark_enabled')) {
-                setTimeout(function () { try { syncAutoPushConfig({ reset: true }); } catch (err) {} }, 800);
-            }
         });
     } catch (e) {}
     // 接管详情查看器（马卡龙配色）
@@ -12181,6 +12370,18 @@ if (callCard) {
         const data = event.data;
         if (!data) return;
 
+        // 角色悄悄话卡片：可能来自记录页分享，须在 chatId 过滤之前处理
+        if (data.type === 'NANO_CHAR_SECRET_CARD') {
+            if (data.chatId && String(data.chatId) !== String(chatId)) return;
+            const card = data.card;
+            if (!card || !card.cardData) return;
+            if (messages.some(function (m) { return m && m.id === card.id; })) return;
+            messages.push(card);
+            try { renderMessages(); } catch (e) {}
+            try { saveMessages(); } catch (e) {}
+            return;
+        }
+
         // 情侣空间分享卡片：可能不是当前聊天，须在 chatId 过滤之前处理
         if (data.type === 'NANO_COUPLE_SHARE_CARD') {
             handleCoupleShare(data);
@@ -12208,11 +12409,9 @@ if (callCard) {
         // 屏幕速聊刚拉到新轮次：当前私聊立刻合并
         if (data.type === 'NANO_PEEK_UPDATED') {
             if (data.chatId && String(data.chatId) !== String(chatId)) return;
+            // 外层 ios-bridge 已经把轮次落到本机 localStorage 后才广播，这里只合并，
+            // 不再重复请求一次 /peek/pending。
             try { if (isStorageReady) consumePendingPeekTurns(); } catch (e) {}
-            // 顶部桥接可能还没拉到服务端：当前聊天自己也补拉一次，避免「有通知、私聊没内容」
-            pullPeekTurnsForCurrentChat().then(function () {
-                try { consumePendingPeekTurns(); } catch (e) {}
-            }).catch(function () {});
             return;
         }
 
@@ -12616,26 +12815,14 @@ if (data.type === 'NANO_VOICE_CALL_CARD' || data.type === 'NANO_VIDEO_CALL_CARD'
             try { consumeNanoPrefill(); } catch (e) {}
             window.__nanoChatReady = true;
             window.__nanoChatReadyChat = String(chatId || '');
-            // 屏幕速聊：先合并本机暂存，再拉一次服务端（两处都幂等）
+            // 窥屏轮次不做前台定时轮询：快捷指令跑完回到 App 时，外层 ios-bridge
+            // 会立即补拉并广播 NANO_PEEK_UPDATED；这里只在进入聊天时拉一次。
             try { consumePendingPeekTurns(); } catch (e) {}
-            pullPeekTurnsForCurrentChat().then(function () {
-                try { consumePendingPeekTurns(); } catch (e) {}
-            });
-            // 窥屏轮次兜底轮询：快捷指令在后台跑完后，回到聊天页最多 12 秒内一定能看到
-            try {
-                setInterval(function () {
-                    if (document.hidden || !isStorageReady) return;
-                    pullPeekTurnsForCurrentChat().then(function () {
-                        try { consumePendingPeekTurns(); } catch (e) {}
-                    }).catch(function () {});
-                }, 12000);
-                document.addEventListener('visibilitychange', function () {
-                    if (document.hidden || !isStorageReady) return;
-                    pullPeekTurnsForCurrentChat().then(function () {
-                        try { consumePendingPeekTurns(); } catch (e) {}
-                    }).catch(function () {});
-                });
-            } catch (e) {}
+            if (peekSyncEnabled(chatId)) {
+                pullPeekTurnsForCurrentChat().then(function () {
+                    try { consumePendingPeekTurns(); } catch (e) {}
+                }).catch(function () {});
+            }
             if (jumpMsgId) {
                 setTimeout(function() { jumpToMessage(jumpMsgId); }, 100);
             }

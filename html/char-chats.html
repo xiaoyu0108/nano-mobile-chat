@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<script src="../js/nano-runtime.js?v=20261023a"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>角色聊天</title>
+<link rel="stylesheet" href="../css/char-chats.css?v=20261025c">
+<script src="../js/appearance.js"></script>
+</head>
+<body>
+
+<div class="cc-nav">
+    <button class="cc-back" id="ccBack" data-back aria-label="返回">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
+    </button>
+    <div class="cc-title">角色聊天</div>
+    <div class="cc-nav-space"></div>
+</div>
+
+<main class="cc-main">
+    <div class="cc-hero">
+        <div class="cc-hero-title">他们私下聊了什么</div>
+        <div class="cc-hero-desc">
+            只有双方都在「角色关系」里开启私下聊天，才会自动生成。大约 3 天刷新一次，
+            一次只生成一段；也可以在这里手动生成。生成后会写进两个角色的记忆。
+        </div>
+        <div class="cc-hero-note" id="ccAutoNote">正在读取设置…</div>
+    </div>
+
+    <section class="cc-panel">
+        <div class="cc-panel-title">手动生成</div>
+        <div class="cc-select-row">
+            <select id="ccA" class="cc-select"></select>
+            <span class="cc-and">×</span>
+            <select id="ccB" class="cc-select"></select>
+        </div>
+        <div class="cc-select-row">
+            <select id="ccCalls" class="cc-select cc-select-full">
+                <option value="1">2 轮对话 · 1 次 API</option>
+                <option value="2">3~4 轮对话 · 2 次 API</option>
+            </select>
+        </div>
+        <button class="cc-primary" id="ccGenerate" type="button">让他们聊聊</button>
+        <div class="cc-hint" id="ccGenerateHint">两个角色都要开启私下聊天。</div>
+    </section>
+
+    <div class="cc-section-title">聊天记录</div>
+    <div class="cc-list" id="ccList">
+        <div class="cc-empty">还没有私下聊天记录</div>
+    </div>
+</main>
+
+<div class="cc-modal" id="ccModal">
+    <div class="cc-modal-card">
+        <div class="cc-modal-head">
+            <div class="cc-modal-title" id="ccModalTitle">悄悄话</div>
+            <button class="cc-modal-close" id="ccModalClose" type="button" aria-label="关闭">×</button>
+        </div>
+        <div class="cc-transcript" id="ccTranscript"></div>
+        <div class="cc-share-row">
+            <select id="ccShareChar" class="cc-select cc-select-full"></select>
+            <button class="cc-share-btn" id="ccShareBtn" type="button">打包成卡片发到私聊</button>
+            <button class="cc-regen" id="ccRegenerate" type="button">再聊一段（1 次 API）</button>
+            <button class="cc-regen" id="ccTranslate" type="button">翻译这段（1 次 API）</button>
+        </div>
+    </div>
+</div>
+
+<div class="cc-toast" id="ccToast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
+<script src="../js/swipe-back.js"></script>
+<script src="../js/char-chats.js?v=20261025h"></script>
+</body>
+</html>

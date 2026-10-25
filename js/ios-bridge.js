@@ -211,26 +211,25 @@
         return added;
     }
     function peekCandidateChats() {
-        var out = [], seen = {};
-        function add(id) {
-            id = String(id || '');
-            if (!id || seen[id]) return;
-            seen[id] = 1; out.push(id);
-        }
-        try { add(localStorage.getItem('nano_peek_chat')); } catch (e) {}
+        // 回到 App 时最多补拉 2 个：最近配置的窥屏角色 + 当前打开的角色（如果在窥屏列表里）。
+        // 不做定时器；其他角色等打开聊天时由 chat-core 拉一次。
+        var list = [];
         try {
-            var list = JSON.parse(localStorage.getItem('nano_peek_chats') || '[]');
-            if (Array.isArray(list)) list.forEach(add);
+            var raw = JSON.parse(localStorage.getItem('nano_peek_chats') || '[]');
+            if (Array.isArray(raw)) list = raw.map(String);
         } catch (e) {}
-        try { var lc = JSON.parse(localStorage.getItem('nano_last_chat') || 'null'); if (lc && lc.id) add(lc.id); } catch (e) {}
-        try { var si = JSON.parse(sessionStorage.getItem('last_chat_info') || 'null'); if (si && si.chatId) add(si.chatId); } catch (e) {}
+        var last = '';
+        try { last = String(localStorage.getItem('nano_peek_chat') || ''); } catch (e) {}
+        if (!last && list.length) last = list[list.length - 1];
+        var current = '';
         try {
-            for (var i = 0; i < localStorage.length; i++) {
-                var k = localStorage.key(i);
-                if (k && k.indexOf('chat_messages_') === 0) add(k.slice(14));
-            }
+            var lc = JSON.parse(localStorage.getItem('nano_last_chat') || 'null');
+            if (lc && lc.id) current = String(lc.id);
         } catch (e) {}
-        return out.slice(0, 10);
+        var out = [];
+        if (last) out.push(last);
+        if (current && current !== last && list.indexOf(current) !== -1) out.push(current);
+        return out.slice(0, 2);
     }
 
     async function pullOnePeek(chatId, base, token) {
@@ -262,18 +261,20 @@
         try { base = localStorage.getItem('nano_peek_url') || ''; } catch (e) {}
         if (!base) { try { base = localStorage.getItem('nano_push_endpoint') || ''; } catch (e) {} }
         if (!base) base = 'https://nanopush.nano315.online';
-        try { token = localStorage.getItem('nano_peek_token') || ''; } catch (e) {}
+        try { token = localStorage.getItem('nano_peek_token') || localStorage.getItem('nano_push_token') || ''; } catch (e) {}
         base = String(base).trim().replace(/\/+$/, '');
         if (/\/peek$/i.test(base)) base = base.replace(/\/peek$/i, '');
-        if (!base) return;
+        // 没令牌 = 根本没配置窥屏，不再请求；只有配置过的角色才拉。
+        if (!base || !token) return;
         var ids = onlyChat ? [String(onlyChat)] : peekCandidateChats();
+        if (!ids.length) return;
         for (var i = 0; i < ids.length; i++) {
             try { await pullOnePeek(ids[i], base, token); } catch (e) {}
         }
     }
 
     window.NanoIOSBridge = {
-        version: '20261023c',
+        version: '20261025b',
         queue: function (item) { var l = loadPending(); l.push(item || {}); savePending(l); },
         drain: drain,
         pullPeek: pullPeek,

@@ -121,7 +121,9 @@ wrangler login
 
 ---
 
-## 4. 建一个你自己的 KV 命名空间
+## 4. 建一个你自己的 KV 命名空间（仅建议个人测试）
+
+> 想给多人用、长期用，**优先用 D1**（见下面「想带更多人：保留 D1」）。KV 免费额度只有 1,000 写/天，聊天 + 窥屏 + Web Push 很容易打满；D1 免费是 10 万行写/天，宽裕得多。KV 只适合先跑通、个人测试。
 
 ```bash
 wrangler kv namespace create PUSH_KV
@@ -209,17 +211,59 @@ database_id = "你的database_id"
 
 `binding` 必须保持 `nano_db`。Worker 第一次运行会自动建 `kv` 表，不需要手动执行 SQL。
 
+### 集市图片/附件：R2（可选，推荐）
+
+Supabase/D1 适合存列表、标签、计数这些元数据，不适合长期堆图片和附件。给 Worker 绑一个 R2 桶后，资源发布会自动把 `images` / `files` / 封面搬到 R2，数据库里只留 URL：
+
+> R2 需要先在 Cloudflare Dashboard → R2 开通（免费额度内不收费，但通常要绑支付方式），否则会报 `Please enable R2 through the Cloudflare Dashboard`。
+> R2 是后付费：每月 10GB 存储、100 万次写、1000 万次读免费，出站免费；超过后会自动按量扣卡。没有免费额度用完自动停的硬保险，建议在 Billing/Notifications 里设账单提醒。
+
+```bash
+wrangler r2 bucket create nano-media
+```
+
+在 `wrangler.toml` 加：
+
+```toml
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "nano-media"
+```
+
+不配置 `MEDIA` 时保持旧行为，资源里的 dataURL 继续存 Supabase/D1，功能不受影响。
+
+想让图片/附件直接走 R2、不占 Worker 请求，可以给桶绑定自定义域名（如 `media.你的域名`），然后在 `[vars]` 里加：
+
+```toml
+MEDIA_PUBLIC_BASE = "https://media.你的域名"
+```
+
+自定义域名需要在 R2 桶设置里配 CORS（允许你的站点域名 GET）；如果嫌麻烦，不设 `MEDIA_PUBLIC_BASE`，文件会走 Worker 的 `/market/file` 代理，自带 CORS。
+
+### 如果开不了 R2：用 Supabase Storage
+
+R2 需要绑卡；绑不上也没关系，Worker 会自动用同一个 Supabase 项目的 Storage：
+
+1. 在 Supabase SQL Editor 重新执行一遍 `supabase-market.sql`，会创建公开桶 `nano-market` 和读策略。
+2. `wrangler.toml` 的 `[vars]` 保持：
+   ```toml
+   SUPABASE_MARKET_BUCKET = "nano-market"
+   ```
+3. 部署 Worker。绑了 R2 时优先 R2，没绑 R2 就走 Supabase Storage。
+
+Supabase Storage 免费额度是 1GB 存储 + 5GB 出站/月，比把 dataURL 塞进数据库好；但不如 R2 的 10GB + 免出站。以后能开通 R2，再取消 `[[r2_buckets]]` 注释即可无缝切换，旧文件 URL 仍然有效。
+
 ### 可选
 
 - `[triggers] crons = ["*/5 * * * *"]`：定时主动消息 / 提醒。不需要可以删掉，减少请求。
 - `[vars] INCLUDE_LEGACY_MARKET`：共享集市旧数据开关，留着不影响。
-- Supabase：不配置也能用，共享集市会回退到 KV。
-- 如果你用 **Bark** 推送，在 `[vars]` 里加一行，让通知点开时回到你的 Nano：
+- Supabase：不配置也能用，共享集市会回退到 D1（没绑 D1 的自建 Worker 才回退到 KV）。
+- 后台通知统一走 **Web Push**，不需要额外变量；`sw.js` 会用相对路径打开。
+- 如果你的 Worker 走自定义域名且需要固定回跳地址，可以设置 `APP_URL`：
   ```toml
   [vars]
   APP_URL = "https://你的-nano-地址/"
   ```
-  Web Push 不需要这个，`sw.js` 会用相对路径打开。
 
 ---
 

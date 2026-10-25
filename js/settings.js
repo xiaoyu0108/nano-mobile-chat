@@ -455,15 +455,6 @@ const APP_ICONS = {
     if (keep) keep.checked = localStorage.getItem('nano_keep_alive') === '1';
     var notify = $('notifyToggle');
     if (notify) notify.checked = localStorage.getItem('nano_notify_enabled') === '1';
-    var bark = $('barkToggle');
-    if (bark && NN) bark.checked = NN.barkEnabled ? !!NN.barkEnabled() : true;
-    var keyInput = $('barkKeyInput');
-    if (keyInput && NN && NN.barkKey) {
-      keyInput.value = NN.barkKey() || '';
-      if (!keyInput.value && NN.barkKeyAsync) NN.barkKeyAsync().then(function (k) { if (k && !keyInput.value) keyInput.value = k; });
-    }
-    var row = $('barkKeyRow');
-    if (row) row.classList.toggle('show', !!(bark && bark.checked));
     loadCustomSoundThenFill();
     refreshPush();
     renderNotifyStyle();
@@ -1130,46 +1121,6 @@ const APP_ICONS = {
       try { localStorage.setItem('nano_notify_enabled', on ? '1' : '0'); } catch (e) {}
       post({ type: 'notifySetting', enabled: on });
       if (on && NN && NN.ensurePermission) { try { NN.ensurePermission(); } catch (e) {} }
-    });
-
-    on('barkToggle', 'change', function () {
-      var on = this.checked;
-      if (NN && NN.setBarkEnabled) NN.setBarkEnabled(on);
-      var row = $('barkKeyRow');
-      if (row) row.classList.toggle('show', on);
-      var st = $('barkStatus');
-      if (st) st.textContent = on ? 'Bark 推送已开启' : 'Bark 推送已关闭';
-    });
-
-    on('barkKeySave', 'click', function () {
-      if (!NN || !NN.setBarkKey) { toast('通知模块未加载'); return; }
-      var k = ($('barkKeyInput').value || '').trim();
-      NN.setBarkKey(k);
-      var st = $('barkStatus');
-      if (st) st.textContent = k ? 'Bark 密钥已保存' : '已清空 Bark 密钥';
-      toast('已保存');
-    });
-
-    on('barkKeyTest', 'click', function () {
-      if (!NN || !NN.barkPush) { toast('通知模块未加载'); return; }
-      var k = ($('barkKeyInput').value || '').trim();
-      if (!k) { toast('请先填写 Bark 密钥'); return; }
-      NN.setBarkKey(k);
-      var st = $('barkStatus');
-      if (st) st.textContent = '发送中…';
-      NN.barkPush('测试推送', '收到就说明配置成功', { force: true }, k).then(function (res) {
-        if (res && res.ok) {
-          if (st) st.textContent = '已发送，请查看系统通知';
-          toast('已发送');
-        } else {
-          var msg = (res && (res.error || res.message)) || '密钥无效或网络不可达';
-          if (st) st.textContent = '发送失败：' + msg;
-          toast('发送失败：' + msg);
-        }
-      }).catch(function () {
-        if (st) st.textContent = '发送失败，请检查密钥';
-        toast('发送失败');
-      });
     });
 
     on('webPushBtn', 'click', enablePush);

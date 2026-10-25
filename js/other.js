@@ -56,11 +56,7 @@
         if (keepToggle.checked) applyKeepAlive(true);
         keepToggle.addEventListener('change', function () {
             applyKeepAlive(this.checked);
-            // 保活和 Bark 是互补的：保活让本地定时任务继续跑，Bark 负责后台/锁屏系统通知，
-            // 两者可以同时开启；服务端主动消息已开启时本机定时器会自动让位，不会重复推送。
-            if (this.checked && barkToggle) {
-                setBarkStatus('音频保活已开启；Bark 可同时开启作为后台系统通知');
-            }
+            // 保活只负责让本地定时任务继续跑；后台系统通知交给 Web Push，两者可以同时开启。
         });
     }
 
@@ -70,65 +66,6 @@
             try { if (window.NanoNotify) window.NanoNotify.ensurePermission(); } catch (e) {}
         }
         notifyToggle.addEventListener('change', function () { applyNotify(this.checked); });
-    }
-
-    // ===== Bark：iPhone 后台推送 =====
-    var barkKeyInput = document.getElementById('barkKeyInput');
-    var barkKeySave = document.getElementById('barkKeySave');
-    var barkKeyTest = document.getElementById('barkKeyTest');
-    var barkStatus = document.getElementById('barkStatus');
-    function setBarkStatus(msg, isErr) {
-        if (!barkStatus) return;
-        barkStatus.textContent = msg;
-        barkStatus.style.color = isErr ? '#d9534f' : '#8e8e93';
-    }
-    // Bark 推送总开关（关闭后不再向 Bark 发请求）
-    var barkToggle = document.getElementById('barkToggle');
-    if (barkToggle && window.NanoNotify) {
-        barkToggle.checked = (NanoNotify.barkEnabled ? NanoNotify.barkEnabled() : true);
-        barkToggle.addEventListener('change', function () {
-            NanoNotify.setBarkEnabled(this.checked);
-            setBarkStatus(this.checked ? 'Bark 推送已开启' : 'Bark 推送已关闭，不会再向 Bark 推送');
-            // 不再强制关闭音频保活：两者一起用，后台定时与系统通知都更稳。
-            if (this.checked && keepToggle) {
-                setBarkStatus('Bark 推送已开启（音频保活可同时保留）');
-            }
-        });
-    }
-    if (barkKeyInput && window.NanoNotify) {
-        barkKeyInput.value = NanoNotify.barkKey ? NanoNotify.barkKey() : '';
-        // 本地 localStorage 存不下时，从 IndexedDB 兜底读回
-        if (NanoNotify.barkKeyAsync) {
-            NanoNotify.barkKeyAsync().then(function (k) {
-                if (k && !barkKeyInput.value) barkKeyInput.value = k;
-            });
-        }
-        if (barkKeySave) {
-            barkKeySave.addEventListener('click', function () {
-                var k = (barkKeyInput.value || '').trim();
-                var ok = NanoNotify.setBarkKey(k);
-                if (!k) { setBarkStatus('已清空 Bark 密钥'); return; }
-                setBarkStatus(ok ? '已保存 Bark 密钥 ✓' : '已存到本地数据库（浏览器存储已满），可正常使用');
-            });
-        }
-        if (barkKeyTest) {
-            barkKeyTest.addEventListener('click', function () {
-                var k = (barkKeyInput.value || '').trim();
-                if (!k) { setBarkStatus('请先填写 Bark 密钥', true); return; }
-                NanoNotify.setBarkKey(k);
-                setBarkStatus('发送中…');
-                NanoNotify.barkPush('测试推送', '收到就说明配置成功 ✓', { force: true }, k).then(function (r) {
-                    if (r && r.ok && r.resp && Number(r.resp.code) === 200) {
-                        setBarkStatus('已发送，请查看 iPhone 通知 ✓');
-                    } else if (r && r.ok) {
-                        setBarkStatus('已发送（未收到就检查：Bark 里本设备的通知权限、密钥是否正确）');
-                    } else {
-                        var detail = (r && r.resp && (r.resp.message || r.resp.code)) || (r && r.error) || '未知';
-                        setBarkStatus('发送失败：' + detail + '（可把密钥直接拼成 https://api.day.app/密钥/测试/收到 在 Safari 打开自测）', true);
-                    }
-                });
-            });
-        }
     }
 
     // ===== 无后台 Web Push：从 Worker 取公钥并一键订阅 =====

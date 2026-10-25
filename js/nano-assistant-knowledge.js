@@ -68,7 +68,14 @@ window.NANO_ASSISTANT_KB = {
     { file: 'discover.html', name: '发现页' },
     { file: 'js/discover.js', name: '发现页逻辑（照片墙持久化）' },
     { file: 'backup.html', name: '备份' },
-    { file: 'js/backup.js', name: '备份逻辑' }
+    { file: 'js/backup.js', name: '备份逻辑' },
+    { file: 'html/cloud-backup.html', name: '云端备份（GitHub / Cloudflare）' },
+    { file: 'js/cloud-backup.js', name: '云端备份逻辑' },
+    { file: 'html/char-relations.html', name: '角色关系（按 char 单独设置）' },
+    { file: 'js/char-relations.js', name: '角色关系设置逻辑' },
+    { file: 'html/char-chats.html', name: '角色聊天记录' },
+    { file: 'js/char-chats.js', name: '角色聊天记录逻辑' },
+    { file: 'js/char-secret-chat.js', name: '角色私下聊天（自动/手动生成）' }
   ],
 
   // 数据存储位置（写入时要遵守）

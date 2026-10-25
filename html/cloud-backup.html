@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<script src="../js/nano-runtime.js?v=20261023a"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>云端备份</title>
+<link rel="icon" href="../icons/icon-192.png">
+<link rel="stylesheet" href="../css/backup.css">
+<link rel="stylesheet" href="../css/panel-ui.css?v=20261020j">
+<link rel="stylesheet" href="../css/cloud-backup.css?v=20261025a">
+<script src="../js/appearance.js"></script>
+</head>
+<body class="panel-backup cloud-backup-page">
+
+<nav class="navbar">
+    <button class="nav-icon-btn" id="cloudBack" aria-label="返回">
+        <svg width="12" height="21" viewBox="0 0 12 21" fill="none">
+            <path d="M10.5 1.5L2 10.5L10.5 19.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+    </button>
+    <div class="nav-title">云端备份</div>
+    <button class="nav-icon-btn" onclick="location.reload()" aria-label="刷新">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 11a8 8 0 1 0-2.34 5.66"/><polyline points="20 4 20 11 13 11"/>
+        </svg>
+    </button>
+</nav>
+
+<main class="cloud-main">
+    <div class="cloud-intro">
+        把整站数据（IndexedDB、localStorage、聊天记录、图片）备份到<b>你自己的</b> GitHub 或 Cloudflare 账号。
+        两种方式都是直连你自己的账号，令牌只保存在本机浏览器，不会上传到作者的服务器，也不会写进备份文件。
+    </div>
+
+    <!-- ================= GitHub ================= -->
+    <section class="cloud-card" id="ghCard">
+        <div class="cloud-head">
+            <span class="cloud-logo gh">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M12 .7a11.3 11.3 0 0 0-3.57 22.02c.57.1.78-.24.78-.54v-2.1c-3.16.68-3.83-1.34-3.83-1.34-.52-1.3-1.27-1.65-1.27-1.65-1.04-.7.08-.69.08-.69 1.15.08 1.75 1.18 1.75 1.18 1.02 1.75 2.68 1.24 3.33.95.1-.74.4-1.25.73-1.54-2.52-.28-5.17-1.26-5.17-5.6 0-1.24.44-2.25 1.17-3.04-.12-.29-.5-1.44.11-3 0 0 .96-.3 3.15 1.16a10.8 10.8 0 0 1 5.74 0c2.18-1.47 3.14-1.17 3.14-1.17.62 1.57.23 2.72.12 3 .73.8 1.17 1.8 1.17 3.05 0 4.35-2.65 5.31-5.18 5.59.41.35.77 1.05.77 2.12v3.14c0 .3.2.65.79.54A11.3 11.3 0 0 0 12 .7Z"/></svg>
+            </span>
+            <div class="cloud-title-wrap">
+                <div class="cloud-title">GitHub 云端备份</div>
+                <div class="cloud-sub" id="ghStatus">未连接 · 备份会存成私有 Gist</div>
+            </div>
+            <span class="cloud-badge" id="ghBadge">未配置</span>
+        </div>
+
+        <div class="cloud-body">
+            <div class="field">
+                <span class="field-label">访问令牌（Personal Access Token）</span>
+                <div class="field-row">
+                    <input id="ghToken" class="field-input" type="password" placeholder="ghp_… 或 github_pat_…" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+                    <button class="mini-btn" type="button" data-toggle="ghToken">显示</button>
+                </div>
+            </div>
+            <div class="btn-row">
+                <button class="cloud-btn primary" id="ghSave" type="button">连接 / 测试</button>
+                <button class="cloud-btn" id="ghUpload" type="button" disabled>上传备份</button>
+                <button class="cloud-btn" id="ghRefresh" type="button" disabled>刷新列表</button>
+                <button class="cloud-btn danger ghost" id="ghDisconnect" type="button">断开</button>
+            </div>
+            <div class="cloud-list-title">我的云端备份</div>
+            <div class="cloud-list" id="ghList"><div class="cloud-empty">连接后显示你的备份</div></div>
+
+            <details class="tutorial">
+                <summary>查看 GitHub 详细教程（第一次用必看）</summary>
+                <ol>
+                    <li>用手机或电脑浏览器打开 <b>github.com</b>，登录<strong>你自己的</strong> GitHub 账号（没有就免费注册一个）。</li>
+                    <li>点右上角头像 → <b>Settings</b>（设置）。</li>
+                    <li>左侧菜单拉到最下面 → <b>Developer settings</b>。</li>
+                    <li>依次点 <b>Personal access tokens</b> → <b>Tokens (classic)</b> → <b>Generate new token (classic)</b>。</li>
+                    <li><b>Note</b> 填 <code>Nano 云端备份</code>；<b>Expiration</b> 选 90 days（不建议永久）；权限只勾选 <b>gist</b>，其它都不用勾。</li>
+                    <li>点页面最下面的 <b>Generate token</b>，复制以 <code>ghp_</code> 开头的令牌。<b>它只显示一次</b>，关掉页面就看不到了。</li>
+                    <li>回到本页，把令牌粘贴到上面的输入框 → 点 <b>连接 / 测试</b>。成功后会显示你的 @用户名。</li>
+                    <li>点 <b>上传备份</b>。程序会在你的 GitHub 里创建一个<b>私有 Gist</b>；每上传一次就是一个新版本，不会覆盖旧版本。</li>
+                    <li>换手机 / 重装后：粘贴同一个令牌 → 连接 → 在列表里点 <b>恢复</b>（会覆盖本机现有数据，请先确认）。</li>
+                </ol>
+                <div class="tut-note">
+                    <b>也可以使用 Fine-grained token：</b>Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token。
+                    Resource owner 选你自己；Account permissions → <b>Gists</b> → <b>Read and write</b>；生成后复制 <code>github_pat_</code> 开头的令牌。
+                </div>
+                <div class="tut-warn">
+                    令牌 = 你账号的 Gist 读写权限，<b>只保存在本机浏览器</b>，不会上传到任何服务器。建议专门建一个令牌，不用时回 GitHub 删除。
+                    私有 Gist 只是“不公开”，GitHub 平台仍能看到内容；聊天记录很私密的话请自行评估是否上传。
+                </div>
+            </details>
+        </div>
+    </section>
+
+    <!-- ================= Cloudflare ================= -->
+    <section class="cloud-card" id="cfCard">
+        <div class="cloud-head">
+            <span class="cloud-logo cf">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M17.6 9.3a5.5 5.5 0 0 0-10.4-1.6A4.3 4.3 0 0 0 3.4 16h14.1a3.4 3.4 0 0 0 .1-6.7Z"/></svg>
+            </span>
+            <div class="cloud-title-wrap">
+                <div class="cloud-title">Cloudflare 云端备份</div>
+                <div class="cloud-sub" id="cfStatus">未连接 · 数据存进你自己的 Cloudflare Worker</div>
+            </div>
+            <span class="cloud-badge" id="cfBadge">未配置</span>
+        </div>
+
+        <div class="cloud-body">
+            <label class="field">
+                <span class="field-label">Worker 地址</span>
+                <input id="cfUrl" class="field-input" type="url" placeholder="https://nano-backup.你的子域.workers.dev" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+            </label>
+            <div class="field">
+                <span class="field-label">访问密码（BACKUP_TOKEN）</span>
+                <div class="field-row">
+                    <input id="cfToken" class="field-input" type="password" placeholder="你在 Worker 里设置的密码" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+                    <button class="mini-btn" type="button" data-toggle="cfToken">显示</button>
+                </div>
+            </div>
+            <div class="btn-row">
+                <button class="cloud-btn primary" id="cfSave" type="button">保存并测试</button>
+                <button class="cloud-btn" id="cfUpload" type="button" disabled>上传备份</button>
+                <button class="cloud-btn" id="cfRefresh" type="button" disabled>刷新列表</button>
+                <button class="cloud-btn danger ghost" id="cfDisconnect" type="button">断开</button>
+            </div>
+            <div class="cloud-list-title">我的云端备份</div>
+            <div class="cloud-list" id="cfList"><div class="cloud-empty">连接后显示你的备份</div></div>
+
+            <details class="tutorial">
+                <summary>查看 Cloudflare 详细教程（第一次用必看）</summary>
+                <ol>
+                    <li>打开 <b>dash.cloudflare.com</b>，登录<strong>你自己的</strong> Cloudflare 账号（免费注册即可，这个方案不需要信用卡）。</li>
+                    <li>左侧点 <b>Workers &amp; Pages</b> → <b>Create</b> → <b>Worker</b> → 名字填 <code>nano-backup</code> → <b>Deploy</b>。</li>
+                    <li>部署后点 <b>Edit code</b>，把编辑器里的默认代码<b>全部删掉</b>，粘贴下面这段代码，再点右上角 <b>Deploy</b>。</li>
+                    <li>左侧点 <b>Storage &amp; Databases</b> → <b>KV</b> → <b>Create namespace</b>，名字填 <code>nano-backup-kv</code> → 创建。</li>
+                    <li>回到 <b>Workers &amp; Pages</b> → 打开 <code>nano-backup</code> → <b>Settings</b> → <b>Bindings</b> → <b>Add</b> → <b>KV Namespace</b>。
+                        变量名必须填 <code>BACKUP_KV</code>，右边选择刚创建的 <code>nano-backup-kv</code>，保存并重新部署。</li>
+                    <li>还是在 <b>Settings</b> → <b>Variables and Secrets</b> → <b>Add</b>：
+                        名称填 <code>BACKUP_TOKEN</code>，值填一串只有你知道的长密码（建议 24 位以上随机字符），类型选 <b>Secret</b>，保存并部署。</li>
+                    <li>在 Worker 的 <b>Settings</b> → <b>Domains &amp; Routes</b> 里确认 <b>workers.dev</b> 已启用，复制形如
+                        <code>https://nano-backup.xxxx.workers.dev</code> 的地址。</li>
+                    <li>回到本页：Worker 地址粘贴进去，密码填同一个 <code>BACKUP_TOKEN</code> → 点 <b>保存并测试</b>。</li>
+                    <li>看到“已连接”后点 <b>上传备份</b>。以后换设备时，填同一个地址和密码，在列表里点 <b>恢复</b>。</li>
+                </ol>
+
+                <div class="code-head">
+                    <span>Worker 代码</span>
+                    <button class="mini-btn dark" id="cfCopyCode" type="button">复制代码</button>
+                </div>
+                <pre class="code-box" id="cfCodeBox">正在读取 backup-worker/index.js…</pre>
+
+                <div class="tut-note">
+                    <b>免费额度：</b>KV 总空间 1GB，单个备份最大 24MB（程序会自动压缩，仍超限会提示）。
+                    备份多了请删旧的；占用可在 Cloudflare 的 KV 页面查看。
+                </div>
+                <div class="tut-warn">
+                    <code>BACKUP_TOKEN</code> 是这个备份接口唯一的密码，泄露后别人可以读写你的备份。
+                    不要把它写进公开的 GitHub 仓库；怀疑泄露时到 Cloudflare 改掉并同步修改本页密码。
+                    代码和数据都在你自己的 Cloudflare 账号里，作者服务器不参与。
+                </div>
+            </details>
+        </div>
+    </section>
+
+    <div class="cloud-footer">
+        云端备份会包含聊天记录、角色卡、图片等全部本机数据；恢复会<b>覆盖</b>当前数据且不可撤销。重要数据建议同时保留一份本地导出。
+    </div>
+</main>
+
+<!-- ================= 进度弹层 ================= -->
+<div class="progress-overlay" id="progressOverlay">
+    <div class="progress-card">
+        <div class="progress-title" id="progressTitle">正在处理…</div>
+        <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+        <div class="progress-text" id="progressText">准备中…</div>
+    </div>
+</div>
+
+<script src="../js/pako.min.js"></script>
+<script src="../js/backup.js?v=20261025c"></script>
+<script src="../js/cloud-backup.js?v=20261025a"></script>
+<script src="../js/swipe-back.js"></script>
+</body>
+</html>

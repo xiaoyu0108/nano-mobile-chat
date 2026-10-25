@@ -20,7 +20,7 @@
     })();
 
     // ===== 一次性清理：早期把 base64 图片（头像/bg/聊天图片）写进了 localStorage，
-    // 会把配额（约 5MB）塞满，导致之后所有设置（通知开关、Bark 密钥等）都写不进去。
+    // 会把配额（约 5MB）塞满，导致之后所有设置（通知开关、铃声等）都写不进去。
     // 这里清掉可安全重建的部分，腾出空间。=====
     function storageHasRoom() {
         try { localStorage.setItem('nano_quota_probe', '1'); localStorage.removeItem('nano_quota_probe'); return true; }
@@ -265,186 +265,12 @@
         } catch (e) {}
     }
 
-    // ===== Bark：iPhone 系统推送（国内直连，无需梯子/FCM）=====
-    // 在「更多 → 其他」或控制台执行 NanoNotify.setBarkKey('你的Bark密钥') 即可开启。
-    var BARK_KEY = 'nano_bark_key';
-    var BARK_ENABLED = 'nano_bark_enabled';        // Bark 推送总开关（关掉后不再向 Bark 发任何请求）
-    var BARK_LEVEL = 'nano_bark_level';            // Bark 级别：passive=静默不震动（默认），active/timeSensitive/critical
-    var BARK_CLEARED = 'nano_bark_key_cleared';    // 用户主动清空密钥的标记，避免又从 IndexedDB 读回旧密钥
-    // localStorage 写满时密钥可能只写进了 IndexedDB，这里缓存一份，保证 notify() 同步取得到
-    var barkCache = '';
-    function barkKey() {
-        try {
-            // 用户主动清空过：以清空为准，忽略内存缓存（否则其它 iframe 仍会用旧密钥继续推送）
-            if (localStorage.getItem(BARK_CLEARED) === '1') return '';
-            var v = (localStorage.getItem(BARK_KEY) || '').trim();
-            return v || barkCache;
-        } catch (e) { return barkCache; }
-    }
-    // 其它页面/iframe 清空或修改密钥时，通过 storage 事件同步（localStorage 是同源共享的）
-    try {
-        window.addEventListener('storage', function (e) {
-            if (!e || !e.key || e.key === BARK_KEY || e.key === BARK_CLEARED) {
-                try { barkCache = (localStorage.getItem(BARK_KEY) || '').trim(); } catch (err) { barkCache = ''; }
-            }
-        });
-    } catch (e) {}
-    function barkKeyAsync() {
-        var local = '';
-        var cleared = false;
-        try { local = (localStorage.getItem(BARK_KEY) || '').trim(); } catch (e) {}
-        try { cleared = localStorage.getItem(BARK_CLEARED) === '1'; } catch (e) {}
-        if (local) { barkCache = local; return Promise.resolve(local); }
-        // 用户主动清空过：不要再用 IndexedDB 里的旧密钥复活它
-        if (cleared) { barkCache = ''; return Promise.resolve(''); }
-        if (typeof localforage === 'undefined') return Promise.resolve('');
-        return localforage.getItem(BARK_KEY).then(function (v) {
-            var k = String(v || '').trim();
-            if (k) barkCache = k;
-            return k;
-        }).catch(function () { return ''; });
-    }
-    function setBarkKey(key) {
-        key = String(key || '').trim();
-        barkCache = key;
-        var ok = false;
-        try { localStorage.setItem(BARK_KEY, key); ok = true; } catch (e) { ok = false; }
-        try { localStorage.setItem(BARK_CLEARED, key ? '0' : '1'); } catch (e) {}
-        if (typeof localforage !== 'undefined') {
-            // 清空时必须把 IndexedDB 里的旧值也一并清掉，否则下次启动会读回旧密钥继续推送
-            try { localforage.setItem(BARK_KEY, key); } catch (e) {}
-        }
-        return ok;
-    }
-    // Bark 开关：默认开启（只要填了密钥）。用户可在「更多 → 其他」里单独关掉。
-    function barkEnabled() {
-        try { return localStorage.getItem(BARK_ENABLED) !== '0'; } catch (e) { return true; }
-    }
-    function setBarkEnabled(on) {
-        try { localStorage.setItem(BARK_ENABLED, on ? '1' : '0'); } catch (e) {}
-    }
-    // Bark 推送级别：active 才会在锁屏/后台弹横幅；声音单独用 sound=none 关掉
-    function barkLevel() {
-        try {
-            var v = (localStorage.getItem(BARK_LEVEL) || 'active').trim();
-            // 旧版本默认写过 passive（只进通知中心、不弹横幅），这里统一改成 active
-            return (!v || v === 'passive') ? 'active' : v;
-        } catch (e) { return 'active'; }
-    }
-    function setBarkLevel(level) {
-        try { localStorage.setItem(BARK_LEVEL, String(level || 'active').trim() || 'active'); } catch (e) {}
-    }
-    // 兼容 body 被写成对象的情况，避免通知正文显示成 "[object Object]" / "body"
-    function pushText(v, fallback) {
-        var s = '';
-        if (v && typeof v === 'object') s = v.body || v.text || v.message || v.content || v.title || '';
-        else s = (v == null ? '' : v);
-        s = String(s || '').trim();
-        return s || String(fallback || '');
-    }
-    function barkPush(title, body, opts, keyOverride) {
-        var key = String(keyOverride || barkKey() || '').trim();
-        if (!key) return Promise.resolve({ ok: false, error: 'no-key' });
-        opts = opts || {};
-        // 通知标题优先用「角色昵称」，正文优先用真实消息内容。
-        // 之前的调用链里偶尔只传了 title/body 的空壳（例如 schedule 的占位文案），
-        // 结果 Bark 只显示通用的 "Nano / 你有一条新消息"。这里用 opts.name / opts.preview
-        // 兜底，保证每条推送都带角色名和具体内容。
-        var nameHint = pushText(opts.name, '');
-        var bodyHint = pushText(opts.preview, '');
-        title = pushText(title, nameHint || 'Nano');
-        body = pushText(body, bodyHint || '你有一条新消息');
-        if (nameHint && /^(Nano|新消息|通知|消息|朋友圈|TA)$/i.test(String(title).trim())) title = nameHint;
-        if (/^(title|body|undefined|null)$/i.test(String(title).trim())) title = nameHint || 'Nano';
-        if (bodyHint && /^(你有一条新消息|新消息|收到就说明配置成功.?)$/i.test(String(body).trim())) body = bodyHint;
-        if (/^(title|body|undefined|null)$/i.test(String(body).trim())) body = bodyHint || '你有一条新消息';
-        // 支持直接粘贴完整 Bark 地址（可能自带 ?group=...）：只取 origin+path，
-        // 否则 /标题/正文 会被拼到查询串后面，Bark 收不到标题和正文。
-        var root = 'https://api.day.app', devKey = key;
-        if (key.indexOf('http') === 0) {
-            try {
-                var ku = new URL(key);
-                var segs = ku.pathname.split('/').filter(Boolean);
-                devKey = segs.length ? segs.pop() : '';
-                root = ku.origin + (segs.length ? '/' + segs.join('/') : '');
-            } catch (e) {
-                root = 'https://api.day.app';
-            }
-        }
-        var group = opts.group || nameHint || title || 'Nano';
-        var level = opts.level || barkLevel();
-        var sound = opts.sound || 'none';
-        var target = opts.target || '';
-        var icon = '';
-        try { icon = (opts.icon && /^https?:/i.test(opts.icon)) ? opts.icon : nanoIconUrl(); } catch (e) {}
-        var openUrl = target ? (NANO_ROOT + 'index.html?open=' + encodeURIComponent(target)) : '';
-        var bodyText = body.slice(0, 300);
-
-        function barkGet() {
-            var full = root + '/' + encodeURIComponent(devKey || '') + '/' + encodeURIComponent(title) + '/' + encodeURIComponent(bodyText);
-            var q = ['group=' + encodeURIComponent(group), 'level=' + encodeURIComponent(level), 'sound=' + encodeURIComponent(sound)];
-            if (openUrl) q.push('url=' + encodeURIComponent(openUrl));
-            if (icon) q.push('icon=' + encodeURIComponent(icon));
-            var url = full + '?' + q.join('&');
-            return fetch(url, { cache: 'no-store', keepalive: true }).then(function (r) {
-                return r.json().catch(function () { return {}; });
-            }).then(function (j) {
-                var ok = !(j && j.code && Number(j.code) !== 200);
-                return {
-                    ok: ok, resp: j, url: url, method: 'GET',
-                    error: ok ? '' : String((j && (j.message || j.error)) || ('Bark code ' + (j && j.code)))
-                };
-            }).catch(function () {
-                try { fetch(url, { mode: 'no-cors' }).catch(function () {}); } catch (e) {}
-                return { ok: true, cors: true, url: url, method: 'GET' };
-            });
-        }
-
-        // POST /push 只作兜底：部分自建 Bark 服务会接受 POST 却把 title/body 丢掉，
-        // 表现就是「有通知但没名字、没内容」。GET 路径接口（标题和正文都已 encodeURIComponent）
-        // 在官方和自建 Bark 上都更稳定，所以先走 GET，失败后再试 POST。
-        function barkPost() {
-            if (!devKey) return Promise.resolve({ ok: false, error: 'no-key' });
-            var payload = {
-                device_key: devKey, title: title, body: bodyText,
-                group: group, level: level, sound: sound
-            };
-            if (icon) payload.icon = icon;
-            if (openUrl) payload.url = openUrl;
-            var postUrl = root.replace(/\/+$/, '') + '/push';
-            return fetch(postUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
-                cache: 'no-store',
-                keepalive: true
-            }).then(function (r) {
-                if (!r || !r.ok) return { ok: false, url: postUrl, method: 'POST', error: 'HTTP ' + (r && r.status) };
-                return r.json().catch(function () { return null; }).then(function (j) {
-                    // 返回 HTML / 空响应说明服务端没真正接收 JSON 推送，不能当作成功。
-                    if (!j) return { ok: false, url: postUrl, method: 'POST', error: 'bad-response' };
-                    var ok = !(j && j.code && Number(j.code) !== 200);
-                    return {
-                        ok: ok, resp: j, url: postUrl, method: 'POST',
-                        error: ok ? '' : String((j && (j.message || j.error)) || ('Bark code ' + j.code))
-                    };
-                });
-            }).catch(function (e) {
-                return { ok: false, url: postUrl, method: 'POST', error: String((e && e.message) || e || 'network') };
-            });
-        }
-        return barkGet().then(function (r) {
-            if (r && r.ok) return r;
-            return barkPost().then(function (p) { return (p && p.ok) ? p : r; });
-        });
-    }
-
     function nanoIconUrl() {
         try { return NANO_ROOT + 'icons/icon-192.png'; } catch (e) { return ''; }
     }
 
     // 是否「真的在前台」。不能只依赖 document.hasFocus()：开启保活音频后，PWA 切到
-    // 后台仍可能被系统判定为 focused/visible，导致 Bark 永远不触发（这就是之前的根因）。
+    // 后台仍可能被系统判定为 focused/visible，导致后台系统通知永远不触发（这就是之前的根因）。
     // 现在用 focus / blur / visibilitychange 一起判断，并让顶层窗口把状态共享给 iframe。
     var _pageFocused = true;
     function _syncFocus(on) { _pageFocused = !!on; }
@@ -476,11 +302,8 @@
 
     function notify(title, body, opts) {
         opts = opts || {};
-        // 「允许通知」和「Bark」是两个独立开关：只开 Bark 时也必须能推系统消息。
-        // 之前的写法在这里就用 enabled() 拦掉了，导致 Bark 永远走不到。
         var inApp = enabled() || !!opts.force;
-        var barkOn = barkEnabled() && !!barkKey();
-        if (!inApp && !barkOn) return;
+        if (!inApp) return;
         // 去重：同一条通知在极短时间内被多个通道/多次调用触发时只弹一次，
         // 解决「系统通知内容重复两次」的问题（标题+内容+target 作为 key）。
         try {
@@ -491,12 +314,10 @@
             notify._seen[dk] = now;
             if (Object.keys(notify._seen).length > 60) notify._seen = {};
         } catch (e) {}
-        // 前台统一走内置通知栏：头像 + 昵称 + 具体信息（后台仍走系统通知 / Bark）
+        // 前台统一走内置通知栏：头像 + 昵称 + 具体信息（后台走系统通知 / Web Push）
         try {
             if (isForeground()) {
-                // 前台只走内置通知栏；如果用户只开了 Bark，就不要在正在用 App 时打扰。
-                if (!inApp) return;
-                // 只有人在前台时才播放应用内提示音；后台交给 Bark（sound=none）静音推送
+                // 只有人在前台时才播放应用内提示音
                 playSound(soundFor(opts));
                 var inAppPayload = {
                     type: 'appNotify',
@@ -535,29 +356,6 @@
         var defIcon = nanoIconUrl();
         var icon = opts.icon || defIcon;
         var badge = opts.badge || defIcon;
-        // Bark：应用退到后台/锁屏时，通过苹果推送弹真正的系统通知（国内可用）
-        try {
-            var hidden = !isForeground();
-            if (barkOn && (hidden || opts.force || opts.bark)) {
-                var bopts = Object.assign({}, opts, {
-                    icon: icon,
-                    name: opts.name || title,
-                    preview: body,
-                    group: opts.group || opts.name || title || 'Nano'
-                });
-                // 等 Bark 真正返回结果：失败时退回系统通知，避免整条消息被吞掉。
-                var barkJob = barkPush(title, body, bopts);
-                if (barkJob && barkJob.then) {
-                    barkJob.then(function (r) {
-                        if (r && r.ok) return;
-                        if (inApp) systemNotify();
-                    }).catch(function () { if (inApp) systemNotify(); });
-                }
-                return;
-            }
-        } catch (e) {}
-        // 只开了 Bark、没有开「允许通知」时，不再走浏览器通知
-        if (!inApp) return;
         systemNotify();
 
         function systemNotify() {
@@ -619,11 +417,6 @@
         }
     }
 
-    // 启动时把 IndexedDB 里的 Bark 密钥读进缓存（localStorage 写满时的兜底），
-    // 这样后台生成消息时 notify() 也能同步拿到密钥并推送。
-    try { barkKeyAsync(); } catch (e) {}
-    try { window.addEventListener('load', function () { barkKeyAsync(); }); } catch (e) {}
-
     window.NanoNotify = {
         notify: notify,
         playSound: playSound,
@@ -637,14 +430,6 @@
         channelSound: channelSound,
         setChannelSound: setChannelSound,
         soundFor: soundFor,
-        barkKey: barkKey,
-        barkKeyAsync: barkKeyAsync,
-        setBarkKey: setBarkKey,
-        barkEnabled: barkEnabled,
-        setBarkEnabled: setBarkEnabled,
-        barkLevel: barkLevel,
-        setBarkLevel: setBarkLevel,
-        barkPush: barkPush,
         setCustomSound: setCustomSound,
         getCustomSound: getCustomSound
     };

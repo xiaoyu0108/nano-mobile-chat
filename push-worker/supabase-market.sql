@@ -51,3 +51,12 @@ end;
 $$;
 
 revoke all on function public.market_increment(text, text, integer) from public, anon, authenticated;
+
+-- ===== Market files bucket (Supabase Storage, no R2 card required) =====
+insert into storage.buckets (id, name, public)
+values ('nano-market', 'nano-market', true)
+on conflict (id) do update set public = true;
+
+drop policy if exists "nano_market_public_read" on storage.objects;
+create policy "nano_market_public_read" on storage.objects
+  for select using (bucket_id = 'nano-market');

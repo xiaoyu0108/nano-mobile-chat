@@ -52,6 +52,47 @@
       r.onerror = function () { reject(r.error); };
     });
   }
+  // 内置美化：缺失时补回；同一内置模板升级时（版本标记还是旧版）刷新
+  async function ensureBuiltinTemplates() {
+    var extras = window.NANO_HEART_BUILTIN_TEMPLATES || [];
+    if (!extras.length) return;
+    var all = await allTemplates();
+    var byId = {};
+    all.forEach(function (t) { byId[t.id] = t; });
+    var pending = [];
+    extras.forEach(function (t) {
+      if (!t || !t.id || !t.css) return;
+      var cur = byId[t.id];
+      var need = !cur;
+      if (cur) {
+        var stored = String(cur.css || '');
+        var oldVer = stored.match(/nano-heart-pink-dots:v(\d+)/);
+        if (oldVer && Number(oldVer[1]) < Number(t.version || 1)) need = true;
+      }
+      if (need) {
+        // 旧版内置刚好正在使用时，把已应用的 CSS 一起升级，避免模板变了但弹窗还是旧样式
+        try {
+          if (cur && localStorage.getItem(APPLIED_KEY) === String(cur.css || '')) {
+            localStorage.setItem(APPLIED_KEY, t.css);
+          }
+        } catch (e) {}
+        pending.push(putTemplate(t.id, t.name, t.css));
+      }
+    });
+    if (pending.length) {
+      try { await Promise.all(pending); } catch (e) {}
+    }
+  }
+  function sortTemplates(list) {
+    return (Array.isArray(list) ? list.slice() : []).sort(function (a, b) {
+      if (a.id === 'default') return -1;
+      if (b.id === 'default') return 1;
+      var ab = /^builtin_/.test(String(a.id || ''));
+      var bb = /^builtin_/.test(String(b.id || ''));
+      if (ab !== bb) return ab ? -1 : 1;
+      return String(a.name || '').localeCompare(String(b.name || ''), 'zh');
+    });
+  }
 
   function toast(msg) {
     try {
@@ -196,7 +237,8 @@
   // ---- 下拉 ----
   var currentId = 'default';
   async function renderSelect(selectedId) {
-    var all = await allTemplates();
+    try { await ensureBuiltinTemplates(); } catch (e) {}
+    var all = sortTemplates(await allTemplates());
     var sel = $('hsTemplateSelect');
     sel.innerHTML = '';
     var ph = document.createElement('option');
@@ -395,7 +437,13 @@
     try { applied = localStorage.getItem(APPLIED_KEY) || ''; } catch (e) {}
     try {
       if (applied) { $('hsCss').value = applied; }
-      else await loadToEditor('default');
+      else {
+        // 默认模板不存在（例如直接从设置页打开、还没进过聊天）时，
+        // 回退到下拉里当前选中的预设，避免编辑器空白。
+        var sel = $('hsTemplateSelect');
+        var fallbackId = sel ? sel.value : 'default';
+        await loadToEditor(fallbackId || 'default');
+      }
     } catch (e) { if (applied) $('hsCss').value = applied; }
     try { $('hsBuiltinPrompt').value = localStorage.getItem(PROMPT_KEY) || ''; } catch (e) {}
 

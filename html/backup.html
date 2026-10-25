@@ -75,6 +75,30 @@
             导出全部数据：IndexedDB、localStorage、sessionStorage。日常备份推荐用 <b>JSON</b>（可读、最稳、不依赖网络）；<b>ZIP</b> 体积更小、含二进制，但需要 JSZip（已内置，联网时也可回退 CDN）。
         </div>
 
+        <!-- ================= 云端备份 ================= -->
+        <section class="list-group">
+            <div class="section-title">云端备份</div>
+
+            <button class="list-item" onclick="location.href='cloud-backup.html'">
+                <div class="item-left">
+                    <div class="item-icon icon-green">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M17.5 19H7a5 5 0 0 1-.9-9.9A6 6 0 0 1 17.5 8a4.5 4.5 0 0 1 0 11Z"/>
+                            <path d="M12 12v5"/><path d="m9.5 14.5 2.5-2.5 2.5 2.5"/>
+                        </svg>
+                    </div>
+                    <span class="item-title">GitHub / Cloudflare 云端备份</span>
+                </div>
+                <div class="item-right">
+                    <span class="item-sub">用你自己的账号</span>
+                    <svg class="chevron" width="8" height="13" viewBox="0 0 8 13"><path d="M1 1.5L6.5 6.5L1 11.5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </div>
+            </button>
+        </section>
+        <div class="section-footer">
+            直接备份到你自己的 <b>GitHub</b>（私有 Gist）或 <b>Cloudflare</b>（Worker + KV），附逐步教程。上传前会自动压缩，并剔除云端令牌本身。
+        </div>
+
         <!-- ================= 单个角色 ================= -->
         <section class="list-group">
             <div class="section-title">单个角色</div>
@@ -187,7 +211,7 @@
     </div>
 
     <script defer src="../js/jszip.min.js"></script>
-    <script src="../js/backup.js?v=20261020b"></script>
+    <script src="../js/backup.js?v=20261025a"></script>
 <script src="../js/api-float.js"></script>
 <script src="../swipe-back.js"></script>
 </body>

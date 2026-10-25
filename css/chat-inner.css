@@ -2171,3 +2171,64 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .tkv-bub{display:flex;flex-direction:column;gap:2px}
 
 /* 注释已清理（原文件编码损坏） */
+
+/* 外卖小地图（所有主题通用底样式，灰粉主题会覆盖成灰粉配色） */
+.bubble-card.takeout .takeout-map {
+    position: relative;
+    height: 84px;
+    margin: 0 12px 10px;
+    border-radius: 13px;
+    overflow: hidden;
+    background:
+        repeating-linear-gradient(0deg, rgba(120,120,128,.08) 0 1px, transparent 1px 18px),
+        repeating-linear-gradient(90deg, rgba(120,120,128,.08) 0 1px, transparent 1px 18px),
+        linear-gradient(135deg, #eef3ef, #e8f0f5 55%, #f3f1ee);
+    border: 1px solid rgba(80,90,100,.08);
+}
+.bubble-card.takeout .tm-route {
+    position: absolute;
+    left: 16%;
+    top: 62%;
+    width: 58%;
+    height: 2px;
+    border-radius: 2px;
+    background: linear-gradient(90deg, rgba(180,120,80,.15), rgba(180,120,80,.65));
+    transform: rotate(-18deg);
+    transform-origin: left center;
+}
+.bubble-card.takeout .tm-route::after {
+    content: "";
+    position: absolute;
+    right: -4px; top: -3px;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #b1743f;
+    box-shadow: 0 0 0 3px rgba(177,116,63,.18);
+}
+.bubble-card.takeout .tm-pin {
+    position: absolute;
+    left: 68%; top: 22%;
+    width: 10px; height: 10px;
+    border-radius: 50% 50% 50% 0;
+    background: #b1743f;
+    transform: rotate(-45deg);
+    box-shadow: 0 2px 6px rgba(120,80,50,.25);
+}
+.bubble-card.takeout .tm-eta {
+    position: absolute;
+    left: 10px; bottom: 8px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #6d4b32;
+}
+.bubble-card.takeout .tm-status {
+    position: absolute;
+    right: 10px; bottom: 8px;
+    font-size: 10.5px;
+    font-weight: 600;
+    color: #8a6d5a;
+    background: rgba(255,255,255,.68);
+    border-radius: 8px;
+    padding: 2px 6px;
+}
+

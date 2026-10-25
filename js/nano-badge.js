@@ -28,7 +28,7 @@
         if (!buf) return;
         delete notifyBuffer[chatId];
         try {
-            // 不要在这里用 NanoNotify.enabled() 拦截：用户可能只开了 Bark。
+            // 不要在这里用 NanoNotify.enabled() 拦截：通知模块内部会再判断开关。
             if (!window.NanoNotify) return;
             var body = buf.texts.join('\n').trim();
             if (body.length > 200) body = body.slice(0, 200) + '…';
@@ -97,13 +97,13 @@
 
     // 切到后台/锁屏时，立刻把「前台」标记关掉。
     // 否则 ctx.foreground 一直是 true，后台（保活）生成的角色消息会被当成
-    // 「你正在看这个聊天」而被 incoming() 静默丢弃 —— 这就是切走 App 收不到 Bark 推送的原因。
+    // 「你正在看这个聊天」而被 incoming() 静默丢弃 —— 这就是切走 App 收不到后台通知的原因。
     if (typeof document !== 'undefined') {
         document.addEventListener('visibilitychange', function () {
             setForeground(!document.hidden);
         });
         // 保活音频会让 PWA 在后台仍保持 visible，光靠 visibilitychange 不够。
-        // 失焦时也视为后台，保证主动消息会走系统通知 / Bark 而不是被内嵌通知吞掉。
+        // 失焦时也视为后台，保证主动消息会走系统通知 / Web Push 而不是被内嵌通知吞掉。
         window.addEventListener('blur', function () { setForeground(false); });
         window.addEventListener('focus', function () { if (!document.hidden) setForeground(true); });
     }

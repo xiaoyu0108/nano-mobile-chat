@@ -240,12 +240,15 @@
             else if (st === 'returned') gFoot = statusFoot(side === 'left' && cd.response ? '你已退还这份礼物' : (side === 'right' && cd.response ? '对方已退还这份礼物' : '这份礼物已退还'));
             else if (side === 'right') gFoot = statusFoot('等待对方查收');
             else gFoot = actions([['退还', 'return', false], ['接受', 'receive', true]]);
+            var giftSub = cd.amount
+                ? ('价值 ' + String(cd.amount) + (cd.sub ? ' · ' + cd.sub : ''))
+                : (cd.sub || '');
             html = header(gIcon, gHead, time) +
-                mainTitle('gift', side === 'left' ? '收到一份礼物' : '送出一份礼物', cd.title || '礼物', cd.sub || '', cd) +
+                mainTitle('gift', side === 'left' ? '收到一份礼物' : '送出一份礼物', cd.title || '礼物', giftSub, cd) +
                 info([
                     ['送礼人', roles.sender, 'user'],
                     ['收礼人', roles.recipient, 'user'],
-                    ['发送时间', cd.time || '刚刚', 'calendar'],
+                    ['礼物价值', cd.amount || '未标价', 'wallet'],
                     ['礼物类型', cd.giftType || '心意礼物', 'gift']
                 ], cd) + gFoot;
         } else if (type === 'store') {
@@ -311,13 +314,21 @@
             else if (st === 'rejected') tFoot = statusFoot('已取消');
             else if (tDir === 'char') tFoot = actions([['取消', 'takeout-reject', false], ['确认外卖', 'takeout-accept', true]]);
             else tFoot = statusFoot('等待对方确认');
-            var tMain = price > 0 ? mainAmount('订单金额', '¥' + price.toFixed(2), null, cd) : mainTitle('utensil', '外卖订单', cd.food || '外卖', cd.shop || '', cd);
-            html = header(tIcon, tHead, time) + tMain +
+            var priceText = price > 0 ? ('¥' + price.toFixed(2)) : '';
+            var tSub = [cd.shop || '外卖', priceText].filter(Boolean).join(' · ');
+            var tMain = mainTitle('utensil', '外卖订单', cd.food || '外卖', tSub, cd);
+            var etaText = eta > 0 ? (eta + ' 分钟') : '配送中';
+            var tStatus = st === 'accepted' ? '已确认' : (st === 'rejected' ? '已取消' : '待确认');
+            var tMap = '<div class="takeout-map">' +
+                '<span class="tm-route"></span><span class="tm-pin"></span>' +
+                '<span class="tm-eta">' + etaText + ' 到达</span>' +
+                '<span class="tm-status">' + tStatus + '</span></div>';
+            html = header(tIcon, tHead, time) + tMain + tMap +
                 info([
                     ['店铺', cd.shop || '外卖', 'store'],
                     ['餐品', cd.food || '外卖', 'utensil'],
-                    ['预计送达', eta > 0 ? (eta + ' 分钟') : '配送中', 'clock'],
-                    ['订单状态', st === 'accepted' ? '已确认' : (st === 'rejected' ? '已取消' : '待确认'), 'receipt']
+                    ['预计送达', etaText, 'clock'],
+                    ['订单状态', tStatus, 'receipt']
                 ]) + note(cd.note || '') + tFoot;
         } else if (type === 'location') {
             var dist = Number(cd.distance || 0);

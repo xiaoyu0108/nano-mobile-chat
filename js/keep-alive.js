@@ -19,7 +19,7 @@
         localStorage，任何页面在 加载 / 回前台 / 心跳 时都会补跑已到期任务，
         所以「切换页面」不会丢任务与推送。
      5. 到期执行：
-        · type='notify'   → 直接弹系统通知（NanoNotify → ServiceWorker → Bark）
+        · type='notify'   → 直接弹系统通知（NanoNotify → ServiceWorker → Web Push）
         · type='generate' → 广播给正在运行的聊天/朋友圈 iframe，由它调用 API 生成；
                             若无 frame 认领，则退化为一条系统通知，保证不静默丢推送。
      6. Wake Lock：前台保持屏幕常亮（不影响后台，后台靠音频保活）。
@@ -289,7 +289,7 @@
         var body = task.body || '';
         var tag = task.tag || ('nano-task-' + (task.id || Date.now()));
         var opts = { force: true, target: task.target || '', channel: task.channel || '', tag: tag };
-        // 优先 NanoNotify：内部会走 ServiceWorker + Bark（后台/锁屏也能到）
+        // 优先 NanoNotify：内部会走 ServiceWorker + Web Push（后台/锁屏也能到）
         try {
             if (window.NanoNotify && window.NanoNotify.notify) { window.NanoNotify.notify(title, body, opts); return; }
         } catch (e) {}

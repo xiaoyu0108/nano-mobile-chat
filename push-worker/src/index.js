@@ -61,9 +61,221 @@ function kv(env) {
   const db = env && (env.DB || env.nano_db);
   return db ? d1Kv(db) : env.PUSH_KV;
 }
-// 集市旧数据还在 KV 里：即使 D1 已接管，也继续从 KV 读，避免迁移后旧帖子凭空消失。
+// 集市也优先走 D1；只有完全没绑 D1 的自建 Worker 才回退到 KV。
+// 生产 Worker 已绑 nano_db，这里不再直接读写 PUSH_KV，避免继续消耗 KV 额度。
 function marketKv(env) {
-  return (env && env.PUSH_KV) ? env.PUSH_KV : kv(env);
+  return kv(env);
+}
+
+// ===== 集市文件：Supabase 存元数据，R2 存图片/附件 =====
+// 绑了 MEDIA（R2）时，发布资源会把 dataURL 上传到 R2，item 里只留 URL；
+// 没绑 R2 时保持旧行为（dataURL 存在 Supabase/D1 里）。
+function mediaPublicBase(env) {
+  return String((env && env.MEDIA_PUBLIC_BASE) || '').trim().replace(/\/+$/, '');
+}
+function mediaUrl(env, request, key) {
+  const base = mediaPublicBase(env);
+  if (base) return base + '/' + key;
+  return new URL(request.url).origin + '/market/file?key=' + encodeURIComponent(key);
+}
+function mediaSafeId(id) {
+  return String(id || 'post').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 80) || 'post';
+}
+function mediaExt(mime, name) {
+  const m = String(mime || '').toLowerCase();
+  if (/png/.test(m)) return 'png';
+  if (/jpe?g/.test(m)) return 'jpg';
+  if (/webp/.test(m)) return 'webp';
+  if (/gif/.test(m)) return 'gif';
+  if (/svg/.test(m)) return 'svg';
+  if (/pdf/.test(m)) return 'pdf';
+  if (/json/.test(m)) return 'json';
+  if (/zip/.test(m)) return 'zip';
+  const n = String(name || '');
+  const dot = n.lastIndexOf('.');
+  if (dot > -1 && n.length - dot <= 9) {
+    const ext = n.slice(dot + 1).replace(/[^A-Za-z0-9]/g, '').toLowerCase();
+    if (ext) return ext;
+  }
+  return 'bin';
+}
+function parseDataUrl(src) {
+  const m = /^data:([^;,]*)(;base64)?,([\s\S]*)$/i.exec(String(src || ''));
+  if (!m) return null;
+  try {
+    const raw = m[2] ? atob(m[3]) : decodeURIComponent(m[3]);
+    const bytes = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+    return { mime: m[1] || 'application/octet-stream', bytes: bytes };
+  } catch (e) { return null; }
+}
+function supabaseMarketBucket(env) {
+  return String((env && env.SUPABASE_MARKET_BUCKET) || 'nano-market')
+    .replace(/[^A-Za-z0-9_-]/g, '').slice(0, 60) || 'nano-market';
+}
+function supabaseStoragePath(key) {
+  return String(key || '').split('/').map(encodeURIComponent).join('/');
+}
+async function putMarketBlob(env, request, key, dataUrl) {
+  const p = parseDataUrl(dataUrl);
+  if (!p) return '';
+  // 优先 R2；没开通 R2 时用 Supabase Storage（同一个 Supabase 项目即可，不用绑卡）。
+  if (env.MEDIA) {
+    await env.MEDIA.put(key, p.bytes, { httpMetadata: { contentType: p.mime } });
+    return mediaUrl(env, request, key);
+  }
+  const c = supabaseConf(env);
+  if (!c) return '';
+  const bucket = supabaseMarketBucket(env);
+  const path = supabaseStoragePath(key);
+  const resp = await fetch(c.url + '/storage/v1/object/' + encodeURIComponent(bucket) + '/' + path, {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer ' + c.key,
+      'apikey': c.key,
+      'Content-Type': p.mime,
+      'x-upsert': 'true'
+    },
+    body: p.bytes
+  });
+  if (!resp.ok) throw new Error('supabase storage http ' + resp.status);
+  return c.url + '/storage/v1/object/public/' + encodeURIComponent(bucket) + '/' + path;
+}
+async function deleteSupabaseStorageObject(env, key) {
+  const c = supabaseConf(env);
+  if (!c) return;
+  const bucket = supabaseMarketBucket(env);
+  const path = supabaseStoragePath(key);
+  try {
+    await fetch(c.url + '/storage/v1/object/' + encodeURIComponent(bucket) + '/' + path, {
+      method: 'DELETE',
+      headers: { 'Authorization': 'Bearer ' + c.key, 'apikey': c.key }
+    });
+  } catch (e) {}
+}
+async function offloadMarketItem(env, request, item, summary) {
+  if (!env || !item) return item;
+  if (!env.MEDIA && !supabaseConf(env)) return item;
+  const id = mediaSafeId(item.id);
+  const stamp = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  if (Array.isArray(item.images)) {
+    for (let i = 0; i < item.images.length; i++) {
+      const src = item.images[i];
+      if (typeof src !== 'string' || !/^data:/i.test(src)) continue;
+      const p = parseDataUrl(src);
+      const key = 'market/' + id + '/img-' + i + '-' + stamp + '.' + mediaExt(p && p.mime, '');
+      try {
+        const url = await putMarketBlob(env, request, key, src);
+        if (url) item.images[i] = url;
+      } catch (e) { console.warn('[market] r2 image failed:', e && e.message); }
+    }
+  }
+  if (Array.isArray(item.files)) {
+    for (let i = 0; i < item.files.length; i++) {
+      const f = item.files[i];
+      if (!f || typeof f.data !== 'string' || !/^data:/i.test(f.data)) continue;
+      const p = parseDataUrl(f.data);
+      const key = 'market/' + id + '/file-' + i + '-' + stamp + '.' + mediaExt(p && p.mime, f.name);
+      try {
+        const url = await putMarketBlob(env, request, key, f.data);
+        if (url) { f.url = url; delete f.data; }
+      } catch (e) { console.warn('[market] r2 file failed:', e && e.message); }
+    }
+  }
+  if (typeof item.avatar === 'string' && /^data:/i.test(item.avatar)) {
+    const p = parseDataUrl(item.avatar);
+    const key = 'market/' + id + '/avatar-' + stamp + '.' + mediaExt(p && p.mime, '');
+    try {
+      const url = await putMarketBlob(env, request, key, item.avatar);
+      if (url) item.avatar = url;
+    } catch (e) {}
+  }
+  let coverUrl = '';
+  if (summary && typeof summary.cover === 'string' && /^data:/i.test(summary.cover)) {
+    const p = parseDataUrl(summary.cover);
+    const key = 'market/' + id + '/cover-' + stamp + '.' + mediaExt(p && p.mime, '');
+    try {
+      const url = await putMarketBlob(env, request, key, summary.cover);
+      if (url) { summary.cover = url; coverUrl = url; }
+    } catch (e) {}
+  } else if (summary && typeof summary.cover === 'string' && summary.cover) {
+    coverUrl = summary.cover;
+  }
+  if (!coverUrl && typeof item.cover === 'string' && /^data:/i.test(item.cover)) {
+    const p = parseDataUrl(item.cover);
+    const key = 'market/' + id + '/cover-' + stamp + '.' + mediaExt(p && p.mime, '');
+    try {
+      const url = await putMarketBlob(env, request, key, item.cover);
+      if (url) { item.cover = url; coverUrl = url; }
+    } catch (e) {}
+  }
+  if (coverUrl) {
+    item.cover = coverUrl;
+    if (summary && !summary.cover) summary.cover = coverUrl;
+  } else if (summary && !summary.cover && Array.isArray(item.images) && item.images[0]) {
+    summary.cover = item.images[0];
+  }
+  return item;
+}
+function mediaRefFromUrl(env, url) {
+  const s = String(url || '');
+  const base = mediaPublicBase(env);
+  if (base && s.indexOf(base + '/') === 0) return { backend: 'r2', key: s.slice(base.length + 1) };
+  try {
+    const u = new URL(s);
+    if (u.pathname === '/market/file') return { backend: 'r2', key: u.searchParams.get('key') || '' };
+  } catch (e) {}
+  const c = supabaseConf(env);
+  if (c) {
+    const bucket = supabaseMarketBucket(env);
+    const marker = c.url + '/storage/v1/object/public/' + encodeURIComponent(bucket) + '/';
+    if (s.indexOf(marker) === 0) {
+      try { return { backend: 'supabase', key: decodeURIComponent(s.slice(marker.length)) }; } catch (e) {}
+    }
+  }
+  return null;
+}
+async function deleteMarketBlobs(env, item, summary) {
+  if (!env || !item) return;
+  const urls = [];
+  if (Array.isArray(item.images)) item.images.forEach(function (u) { if (typeof u === 'string') urls.push(u); });
+  if (Array.isArray(item.files)) item.files.forEach(function (f) { if (f && typeof f.url === 'string') urls.push(f.url); });
+  if (typeof item.avatar === 'string') urls.push(item.avatar);
+  if (typeof item.cover === 'string') urls.push(item.cover);
+  if (summary && typeof summary.cover === 'string') urls.push(summary.cover);
+  const seen = {};
+  for (const u of urls) {
+    const ref = mediaRefFromUrl(env, u);
+    if (!ref || !ref.key || seen[ref.backend + ':' + ref.key]) continue;
+    seen[ref.backend + ':' + ref.key] = 1;
+    if (ref.backend === 'r2') {
+      if (env.MEDIA && ref.key.indexOf('market/') === 0) {
+        try { await env.MEDIA.delete(ref.key); } catch (e) {}
+      }
+    } else if (ref.backend === 'supabase') {
+      await deleteSupabaseStorageObject(env, ref.key);
+    }
+  }
+}
+
+// D1 不会像 KV 那样自动清理过期键；每天分批删一次，避免 500MB 免费库被旧
+// 窥屏/persona/会话撑满。不要给 kv.expires_at 建二级索引：每次 put 都会多算 1 行写，
+// 而清理一天只跑一次，全表扫一次完全承受得起。
+async function cleanupExpiredD1(env) {
+  const db = env && (env.DB || env.nano_db);
+  if (!db) return;
+  const now = Date.now();
+  let last = 0;
+  try { last = Number(await kv(env).get('meta:cleanup_at') || 0) || 0; } catch (e) {}
+  if (last && now - last < 24 * 3600 * 1000) return;
+  try {
+    await db.prepare(
+      'DELETE FROM kv WHERE key IN (' +
+      'SELECT key FROM kv WHERE expires_at > 0 AND expires_at <= ? ORDER BY expires_at LIMIT 800' +
+      ')'
+    ).bind(now).run();
+    await kv(env).put('meta:cleanup_at', String(now));
+  } catch (e) {}
 }
 
 const json = (o, s = 200) =>
@@ -358,6 +570,7 @@ function modelEndpoint(raw) {
   // 用户可能填的是完整接口地址，也可能只填到 /v1，不能重复拼路径
   if (/\/chat\/completions$/i.test(s)) return s;
   if (/\/responses$/i.test(s)) return s;
+  if (/\/openai$/i.test(s)) return s + '/chat/completions';
   if (/\/v1$/i.test(s)) return s + '/chat/completions';
   if (/\/v1\//i.test(s)) return s;
   return s + '/v1/chat/completions';
@@ -819,6 +1032,9 @@ function pushText(v, fallback) {
   return s || String(fallback || '');
 }
 async function sendBarkKey(env, key, payload) {
+  // Bark 已下线：iOS 打开第三方推送的链接时只能用 Safari，无法回到已添加到桌面的 PWA。
+  // 后台通知统一走 Web Push；这里保留函数名只为兼容旧的调用点。
+  return false;
   key = String(key || '').trim();
   if (!key) return false;
   // 允许直接粘贴完整 Bark 地址（可能自带 ?group=...）。拆出 server 根路径和设备 key，
@@ -1045,59 +1261,105 @@ function peekModelText(data) {
     });
     if (parts.join('').trim()) return parts.join('').trim();
   }
+  if (Array.isArray(data.content)) {
+    const parts = data.content.map(function (x) {
+      if (typeof x === 'string') return x;
+      return (x && (x.text || x.content)) || '';
+    }).join('');
+    if (parts.trim()) return parts.trim();
+  }
+  const cand = data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts;
+  if (Array.isArray(cand)) {
+    const parts = cand.map(function (x) { return (x && x.text) || ''; }).join('');
+    if (parts.trim()) return parts.trim();
+  }
   return '';
+}
+
+function peekProvider(raw) {
+  const s = String(raw || '');
+  // 先认 OpenAI 兼容路径（Gemini 的 /v1beta/openai、各种聚合网关都走这里）
+  if (/\/chat\/completions$/i.test(s) || /\/responses$/i.test(s) || /\/openai(\/|$)/i.test(s)) return 'openai';
+  let host = '';
+  try { host = new URL(s).hostname.toLowerCase(); } catch (e) {}
+  if (/(^|\.)api\.anthropic\.com$/.test(host) || /\/messages$/i.test(s)) return 'anthropic';
+  if (/(^|\.)generativelanguage\.googleapis\.com$/.test(host) || /:generateContent/i.test(s)) return 'gemini';
+  return 'openai';
+}
+
+function peekAnthropicEndpoint(raw) {
+  let s = String(raw || '').trim().replace(/\/+$/, '');
+  if (/\/messages$/i.test(s)) return s;
+  if (/\/v1$/i.test(s)) return s + '/messages';
+  return s + '/v1/messages';
+}
+
+function peekGeminiEndpoint(raw, model) {
+  let s = String(raw || '').trim().replace(/\/+$/, '');
+  if (/:generateContent/i.test(s)) return s;
+  if (/\/models\//i.test(s)) return s + ':generateContent';
+  if (/\/v1beta$/i.test(s) || /\/v1$/i.test(s)) return s + '/models/' + encodeURIComponent(model) + ':generateContent';
+  return s + '/v1beta/models/' + encodeURIComponent(model) + ':generateContent';
+}
+
+function peekImageUrl(image) {
+  let s = String(image || '').trim();
+  if (!s) return '';
+  if (/^data:image\//i.test(s) || /^https?:\/\//i.test(s)) return s;
+  if (/^[A-Za-z0-9+/=\s]+$/.test(s) && s.length > 100) {
+    return 'data:image/jpeg;base64,' + s.replace(/\s+/g, '');
+  }
+  return s;
+}
+
+function peekDataUrl(image) {
+  const m = /^data:([^;,]+);base64,([\s\S]+)$/i.exec(String(image || ''));
+  return m ? { mime: m[1] || 'image/jpeg', data: m[2].replace(/\s+/g, '') } : null;
+}
+
+function peekBase64(buf) {
+  const bytes = new Uint8Array(buf);
+  let out = '';
+  const chunk = 0x2000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    out += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+  }
+  return btoa(out);
 }
 
 async function peekModel(env, system, text, image, history, apiCfg, context) {
   // 公用模式绝对不回退到站长的 PEEK_API_*：别人来玩只能用他们自己同步上来的 Key。
   const allowEnvApi = !peekPublic(env);
-  const url = modelEndpoint((allowEnvApi ? env.PEEK_API_URL : '') || (apiCfg && apiCfg.url) || '');
+  const rawUrl = (allowEnvApi ? env.PEEK_API_URL : '') || (apiCfg && apiCfg.url) || '';
   const key = (allowEnvApi ? env.PEEK_API_KEY : '') || (apiCfg && apiCfg.key) || '';
   const model = (allowEnvApi ? env.PEEK_MODEL : '') || (apiCfg && apiCfg.model) || '';
-  if (!url || !key || !model) return null;
-  const isResponses = /\/responses$/i.test(url);
+  if (!rawUrl || !key || !model) return null;
 
-  function buildBody(useImage, tokenField) {
-    const messages = [];
-    if (system) messages.push({ role: 'system', content: system });
-    (context || []).forEach(function (m) {
-      if (!m || !m.content) return;
-      messages.push({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content).slice(0, 1200) });
-    });
-    (history || []).forEach(function (t) {
-      if (t.user) messages.push({ role: 'user', content: String(t.user) });
-      if (t.char) messages.push({ role: 'assistant', content: String(t.char) });
-    });
-    let content;
-    if (useImage && image) {
-      content = [
-        { type: 'text', text: text || '看看我现在屏幕上是什么，用你的人设随口说一句。' },
-        { type: 'image_url', image_url: { url: image } }
-      ];
-    } else {
-      content = text || '看看我现在屏幕上是什么，用你的人设随口说一句。';
-    }
-    messages.push({ role: 'user', content: content });
-    if (isResponses) {
-      let input = '';
-      messages.forEach(function (m) {
-        const c = Array.isArray(m.content)
-          ? m.content.map(function (x) { return x.text || ''; }).join(' ')
-          : m.content;
-        if (c) input += (m.role === 'assistant' ? 'Assistant: ' : (m.role === 'system' ? 'System: ' : 'User: ')) + c + '\n';
-      });
-      return { model: model, input: input.trim(), max_output_tokens: 1200 };
-    }
-    const body = { model: model, messages: messages, temperature: 0.9, stream: false };
-    body[tokenField || 'max_tokens'] = 1200;
-    return body;
-  }
+  const provider = peekProvider(rawUrl);
+  const url = provider === 'anthropic'
+    ? peekAnthropicEndpoint(rawUrl)
+    : provider === 'gemini'
+      ? peekGeminiEndpoint(rawUrl, model)
+      : modelEndpoint(rawUrl);
+  const isResponses = provider === 'openai' && /\/responses$/i.test(url);
+  const imageUrl = peekImageUrl(image);
+  const textPrompt = text || '看看我现在屏幕上是什么，用你的人设随口说一句。';
 
-  async function call(payload) {
+  const baseMessages = [];
+  (context || []).forEach(function (m) {
+    if (!m || !m.content) return;
+    baseMessages.push({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content).slice(0, 1200) });
+  });
+  (history || []).forEach(function (t) {
+    if (t.user) baseMessages.push({ role: 'user', content: String(t.user) });
+    if (t.char) baseMessages.push({ role: 'assistant', content: String(t.char) });
+  });
+
+  async function send(payload, headers) {
     try {
       const resp = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
+        headers: Object.assign({ 'Content-Type': 'application/json' }, headers || {}),
         body: JSON.stringify(payload)
       });
       if (!resp.ok) {
@@ -1112,16 +1374,118 @@ async function peekModel(env, system, text, image, history, apiCfg, context) {
     }
   }
 
-  let r = await call(buildBody(!!image, 'max_tokens'));
-  // 模型不支持图片 / 图片太大导致失败时，退化为纯文字再试一次，避免有内容却报“未返回”
-  if (!isResponses && image && !r.text) {
-    r = await call(buildBody(false, 'max_tokens'));
+  function openAIContent(useImage, imageMode, imageFirst) {
+    if (!useImage || !imageUrl) return textPrompt;
+    let u = imageUrl;
+    if (imageMode === 'raw') {
+      const d = peekDataUrl(imageUrl);
+      u = d ? d.data : imageUrl;
+    }
+    const part = imageMode === 'string'
+      ? { type: 'image_url', image_url: u }
+      : { type: 'image_url', image_url: { url: u } };
+    const textPart = { type: 'text', text: textPrompt };
+    return imageFirst ? [part, textPart] : [textPart, part];
   }
-  // 新模型只接受 max_completion_tokens（或 max_tokens 被拒绝/耗尽）时再试一次
-  if (!isResponses && !r.text && /max_tokens|max_completion_tokens|unsupported|invalid|reasoning/i.test(r.error || '')) {
-    r = await call(buildBody(false, 'max_completion_tokens'));
+
+  async function callOpenAI(useImage, tokenField, imageMode, opts) {
+    opts = opts || {};
+    if (isResponses) {
+      let input = textPrompt;
+      if (useImage && imageUrl) {
+        input = [{
+          role: 'user',
+          content: [
+            { type: 'input_text', text: textPrompt },
+            { type: 'input_image', image_url: imageUrl }
+          ]
+        }];
+      }
+      return send({ model: model, input: input, max_output_tokens: 1200 }, { 'Authorization': 'Bearer ' + key });
+    }
+    const messages = [];
+    if (system) messages.push({ role: 'system', content: system });
+    if (!opts.minimal) {
+      baseMessages.forEach(function (m) { messages.push({ role: m.role, content: m.content }); });
+    }
+    messages.push({ role: 'user', content: openAIContent(useImage, imageMode, opts.imageFirst) });
+    const body = { model: model, messages: messages, stream: false };
+    if (opts.temperature !== false) body.temperature = 0.9;
+    body[tokenField || 'max_tokens'] = 1200;
+    return send(body, { 'Authorization': 'Bearer ' + key });
   }
-  return r.text ? String(r.text).trim() : null;
+
+  async function callAnthropic(useImage) {
+    const messages = baseMessages.map(function (m) {
+      return { role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content };
+    });
+    let content = textPrompt;
+    if (useImage && imageUrl) {
+      const parts = [{ type: 'text', text: textPrompt }];
+      const d = peekDataUrl(imageUrl);
+      if (d) {
+        parts.push({ type: 'image', source: { type: 'base64', media_type: d.mime, data: d.data } });
+      } else if (/^https?:\/\//i.test(imageUrl)) {
+        parts.push({ type: 'image', source: { type: 'url', url: imageUrl } });
+      }
+      content = parts;
+    }
+    messages.push({ role: 'user', content: content });
+    const body = { model: model, max_tokens: 1200, temperature: 0.9, messages: messages };
+    if (system) body.system = system;
+    return send(body, {
+      'x-api-key': key,
+      'anthropic-version': '2023-06-01',
+      'Authorization': 'Bearer ' + key
+    });
+  }
+
+  async function callGemini(useImage) {
+    const contents = baseMessages.map(function (m) {
+      return { role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] };
+    });
+    const parts = [{ text: textPrompt }];
+    if (useImage && imageUrl) {
+      let d = peekDataUrl(imageUrl);
+      if (!d && /^https?:\/\//i.test(imageUrl)) {
+        try {
+          const ir = await fetch(imageUrl);
+          if (ir.ok) {
+            d = {
+              mime: ir.headers.get('content-type') || 'image/jpeg',
+              data: peekBase64(await ir.arrayBuffer())
+            };
+          }
+        } catch (e) {}
+      }
+      if (d) parts.push({ inlineData: { mimeType: d.mime, data: d.data } });
+    }
+    contents.push({ role: 'user', parts: parts });
+    const body = { contents: contents, generationConfig: { temperature: 0.9, maxOutputTokens: 1200 } };
+    if (system) body.systemInstruction = { parts: [{ text: system }] };
+    return send(body, { 'x-goog-api-key': key, 'Authorization': 'Bearer ' + key });
+  }
+
+  let r;
+  if (provider === 'anthropic') {
+    r = await callAnthropic(!!imageUrl);
+  } else if (provider === 'gemini') {
+    r = await callGemini(!!imageUrl);
+  } else {
+    r = await callOpenAI(!!imageUrl, 'max_tokens', 'object', {});
+    // 中转站/推理模型常不接受 temperature，去掉再试
+    if (!r.text) r = await callOpenAI(!!imageUrl, 'max_tokens', 'object', { temperature: false });
+    // 有些网关只接受字符串形式的 image_url，换一种格式再试
+    if (!r.text && imageUrl) r = await callOpenAI(true, 'max_tokens', 'string', { temperature: false });
+    if (!r.text && imageUrl) r = await callOpenAI(true, 'max_tokens', 'raw', { temperature: false });
+    // 再退一步：不带历史，只发当前这一条图文，排查中转站对长上下文/多 system 的限制
+    if (!r.text && imageUrl) r = await callOpenAI(true, 'max_tokens', 'object', { temperature: false, minimal: true, imageFirst: true });
+    // 新模型只接受 max_completion_tokens 时再试
+    if (!r.text && /max_tokens|max_completion_tokens|unsupported|invalid|reasoning|temperature/i.test(r.error || '')) {
+      r = await callOpenAI(!!imageUrl, 'max_completion_tokens', 'object', { temperature: false });
+    }
+  }
+  return { text: r.text ? String(r.text).trim() : '', error: r.error || '' };
 }
 
 // ===== 分享链接解析（服务端抓取，绕开浏览器 CORS；只允许常见分享站点，避免变成开放代理） =====
@@ -2399,13 +2763,14 @@ export default {
       return json({
         ok: true,
         service: 'nano-peek',
-        build: '2026-10-24-bark-get',
+        build: '2026-10-25-r2-live',
         method: 'POST /peek',
         publicMode: publicMode,
         tokenConfigured: !!env.PEEK_TOKEN,
         tokenRequired: !publicMode && !!env.PEEK_TOKEN,
         kvBound: !!env.PUSH_KV,
-        d1Bound: !!env.nano_db,
+        d1Bound: !!(env.DB || env.nano_db),
+        store: (env.DB || env.nano_db) ? 'd1' : (env.PUSH_KV ? 'kv' : 'none'),
         envApiConfigured: !!(env.PEEK_API_URL && env.PEEK_API_KEY && env.PEEK_MODEL),
         note: publicMode
           ? '公用模式：快捷指令 token 至少 8 位；模型 API 由 Nano 同步，没同步会 502。'
@@ -2503,9 +2868,14 @@ export default {
         }
       } catch (e) {}
       let reply = null;
-      try { reply = await peekModel(env, system, text, image, history, apiCfg, context); } catch (e) {}
+      let peekErr = '';
+      try {
+        const out = await peekModel(env, system, text, image, history, apiCfg, context);
+        if (out) { reply = out.text || null; peekErr = out.error || ''; }
+      } catch (e) { peekErr = String((e && e.message) || e || ''); }
       if (!reply) {
         const hasEnvApi = !peekPublic(env) && !!(env.PEEK_API_URL && env.PEEK_API_KEY && env.PEEK_MODEL);
+        const errDetail = String(peekErr || '').replace(/\s+/g, ' ').slice(0, 180);
         // 区分「没找到你这个令牌分区的 API」和「API 找到了但模型没返回」，不要再混成一句话。
         if (!apiCfg) {
           return json({
@@ -2520,15 +2890,17 @@ export default {
           ok: false,
           error: 'model',
           reply: peekPublic(env)
-            ? '已经有模型 API，但模型没有返回内容。常见原因：模型不支持图片、Key/额度/中转地址错误，或上游超时。先用纯文字测试，再换一个支持识图的模型。'
+            ? ('已经有模型 API，但这次没有拿到回复' + (errDetail ? '（上游：' + errDetail + '）' : '') + '。请检查中转站是否支持图片输入、模型是否真的支持识图，以及 Key/额度/接口地址。')
             : (hasEnvApi
-              ? '模型没有返回内容：请检查 PEEK_API_URL / PEEK_API_KEY / PEEK_MODEL 或模型是否支持识图。'
+              ? ('模型没有返回内容' + (errDetail ? '（上游：' + errDetail + '）' : '') + '：请检查 PEEK_API_URL / PEEK_API_KEY / PEEK_MODEL 或模型是否支持识图。')
               : '服务端还没有模型 API：请在 Nano 里打开一次聊天同步主 API，或在 Worker 配置 PEEK_API_URL / PEEK_API_KEY / PEEK_MODEL。')
         }, 502);
       }
       // 截图也存进这一轮，App 拉取后会把截图和 TA 的评论一起放进私聊。
-      // 只保留最近 2 张、单张最大约 4MB，避免 KV 值超限；快捷指令教程里会先压缩再上传。
-      const MAX_IMAGE_CHARS = 4 * 1024 * 1024;
+      // D1 单行上限 2MB（KV 是 25MB），而这里最多会保留 2 张截图：
+      // D1 模式下单张压到 480KB，两张 + 文本也远低于 2MB；更大的图仍然会送给模型识别，
+      // 只是不在聊天里回显（imageOmitted）。要保留原图请把截图放 R2。
+      const MAX_IMAGE_CHARS = (env.DB || env.nano_db) ? 480 * 1024 : 4 * 1024 * 1024;
       const imageStore = (image && image.length <= MAX_IMAGE_CHARS) ? image : '';
       history.push({
         user: text || (image ? '' : '[图片]'),
@@ -2890,6 +3262,20 @@ export default {
       return item;
     }
 
+    // GET /market/file?key=market/...   从 R2 读集市图片/附件（没配 MEDIA_PUBLIC_BASE 时的代理）
+    if (pathname === '/market/file' && request.method === 'GET') {
+      if (!env.MEDIA) return json({ ok: false, error: 'no media' }, 404);
+      const key = new URL(request.url).searchParams.get('key') || '';
+      if (!/^market\/[A-Za-z0-9_-]+\//.test(key)) return json({ ok: false, error: 'bad key' }, 400);
+      const obj = await env.MEDIA.get(key);
+      if (!obj) return new Response('not found', { status: 404, headers: CORS });
+      const headers = new Headers(CORS);
+      headers.set('Content-Type', (obj.httpMetadata && obj.httpMetadata.contentType) || 'application/octet-stream');
+      headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+      if (obj.size) headers.set('Content-Length', String(obj.size));
+      return new Response(obj.body, { headers: headers });
+    }
+
     // GET  /market/list          列出全部资源摘要
     if (pathname === '/market/list' && request.method === 'GET') {
       if (supabaseConf(env)) {
@@ -2947,6 +3333,11 @@ export default {
       try { body = await request.json(); } catch (e) {}
       const item = body.item, summary = body.summary, token = String(body.token || '');
       if (!item || !item.id) return json({ ok: false, error: 'no item' }, 400);
+      // 绑了 R2 就搬到 R2；没 R2 但配了 Supabase 就搬到 Supabase Storage。
+      // 两者都没有时保持旧行为（dataURL 存在 Supabase/D1 里）。
+      if (env.MEDIA || supabaseConf(env)) {
+        try { await offloadMarketItem(env, request, item, summary); } catch (e) { console.warn('[market] storage offload failed:', e && e.message); }
+      }
       const payload = JSON.stringify({ item: item, tok: token });
       if (payload.length > 24 * 1024 * 1024) return json({ ok: false, error: 'too large' }, 413);
       if (supabaseConf(env)) {
@@ -3023,9 +3414,10 @@ export default {
       const id = String(body.id || ''), token = String(body.token || '');
       if (supabaseConf(env)) {
         try {
-          const rows = await supabase(env, '/rest/v1/market_items?id=eq.' + encodeURIComponent(id) + '&select=token&limit=1');
+          const rows = await supabase(env, '/rest/v1/market_items?id=eq.' + encodeURIComponent(id) + '&select=token,item,summary&limit=1');
           if (Array.isArray(rows) && rows[0]) {
             if (rows[0].token && rows[0].token !== token) return json({ ok: false, error: 'forbidden' }, 403);
+            if (env.MEDIA || supabaseConf(env)) { try { await deleteMarketBlobs(env, rows[0].item, rows[0].summary); } catch (e) {} }
             await supabase(env, '/rest/v1/market_items?id=eq.' + encodeURIComponent(id), { method: 'DELETE' });
             return json({ ok: true });
           }
@@ -3038,6 +3430,7 @@ export default {
       if (!raw) return json({ ok: false, error: 'not found' }, 404);
       let rec; try { rec = JSON.parse(raw); } catch (e) { return json({ ok: false }, 500); }
       if (rec.tok && rec.tok !== token) return json({ ok: false, error: 'forbidden' }, 403);
+      if (env.MEDIA || supabaseConf(env)) { try { await deleteMarketBlobs(env, rec.item); } catch (e) {} }
       await marketKv(env).delete(key);
       let items = [];
       try { const rawIdx = await marketKv(env).get('market:index'); items = rawIdx ? JSON.parse(rawIdx) : []; } catch (e) { items = []; }
@@ -3080,12 +3473,13 @@ export default {
       }
     }
 
-    return json({ ok: true, info: 'nano-push alive', build: '2026-10-24-bark-get' });
+    return json({ ok: true, info: 'nano-push alive', build: '2026-10-25-r2-live' });
   },
 
   // 每 5 分钟触发：到点给 Bark 发提醒 + 处理 KV 里的预约任务
   async scheduled(event, env, ctx) {
     try { await sendBarkReminder(env); } catch (e) {}
+    try { await cleanupExpiredD1(env); } catch (e) {}
     // 无后台主动消息 / 朋友圈：每台设备 + 每个用户单独跑自己的配置。
     // 旧前缀 auto:config: 不再执行，避免旧 Nano 和新纳米同时给同一台手机发消息。
     // 通过 auto2:_index 读取作用域，避免每 5 分钟 list 一次（免费版 list 额度只有 1000/天）。
@@ -3152,8 +3546,9 @@ export default {
   }
 };
 
-// 到点给 Bark 发一条 iPhone 系统通知（BARK_KEY 未配置则跳过）
+// Bark 已下线：定时提醒不再发送（保留函数只为兼容旧部署的调用点）
 async function sendBarkReminder(env) {
+  return;
   const key = env.BARK_KEY;
   if (!key) return;
   const times = String(env.REMIND_TIMES || '').split(',').map((s) => s.trim()).filter(Boolean);

@@ -237,6 +237,7 @@
   var fullCache = {};          // id -> 完整数据（含 images/files dataURL）
   var owned = {};              // id -> token（自己发布的）
   var liked = {};              // id -> 1（我点赞过的）
+  var hidden = {};             // id -> 1（服务器删不掉时，至少在本机隐藏）
   var user = { name: '资源玩家', bio: '分享灵感，也收藏灵感。', avatar: '' };
   var totalImports = 0;
   var selectedCategory = 'all';
@@ -248,9 +249,11 @@
   function loadOwned() {
     try { owned = JSON.parse(localStorage.getItem('market_owned') || '{}') || {}; } catch (e) { owned = {}; }
     try { liked = JSON.parse(localStorage.getItem('market_liked') || '{}') || {}; } catch (e) { liked = {}; }
+    try { hidden = JSON.parse(localStorage.getItem('market_hidden') || '{}') || {}; } catch (e) { hidden = {}; }
   }
   function saveOwned() { try { localStorage.setItem('market_owned', JSON.stringify(owned)); } catch (e) {} }
   function saveLiked() { try { localStorage.setItem('market_liked', JSON.stringify(liked)); } catch (e) {} }
+  function saveHidden() { try { localStorage.setItem('market_hidden', JSON.stringify(hidden)); } catch (e) {} }
   function isOwner(id) { return !!owned[id]; }
 
   /* ============================================================
@@ -430,7 +433,9 @@
       + gallery + filesHTML
       + '<div class="detail-bottom-bar">'
       + '<button class="detail-reaction' + (p.likedByMe ? ' liked' : '') + '" id="detailLike">' + ICONS.like + ' ' + (p.likes || 0) + '</button>'
-      + (isOwner(p.id) ? '<button class="detail-delete" id="detailDelete" title="删除这条资源">' + ICONS.trash + '</button>' : '')
+      + (isOwner(p.id)
+        ? '<button class="detail-delete" id="detailDelete" title="删除这条资源">' + ICONS.trash + '</button>'
+        : '<button class="detail-reaction" id="detailHide" title="只在本机隐藏这条资源">本机隐藏</button>')
       + '</div>'
       + '<p class="detail-note">' + target + '<br>' + (mode === MODE.server ? '资源由所有用户共享，保存在共享服务器上。' : '当前为仅本机模式，资源只有你自己能看到。') + '</p>';
 
@@ -494,31 +499,59 @@
   }
 
   async function deletePost(id) {
+    var msg = '';
     try {
-      if (mode === MODE.server && owned[id]) {
-        await api('/market/delete', { method: 'POST', body: JSON.stringify({ id: id, token: owned[id] }) });
+      if (mode === MODE.server) {
+        try {
+          await api('/market/delete', {
+            method: 'POST',
+            body: JSON.stringify({ id: id, token: owned[id] || '' })
+          });
+        } catch (e) {
+          msg = String(e && e.message || '');
+          // 404：服务器上已经没有这条（例如旧 KV 集市迁移后），直接清本机即可。
+          // 403：服务器上这条还有删除凭证，但本机没有；不能真删，只能本机隐藏。
+          if (!/http 404/.test(msg) && !/http 403/.test(msg)) throw e;
+        }
       }
+      hidden[id] = 1; saveHidden();
       await idbDel('posts', id).catch(function () {});
       feed = feed.filter(function (p) { return p.id !== id; });
       delete fullCache[id];
       delete owned[id]; saveOwned();
       renderHome(); updateProfile();
       if (detailId === id) closeDetail();
-      toast('资源已删除');
+      toast(/http 403/.test(msg) ? '服务器上的旧资源缺少删除凭证，已从本机隐藏' : '资源已删除');
     } catch (e) { toast('删除失败'); }
   }
 
   /* ============================================================
      下载 / 导入
      ============================================================ */
+  function urlToDataURL(url) {
+    return fetch(url).then(function (r) {
+      if (!r.ok) throw new Error('http ' + r.status);
+      return r.blob();
+    }).then(function (blob) {
+      return new Promise(function (resolve, reject) {
+        var fr = new FileReader();
+        fr.onload = function () { resolve(String(fr.result || '')); };
+        fr.onerror = function () { reject(fr.error || new Error('read failed')); };
+        fr.readAsDataURL(blob);
+      });
+    });
+  }
+
   function downloadFile(p, index) {
     var files = p.files || [];
     var f = files[index];
-    if (!f || !f.data) { toast('此文件没有可下载的数据'); return; }
+    var href = f && (f.data || f.url);
+    if (!f || !href) { toast('此文件没有可下载的数据'); return; }
     try {
       var a = document.createElement('a');
-      a.href = f.data;
+      a.href = href;
       a.download = f.name || 'resource';
+      if (!/^data:/i.test(href)) { a.target = '_blank'; a.rel = 'noopener'; }
       document.body.appendChild(a); a.click(); a.remove();
       countRemote(p.id, 'downloads', 1);
       renderDetail(Object.assign({}, p));
@@ -1303,7 +1336,7 @@
   async function importResource(p, index) {
     var files = p.files || [];
     var f = files[index];
-    if (!f || !f.data) { toast('这份资源没有可导入的文件'); return; }
+    if (!f || (!f.data && !f.url)) { toast('这份资源没有可导入的文件'); return; }
     var importGate = null;
     try { importGate = (window.parent && window.parent.NanoImportGate) || window.NanoImportGate; } catch (err) { importGate = window.NanoImportGate; }
     if (importGate && importGate.ensure) {
@@ -1318,6 +1351,13 @@
       else if (p.otherType === 'app-html') handler = importAppHtml;
     }
     if (!handler) { downloadFile(p, index); toast('「' + catName(p.category) + '」请下载后自行使用'); return; }
+    try {
+      // 新市场把文件放 R2，item 里只有 URL；导入前按需取回 dataURL，旧数据仍然直接用 f.data。
+      if (!f.data && f.url) f.data = await urlToDataURL(f.url);
+    } catch (e) {
+      toast('文件读取失败，请检查 R2 跨域设置');
+      return;
+    }
     try {
       await handler(f, p);
       totalImports++;
@@ -1540,6 +1580,15 @@
     var p = Object.assign({}, sum, cached || {});
     if (e.target.closest('#detailLike')) { await toggleLike(detailId); return; }
     if (e.target.closest('#detailDelete')) { if (confirm('确定删除这条资源吗？')) deletePost(detailId); return; }
+    if (e.target.closest('#detailHide')) {
+      var hideId = detailId;
+      hidden[hideId] = 1; saveHidden();
+      feed = feed.filter(function (p) { return p.id !== hideId; });
+      delete fullCache[hideId];
+      closeDetail(); renderHome(); updateProfile();
+      toast('已在本机隐藏；服务器上的资源不受影响');
+      return;
+    }
     var imp = e.target.closest('[data-import]');
     if (imp) { importResource(p, parseInt(imp.dataset.import, 10)); return; }
     var dl = e.target.closest('[data-download]');
@@ -1584,7 +1633,9 @@
   async function loadLocalFeed() {
     var items = [];
     try { if (db) items = await idbAll('posts'); } catch (e) {}
-    feed = items.map(toSummary).sort(function (a, b) { return (b.created || 0) - (a.created || 0); });
+    feed = items.filter(function (it) { return it && !hidden[it.id]; })
+      .map(toSummary)
+      .sort(function (a, b) { return (b.created || 0) - (a.created || 0); });
     items.forEach(function (it) { fullCache[it.id] = it; });
   }
 
@@ -1605,10 +1656,10 @@
         var r = await api('/market/list');
         if (r && r.ok && Array.isArray(r.items)) {
           mode = MODE.server;
-          feed = r.items;
+          feed = r.items.filter(function (s) { return s && !hidden[s.id]; });
           // 合并本机自己的资源（保证自己发的即时可见）
           var localOwn = [];
-          try { localOwn = (await idbAll('posts')).filter(function (it) { return isOwner(it.id); }); } catch (e) {}
+          try { localOwn = (await idbAll('posts')).filter(function (it) { return isOwner(it.id) && !hidden[it.id]; }); } catch (e) {}
           localOwn.forEach(function (it) {
             fullCache[it.id] = it;
             if (!feed.some(function (s) { return s.id === it.id; })) feed.unshift(toSummary(it));
