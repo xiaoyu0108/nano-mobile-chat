@@ -1236,9 +1236,18 @@
         avatarModal.classList.remove('show');
     }
 
-    fileInput.addEventListener('change', function(e) {
+    fileInput.addEventListener('change', async function(e) {
         const file = this.files[0];
         if (!file) return;
+
+        // 导入门槛：角色设定 / JSON / DOCX 也属于受控导入
+        let importGate = null;
+        try { importGate = (window.parent && window.parent.NanoImportGate) || window.NanoImportGate; } catch (err) { importGate = window.NanoImportGate; }
+        if (importGate && importGate.ensure) {
+            let gateOk = false;
+            try { gateOk = await importGate.ensure(); } catch (err) { gateOk = false; }
+            if (!gateOk) { fileInput.value = ''; return; }
+        }
         
         // ===== 处理 DOC / DOCX 文件（按需加载解析库，不影响页面加载速度） =====
         const lowerName = (file.name || '').toLowerCase();
@@ -1304,26 +1313,34 @@
         }
     });
 
-    // ⭐ 选择照片后压缩并预览（此前缺少 change 监听，导致选了照片没反应）
-    avatarFileInput.addEventListener('change', function() {
+    // 选择照片后先进入 1:1 裁剪（竖图也可拖动取景），确认后压缩并预览
+    avatarFileInput.addEventListener('change', async function() {
         const file = this.files && this.files[0];
+        this.value = '';
         if (!file) return;
         if (file.type && file.type.indexOf('image/') !== 0) {
             showInfo('提示', '请选择图片文件');
             return;
         }
-        const reader = new FileReader();
-        reader.onload = async function(ev) {
-            try {
+        try {
+            if (window.NanoAvatarCrop) {
+                const cropped = await NanoAvatarCrop.open(file, { outputSize: 320, aspect: 1, quality: 0.9, title: '裁剪头像' });
+                if (!cropped) return;
+                avatarThumbPreview.src = cropped;
+                avatarUrlInput.value = '';
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = async function(ev) {
                 const compressed = await compressImage(ev.target.result, 240, 240, 0.82);
                 avatarThumbPreview.src = compressed;
                 avatarUrlInput.value = '';
-            } catch (e) {
-                showInfo('错误', '图片读取失败：' + (e.message || e));
-            }
-        };
-        reader.onerror = function() { showInfo('错误', '图片读取失败'); };
-        reader.readAsDataURL(file);
+            };
+            reader.onerror = function() { showInfo('错误', '图片读取失败'); };
+            reader.readAsDataURL(file);
+        } catch (e) {
+            showInfo('错误', '图片读取失败：' + (e.message || e));
+        }
     });
 
     avatarResetBtn.addEventListener('click', function() {
@@ -1409,10 +1426,18 @@
 
     importPngBtn.addEventListener('click', function() { importPngFileInput.click(); });
 
-    importPngFileInput.addEventListener('change', function(e) {
+    importPngFileInput.addEventListener('change', async function(e) {
         const file = this.files[0];
         if (!file) return;
         importPngFileInput.value = '';
+        // 导入门槛：开启后需要登录并验证服务端卡密
+        let importGate = null;
+        try { importGate = (window.parent && window.parent.NanoImportGate) || window.NanoImportGate; } catch (err) { importGate = window.NanoImportGate; }
+        if (importGate && importGate.ensure) {
+            let gateOk = false;
+            try { gateOk = await importGate.ensure(); } catch (err) { gateOk = false; }
+            if (!gateOk) return;
+        }
         // ===== 兼容直接导入 JSON 角色卡文件 =====
         const isJson = /\.json$/i.test(file.name || '') || file.type === 'application/json';
         if (isJson) {

@@ -5,7 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>世界书</title>
-    <link rel="stylesheet" href="../css/worldbook.css?v=20261011a">
+    <link rel="stylesheet" href="../css/worldbook.css?v=20261025d">
+    <link rel="stylesheet" href="../css/account.css?v=20261025a">
     <script src="../js/appearance.js"></script>
 </head>
 <body>
@@ -15,7 +16,9 @@
         <!-- 主列表 -->
         <div class="page active" id="mainPage">
             <div class="navbar">
-                <button class="back" id="backBtn" data-back></button>
+                <button class="back" id="backBtn" data-back aria-label="返回">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 5 7.5 12l7 7" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </button>
                 <span class="title">世界书</span>
                 <div class="right" id="navRight">
                     <button id="editModeBtn">编辑</button>
@@ -44,7 +47,9 @@
         <!-- 编辑页 -->
         <div class="page slide-in" id="editPage">
             <div class="navbar">
-                <button class="back" id="editBackBtn" data-back></button>
+                <button class="back" id="editBackBtn" data-back aria-label="返回">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 5 7.5 12l7 7" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </button>
                 <span class="title" id="editTitle">世界书条目</span>
                 <div class="right">
                     <button class="add" id="saveBtn">保存</button>
@@ -120,11 +125,12 @@
 
     <input type="file" id="device-file-input" accept=".txt,.doc,.docx,.json">
 
-    <script src="../js/builtin-worldbook.js?v=20261013a"></script>
-    <script src="../js/worldbook.js?v=20261013a"></script> 
+    <script src="../js/builtin-worldbook.js?v=20261025a"></script>
+    <script src="../js/worldbook.js?v=20261025a"></script> 
     
 
 <script src="../js/api-float.js"></script>
 <script src="../swipe-back.js"></script>
+<script src="../js/account.js?v=20261025k"></script>
 </body>
 </html>

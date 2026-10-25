@@ -356,6 +356,14 @@
       openBtn.addEventListener('click', function (e) { e.stopPropagation(); openApp(app.id); });
       actions.appendChild(openBtn);
 
+      var nanoBtn = document.createElement('button');
+      nanoBtn.className = 'app-nano';
+      nanoBtn.setAttribute('aria-label', '让 Nano 修改');
+      nanoBtn.title = '让 Nano 读取并修改这个应用';
+      nanoBtn.textContent = 'Nano改';
+      nanoBtn.addEventListener('click', function (e) { e.stopPropagation(); openNanoForApp(app); });
+      actions.appendChild(nanoBtn);
+
       var iconBtn = document.createElement('button');
       iconBtn.className = 'app-del';
       iconBtn.style.color = 'var(--accent)';
@@ -388,6 +396,25 @@
     });
   }
 
+  function openNanoChatWith(text) {
+    try { localStorage.setItem('nano_chat_prefill_nano_ai', JSON.stringify({ text: String(text || ''), auto: false, at: Date.now() })); } catch (e) {}
+    var url = 'chat_inner.html?chat=nano_ai&name=' + encodeURIComponent('纳米') + '&from=appstore&t=' + Date.now();
+    if (window.parent && window.parent !== window) {
+      try {
+        window.parent.postMessage({ type: 'openFullscreen', url: url, title: '纳米', showBack: false, source: 'appstore' }, '*');
+        return;
+      } catch (e) {}
+    }
+    location.href = url;
+  }
+  function openNanoForApp(app) {
+    if (!app) return;
+    var text = '请修改 AppStore 应用「' + (app.name || app.id) + '」（id: ' + app.id + '）。'
+      + '先 read_app 读取现有完整 HTML，在现有基础上修改；不要重写无关部分。'
+      + '改完用 create_app 填同一个 id 覆盖安装，并告诉我这次的版本号（v几）。\n我的修改要求：';
+    openNanoChatWith(text);
+  }
+
   function openApp(id) {
     var url = 'app-host.html?id=' + encodeURIComponent(id);
     if (window.parent && window.parent !== window) {
@@ -401,20 +428,47 @@
   }
 
   // ===== 图标设计 =====
+  // 人设头像实际存在 MaskAvatarDB/avatars，localStorage 的 masks 里通常没有 avatar 字段。
+  function readExternalRecord(dbName, store, key) {
+    return new Promise(function (resolve) {
+      try {
+        var req = indexedDB.open(dbName);
+        req.onsuccess = function () {
+          var db = req.result;
+          try {
+            if (!db.objectStoreNames.contains(store)) { db.close(); resolve(null); return; }
+            var r = db.transaction(store, 'readonly').objectStore(store).get(key);
+            r.onsuccess = function () { var v = r.result || null; db.close(); resolve(v); };
+            r.onerror = function () { db.close(); resolve(null); };
+          } catch (e) { try { db.close(); } catch (err) {} resolve(null); }
+        };
+        req.onerror = function () { resolve(null); };
+      } catch (e) { resolve(null); }
+    });
+  }
   function readMyAvatar() {
-    try {
-      var keys = ['nano_mask_data', 'nano_home_data', 'peach_home_data'];
-      for (var i = 0; i < keys.length; i++) {
+    var home = null;
+    var keys = ['nano_mask_data', 'nano_home_data', 'peach_home_data'];
+    for (var i = 0; i < keys.length; i++) {
+      try {
         var raw = localStorage.getItem(keys[i]);
         if (!raw) continue;
         var d = JSON.parse(raw);
-        if (d && Array.isArray(d.masks)) {
-          var m = d.masks.filter(function (x) { return x.id === d.currentMaskId; })[0] || d.masks[0];
-          if (m && m.avatar) return m.avatar;
-        }
-      }
-    } catch (e) {}
-    return '';
+        if (d && Array.isArray(d.masks) && d.masks.length) { home = d; break; }
+      } catch (e) {}
+    }
+    var loadHome = home ? Promise.resolve(home) : readExternalRecord('nano_mask_db', 'mask_data', 'data').then(function (rec) {
+      return (rec && rec.value) || null;
+    });
+    return loadHome.then(function (data) {
+      if (!data || !Array.isArray(data.masks) || !data.masks.length) return '';
+      var m = data.masks.filter(function (x) { return x.id === data.currentMaskId; })[0] || data.masks[0];
+      if (!m) return '';
+      if (!m.id) return m.avatar || '';
+      return readExternalRecord('MaskAvatarDB', 'avatars', m.id).then(function (rec) {
+        return (rec && rec.data) || m.avatar || '';
+      });
+    }).catch(function () { return ''; });
   }
   var iconEditApp = null;
   var iconEditImage = '';
@@ -448,9 +502,15 @@
     $iconLetter.addEventListener('input', paintIconPrev);
     $iconColor.addEventListener('input', paintIconPrev);
     $iconAvatar.addEventListener('click', function () {
-      var av = readMyAvatar();
-      if (!av) { toast('还没有设置头像'); return; }
-      iconEditImage = av; paintIconPrev();
+      $iconAvatar.disabled = true;
+      readMyAvatar().then(function (av) {
+        $iconAvatar.disabled = false;
+        if (!av) { toast('还没有设置头像'); return; }
+        iconEditImage = av; paintIconPrev();
+      }).catch(function () {
+        $iconAvatar.disabled = false;
+        toast('读取头像失败');
+      });
     });
     $iconUpload.addEventListener('click', function () { $iconFile.click(); });
     $iconClear.addEventListener('click', function () { iconEditImage = ''; paintIconPrev(); });
@@ -575,8 +635,15 @@
     });
   }
 
-  function importFile(file) {
+  async function importFile(file) {
     if (!file) return;
+    var importGate = null;
+    try { importGate = (window.parent && window.parent.NanoImportGate) || window.NanoImportGate; } catch (e) { importGate = window.NanoImportGate; }
+    if (importGate && importGate.ensure) {
+      var gateOk = false;
+      try { gateOk = await importGate.ensure(); } catch (e2) { gateOk = false; }
+      if (!gateOk) return;
+    }
     var reader = new FileReader();
     reader.onload = function (e) {
       installHtml(e.target.result, file.name);
@@ -1009,14 +1076,25 @@
       }).catch(function () { toast('读取剪贴板失败，请手动粘贴'); });
     } else toast('这个浏览器不支持读取剪贴板');
   });
-  if ($pasteOk) $pasteOk.addEventListener('click', function () {
+  if ($pasteOk) $pasteOk.addEventListener('click', async function () {
     var html = $pasteCode ? $pasteCode.value : '';
+    var importGate = null;
+    try { importGate = (window.parent && window.parent.NanoImportGate) || window.NanoImportGate; } catch (e) { importGate = window.NanoImportGate; }
+    if (importGate && importGate.ensure) {
+      var gateOk = false;
+      try { gateOk = await importGate.ensure(); } catch (e2) { gateOk = false; }
+      if (!gateOk) return;
+    }
     installHtml(html, 'paste').then(function (ok) {
       if (ok) {
         $pasteModal.classList.remove('on');
         if ($pasteCode) $pasteCode.value = '';
       }
     });
+  });
+  var $nanoNewApp = document.getElementById('nanoNewApp');
+  if ($nanoNewApp) $nanoNewApp.addEventListener('click', function () {
+    openNanoChatWith('请帮我写一个新的 AppStore 应用。\n我想要的功能：\n应用名称：\n（补充你想要的界面和功能后发送，Nano 会生成完整 HTML 并安装）');
   });
   if ($guideBtn) $guideBtn.addEventListener('click', function () { $guideModal.classList.add('on'); });
   if ($guideClose) $guideClose.addEventListener('click', function () { $guideModal.classList.remove('on'); });

@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Nano</title>
-  <link rel="stylesheet" href="../css/nano.css?v=20261024i">
+  <link rel="stylesheet" href="../css/nano.css?v=20261025b">
   <script src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
 </head>
 <body class="nc-body">
@@ -42,6 +42,11 @@
         <button id="ncFiles" class="nc-quick-item">
           <span class="nc-qi-icon"><svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M14 3v5h5M9 13h6M9 17h4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
           <span><b>文件库</b><small>生成的文件永久保存</small></span><em id="ncFileCount">0</em>
+        </button>
+        <button id="ncImage" class="nc-quick-item">
+          <span class="nc-qi-icon"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="9" cy="10" r="1.6" fill="currentColor"/><path d="M4.5 18l5.2-5.2 3.4 3.4 2.2-2.2 4.2 4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          <span><b>Nano 绘图</b><small>独立生图窗口 · 提示词预设</small></span>
+          <svg class="nc-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
         <button id="ncSettings2" class="nc-quick-item">
           <span class="nc-qi-icon"><svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10M4 12h4M12 12h8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="16" cy="7" r="2" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="8" cy="17" r="2" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="10" cy="12" r="2" fill="none" stroke="currentColor" stroke-width="1.8"/></svg></span>
@@ -86,7 +91,7 @@
   <div class="nc-toast" id="ncToast"></div>
 
   <script src="../js/nano-files.js?v=20261023a"></script>
-  <script src="../js/nano-app.js?v=20261024j"></script>
+  <script src="../js/nano-app.js?v=20261025b"></script>
   <script src="../swipe-back.js"></script>
 </body>
 </html>

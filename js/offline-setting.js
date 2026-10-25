@@ -687,6 +687,13 @@ html,body{background:var(--page);color:var(--ink)}
 // 内置主题以 js/offline-themes.js 为唯一数据源；共享源存在时覆盖这里的副本，避免两处不一致
 try { Object.assign(BUILTIN_CSS, (window.NANOOfflineThemes && window.NANOOfflineThemes.css) || {}); } catch (e) {}
 
+async function offlineImportAllowed() {
+  let gate = null;
+  try { gate = (window.parent && window.parent.NanoImportGate) || window.NanoImportGate; } catch (e) { gate = window.NanoImportGate; }
+  if (!gate || !gate.ensure) return true;
+  try { return !!(await gate.ensure()); } catch (e) { return false; }
+}
+
 function escapeHTML(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] || c)); }
 
 let toastTimer;
@@ -713,30 +720,34 @@ function renderRules() {
     const isExpanded = group.expanded !== false;
     const isEnabled = group.enabled !== false;
     const childCount = (group.rules || []).length;
+    // God 是内置规则组：只保留「总开关 + 每条开关」，不暴露、也不允许改内部提示词。
+    const isBuiltinGod = group.id === 'god';
 
-    html += `<div class="rule-group-card" data-group-index="${gi}">`;
+    html += `<div class="rule-group-card${isBuiltinGod ? ' builtin-locked' : ''}" data-group-index="${gi}">`;
     html += `
       <div class="rule-group-header ${isExpanded ? 'expanded' : ''}" data-toggle-group="${gi}">
-        <span class="drag-handle" data-drag-group="${gi}">⠿</span>
+        ${isBuiltinGod ? '' : `<span class="drag-handle" data-drag-group="${gi}">⠿</span>`}
         <span class="expand-icon ${isExpanded ? 'rotated' : ''}">▶</span>
         <span class="group-name">${escapeHTML(group.name)} <span class="group-meta">(${childCount}条)</span></span>
         <div class="group-actions">
           <div class="switch ${isEnabled ? 'on' : ''}" data-toggle-group-switch="${gi}"><i></i></div>
-          <button class="primary" data-edit-group="${gi}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 14.66V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5.34"/><polygon points="18 2 22 6 12 16 8 16 8 12 18 2"/></svg></button>
-          <button class="danger" data-delete-group="${gi}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6v13a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg></button>
+          ${isBuiltinGod ? '' : `<button class="primary" data-edit-group="${gi}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 14.66V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5.34"/><polygon points="18 2 22 6 12 16 8 16 8 12 18 2"/></svg></button>
+          <button class="danger" data-delete-group="${gi}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6v13a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg></button>`}
         </div>
       </div>
     `;
 
-    html += `
-      <div class="group-edit-panel" id="group-edit-${gi}">
-        <div class="field"><label>规则组名称</label><input id="group-edit-name-${gi}" value="${escapeHTML(group.name)}"></div>
-        <div class="edit-actions">
-          <button class="save" data-group-save="${gi}">保存</button>
-          <button class="cancel" data-group-cancel="${gi}">取消</button>
+    if (!isBuiltinGod) {
+      html += `
+        <div class="group-edit-panel" id="group-edit-${gi}">
+          <div class="field"><label>规则组名称</label><input id="group-edit-name-${gi}" value="${escapeHTML(group.name)}"></div>
+          <div class="edit-actions">
+            <button class="save" data-group-save="${gi}">保存</button>
+            <button class="cancel" data-group-cancel="${gi}">取消</button>
+          </div>
         </div>
-      </div>
-    `;
+      `;
+    }
 
     html += `<div class="rule-children ${isExpanded ? 'open' : ''}" id="children-${gi}">`;
     const children = group.rules || [];
@@ -745,35 +756,39 @@ function renderRules() {
         const childEnabled = child.enabled !== false;
         html += `
           <div class="child-item" data-child="${gi}-${ci}">
-            <span class="drag-handle" data-drag-child="${gi}-${ci}">⠿</span>
+            ${isBuiltinGod ? '' : `<span class="drag-handle" data-drag-child="${gi}-${ci}">⠿</span>`}
             <div class="child-info">
-              <div class="child-name">${escapeHTML(child.name)}</div>
-              <div class="child-preview">${escapeHTML((child.content || '').slice(0, 40))}${(child.content || '').length > 40 ? '...' : ''}</div>
+              <div class="child-name">${isBuiltinGod ? `条目 ${ci + 1}` : escapeHTML(child.name)}</div>
+              ${isBuiltinGod ? '' : `<div class="child-preview">${escapeHTML((child.content || '').slice(0, 40))}${(child.content || '').length > 40 ? '...' : ''}</div>`}
             </div>
             <div class="child-actions">
               <div class="switch ${childEnabled ? 'on' : ''}" data-toggle-child="${gi}-${ci}"><i></i></div>
-              <button class="primary" data-edit-child="${gi}-${ci}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 14.66V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5.34"/><polygon points="18 2 22 6 12 16 8 16 8 12 18 2"/></svg></button>
-              <button class="danger" data-delete-child="${gi}-${ci}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18"/><path d="M6 6 18 18"/></svg></button>
+              ${isBuiltinGod ? '' : `<button class="primary" data-edit-child="${gi}-${ci}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 14.66V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5.34"/><polygon points="18 2 22 6 12 16 8 16 8 12 18 2"/></svg></button>
+              <button class="danger" data-delete-child="${gi}-${ci}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18"/><path d="M6 6 18 18"/></svg></button>`}
             </div>
           </div>
         `;
-        html += `
-          <div class="edit-panel" id="child-edit-${gi}-${ci}">
-            <div class="field"><label>名称</label><input id="child-edit-name-${gi}-${ci}" value="${escapeHTML(child.name)}"></div>
-            <div class="field"><label>内容</label><textarea id="child-edit-content-${gi}-${ci}">${escapeHTML(child.content || '')}</textarea></div>
-            <div class="edit-actions">
-              <button class="save" data-child-save="${gi}-${ci}">保存</button>
-              <button class="cancel" data-child-cancel="${gi}-${ci}">取消</button>
+        if (!isBuiltinGod) {
+          html += `
+            <div class="edit-panel" id="child-edit-${gi}-${ci}">
+              <div class="field"><label>名称</label><input id="child-edit-name-${gi}-${ci}" value="${escapeHTML(child.name)}"></div>
+              <div class="field"><label>内容</label><textarea id="child-edit-content-${gi}-${ci}">${escapeHTML(child.content || '')}</textarea></div>
+              <div class="edit-actions">
+                <button class="save" data-child-save="${gi}-${ci}">保存</button>
+                <button class="cancel" data-child-cancel="${gi}-${ci}">取消</button>
+              </div>
             </div>
-          </div>
-        `;
+          `;
+        }
       });
     } else {
-      html += `<div class="group-empty">暂无子规则，点击下方添加</div>`;
+      html += `<div class="group-empty">暂无子规则${isBuiltinGod ? '' : '，点击下方添加'}</div>`;
     }
-    html += `
-      <button class="add-child-btn" data-add-child="${gi}">+ 添加子规则</button>
-    `;
+    if (!isBuiltinGod) {
+      html += `
+        <button class="add-child-btn" data-add-child="${gi}">+ 添加子规则</button>
+      `;
+    }
     html += `</div></div>`;
   });
 
@@ -1041,6 +1056,7 @@ document.getElementById('deleteAllBtn').onclick = function() {
 document.getElementById('importFile').addEventListener('change', async function(e) {
   const file = e.target.files[0];
   if (!file) return;
+  if (!(await offlineImportAllowed())) { e.target.value = ''; return; }
   try {
     let text = '';
     const baseNameOf = (f) => f.name.replace(/\.[^.]+$/, '');
@@ -1532,9 +1548,10 @@ function mpRender() {
     }
   };
   if (imp && file) imp.onclick = function () { file.click(); };
-  if (file) file.addEventListener('change', function () {
+  if (file) file.addEventListener('change', async function () {
     const f = this.files && this.files[0]; this.value = '';
     if (!f) return;
+    if (!(await offlineImportAllowed())) return;
     const reader = new FileReader();
     reader.onload = function () {
       try {
@@ -1646,6 +1663,7 @@ async function bindDocImport(inputId, textId, nameId) {
   document.getElementById(inputId).addEventListener('change', async function(e) {
     const file = e.target.files[0];
     if (!file) return;
+    if (!(await offlineImportAllowed())) { e.target.value = ''; return; }
     try {
       const text = await readDocument(file);
       document.getElementById(textId).value = text;
@@ -2035,9 +2053,10 @@ document.getElementById('statusBarExport').onclick = function() {
   } catch (e) { showToast('导出失败'); }
 };
 document.getElementById('statusBarImport').onclick = function() { document.getElementById('statusBarFile').click(); };
-document.getElementById('statusBarFile').addEventListener('change', function(e) {
+document.getElementById('statusBarFile').addEventListener('change', async function(e) {
   const f = e.target.files && e.target.files[0];
   if (!f) return;
+  if (!(await offlineImportAllowed())) { e.target.value = ''; return; }
   const rd = new FileReader();
   rd.onload = function(ev) {
     try {

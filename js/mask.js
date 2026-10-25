@@ -562,16 +562,25 @@
         avatarModal.classList.remove('show');
     }
 
-    avatarFileInput.addEventListener('change', function(e) {
+    avatarFileInput.addEventListener('change', async function(e) {
         const file = this.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = function(evt) {
-            avatarThumbPreview.src = evt.target.result;
-            avatarUrlInput.value = '';
-        };
-        reader.readAsDataURL(file);
         this.value = '';
+        if (!file) return;
+        try {
+            if (window.NanoAvatarCrop) {
+                const cropped = await NanoAvatarCrop.open(file, { outputSize: 360, aspect: 1, quality: 0.9, title: '裁剪头像' });
+                if (!cropped) return;
+                avatarThumbPreview.src = cropped;
+                avatarUrlInput.value = '';
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                avatarThumbPreview.src = evt.target.result;
+                avatarUrlInput.value = '';
+            };
+            reader.readAsDataURL(file);
+        } catch (err) {}
     });
 
     avatarUrlInput.addEventListener('input', function() {
@@ -726,10 +735,19 @@
         importFileInput.click();
     };
 
-    importFileInput.onchange = function(e) {
+    importFileInput.onchange = async function(e) {
         const file = this.files[0];
         if (!file) return;
         importFileInput.value = '';
+
+        // 导入门槛：人设 / 面具的 DOC、TXT、JSON 导入
+        let importGate = null;
+        try { importGate = (window.parent && window.parent.NanoImportGate) || window.NanoImportGate; } catch (err) { importGate = window.NanoImportGate; }
+        if (importGate && importGate.ensure) {
+            let gateOk = false;
+            try { gateOk = await importGate.ensure(); } catch (err) { gateOk = false; }
+            if (!gateOk) return;
+        }
 
         // ===== DOC / DOCX：按需加载解析库提取文本 =====
         const lowerName = (file.name || '').toLowerCase();

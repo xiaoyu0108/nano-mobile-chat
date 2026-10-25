@@ -499,7 +499,7 @@ html::-webkit-scrollbar, body::-webkit-scrollbar, .nc-scroll::-webkit-scrollbar 
 
 .nc-session-meta { font-size: 10px; color: var(--n-muted); }
 
-.nc-session-del {
+.nc-session-del, .nc-session-edit {
   flex: none;
   width: 28px;
   height: 28px;
@@ -513,9 +513,9 @@ html::-webkit-scrollbar, body::-webkit-scrollbar, .nc-scroll::-webkit-scrollbar 
   cursor: pointer;
 }
 
-.nc-session-del:active { background: var(--n-line); }
+.nc-session-del:active, .nc-session-edit:active { background: var(--n-line); }
 
-.nc-session-del svg { width: 15px; height: 15px; }
+.nc-session-del svg, .nc-session-edit svg { width: 15px; height: 15px; }
 
 .nc-empty {
   font-size: 12px;

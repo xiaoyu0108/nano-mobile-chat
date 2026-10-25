@@ -42,7 +42,7 @@
   "name": "Nano 应用模板",
   "icon": "◆",
   "color": "#5B6CFF",
-  "desc": "完整可改写的 App 模板：首页 / 清单 / 二级页 / 设置 / DIY 返回栈 / 高权限",
+  "desc": "完整可改写的 App 模板：首页 / 示例清单 / 二级页 / 设置 / DIY 返回栈 / 高权限",
   "version": "3.0.0",
   "highPermission": true,
   "permissions": ["*", "characters", "persona", "worldbook", "memory", "api", "chat", "image", "tts", "files", "gallery", "notify", "clipboard", "apps", "storage", "openUrl"]
@@ -490,19 +490,20 @@
       return '<div class="hero"><div class="hero-row">' + avatarOf(App.user, true) +
         '<div><div class="hero-name">你好，' + esc(App.user.name || '我') + '</div>' +
         '<div class="hero-sub">' + (App.chars.length ? ('已连接 ' + App.chars.length + ' 个角色 · 高权限已开启') : '还没有角色，去设置里选择') + '</div></div></div>' +
-        '<div class="stats"><div class="stat"><div class="n">' + App.items.length + '</div><div class="l">清单</div></div>' +
+        '<div class="stats"><div class="stat"><div class="n">' + App.items.length + '</div><div class="l">示例条目</div></div>' +
         '<div class="stat"><div class="n">' + App.chars.length + '</div><div class="l">角色</div></div>' +
         '<div class="stat"><div class="n">' + (App.apiConnected ? '在线' : '未连') + '</div><div class="l">主 API</div></div></div></div>' +
+        '<div class="notice">「示例清单」只是模板演示功能；应用真正的身份证是 HTML 里的 nano-manifest。</div>' +
         '<div class="section"><div class="section-head"><span class="section-title">快速开始</span></div><div class="grid2">' +
-        '<button class="card quick" data-tab="items"><span class="emoji">☑</span><b>我的清单</b><span>增删改查 + 二级详情页</span><span class="tagline">完整示例</span></button>' +
-        '<button class="card quick" data-new="1"><span class="emoji">＋</span><b>新建一条</b><span>直接添加一条清单</span><span class="tagline">写数据</span></button>' +
+        '<button class="card quick" data-tab="items"><span class="emoji">☑</span><b>示例清单</b><span>增删改查 + 二级详情页</span><span class="tagline">完整示例</span></button>' +
+        '<button class="card quick" data-new="1"><span class="emoji">＋</span><b>新建示例条目</b><span>往示例清单加一条记录</span><span class="tagline">写数据</span></button>' +
         '<button class="card quick" data-go="guide"><span class="emoji">⌘</span><b>DIY 指南</b><span>页面、返回、Nano API 全写清楚</span><span class="tagline">改模板</span></button>' +
         '<button class="card quick" data-tab="settings"><span class="emoji">⚙</span><b>设置</b><span>名称 / 图标 / 字体 / 角色 / 权限</span><span class="tagline">自定义</span></button>' +
         '</div></div>' +
-        '<div class="section"><div class="section-head"><span class="section-title">最近清单</span><button class="section-more" data-tab="items">全部</button></div>' +
+        '<div class="section"><div class="section-head"><span class="section-title">最近示例条目</span><button class="section-more" data-tab="items">全部</button></div>' +
         (recent.length ? '<div class="list">' + recent.map(function (it) {
           return '<button class="row" data-item="' + esc(it.id) + '"><span class="icon">' + esc(String(it.title).charAt(0)) + '</span><span class="main"><span class="t">' + esc(it.title) + '</span><span class="d">' + esc(it.note || '还没有备注') + '</span></span><span class="v">' + timeText(it.updatedAt) + '</span></button>';
-        }).join('') + '</div>' : '<div class="card empty"><div class="big">☑</div><b>还没有清单</b><span>点「新建一条」开始。</span></div>') +
+        }).join('') + '</div>' : '<div class="card empty"><div class="big">☑</div><b>示例清单还是空的</b><span>点「新建示例条目」开始。</span></div>') +
         '</div>' +
         '<div class="section"><div class="section-head"><span class="section-title">我的角色</span><button class="section-more" data-tab="settings">管理</button></div>' +
         (chars.length ? '<div class="char-row">' + chars.map(function (c) {
@@ -524,16 +525,17 @@
 
   /* ---------------- 清单 ---------------- */
   App.define('items', {
-    title: '清单',
-    sub: '增删改查示例 · 点条目进详情',
+    title: '示例清单',
+    sub: '只是示例 · 可换成你的功能',
     actions: [{ id: 'add', label: '新增' }],
     onAction: function (id) { if (id === 'add') newItemFlow(); },
     html: function () {
-      return '<div class="addbar"><input id="newItemInput" placeholder="写一条待办 / 笔记…" autocomplete="off"><button class="btn" id="newItemBtn">添加</button></div>' +
+      return '<div class="notice">这里的「清单」只是模板的演示功能，不是应用身份证（nano-manifest）；新建条目也不会新建应用或模板。</div>' +
+        '<div class="addbar"><input id="newItemInput" placeholder="写一条示例记录…" autocomplete="off"><button class="btn" id="newItemBtn">添加</button></div>' +
         (App.items.length ? '<div class="list">' + App.items.map(function (it) {
           return '<button class="row" data-item="' + esc(it.id) + '"><span class="icon">' + esc(String(it.title).charAt(0)) + '</span><span class="main"><span class="t">' + esc(it.title) + '</span><span class="d">' + esc(it.note || '还没有备注') + '</span></span><span class="v">' + timeText(it.updatedAt) + '</span><svg class="chev" viewBox="0 0 8 13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m1 1 5 5.5L1 12"/></svg></button>';
-        }).join('') + '</div>' : '<div class="card empty"><div class="big">☑</div><b>清单是空的</b><span>在上面输入一条，按「添加」。</span></div>') +
-        '<div class="notice">点条目进入详情页。详情页的返回只回清单，不会直接回首页。</div>';
+        }).join('') + '</div>' : '<div class="card empty"><div class="big">☑</div><b>示例清单是空的</b><span>在上面输入一条，按「添加」。</span></div>') +
+        '<div class="notice">点条目进入详情页。详情页的返回只回示例清单，不会直接回首页。</div>';
     },
     mount: function (el) {
       var input = $('newItemInput'), btn = $('newItemBtn');
@@ -691,14 +693,15 @@
     sub: '页面 · 返回 · 高权限 API',
     hideTab: true,
     html: function () {
-      return '<div class="guide-block"><b>1. 页面怎么写</b><br>每个页面就是一个 <code>App.define</code>，返回 HTML 字符串，再在 <code>mount</code> 里绑事件：' +
+      return '<div class="guide-block"><b>0. 这个模板怎么用</b><br>模板里的「示例清单」只是演示增删改查和二级页；「新建示例条目」只会往示例清单加一条记录，<b>不会新建应用或模板</b>。应用真正的身份证是 HTML 里的 <code>nano-manifest</code>。不想要清单，可以把这一页换成记账、追剧、打卡等任何功能。</div>' +
+        '<div class="guide-block"><b>1. 页面怎么写</b><br>每个页面就是一个 <code>App.define</code>，返回 HTML 字符串，再在 <code>mount</code> 里绑事件：' +
         '<div class="code">App.define(\'my-page\', {\n  title: \'我的页面\',\n  hideTab: true,\n  html: function (p) {\n    return \'&lt;div&gt;内容&lt;/div&gt;\';\n  },\n  mount: function (el, p) {\n    // el 是本页容器\n  },\n  onBack: function (p) {\n    return false; // false = 交给上一级\n  }\n});\n\nApp.go(\'my-page\', { id: 1 });</div></div>' +
         '<div class="guide-block"><b>2. 返回逻辑（重点）</b><br>' +
         '首页按返回 → 直接回 AppStore。<br>' +
-        '清单 / 设置按返回 → 先回首页，再按一次才回 AppStore。<br>' +
+        '示例清单 / 设置按返回 → 先回首页，再按一次才回 AppStore。<br>' +
         '二级页按返回 → 回到打开它的上一页。<br>' +
         '页面里的 <code>onBack</code> 可以自己接管：<code>return true</code> 自己处理，<code>return false</code> 交给上一级，<code>return \'exit\'</code> 直接退出。</div>' +
-        '<div class="guide-block"><b>3. 加一个二级页</b><br>照着 <code>item</code> 页面抄：<code>App.go(\'detail\', {id})</code> 打开，按返回会自动回到清单。</div>' +
+        '<div class="guide-block"><b>3. 加一个二级页</b><br>照着 <code>item</code> 页面抄：<code>App.go(\'detail\', {id})</code> 打开，按返回会自动回到示例清单。</div>' +
         '<div class="guide-block"><b>4. 高权限 API</b><br>' +
         'Nano.characters / currentUser / persona / worldbook / memory<br>' +
         'Nano.chat({ charIds, messages, system })<br>' +

@@ -9,6 +9,7 @@
 <script>window.__NANO_FONT_ONLY = true;</script>
 <script src="../js/appearance.js"></script>
 <script src="../js/nano-idb.js"></script>
+<script src="../js/avatar-crop.js?v=20261025b"></script>
 <link rel="stylesheet" href="../css/settings.css?v=20261021a">
 </head>
 <body data-page="settings">
@@ -37,6 +38,17 @@
     </section>
 
     <nav class="cards" aria-label="设置分类">
+      <a class="card" href="settings-account.html">
+        <span class="card-icon">
+          <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="M9 12.5 11 14.5 15.5 9.5"/></svg>
+        </span>
+        <span class="card-main">
+          <span class="card-title">账号与设备</span>
+          <span class="card-sub">登录、设备下线与导入卡密</span>
+        </span>
+        <span class="card-chev">›</span>
+      </a>
+
       <a class="card" href="settings-desktop.html">
         <span class="card-icon">
           <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
@@ -128,6 +140,6 @@
 </div>
 <div class="toast" id="toast"></div>
 <input type="file" id="avatarFile" accept="image/*" class="hidden">
-<script src="../js/settings.js?v=20261024b"></script>
+<script src="../js/settings.js?v=20261025b"></script>
 </body>
 </html>

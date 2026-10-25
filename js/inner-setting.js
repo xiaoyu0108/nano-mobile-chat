@@ -1439,7 +1439,7 @@
                         previewVideo.style.display = 'block';
                         previewVideo.play().catch(function () {});
                     } catch (e) {}
-                    if (previewText) previewText.textContent = '已选择：Live 视频';
+                    if (previewText) previewText.textContent = '已选择：视频背景';
                 } else if (bg.kind === 'image' && bg.value) {
                     previewBox.style.backgroundImage = 'url(' + bg.value + ')';
                     previewBox.style.backgroundSize = 'cover';
@@ -1461,7 +1461,6 @@
         if (done) done.addEventListener('click', function () { modal.classList.remove('active'); });
 
         if (bgUpload) {
-            var bgVideoUpload = document.getElementById('callBgVideoUpload');
             var handleBgFile = function (e) {
                 var file = e.target.files && e.target.files[0];
                 e.target.value = '';
@@ -1478,7 +1477,6 @@
                 reader.readAsDataURL(file);
             };
             bgUpload.addEventListener('change', handleBgFile);
-            if (bgVideoUpload) bgVideoUpload.addEventListener('change', handleBgFile);
         }
         if (bgReset) bgReset.addEventListener('click', function () {
             if (window.NanoCallBg) window.NanoCallBg.clear(chatId).then(renderPreview);

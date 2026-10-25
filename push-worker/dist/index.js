@@ -335,7 +335,7 @@ __name(buildPushPayload, "buildPushPayload");
 var CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, Model, model, X-Push-Token, X-Peek-Token, X-Nano-App, X-Nano-Kind, xi-api-key",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, Model, model, X-Push-Token, X-Peek-Token, X-Nano-App, X-Nano-Kind, X-Admin-Token, xi-api-key",
   "Access-Control-Max-Age": "86400"
 };
 function d1Kv(db) {
@@ -1910,6 +1910,351 @@ async function getHotTopics(source) {
   }));
 }
 __name(getHotTopics, "getHotTopics");
+// ===== 账号 / 设备会话 / 导入卡密 =====
+// 复用同一份 KV/D1：绑定了 D1 就写 D1 的 kv 表，否则回退 KV。
+const ACC_SESSION_TTL = 30 * 24 * 60 * 60;
+const ACC_MAX_DEVICES = 3;
+const ACC_PBKDF2_ITER = 30000;
+const ACC_TOKEN_PREFIX = 'acct:tok:';
+const ACC_SESS_PREFIX = 'acct:sess:';
+const ACC_USER_PREFIX = 'acct:user:';
+
+function accNormName(v) {
+  return String(v == null ? '' : v).trim();
+}
+function accLowerName(v) {
+  return accNormName(v).toLowerCase();
+}
+function accUserKey(name) {
+  return ACC_USER_PREFIX + accLowerName(name);
+}
+function accSessKey(name) {
+  return ACC_SESS_PREFIX + accLowerName(name);
+}
+function accB64(buf) {
+  const bytes = new Uint8Array(buf);
+  let s = '';
+  for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+  return btoa(s);
+}
+function accUnb64(str) {
+  const bin = atob(String(str || ''));
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+function accRandomHex(bytes) {
+  const b = new Uint8Array(bytes || 16);
+  crypto.getRandomValues(b);
+  return Array.prototype.map.call(b, function (x) { return x.toString(16).padStart(2, '0'); }).join('');
+}
+async function accHash(password, saltB64) {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey('raw', enc.encode(String(password)), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({
+    name: 'PBKDF2',
+    salt: accUnb64(saltB64),
+    iterations: ACC_PBKDF2_ITER,
+    hash: 'SHA-256'
+  }, key, 256);
+  return accB64(bits);
+}
+function accCleanSessions(list) {
+  const now = Date.now();
+  return (Array.isArray(list) ? list : []).filter(function (s) {
+    return s && s.token && (!s.exp || Number(s.exp) > now);
+  });
+}
+function accPublicSessions(list, currentSid) {
+  return (Array.isArray(list) ? list : []).map(function (s) {
+    return {
+      sid: s.sid,
+      deviceId: s.deviceId || '',
+      deviceName: s.deviceName || '未知设备',
+      at: s.at || 0,
+      lastSeen: s.lastSeen || s.at || 0,
+      current: !!currentSid && s.sid === currentSid
+    };
+  }).sort(function (a, b) { return (b.lastSeen || 0) - (a.lastSeen || 0); });
+}
+async function accReadUser(env, name) {
+  const raw = await kv(env).get(accUserKey(name));
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch (e) { return null; }
+}
+async function accReadSessions(env, name) {
+  const raw = await kv(env).get(accSessKey(name));
+  if (!raw) return [];
+  try { return accCleanSessions(JSON.parse(raw)); } catch (e) { return []; }
+}
+async function accSaveSessions(env, name, list) {
+  await kv(env).put(accSessKey(name), JSON.stringify(accCleanSessions(list)));
+}
+async function accDropSession(env, name, sess) {
+  if (!sess) return;
+  try { await kv(env).delete(ACC_TOKEN_PREFIX + sess.token); } catch (e) {}
+}
+async function accIssueSession(env, user, body) {
+  const now = Date.now();
+  const deviceId = String((body && body.deviceId) || '').slice(0, 80) || accRandomHex(8);
+  const deviceName = String((body && body.deviceName) || '').slice(0, 80) || '未知设备';
+  const ua = String((body && body.ua) || '').slice(0, 300);
+  let list = await accReadSessions(env, user.u);
+  // 同一设备重新登录：替换旧会话，不占新的设备名额。
+  list = list.filter(function (s) { return !(deviceId && s.deviceId === deviceId); });
+  const evicted = [];
+  // 设备轮流更替：第 4 台登录时自动顶掉最久没活动的一台。
+  while (list.length >= ACC_MAX_DEVICES) {
+    list.sort(function (a, b) { return (a.lastSeen || a.at || 0) - (b.lastSeen || b.at || 0); });
+    const old = list.shift();
+    if (old) {
+      evicted.push({ deviceName: old.deviceName || '未知设备', deviceId: old.deviceId || '' });
+      await accDropSession(env, user.u, old);
+    }
+  }
+  const sid = accRandomHex(6);
+  const token = accRandomHex(32);
+  const sess = {
+    sid: sid,
+    token: token,
+    deviceId: deviceId,
+    deviceName: deviceName,
+    ua: ua,
+    at: now,
+    lastSeen: now,
+    exp: now + ACC_SESSION_TTL * 1000
+  };
+  list.push(sess);
+  await accSaveSessions(env, user.u, list);
+  await kv(env).put(ACC_TOKEN_PREFIX + token, JSON.stringify({
+    u: user.u,
+    sid: sid,
+    exp: sess.exp
+  }), { expirationTtl: ACC_SESSION_TTL });
+  return { session: sess, sessions: list, evicted: evicted };
+}
+async function accAuth(env, token) {
+  token = String(token || '').trim();
+  if (!token) return null;
+  const raw = await kv(env).get(ACC_TOKEN_PREFIX + token);
+  if (!raw) return null;
+  let rec = null;
+  try { rec = JSON.parse(raw); } catch (e) { return null; }
+  if (!rec || !rec.u || (rec.exp && Number(rec.exp) <= Date.now())) return null;
+  const user = await accReadUser(env, rec.u);
+  if (!user) return null;
+  const list = await accReadSessions(env, user.u);
+  const sess = list.find(function (s) { return s.token === token; });
+  if (!sess) return null;
+  return { user: user, session: sess, sessions: list, token: token };
+}
+function accAdminOk(request, env, body) {
+  const need = String((env && env.ACCOUNT_ADMIN_TOKEN) || '');
+  if (!need) return { ok: false, error: '服务端未配置 ACCOUNT_ADMIN_TOKEN' };
+  const got = String(request.headers.get('X-Admin-Token') || (body && body.adminToken) || '');
+  if (!got || got.length !== need.length) return { ok: false, error: '管理员密钥错误' };
+  let diff = 0;
+  for (let i = 0; i < need.length; i++) diff |= got.charCodeAt(i) ^ need.charCodeAt(i);
+  return diff === 0 ? { ok: true } : { ok: false, error: '管理员密钥错误' };
+}
+function accValidName(name) {
+  return /^[a-zA-Z0-9_\u4e00-\u9fa5.-]{2,24}$/.test(name);
+}
+function accRole(user) {
+  return user && user.role === "admin" ? "admin" : "user";
+}
+async function accReadPolicy(env) {
+  const raw = await kv(env).get("acct:policy");
+  if (!raw) return { allowUserImport: false };
+  try {
+    const p = JSON.parse(raw);
+    return { allowUserImport: !!(p && p.allowUserImport) };
+  } catch (e) {
+    return { allowUserImport: false };
+  }
+}
+async function accAdminAccess(request, env, body, auth) {
+  if (auth && accRole(auth.user) === "admin") return { ok: true, by: "role" };
+  return accAdminOk(request, env, body);
+}
+async function accHandle(request, env, pathname) {
+  if (!pathname.startsWith('/account/') && !pathname.startsWith('/gate/')) return null;
+  const method = request.method;
+  const body = (method === 'POST') ? await request.json().catch(function () { return {}; }) : {};
+
+  // ---- 注册 ----
+  if (pathname === '/account/register' && method === 'POST') {
+    const name = accNormName(body.username);
+    const password = String(body.password || '');
+    if (!accValidName(name)) return json({ ok: false, error: '用户名需 2-24 位，可用中英文、数字、下划线、点和横线' }, 400);
+    if (password.length < 6 || password.length > 128) return json({ ok: false, error: '密码需 6-128 位' }, 400);
+    const inviteNeed = String(env.ACCOUNT_REGISTER_CODE || '');
+    if (inviteNeed && String(body.invite || '') !== inviteNeed) return json({ ok: false, error: '注册邀请码不正确' }, 403);
+    if (await accReadUser(env, name)) return json({ ok: false, error: '这个用户名已经被注册' }, 409);
+    const salt = accB64(crypto.getRandomValues(new Uint8Array(16)));
+    const hash = await accHash(password, salt);
+    const user = { u: name, salt: salt, hash: hash, at: Date.now(), role: "user" };
+    await kv(env).put(accUserKey(name), JSON.stringify(user));
+    const issued = await accIssueSession(env, user, body);
+    return json({
+      ok: true,
+      token: issued.session.token,
+      username: user.u,
+      role: accRole(user),
+      sid: issued.session.sid,
+      sessions: accPublicSessions(issued.sessions, issued.session.sid),
+      evicted: issued.evicted
+    });
+  }
+
+  // ---- 登录 ----
+  if (pathname === '/account/login' && method === 'POST') {
+    const name = accNormName(body.username);
+    const password = String(body.password || '');
+    if (!name || !password) return json({ ok: false, error: '请输入账号和密码' }, 400);
+    const user = await accReadUser(env, name);
+    if (!user) return json({ ok: false, error: '账号或密码不正确' }, 401);
+    const hash = await accHash(password, user.salt);
+    if (hash !== user.hash) return json({ ok: false, error: '账号或密码不正确' }, 401);
+    const issued = await accIssueSession(env, user, body);
+    return json({
+      ok: true,
+      token: issued.session.token,
+      username: user.u,
+      role: accRole(user),
+      sid: issued.session.sid,
+      sessions: accPublicSessions(issued.sessions, issued.session.sid),
+      evicted: issued.evicted
+    });
+  }
+
+  // ---- 会话列表 / 续期 ----
+  if (pathname === '/account/sessions' && (method === 'GET' || method === 'POST')) {
+    const token = method === 'GET'
+      ? new URL(request.url).searchParams.get('token')
+      : body.token;
+    const auth = await accAuth(env, token);
+    if (!auth) return json({ ok: false, error: '登录已失效，请重新登录' }, 401);
+    // 只有查看设备列表时才更新 lastSeen，避免每次请求都写库。
+    const list = await accReadSessions(env, auth.user.u);
+    const now = Date.now();
+    let changed = false;
+    list.forEach(function (s) {
+      if (s.sid === auth.session.sid && now - (s.lastSeen || 0) > 60 * 60 * 1000) {
+        s.lastSeen = now;
+        changed = true;
+      }
+    });
+    if (changed) await accSaveSessions(env, auth.user.u, list);
+    const policy = await accReadPolicy(env);
+    return json({
+      ok: true,
+      username: auth.user.u,
+      role: accRole(auth.user),
+      sid: auth.session.sid,
+      sessions: accPublicSessions(list, auth.session.sid),
+      maxDevices: ACC_MAX_DEVICES,
+      policy: policy
+    });
+  }
+
+  // ---- 退出当前设备 ----
+  if (pathname === '/account/logout' && method === 'POST') {
+    const auth = await accAuth(env, body.token);
+    if (!auth) return json({ ok: true });
+    const list = (await accReadSessions(env, auth.user.u)).filter(function (s) { return s.sid !== auth.session.sid; });
+    await accDropSession(env, auth.user.u, auth.session);
+    await accSaveSessions(env, auth.user.u, list);
+    return json({ ok: true });
+  }
+
+  // ---- 下线指定设备 ----
+  if (pathname === '/account/logout-device' && method === 'POST') {
+    const auth = await accAuth(env, body.token);
+    if (!auth) return json({ ok: false, error: '登录已失效，请重新登录' }, 401);
+    const sid = String(body.sid || '');
+    if (!sid) return json({ ok: false, error: '缺少设备 ID' }, 400);
+    const target = auth.sessions.find(function (s) { return s.sid === sid; });
+    if (!target) return json({ ok: false, error: '设备不存在或已下线' }, 404);
+    if (target.sid === auth.session.sid) return json({ ok: false, error: '当前设备不能在这里下线，请用「退出登录」' }, 400);
+    const list = auth.sessions.filter(function (s) { return s.sid !== sid; });
+    await accDropSession(env, auth.user.u, target);
+    await accSaveSessions(env, auth.user.u, list);
+    return json({ ok: true, sessions: accPublicSessions(list, auth.session.sid) });
+  }
+
+  // ---- 下线其他所有设备 ----
+  if (pathname === '/account/logout-others' && method === 'POST') {
+    const auth = await accAuth(env, body.token);
+    if (!auth) return json({ ok: false, error: '登录已失效，请重新登录' }, 401);
+    const keep = auth.sessions.find(function (s) { return s.sid === auth.session.sid; });
+    for (const s of auth.sessions) {
+      if (!keep || s.sid !== keep.sid) await accDropSession(env, auth.user.u, s);
+    }
+    const list = keep ? [keep] : [];
+    await accSaveSessions(env, auth.user.u, list);
+    return json({ ok: true, sessions: accPublicSessions(list, auth.session.sid) });
+  }
+
+  // ---- 管理员：删除账号（忘记密码时重置）----
+  if (pathname === '/account/admin-claim' && method === 'POST') {
+    const auth = await accAuth(env, body.token);
+    if (!auth) return json({ ok: false, error: '请先登录账号' }, 401);
+    const admin = accAdminOk(request, env, body);
+    if (!admin.ok) return json({ ok: false, error: admin.error }, 403);
+    const user = auth.user;
+    user.role = 'admin';
+    await kv(env).put(accUserKey(user.u), JSON.stringify(user));
+    return json({ ok: true, username: user.u, role: 'admin' });
+  }
+
+  if (pathname === '/account/admin/policy' && method === 'POST') {
+    const auth = await accAuth(env, body.token);
+    const admin = await accAdminAccess(request, env, body, auth);
+    if (!admin.ok) return json({ ok: false, error: admin.error }, 403);
+    const policy = { allowUserImport: body.allowUserImport === true, updatedAt: Date.now() };
+    await kv(env).put('acct:policy', JSON.stringify(policy));
+    return json({ ok: true, policy: policy });
+  }
+
+  if (pathname === '/account/admin-reset' && method === 'POST') {
+    const auth = await accAuth(env, body.token);
+    const admin = await accAdminAccess(request, env, body, auth);
+    if (!admin.ok) return json({ ok: false, error: admin.error }, 403);
+    const name = accNormName(body.username);
+    if (!name) return json({ ok: false, error: '缺少账号名' }, 400);
+    const user = await accReadUser(env, name);
+    if (!user) return json({ ok: false, error: '账号不存在' }, 404);
+    const sessions = await accReadSessions(env, user.u);
+    for (const s of sessions) await accDropSession(env, user.u, s);
+    await kv(env).delete(accSessKey(user.u));
+    await kv(env).delete(accUserKey(user.u));
+    return json({ ok: true, username: user.u, removedSessions: sessions.length });
+  }
+
+
+  // ---- 导入权限检查：默认仅管理员可导入；管理员可一键放开给所有登录用户 ----
+  if ((pathname === '/gate/check' || pathname === '/gate/import') && method === 'POST') {
+    const auth = await accAuth(env, body.token);
+    if (!auth) return json({ ok: false, error: '请先登录账号' }, 401);
+    const policy = await accReadPolicy(env);
+    const role = accRole(auth.user);
+    const allowed = role === 'admin' || policy.allowUserImport === true;
+    if (!allowed) {
+      return json({
+        ok: false,
+        error: '当前账号没有导入权限。角色卡、世界书、规则等导入仅限管理员。',
+        code: 'IMPORT_FORBIDDEN',
+        role: role,
+        policy: policy
+      }, 403);
+    }
+    return json({ ok: true, role: role, policy: policy, mode: role === 'admin' ? 'admin' : 'policy' });
+  }
+
+  return json({ ok: false, error: 'not found' }, 404);
+}
+
 var index_default = {
   async fetch(request, env) {
     if (request.method === "OPTIONS") return new Response(null, { headers: CORS });
@@ -2070,6 +2415,8 @@ var index_default = {
     }
     let pathname = __reqUrl.pathname;
     if (pathname.indexOf("/nanoapi") === 0) pathname = pathname.slice("/nanoapi".length) || "/";
+    const accResp = await accHandle(request, env, pathname);
+    if (accResp) return accResp;
     if (pathname === "/link/preview" && request.method === "GET") {
       if (!autoOk(request, env, null)) return json({ ok: false, error: "unauthorized" }, 401);
       const target = new URL(request.url).searchParams.get("url") || "";

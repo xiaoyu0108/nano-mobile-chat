@@ -1,4 +1,4 @@
-// nano-call-bg.js - 语音 / 视频通话背景（图片、GIF、短视频 / Live 图）
+// nano-call-bg.js - 语音 / 视频通话背景（图片、GIF、循环视频）
 (function () {
     'use strict';
 
@@ -88,7 +88,7 @@
     function setVideo(blob, name, chatId) {
         if (!blob) return Promise.resolve(false);
         try { if (!chatId) localStorage.removeItem(LEGACY_KEY); } catch (e) {}
-        return writeRaw({ key: keyFor(chatId), kind: 'video', blob: blob, name: String(name || 'live'), at: Date.now() }).then(function (ok) {
+        return writeRaw({ key: keyFor(chatId), kind: 'video', blob: blob, name: String(name || 'video'), at: Date.now() }).then(function (ok) {
             if (ok) {
                 var rc = document.querySelector('.nano-call-bg-video');
                 if (rc) {

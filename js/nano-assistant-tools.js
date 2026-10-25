@@ -28,7 +28,7 @@
     lines.push('10. 用户让你「用我刚发的图当头像/换成我发的这张」时，用 set_avatar（args:{"useLast":true}），不要用 apply_beautify 硬套图片地址（iOS 上本地图片地址塞进 CSS/JSON 会失效）。');
     lines.push('11. 只回答用户当前问的这一个问题，问什么就答什么；**不要反复回答之前已经回答过的问题**，不要每轮都把上一条结论再复述一遍，也不要把无关的旧内容重新倒出来。');
     lines.push('12. 用户说「执行框」「执行气泡」「放进执行框」「给我文件/生成文件」时，意思是让你把结果做成可执行动作：必须在回复里输出 <action> 块；需要文件就用 create_file，并把完整内容放进 content。不要只发纯文本、也不要让用户自己去复制。');
-    lines.push('13. 在现有预设、角色卡、人设、世界书、美化的基础上「新增细节 / 加一点 / 补充」时，用 append:true（或 args 里 addDetails:true），只追加新内容，绝不重写掉原来的内容。只有用户明确说「重写 / 替换 / 改成新的」时才覆盖。');
+    lines.push('13. 在现有预设、角色卡、人设、世界书、美化的基础上「新增细节 / 加一点 / 补充」时，用 append:true（或 args 里 addDetails:true），只追加新内容，绝不重写掉原来的内容。只有用户明确说「重写 / 替换 / 改成新的」时才覆盖；世界书覆盖用 update_worldbook（或 add_worldbook 传 replace:true）。');
     lines.push('14. 例：用户说「把这份 CSS 放进执行框，给我文件」→ 必须输出 <action>{"tool":"create_file","args":{"name":"theme.css","content":"完整 CSS","ext":"css"}}</action>；用户说「在现有角色卡上加一段细节」→ 用 <action>{"tool":"edit_persona","args":{"name":"角色名","setting":"新增的那段细节","append":true}}</action>。');
     lines.push('');
     lines.push('【不限于美化 · 你还能做的装修】');
@@ -43,7 +43,8 @@
     lines.push('· user 面具（人设）与绑定：新建/修改 user 面具用 create_mask / edit_mask（args:{name,setting,gender,wechat,current}）；把角色绑到某个面具用 bind_character（args:{name:角色名或id,mask:面具名或id}）。用户说「给 user 写面具 / 换个马甲 / 绑定角色」时用这些，不要只生成文件。');
     lines.push('· 读取美化：read_beautify（scope:global/chat/chat-avatar/offline/heart），会同时列出该范围已保存的预设。');
     lines.push('· 线下规则与状态栏：list_offline_rules / read_offline_rules 读取；add_offline_status 写入/覆盖自定义状态栏；add_offline_rule 写入规则。');
-    lines.push('· AppStore：list_apps / read_app 读取；create_app（args:{id,name,icon,color,desc,html}）直接创建并安装一个应用。');
+    lines.push('· AppStore：list_apps / read_app 读取；create_app（args:{id,name,icon,color,desc,html}）直接创建并安装一个应用。要改现有应用，先用 list_apps/read_app 拿到 id 和完整 HTML，再用 create_app 填同一个 id 和完整修改后的 HTML，会直接覆盖安装（旧版自动存为 v0 起的版本）。');
+    lines.push('· 修改历史：世界书和 App 每次被修改都会自动记录 v0、v1、v2……（v0 是第一次修改前的初始版本），执行后界面会显示这次是 v几。用户问当前版本、或说「回到 v8 / 退回上一版」时，先用 list_versions（target:worldbook|app，name:书名或应用名）确认，再 restore_version（version:8）；如果用户是刚改完就说退回，可以不填 name，会自动定位最近修改的对象。不要凭空编造版本号。');
     lines.push('· 文件库：list_files / read_generated_file 读取 Nano 生成或归档的所有文件。');
     lines.push('【最高权限】你可以读取并修改 Nano 里的角色、人设、预设、美化、世界书、线下规则/状态栏、AppStore 应用和文件。修改前先读取原内容；修改人设必须保留历史版本；保存预设时同名会直接覆盖原版（用户说「新增细节」时传 append:true，只追加不覆盖）。每次生成或修改内容的动作都会自动归档成文件，出现在 Nano 文件页。');
     lines.push('');
@@ -424,8 +425,8 @@
     if (!g) { g = { id: 'g_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5), name: gname }; data.groups.push(g); }
     return g.id;
   }
-  // 新建世界书，或把条目追加进已有世界书（args.worldbook 填书名或 id）。
-  async function addWorldbook(name, entries, target, group) {
+  // 新建世界书，或把条目追加 / 覆盖进已有世界书（args.worldbook 填书名或 id）。
+  async function addWorldbook(name, entries, target, group, replace) {
     var data = await getWorldbookData();
     var list = (entries || []).map(normalizeEntry);
     if (!list.length) throw new Error('没有可写入的条目（entries 为空）');
@@ -437,13 +438,21 @@
       });
     }
     if (file) {
-      if (!Array.isArray(file.entries)) file.entries = [];
-      list.forEach(function (e) { file.entries.push(e); });
+      var before = cloneVersionValue(file);
+      if (replace) {
+        file.entries = list;
+      } else {
+        if (!Array.isArray(file.entries)) file.entries = [];
+        list.forEach(function (e) { file.entries.push(e); });
+      }
       if (group) { var gid = ensureGroup(data, group); if (gid) file.group = gid; }
       file.size = Math.ceil(JSON.stringify(file.entries).length / 1024) + 'KB';
       file.ext = file.ext || 'json';
       await saveWorldbookData(data);
-      return { file: file, created: false, added: list.length };
+      var note = replace ? ('覆盖为 ' + list.length + ' 条') : ('追加 ' + list.length + ' 条');
+      var v = null;
+      try { v = await recordVersionUpdate('worldbook:' + file.id, '世界书「' + (file.name || file.id) + '」', before, cloneVersionValue(file), note); } catch (e) {}
+      return { file: file, created: false, added: list.length, replaced: !!replace, version: v };
     }
     var gid = group ? ensureGroup(data, group) : null;
     file = {
@@ -453,7 +462,9 @@
     if (!Array.isArray(data.files)) data.files = [];
     data.files.push(file);
     await saveWorldbookData(data);
-    return { file: file, created: true, added: list.length };
+    var cv = null;
+    try { cv = await recordVersionCreate('worldbook:' + file.id, '世界书「' + (file.name || file.id) + '」', cloneVersionValue(file), '创建'); } catch (e) {}
+    return { file: file, created: true, added: list.length, version: cv };
   }
   // 把当前聊天角色（chat_inner?chat=角色id）的头像写进角色库，真正做到「换头像」。
   // 之前没有这个能力，所以 iOS 上发图给纳米后它只能说「做了」却执行不出效果。
@@ -875,6 +886,180 @@
     await putCharacter(c);
     try { if (window.parent !== window) window.parent.postMessage({ type: 'contactsDataUpdated' }, '*'); } catch (e) {}
     return true;
+  }
+
+  /* ---------- 通用「修改版本」历史（v0 起始，可回退） ---------- */
+  // 目前覆盖：世界书、AppStore 应用。每次由纳米写入前都会先记下旧内容，
+  // 第一次修改自动生成 v0（初始），之后 v1、v2……；回退只移动当前指针，不丢历史。
+  var VERSION_DB = 'nano_versions_db';
+  var VERSION_STORE = 'versions';
+  function openVersionDB() {
+    // 每次操作都开一个新连接：读写完马上 close，避免复用到已关闭的连接。
+    return new Promise(function (resolve, reject) {
+      try {
+        var req = indexedDB.open(VERSION_DB, 1);
+        req.onupgradeneeded = function (e) {
+          var db = e.target.result;
+          if (!db.objectStoreNames.contains(VERSION_STORE)) db.createObjectStore(VERSION_STORE, { keyPath: 'key' });
+        };
+        req.onsuccess = function (e) { resolve(e.target.result); };
+        req.onerror = function () { reject(req.error || new Error('版本库打开失败')); };
+      } catch (e) { reject(e); }
+    });
+  }
+  function verGet(key) {
+    return openVersionDB().then(function (db) {
+      return new Promise(function (resolve) {
+        try {
+          var r = db.transaction(VERSION_STORE, 'readonly').objectStore(VERSION_STORE).get(key);
+          r.onsuccess = function () { try { db.close(); } catch (e) {} resolve(r.result || null); };
+          r.onerror = function () { try { db.close(); } catch (e) {} resolve(null); };
+        } catch (e) { try { db.close(); } catch (err) {} resolve(null); }
+      });
+    }).catch(function () { return null; });
+  }
+  function verPut(rec) {
+    return openVersionDB().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        try {
+          var tx = db.transaction(VERSION_STORE, 'readwrite');
+          tx.objectStore(VERSION_STORE).put(rec);
+          tx.oncomplete = function () { try { db.close(); } catch (e) {} resolve(true); };
+          tx.onerror = function () { try { db.close(); } catch (e) {} reject(tx.error); };
+        } catch (e) { try { db.close(); } catch (err) {} reject(e); }
+      });
+    });
+  }
+  function cloneVersionValue(v) {
+    try { return JSON.parse(JSON.stringify(v)); } catch (e) { return v; }
+  }
+  function normalizeVersionRecord(rec, key, label) {
+    rec = rec && typeof rec === 'object' ? rec : {};
+    rec.key = key;
+    rec.label = label || rec.label || key;
+    if (!Array.isArray(rec.versions)) rec.versions = [];
+    var maxV = 0;
+    rec.versions.forEach(function (v) { maxV = Math.max(maxV, parseInt(v && v.v, 10) || 0); });
+    if (typeof rec.next !== 'number' || rec.next < maxV) rec.next = maxV;
+    if (typeof rec.current !== 'number') rec.current = rec.next;
+    return rec;
+  }
+  async function recordVersionCreate(key, label, snapshot, note) {
+    var rec = normalizeVersionRecord(await verGet(key), key, label);
+    var v = 0;
+    if (rec.versions.length) {
+      v = rec.next + 1;
+      rec.next = v;
+    } else {
+      rec.next = 0;
+    }
+    rec.versions.push({ v: v, ts: Date.now(), note: note || '创建', snapshot: cloneVersionValue(snapshot) });
+    rec.current = v;
+    await verPut(rec);
+    try { localStorage.setItem('nano_last_version_target', key); } catch (e) {}
+    return v;
+  }
+  async function recordVersionUpdate(key, label, before, after, note) {
+    var rec = normalizeVersionRecord(await verGet(key), key, label);
+    if (!rec.versions.length) {
+      rec.versions.push({ v: 0, ts: Date.now(), note: '初始（第一次修改前）', snapshot: cloneVersionValue(before) });
+      rec.next = 0;
+      rec.current = 0;
+    }
+    var v = rec.next + 1;
+    rec.next = v;
+    rec.versions.push({ v: v, ts: Date.now(), note: note || '', snapshot: cloneVersionValue(after) });
+    rec.current = v;
+    await verPut(rec);
+    try { localStorage.setItem('nano_last_version_target', key); } catch (e) {}
+    return v;
+  }
+  async function getAppRecord(key) {
+    var db = await openAppStoreDB();
+    if (!db) return null;
+    return new Promise(function (resolve) {
+      try {
+        var g = db.transaction('apps', 'readonly').objectStore('apps').getAll();
+        g.onsuccess = function () {
+          db.close();
+          var list = g.result || [];
+          resolve(list.find(function (x) { return x && (String(x.id) === String(key) || x.name === key); }) || null);
+        };
+        g.onerror = function () { db.close(); resolve(null); };
+      } catch (e) { try { db.close(); } catch (err) {} resolve(null); }
+    });
+  }
+  async function resolveVersionTarget(target, name) {
+    target = String(target || '').toLowerCase();
+    var key = String(name || '').trim();
+    // 用户刚让纳米改完就说「回到 v8」时，通常不会重复书名：优先用最近一次修改的对象。
+    if (!key) {
+      var last = '';
+      try { last = localStorage.getItem('nano_last_version_target') || ''; } catch (e) {}
+      if (last.indexOf('worldbook:') === 0) {
+        var lid = last.slice(10);
+        var ldata = await getWorldbookData();
+        var lf = (ldata.files || []).find(function (x) { return x && String(x.id) === lid; });
+        if (lf) return { kind: 'worldbook', key: last, label: '世界书「' + (lf.name || lf.id) + '」', record: lf };
+      } else if (last.indexOf('app:') === 0) {
+        var la = await getAppRecord(last.slice(4));
+        if (la) return { kind: 'app', key: last, label: 'App「' + (la.name || la.id) + '」', record: la };
+      }
+    }
+    if (!key) throw new Error('缺少要回退的名称或 id');
+    if (!target || target === 'worldbook' || target === '世界书') {
+      var data = await getWorldbookData();
+      var f = (data.files || []).find(function (x) { return x && (String(x.id) === key || x.name === key); });
+      if (f) return { kind: 'worldbook', key: 'worldbook:' + f.id, label: '世界书「' + (f.name || f.id) + '」', record: f };
+    }
+    if (!target || target === 'app' || target === 'application' || target === '应用') {
+      var a = await getAppRecord(key);
+      if (a) return { kind: 'app', key: 'app:' + a.id, label: 'App「' + (a.name || a.id) + '」', record: a };
+    }
+    throw new Error('找不到要查看版本的' + (target || '对象') + '：' + key);
+  }
+  async function listVersions(args) {
+    args = args || {};
+    var t = await resolveVersionTarget(args.target, args.name || args.id || args.key);
+    var rec = normalizeVersionRecord(await verGet(t.key), t.key, t.label);
+    if (!rec.versions.length) return '「' + t.label + '」还没有版本记录；纳米第一次修改时会自动把修改前的内容存为 v0。';
+    var lines = rec.versions.map(function (v) {
+      var mark = Number(v.v) === Number(rec.current) ? '▶ ' : '  ';
+      return mark + 'v' + v.v + ' · ' + new Date(v.ts).toLocaleString() + (v.note ? ' · ' + v.note : '');
+    });
+    return '「' + t.label + '」版本历史：\n' + lines.join('\n') + '\n当前：v' + rec.current;
+  }
+  async function restoreVersion(args) {
+    args = args || {};
+    var t = await resolveVersionTarget(args.target, args.name || args.id || args.key);
+    var version = parseInt(args.version != null ? args.version : args.v, 10);
+    if (!(version >= 0)) throw new Error('请提供要回退的版本号，例如 version: 8');
+    var rec = normalizeVersionRecord(await verGet(t.key), t.key, t.label);
+    var entry = rec.versions.find(function (x) { return Number(x.v) === version; });
+    if (!entry) throw new Error('「' + t.label + '」没有 v' + version + '（可用版本：' + rec.versions.map(function (x) { return 'v' + x.v; }).join('、') + '）');
+    if (t.kind === 'worldbook') {
+      var data = await getWorldbookData();
+      var idx = (data.files || []).findIndex(function (x) { return x && String(x.id) === String(entry.snapshot && entry.snapshot.id); });
+      if (idx < 0) throw new Error('世界书已不存在，无法回退');
+      data.files[idx] = cloneVersionValue(entry.snapshot);
+      await saveWorldbookData(data);
+      try { if (window.parent !== window) window.parent.postMessage({ type: 'worldbookUpdated' }, '*'); } catch (e) {}
+    } else if (t.kind === 'app') {
+      var db = await openAppStoreDB();
+      if (!db) throw new Error('AppStore 数据库打开失败');
+      await new Promise(function (resolve, reject) {
+        try {
+          var tx = db.transaction('apps', 'readwrite');
+          tx.objectStore('apps').put(cloneVersionValue(entry.snapshot));
+          tx.oncomplete = function () { db.close(); resolve(true); };
+          tx.onerror = function () { db.close(); reject(tx.error || new Error('写入 AppStore 失败')); };
+        } catch (e) { try { db.close(); } catch (err) {} reject(e); }
+      });
+      try { window.parent.postMessage({ type: 'nanoAppInstalled', appId: entry.snapshot.id, name: entry.snapshot.name }, '*'); } catch (e) {}
+    }
+    rec.current = version;
+    await verPut(rec);
+    return { ok: true, version: 'v' + version, target: t.label };
   }
 
   /* ---------- 预设：读取 / 新增 / 修改 / 删除 ---------- */
@@ -1339,17 +1524,25 @@
     args = args || {};
     var html = String(args.html || '');
     if (!html.trim()) throw new Error('缺少应用 HTML');
-    var id = String(args.id || '').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40);
+    var rawId = String(args.id || '').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40);
+    var existing = await getAppRecord(rawId || args.name || '');
+    if (!existing && rawId && args.name) existing = await getAppRecord(args.name);
+    var id = existing ? String(existing.id) : rawId;
     if (!id || /^_+$/.test(id)) id = 'app_' + Date.now().toString(36);
-    var name = String(args.name || id).trim().slice(0, 40) || id;
+    var name = String(args.name || (existing && existing.name) || id).trim().slice(0, 40) || id;
     if (!/<html[\s>]/i.test(html)) {
       html = '<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>' + name + '</title></head><body>' + html + '</body></html>';
     }
     var app = {
-      id: id, name: name, icon: String(args.icon || ''), color: String(args.color || ''),
-      desc: String(args.desc || ''), version: String(args.version || '1.0.0'),
-      permissions: Array.isArray(args.permissions) ? args.permissions : [],
-      html: html, installedAt: Date.now()
+      id: id, name: name,
+      icon: args.icon != null && String(args.icon) !== '' ? String(args.icon) : String((existing && existing.icon) || ''),
+      color: args.color != null && String(args.color) !== '' ? String(args.color) : String((existing && existing.color) || ''),
+      desc: args.desc != null ? String(args.desc) : String((existing && existing.desc) || ''),
+      version: String(args.version || (existing && existing.version) || '1.0.0'),
+      permissions: Array.isArray(args.permissions) ? args.permissions : ((existing && existing.permissions) || []),
+      highPermission: args.highPermission != null ? !!args.highPermission : !!(existing && existing.highPermission),
+      html: html,
+      installedAt: (existing && existing.installedAt) || Date.now()
     };
     var db = await openAppStoreDB();
     if (!db) throw new Error('AppStore 数据库打开失败');
@@ -1361,8 +1554,14 @@
         tx.onerror = function () { db.close(); reject(tx.error || new Error('写入 AppStore 失败')); };
       } catch (e) { try { db.close(); } catch (err) {} reject(e); }
     });
+    var v = null;
+    try {
+      v = existing
+        ? await recordVersionUpdate('app:' + id, 'App「' + name + '」', cloneVersionValue(existing), cloneVersionValue(app), '更新')
+        : await recordVersionCreate('app:' + id, 'App「' + name + '」', cloneVersionValue(app), '创建');
+    } catch (e) {}
     try { window.parent.postMessage({ type: 'nanoAppInstalled', appId: id, name: name }, '*'); } catch (e) {}
-    return { id: id, name: name };
+    return { id: id, name: name, updated: !!existing, version: v, versionLabel: (v == null ? '' : ('v' + v)) };
   }
   function openMemoryDB() {
     return new Promise(function (resolve) {
@@ -1456,9 +1655,9 @@
       base = '预设-' + scopeLabel(args.scope) + '-' + (args.name || '未命名');
       content = String(pcontent);
       ext = /css|beautify|heart/.test(String(args.scope || '')) ? 'css' : 'md';
-    } else if (a.tool === 'add_worldbook') {
+    } else if (a.tool === 'add_worldbook' || a.tool === 'update_worldbook') {
       base = '世界书-' + (args.name || args.worldbook || args.target || '世界书');
-      content = JSON.stringify({ target: args.worldbook || args.target || '', group: args.group || '', entries: args.entries || [] }, null, 2);
+      content = JSON.stringify({ target: args.worldbook || args.target || '', group: args.group || '', replace: a.tool === 'update_worldbook' || args.replace === true, entries: args.entries || [] }, null, 2);
       ext = 'json';
     } else if (a.tool === 'add_emoji') {
       base = '表情包-' + (args.group || args.name || 'Nano表情');
@@ -1522,6 +1721,8 @@
     if (a.tool === 'list_apps') return listApps();
     if (a.tool === 'read_app') return readAppInfo(args.name || args.id);
     if (a.tool === 'create_app') return createApp(args);
+    if (a.tool === 'list_versions') return listVersions(args);
+    if (a.tool === 'restore_version') return restoreVersion(args);
     if (a.tool === 'list_files') return listGeneratedFiles();
     if (a.tool === 'read_generated_file') return readGeneratedFile(args.name || args.id || args.file);
     if (a.tool === 'read_memory') return readMemory(args.name || args.id || args.char);
@@ -1534,7 +1735,7 @@
     if (a.tool === 'list_persona_versions') return listPersonaVersions(args.name || args.id || args.char);
     if (a.tool === 'restore_persona_version') return restorePersonaVersion(args.name || args.id || args.char, args.index);
     if (a.tool === 'apply_beautify') return applyBeautify(args.scope, args.name, args.css, wantsAppend(args));
-    if (a.tool === 'add_worldbook') return addWorldbook(args.name, args.entries, args.worldbook || args.target, args.group);
+    if (a.tool === 'add_worldbook' || a.tool === 'update_worldbook') return addWorldbook(args.name, args.entries, args.worldbook || args.target, args.group, args.replace === true || args.mode === 'replace' || a.tool === 'update_worldbook');
     if (a.tool === 'add_emoji') return addEmoji(args.group || args.name, args.emojis || args.items);
     if (a.tool === 'set_chat_background') return setChatBackground(args.color, args.image);
     if (a.tool === 'set_avatar') return setAvatar(args);
@@ -1565,7 +1766,9 @@
   }
   function actionTitle(a) {
     if (a.tool === 'create_file') return '生成文件：' + (a.args.name || '未命名');
-    if (a.tool === 'create_app') return '创建 App：' + (a.args.name || a.args.id || '未命名');
+    if (a.tool === 'create_app') return '创建/更新 App：' + (a.args.name || a.args.id || '未命名');
+    if (a.tool === 'list_versions') return '查看修改历史：' + (a.args.name || a.args.id || '');
+    if (a.tool === 'restore_version') return '回退到 v' + (a.args.version != null ? a.args.version : a.args.v) + '：' + (a.args.name || a.args.id || '');
     if (a.tool === 'add_offline_status') return '新增线下状态栏：' + (a.args.name || '未命名');
     if (a.tool === 'clear_beautify') return '清空美化，恢复默认：' + (a.args.scope || '');
     if (a.tool === 'create_character') return '新建/写入角色人设：' + (a.args.name || a.args.id || '');
@@ -1576,11 +1779,12 @@
     if (a.tool === 'list_persona_versions') return '查看人设历史版本：' + (a.args.name || a.args.id || '');
     if (a.tool === 'restore_persona_version') return '回退人设到版本 #' + (a.args.index || '') + '：' + (a.args.name || a.args.id || '');
     if (a.tool === 'apply_beautify') return '覆盖「' + (a.args.scope || '') + '」美化：' + (a.args.name || '未命名');
-    if (a.tool === 'add_worldbook') {
+    if (a.tool === 'add_worldbook' || a.tool === 'update_worldbook') {
       var wbTarget = a.args.worldbook || a.args.target;
       var wbCount = (a.args.entries || []).length;
+      var wbReplace = a.tool === 'update_worldbook' || a.args.replace === true || a.args.mode === 'replace';
       return wbTarget
-        ? '向世界书「' + wbTarget + '」填入 ' + wbCount + ' 条'
+        ? ('向世界书「' + wbTarget + '」' + (wbReplace ? '覆盖为 ' : '填入 ') + wbCount + ' 条')
         : '新增世界书：' + (a.args.name || '') + '（' + wbCount + ' 条）';
     }
     if (a.tool === 'add_emoji') return '新增表情包分组：' + (a.args.group || a.args.name || '纳米表情') + '（' + (((a.args.emojis || a.args.items || []).length)) + ' 个）';

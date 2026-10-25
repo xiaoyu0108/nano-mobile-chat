@@ -95,38 +95,117 @@ function escHtml(s){
 })();
 
 /* =========================
-   5. 主屏：长按拖动 + 排列
+   5. 主屏：长按拖动 + 自由换位（两屏都支持）
+   - 1×1 App：和另一个 App 交换，或拖到空格
+   - 2×2 小组件：和另一个小组件交换，或拖到空位
+   - 拖到屏幕边缘可翻到另一屏
 ========================= */
 (function initDrag(){
-  const grid = document.getElementById("appGrid");
-  const items = [...grid.querySelectorAll(".app, .widget-large")];
+  const pagesEl = document.getElementById("homePages");
+  const grids = [...document.querySelectorAll(".layout")].filter(g => g.querySelector(".app, .widget-large"));
   const hint = document.getElementById("moveHint");
+  if(!grids.length) return;
+
+  const LAYOUT_KEY = "glass_phone_layout_v8";
+  const MAX_COL = 4, MAX_ROW = 4;
   let active = null, placeholder = null, timer = null;
   let longPressed = false, startX = 0, startY = 0, offsetX = 0, offsetY = 0, pointerId = null;
+  let origin = null, dropTarget = null, edgeDir = 0, edgeTimer = null;
 
   function clearPress(){ if(timer){ clearTimeout(timer); timer = null; } }
   function showHint(){
+    if(!hint) return;
     hint.classList.add("show");
     clearTimeout(showHint.t);
     showHint.t = setTimeout(() => hint.classList.remove("show"), 1300);
+  }
+  function clamp(n, min, max){ return n < min ? min : (n > max ? max : n); }
+  function itemsIn(grid){ return [...grid.querySelectorAll(".app, .widget-large")]; }
+  function spanValue(endVal, start){
+    const s = String(endVal || '');
+    const m = s.match(/span\s+(\d+)/i);
+    if(m) return Math.max(1, parseInt(m[1], 10) || 1);
+    const n = parseInt(s, 10);
+    if(Number.isFinite(n) && n > start) return n - start;
+    return 1;
+  }
+  function cellOf(el){
+    const cs = getComputedStyle(el);
+    const c1 = parseInt(cs.gridColumnStart, 10) || 1;
+    const r1 = parseInt(cs.gridRowStart, 10) || 1;
+    return {
+      c: c1 - 1,
+      r: r1 - 1,
+      w: spanValue(cs.gridColumnEnd, c1),
+      h: spanValue(cs.gridRowEnd, r1)
+    };
+  }
+  function setCell(el, cell){
+    el.style.gridColumn = (cell.c + 1) + " / span " + cell.w;
+    el.style.gridRow = (cell.r + 1) + " / span " + cell.h;
+  }
+  function overlap(a, b){
+    return a.c < b.c + b.w && b.c < a.c + a.w && a.r < b.r + b.h && b.r < a.r + a.h;
+  }
+  function occupantAt(grid, cell, exclude){
+    for(const el of itemsIn(grid)){
+      if(el === active || el === placeholder || el === exclude) continue;
+      if(overlap(cellOf(el), cell)) return el;
+    }
+    return null;
+  }
+  function findFreeCell(grid, w, h, pc, pr){
+    let best = null, bestD = Infinity;
+    for(let r = 0; r <= MAX_ROW - h; r++){
+      for(let c = 0; c <= MAX_COL - w; c++){
+        const cell = { c, r, w, h };
+        if(occupantAt(grid, cell, null)) continue;
+        const d = Math.abs(c - pc) + Math.abs(r - pr);
+        if(d < bestD){ bestD = d; best = cell; }
+      }
+    }
+    return best;
+  }
+  function gridAt(x, y){
+    for(const g of grids){
+      const r = g.getBoundingClientRect();
+      if(x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return g;
+    }
+    return null;
+  }
+  function cellFromPoint(grid, x, y, w, h){
+    const cs = getComputedStyle(grid);
+    const gapX = parseFloat(cs.columnGap) || 0;
+    const gapY = parseFloat(cs.rowGap) || 0;
+    const r = grid.getBoundingClientRect();
+    const cw = (r.width - gapX * (MAX_COL - 1)) / MAX_COL;
+    const ch = (r.height - gapY * (MAX_ROW - 1)) / MAX_ROW;
+    const c = clamp(Math.floor((x - r.left) / (cw + gapX)), 0, MAX_COL - w);
+    const row = clamp(Math.floor((y - r.top) / (ch + gapY)), 0, MAX_ROW - h);
+    return { c, r: row, w, h };
+  }
+  function clearDropMarks(){
+    document.querySelectorAll(".drop-target").forEach(el => el.classList.remove("drop-target"));
+  }
+  function resetPlaceholder(){
+    if(!placeholder || !origin) return;
+    if(placeholder.parentElement !== origin.grid) origin.grid.appendChild(placeholder);
+    setCell(placeholder, origin.cell);
   }
 
   function beginDrag(el, x, y){
     if(active) return;
     active = el;
     longPressed = true;
-    active.dataset.justDragged = "1";
-
     const r = active.getBoundingClientRect();
     offsetX = x - r.left - r.width / 2;
     offsetY = y - r.top - r.height / 2;
+    origin = { grid: active.parentElement, cell: cellOf(active) };
 
     placeholder = document.createElement("div");
-    placeholder.className = active.classList.contains("widget-large")
-      ? "widget-large placeholder" : "app placeholder";
-    placeholder.style.gridColumn = getComputedStyle(active).gridColumn;
-    placeholder.style.gridRow = getComputedStyle(active).gridRow;
-    grid.insertBefore(placeholder, active);
+    placeholder.className = active.classList.contains("widget-large") ? "widget-large placeholder" : "app placeholder";
+    setCell(placeholder, origin.cell);
+    origin.grid.appendChild(placeholder);
 
     active.classList.add("dragging");
     active.style.position = "fixed";
@@ -136,7 +215,6 @@ function escHtml(s){
     active.style.top = (y - r.height / 2 - offsetY) + "px";
     active.style.margin = "0";
     active.style.pointerEvents = "none";
-
     document.body.appendChild(active);
     showHint();
   }
@@ -145,86 +223,173 @@ function escHtml(s){
     if(!active) return;
     active.style.left = (x - active.offsetWidth / 2 - offsetX) + "px";
     active.style.top = (y - active.offsetHeight / 2 - offsetY) + "px";
+    checkEdge(x);
 
-    const candidates = [...grid.querySelectorAll(".app:not(.dragging), .widget-large:not(.dragging)")];
-    let closest = null, best = Infinity;
-    for(const el of candidates){
-      const r = el.getBoundingClientRect();
-      const d = Math.hypot(x - (r.left + r.width / 2), y - (r.top + r.height / 2));
-      if(d < best){ best = d; closest = el; }
+    const grid = gridAt(x, y);
+    clearDropMarks();
+    dropTarget = null;
+    if(!grid){ resetPlaceholder(); return; }
+
+    const size = origin.cell;
+    const cell = cellFromPoint(grid, x, y, size.w, size.h);
+    const hit = occupantAt(grid, cell, null);
+
+    if(hit && cellOf(hit).w === size.w && cellOf(hit).h === size.h){
+      dropTarget = { grid, cell: cellOf(hit), swapEl: hit };
+      hit.classList.add("drop-target");
+      if(placeholder.parentElement !== grid) grid.appendChild(placeholder);
+      setCell(placeholder, cellOf(hit));
+      return;
     }
-    if(closest && best < Math.max(90, closest.getBoundingClientRect().width * .95)){
-      const all = [...grid.children];
-      const ci = all.indexOf(closest), pi = all.indexOf(placeholder);
-      if(ci < pi) grid.insertBefore(placeholder, closest);
-      else grid.insertBefore(placeholder, closest.nextSibling);
+    if(hit){
+      const free = findFreeCell(grid, size.w, size.h, cell.c, cell.r);
+      if(free){
+        dropTarget = { grid, cell: free, swapEl: null };
+        if(placeholder.parentElement !== grid) grid.appendChild(placeholder);
+        setCell(placeholder, free);
+      } else resetPlaceholder();
+      return;
     }
+    dropTarget = { grid, cell, swapEl: null };
+    if(placeholder.parentElement !== grid) grid.appendChild(placeholder);
+    setCell(placeholder, cell);
   }
 
-  function endDrag(){
+  function checkEdge(x){
+    if(!pagesEl) return;
+    const r = pagesEl.getBoundingClientRect();
+    const dir = x < r.left + 26 ? -1 : (x > r.right - 26 ? 1 : 0);
+    if(dir === edgeDir) return;
+    clearTimeout(edgeTimer);
+    edgeDir = dir;
+    if(!dir) return;
+    edgeTimer = setTimeout(() => {
+      if(!active) return;
+      const w = pagesEl.clientWidth || 1;
+      const cur = Math.round(pagesEl.scrollLeft / w);
+      const next = clamp(cur + dir, 0, grids.length - 1);
+      if(next !== cur) pagesEl.scrollTo({ left: next * w, behavior: "smooth" });
+      edgeDir = 0;
+    }, 430);
+  }
+
+  function clearDragStyles(el){
+    el.classList.remove("dragging");
+    el.style.position = "";
+    el.style.width = "";
+    el.style.height = "";
+    el.style.left = "";
+    el.style.top = "";
+    el.style.margin = "";
+    el.style.pointerEvents = "";
+  }
+
+  function endDrag(apply){
     clearPress();
+    clearTimeout(edgeTimer); edgeDir = 0;
     if(!active) return;
-    const old = active, target = placeholder;
-    old.classList.remove("dragging");
-    old.style.position = "";
-    old.style.width = "";
-    old.style.height = "";
-    old.style.left = "";
-    old.style.top = "";
-    old.style.margin = "";
-    old.style.pointerEvents = "";
-    grid.insertBefore(old, target);
-    target.remove();
-    active = null; placeholder = null;
+    const el = active;
+    const target = apply ? dropTarget : null;
+    clearDropMarks();
+
+    if(target){
+      const src = origin;
+      if(target.swapEl){
+        const other = target.swapEl;
+        setCell(other, src.cell);
+        if(other.parentElement !== src.grid) src.grid.appendChild(other);
+      }
+      setCell(el, target.cell);
+      if(el.parentElement !== target.grid) target.grid.appendChild(el);
+    } else {
+      resetPlaceholder();
+      setCell(el, origin.cell);
+      if(el.parentElement !== origin.grid) origin.grid.appendChild(el);
+    }
+    if(placeholder) placeholder.remove();
+    clearDragStyles(el);
+    active = null; placeholder = null; origin = null; dropTarget = null;
     saveLayout();
     setTimeout(() => { longPressed = false; }, 80);
   }
 
-  function cancelPress(){ clearPress(); if(active) endDrag(); }
+  function cancelPress(){ clearPress(); if(active) endDrag(false); }
 
-  items.forEach(item => {
-    item.addEventListener("pointerdown", e => {
-      if(e.button !== undefined && e.button !== 0) return;
-      pointerId = e.pointerId;
-      startX = e.clientX; startY = e.clientY;
-      clearPress();
-      timer = setTimeout(() => beginDrag(item, e.clientX, e.clientY), 450);
-      try{ item.setPointerCapture(e.pointerId); }catch(err){}
+  function saveLayout(){
+    const map = {};
+    grids.forEach((grid, gi) => {
+      itemsIn(grid).forEach(el => {
+        if(el.classList.contains("placeholder") || !el.dataset.app) return;
+        const c = cellOf(el);
+        map[el.dataset.app] = { g: gi, c: c.c, r: c.r, w: c.w, h: c.h };
+      });
     });
-    item.addEventListener("pointermove", e => {
-      if(pointerId !== e.pointerId) return;
-      const dx = e.clientX - startX, dy = e.clientY - startY;
-      if(!active && Math.hypot(dx, dy) > 10) clearPress();
-      if(active){ e.preventDefault(); moveDrag(e.clientX, e.clientY); }
+    try{ localStorage.setItem(LAYOUT_KEY, JSON.stringify(map)); }catch(e){}
+  }
+  function restoreLayout(){
+    let map = {};
+    try{ map = JSON.parse(localStorage.getItem(LAYOUT_KEY) || "{}") || {}; }catch(e){ map = {}; }
+    const occ = grids.map(() => []);
+    grids.forEach((grid, gi) => {
+      itemsIn(grid).forEach(el => {
+        const s = el.dataset.app && map[el.dataset.app];
+        if(!s || !Number.isFinite(s.g) || !grids[s.g]) return;
+        const tg = grids[s.g];
+        const isWidget = el.classList.contains("widget-large");
+        const w = isWidget ? 2 : 1;
+        const h = isWidget ? 2 : 1;
+        const cell = { c: clamp(s.c, 0, MAX_COL - w), r: clamp(s.r, 0, MAX_ROW - h), w: w, h: h };
+        if(cell.c + cell.w > MAX_COL || cell.r + cell.h > MAX_ROW) return;
+        if(occ[s.g].some(o => overlap(o, cell))) return;
+        if(el.parentElement !== tg) tg.appendChild(el);
+        setCell(el, cell);
+        occ[s.g].push(cell);
+      });
     });
-    item.addEventListener("pointerup", e => {
-      if(pointerId !== e.pointerId) return;
-      clearPress();
-      if(active) endDrag();
-      pointerId = null;
-    });
-    item.addEventListener("pointercancel", e => {
-      if(pointerId !== e.pointerId) return;
-      cancelPress();
-      pointerId = null;
-    });
-    item.addEventListener("click", e => {
-      if(longPressed){ e.preventDefault(); e.stopPropagation(); longPressed = false; }
+  }
+
+  grids.forEach(grid => {
+    itemsIn(grid).forEach(item => {
+      item.addEventListener("contextmenu", e => e.preventDefault());
+      item.addEventListener("pointerdown", e => {
+        if(e.button !== undefined && e.button !== 0) return;
+        if(e.target && e.target.closest && e.target.closest('[contenteditable="true"],input,textarea')) return;
+        pointerId = e.pointerId;
+        startX = e.clientX; startY = e.clientY;
+        clearPress();
+        timer = setTimeout(() => beginDrag(item, e.clientX, e.clientY), 420);
+      });
     });
   });
 
-  function saveLayout(){
-    const order = [...grid.querySelectorAll(".app, .widget-large")].map(x => x.dataset.app);
-    localStorage.setItem("glass_phone_app_order_v6", JSON.stringify(order));
-  }
-  function restoreLayout(){
-    let order = [];
-    try{ order = JSON.parse(localStorage.getItem("glass_phone_app_order_v6") || "[]"); }catch(e){}
-    if(!Array.isArray(order) || order.length !== items.length) return;
-    const map = {};
-    [...grid.querySelectorAll(".app, .widget-large")].forEach(x => map[x.dataset.app] = x);
-    order.forEach(id => { if(map[id]) grid.appendChild(map[id]); });
-  }
+  // 拖动时元素会被移到 body，指针捕获可能丢失；用 document 监听保证松手一定能收尾。
+  document.addEventListener("pointermove", e => {
+    if(pointerId !== e.pointerId) return;
+    const dx = e.clientX - startX, dy = e.clientY - startY;
+    if(!active && Math.hypot(dx, dy) > 10) clearPress();
+    if(active){ if(e.cancelable) e.preventDefault(); moveDrag(e.clientX, e.clientY); }
+  }, { passive: false });
+  document.addEventListener("pointerup", e => {
+    if(pointerId !== e.pointerId) return;
+    clearPress();
+    if(active) endDrag(true);
+    pointerId = null;
+  });
+  document.addEventListener("pointercancel", e => {
+    if(pointerId !== e.pointerId) return;
+    cancelPress();
+    pointerId = null;
+  });
+  document.addEventListener("touchmove", e => {
+    if(active && e.cancelable) e.preventDefault();
+  }, { passive: false });
+  document.addEventListener("click", e => {
+    if(!longPressed) return;
+    e.preventDefault();
+    e.stopPropagation();
+    longPressed = false;
+  }, true);
+
   restoreLayout();
 })();
 

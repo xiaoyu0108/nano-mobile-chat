@@ -46,7 +46,10 @@ html, body.vc-body {
 @keyframes vcBlink { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
 
 /* ===== 舞台 ===== */
-.vc-stage { position: fixed; inset: 0; overflow: hidden; background: #05070a; }
+/* 舞台单独建立层叠上下文：
+   背景视频放在舞台下面（z-index 1），本地方框、字幕、按钮都在舞台内部，
+   这样换视频背景时只会铺满远端画面，不会盖住右上角「我」的小窗。 */
+.vc-stage { position: fixed; inset: 0; overflow: hidden; background: #05070a; z-index: 2; }
 .vc-remote {
     position: absolute; inset: 0; z-index: 4;
     image-rendering: -webkit-optimize-contrast;
@@ -297,8 +300,8 @@ html, body.vc-body {
 }
 .vc-top-btn svg.settings-dots { stroke: none; fill: #fff; }
 
-/* 通话背景视频 / Live 图 */
-.call-bg-video{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:3;pointer-events:none;display:none}
+/* 通话背景视频 */
+.call-bg-video{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:1;pointer-events:none;display:none}
 body.has-call-video-bg .call-bg-video{display:block}
 body.has-call-video-bg .vc-remote{background:transparent!important}
-body.has-call-video-bg .vc-stage{background:#000}
+body.has-call-video-bg .vc-stage{background:transparent}

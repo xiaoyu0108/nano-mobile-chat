@@ -98,7 +98,8 @@ window.NANO_ASSISTANT_KB = {
   // 助手可以下发的动作（写进 <action>...</action> 代码块）
   commands: [
     { tool: 'apply_beautify', args: { scope: 'global|chat|chat-avatar|heart|offline', name: '预设名', css: '完整 CSS', append: '（可选）true = 在现有 CSS 后追加细节，不覆盖原内容' }, note: '覆盖对应美化并存成可切换预设；若同名预设已存在则直接更新它（用户说「改我的某个预设」时，name 填那个预设的名字即可）。用户说「在现有基础上加细节」时 append:true' },
-    { tool: 'add_worldbook', args: { name: '世界书名', worldbook: '（可选）要填入的已有世界书名或 id，填了就追加条目而不是新建', group: '（可选）分组名', entries: [{ title: '条目名', keywords: '触发词', content: '内容' }] }, note: '新增一本世界书，或把条目追加进已有世界书（worldbook 填书名）；用户发来文件/长文本要求「分条做世界书 / 填入世界书」时用这个，条目多时分批输出多个 action' },
+    { tool: 'add_worldbook', args: { name: '世界书名', worldbook: '（可选）要填入的已有世界书名或 id，填了就追加条目而不是新建', group: '（可选）分组名', entries: [{ title: '条目名', keywords: '触发词', content: '内容' }], replace: '（可选）true = 用 entries 覆盖整本世界书，默认只追加' }, note: '新增一本世界书，或把条目追加进已有世界书（worldbook 填书名）；用户发来文件/长文本要求「分条做世界书 / 填入世界书」时用这个，条目多时分批输出多个 action。每次写入都会自动记版本（v0 起始），可用 list_versions / restore_version 回退' },
+    { tool: 'update_worldbook', args: { worldbook: '要覆盖的世界书名或 id', entries: [{ title: '条目名', keywords: '触发词', content: '内容' }] }, note: '用新的 entries 覆盖整本世界书（不追加）。用户说「重写/覆盖这本世界书」时用这个；旧内容会自动存为历史版本，可回退' },
     { tool: 'add_emoji', args: { group: '分组名', emojis: [{ name: '表情名', url: '图片地址' }] }, note: '把「名字:图片链接」清单加入表情包（用户说加表情包时用这个，不要用 add_worldbook）' },
     { tool: 'set_chat_background', args: { color: '#ffffff', image: '图片URL（可选）' }, note: '直接更换当前聊天背景（颜色或图片）；用户说“换背景”优先用这个' },
     { tool: 'set_avatar', args: { useLast: true }, note: '把当前角色头像换成用户刚发送的图片（用户在纳米聊天里发图后说「用这张当头像」时用这个，不要用 apply_beautify）；也可用 url 指定图片地址' },
@@ -131,7 +132,9 @@ window.NANO_ASSISTANT_KB = {
   { tool: 'read_offline_rules', args: {}, note: '只读：读取全部线下规则的完整内容' },
   { tool: 'list_apps', args: {}, note: '只读：列出 AppStore 已安装应用' },
   { tool: 'read_app', args: { id: '应用id或名称' }, note: '只读：读取应用完整信息与 HTML' },
-  { tool: 'create_app', args: { id: '应用id（可选）', name: '应用名', icon: '图标（emoji或图片URL）', color: '#4a6cf7', desc: '描述', html: '完整应用 HTML' }, note: '直接创建并安装一个 AppStore 应用。HTML 会被注入 app-host 运行，可用 Nano.* 能力' },
+  { tool: 'create_app', args: { id: '应用id（可选）', name: '应用名', icon: '图标（emoji或图片URL）', color: '#4a6cf7', desc: '描述', html: '完整应用 HTML' }, note: '直接创建并安装一个 AppStore 应用。HTML 会被注入 app-host 运行，可用 Nano.* 能力。修改现有应用时先用 read_app 读取，再填同一个 id 和完整新 HTML 覆盖；旧版会自动记录为 v0 起的版本' },
+  { tool: 'list_versions', args: { target: 'worldbook|app（可省略）', name: '世界书名或应用名/id（刚改完可省略）' }, note: '只读：查看该世界书 / App 的修改版本记录（v0 起始，含当前版本）；不填 name 默认最近一次修改的对象' },
+  { tool: 'restore_version', args: { target: 'worldbook|app（可省略）', name: '世界书名或应用名/id（刚改完可省略）', version: 8 }, note: '把世界书 / App 回退到指定版本（用户说「回到v8」时用这个；回退前不会删除更高版本，随时可以再回来）' },
   { tool: 'list_files', args: {}, note: '只读：列出 Nano 文件库里的所有文件' },
   { tool: 'read_generated_file', args: { name: '文件名或id' }, note: '只读：读取文件库中某个文件的完整内容' },
   { tool: 'read_memory', args: { name: '角色名或id' }, note: '只读：读取某个角色的长期记忆（nano_vector_memory_db）' }

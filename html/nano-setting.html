@@ -64,12 +64,12 @@
         <div class="ns-divider"></div>
         <label class="ns-label">最大输出 tokens</label>
         <div class="ns-row">
-          <input class="ns-input" id="nsMaxTokens" type="number" min="256" max="32768" step="256" placeholder="最大输出 tokens（默认 8192）">
+          <input class="ns-input" id="nsMaxTokens" type="number" min="256" max="131072" step="1024" placeholder="最大输出 tokens（默认 32768）">
           <button class="ns-mini-btn" id="nsMaxTokensSave">保存</button>
         </div>
         <label class="ns-switch-row"><span><b>直接执行</b><small>动作生成后自动执行，不用手动确认</small></span><span class="ns-switch"><input type="checkbox" id="nsAutoExec"><i></i></span></label>
         <label class="ns-switch-row"><span><b>简洁模式</b><small>只给结论和动作，减少解释</small></span><span class="ns-switch"><input type="checkbox" id="nsBrief"><i></i></span></label>
-        <div class="ns-hint">长 CSS / 世界书容易被截断，调大最大输出即可（上限 32768）。</div>
+        <div class="ns-hint">长 CSS / 世界书容易被截断。默认已提高到 32768，上限 131072；如果你的模型支持更大的输出，可以直接填更大值。仍被截断时会给出「继续生成」。</div>
       </section>
 
       <section class="ns-card">
@@ -106,7 +106,8 @@
   </div>
 
   <script src="../js/nano-files.js?v=20261021c"></script>
-  <script src="../js/nano-setting.js?v=20261024b"></script>
+  <script src="../js/avatar-crop.js?v=20261025b"></script>
+  <script src="../js/nano-setting.js?v=20261025b"></script>
   <script src="../swipe-back.js"></script>
 </body>
 </html>

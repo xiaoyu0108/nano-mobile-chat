@@ -83,6 +83,22 @@
     try { localStorage.setItem(CURRENT_KEY, id); } catch (e) {}
     openChat(current.name, current.avatar, id);
   }
+  function renameSession(id) {
+    if (!id) return;
+    var list = loadSessions();
+    var hit = list.find(function (s) { return s.id === id; });
+    if (!hit) return;
+    var next = '';
+    try { next = prompt('重命名对话', hit.title || '新对话'); } catch (e) { next = ''; }
+    if (next == null) return;
+    next = String(next).replace(/\s+/g, ' ').trim().slice(0, 24);
+    if (!next) { toast('名字不能为空'); return; }
+    hit.title = next;
+    hit.updatedAt = Date.now();
+    saveSessions(list);
+    toast('对话已重命名');
+    refreshSessions();
+  }
   function deleteSession(id) {
     if (!id || id === NANO_ID) { toast('主对话不能删除'); return; }
     if (!confirm('删除这个对话窗口？聊天记录会一起删除。')) return;
@@ -169,6 +185,7 @@
   var current = { name: '纳米', avatar: DEFAULT_AVATAR };
   var NC_ICON = {
     x: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>',
+    edit: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17v3z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M13.5 6.5l3 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
     chev: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>'
   };
 
@@ -201,6 +218,7 @@
         '<span class="nc-session-title">' + esc(s.title || '新对话') + '</span>' +
         '<span class="nc-session-meta">' + (s.count || 0) + ' 条消息 · ' + timeLabel(s.updatedAt) + (active ? ' · 当前窗口' : '') + '</span>' +
         '</button>' +
+        '<button type="button" class="nc-session-edit" data-rename-session="' + esc(s.id) + '" aria-label="重命名">' + NC_ICON.edit + '</button>' +
         (isMain ? '' : '<button type="button" class="nc-session-del" data-del-session="' + esc(s.id) + '" aria-label="删除">' + NC_ICON.x + '</button>') +
         '</div>';
     }).join('');
@@ -293,6 +311,12 @@
   if (newSessionBtn) newSessionBtn.addEventListener('click', function () { newSession(); });
   var sessionListEl = $('ncSessionList');
   if (sessionListEl) sessionListEl.addEventListener('click', function (e) {
+    var ren = e.target && e.target.closest ? e.target.closest('[data-rename-session]') : null;
+    if (ren) {
+      e.stopPropagation();
+      renameSession(ren.getAttribute('data-rename-session'));
+      return;
+    }
     var del = e.target && e.target.closest ? e.target.closest('[data-del-session]') : null;
     if (del) {
       e.stopPropagation();
@@ -304,6 +328,8 @@
   });
   $('ncSettings').addEventListener('click', function () { openPage('nano-setting.html', 'Nano 设置'); });
   $('ncSettings2').addEventListener('click', function () { openPage('nano-setting.html', 'Nano 设置'); });
+  var imageBtn = $('ncImage');
+  if (imageBtn) imageBtn.addEventListener('click', function () { openPage('nano-image.html', 'Nano 绘图'); });
   $('ncFiles').addEventListener('click', function () { openPage('nano-files.html', 'Nano 文件'); });
   $('ncOpenFiles').addEventListener('click', function () { openPage('nano-files.html', 'Nano 文件'); });
   $('ncFilesList').addEventListener('click', function () { openPage('nano-files.html', 'Nano 文件'); });

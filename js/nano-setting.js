@@ -251,8 +251,14 @@
   }
   $('nsAvatarBtn').addEventListener('click', function () { $('nsAvatarFile').value = ''; $('nsAvatarFile').click(); });
   $('nsAvatarFile').addEventListener('change', async function (e) {
-    var f = e.target.files[0]; if (!f) return;
-    var dataUrl = await compress(f);
+    var f = e.target.files[0];
+    e.target.value = '';
+    if (!f) return;
+    var dataUrl = '';
+    try {
+      if (window.NanoAvatarCrop) dataUrl = await NanoAvatarCrop.open(f, { outputSize: 360, aspect: 1, quality: 0.9, title: '裁剪头像' });
+      else dataUrl = await compress(f);
+    } catch (err) { dataUrl = ''; }
     if (!dataUrl) return;
     $('nsAvatar').src = dataUrl;
     await saveChar({ avatar: dataUrl });
@@ -402,14 +408,22 @@
     try { var v = localStorage.getItem('chat_setting_' + key + '_' + chatId); if (v === null) return def; return JSON.parse(v); } catch (e) { return def; }
   }
   (function initNanoGenSettings() {
-    var tok = $('nsMaxTokens'); if (tok) tok.value = getNanoSetting('nanoMaxTokens', 8192);
+    // 旧版默认 8192 很容易把长 CSS / 世界书截断：一次性把旧默认值抬到 32768。
+    try {
+      if (localStorage.getItem('nano_max_tokens_upgraded_v2') !== '1') {
+        var oldTok = getNanoSetting('nanoMaxTokens', 0);
+        if (!oldTok || Number(oldTok) <= 8192) setNanoSetting('nanoMaxTokens', 32768);
+        localStorage.setItem('nano_max_tokens_upgraded_v2', '1');
+      }
+    } catch (e) {}
+    var tok = $('nsMaxTokens'); if (tok) tok.value = getNanoSetting('nanoMaxTokens', 32768);
     var au = $('nsAutoExec'); if (au) au.checked = !!getNanoSetting('nanoAutoExec', false);
     var bf = $('nsBrief'); if (bf) bf.checked = !!getNanoSetting('nanoBrief', false);
     var saveTok = $('nsMaxTokensSave');
     if (saveTok) saveTok.addEventListener('click', function () {
       var v = parseInt($('nsMaxTokens').value, 10);
-      if (!v || v < 256) v = 8192;
-      v = Math.min(v, 32768);
+      if (!v || v < 256) v = 32768;
+      v = Math.min(v, 131072);
       $('nsMaxTokens').value = v;
       setNanoSetting('nanoMaxTokens', v);
       toast('已保存：最大输出 ' + v + ' tokens');

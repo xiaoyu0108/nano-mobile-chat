@@ -1274,13 +1274,36 @@
     if (bgPanel) {
         bgPanel.addEventListener('click', function (e) {
             var opt = e.target.closest('.vc-bg-opt');
-            if (opt) { var v = opt.getAttribute('data-bg') || ''; applyBg(v); saveBg(v); bgPanel.classList.remove('active'); }
+            if (opt) {
+                var v = opt.getAttribute('data-bg') || '';
+                applyBg(v);
+                saveBg(v);
+                try { if (window.NanoCallBg) window.NanoCallBg.clear(chatId); } catch (err) {}
+                bgPanel.classList.remove('active');
+            }
         });
     }
     if (bgUpload) bgUpload.addEventListener('change', function () {
         var f = this.files && this.files[0]; if (!f) return;
+        bgPanel.classList.remove('active');
+        var isVideo = /^video\//i.test(f.type || '') || /\.(mp4|mov|m4v|webm)$/i.test(f.name || '');
+        if (isVideo) {
+            if (window.NanoCallBg) {
+                window.NanoCallBg.setVideo(f, f.name, chatId).then(function () {
+                    window.NanoCallBg.showVideo(f);
+                    toast('已更换视频背景');
+                }).catch(function () { toast('视频背景保存失败'); });
+            } else toast('当前环境不支持视频背景');
+            this.value = '';
+            return;
+        }
         var reader = new FileReader();
-        reader.onload = function (ev) { applyBg(ev.target.result); saveBg(ev.target.result); bgPanel.classList.remove('active'); };
+        reader.onload = function (ev) {
+            var v = String(ev.target.result || '');
+            applyBg(v);
+            saveBg(v);
+            try { if (window.NanoCallBg) window.NanoCallBg.setImage(v, chatId); } catch (e) {}
+        };
         reader.readAsDataURL(f); this.value = '';
     });
 

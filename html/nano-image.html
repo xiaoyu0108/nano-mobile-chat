@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <script src="../js/nano-runtime.js?v=20261023a"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Nano 绘图</title>
+  <link rel="stylesheet" href="../css/nano.css?v=20261025b">
+  <link rel="stylesheet" href="../css/nano-image.css?v=20261025c">
+  <script src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
+</head>
+<body class="ni-body">
+  <div class="ni-app">
+    <header class="ni-top">
+      <button class="ni-top-btn" id="niBack" data-back aria-label="返回">
+        <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="ni-title">
+        <b>Nano 绘图</b>
+        <small id="niSub">独立生图窗口</small>
+      </div>
+      <button class="ni-top-btn" id="niSessionsBtn">窗口</button>
+      <button class="ni-top-btn" id="niSettingsBtn">提示词</button>
+    </header>
+
+    <div class="ni-scroll" id="niScroll">
+      <section class="ni-hero">
+        <div class="ni-hero-head">
+          <div class="ni-hero-main">
+            <span>当前窗口</span>
+            <b id="niSessionName">绘图 1</b>
+          </div>
+          <button class="ni-mini-btn" id="niRenameBtn">改名</button>
+        </div>
+        <div class="ni-chips" id="niChips"></div>
+      </section>
+
+      <div class="ni-feed" id="niFeed"></div>
+      <div class="ni-empty" id="niEmpty">
+        <b>把画面描述给 Nano</b>
+        可以直接输入指令生成图片。想固定画风时，打开「提示词」设置基础提示词或复用生图 API 的提示词。
+      </div>
+    </div>
+
+    <div class="ni-composer">
+      <div class="ni-composer-box">
+        <textarea id="niPrompt" placeholder="描述画面，例如：雨后夜晚的东京街头，电影感，浅景深" rows="2"></textarea>
+        <div class="ni-composer-tools">
+          <select class="ni-size" id="niSize" aria-label="图片比例">
+            <option value="1024x1024">1:1</option>
+            <option value="1024x1536">2:3</option>
+            <option value="1536x1024">3:2</option>
+            <option value="768x1344">9:16</option>
+          </select>
+          <button class="ni-generate" id="niGenerate">生成</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 窗口列表 -->
+  <div class="ni-sheet" id="niSessionSheet">
+    <div class="ni-sheet-card">
+      <div class="ni-sheet-head">
+        <b>绘图窗口</b>
+        <button class="ni-close" id="niSessionClose" aria-label="关闭">✕</button>
+      </div>
+      <div id="niSessionList"></div>
+      <button class="ni-mini-btn primary" id="niNewSession" style="width:100%;height:40px;margin-top:6px">＋ 新建窗口</button>
+      <div class="ni-hint">每个窗口独立保存生成记录，可随时改名或删除。</div>
+    </div>
+  </div>
+
+  <!-- 提示词设置 -->
+  <div class="ni-sheet" id="niSettingsSheet">
+    <div class="ni-sheet-card">
+      <div class="ni-sheet-head">
+        <b>提示词设置</b>
+        <button class="ni-close" id="niSettingsClose" aria-label="关闭">✕</button>
+      </div>
+
+      <label class="ni-switch-row">
+        <span class="ni-switch-main"><b>使用 Nano 提示词</b><small>正面 + 反面；只用于 Nano 绘图，不会改动其他生图</small></span>
+        <span class="ni-switch"><input type="checkbox" id="niUseBase"><i></i></span>
+      </label>
+      <div class="ni-field">
+        <div class="ni-field-label">正面提示词 <span id="niBaseState">可留空，直接写指令也能生成</span></div>
+        <textarea class="ni-textarea" id="niBasePositive" placeholder="自己填写想固定的画风 / 光线 / 质感。（下面的灰色文字只是示例，不是内置提示词）"></textarea>
+      </div>
+      <div class="ni-field">
+        <div class="ni-field-label">反面提示词 <span>避免出现的画面</span></div>
+        <textarea class="ni-textarea ni-textarea-sm" id="niBaseNegative" placeholder="例如：模糊、畸变、多余手指、文字水印"></textarea>
+      </div>
+      <div class="ni-field">
+        <div class="ni-field-label">提示词预设 <span>Nano 预设可直接用；生图 API 预设只读导入</span></div>
+        <select class="ni-select" id="niBasePreset"></select>
+        <div class="ni-preset-row">
+          <button class="ni-mini-btn" id="niPresetSave" title="把当前正面 / 反面存为新预设">新增</button>
+          <button class="ni-mini-btn" id="niPresetUpdate" title="覆盖选中预设">保存</button>
+          <button class="ni-mini-btn danger" id="niPresetDelete" title="删除选中预设">删除</button>
+        </div>
+        <div class="ni-hint" id="niApiHint">正在读取生图 API 的提示词预设…</div>
+      </div>
+
+      <button class="ni-mini-btn primary" id="niSettingsDone" style="width:100%;height:40px;margin-top:16px">完成</button>
+    </div>
+  </div>
+
+  <div class="ni-toast" id="niToast"></div>
+
+  <script src="../js/nano-gallery.js?v=20261023e"></script>
+  <script src="../js/nano-image.js?v=20261024a"></script>
+  <script src="../js/nano-image-studio.js?v=20261025d"></script>
+  <script src="../swipe-back.js"></script>
+</body>
+</html>

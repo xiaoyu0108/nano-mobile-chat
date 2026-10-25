@@ -90,12 +90,74 @@
   /* ---------------- 数据读取 ---------------- */
   function readJSON(key) { try { var raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : null; } catch (e) { return null; } }
 
+  // 人设头像实际存在 MaskAvatarDB/avatars（mask.js 的存储），
+  // localStorage 里只有人设本体，没有 avatar 字段；这里补上跨库读取。
+  function readExternalDB(dbName, store, key) {
+    return new Promise(function (resolve) {
+      try {
+        var req = indexedDB.open(dbName);
+        req.onsuccess = function () {
+          var db = req.result;
+          try {
+            if (!db.objectStoreNames.contains(store)) { db.close(); resolve(null); return; }
+            var r = db.transaction(store, 'readonly').objectStore(store).get(key);
+            r.onsuccess = function () { var v = r.result || null; db.close(); resolve(v); };
+            r.onerror = function () { db.close(); resolve(null); };
+          } catch (e) { try { db.close(); } catch (err) {} resolve(null); }
+        };
+        req.onerror = function () { resolve(null); };
+      } catch (e) { resolve(null); }
+    });
+  }
+  function readMaskData() {
+    var home = readJSON('nano_mask_data') || readJSON('nano_home_data') || readJSON('peach_home_data');
+    if (home && Array.isArray(home.masks) && home.masks.length) return Promise.resolve(home);
+    return readExternalDB('nano_mask_db', 'mask_data', 'data').then(function (rec) {
+      return (rec && rec.value) || home || null;
+    }).catch(function () { return home || null; });
+  }
+  function readMaskAvatar(id) {
+    if (!id) return Promise.resolve('');
+    return readExternalDB('MaskAvatarDB', 'avatars', id).then(function (rec) {
+      return (rec && rec.data) || '';
+    }).catch(function () { return ''; });
+  }
+  var _currentUserCache = null;
   function currentUser() {
+    if (_currentUserCache) return _currentUserCache;
     var home = readJSON('nano_mask_data') || readJSON('nano_home_data') || readJSON('peach_home_data');
     if (!home) return { id: '', name: '我', avatar: '', setting: '' };
     var masks = home.masks || [];
     var cur = masks.find(function (m) { return m && m.id === home.currentMaskId; }) || masks[0] || {};
     return { id: cur.id || '', name: cur.name || '我', avatar: cur.avatar || '', setting: cur.setting || cur.persona || '' };
+  }
+  function loadCurrentUser() {
+    return readMaskData().then(function (home) {
+      if (!home || !Array.isArray(home.masks) || !home.masks.length) {
+        _currentUserCache = { id: '', name: '我', avatar: '', setting: '' };
+        return _currentUserCache;
+      }
+      var masks = home.masks || [];
+      var cur = masks.find(function (m) { return m && m.id === home.currentMaskId; }) || masks[0] || {};
+      var user = {
+        id: cur.id || '',
+        name: cur.name || '我',
+        avatar: cur.avatar || '',
+        setting: cur.setting || cur.persona || ''
+      };
+      if (!user.id) { _currentUserCache = user; return user; }
+      return readMaskAvatar(user.id).then(function (av) {
+        if (av) user.avatar = av;
+        _currentUserCache = user;
+        return user;
+      }).catch(function () {
+        _currentUserCache = user;
+        return user;
+      });
+    }).catch(function () {
+      _currentUserCache = { id: '', name: '我', avatar: '', setting: '' };
+      return _currentUserCache;
+    });
   }
 
   function listCharacters() {
@@ -465,7 +527,13 @@
     var args = data.args || [];
     var charsById = {};
 
-    function preload() { return listCharacters().then(function (list) { list.forEach(function (c) { charsById[c.id] = c; }); return list; }); }
+    function preload() {
+      return Promise.all([listCharacters(), loadCurrentUser()]).then(function (res) {
+        var list = res[0] || [];
+        list.forEach(function (c) { charsById[c.id] = c; });
+        return list;
+      });
+    }
 
     var task;
     switch (method) {
@@ -485,10 +553,10 @@
         task = preload();
         break;
       case 'currentUser':
-        task = Promise.resolve(currentUser());
+        task = loadCurrentUser();
         break;
       case 'persona':
-        task = preload().then(function () { return { user: currentUser(), char: charsById[args[0]] || null }; });
+        task = preload().then(function () { return { user: _currentUserCache || currentUser(), char: charsById[args[0]] || null }; });
         break;
       case 'worldbook':
         task = collectWorldbookText(args[0] ? [args[0]] : []);
@@ -621,7 +689,7 @@
         break;
       case 'user':
       case 'avatar':
-        task = Promise.resolve(currentUser());
+        task = loadCurrentUser();
         break;
 
       // 手势返回交给内层应用决定；不处理则默认回 AppStore

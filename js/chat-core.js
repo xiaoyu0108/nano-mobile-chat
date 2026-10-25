@@ -8041,7 +8041,7 @@
                     max_tokens: isNanoChat ? (function () {
                         // 纳米要输出完整 CSS + action，默认给足（可在「纳米设置」里改）
                         const v = parseInt(getChatSetting('nanoMaxTokens', 0), 10);
-                        return Math.min(v > 0 ? v : 8192, 32768);
+                        return Math.min(v > 0 ? v : 32768, 131072);
                     })() : (function () {
                         const v = parseInt(getChatSetting('replyMaxTokens', 0), 10);
                         if (v > 0) return Math.min(v, 16384);
@@ -8051,7 +8051,28 @@
                 })
             };
             storeChatRequest(payload);
-            const result = await sendChatRequest(payload);
+            let result = await sendChatRequest(payload);
+            // 有些模型不接受太大的 max_tokens（直接 400）。自动逐档减半重试，避免「调大后反而报错」。
+            let __maxTokenRetries = 0;
+            while (result && !result.ok && result.status === 400 && __maxTokenRetries < 3 &&
+                   /max[_\s-]?tokens|maximum context|context length|token limit|too many tokens/i.test(String(result.text || ''))) {
+                let retried = false;
+                try {
+                    const bodyObj = JSON.parse(payload.body);
+                    if (bodyObj && Number(bodyObj.max_tokens) > 4096) {
+                        bodyObj.max_tokens = Math.max(4096, Math.floor(Number(bodyObj.max_tokens) / 2));
+                        const retryPayload = Object.assign({}, payload, {
+                            token: 'creq_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+                            body: JSON.stringify(bodyObj)
+                        });
+                        storeChatRequest(retryPayload);
+                        result = await sendChatRequest(retryPayload);
+                        retried = true;
+                    }
+                } catch (e) {}
+                __maxTokenRetries++;
+                if (!retried) break;
+            }
 
             if (!result || !result.ok) {
                 let apiMsg = '';
@@ -8584,9 +8605,10 @@
             var done = a.status === 'done';
             var failed = a.status === 'failed';
             var busy = a.status === 'running';
+            var vlabel = (done && a.versionLabel) ? (' · ' + a.versionLabel) : '';
             var head = busy ? '执行中…'
                 : (failed ? ('✗ 失败：' + (a.error || ''))
-                : (done ? ('✓ ' + title() + ' 已执行') : title()));
+                : (done ? ('✓ ' + title() + ' 已执行' + vlabel) : title()));
             var collapsed = done || failed;
             box.innerHTML = '<div class="nano-action-title' + (done ? ' done' : '') + (failed ? ' failed' : '') + '">'
                 + nanoEsc(head)
@@ -8629,6 +8651,11 @@
                 try {
                     var execResult = await window.NanoAssistant.execAction(a);
                     a.status = 'done';
+                    if (execResult && execResult.versionLabel) a.versionLabel = execResult.versionLabel;
+                    else if (execResult && execResult.version != null && execResult.version !== '') {
+                        var __vn = String(execResult.version);
+                        a.versionLabel = /^v/i.test(__vn) ? __vn : ('v' + __vn);
+                    }
                     if (execResult && execResult.file && execResult.file.id) {
                         var __hasFileCard = messages.some(function (m) {
                             return m && m.isCard && m.cardData && m.cardData.fileId === execResult.file.id;
@@ -8739,7 +8766,8 @@
             read_file: 1, list_presets: 1, read_preset: 1,
             list_characters: 1, read_character: 1, list_worldbooks: 1, read_worldbook: 1,
             read_beautify: 1, list_status_bars: 1, list_offline_rules: 1, read_offline_rules: 1, list_persona_versions: 1,
-            list_apps: 1, read_app: 1, list_files: 1, read_generated_file: 1, read_memory: 1
+            list_apps: 1, read_app: 1, list_files: 1, read_generated_file: 1, read_memory: 1,
+            list_versions: 1
         };
         var readActs = parsed.actions.filter(function (a) { return READ_TOOLS[a.tool]; });
         // 只读动作不渲染卡片，先执行并把内容喂回模型；写入动作才显示「立即执行」
@@ -9978,6 +10006,27 @@
         } else {
             sendBtn.classList.add('reply-mode');
             sendBtn.innerHTML = '<i class="fas fa-reply"></i>';
+        }
+    }
+
+    // 其他页面（例如 AppStore）打开的「让 Nano 修改」：把预填内容放进输入框
+    function consumeNanoPrefill() {
+        if (!isNanoChat) return;
+        var key = 'nano_chat_prefill_' + chatId;
+        var raw = null;
+        try { raw = localStorage.getItem(key); } catch (e) {}
+        if (!raw) return;
+        try { localStorage.removeItem(key); } catch (e) {}
+        var data = null;
+        try { data = JSON.parse(raw); } catch (e) { data = { text: String(raw) }; }
+        var text = String((data && data.text) || '').trim();
+        if (!text) return;
+        if (messageInput) messageInput.value = text;
+        try { nanoAutoSize(); updateSendButtonMode(); } catch (e) {}
+        if (data && data.auto) {
+            setTimeout(function () { try { if (!isProcessingApi) sendMessage(); } catch (e) {} }, 420);
+        } else {
+            setTimeout(function () { try { messageInput.focus(); } catch (e) {} }, 260);
         }
     }
 
@@ -12561,6 +12610,7 @@ if (data.type === 'NANO_VOICE_CALL_CARD' || data.type === 'NANO_VIDEO_CALL_CARD'
             }
             isStorageReady = true;
             if (isNanoChat && messages.length === 0) ensureNanoWelcome();
+            try { consumeNanoPrefill(); } catch (e) {}
             window.__nanoChatReady = true;
             window.__nanoChatReadyChat = String(chatId || '');
             // 屏幕速聊：先合并本机暂存，再拉一次服务端（两处都幂等）

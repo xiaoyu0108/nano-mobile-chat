@@ -124,6 +124,12 @@ h1{margin:0;font-size:clamp(26px,8vw,34px);line-height:1.1;letter-spacing:-.04em
   font-size:12.5px;font-weight:700;transition:background .15s;
 }
 .app-open:active{background:#dfe4fb}
+.app-nano{
+  padding:7px 9px;border-radius:14px;
+  background:linear-gradient(135deg,#ffe6ee,#f4e8ff);color:#c2417b;
+  font-size:11px;font-weight:800;white-space:nowrap;
+}
+.app-nano:active{filter:brightness(.97)}
 .app-del{
   width:32px;height:32px;border-radius:10px;display:grid;place-items:center;color:var(--danger);
   transition:background .15s;
@@ -342,6 +348,7 @@ h1{margin:0;font-size:clamp(26px,8vw,34px);line-height:1.1;letter-spacing:-.04em
   *{transition:none!important}
 }
 </style>
+<link rel="stylesheet" href="../css/account.css?v=20261025a">
 </head>
 <body>
 
@@ -364,7 +371,7 @@ h1{margin:0;font-size:clamp(26px,8vw,34px);line-height:1.1;letter-spacing:-.04em
           </span>
           <span>
             <h3>复制完整模板</h3>
-            <p>复制给 AI / 编辑器改，不安装也能用</p>
+            <p>复制给 AI / 编辑器改；模板只是示例，可换成任何功能</p>
           </span>
         </button>
 
@@ -378,7 +385,7 @@ h1{margin:0;font-size:clamp(26px,8vw,34px);line-height:1.1;letter-spacing:-.04em
           </span>
           <span>
             <h3>安装完整模板</h3>
-            <p>直接装进商店，打开就能照着改</p>
+            <p>装一个可运行的示例 App（含示例清单 / 详情 / 设置）</p>
           </span>
         </button>
 
@@ -419,6 +426,18 @@ h1{margin:0;font-size:clamp(26px,8vw,34px);line-height:1.1;letter-spacing:-.04em
           <span>
             <h3>创作指南</h3>
             <p>模板结构、全部权限、返回逻辑和 AI 提示词</p>
+          </span>
+        </button>
+
+        <button class="action" id="nanoNewApp" type="button">
+          <span class="glyph">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 2c.8 5.2 4.8 9.2 10 10-5.2.8-9.2 4.8-10 10-.8-5.2-4.8-9.2-10-10 5.2-.8 9.2-4.8 10-10z"></path>
+            </svg>
+          </span>
+          <span>
+            <h3>让 Nano 写应用</h3>
+            <p>直接告诉 Nano 你想要什么，它会创建并安装到 AppStore</p>
           </span>
         </button>
       </div>
@@ -744,12 +763,15 @@ h1{margin:0;font-size:clamp(26px,8vw,34px);line-height:1.1;letter-spacing:-.04em
 <div class="modal" id="guideModal">
   <div class="modal-card">
     <h3 class="modal-title">创作指南</h3>
-    <p class="modal-desc">模板本身就是一个完整 App：首页 + 清单 + 二级页 + 设置 + 返回栈。照着改就行。</p>
+    <p class="modal-desc">模板是一个可运行的示例 App：首页 + 示例清单 + 二级页 + 设置 + 返回栈。清单只是示例，不是必须保留。</p>
     <div class="guide-block">
-      <b>模板是干什么的？</b><br>它是一份「能直接运行、也能直接改」的示例：首页、清单、二级页、设置和返回逻辑都已经写好。复制模板 = 交给 AI 或编辑器继续改；安装模板 = 立刻装进商店，打开就能看效果。两者内容相同，只是用途不同。
+      <b>模板是干什么的？</b><br>它是一份「能直接运行、也能直接改」的示例：首页、示例清单、二级页、设置和返回逻辑都已经写好。复制模板 = 交给 AI 或编辑器继续改；安装模板 = 立刻装进商店，打开就能看效果。两者内容相同，只是用途不同。
     </div>
     <div class="guide-block">
-      <b>应用的清单（nano-manifest）是什么？</b><br>就是 HTML 里那段 <code>&lt;script id="nano-manifest"&gt;</code> JSON，相当于 App 的身份证：<br>
+      <b>模板里的「清单」和「新建一条」是什么？</b><br>只是示例功能，用来演示增删改查和二级详情页。「新建一条」= 往示例清单里加一条记录，<b>不会新建应用或模板</b>。不想要清单，可以让 Nano 把它换成记账、追剧、打卡、日程等任何功能。
+    </div>
+    <div class="guide-block">
+      <b>应用身份证（nano-manifest）是什么？</b><br>就是 HTML 里那段 <code>&lt;script id="nano-manifest"&gt;</code> JSON，相当于 App 的身份证：<br>
       <code>id</code>：唯一标识，也用来隔离这个 App 的存档；<br>
       <code>name / icon / color / desc / version</code>：商店里显示的名字、图标、颜色、介绍和版本；<br>
       <code>permissions / highPermission</code>：声明要用的能力（角色、人设、世界书、API、通知等），<code>["*"]</code> 表示高权限。<br>
@@ -759,7 +781,7 @@ h1{margin:0;font-size:clamp(26px,8vw,34px);line-height:1.1;letter-spacing:-.04em
       <b>1. 复制模板</b><br>点「复制完整模板」，把整份 HTML 交给 AI，或自己改。
     </div>
     <div class="guide-block">
-      <b>2. 描述你的应用</b><br>例如：「把清单换成记账，保留二级页和返回栈」。强调返回逻辑：首页 → AppStore；清单/设置 → 首页；二级页 → 上一页。
+      <b>2. 描述你的应用</b><br>例如：「把示例清单换成记账，保留二级页和返回栈」。强调返回逻辑：首页 → AppStore；示例清单/设置 → 首页；二级页 → 上一页。
     </div>
     <div class="guide-block">
       <b>3. 高权限能力</b><br>Nano.chat / Nano.image.generate / Nano.files / Nano.gallery / Nano.tts / Nano.notify / Nano.clipboard / Nano.store / Nano.onBack。
@@ -795,6 +817,7 @@ h1{margin:0;font-size:clamp(26px,8vw,34px);line-height:1.1;letter-spacing:-.04em
   });
 })();
 </script>
-<script src="../js/appstore.js?v=20261023e"></script>
+<script src="../js/appstore.js?v=20261025d"></script>
+<script src="../js/account.js?v=20261025k"></script>
 </body>
 </html>

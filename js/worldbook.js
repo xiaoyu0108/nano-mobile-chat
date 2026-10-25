@@ -863,9 +863,17 @@
     // ============================================================
     // 文件导入（含 DOCX 支持）
     // ============================================================
-    function handleFileSelected(event) {
+    async function handleFileSelected(event) {
         var file = event.target.files[0];
         if (!file) return;
+        // 导入门槛：世界书 / 条目文本 / SillyTavern JSON 属于受控导入
+        var importGate = null;
+        try { importGate = (window.parent && window.parent.NanoImportGate) || window.NanoImportGate; } catch (e) { importGate = window.NanoImportGate; }
+        if (importGate && importGate.ensure) {
+            var gateOk = false;
+            try { gateOk = await importGate.ensure(); } catch (e2) { gateOk = false; }
+            if (!gateOk) { event.target.value = ''; return; }
+        }
         var ext = getFileExt(file.name);
 
         if (ext === 'txt' || ext === 'json') {

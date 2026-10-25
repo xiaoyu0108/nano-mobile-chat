@@ -56,19 +56,32 @@ body {
     z-index: 20;
 }
 .navbar .back {
-    font-size: 28px;
-    color: #007AFF;
+    width: 34px;
+    height: 34px;
+    flex: none;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    color: #0a84ff;
     background: none;
-    border: none;
+    border: 0;
+    border-radius: 0;
     cursor: pointer;
-    padding: 4px 0;
-    font-weight: 300;
-    line-height: 1;
-    width: 40px;
-    text-align: left;
+    -webkit-tap-highlight-color: transparent;
+    transition: opacity .15s, transform .12s;
+}
+.navbar .back svg {
+    width: 21px;
+    height: 21px;
+    display: block;
+}
+.navbar .back:active {
+    background: none;
+    opacity: .5;
+    transform: scale(.94);
 }
 .navbar .back::before {
-    content: "‹";
+    content: none;
 }
 .navbar .title {
     font-size: 17px;

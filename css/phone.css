@@ -1451,3 +1451,8 @@ body:has(#appHost.show) .ab-ball { display: none !important; }
 
 .pos-store{grid-column:4;grid-row:1}
 
+
+/* 长按拖动：可落点的目标高亮 */
+.app.drop-target,.widget-large.drop-target{outline:2px solid rgba(0,122,255,.72);outline-offset:-3px;border-radius:18px}
+.app,.widget-large{-webkit-touch-callout:none}
+

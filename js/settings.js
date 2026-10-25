@@ -1065,13 +1065,19 @@ const APP_ICONS = {
     on('idCard', 'click', openProfileEdit);
     on('avatarFile', 'change', function (e) {
       var f = e.target.files && e.target.files[0];
+      e.target.value = '';
       if (!f) return;
-      resizeImage(f, 320, 'image/png').then(function (url) {
+      var done = function (url) {
+        if (!url) return;
         pendingAvatar = url;
         var p = $('profilePreview');
         if (p) p.innerHTML = '<img src="' + esc(url) + '" alt="">';
-      }).catch(function () { toast('头像处理失败'); });
-      e.target.value = '';
+      };
+      if (window.NanoAvatarCrop) {
+        NanoAvatarCrop.open(f, { outputSize: 360, aspect: 1, quality: 0.9, title: '裁剪头像' }).then(done).catch(function () { toast('头像处理失败'); });
+        return;
+      }
+      resizeImage(f, 320, 'image/png').then(done).catch(function () { toast('头像处理失败'); });
     });
 
     on('rowBg', 'click', openBgSheet);

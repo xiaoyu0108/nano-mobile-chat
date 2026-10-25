@@ -1304,6 +1304,13 @@
     var files = p.files || [];
     var f = files[index];
     if (!f || !f.data) { toast('这份资源没有可导入的文件'); return; }
+    var importGate = null;
+    try { importGate = (window.parent && window.parent.NanoImportGate) || window.NanoImportGate; } catch (err) { importGate = window.NanoImportGate; }
+    if (importGate && importGate.ensure) {
+      var gateOk = false;
+      try { gateOk = await importGate.ensure(); } catch (err) { gateOk = false; }
+      if (!gateOk) return;
+    }
     var handler = IMPORT_HANDLERS[p.category];
     if (p.category === 'other') {
       if (p.otherType === 'offline-rules') handler = importOfflineRules;

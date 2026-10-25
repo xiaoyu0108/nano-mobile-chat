@@ -293,6 +293,13 @@
         var f = importFile.files && importFile.files[0];
         if (!f) return;
         if (f.size > 8 * 1024 * 1024) { toast('文件不能超过 8MB'); importFile.value = ''; return; }
+        var importGate = null;
+        try { importGate = (window.parent && window.parent.NanoImportGate) || window.NanoImportGate; } catch (e0) { importGate = window.NanoImportGate; }
+        if (importGate && importGate.ensure) {
+          var gateOk = false;
+          try { gateOk = await importGate.ensure(); } catch (e1) { gateOk = false; }
+          if (!gateOk) { importFile.value = ''; return; }
+        }
         try {
           var text = String(await readPromptFile(f) || '').trim();
           if (!text) { toast('文件里没有可导入的文字'); importFile.value = ''; return; }

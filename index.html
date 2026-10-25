@@ -49,6 +49,8 @@
     <link rel="dns-prefetch" href="https://unpkg.com">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" media="print" onload="this.media='all'">
     <link rel="stylesheet" href="common.css">
+    <link rel="stylesheet" href="css/adult-gate.css?v=20261025a">
+    <link rel="stylesheet" href="css/account.css?v=20261025a">
     <style>
         :root {
             --safe-inset-top: env(safe-area-inset-top, 0px);
@@ -1519,7 +1521,7 @@ setTimeout(function () {
         // 注意：与 user（人设/马甲）强相关的页面不能复用缓存帧，否则切换 user 后仍显示上一个 user 的数据
         const REUSE_SAFE_PAGES = ['other.html', 'emoji.html', 'inner-setting.html', 'nano-setting.html',
             'groups.html', 'group-setting.html', 'imessage.html', 'storage.html', 'backup.html',
-            'wallet.html', 'appstore.html', 'family-card.html', 'pomodoro.html', 'nano.html'];
+            'wallet.html', 'appstore.html', 'family-card.html', 'pomodoro.html', 'nano.html', 'nano-image.html'];
         function reuseOrLoadOverlayFrame(url) {
             const base = baseName(url);
             // data-loaded-url 可能残留，但 iframe 已经被重置为 about:blank；
@@ -1626,9 +1628,9 @@ setTimeout(function () {
             'music.html', 'voice-call.html', 'video-call.html', 'storage.html', 'backup.html', 'other.html',
             'discover.html', 'api.html', 'moments.html', 'ins.html', 'inner-setting.html', 'beautify.html',
             'books.html', 'couple-spaces.html', 'halo.html', 'offline.html', 'offline-setting.html',
-            'heart-setting.html', 'market.html', 'mcp.html', 'settings.html', 'settings-logs.html', 'gallery.html', 'settings-desktop.html', 'settings-notifications.html', 'settings-prompts.html', 'settings-other.html', 'schedule.html',
+            'heart-setting.html', 'market.html', 'mcp.html', 'settings.html', 'settings-logs.html', 'gallery.html', 'settings-desktop.html', 'settings-notifications.html', 'settings-prompts.html', 'settings-other.html', 'settings-account.html', 'schedule.html',
             'phone.html', 'assistant.html', 'nano-setting.html', 'family-card.html', 'wallet.html', 'appstore.html',
-            'cycle.html', 'fanfic.html', 'fanfic-create.html', 'fanfic-read.html', 'imessage.html', 'memory palace.html', 'app-host.html', 'meet.html', 'mall.html', 'qa.html', 'pomodoro.html', 'nano.html', 'nano-files.html', 'ios-setting.html'];
+            'cycle.html', 'fanfic.html', 'fanfic-create.html', 'fanfic-read.html', 'imessage.html', 'memory palace.html', 'app-host.html', 'meet.html', 'mall.html', 'qa.html', 'pomodoro.html', 'nano.html', 'nano-image.html', 'nano-files.html', 'ios-setting.html'];
         // 其余页面（发现/更多/API/moments/ins/…）兜底：内容整体让到灵动岛下面
         function applySafeFallback(f) {
             try {
@@ -1791,7 +1793,7 @@ setTimeout(function () {
                 showOverlayFrame();
                 // 同一个页面且已加载过 → 直接复用（切换更快）；正在后台生成 → 也必须复用（否则中断生成）
                 reuseOrLoadOverlayFrame(url);
-                const ownNavPages = ['chat.html', 'api.html', 'settings.html', 'settings-logs.html', 'gallery.html', 'settings-desktop.html', 'settings-notifications.html', 'settings-prompts.html', 'settings-other.html', 'beautify.html', 'schedule.html', 'worldbook.html', 'emoji.html', 'favorite.html', 'offline.html', 'offline-setting.html', 'moments.html', 'groups.html', 'group-setting.html', 'other.html', 'storage.html', 'backup.html', 'phone.html', 'ins.html', 'couple-spaces.html', 'halo.html', 'books.html', 'mask.html', 'character.html', 'inner-setting.html', 'nano-setting.html', 'nano-files.html', 'ios-setting.html', 'assistant.html', 'family-card.html', 'wallet.html', 'appstore.html', 'cycle.html', 'fanfic.html', 'fanfic-create.html', 'fanfic-read.html', 'market.html', 'mcp.html', 'heart-setting.html', 'imessage.html', 'memory palace.html', 'app-host.html', 'meet.html', 'mall.html', 'qa.html', 'pomodoro.html', 'nano.html'];
+                const ownNavPages = ['chat.html', 'api.html', 'settings.html', 'settings-logs.html', 'gallery.html', 'settings-desktop.html', 'settings-notifications.html', 'settings-prompts.html', 'settings-other.html', 'settings-account.html', 'beautify.html', 'schedule.html', 'worldbook.html', 'emoji.html', 'favorite.html', 'offline.html', 'offline-setting.html', 'moments.html', 'groups.html', 'group-setting.html', 'other.html', 'storage.html', 'backup.html', 'phone.html', 'ins.html', 'couple-spaces.html', 'halo.html', 'books.html', 'mask.html', 'character.html', 'inner-setting.html', 'nano-setting.html', 'nano-files.html', 'ios-setting.html', 'assistant.html', 'family-card.html', 'wallet.html', 'appstore.html', 'cycle.html', 'fanfic.html', 'fanfic-create.html', 'fanfic-read.html', 'market.html', 'mcp.html', 'heart-setting.html', 'imessage.html', 'memory palace.html', 'app-host.html', 'meet.html', 'mall.html', 'qa.html', 'pomodoro.html', 'nano.html', 'nano-image.html'];
                 const hasOwnNav = ownNavPages.indexOf(pageName) !== -1;
                 const noOuterHeader = hasOwnNav || pageName === 'mall.html' || (showBack === false && !(title || ''));
                 if (noOuterHeader) {
@@ -4130,7 +4132,7 @@ setTimeout(function () {
                 'moments.html', 'halo.html', 'books.html', 'character.html', 'mask.html', 'favorite.html',
                 'emoji.html', 'worldbook.html', 'memory.html', 'phone.html', 'offline.html',
                 'offline-setting.html', 'couple-spaces.html', 'voice-call.html', 'video-call.html', 'api.html', 'cycle.html', 'fanfic.html', 'fanfic-create.html', 'fanfic-read.html',
-                'discover.html', 'qa.html', 'pomodoro.html', 'nano.html'];
+                'discover.html', 'qa.html', 'pomodoro.html', 'nano.html', 'nano-image.html'];
             var i = 0;
             function next() {
                 if (i >= pages.length) return;
@@ -4358,5 +4360,7 @@ setTimeout(function () {
         } catch (e) {}
     })();
     </script>
+    <script src="js/adult-gate.js?v=20261025c"></script>
+    <script src="js/account.js?v=20261025k"></script>
 </body>
 </html>
