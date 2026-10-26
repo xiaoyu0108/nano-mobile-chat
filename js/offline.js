@@ -157,9 +157,13 @@ async function favoriteWriteList(list) {
     });
   } catch (e) {}
 }
-function offlineMessageTime(m) {
+function offlineMsgTs(m) {
   var ts = parseInt(String((m && m.id) || '').split('-')[0], 10);
-  if (!ts || ts < 1000000000000) ts = Date.now();
+  if (!ts || ts < 1000000000000) ts = Number(m && m.ts) || 0;
+  return ts > 0 ? ts : Date.now();
+}
+function offlineMessageTime(m) {
+  var ts = offlineMsgTs(m);
   try { return new Date(ts).toLocaleString('zh-CN'); } catch (e) { return ''; }
 }
 // 灰樱：卡片时间 hh:mm（取消息 id 里的时间戳；没有就用当前时间）
@@ -306,6 +310,9 @@ async function loadSettingsFromDB() {
 let messages = [];
 // 供记忆同步：本 offline 会话属于哪个角色
 let offlineChatId = '';
+// 本次进入线下页面的时间：退出时只补总结「在此之前」的线上消息，
+// 线下期间新到的线上消息留给线上自己按时间线总结。
+const offlineStartedAt = Date.now();
 try { offlineChatId = new URLSearchParams(window.location.search).get('chat') || ''; } catch (e) { offlineChatId = ''; }
 // 美化预览模式：同一套真实页面，只用来在设置页里实时展示样式，不读写消息、不跑定时
 let OFFLINE_PREVIEW = false;
@@ -387,6 +394,20 @@ let isReplying = false;
 let offAbort = null;        // 当前线下回复请求的中止控制
 let offAbortTimer = null;   // 超时兜底计时器
 const OFFLINE_GEN_TIMEOUT = 180000;
+// 告诉外壳「线下正在生成/总结」，回线上时只隐藏、不要销毁 iframe。
+function setOfflineBusy(on, id) {
+  try {
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage({
+        type: 'nanoOfflineBusy',
+        id: String(id || 'main'),
+        chatId: offlineChatId || '',
+        busy: !!on,
+        ttl: 15 * 60 * 1000
+      }, '*');
+    }
+  } catch (e) {}
+}
 let showAllMessages = false;
 const MESSAGE_PAGE = 50;
 
@@ -1856,15 +1877,22 @@ function offHasPendingMem() {
   var toOnline = document.getElementById('exitToOnline');
   var memToggle = document.getElementById('exitSummarizeMem');
   var leaving = false;
-  // 后台整理：不阻塞退出；没有新内容时直接跳过
+  // 后台整理：先补总结「进线下之前的线上消息」，再总结线下，保证记忆时间线正确。
+  // 不阻塞退出；线下 iframe 会被外壳保活到总结结束。
   function backgroundSummarize() {
     try {
       if (memToggle && !memToggle.checked) return;
-      if (typeof summarizeOfflineMemories !== 'function') return;
-      if (!offHasPendingMem()) return;   // 无新内容无需整理
-      var p = summarizeOfflineMemories(true);
-      if (p && typeof p.catch === 'function') p.catch(function () {});
-    } catch (e) {}
+      setOfflineBusy(true, 'summary');
+      var p = (async function () {
+        try { await summarizeOnlinePendingBeforeOffline(); } catch (e) {}
+        try { if (offHasPendingMem()) await summarizeOfflineMemories(true); } catch (e) {}
+      })();
+      if (p && typeof p.then === 'function') {
+        p.then(function () { setOfflineBusy(false, 'summary'); }, function () { setOfflineBusy(false, 'summary'); });
+      } else {
+        setOfflineBusy(false, 'summary');
+      }
+    } catch (e) { setOfflineBusy(false, 'summary'); }
   }
   if (cancel) cancel.onclick = closeExitModal;
   if (toChat) toChat.onclick = function () {
@@ -1906,8 +1934,17 @@ function offHasPendingMem() {
   function flush() {
     if (flushed) return;
     if (window.__offSkipMemFlush) return;   // 用户选择了“不整理”
-    try { if (typeof offHasPendingMem === 'function' && !offHasPendingMem()) return; } catch (e) {}
-    try { if (typeof summarizeOfflineMemories === 'function') { var p = summarizeOfflineMemories(true); if (p && p.catch) p.catch(function() {}); } } catch (e) {}
+    flushed = true;
+    setOfflineBusy(true, 'summary');
+    var p = (async function () {
+      try { await summarizeOnlinePendingBeforeOffline(); } catch (e) {}
+      try { if (offHasPendingMem()) await summarizeOfflineMemories(true); } catch (e) {}
+    })();
+    if (p && typeof p.then === 'function') {
+      p.then(function () { setOfflineBusy(false, 'summary'); }, function () { setOfflineBusy(false, 'summary'); });
+    } else {
+      setOfflineBusy(false, 'summary');
+    }
   }
   window.addEventListener('pagehide', flush, { capture: true });
   document.addEventListener('visibilitychange', function () {
@@ -2870,6 +2907,7 @@ async function callMainAPI(history) {
   ].filter(Boolean).join('\n\n');
 
   // ---- 接入你的主 API ----
+  setOfflineBusy(true, 'gen');
   try {
     // 读取主 API 配置（与 chat-core 一致：优先 IndexedDB nano_api_db/api_data，其次 localStorage）
     let candidates = [];
@@ -3122,6 +3160,8 @@ async function callMainAPI(history) {
     error.responseText = err.responseText || '';
     error.aborted = !!err.aborted;
     throw error;
+  } finally {
+    setOfflineBusy(false, 'gen');
   }
 }
 
@@ -3477,7 +3517,7 @@ async function omRunTidy(ov, fromEl, toEl, delEl) {
       const m = o.m;
       return (m.role === 'user' ? (settings.userName || '用户') : (m.name || settings.charName || '角色')) + '：' + String(m.content || '').slice(0, 900);
     }).join('\n');
-    const n = await summarizeTextToMemory(chatText, offlineChatId);
+    const n = await summarizeTextToMemory(chatText, offlineChatId, picked.length ? offlineMsgTs(picked[0].m) : 0);
     if (!n) { omToast('总结失败或没有提取到记忆'); if (btn) { btn.disabled = false; btn.textContent = '开始整理'; } return; }
     if (delEl && delEl.checked) {
       const delSet = {};
@@ -3867,6 +3907,8 @@ function offMemOpen() {
         try {
           const db = e.target.result;
           if (!db.objectStoreNames.contains('config')) db.createObjectStore('config', { keyPath: 'key' });
+          if (!db.objectStoreNames.contains('chat_state')) db.createObjectStore('chat_state', { keyPath: 'chatId' });
+          if (!db.objectStoreNames.contains('chat_messages')) db.createObjectStore('chat_messages', { keyPath: 'chatId' });
         } catch (e) {}
       };
       req.onsuccess = function(e) { resolve(e.target.result); };
@@ -3897,6 +3939,92 @@ function offMemPut(key, value) {
     });
   }).catch(function() {});
 }
+// 退出线下前，先把「进入线下之前还没总结的线上消息」补总结掉。
+// 这样记忆顺序是：线上旧消息 → 线下 → 线上新消息，而不是线下先写、线上旧消息后补。
+let OFF_ONLINE_CATCHUP_DONE = false;
+async function summarizeOnlinePendingBeforeOffline() {
+  if (!offlineChatId || offlineIsGroup) return 0;
+  if (!isStoryScene(offlineScene)) return 0;
+  if (OFF_ONLINE_CATCHUP_DONE) return 0;
+  OFF_ONLINE_CATCHUP_DONE = true;
+  let db = null;
+  try {
+    db = await offMemOpen();
+    const read = function (store, key) {
+      return new Promise(function (resolve) {
+        try {
+          const r = db.transaction(store, 'readonly').objectStore(store).get(key);
+          r.onsuccess = function () { resolve(r.result || null); };
+          r.onerror = function () { resolve(null); };
+        } catch (e) { resolve(null); }
+      });
+    };
+    const put = function (store, value) {
+      return new Promise(function (resolve) {
+        try {
+          const tx = db.transaction(store, 'readwrite');
+          tx.objectStore(store).put(value);
+          tx.oncomplete = function () { resolve(true); };
+          tx.onerror = function () { resolve(false); };
+        } catch (e) { resolve(false); }
+      });
+    };
+    const rec = await read('chat_messages', offlineChatId);
+    let msgs = (rec && Array.isArray(rec.messages)) ? rec.messages : [];
+    if (!msgs.length) {
+      try { msgs = JSON.parse(localStorage.getItem('chat_messages_' + offlineChatId) || '[]') || []; } catch (e) { msgs = []; }
+    }
+    const st = await read('chat_state', offlineChatId);
+    const done = Math.max(0, parseInt(st && st.summarizedCount, 10) || 0);
+    if (!msgs.length || done >= msgs.length) return 0;
+    // 只取「进入线下之前」的消息；线下期间新到的线上消息留给线上自己总结。
+    const cutoff = Number(offlineStartedAt) || Date.now();
+    let cutIndex = done - 1;
+    for (let i = done; i < msgs.length; i++) {
+      const mt = Number(msgs[i] && msgs[i].ts) || 0;
+      if (mt && mt >= cutoff) break;
+      cutIndex = i;
+    }
+    if (cutIndex < done) return 0;
+    const pending = msgs.slice(done, cutIndex + 1).filter(function (m) {
+      return m && !m.recalled && !m.isCard && !m.isImage && !m.isVoice &&
+        (m.type === 'left' || m.type === 'right') && String(m.text || '').trim();
+    });
+    // 只剩卡片/图片时也把计数推进，避免下次一直卡在它们身上。
+    if (!pending.length) {
+      await put('chat_state', Object.assign({}, st || {}, { chatId: offlineChatId, summarizedCount: cutIndex + 1 }));
+      return 0;
+    }
+    const userName = settings.userName || '用户';
+    const charName = settings.charName || '角色';
+    const chatText = pending.map(function (m) {
+      return (m.type === 'right' ? userName : charName) + '：' + String(m.text || '').slice(0, 900);
+    }).join('\n');
+    const summary = await offExtractViaMain(chatText, '线上聊天记录');
+    if (!summary) { OFF_ONLINE_CATCHUP_DONE = false; return 0; }
+    const entries = await offBuildMemoryEntries(summary, offlineChatId, offlineMsgTs(pending[0]));
+    if (!entries.length) { OFF_ONLINE_CATCHUP_DONE = false; return 0; }
+    let appended = true;
+    if (window.NanoMemLink && window.NanoMemLink.append) {
+      appended = await window.NanoMemLink.append(offlineChatId, entries);
+    } else {
+      const list = (await offMemGet('memlist_' + offlineChatId)) || [];
+      const arr = Array.isArray(list) ? list : [];
+      entries.forEach(function (e) { arr.push(e); });
+      await offMemPut('memlist_' + offlineChatId, arr);
+    }
+    if (appended === false) { OFF_ONLINE_CATCHUP_DONE = false; return 0; }
+    await put('chat_state', Object.assign({}, st || {}, { chatId: offlineChatId, summarizedCount: cutIndex + 1 }));
+    try { window.parent.postMessage({ type: 'NANO_MEMORY_UPDATED', chatId: offlineChatId }, '*'); } catch (e) {}
+    return entries.length;
+  } catch (e) {
+    OFF_ONLINE_CATCHUP_DONE = false;
+    console.warn('线上待总结消息补总结失败', e);
+    return 0;
+  } finally {
+    try { if (db) db.close(); } catch (e) {}
+  }
+}
 function scheduleOfflineMem() {
   clearTimeout(scheduleOfflineMem.t);
   scheduleOfflineMem.t = setTimeout(function() { summarizeOfflineMemories(); }, 2500);
@@ -3915,14 +4043,15 @@ async function offMainConfig() {
     return raw;
   } catch (e) { return null; }
 }
-async function offExtractViaMain(chatText) {
+async function offExtractViaMain(chatText, label) {
   const cfg = await offMainConfig();
   if (!cfg || !cfg.mainUrl) return '';
   let url = String(cfg.mainUrl).trim().replace(/\/+$/, '');
   if (!/\/v1$/i.test(url)) url += '/v1';
   const key = String(cfg.mainKey || '').trim();
   const model = cfg.mainModel || 'gpt-3.5-turbo';
-  const prompt = '你是记忆提取助手。下面是某角色与用户的一段对话（可能是线下长文记录）。请挑出真正值得长期记住的信息：重要事件、约定与承诺、关键关系进展、称呼与喜好的变化、双方说过的重要话与关键决定。要求：\n'
+  const where = String(label || '线下长文记录');
+  const prompt = '你是记忆提取助手。下面是某角色与用户的一段对话（可能是' + where + '）。请挑出真正值得长期记住的信息：重要事件、约定与承诺、关键关系进展、称呼与喜好的变化、双方说过的重要话与关键决定。要求：\n'
     + '- 只保留有长期价值的关键点，合并同类，删掉寒暄、日常口水话和没有后续影响的小事；\n'
     + '- 每条具体、像人记住的一件事实，40~160 字，写清人物、经过与影响；\n'
     + '- 最多 5 条，宁缺毋滥；确实没有值得记的就什么都不要输出；\n'
@@ -3947,7 +4076,7 @@ function offGuessImportance(type, content) {
   if (String(content || '').length > 120) return 4;
   return 3;
 }
-async function offBuildMemoryEntries(summary, chatId) {
+async function offBuildMemoryEntries(summary, chatId, baseTs) {
   let items = String(summary || '').split('\n').map(l => l.trim()).map(l => l.replace(/^[-*\d.\s、)]+/, '')).filter(l => l && l.length >= 6);
   const seen = {};
   items = items.filter(function (t) {
@@ -3957,7 +4086,8 @@ async function offBuildMemoryEntries(summary, chatId) {
     return true;
   }).slice(0, 6);
   if (!items.length) return [];
-  return await Promise.all(items.map(async function (raw) {
+  const startedAt = Number(baseTs) || Date.now();
+  return await Promise.all(items.map(async function (raw, idx) {
     let t = raw, type = '长期记忆', importance = 0;
     const m = t.match(/^【(.+?)】/);
     if (m) {
@@ -3968,7 +4098,8 @@ async function offBuildMemoryEntries(summary, chatId) {
       else type = tag || '长期记忆';
     }
     if (!importance) importance = offGuessImportance(type, t);
-    const entry = { id: 'om' + Date.now() + '-' + Math.random().toString(36).slice(2, 6), time: new Date().toLocaleString('zh-CN'), type: type, importance: importance, chatId: chatId, content: t, embedding: null, hasVector: false };
+    const ts = startedAt + idx;
+    const entry = { id: 'om' + Date.now() + '-' + Math.random().toString(36).slice(2, 6), ts: ts, date: new Date(ts).toISOString(), time: new Date(ts).toLocaleString('zh-CN'), type: type, importance: importance, chatId: chatId, relatedChar: settings.charName || '', content: t, embedding: null, hasVector: false };
     try {
       const emb = await offEmbed(t);
       if (emb && emb.length) { entry.embedding = emb; entry.hasVector = true; }
@@ -4027,11 +4158,11 @@ async function offEmbedMany(texts) {
 }
 
 // 通用：把一段文本（可能跨多个楼层）一次性总结成记忆并入库。返回写入条数。
-async function summarizeTextToMemory(chatText, chatId) {
+async function summarizeTextToMemory(chatText, chatId, baseTs) {
   if (!chatText || !String(chatText).trim()) return 0;
   const summary = await offExtractViaMain(chatText);
   if (!summary) return 0;
-  const entries = await offBuildMemoryEntries(summary, chatId || offlineChatId);
+  const entries = await offBuildMemoryEntries(summary, chatId || offlineChatId, baseTs);
   if (!entries.length) return 0;
   if (window.NanoMemLink && window.NanoMemLink.append) {
     await window.NanoMemLink.append(chatId || offlineChatId, entries);   // 小号记忆计入大号记忆库
@@ -4095,7 +4226,7 @@ async function summarizeOfflineMemories(force) {
     const take = seg.slice(0, 12);   // 从未总结的最早一段开始，避免跳过中间楼层
     const chatText = take.map(m => ((m.role === 'user' ? (settings.userName || '用户') : (m.name || settings.charName || '角色')) + '：' + String(m.content || '').slice(0, 900))).join('\n');
     if (!chatText.trim()) return;
-    const n = await summarizeTextToMemory(chatText, offlineChatId);
+    const n = await summarizeTextToMemory(chatText, offlineChatId, offlineMsgTs(take[0]));
     if (!n) return;
     const lastIdx = rel.indexOf(take[take.length - 1]);
     localStorage.setItem(offMemCountKey(), String(Math.max(count, lastIdx + 1)));

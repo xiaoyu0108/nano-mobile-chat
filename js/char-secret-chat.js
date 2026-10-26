@@ -132,8 +132,30 @@
         var arr = parseJson(localStorage.getItem(RECORDS_KEY), []);
         return Array.isArray(arr) ? arr.filter(function (r) { return r && r.a && r.b && Array.isArray(r.lines) && r.lines.length; }) : [];
     }
+    // 记录只保留展示需要的字段。头像经常是 dataURL，存进 localStorage 很容易把
+    // 5MB 配额撑满，导致 setItem 静默失败：生成成功、弹窗能看到，但列表里没有卡片。
+    function slimRecord(r) {
+        if (!r || !r.a || !r.b) return r;
+        return Object.assign({}, r, {
+            a: { id: r.a.id, name: r.a.name || '' },
+            b: { id: r.b.id, name: r.b.name || '' }
+        });
+    }
     function saveRecords(list) {
-        try { localStorage.setItem(RECORDS_KEY, JSON.stringify((list || []).slice(-80))); } catch (e) {}
+        var arr = (list || []).slice(-80).map(slimRecord);
+        try {
+            localStorage.setItem(RECORDS_KEY, JSON.stringify(arr));
+            return true;
+        } catch (e) {
+            // 配额仍然不够时保留最近 20 条再试一次，优先保证新生成的记录能出现在列表里。
+            try {
+                localStorage.setItem(RECORDS_KEY, JSON.stringify(arr.slice(-20)));
+                return true;
+            } catch (e2) {
+                console.warn('[NanoSecretChat] 保存记录失败，localStorage 可能已满', e2);
+                return false;
+            }
+        }
     }
 
     function recentLines(id, rounds) {
@@ -417,9 +439,12 @@
                     var g = store.get(key);
                     g.onsuccess = function () {
                         var arr = (g.result && Array.isArray(g.result.value)) ? g.result.value : [];
+                        var ts = Date.now();
                         arr.push({
-                            id: 'sc' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
-                            time: new Date().toLocaleString('zh-CN'),
+                            id: 'sc' + ts + '-' + Math.random().toString(36).slice(2, 6),
+                            ts: ts,
+                            date: new Date(ts).toISOString(),
+                            time: new Date(ts).toLocaleString('zh-CN'),
                             type: '私下对话',
                             importance: 4,
                             chatId: charId,

@@ -314,11 +314,17 @@
             notify._seen[dk] = now;
             if (Object.keys(notify._seen).length > 60) notify._seen = {};
         } catch (e) {}
+        var soundId = soundFor(opts);
+        // 当前文档有焦点 → 它自己播放（这个 iframe 一定被用户点过，AudioContext 已解锁）；
+        // 后台聊天帧没有焦点 → 交给顶层 showAppNotify 播放，避免整个应用静音。
+        var localSound = false;
+        try { localSound = !!document.hasFocus(); } catch (e) {}
+        if (localSound && soundId) {
+            try { playSound(soundId); } catch (e) {}
+        }
         // 前台统一走内置通知栏：头像 + 昵称 + 具体信息（后台走系统通知 / Web Push）
         try {
             if (isForeground()) {
-                // 只有人在前台时才播放应用内提示音
-                playSound(soundFor(opts));
                 var inAppPayload = {
                     type: 'appNotify',
                     title: title,
@@ -329,7 +335,9 @@
                     name: opts.name || title,
                     target: opts.target || '',
                     action: opts.action || '',
-                    url: opts.url || ''
+                    url: opts.url || '',
+                    sound: localSound ? false : soundId,
+                    channel: opts.channel || ''
                 };
                 if (window.top && window.top !== window && window.top.__nanoAppNotify) {
                     window.top.__nanoAppNotify(title, body, inAppPayload.app, inAppPayload);
@@ -347,7 +355,7 @@
         } catch (e) {
             try {
                 if (inApp && window.parent !== window) {
-                    window.parent.postMessage({ type: 'appNotify', title: title, body: body, app: opts.app || opts.channel || '', icon: opts.icon || '', name: opts.name || title, target: opts.target || '' }, '*');
+                    window.parent.postMessage({ type: 'appNotify', title: title, body: body, app: opts.app || opts.channel || '', icon: opts.icon || '', name: opts.name || title, target: opts.target || '', sound: localSound ? false : soundId, channel: opts.channel || '' }, '*');
                     return;
                 }
             } catch (err) {}

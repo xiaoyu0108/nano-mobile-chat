@@ -2643,6 +2643,17 @@ setTimeout(function () {
             el._lastKey = dedupeKey;
             el._lastAt = now;
 
+            // 顶层是唯一的声音出口：iframe 里的 NanoNotify 只把 sound 传过来。
+            // 这样不管通知来自哪个后台聊天帧，都不会因为该帧没有用户手势而静音。
+            try {
+                if (opts.sound !== false && window.NanoNotify && window.NanoNotify.playSound) {
+                    var _snd = opts.sound || (window.NanoNotify.soundFor
+                        ? window.NanoNotify.soundFor({ channel: opts.channel || app || '' })
+                        : '');
+                    if (_snd) window.NanoNotify.playSound(_snd);
+                }
+            } catch (e) {}
+
             el._app = app || '';
             el._action = (opts.action && opts.url) ? { label: opts.action, url: opts.url, title: opts.title || '' } : null;
             // 整条胶囊可点：优先 target；没有 target 时用 action.url 兜底
@@ -2758,6 +2769,17 @@ setTimeout(function () {
         }
 
         const refreshState = {};
+        // 线下页正在生成/总结时，外壳不能把它的 iframe 销毁（否则回线上会中断）。
+        // 用 id 分开记录「生成」和「总结」，避免其中一个结束把另一个的保活也清掉。
+        const nanoOfflineBusy = {};
+        function nanoOfflineBusyActive() {
+            const now = Date.now();
+            for (const k in nanoOfflineBusy) {
+                if (Number(nanoOfflineBusy[k]) > now) return true;
+                delete nanoOfflineBusy[k];
+            }
+            return false;
+        }
         const urlSourceMap = {};
         // 设置 → 储存/备份等二级页面：返回时先回到设置，而不是直接回桌面
         const settingsPageStack = [];
@@ -2808,6 +2830,9 @@ setTimeout(function () {
         }
         function hasActiveRefreshForFrame(f) {
             if (!f) return false;
+            try {
+                if (frameBase(f) === 'offline.html' && nanoOfflineBusyActive()) return true;
+            } catch (e) {}
             let win = null;
             try { win = f.contentWindow; } catch (e) { return false; }
             for (const k in refreshState) {
@@ -3449,6 +3474,13 @@ setTimeout(function () {
             const data = event.data;
             if (!data) return;
 
+            if (data.type === 'nanoOfflineBusy') {
+                const busyId = String(data.id || 'main');
+                if (data.busy) nanoOfflineBusy[busyId] = Date.now() + (Number(data.ttl) || 15 * 60 * 1000);
+                else delete nanoOfflineBusy[busyId];
+                return;
+            }
+
             if (data.type === 'nanoOpenApp') {
                 try { openNanoApp(data.id, data.name); } catch (e) {}
                 return;
@@ -3775,7 +3807,9 @@ setTimeout(function () {
                         name: data.name || data.title || '',
                         target: target,
                         action: data.action || '',
-                        url: data.url || ''
+                        url: data.url || '',
+                        sound: data.sound || '',
+                        channel: data.channel || ''
                     });
                     // 前台收到服务端推送：立刻拉 pending，让通知内容同步进聊天/朋友圈
                     if (data.fromPush) {
@@ -4071,7 +4105,9 @@ setTimeout(function () {
                         name: data.name || data.title || '',
                         target: target,
                         action: data.action || '',
-                        url: data.url || ''
+                        url: data.url || '',
+                        sound: data.sound || '',
+                        channel: data.channel || ''
                     });
                 } catch (e) {}
                 return;
@@ -4420,7 +4456,7 @@ setTimeout(function () {
 <script src="js/ios-bridge.js?v=20261025b"></script>
 <script src="js/auto-push-bridge.js?v=20261021b"></script>
 <script src="js/online-catchup.js?v=20261018c"></script>
-<script src="js/char-secret-chat.js?v=20261025i"></script>
+<script src="js/char-secret-chat.js?v=20261026a"></script>
 </div>
     <!-- 小号试探：居中弹窗（不暴露是谁）-->
     <div class="alt-probe-overlay" id="altProbeOverlay">

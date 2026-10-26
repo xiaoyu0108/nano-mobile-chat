@@ -711,9 +711,6 @@ function sanitizeAutoConfig(body) {
     },
     chars: chars,
     api: api,
-    // iPhone：Bark 密钥由 App 同步上来，Worker 在后台生成内容后可直接发系统通知，
-    // 不再依赖网页还活着（Web Push 订阅失败/无 GMS 时也能收到）。
-    barkKey: String(body.barkKey || '').slice(0, 500),
     updatedAt: Date.now()
   };
 }
@@ -1031,103 +1028,8 @@ function pushText(v, fallback) {
   s = String(s || '').replace(/\s*\|\|\s*/g, ' / ').trim();
   return s || String(fallback || '');
 }
-async function sendBarkKey(env, key, payload) {
-  // Bark 已下线：iOS 打开第三方推送的链接时只能用 Safari，无法回到已添加到桌面的 PWA。
-  // 后台通知统一走 Web Push；这里保留函数名只为兼容旧的调用点。
-  return false;
-  key = String(key || '').trim();
-  if (!key) return false;
-  // 允许直接粘贴完整 Bark 地址（可能自带 ?group=...）。拆出 server 根路径和设备 key，
-  // 这样 GET 路径和 POST /push 都能正确拼装，标题/正文不会再被查询串吞掉。
-  let root = 'https://api.day.app', devKey = key;
-  if (key.indexOf('http') === 0) {
-    try {
-      const u = new URL(key);
-      const segs = u.pathname.split('/').filter(Boolean);
-      devKey = segs.length ? segs.pop() : '';
-      root = u.origin + (segs.length ? '/' + segs.join('/') : '');
-    } catch (e) {
-      root = 'https://api.day.app';
-    }
-  }
-  // 标题优先用角色昵称，正文用真实气泡内容；避免只推 "Nano / 你有一条新消息"。
-  let title = pushText(payload.name || payload.title, 'Nano');
-  // 极少数旧客户端会把字段名当值传上来（"title"/"body"），这里直接丢弃。
-  if (/^(title|body|undefined|null)$/i.test(title)) title = pushText(payload.name, 'Nano');
-  let body = '';
-  if (Array.isArray(payload.bubbles) && payload.bubbles.length) {
-    body = payload.bubbles.map(function (b) { return pushText(b, ''); }).filter(Boolean).join('\n');
-  }
-  body = pushText(body || payload.body || payload.text || payload.preview, '').slice(0, 300);
-  if (/^(title|body|undefined|null)$/i.test(body)) body = '';
-  // 没有真实内容就不发：宁可交给 Web Push，也不要用通用占位文案刷屏。
-  if (!body) return false;
-  const group = pushText(payload.name || payload.title || payload.channel, 'Nano');
-  let openUrl = '';
-  if (payload.target) {
-    const app = String(env.APP_URL || 'https://xiaoyu0108.github.io/nano-mobile-chat/').replace(/\/+$/, '');
-    openUrl = app + '/index.html?open=' + encodeURIComponent(payload.target);
-  }
-
-  async function barkGet() {
-    let url = root + '/' + encodeURIComponent(devKey || '') + '/' + encodeURIComponent(title) + '/' + encodeURIComponent(body);
-    // active 才会在锁屏/后台弹横幅；sound=none 关掉提示音（避免保活时又响又震）
-    const q = [
-      'group=' + encodeURIComponent(group),
-      'level=active',
-      'sound=none'
-    ];
-    if (openUrl) q.push('url=' + encodeURIComponent(openUrl));
-    if (payload.icon && /^https?:/i.test(String(payload.icon))) q.push('icon=' + encodeURIComponent(payload.icon));
-    url += '?' + q.join('&');
-    try {
-      const resp = await fetch(url);
-      if (!resp || !resp.ok) return false;
-      // Bark 正常返回 { code: 200 }；非 200 视为失败，交给 POST / Web Push 兜底。
-      try {
-        const data = await resp.json();
-        if (data && data.code != null && Number(data.code) !== 200) return false;
-      } catch (e) {}
-      return true;
-    } catch (e) { return false; }
-  }
-
-  // GET 路径接口优先：官方 Bark 和多数自建 Bark 都能正确带上标题/正文。
-  // POST /push 只作兜底——有些自建服务接受 POST 却丢掉 title/body，会弹出没有名字和内容的通知。
-  if (devKey && await barkGet()) return true;
-  if (!devKey) return false;
-  try {
-    const postUrl = root.replace(/\/+$/, '') + '/push';
-    const resp = await fetch(postUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        device_key: devKey, title: title, body: body,
-        group: group, level: 'active', sound: 'none',
-        url: openUrl || undefined,
-        icon: (payload.icon && /^https?:/i.test(String(payload.icon))) ? String(payload.icon) : undefined
-      })
-    });
-    if (!resp || !resp.ok) return false;
-    try {
-      const data = await resp.json();
-      return !data || data.code == null || Number(data.code) === 200;
-    } catch (e) {
-      // 返回 HTML/空内容说明服务端没真正接收 JSON 推送，不能当成功。
-      return false;
-    }
-  } catch (e) { return false; }
-}
-
-// 后台推送：用户填了 Bark 就优先走 Bark（iPhone 上不依赖 Web Push / GMS，也更省电），
-// Bark 明确失败时再用 Web Push 兜底；没填 Bark 则只走 Web Push。
-// 之前是 Web Push 优先：只要有一个「能返回 200 但实际不显示」的旧订阅，Bark 就永远不会发。
+// 后台推送只走 Web Push。Bark 已彻底移除。
 async function autoNotify(env, cfg, subs, payload) {
-  const key = String((cfg && cfg.barkKey) || '').trim();
-  if (key) {
-    const ok = await sendBarkKey(env, key, payload);
-    if (ok) return 1;
-  }
   if (subs && subs.length) {
     try { return await pushAll(subs, payload, env); } catch (e) { return 0; }
   }
@@ -1503,6 +1405,15 @@ function linkDecodeHtml(s) {
 function linkAbsImg(u) {
   u = linkDecodeHtml(String(u || '')).replace(/\\\//g, '/').replace(/&amp;/g, '&');
   if (!u) return '';
+  // 小红书会把 CDN 图片再包一层：https://ci.xiaohongshu.com/http://sns-webpic...
+  try {
+    const nested = u.match(/^https?:\/\/[^/]+\/(.+)$/i);
+    if (nested) {
+      let inner = nested[1];
+      try { inner = decodeURIComponent(inner); } catch (e) {}
+      if (/^https?:\/\//i.test(inner)) u = inner;
+    }
+  } catch (e) {}
   if (u.indexOf('//') === 0) u = 'https:' + u;
   if (/^http:\/\//i.test(u)) u = 'https://' + u.slice(7);
   if (!/^https?:\/\//i.test(u)) return '';
@@ -2685,6 +2596,104 @@ export default {
       return json(Object.assign({ ok: true }, data));
     }
 
+    // 图片代理：GET /image?url=https://sns-webpic-qc.xhscdn.com/...
+    // 小红书/抖音图片有防盗链，直接交给模型中转站下载会 404/403，整轮请求变 500。
+    if (pathname === '/image' && request.method === 'GET') {
+      if (!autoOk(request, env, null)) return json({ ok: false, error: 'unauthorized' }, 401);
+      let target = '';
+      try { target = new URL(request.url).searchParams.get('url') || ''; } catch (e) {}
+      let iu = null;
+      try {
+        iu = new URL(target);
+        if (iu.protocol === 'http:') iu.protocol = 'https:';
+      } catch (e) {}
+      if (!iu || iu.protocol !== 'https:') return json({ ok: false, error: 'bad url' }, 400);
+      const host = String(iu.hostname || '').toLowerCase();
+      const allowed = /(^|\.)(xhscdn\.com|xiaohongshu\.com|douyinpic\.com|byteimg\.com|iesdouyin\.com|alicdn\.com|taobao\.com|tmall\.com|hdslb\.com|bilibili\.com|sinaimg\.cn|weibo\.cn)$/i.test(host);
+      if (!allowed) return json({ ok: false, error: 'host not allowed' }, 403);
+      const ref = /xiaohongshu|xhscdn/i.test(host) ? 'https://www.xiaohongshu.com/' :
+        (/douyin|byteimg/i.test(host) ? 'https://www.douyin.com/' :
+          (/alicdn|taobao|tmall/i.test(host) ? 'https://www.taobao.com/' : 'https://www.bilibili.com/'));
+      let resp = null;
+      try {
+        resp = await fetch(iu.href, {
+          redirect: 'follow',
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+            'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+            'Referer': ref
+          }
+        });
+      } catch (e) {}
+      if (!resp || !resp.ok) return json({ ok: false, error: 'download failed' }, 502);
+      // 跟随跳转后再确认一次，避免被 302 到非白名单站点。
+      try {
+        const finalHost = String(new URL(resp.url || iu.href).hostname || '').toLowerCase();
+        if (!/(^|\.)(xhscdn\.com|xiaohongshu\.com|douyinpic\.com|byteimg\.com|iesdouyin\.com|alicdn\.com|taobao\.com|tmall\.com|hdslb\.com|bilibili\.com|sinaimg\.cn|weibo\.cn)$/i.test(finalHost)) {
+          return json({ ok: false, error: 'redirect host not allowed' }, 403);
+        }
+      } catch (e) {}
+      const buf = await resp.arrayBuffer();
+      if (!buf || buf.byteLength > 3 * 1024 * 1024) return json({ ok: false, error: 'too large' }, 413);
+      return new Response(buf, {
+        headers: Object.assign({}, CORS, {
+          'Content-Type': resp.headers.get('content-type') || 'image/jpeg',
+          'Cache-Control': 'public, max-age=86400'
+        })
+      });
+    }
+
+    // 免费翻译：GET/POST /translate?text=...&to=zh-CN
+    // 走 Cloudflare 出口请求免费接口，绕开浏览器 CORS／部分地区被墙；不消耗模型 API。
+    if (pathname === '/translate' && (request.method === 'GET' || request.method === 'POST')) {
+      if (!autoOk(request, env, null)) return json({ ok: false, error: 'unauthorized' }, 401);
+      let text = '', to = 'zh-CN';
+      try {
+        if (request.method === 'GET') {
+          const u = new URL(request.url);
+          text = u.searchParams.get('text') || u.searchParams.get('q') || '';
+          to = u.searchParams.get('to') || 'zh-CN';
+        } else {
+          const b = await request.json().catch(function () { return {}; });
+          text = b.text || b.q || '';
+          to = b.to || 'zh-CN';
+        }
+      } catch (e) {}
+      text = String(text || '').slice(0, 4000);
+      if (!text.trim()) return json({ ok: false, error: 'empty' }, 400);
+      const target = /^zh/i.test(String(to)) ? 'zh-CN' : (String(to).replace(/[^a-zA-Z-]/g, '').slice(0, 20) || 'zh-CN');
+      let out = '';
+      try {
+        const gu = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=' +
+          encodeURIComponent(target) + '&dt=t&q=' + encodeURIComponent(text);
+        const gr = await fetch(gu, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+        if (gr && gr.ok) {
+          const gj = await gr.json();
+          if (Array.isArray(gj) && Array.isArray(gj[0])) {
+            out = gj[0].map(function (x) { return (x && x[0]) || ''; }).join('').trim();
+          }
+        }
+      } catch (e) {}
+      if (!out) {
+        try {
+          const src = /[\u3040-\u30ff]/.test(text) ? 'ja' :
+            (/[\uac00-\ud7af]/.test(text) ? 'ko' :
+              (/[\u0400-\u04ff]/.test(text) ? 'ru' :
+                (/[\u0600-\u06ff]/.test(text) ? 'ar' : 'en')));
+          const mu = 'https://api.mymemory.translated.net/get?q=' + encodeURIComponent(text.slice(0, 500)) +
+            '&langpair=' + encodeURIComponent(src + '|' + target);
+          const mr = await fetch(mu, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+          if (mr && mr.ok) {
+            const mj = await mr.json();
+            if (mj && !mj.quotaFinished && Number(mj.responseStatus) === 200) {
+              out = String((mj.responseData && mj.responseData.translatedText) || '').trim();
+            }
+          }
+        } catch (e) {}
+      }
+      return json({ ok: !!out, text: out, via: 'worker' });
+    }
+
     // 实时热点：GET /hot?source=weibo|douyin|baidu|toutiao|bilibili
     // 不写 KV，给 MCP 的 get_hot_topics 工具用。
     if (pathname === '/hot' && request.method === 'GET') {
@@ -3094,9 +3103,6 @@ export default {
       let oldCfg = null;
       if (oldCfgRaw) {
         try { oldCfg = JSON.parse(oldCfgRaw); } catch (e) { oldCfg = null; }
-        // 客户端偶尔读不到 Bark key（localforage 还没加载完）时会传空字符串。
-        // 空值不要覆盖服务端已有的 key，否则后台推送会突然全部消失。
-        if (oldCfg && oldCfg.barkKey && !cfg.barkKey) cfg.barkKey = oldCfg.barkKey;
         try { cfgChanged = autoConfigSig(oldCfg) !== autoConfigSig(cfg); } catch (e) { cfgChanged = true; }
       }
       if (cfgChanged) await kv(env).put(cfgKey, JSON.stringify(cfg));
@@ -3476,9 +3482,8 @@ export default {
     return json({ ok: true, info: 'nano-push alive', build: '2026-10-25-r2-live' });
   },
 
-  // 每 5 分钟触发：到点给 Bark 发提醒 + 处理 KV 里的预约任务
+  // 每 5 分钟触发：处理 KV 里的预约任务 + 无后台主动消息 / 朋友圈
   async scheduled(event, env, ctx) {
-    try { await sendBarkReminder(env); } catch (e) {}
     try { await cleanupExpiredD1(env); } catch (e) {}
     // 无后台主动消息 / 朋友圈：每台设备 + 每个用户单独跑自己的配置。
     // 旧前缀 auto:config: 不再执行，避免旧 Nano 和新纳米同时给同一台手机发消息。
@@ -3529,43 +3534,11 @@ export default {
       let job;
       try { job = JSON.parse(raw); } catch (e) { continue; }
       const jobPayload = { title: job.title || 'Nano', body: job.body || '', target: job.target || '', appId: cleanAppId(job.appId) };
-      let sent = 0;
-      // 用户明确留了 Bark 密钥：优先走 Bark，失败再用 Web Push 兜底。
-      if (job.barkKey) {
-        try { if (await sendBarkKey(env, job.barkKey, jobPayload)) sent = 1; } catch (e) { sent = 0; }
-      }
-      if (!sent) {
-        let subs = await jobSubs(job);
-        if (subs.length) { try { sent = await pushAll(subs, jobPayload, env); } catch (e) { sent = 0; } }
-      }
-      // 旧任务没有 appId 时才使用全局 BARK_KEY，避免旧配置把消息发到别人手机。
-      if (!sent && !job.barkKey && !job.appId && env.BARK_KEY) {
-        try { await sendBarkKey(env, env.BARK_KEY, jobPayload); } catch (e) {}
-      }
+      const subs = await jobSubs(job);
+      if (subs.length) { try { await pushAll(subs, jobPayload, env); } catch (e) {} }
     }
   }
 };
-
-// Bark 已下线：定时提醒不再发送（保留函数只为兼容旧部署的调用点）
-async function sendBarkReminder(env) {
-  return;
-  const key = env.BARK_KEY;
-  if (!key) return;
-  const times = String(env.REMIND_TIMES || '').split(',').map((s) => s.trim()).filter(Boolean);
-  const text = String(env.REMIND_TEXT || '').trim();
-  // 没有再配置自定义提醒文案时不要发「有人想你了」这类通用占位通知：
-  // 真实的主动消息 / 朋友圈会带角色昵称和具体内容，混在一起会让 Bark 看起来只有 title/body。
-  if (!times.length || !text) return;
-  // 旧版默认文案即使还留在 Cloudflare 环境变量里，也不再发送。
-  if (text === '有人想你了，点开看看～') return;
-  // 换算北京时间
-  const bj = new Date(Date.now() + 8 * 3600 * 1000);
-  const cur = String(bj.getUTCHours()).padStart(2, '0') + ':' + String(bj.getUTCMinutes()).padStart(2, '0');
-  if (!times.includes(cur)) return;
-  const base = String(key).indexOf('http') === 0 ? String(key).replace(/\/+$/, '') : ('https://api.day.app/' + encodeURIComponent(key));
-  const url = base + '/' + encodeURIComponent('Nano 提醒') + '/' + encodeURIComponent(text) + '?group=Nano&level=passive';
-  try { await fetch(url); } catch (e) {}
-}
 
 async function getSubs(env, userId, deviceId, appId) {
   const out = [];

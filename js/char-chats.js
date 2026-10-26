@@ -114,13 +114,10 @@
 
     function loadRecords() {
         var arr = parseJson(localStorage.getItem(RECORDS_KEY), []);
-        var mask = homeMask();
-        var boundIds = {};
-        bound.forEach(function (c) { boundIds[String(c.id)] = 1; });
+        // 不再按当前 user / 绑定角色过滤：只要记录本身完整就展示。
+        // 否则自动生成、切换 user、或角色后来解绑时，记录会「生成了但列表里没有」。
         return (Array.isArray(arr) ? arr : []).filter(function (r) {
-            if (!r || !r.a || !r.b || !Array.isArray(r.lines) || !r.lines.length) return false;
-            if (r.maskId && String(r.maskId) !== String(mask.id)) return false;
-            return boundIds[String(r.a.id)] && boundIds[String(r.b.id)];
+            return !!(r && r.a && r.b && Array.isArray(r.lines) && r.lines.length);
         }).sort(function (x, y) { return (y.at || 0) - (x.at || 0); });
     }
 

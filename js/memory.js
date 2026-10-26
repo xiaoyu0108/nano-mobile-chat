@@ -1068,6 +1068,16 @@
     // ============================================================
     // 渲染记忆列表
     // ============================================================
+    function memTs(item) {
+        if (!item) return 0;
+        const ts = Number(item.ts);
+        if (ts > 0) return ts;
+        const d = Date.parse(item.date);
+        if (!isNaN(d)) return d;
+        const t = Date.parse(item.time);
+        return isNaN(t) ? 0 : t;
+    }
+
     async function renderMemoryList() {
         try {
             const chatId = getChatId();
@@ -1106,7 +1116,7 @@
                 return;
             }
 
-            const sorted = shown.sort((a, b) => new Date(b.date) - new Date(a.date));
+            const sorted = shown.slice().sort((a, b) => memTs(b) - memTs(a));
             const typeColors = {
                 '重要事件': '#ff3b30', '用户偏好': '#ff9500', '社交关系': '#af52de',
                 '地理位置': '#34c759', '情感状态': '#ff2d55', '项目进展': '#007aff'
@@ -1132,8 +1142,10 @@
 
                 const date = document.createElement('span');
                 date.className = 'memory-date';
-                const d = new Date(item.date);
-                date.textContent = d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+                const ts = memTs(item);
+                date.textContent = ts
+                    ? new Date(ts).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+                    : '—';
 
                 const tags = document.createElement('div');
                 tags.className = 'memory-tags';
@@ -1194,7 +1206,7 @@
         if (!item) return;
         currentEditId = id;
         modalTextarea.value = item.content || '';
-        modalDate.textContent = new Date(item.date).toLocaleString('zh-CN');
+        modalDate.textContent = memTs(item) ? new Date(memTs(item)).toLocaleString('zh-CN') : (item.time || '—');
         modalMemType.textContent = (item.type || '其他') + ' · ' + (item.source === 'auto' ? '自动' : '手动');
         modalRelatedChar.textContent = item.relatedChar || '未知';
         modalVectorStatus.textContent = item.hasVector ? '已向量化 (' + (item.embedding?.length || 0) + '维)' : '未向量化（纯文本）';

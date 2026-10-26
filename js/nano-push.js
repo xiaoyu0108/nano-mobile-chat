@@ -258,6 +258,9 @@
                     subscription: sub.toJSON ? sub.toJSON() : sub,
                     userId: currentAutoUserId(),
                     deviceId: autoDeviceId(),
+                    // 必须带上 appId：Worker 按 sub2:<appId>:<deviceId>:<userId> 存订阅，
+                    // 漏传会被存成 legacy，之后服务端自动推送就查不到这个订阅。
+                    appId: appId(),
                     ua: navigator.userAgent,
                     platform: platform().android ? 'android' : (platform().ios ? 'ios' : 'other'),
                     ts: Date.now()

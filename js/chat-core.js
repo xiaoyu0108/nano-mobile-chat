@@ -1832,6 +1832,16 @@
         } catch (e) { return ''; }
     }
 
+    function __memTs(it) {
+        if (!it) return 0;
+        const ts = Number(it.ts);
+        if (ts > 0) return ts;
+        const d = Date.parse(it.date);
+        if (!isNaN(d)) return d;
+        const t = Date.parse(it.time);
+        return isNaN(t) ? 0 : t;
+    }
+
     function refreshMemoryHints() {
         if (typeof indexedDB === 'undefined' || !chatId) return Promise.resolve();
         __groupMemHint = '';
@@ -1848,11 +1858,13 @@
             const priv = list.filter(function(it){ return !(it && it.groupId); });
             const must = priv.filter(function(it){ return Number(it && it.importance) >= 4; });
             const rest = priv.filter(function(it){ return !(Number(it && it.importance) >= 4); });
-            const picked = must.concat(rest.slice(-40));
+            // 选完之后再按时间正序排列，保证注入给模型的记忆线从旧到新。
+            const picked = must.concat(rest.slice(-40)).sort(function(a, b) { return __memTs(a) - __memTs(b); });
             __memHints = picked.length ? picked.map(function(it) { return '· ' + (it.content || it.text || ''); }).join('\n') : '';
             // 群聊总结卡片（带 groupId 的记忆）：单聊里也读取，实现群聊↔单聊互通
             const grp = list.filter(function(it){ return it && it.groupId; });
-            __groupMemHint = grp.length ? grp.slice(-16).map(function(it) { return '· ' + (it.content || it.text || ''); }).join('\n') : '';
+            __groupMemHint = grp.length ? grp.slice().sort(function(a, b) { return __memTs(a) - __memTs(b); }).slice(-16)
+                .map(function(it) { return '· ' + (it.content || it.text || ''); }).join('\n') : '';
         }).then(function () {
             // 小号：读取大号的最新 2 轮私聊，掌握 TA 的近况
             const originId = (characterData && characterData.isAltProbe && characterData.altOriginId) ? String(characterData.altOriginId) : '';
@@ -2031,8 +2043,9 @@
         });
     }
 
-    function __memParseSummary(summary, charName) {
+    function __memParseSummary(summary, charName, baseTs) {
         const items = [];
+        const startedAt = Number(baseTs) || Date.now();
         const lines = (summary || '').split('\n').map(function(l) { return l.trim(); }).filter(function(l) { return l; });
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
@@ -2040,13 +2053,15 @@
             const match = line.match(/^【(.+?)】/);
             if (match) { type = match[1]; content = line.replace(/^【.+?】/, '').trim(); }
             if (!content) continue;
+            const ts = startedAt + i;
             items.push({
                 id: 'mem_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
                 type: type,
                 content: content,
                 embedding: null,
                 hasVector: false,
-                date: new Date().toISOString(),
+                ts: ts,
+                date: new Date(ts).toISOString(),
                 relatedChar: charName,
                 chatId: chatId,
                 source: 'auto'
@@ -2059,6 +2074,8 @@
         // 记忆卡片以 chatId 为 key 存在 config 存储（与记忆页读取一致）
         // 小号聊天产生的记忆统一计入大号（origin）记忆库
         if (!item || item.chatId == null) return Promise.resolve();
+        if (!item.ts) item.ts = Date.parse(item.date) || Date.now();
+        if (!item.date) item.date = new Date(item.ts).toISOString();
         if (window.NanoMemLink && window.NanoMemLink.append) {
             return window.NanoMemLink.append(item.chatId, [item]);
         }
@@ -2090,7 +2107,8 @@
                 const summarized = (state && state.summarizedCount) || 0;
                 const unsummed = messages.length - summarized;
                 if (unsummed < threshold) { __autoSummaryBusy = false; return null; }
-                return { summarized: summarized, segment: messages.slice(summarized), url: url, key: key, model: model };
+                const first = messages[summarized] || {};
+                return { summarized: summarized, segment: messages.slice(summarized), url: url, key: key, model: model, baseTs: Number(first.ts) || Date.now() };
             });
         }).then(function(res) {
             if (!res || !res.segment || res.segment.length === 0) { __autoSummaryBusy = false; return null; }
@@ -2108,11 +2126,11 @@
             }).join('\n');
             if (!chatText.trim()) { __autoSummaryBusy = false; return null; }
             return __memCallLlm(res.url, res.key, res.model, chatText, charName, currentUser)
-                .then(function(summary) { return { summary: summary, count: res.segment.length }; });
+                .then(function(summary) { return { summary: summary, count: res.segment.length, baseTs: res.baseTs }; });
         }).then(function(res2) {
             __autoSummaryBusy = false;
             if (!res2 || !res2.summary || !res2.summary.trim()) return null;
-            const items = __memParseSummary(res2.summary, charName);
+            const items = __memParseSummary(res2.summary, charName, res2.baseTs);
             if (items.length === 0) return null;
             // 尝试向量化（若本页配置了 Embedding API）
             return Promise.all([
@@ -3179,6 +3197,14 @@
     });
 
     function createMessageRow(type, text, time, status, id, recalled, isCard, cardData, transcript, translation, quote, isVoice, voiceData, isImage, imageData, grouped, linkPreview) {
+        // 手动翻译用户自己的气泡时，固定用独立译文气泡显示；其余仍跟随聊天设置。
+        let __translationSeparate = translationSeparate();
+        if (translation && id) {
+            try {
+                const __tm = messages.find(function (m) { return m && m.id === id; });
+                if (__tm && __tm.translationSeparate) __translationSeparate = true;
+            } catch (e) {}
+        }
         const rowId = id || 'msg_' + (++messageIdCounter);
         const row = document.createElement('div');
         row.className = 'message-row ' + type;
@@ -3286,7 +3312,7 @@
                 transDiv.className = 'voice-transcript';
                 transDiv.textContent = transcript;
                 bub.appendChild(transDiv);
-                if (translation && !translationSeparate()) {
+                if (translation && !__translationSeparate) {
                     const transSpan = document.createElement('span');
                     transSpan.className = 'translation-text ' + (type === 'left' ? 'other' : 'me');
                     transSpan.textContent = translation;
@@ -3295,7 +3321,7 @@
                 content.appendChild(bub);
             }
             // 语音的译文独立气泡：和文字消息一样，一个语音气泡配一条翻译。
-            if (translation && translationSeparate()) {
+            if (translation && __translationSeparate) {
                 const transEl = document.createElement('div');
                 transEl.className = 'translation-bubble translation-text ' + (type === 'left' ? 'other' : 'me');
                 transEl.textContent = translation;
@@ -3436,7 +3462,7 @@
                 }
                 // 译文：可选「独立气泡」或「与原文同一气泡」，可在聊天设置里切换 / 美化里调样式
                 if (translation) {
-                    if (translationSeparate()) {
+                    if (__translationSeparate) {
                         const transEl = document.createElement('div');
                         transEl.className = 'translation-bubble translation-text ' + (type === 'left' ? 'other' : 'me');
                         transEl.textContent = translation;
@@ -7736,6 +7762,16 @@
     function _absImg(u) {
         u = _decHtml(String(u || '')).replace(/\\\//g, '/').replace(/&amp;/g, '&');
         if (!u) return '';
+        // 小红书有时会把 CDN 图片再包一层：https://ci.xiaohongshu.com/http://sns-webpic...
+        // 这种地址直接发给模型会被上游当成坏链接，整轮请求 500。
+        try {
+            var nested = u.match(/^https?:\/\/[^/]+\/(.+)$/i);
+            if (nested) {
+                var inner = nested[1];
+                try { inner = decodeURIComponent(inner); } catch (e) {}
+                if (/^https?:\/\//i.test(inner)) u = inner;
+            }
+        } catch (e) {}
         if (u.indexOf('//') === 0) u = 'https:' + u;
         if (/^http:\/\//i.test(u)) u = 'https://' + u.slice(7);
         if (!/^https?:\/\//i.test(u)) return '';
@@ -7929,6 +7965,32 @@
             .catch(function () { return fromProxy(0); })
             .catch(function () { return null; });
     }
+    // 防盗链 CDN 的图片先经 Worker 代理下载成 dataURL；代理不可用时宁可不发图，
+    // 也不要让中转站自己下载失败后把整轮 chat/completions 打成 500。
+    async function linkImageForModel(url) {
+        url = String(url || '').trim();
+        if (!url) return '';
+        if (/^data:image\//i.test(url)) return url;
+        if (!/^https?:\/\//i.test(url)) return '';
+        if (!/(xhscdn|xiaohongshu|douyinpic|byteimg|hdslb|sinaimg|alicdn)/i.test(url)) return url;
+        try {
+            var base = autoPushBase();
+            if (!base) return '';
+            var tok = autoPushToken() || '';
+            var r = await fetch(base + '/image?url=' + encodeURIComponent(url) + (tok ? ('&token=' + encodeURIComponent(tok)) : ''), { cache: 'no-store' });
+            if (!r.ok) return '';
+            var blob = await r.blob();
+            if (!blob || !/^image\//i.test(blob.type || '') || blob.size > 3 * 1024 * 1024) return '';
+            return await new Promise(function (resolve) {
+                try {
+                    var fr = new FileReader();
+                    fr.onload = function () { resolve(String(fr.result || '')); };
+                    fr.onerror = function () { resolve(''); };
+                    fr.readAsDataURL(blob);
+                } catch (e) { resolve(''); }
+            });
+        } catch (e) { return ''; }
+    }
     async function buildLinkContext(text) {
         var links = findSharedLinks(text);
         if (!links.length) return { text: '', images: [] };
@@ -7944,7 +8006,10 @@
                 var body = c.content || c.desc || '';
                 if (body) block += '\n内容 / 文案（可能包含正文、评论或热评）：\n' + body;
                 if (share) block += '\n用户分享时附带的文字：' + share;
-                if (c.image && images.indexOf(c.image) === -1) images.push(c.image);
+                if (c.image && images.indexOf(c.image) === -1) {
+                    var safeImg = await linkImageForModel(c.image);
+                    if (safeImg && images.indexOf(safeImg) === -1) images.push(safeImg);
+                }
             } else {
                 // 小红书/抖音对机房 IP 很严格，抓不到正文时至少把用户发来的分享文案
                 // 当成标题+内容，不能让模型只看到一条光秃秃的链接。
@@ -8034,7 +8099,7 @@
                 if (findSharedLinks(__linkSrc).length) {
                     var __linkInfo = await buildLinkContext(__linkSrc);
                     if (__linkInfo && __linkInfo.text) extraContext = extraContext ? (extraContext + '\n\n' + __linkInfo.text) : __linkInfo.text;
-                    if (__linkInfo && Array.isArray(__linkInfo.images)) __linkImages = __linkInfo.images.slice(0, 4);
+                    if (__linkInfo && Array.isArray(__linkInfo.images)) __linkImages = __linkInfo.images.slice(0, 2);
                 }
             } catch (e) {}
 
@@ -11671,6 +11736,7 @@ if (callCard) {
         if (!val) { showAlert('无法保存', '消息内容不能为空。'); return; }
         editTargetMsg.text = val;
         editTargetMsg.translation = null;
+        editTargetMsg.translationSeparate = false;
         closeEditPopup();
         renderMessages();
         saveMessages();
@@ -11750,21 +11816,45 @@ if (callCard) {
                 }
                 saveMessages();
             } else if (action === 'translate') {
-                if (!msg.translation) {
-                    if (window.parent !== window) {
-                        window.parent.postMessage({ type: 'alert', message: '正在翻译...' }, '*');
+                // 角色消息的翻译保持原来的主 API / 正文一次输出逻辑，不动；
+                // 只有用户自己发出去的消息用免费翻译（浏览器端侧 / 免费接口），失败也不回退主 API。
+                let translated = '';
+                if (msg.type === 'right') {
+                    if (!isForeignText(msg.text)) {
+                        showAlert('无需翻译', '这条消息已经是中文了');
+                        return;
                     }
+                    if (window.parent !== window) {
+                        window.parent.postMessage({ type: 'alert', message: '正在免费翻译...' }, '*');
+                    }
+                    try {
+                        if (window.NanoTranslate && window.NanoTranslate.toZh) {
+                            translated = await window.NanoTranslate.toZh(msg.text);
+                        }
+                    } catch (e) {}
+                    if (!translated) {
+                        showAlert('免费翻译失败', '当前浏览器或网络不支持免费翻译，请稍后重试');
+                        return;
+                    }
+                } else {
+                    if (!msg.translation) {
+                        if (window.parent !== window) {
+                            window.parent.postMessage({ type: 'alert', message: '正在翻译...' }, '*');
+                        }
+                    }
+                    translated = await translateToZh(msg.text);
                 }
-                const translated = await translateToZh(msg.text);
                 if (translated) {
                     msg.translation = translated;
+                    // 用户自己的消息手动翻译后，固定显示成独立译文气泡。
+                    if (msg.type === 'right') msg.translationSeparate = true;
                     renderMessages();
                     saveMessages();
                     if (window.parent !== window) {
                         window.parent.postMessage({ type: 'alert', message: '翻译完成' }, '*');
                     }
                 } else {
-                    showAlert('翻译失败', '未配置 API 或网络异常，请检查 API 设置');
+                    showAlert('翻译失败', msg.type === 'right' ? '免费翻译暂不可用' : '未配置 API 或网络异常，请检查 API 设置');
                 }
             } else if (action === 'voice2text') {
                 const transcript = '语音转文字 ' + msg.text;

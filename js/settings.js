@@ -65,7 +65,9 @@ const APP_ICONS = {
   var currentUser = null;
 
   var NN = null;
-  try { NN = window.parent && window.parent.NanoNotify ? window.parent.NanoNotify : window.NanoNotify; } catch (e) {}
+  // 优先用当前文档自己的 NanoNotify：试听发生在当前 iframe 的用户手势里，
+  // 用父窗口的实例经常拿不到手势，AudioContext 一直 suspended，听起来就是没声音。
+  try { NN = window.NanoNotify || (window.parent && window.parent.NanoNotify ? window.parent.NanoNotify : null); } catch (e) {}
   var NP = null;
   try { NP = window.parent && window.parent.NanoPush ? window.parent.NanoPush : window.NanoPush; } catch (e) {}
 
