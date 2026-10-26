@@ -1,10 +1,10 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<script src="../js/nano-runtime.js?v=20261023a"></script>
+<script src="../js/nano-runtime.js?v=20261026d"></script>
 <script src="../js/nano-idb.js"></script>
 <script>window.__NANO_FONT_ONLY = true;</script>
-<script src="../js/appearance.js"></script>
+<script src="../js/appearance.js?v=20261026d"></script>
 <script src="../js/schedule-bridge.js?v=20261019d"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
@@ -509,12 +509,27 @@ function mockDay(date){
 const mockGen=ds=>ds.flatMap(mockDay);
 function mk(o){return {id:uid(),status:'todo',log:[],title:'',place:'',who:'',note:'',mood:'',tag:'life',...o}}
 function norm(e,ds){
-  const tm=t=>{const m=/^(\d{1,2}):(\d{2})$/.exec(String(t||'').trim());return m?`${pad(+m[1])}:${m[2]}`:null};
-  const s=tm(e.start),en=tm(e.end);
-  if(!e||!ds.includes(e.date)||!s||!en||!e.title)return null;
+  if(!e||typeof e!=='object')return null;
+  // 模型常返回「9:5 / 09：05 / 9点05」这类时间，先统一成 HH:MM。
+  const tm=t=>{
+    let x=String(t==null?'':t).trim().replace(/：/g,':');
+    let m=/^(\d{1,2}):(\d{1,2})$/.exec(x);
+    if(!m)m=/^(\d{1,2})\s*[点時时]\s*(\d{1,2})?$/.exec(x);
+    if(!m)return null;
+    const h=+m[1],mi=+(m[2]||0);
+    if(h>23||mi>59)return null;
+    return `${pad(h)}:${pad(mi)}`;
+  };
+  let date=String(e.date||'').trim().replace(/[\/.]/g,'-');
+  if(/^(今天|今日)$/.test(date)&&ds[0])date=ds[0];
+  else if(/^(明天|明日)$/.test(date)&&(ds[1]||ds[0]))date=ds[1]||ds[0];
+  else if(/^(后天|後天)$/.test(date)&&(ds[2]||ds[ds.length-1]))date=ds[2]||ds[ds.length-1];
+  const s=tm(e.start||e.startTime||e.from),en=tm(e.end||e.endTime||e.to);
+  const title=String(e.title||e.name||e.what||'').trim();
+  if(!ds.includes(date)||!s||!en||!title)return null;
   // 跨夜安排（如 23:00-07:00）：日程按当天显示到 23:59，避免整条被丢掉
   const end=toMin(en)<=toMin(s)?'23:59':en;
-  return mk({date:e.date,start:s,end,title:String(e.title),place:String(e.place||''),who:String(e.who||e.with||''),note:String(e.note||''),mood:String(e.mood||''),tag:TAGS[e.tag]?e.tag:'life'});
+  return mk({date,start:s,end,title,place:String(e.place||e.location||''),who:String(e.who||e.with||e.people||''),note:String(e.note||e.desc||e.detail||''),mood:String(e.mood||e.feeling||''),tag:TAGS[e.tag]?e.tag:'life'});
 }
 
 /* ---------- 主 API / 生图接口 ---------- */
@@ -616,13 +631,60 @@ function resumeImgJob(){
   }
   return true;
 }
+// 容错解析：模型偶尔会在 JSON 前后写解释、字符串里带真实换行、末尾多逗号，
+// 或者输出到一半被 max_tokens 截断。尽量把已生成的内容救回来，而不是整段丢弃。
+function repairJsonText(text){
+  let t=String(text==null?'':text).replace(/^\uFEFF/,'').trim();
+  t=t.replace(/```(?:json)?/gi,'').replace(/```/g,'').trim();
+  const first=t.search(/[\[{]/);
+  if(first>0)t=t.slice(first);
+  let out='',stack=[],inStr=false,esc=false,started=false;
+  for(let i=0;i<t.length;i++){
+    const ch=t[i];
+    if(inStr){
+      if(esc){out+=ch;esc=false}
+      else if(ch==='\\'){out+=ch;esc=true}
+      else if(ch==='"'){out+=ch;inStr=false}
+      else if(ch==='\n'){out+='\\n'}
+      else if(ch==='\r'){}
+      else if(ch==='\t'){out+='\\t'}
+      else out+=ch;
+    }else{
+      if(ch==='"'){inStr=true;out+=ch}
+      else if(ch==='{'){started=true;stack.push('}');out+=ch}
+      else if(ch==='['){started=true;stack.push(']');out+=ch}
+      else if(ch==='}'||ch===']'){
+        if(stack.length&&stack[stack.length-1]===ch)stack.pop();
+        out+=ch;
+        if(started&&!stack.length)break;
+      }else out+=ch;
+    }
+  }
+  if(inStr){if(esc)out=out.slice(0,-1);out+='"';}
+  while(stack.length)out+=stack.pop();
+  return out.replace(/,\s*([}\]])/g,'$1');
+}
+function looseJson(text){
+  const raw=String(text==null?'':text).trim();
+  if(!raw)return null;
+  const candidates=[raw];
+  const a=raw.indexOf('{'),b=raw.lastIndexOf('}'),c=raw.indexOf('['),d=raw.lastIndexOf(']');
+  const s=Math.min(...[a,c].filter(i=>i>=0));
+  const e=Math.max(b,d);
+  if(s>=0&&e>s)candidates.push(raw.slice(s,e+1));
+  candidates.push(repairJsonText(raw));
+  for(const t of candidates){
+    try{return JSON.parse(t)}catch(err){}
+  }
+  return null;
+}
 function parseEventsText(txt,ds){
-  let t=String(txt||'').replace(/```json|```/g,'');
-  const a=t.indexOf('{'),b=t.lastIndexOf('}');
-  if(a<0||b<0)throw new Error('主 API 返回的内容不是可解析的日程 JSON');
-  const data=JSON.parse(t.slice(a,b+1));
-  const list=(data.events||[]).map(e=>norm(e,ds)).filter(Boolean);
-  if(!list.length)throw new Error('主 API 没有返回有效的日程');
+  const data=looseJson(txt);
+  if(!data)throw new Error('主 API 返回的内容不是可解析的日程 JSON（可能被截断，请重试）');
+  let arr=Array.isArray(data)?data:(data.events||data.schedule||data.items||(data.data&&(data.data.events||data.data.schedule))||[]);
+  if(!Array.isArray(arr))throw new Error('主 API 返回的 JSON 里没有 events 数组');
+  const list=arr.map(e=>norm(e,ds)).filter(Boolean);
+  if(!list.length)throw new Error('主 API 没有返回有效的日程（日期或时间格式不正确）');
   return list;
 }
 function waitParentResult(token,resultKey,timeout){
@@ -699,25 +761,54 @@ async function llmGen(ds,extra){
   const sys=`你是角色日程生成器。为角色「${st.name}」生成真实、具体的一天安排。${st.persona?'角色设定：'+st.persona+'。':''}只输出 JSON，不要任何解释。格式：{"events":[{"date":"YYYY-MM-DD","start":"HH:MM","end":"HH:MM","title":"","place":"","who":"同行的人，没有则留空","note":"具体安排，1-2句","mood":"角色此刻的一句心声","tag":"life|work|meal|social|rest|out|study"}]}。要求：每天6-9项，按时间排序、互不重叠，时间在00:00-23:59内，符合角色性格、职业和生活习惯，注意周末与工作日的区别；必须包含 00:00-06:30 的夜间睡眠、起床、三餐、工作/学习，并在22:00之后安排入睡（可以和夜间睡眠分开写）。`;
   const usr=`现在是 ${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}。请为下面两天生成日程：${ds.join('、')}。${extra?'补充说明：'+extra:''}`;
   const headers={'Content-Type':'application/json',...(key?{Authorization:'Bearer '+key}:{})};
-  const body=JSON.stringify({model,temperature:.9,messages:[{role:'system',content:sys},{role:'user',content:usr}]});
+  const baseBody={model,temperature:.9,max_tokens:6000,messages:[{role:'system',content:sys},{role:'user',content:usr}]};
   const endpoint=ep(url,'/chat/completions');
-  let rawText='';
-  if(window.parent&&window.parent!==window){
-    // 交给宿主页面请求：即使离开日程页，生成也会继续
-    const token='sched_'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
-    const resultKey='sched_api_result_'+token;
-    activeJobToken=token;
-    writeJob({token,resultKey,charId:CHAR?String(CHAR.id):'',dates:ds,note:extra||'',startedAt:Date.now()});
-    rawText=await requestViaParent(endpoint,headers,body,token,resultKey);
-  }else{
+  async function post(opts){
+    const body=JSON.stringify(Object.assign({},baseBody,opts||{}));
+    if(window.parent&&window.parent!==window){
+      // 交给宿主页面请求：即使离开日程页，生成也会继续
+      const token='sched_'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+      const resultKey='sched_api_result_'+token;
+      activeJobToken=token;
+      writeJob({token,resultKey,charId:CHAR?String(CHAR.id):'',dates:ds,note:extra||'',startedAt:Date.now()});
+      return await requestViaParent(endpoint,headers,body,token,resultKey);
+    }
     const r=await fetch(endpoint,{method:'POST',headers,body});
-    if(!r.ok)throw new Error('HTTP '+r.status);
-    rawText=await r.text();
+    const text=await r.text().catch(()=> '');
+    if(!r.ok){
+      const err=new Error('HTTP '+r.status+(text?'：'+String(text).replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').slice(0,240):''));
+      err.status=r.status;err.body=text;
+      throw err;
+    }
+    return text;
   }
-  let j;
-  try{j=JSON.parse(rawText||'{}')}catch(e){j={}}
-  const txt=String(j.choices?.[0]?.message?.content||'');
-  return parseEventsText(txt,ds);
+  async function once(extra){
+    const raw=await post(extra);
+    let j={};
+    try{j=JSON.parse(raw||'{}')}catch(e){}
+    const ch=(j.choices&&j.choices[0])||{};
+    let txt=String((ch.message&&ch.message.content)||ch.text||'');
+    // 部分推理模型只把 JSON 放进 reasoning_content
+    if(!txt&&ch.message&&ch.message.reasoning_content)txt=String(ch.message.reasoning_content);
+    return {txt,finish:ch.finish_reason||''};
+  }
+  let out;
+  try{
+    out=await once({response_format:{type:'json_object'}});
+  }catch(e){
+    // 有些兼容接口不支持 response_format（会直接 400），去掉后重试。
+    if(/response_format|json_object|400|invalid|unsupported|unknown/i.test(String(e&&e.message||'')))out=await once({});
+    else throw e;
+  }
+  // 被 max_tokens 截断或空正文：用更大预算重试一次，保留更完整的文本。
+  if(out.finish==='length'||!out.txt){
+    try{
+      const retry=await once({max_tokens:8000});
+      if(retry.txt&&(!out.txt||retry.txt.length>=out.txt.length))out=retry;
+    }catch(e){}
+  }
+  if(!out.txt)throw new Error('模型没有返回内容（finish_reason='+(out.finish||'空')+'），请重试或换一个模型');
+  return parseEventsText(out.txt,ds);
 }
 function buildPrompt(ev){
   const st=S.settings;

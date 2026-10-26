@@ -1,9 +1,9 @@
 /* =========================================================
-   角色私下聊天（char ↔ char）
+   角色悄悄话（char ↔ char）
    - 每个 char 独立配置：nano_char_rel_<charId>
    - 自动约 3 天刷新一次（只在 App 打开时检查，一次只生成一段，控制 API 用量）
    - 1 次 API ≈ 2 轮对话；2 次 API ≈ 3~4 轮对话
-   - 生成完成后弹出聊天记录，并写入双方记忆
+   - 生成完成后弹出悄悄话记录，并写入双方记忆
    - 由 index.html 加载；记录页/关系设置页通过 postMessage 调用
    ========================================================= */
 (function () {
@@ -93,15 +93,23 @@
         return out;
     }
 
-    function cfgKey(id) { return CFG_PREFIX + id; }
+    function cfgKey(id) { return CFG_PREFIX + currentMaskId() + '_' + id; }
+    function legacyCfgKey(id) { return CFG_PREFIX + id; }
     function getConfig(id) {
         var v = parseJson(localStorage.getItem(cfgKey(id)), null);
+        if (!v || typeof v !== 'object') {
+            v = parseJson(localStorage.getItem(legacyCfgKey(id)), null);
+            if (v && typeof v === 'object') {
+                try { localStorage.setItem(cfgKey(id), JSON.stringify(v)); } catch (e) {}
+            }
+        }
         if (!v || typeof v !== 'object') {
             v = {
                 privateEnabled: false,
                 shareEnabled: false,
                 rounds: 3,
                 relationIds: [],
+                labels: {},
                 autoDays: 3,
                 lastAutoAt: 0,
                 lastManualAt: 0
@@ -119,6 +127,7 @@
             shareEnabled: !!v.shareEnabled,
             rounds: Math.max(1, Math.min(10, parseInt(v.rounds, 10) || 3)),
             relationIds: (Array.isArray(v.relationIds) ? v.relationIds : []).map(String).filter(Boolean),
+            labels: (v.labels && typeof v.labels === 'object') ? v.labels : {},
             autoDays: Math.max(1, Math.min(30, parseFloat(v.autoDays) || 3)),
             lastAutoAt: Number(v.lastAutoAt) || 0,
             lastManualAt: Number(v.lastManualAt) || 0
@@ -136,23 +145,37 @@
     // 5MB 配额撑满，导致 setItem 静默失败：生成成功、弹窗能看到，但列表里没有卡片。
     function slimRecord(r) {
         if (!r || !r.a || !r.b) return r;
+        var lines = (Array.isArray(r.lines) ? r.lines : []).slice(-20).map(function (l) {
+            return {
+                who: l && l.who === 'b' ? 'b' : 'a',
+                name: String((l && l.name) || '').slice(0, 40),
+                text: String((l && l.text) || '').slice(0, 600),
+                translation: String((l && l.translation) || '').slice(0, 600)
+            };
+        });
         return Object.assign({}, r, {
             a: { id: r.a.id, name: r.a.name || '' },
-            b: { id: r.b.id, name: r.b.name || '' }
+            b: { id: r.b.id, name: r.b.name || '' },
+            lines: lines
         });
     }
     function saveRecords(list) {
-        var arr = (list || []).slice(-80).map(slimRecord);
+        // IndexedDB 存全部悄悄话卡片；localStorage 只保留最近 40 条作为同步缓存。
+        var all = (list || []).map(slimRecord);
+        var arr = all.slice(-40);
+        if (window.NanoWhisperStore) {
+            try { NanoWhisperStore.putAll(all); } catch (e) {}
+        }
         try {
             localStorage.setItem(RECORDS_KEY, JSON.stringify(arr));
             return true;
         } catch (e) {
-            // 配额仍然不够时保留最近 20 条再试一次，优先保证新生成的记录能出现在列表里。
+            // 配额仍然不够时保留最近 15 条再试一次；完整数据仍在 IndexedDB。
             try {
-                localStorage.setItem(RECORDS_KEY, JSON.stringify(arr.slice(-20)));
+                localStorage.setItem(RECORDS_KEY, JSON.stringify(arr.slice(-15)));
                 return true;
             } catch (e2) {
-                console.warn('[NanoSecretChat] 保存记录失败，localStorage 可能已满', e2);
+                console.warn('[NanoSecretChat] 保存记录失败，localStorage 可能已满（IndexedDB 仍有完整记录）', e2);
                 return false;
             }
         }
@@ -293,8 +316,12 @@
     function parseApiText(text) {
         var d = parseJson(text, null);
         if (!d) throw new Error('API 返回的不是 JSON');
-        var c = d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content;
-        if (!c) c = d.choices && d.choices[0] && d.choices[0].text;
+        var choice = d.choices && d.choices[0];
+        var msg = (choice && choice.message) || {};
+        var c = msg.content;
+        if (!c && choice) c = choice.text;
+        // 部分推理模型只给 reasoning_content；正文为空时用它兜底，避免「生成成功但没内容」。
+        if (!c) c = msg.reasoning_content;
         if (!c) throw new Error((d.error && (d.error.message || d.error)) || 'API 没有返回内容');
         return String(c).trim();
     }
@@ -381,10 +408,22 @@
         return out;
     }
 
+    function relationLabel(a, b) {
+        try {
+            var ac = getConfig(a.id), bc = getConfig(b.id);
+            var lb = String((ac.labels || {})[String(b.id)] || (bc.labels || {})[String(a.id)] || '');
+            if (lb) return lb;
+            var related = (ac.relationIds || []).map(String).indexOf(String(b.id)) > -1 ||
+                (bc.relationIds || []).map(String).indexOf(String(a.id)) > -1;
+            return related ? '朋友' : '';
+        } catch (e) { return ''; }
+    }
     function buildFirstPrompt(a, b, mask, aRecent, bRecent, prevChat, extra) {
         extra = extra || {};
+        var rel = relationLabel(a, b);
         return '你是「' + (a.name || 'A') + '」，一个活生生的人类，不是 AI。\n'
-            + '你正在和「' + (b.name || 'B') + '」私下聊天，用户「' + (mask.name || '用户') + '」不在场。\n\n'
+            + '你正在和「' + (b.name || 'B') + '」说悄悄话，用户「' + (mask.name || '用户') + '」不在场。\n\n'
+            + (rel ? '【你们的关系】' + rel + '。对话的称呼、亲疏、边界和试探方式要符合这个关系，不要突然变成陌生人或过度亲密。\n\n' : '')
             + '【你的人设】\n' + String(a.setting || '（未填写）').slice(0, 2200) + '\n\n'
             + '【' + (b.name || 'B') + ' 的人设】\n' + String(b.setting || '（未填写）').slice(0, 1800) + '\n\n'
             + '【用户】' + (mask.name || '用户') + '；' + String(mask.setting || '').slice(0, 800) + '\n\n'
@@ -403,7 +442,9 @@
     }
     function buildContinuePrompt(a, b, transcript, extra) {
         extra = extra || {};
-        return '继续下面这段「' + (a.name || 'A') + '」和「' + (b.name || 'B') + '」的私下聊天。\n\n'
+        var rel = relationLabel(a, b);
+        return '继续下面这段「' + (a.name || 'A') + '」和「' + (b.name || 'B') + '」说悄悄话。\n\n'
+            + (rel ? '【你们的关系】' + rel + '。继续保持这个关系的称呼、亲疏和边界。\n\n' : '')
             + (extra.wbA ? '【' + (a.name || 'A') + ' 的世界书 · 仍须遵守】\n' + extra.wbA.slice(0, 1600) + '\n\n' : '')
             + (extra.wbB ? '【' + (b.name || 'B') + ' 的世界书 · 仍须遵守】\n' + extra.wbB.slice(0, 1600) + '\n\n' : '')
             + (extra.memA ? '【' + (a.name || 'A') + ' 的长期记忆】\n' + extra.memA.slice(0, 900) + '\n\n' : '')
@@ -532,9 +573,9 @@
         var ca = getConfig(a.id), cb = getConfig(b.id);
         var aReady = ca.privateEnabled && ca.relationIds.indexOf(String(b.id)) > -1;
         var bReady = cb.privateEnabled && cb.relationIds.indexOf(String(a.id)) > -1;
-        if (!aReady && !bReady) throw new Error('请先在任意一方的「角色关系」里开启私下聊天并勾选对方');
+        if (!aReady && !bReady) throw new Error('请先在任意一方的「角色关系」里开启悄悄话并勾选对方');
         var calls = Number(opts.calls) === 2 ? 2 : 1;
-        if (!acquireLock()) throw new Error('正在生成另一段私下聊天，请稍后再试');
+        if (!acquireLock()) throw new Error('正在生成另一段悄悄话，请稍后再试');
         try {
             var mask = homeMask();
             var aRecent = recentLines(a.id, 3);
@@ -542,6 +583,7 @@
             var prevChat = '';
             try {
                 var lastPair = loadRecords().filter(function (r) {
+                    if (r.source === 'chat') return false;   // 1:1 聊天不是 char↔char 的前情
                     if (r.maskId && String(r.maskId) !== String(opts.maskId || currentMaskId())) return false;
                     const x = String(r.a.id), y = String(r.b.id), p = String(a.id), q = String(b.id);
                     return (x === p && y === q) || (x === q && y === p);
@@ -564,7 +606,7 @@
             var out1 = await callApi([
                 { role: 'system', content: buildFirstPrompt(a, b, mask, aRecent, bRecent, prevChat, extraCtx) },
                 { role: 'user', content: '（现在开始。只输出带「名字：」前缀的对话行）' }
-            ], 1800);
+            ], 2600);
             var lines = parseDialogue(out1, a, b);
             if (!lines.length) throw new Error('模型没有按对话格式返回，请重试');
             if (calls === 2) {
@@ -572,7 +614,7 @@
                 var out2 = await callApi([
                     { role: 'system', content: buildContinuePrompt(a, b, transcript, extraCtx) },
                     { role: 'user', content: '（继续，只输出带「名字：」前缀的对话行）' }
-                ], 1400);
+                ], 2000);
                 var more = parseDialogue(out2, a, b);
                 if (more.length) lines = lines.concat(more);
             }
@@ -589,7 +631,7 @@
             };
             var all = loadRecords();
             all.push(rec);
-            saveRecords(all);
+            var saved = saveRecords(all);
 
             var transcriptAll = lines.map(function (l) { return l.name + '：' + l.text; }).join(' / ');
             await appendMemory(a.id, '你和' + (b.name || 'B') + '私下聊过：' + transcriptAll);
@@ -608,7 +650,7 @@
                 localStorage.setItem(pairKey, String(now));
             } catch (e) {}
 
-            broadcast({ type: 'nanoSecretChatUpdated', record: rec });
+            broadcast({ type: 'nanoSecretChatUpdated', record: rec, saved: saved });
             if (opts.show !== false) showViewer(rec);
             return rec;
         } finally {

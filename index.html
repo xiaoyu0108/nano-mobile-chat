@@ -2,7 +2,7 @@
 <html lang="zh">
 <head>
     <meta charset="UTF-8">
-    <script src="js/nano-runtime.js?v=20261023a"></script>
+    <script src="js/nano-runtime.js?v=20261026d"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <script>
     // 版本升级时强制清一次缓存并重载：避免手机/PWA 一直跑旧 JS（屏幕共享/思维链等问题）
@@ -980,7 +980,7 @@
     </style>
 
 
-    <script src="js/appearance.js"></script>
+    <script src="js/appearance.js?v=20261026d"></script>
 </head>
 <body class="nano-index">
 <script>
@@ -1114,7 +1114,9 @@
     return;
   }
 
-  var DUR = 3600, READY_HOLD = 900;
+  // 开场动画只在「大退后重新进入」时出现；App 内切换页面不会重载首页，所以不会反复播放。
+  // 时长压到 0.9 秒，点屏幕 / 按 Esc 可立即加速结束。
+  var DUR = 900, READY_HOLD = 150;
   var t0 = performance.now(), lastSp = 0, burst = false, done = false, raf = 0;
   var G = ['♡', '✦', '✧', '●'], COL = ['#ffc2d9', '#ffd7a8', '#cfe4ff', '#fff', '#e2d6ff'];
 
@@ -1295,21 +1297,35 @@ setTimeout(function () {
         const overlayLoading = document.getElementById('overlayLoading');
         const overlayLoadingText = document.getElementById('overlayLoadingText');
         let overlayLoadingTimer = null;
+        let overlayLoadingFallback = null;
+        let overlayLoadingSeq = 0;
         function showPageLoading(text) {
             if (!overlayLoading) return;
+            const seq = ++overlayLoadingSeq;
             if (overlayLoadingText && text) overlayLoadingText.textContent = text;
-            overlayLoading.classList.add('show');
             clearTimeout(overlayLoadingTimer);
+            clearTimeout(overlayLoadingFallback);
+            // 200ms 内的快速打开不闪加载层；慢页面才显示。
             overlayLoadingTimer = setTimeout(function () {
-                if (overlayLoading && overlayLoading.classList.contains('show') && overlayLoadingText) {
-                    overlayLoadingText.textContent = '正在打开，请稍候…';
-                }
-            }, 2200);
+                if (seq !== overlayLoadingSeq) return;
+                if (overlayLoadingText) overlayLoadingText.textContent = text || '正在打开…';
+                overlayLoading.classList.add('show');
+            }, 200);
+            // 兜底：任何情况下都不让加载层永远卡住。
+            overlayLoadingFallback = setTimeout(function () {
+                if (seq === overlayLoadingSeq) hidePageLoading();
+            }, 5000);
         }
         function hidePageLoading() {
+            overlayLoadingSeq++;
             clearTimeout(overlayLoadingTimer);
+            clearTimeout(overlayLoadingFallback);
             if (overlayLoading) overlayLoading.classList.remove('show');
         }
+        // 子页面脚本一开始执行就通知宿主，不必等图片/CDN 全部加载完。
+        window.addEventListener('message', function (e) {
+            if (e && e.data && e.data.type === 'nanoFrameReady') hidePageLoading();
+        });
         [overlayFrameA, overlayFrameB].forEach(function (f) {
             if (!f) return;
             f.addEventListener('load', function () {
@@ -4447,16 +4463,17 @@ setTimeout(function () {
 <script src="js/aux-memory.js?v=20261021k"></script>
 <script src="js/user-scope.js?v=20261020j"></script>
 <script src="js/nano-notify.js?v=20261024b"></script>
-<script src="js/nano-push.js?v=20261021b"></script>
+<script src="js/nano-push.js?v=20261026d"></script>
 <script src="swipe-back.js"></script>
 <script src="js/keep-alive.js?v=20261023a"></script>
-<script src="js/char-takeover.js?v=20261024a"></script>
-<script src="js/nano-prompts.js?v=20261023a"></script>
+<script src="js/char-takeover.js?v=20261026e"></script>
+<script src="js/nano-prompts.js?v=20261026e"></script>
 <script src="js/screen-share.js?v=20261023c"></script>
 <script src="js/ios-bridge.js?v=20261025b"></script>
 <script src="js/auto-push-bridge.js?v=20261021b"></script>
 <script src="js/online-catchup.js?v=20261018c"></script>
-<script src="js/char-secret-chat.js?v=20261026a"></script>
+<script src="js/whisper-store.js?v=20261026a"></script>
+<script src="js/char-secret-chat.js?v=20261026g"></script>
 </div>
     <!-- 小号试探：居中弹窗（不暴露是谁）-->
     <div class="alt-probe-overlay" id="altProbeOverlay">
@@ -4592,6 +4609,40 @@ setTimeout(function () {
     })();
     </script>
 <script src="js/adult-gate.js?v=20261025g"></script>
-<script src="js/account.js?v=20261025t"></script>
+<script src="js/account.js?v=20261026f"></script>
+<script>
+// 自动备份调度：只有开启后才加载一个隐藏的备份页，在 App 打开期间按间隔上传。
+// 完全退出 App 后网页无法后台运行，下次打开会补一次。
+(function () {
+    var KEY = 'nano_auto_backup';
+    function readCfg() {
+        try { return JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) { return null; }
+    }
+    function ensureFrame() {
+        var cfg = readCfg();
+        var frame = document.getElementById('nanoAutoBackupFrame');
+        if (cfg && cfg.enabled === true) {
+            if (!frame) {
+                frame = document.createElement('iframe');
+                frame.id = 'nanoAutoBackupFrame';
+                frame.src = 'html/cloud-backup.html?auto=1';
+                frame.setAttribute('aria-hidden', 'true');
+                frame.setAttribute('tabindex', '-1');
+                frame.style.cssText = 'position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;border:0;opacity:0;pointer-events:none;';
+                document.body.appendChild(frame);
+            }
+        } else if (frame && frame.parentNode) {
+            frame.parentNode.removeChild(frame);
+        }
+    }
+    window.addEventListener('message', function (e) {
+        if (e && e.data && e.data.type === 'nanoAutoBackupChanged') ensureFrame();
+    });
+    window.addEventListener('storage', function (e) {
+        if (e && e.key === KEY) ensureFrame();
+    });
+    setTimeout(ensureFrame, 5000);
+})();
+</script>
 </body>
 </html>

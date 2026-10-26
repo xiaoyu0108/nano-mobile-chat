@@ -8,6 +8,9 @@
 >
 > **2026-10 更新**：窥屏页已精简为「电脑共享 / 手机屏幕速聊」两种方式，换角色会自动生成新的角色 ID 和请求体 JSON。
 > 下面的 Part 1 / Part 2（深链、直连 API）是旧版参考，页面里不再提供入口；手机端请直接用 Part 2.5。
+>
+> **Worker 存储以 D1 为准**：新部署请绑定 `nano_db`，不要再建 `PUSH_KV`（本文后面出现的 KV 章节仅用于旧版排错）。
+> 仍在使用 `nano-test-ceshi` / `peek-test.nano315.online` 的，请直接删除旧 Worker 和 KV，否则会继续收到 Bark 推送和 KV 额度邮件。
 
 本仓库已内置 Web 侧支持：
 
@@ -174,8 +177,8 @@
 
 > **每个人自己部署时，必须改掉 `wrangler.toml` 里作者的东西**：
 > - 删除或替换 `routes` 里的自定义域名（`nanopush.nano315.online` 不是你的）；
-> - 把 `kv_namespaces[0].id` 换成你自己的 KV；
-> - 不需要 D1 / Supabase / 定时任务就删掉对应块，代码会自动回退到 KV。
+> - 把 `[[d1_databases]]` 的 `database_id` 换成你自己的 D1，`binding` 保持 `nano_db`；
+> - 不需要 Supabase / 定时任务就删掉对应块；不要删除 D1，也不要再绑定 `PUSH_KV`。
 
 #### 1. 安装 wrangler 并登录
 
@@ -193,15 +196,15 @@ cd push-worker
 npm install
 ```
 
-#### 3. 新建你自己的 KV
+#### 3. 新建你自己的 D1（不要再用 KV）
 
 ```bash
-wrangler kv namespace create PUSH_KV
+wrangler d1 create nano-db-你的名字
 ```
 
-把返回的 `id` 填进 `wrangler.toml`。
+把返回的 `database_id` 填进 `wrangler.toml`。新部署不需要创建 `PUSH_KV`；旧 KV 绑定会让 Cloudflare 继续按 KV 1,000 写/天计费，并触发额度邮件。
 
-最小可用的 `wrangler.toml` 长这样（直接复制，改成你的名字和 KV ID）：
+最小可用的 `wrangler.toml` 长这样（直接复制，改成你的名字和 D1 ID）：
 
 ```toml
 name = "nano-push-yourname"
@@ -209,16 +212,17 @@ main = "src/index.js"
 compatibility_date = "2025-01-01"
 workers_dev = true
 
-kv_namespaces = [
-  { binding = "PUSH_KV", id = "你的KV_ID" }
-]
+[[d1_databases]]
+binding = "nano_db"
+database_name = "nano-db-你的名字"
+database_id = "你的database_id"
 ```
 
 说明：
 
-- `PUSH_KV` 这个 binding 名不要改，代码里写死了；
+- `nano_db` 这个 binding 名不要改，代码里写死了；
+- Worker 第一次运行会自动在 D1 里建表，不需要手动执行 SQL；
 - 不需要自定义域名就先不写 `routes`；
-- 不需要 D1 / Supabase / 定时任务就先删掉对应块；
 - 想用自己的域名，再加 `routes`，并在 Cloudflare 里绑定域名。
 
 #### 4. 设置 secrets
@@ -244,7 +248,7 @@ wrangler secret put PUSH_TOKEN
 # 想保护 /send、/schedule 就设一个；不设则这些接口不校验
 ```
 
-VAPID **可以不配**：Worker 第一次访问 `/vapid` 时会自动生成一对密钥并存进 KV。想固定密钥再配：
+VAPID **可以不配**：Worker 第一次访问 `/vapid` 时会自动生成一对密钥并存进 D1（`kv` 表）。想固定密钥再配：
 
 ```bash
 wrangler secret put VAPID_SUBJECT   # 例如 mailto:you@example.com
@@ -296,22 +300,22 @@ https://nano-push-yourname.xxxx.workers.dev
 | 窥屏 / 屏幕速聊 | `/peek`、`/peek/persona`、`/peek/pending`、`/peek/ack` | `PEEK_TOKEN`，或公用模式下的每用户令牌 | 人设、API、轮次、截图 |
 | Web Push | `/vapid`、`/subscribe`、`/send`、`/schedule` | `/vapid`、`/subscribe` 公开；`/send`、`/schedule` 用 `PUSH_TOKEN` | 订阅、定时任务 |
 
-两者共用同一个 KV 命名空间：
+两者共用同一个 D1 数据库（绑定名 `nano_db`）：
 
 - 窥屏每轮大约 1 次写 + 1 次读；
-- Web Push 的订阅和定时任务也会读写 KV；
-- **每个人自己部署 = 各自 KV / 各自 VAPID / 各自免费额度**；
-- **公用一个 Worker = 用你的 KV 额度**，但模型 API 仍然是每个人自己的。
+- Web Push 的订阅和定时任务也会读写 D1；
+- **每个人自己部署 = 各自 D1 / 各自 VAPID / 各自免费额度**；
+- **公用一个 Worker = 用你的 D1 额度**，但模型 API 仍然是每个人自己的。
 
-| 方式 | 模型费用 | KV / Worker 费用 | 适合 |
+| 方式 | 模型费用 | D1 / Worker 费用 | 适合 |
 | --- | --- | --- | --- |
 | 公用一个 Worker（`PEEK_PUBLIC=1`） | 每个用户自己的 API | 站长承担 | 朋友多、不想折腾 |
-| 每个人自己部署 | 自己的 API | 自己的 Cloudflare 免费额度 | 想隔离数据 / 不想帮别人付 KV |
+| 每个人自己部署 | 自己的 API | 自己的 Cloudflare 免费额度 | 想隔离数据 / 不想帮别人付 D1 |
 | 只给自己用（不设 `PEEK_PUBLIC`） | 自己 | 自己 | 最省心 |
 
 `PEEK_TOKEN` 未设置时窥屏接口放行（仅建议本地调试）；生产务必设置，或者用 `PEEK_PUBLIC=1` 做公用模式。
 
-### 公用部署（PEEK_PUBLIC）与 KV 费用
+### 公用部署（PEEK_PUBLIC）与 D1 费用
 
 先澄清：这里没有「公钥」。公用指的是 **一个 Worker 接受多个人的令牌**，每个人的数据按令牌哈希隔离。部署分两步：设置 `PEEK_PUBLIC`，再重新部署。
 
@@ -337,47 +341,47 @@ wrangler deploy
 #### 公用模式的行为
 
 - 接受任意长度 ≥ 8 的令牌（`pk_...` 即可），不再要求等于 `PEEK_TOKEN`；
-- 把令牌哈希进 KV 分区（`appId + 令牌哈希`），每个人的暂存轮次、人设、API、owner 都互相隔离；
+- 把令牌哈希进 D1 分区（`appId + 令牌哈希`），每个人的暂存轮次、人设、API、owner 都互相隔离；
 - 每个人仍然用自己 Nano 里配置的主 API，**不会花你的模型额度**；
 - `/peek/pending` 也按令牌分区，别人拿不到你的消息；
 - 公用模式只作用于 `/peek*`，不会把 `/auto*` 后台主动消息一起公开。
 
-#### 会花 KV 吗？会，但花的是 Cloudflare 额度，不是模型额度
+#### 会花 D1 吗？会，但花的是 Cloudflare 额度，不是模型额度
 
 Cloudflare 免费版大致是（以官网当前价格为准）：
 
 | 项目 | 免费额度 |
 | --- | --- |
 | Workers 请求 | 100,000 次/天 |
-| KV 读取 | 100,000 次/天 |
-| KV 写入 | 1,000 次/天 |
-| KV 存储 | 1 GB |
+| D1 读取 | 500 万行/天 |
+| D1 写入 | 100,000 行/天 |
+| D1 存储 | 5 GB |
 
-> **如果你的 Worker 绑定了 D1**（仓库默认的 `wrangler.toml` 就有 `nano_db`），业务代码会自动走 D1，不按 KV 的 1,000 写/天算。
-> D1 免费版大致是 **500 万行读/天、10 万行写/天、5 GB 存储**（以官网为准），容量比纯 KV 大得多。
-> 下面的 KV 估算适用于「自建时删掉了 D1」的纯 KV 配置。
+> 仓库默认的 `wrangler.toml` 绑定的是 `nano_db`，业务代码走 D1，不再按 KV 的 1,000 写/天算。
+> 只有旧版 Worker 或你手动绑定了 `PUSH_KV` 才会走 KV；新部署请不要再建 `PUSH_KV`。
+> KV 免费额度是 100,000 读/天、1,000 写/天、1 GB 存储，聊天 + 窥屏 + Web Push 很容易打满，所以已经不推荐。
 
 每轮窥屏大概消耗：
 
 - 1 次 `/peek` 请求（Worker 请求 +1）
-- 1 次 KV 写入（暂存这一轮）
-- App 拉取时 1 次 KV 读 + 1 次 KV 写（清空）
-- 人设 / API / 上下文同步一次约写 9 个 key；聊天侧 6 小时内不会重复，窥屏页每次点「保存配置」会写一次
+- 1 行 D1 写入（暂存这一轮）
+- App 拉取时 1 行 D1 读 + 1 行 D1 写（清空）
+- 人设 / API / 上下文同步一次约写 9 行；聊天侧 6 小时内不会重复，窥屏页每次点「保存配置」会写一次
 - 截图只增加存储，不增加写入次数；每个聊天只保留最近 2 张，7 天过期
 
-也就是说，**纯 KV** 免费版的 **1,000 次写入/天** 大概能撑几百轮对话，约 10~30 个活跃用户。
-如果你的 Worker 保留了 D1，免费额度大约能到几万轮/天，保守可带 100~300 个活跃用户；重度循环会少一些。
+D1 免费版 **10 万行写入/天** 大约能撑几万轮窥屏，保守可带 100~300 个活跃用户；重度循环会少一些。
+如果误绑了旧版 KV，则只有 1,000 写/天，只够 10~30 个活跃用户。
 
 超了怎么办：
 
-- **Workers Paid**：约 $5/月，包含更多请求和 KV 读写（具体看 Cloudflare 官网）；
+- **Workers Paid**：约 $5/月，包含更多请求和 D1 读写（具体看 Cloudflare 官网）；
 - **每个人自己部署一个免费 Worker**：最省钱，教程就在上面「部署 push-worker（自建）」；
 - **平时关掉 `PEEK_PUBLIC`**，需要给别人玩时再打开；
 - 在 Cloudflare 给 `/peek` 加 **Rate Limiting**，限制每个 IP / 路径的频率；
 - 缩短快捷指令的「重复」次数，减少无意义的轮次。
 
 > 注意：公用模式只能防「不同令牌之间串数据」，防不了「令牌被主动泄露」。令牌相当于密码，不要发到公开群聊里。
-> 公用模式消耗的是你的 Cloudflare Worker / KV 额度（不是模型额度）；上面的免费额度和限流建议就是给这种情况准备的。
+> 公用模式消耗的是你的 Cloudflare Worker / D1 额度（不是模型额度）；上面的免费额度和限流建议就是给这种情况准备的。
 
 ### Nano 侧
 

@@ -302,6 +302,8 @@
 
     var allowMomentImageToggle = document.getElementById('allowMomentImageToggle');
     var allowMomentImageStatus = document.getElementById('allowMomentImageStatus');
+    var allowTakeoverToggle = document.getElementById('allowTakeoverToggle');
+    var allowTakeoverStatus = document.getElementById('allowTakeoverStatus');
     var momentImageFreqItem = document.getElementById('momentImageFreqItem');
     var momentImageFreq = document.getElementById('momentImageFreq');
     var voiceFreq = document.getElementById('voiceFreq');
@@ -365,7 +367,7 @@
 
         var voiceSaved = getSetting('ttsPreset', '');
         if (voicePreview) voicePreview.textContent = voiceSaved ? voiceSaved : '跟随全局';
-        var ttsOn = getSetting('ttsEnabled', false) !== false;
+        var ttsOn = getSetting('ttsEnabled', false) === true;
         if (ttsEnableToggle) ttsEnableToggle.checked = ttsOn;
         if (ttsEnableStatus) ttsEnableStatus.textContent = ttsOn ? '开启' : '关闭';
         (function () {
@@ -432,6 +434,12 @@
         }
         if (momentImageFreq) momentImageFreq.value = getSetting('momentImageFreq', 'medium');
         if (momentImageFreqItem) momentImageFreqItem.style.display = allowMomentImage ? 'flex' : 'none';
+
+        // 反查手机默认关闭；只有这里或「查手机设置」里开启后才参与随机反查。
+        var allowTakeoverRaw = getSetting('takeover', false);
+        var allowTakeover = allowTakeoverRaw === true || allowTakeoverRaw === '1' || allowTakeoverRaw === 'true';
+        if (allowTakeoverToggle) allowTakeoverToggle.checked = allowTakeover;
+        if (allowTakeoverStatus) allowTakeoverStatus.textContent = allowTakeover ? '开启' : '关闭';
 
         if (voiceFreq) voiceFreq.value = getSetting('voiceFreq', 'medium');
         var actionNarration = getSetting('actionNarration', false);
@@ -1372,7 +1380,7 @@
     try {
         var _sc = JSON.parse(localStorage.getItem('nano_char_rel_' + chatId) || 'null');
         var _pv = document.getElementById('relationsPreview');
-        if (_pv) _pv.textContent = (_sc && _sc.privateEnabled) ? '私下聊天已开' : ((_sc && _sc.shareEnabled) ? '共享已开' : '未设置');
+        if (_pv) _pv.textContent = (_sc && _sc.privateEnabled) ? '悄悄话已开' : ((_sc && _sc.shareEnabled) ? '共享已开' : '未设置');
     } catch (e) {}
     remarkCancel.addEventListener('click', function() { remarkModal.classList.remove('active'); });
     remarkConfirm.addEventListener('click', saveRemark);
@@ -1621,6 +1629,10 @@
     });
     if (voiceFreq) voiceFreq.addEventListener('change', function() {
         setSetting('voiceFreq', this.value);
+    });
+    if (allowTakeoverToggle) allowTakeoverToggle.addEventListener('change', function() {
+        setSetting('takeover', this.checked);
+        if (allowTakeoverStatus) allowTakeoverStatus.textContent = this.checked ? '开启' : '关闭';
     });
     if (actionNarrationToggle) actionNarrationToggle.addEventListener('change', function() {
         setSetting('actionNarration', this.checked);

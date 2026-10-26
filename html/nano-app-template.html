@@ -606,7 +606,7 @@
         '<div class="field"><label>名称</label><input id="stName" maxlength="16" value="' + esc(c.name) + '"></div>' +
         '<div class="field"><label>图标（字母 / Emoji）</label><input id="stLetter" maxlength="4" value="' + esc(c.icon.letter || '') + '"></div>' +
         '<div class="field"><label>主题色</label><div class="field-row"><input type="color" id="stColor" value="' + esc(c.icon.color || '#5B6CFF') + '"><span class="notice" style="margin:0">按钮、导航、图标都会跟着变</span></div></div>' +
-        '<div class="field"><label>自定义字体 URL（可选）</label><div class="field-row"><input id="stFont" placeholder="https://…/font.woff2" value="' + esc(c.fontUrl || '') + '"><button class="btn sm ghost" id="stFontProxy" type="button" style="flex:none">用代理</button></div><div class="notice">Catbox 直链可直接用；被 CORS/网络挡住时点「用代理」，会改成 Worker 的 <b>/font?url=</b> 地址（需要部署新版 push-worker）。</div></div>' +
+        '<div class="field"><label>自定义字体 URL（可选）</label><div class="field-row"><input id="stFont" placeholder="https://…/font.woff2" value="' + esc(c.fontUrl || '') + '"></div><div class="notice">只支持能直接跨域加载的字体直链；不再经过任何代理。</div></div>' +
         '</div>' +
         '<div class="card" style="margin-top:12px"><div class="section-title" style="margin-bottom:10px">参与角色</div>' +
         (App.chars.length ? '<div class="chips" id="stChars">' + App.chars.map(function (ch) {
@@ -647,15 +647,6 @@
           save();
         };
       });
-      var proxyBtn = $('stFontProxy');
-      if (proxyBtn) proxyBtn.onclick = function () {
-        var input = $('stFont');
-        var u = (input && input.value || '').trim();
-        if (!u) { toast('先填字体直链'); return; }
-        if (/\/font\?url=/i.test(u)) { toast('已经是代理地址'); return; }
-        input.value = 'https://nanopush.nano315.online/font?url=' + encodeURIComponent(u);
-        toast('已换成代理地址，记得保存');
-      };
       var saveBtn = $('stSave');
       if (saveBtn) saveBtn.onclick = function () {
         App.config.name = ($('stName').value || '').trim() || '我的应用';
@@ -713,7 +704,7 @@
         'Nano.notify(title, body) · Nano.clipboard.write(text)<br>' +
         'Nano.openApp(id) · Nano.openUrl(url)<br>' +
         '所有调用都返回 Promise。</div>' +
-        '<div class="guide-block"><b>5. 字体</b><br>设置里可以填字体直链。Catbox 这类直链通常能直接加载；如果字体站禁止跨域或国内访问不了，点「用代理」会生成 Worker 的 <code>/font?url=</code> 地址（需要部署新版 push-worker）。</div>' +
+        '<div class="guide-block"><b>5. 字体</b><br>设置里可以填字体直链。只支持允许跨域（CORS）的地址；现在不走任何字体代理，加载不了就换一个直链。</div>' +
         '<button class="btn block" id="cpPrompt" style="margin-top:14px">复制 AI 改造提示词</button>' +
         '<button class="btn ghost block" id="cpSkeleton" style="margin-top:8px">复制页面骨架</button>' +
         '<button class="btn ghost block" id="backHome" style="margin-top:8px">回到首页</button>';

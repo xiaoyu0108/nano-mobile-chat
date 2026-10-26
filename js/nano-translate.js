@@ -48,9 +48,11 @@
         if (/[\u0600-\u06ff]/.test(s)) return 'ar';
         if (/[\u0e00-\u0e7f]/.test(s)) return 'th';
         if (/[\u0900-\u097f]/.test(s)) return 'hi';
-        var cjk = (s.match(/[\u4e00-\u9fff]/g) || []).length;
+        // 汉字单独统计（不含假名），假名已在上面优先判为日文。
+        var cjk = (s.match(/[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/g) || []).length;
         var latin = (s.match(/[A-Za-z]/g) || []).length;
-        if (cjk && cjk >= latin) return 'zh';
+        if (cjk && !latin) return 'zh';
+        if (cjk && cjk > latin * 2) return 'zh';
         if (/[À-ÖØ-öø-ÿĀ-ž]/.test(s)) return '';   // 法/德/西等拉丁语系：交给 sl=auto 的免费接口
         if (latin >= 2) return 'en';
         return '';

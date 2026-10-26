@@ -190,7 +190,7 @@ textarea.in{min-height:90px;resize:vertical}
 <script src="../js/mem-link.js?v=20261021a"></script>
 <script src="../js/friend-requests.js?v=20261021d"></script>
 <script src="../js/api-logs.js?v=20261022b"></script>
-<script src="../js/qa-bridge.js?v=20261022b"></script>
+<script src="../js/qa-bridge.js?v=20261026e"></script>
 <script>
 const P={x:'M5 5l14 14M19 5L5 19',rf:'M20 11a8 8 0 10-2.3 5.7M20 4v7h-7',send:'M21 3L3 10.5l7 3 3 7zM10 13.5L21 3',chat:'M4 5h16v11H9l-5 4z',back:'M15 5l-7 7 7 7',dice:'M5 4h14a1 1 0 011 1v14a1 1 0 01-1 1H5a1 1 0 01-1-1V5a1 1 0 011-1zM9 9h.01M15 15h.01M15 9h.01M9 15h.01',users:'M9 11a3 3 0 100-6 3 3 0 000 6zM3 19c0-3 3-5 6-5s6 2 6 5M17 8a2.5 2.5 0 010 5M18 14c2 .5 3 2 3 4',inbox:'M4 13l2-8h12l2 8v6H4zM4 13h5l1 2h4l1-2h5',plus:'M12 5v14M5 12h14',swap:'M7 4L3 8l4 4M3 8h14M17 20l4-4-4-4M21 16H7',img:'M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M9 9h.01',set:'M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M6 14v6',reply:'M9 7L4 12l5 5M4 12h9a7 7 0 017 7',phone:'M6 3h3l2 5-2 1.5a11 11 0 006 6L16.5 13l5 2v3a2 2 0 01-2 2A16 16 0 014 5a2 2 0 012-2z',video:'M3 7h11a2 2 0 012 2v6a2 2 0 01-2 2H3zM16 11l5-3v8l-5-3',lock:'M7 11V8a5 5 0 0110 0v3M5 11h14v9H5z',home:'M4 11l8-7 8 7v9H4zM10 20v-6h4v6',search:'M11 4a7 7 0 100 14 7 7 0 000-14zM21 21l-5-5',xl:'M4 4h4.5L20 20h-4.5zM19.5 4l-6.8 7.7M4.5 20l6.9-7.8',bell:'M6 16v-5a6 6 0 1112 0v5l2 2H4zM10 21a2 2 0 004 0',down:'M6 9l6 6 6-6',edit:'M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4',user:'M12 12a4 4 0 100-8 4 4 0 000 8zM4 20c0-4 4-6 8-6s8 2 8 6',cmp:'M20 11a8 8 0 10-3 6.2L21 20v-4M20 3v6M17 6h6'};
 const ic=(n,s=22,f=0)=>`<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="${f?'currentColor':'none'}" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="${P[n]}"/></svg>`;
@@ -330,7 +330,7 @@ const fx=(ch=C())=>{
  return charLang+'\n'+peopleFx();
 };
 const sample=()=>rd(POOL,5).join(' / ');
-const SYS='你在模拟一个国际化的匿名提问箱 / 私信平台（类似 Instagram 限时动态提问箱）。只输出合法 JSON，不要任何解释或代码块标记。JSON 必须紧凑、完整：不要换行缩进，不要漏掉右括号/右方括号，字段尽量简短，宁可内容精炼也不要让 JSON 被截断。所有人都是真实、有生活感的成年人，不是 AI。';
+const SYS='你在模拟一个国际化的匿名提问箱 / 私信平台（类似 Instagram 限时动态提问箱）。只输出合法 JSON，不要任何解释或代码块标记。JSON 必须紧凑、完整：不要换行缩进，不要漏掉右括号/右方括号，字段尽量简短，宁可内容精炼也不要让 JSON 被截断。所有人都是真实、有生活感的成年人，不是 AI。提问和回答都像真人随手打字，不要采访腔、客服腔、论文腔或工作汇报；可以短、碎、没头没尾、反问、开玩笑、只答一半。陌生网友默认不认识 char，不要装熟、不要猜成某个熟人；只有人设/世界书/角色关系里明确认识，才可以认出对方。';
 async function run(f,label,title){
  showBusy(label||'正在生成…');
  try{await f()}

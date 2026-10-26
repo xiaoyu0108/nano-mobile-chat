@@ -2506,36 +2506,12 @@ let fontState = { name: "", source: "", type: "", data: null, size: 16, cssFamil
 let localURL = null;
 
 // ---- 字体配置：序列化后让所有 Nano 页面共享（含文件 base64 / 远程 url） ----
-// 字体代理：优先使用自定义 Cloudflare Worker（在控制台或下方改常量即可）：
-//   window.NANO_CF_FONT_PROXY = 'https://你的worker.workers.dev/?url=';
-// 未设置时自动使用 Cloudflare 公共 CORS 代理 + 其它公共代理兜底。
+// 字体不再走任何代理：公共代理不稳定，还会让字体加载等很久。
 const NANO_CF_FONT_PROXY_KEY = "nano_cf_font_proxy";
-function getCfFontProxy() {
-  try {
-    if (typeof window !== "undefined" && window.NANO_CF_FONT_PROXY) return String(window.NANO_CF_FONT_PROXY);
-    const v = localStorage.getItem(NANO_CF_FONT_PROXY_KEY);
-    if (v) return String(v);
-  } catch (e) {}
-  return "";
+function fontProxyList() {
+  return [];
 }
-function fontProxyList(rawUrl) {
-  const u = String(rawUrl || "").trim();
-  if (!/^https?:/i.test(u)) return [];
-  const enc = encodeURIComponent(u);
-  const list = [];
-  const custom = getCfFontProxy();
-  if (custom) {
-    list.push(custom.indexOf("{url}") !== -1 ? custom.replace("{url}", enc) : custom + enc);
-  }
-  // Cloudflare Workers 公共 CORS 代理（优先）
-  list.push("https://test.cors.workers.dev/?" + u);
-  list.push("https://cors.isomorphic-git.org/" + u);
-  list.push("https://api.allorigins.win/raw?url=" + enc);
-  // 其它公共代理兜底
-  list.push("https://corsproxy.io/?url=" + enc);
-  list.push("https://api.codetabs.com/v1/proxy?quest=" + enc);
-  return list.filter(function (x, i, a) { return x && a.indexOf(x) === i; });
-}
+try { localStorage.removeItem(NANO_CF_FONT_PROXY_KEY); } catch (e) {}
 function normalizeFontUrl(raw) {
   let u = String(raw || "").trim();
   if (!u) return u;
@@ -2913,31 +2889,6 @@ document.getElementById("fontFile").onchange = async e => {
     toast("字体加载失败");
   }
   e.target.value = "";
-};
-
-// ---- 字体代理（国外字体 / Catbox 等） ----
-const fontProxyInput = document.getElementById("fontProxy");
-function normalizeFontProxyInput(v) {
-  v = String(v || "").trim();
-  if (!v) return "";
-  if (v.indexOf("{url}") !== -1) return v;
-  if (/[?&]url=$/i.test(v)) return v;
-  if (/\/font\/?$/i.test(v)) return v.replace(/\/+$/, "") + "?url=";
-  if (v.indexOf("?") === -1) return v.replace(/\/+$/, "") + "/font?url=";
-  return v;
-}
-try {
-  if (fontProxyInput) fontProxyInput.value = getCfFontProxy() || "https://nanopush.nano315.online/font?url=";
-} catch (e) {}
-const fontProxySave = document.getElementById("fontProxySave");
-if (fontProxySave) fontProxySave.onclick = () => {
-  const v = normalizeFontProxyInput(fontProxyInput ? fontProxyInput.value : "");
-  try {
-    if (v) localStorage.setItem(NANO_CF_FONT_PROXY_KEY, v);
-    else localStorage.removeItem(NANO_CF_FONT_PROXY_KEY);
-  } catch (e) {}
-  if (fontProxyInput) fontProxyInput.value = v;
-  toast(v ? "字体代理已保存" : "已改用公共代理");
 };
 
 // ---- URL字体 ----

@@ -40,7 +40,13 @@
             vapid = (localStorage.getItem('nano_push_vapid') || '').trim();
             token = (localStorage.getItem('nano_push_token') || '').trim();
         } catch (e) {}
-        return { endpoint: endpoint.replace(/\/+$/, ''), vapid: vapid, token: token };
+        endpoint = endpoint.replace(/\/+$/, '');
+        // 旧测试 Worker 仍带 Bark / KV 逻辑，读到就自动迁回正式 Worker。
+        if (endpoint && (/(^|\.)peek-test\.nano315\.online$/i.test(endpoint) || /nano-test-ceshi/i.test(endpoint))) {
+            endpoint = 'https://nanopush.nano315.online';
+            try { localStorage.setItem('nano_push_endpoint', endpoint); } catch (e) {}
+        }
+        return { endpoint: endpoint, vapid: vapid, token: token };
     }
 
     function saveConfig(endpoint, vapid, token) {

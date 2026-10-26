@@ -1,5 +1,5 @@
 /* =========================================================
-   角色聊天记录页（chat → 主页 → 图库下面的卡片）
+   悄悄话记录页（chat → 主页 → 图库下面的卡片）
    - 灰白黑
    - 手动生成通过外壳模块（index 里的 NanoSecretChat）调用 API
    - 记录可反复查看、分享成卡片到某个 char 的私聊
@@ -101,7 +101,9 @@
     }
 
     function getConfig(id) {
-        var v = parseJson(localStorage.getItem(CFG_PREFIX + id), null) || {};
+        var mid = String((homeMask() || {}).id || 'm_default');
+        var v = parseJson(localStorage.getItem(CFG_PREFIX + mid + '_' + id), null) ||
+            parseJson(localStorage.getItem(CFG_PREFIX + id), null) || {};
         return {
             privateEnabled: !!v.privateEnabled,
             shareEnabled: !!v.shareEnabled,
@@ -112,13 +114,30 @@
         };
     }
 
+    function mergeRecords(a, b) {
+        var seen = {}, out = [];
+        var mid = String((homeMask() || {}).id || '');
+        (a || []).concat(b || []).forEach(function (r) {
+            if (!(r && r.a && r.b && Array.isArray(r.lines) && r.lines.length)) return;
+            // 有 maskId 的记录按当前 user 隔离；旧记录没有 maskId 时继续兼容展示。
+            if (r.maskId && mid && String(r.maskId) !== mid) return;
+            var k = String(r.id || (r.at + '_' + (r.a && r.a.id) + '_' + (r.b && r.b.id)));
+            if (seen[k]) return;
+            seen[k] = 1; out.push(r);
+        });
+        return out.sort(function (x, y) { return (y.at || 0) - (x.at || 0); });
+    }
     function loadRecords() {
         var arr = parseJson(localStorage.getItem(RECORDS_KEY), []);
         // 不再按当前 user / 绑定角色过滤：只要记录本身完整就展示。
         // 否则自动生成、切换 user、或角色后来解绑时，记录会「生成了但列表里没有」。
-        return (Array.isArray(arr) ? arr : []).filter(function (r) {
-            return !!(r && r.a && r.b && Array.isArray(r.lines) && r.lines.length);
-        }).sort(function (x, y) { return (y.at || 0) - (x.at || 0); });
+        return mergeRecords(Array.isArray(arr) ? arr : []);
+    }
+    function loadRecordsAsync() {
+        if (!window.NanoWhisperStore) return Promise.resolve(loadRecords());
+        return NanoWhisperStore.getAll().then(function (dbList) {
+            return mergeRecords(loadRecords(), dbList);
+        }).catch(function () { return loadRecords(); });
     }
 
     function fmtTime(ts) {
@@ -185,7 +204,7 @@
         }
         var enabled = bound.filter(function (c) { return getConfig(c.id).privateEnabled; });
         if (!enabled.length) {
-            el.textContent = '还没有角色开启私下聊天。任意一方开启并勾选对方后即可自动/手动生成。';
+            el.textContent = '还没有角色开启悄悄话。任意一方开启并勾选对方后即可自动/手动生成。';
             return;
         }
         var last = 0;
@@ -201,16 +220,19 @@
         var box = $('ccList');
         if (!box) return;
         if (!records.length) {
-            box.innerHTML = '<div class="cc-empty">还没有私下聊天记录</div>';
+            box.innerHTML = '<div class="cc-empty">还没有悄悄话</div>';
             return;
         }
         box.innerHTML = records.map(function (r, idx) {
             var first = (r.lines[0] && (r.lines[0].translation || r.lines[0].text)) || '';
-            var src = r.source === 'auto' ? '自动' : '手动';
+            var src = r.source === 'auto' ? '自动' : (r.source === 'chat' ? '聊天' : '手动');
+            var meta = r.source === 'chat'
+                ? (fmtTime(r.at) + ' · 悄悄话记录 · ' + r.lines.length + ' 句')
+                : (fmtTime(r.at) + ' · ' + (r.calls || 1) + ' 次 API · ' + r.lines.length + ' 句');
             return '<div class="cc-card" data-idx="' + idx + '">' +
                 '<div class="cc-card-head"><div class="cc-card-title">' + esc((r.a.name || 'A') + ' × ' + (r.b.name || 'B')) + '</div>' +
                 '<span class="cc-card-badge">' + esc(src) + '</span></div>' +
-                '<div class="cc-card-meta">' + esc(fmtTime(r.at) + ' · ' + (r.calls || 1) + ' 次 API · ' + r.lines.length + ' 句') + '</div>' +
+                '<div class="cc-card-meta">' + esc(meta) + '</div>' +
                 '<div class="cc-card-preview">' + esc(first) + '</div>' +
                 '<div class="cc-card-actions">' +
                 '<button class="cc-mini dark" data-act="view" data-idx="' + idx + '" type="button">查看</button>' +
@@ -265,18 +287,19 @@
     }
 
     function deleteRecord(rec) {
-        if (!confirm('删除这条私下聊天记录？（已经写进角色记忆的内容不会删除）')) return;
+        if (!confirm('删除这条悄悄话记录？（已经写进角色记忆的内容不会删除）')) return;
         var all = parseJson(localStorage.getItem(RECORDS_KEY), []);
         all = (Array.isArray(all) ? all : []).filter(function (x) { return x && String(x.id) !== String(rec.id); });
         try { localStorage.setItem(RECORDS_KEY, JSON.stringify(all)); } catch (e) {}
+        if (window.NanoWhisperStore) { try { NanoWhisperStore.del(rec.id); } catch (e) {} }
         records = loadRecords();
         renderList();
+        loadRecordsAsync().then(function (list) { records = list; renderList(); });
         toast('已删除记录');
     }
 
     async function shareToChar(rec, charId) {
         if (!rec || !charId) return;
-        if (!window.localforage) { toast('存储模块未加载，请刷新后重试'); return; }
         var c = charById(charId);
         if (!c) { toast('角色不存在'); return; }
         var now = new Date();
@@ -302,10 +325,20 @@
         };
         try {
             var key = 'chat_messages_' + charId;
-            var arr = await localforage.getItem(key);
-            arr = Array.isArray(arr) ? arr : [];
+            var arr = [];
+            // 优先写入 IndexedDB；localforage 没加载成功时退回到 localStorage，
+            // 卡片仍然会在下次打开聊天时出现，不会「提示失败但其实没发出去」。
+            if (window.localforage) {
+                try { arr = await localforage.getItem(key); } catch (e) { arr = null; }
+            }
+            if (!Array.isArray(arr)) {
+                arr = parseJson(localStorage.getItem(key), []);
+                arr = Array.isArray(arr) ? arr : [];
+            }
             if (!arr.some(function (m) { return m && m.id === card.id; })) arr.push(card);
-            await localforage.setItem(key, arr);
+            if (window.localforage) {
+                try { await localforage.setItem(key, arr); } catch (e) {}
+            }
             try { localStorage.setItem(key, JSON.stringify(arr.slice(-200))); } catch (e) {}
             if (window.parent !== window) {
                 window.parent.postMessage({ type: 'nanoSecretRouteCard', chatId: String(charId), card: card }, '*');
@@ -354,10 +387,20 @@
             var trBtn = $('ccTranslate');
             if (trBtn) { trBtn.disabled = false; translating = false; trBtn.textContent = '翻译这段（1 次 API）'; }
             records = loadRecords();
+            // 本地存储已满导致没能持久化时，也先把刚生成的记录放进列表，至少本次能查看/分享。
+            if (d.record && d.saved !== true) {
+                records = records.filter(function (r) { return String(r.id) !== String(d.record.id); });
+                records.unshift(d.record);
+                records.sort(function (x, y) { return (y.at || 0) - (x.at || 0); });
+            }
             renderList();
             renderAutoNote();
             fillSelects();
-            if (wasBusy) toast('生成成功，已写进双方记忆');
+            loadRecordsAsync().then(function (list) {
+                records = mergeRecords(list, d.record ? [d.record] : []);
+                renderList();
+            });
+            if (wasBusy) toast(d.saved === false ? '生成成功，但本地存储已满，记录可能不会长期保留' : '生成成功，已写进双方记忆', d.saved === false ? 4200 : 2400);
             // 如果弹窗正开着，刷新成最新
             if (d.record && $('ccModal') && $('ccModal').classList.contains('open')) openViewer(d.record);
             return;
@@ -433,9 +476,31 @@
         if (b) b.addEventListener('change', fillSelects);
     }
 
+    function refreshRecords() {
+        records = loadRecords();
+        renderList();
+        loadRecordsAsync().then(function (list) { records = list; renderList(); });
+    }
+
     async function init() {
         bind();
         window.addEventListener('message', onMessage);
+        // 从聊天页返回 / App 重新前台 / 别的帧写入记录时都重新读一次，
+        // 避免页面一直显示打开时的旧快照。
+        window.addEventListener('message', function (e) {
+            var t = e && e.data && e.data.type;
+            if (t === 'nanoOverlayReopen' || t === 'nanoSecretChatUpdated') {
+                refreshRecords();
+                renderAutoNote();
+            }
+        });
+        window.addEventListener('focus', refreshRecords);
+        document.addEventListener('visibilitychange', function () {
+            if (!document.hidden) refreshRecords();
+        });
+        window.addEventListener('storage', function (e) {
+            if (e && e.key === RECORDS_KEY) refreshRecords();
+        });
         var data = await getBoundChars();
         chars = data.all;
         bound = data.bound;
@@ -443,6 +508,7 @@
         fillSelects();
         renderAutoNote();
         renderList();
+        loadRecordsAsync().then(function (list) { records = list; renderList(); });
         // 进入页面时让外壳检查一次（不阻塞）
         if (window.parent !== window) {
             try { window.parent.postMessage({ type: 'nanoSecretAutoCheck' }, '*'); } catch (e) {}

@@ -536,6 +536,11 @@
     /* ---------------- 启动 ---------------- */
     async function init() {
         try { base = location.href.split(/[?#]/)[0].replace(/[^/]*$/, ''); } catch (e) { base = './'; }
+        // 单文件源码链接用当前站点地址生成，不在前端写死任何 GitHub 仓库地址。
+        try {
+            var rawEl = $('isDeployRaw');
+            if (rawEl) rawEl.textContent = new URL('../push-worker/dist/index.js', location.href).href;
+        } catch (e) {}
         var sp = null;
         try { sp = new URLSearchParams(location.search); } catch (e) {}
         var wantChat = sp ? (sp.get('chat') || '') : '';

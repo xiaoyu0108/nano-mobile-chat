@@ -902,6 +902,12 @@ body.nano-chat-inner .bubble-card .card-footer {
   border-top: 1px solid #f6ebef !important;
 }
 body.nano-chat-inner .bubble-card .card-footer.status-only { padding: 8px 12px 9px !important; }
+body.nano-chat-inner .bubble-card .card-hint {
+  padding: 2px 12px 10px 12px !important;
+  font-size: 10.5px !important;
+  line-height: 1.45 !important;
+  color: #a79a9e !important;
+}
 body.nano-chat-inner .bubble-card .card-footer-text {
   font-size: 10.5px !important;
   color: #a79a9e !important;

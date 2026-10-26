@@ -1,5 +1,8 @@
-# 测试用 Worker：nano-test-ceshi
-# 同时绑定 workers.dev 和自定义域名 peek-test.nano315.online，不影响正式 Worker。
+# 已废弃：这个测试 Worker（nano-test-ceshi / peek-test.nano315.online）曾经使用
+# PUSH_KV + Bark 推送，正是「Bark 还在推」「KV 额度 50%」的来源。
+# 请到 Cloudflare Dashboard 直接删除这个 Worker 和旧 KV 命名空间，不要再部署它。
+#
+# 如果确实要保留一个测试环境，请复制正式 wrangler.toml 的 D1 配置，并且不要绑定 PUSH_KV。
 name = "nano-test-ceshi"
 main = "dist/index.js"
 compatibility_date = "2025-01-01"
@@ -10,12 +13,18 @@ routes = [
   { pattern = "peek-test.nano315.online", custom_domain = true }
 ]
 
-kv_namespaces = [
-  { binding = "PUSH_KV", id = "258a9b79d41c4099bdf9fc618401eff2" }
-]
+# 旧 KV 绑定已移除：Bark 和 KV 配额告警都来自这里。
+# kv_namespaces = [
+#   { binding = "PUSH_KV", id = "258a9b79d41c4099bdf9fc618401eff2" }
+# ]
 
-# 测试 Worker 不需要定时任务：cron 会读 KV / 执行主动消息，即使没人用也会消耗额度。
-# 需要测试 cron 时再临时打开，测完记得注释掉。
+# 不要绑定正式 D1！测试环境如果确实要跑，请新建一个独立的测试数据库再取消注释。
+# [[d1_databases]]
+# binding = "nano_db"
+# database_name = "nano-test-db"
+# database_id = "你自己的测试 D1 ID"
+
+# 测试环境仍然不建议开 cron：即使没人用也会消耗额度。
 # [triggers]
 # crons = ["*/5 * * * *"]
 
@@ -25,5 +34,3 @@ INCLUDE_LEGACY_MARKET = "1"
 # APP_URL = "https://你的站点/"
 
 # PEEK_PUBLIC 是现有 secret，部署时保留，不要写进这里。
-# 这个测试 Worker 已删除 PUSH_TOKEN：否则公用模式下 autoOk 只认 PUSH_TOKEN，
-# 其他用户的 pk 会被 /auto/config 拒绝，Web Push 后台消息配不上。

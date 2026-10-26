@@ -1,6 +1,15 @@
 (function () {
   'use strict';
 
+  // 旧测试 Worker（nano-test-ceshi / peek-test）仍在运行 Bark 推送和旧 KV 配额。
+  // 一旦本机还保存着它们的地址，这里自动切回正式 Worker，避免继续往旧服务发请求。
+  try {
+    var ep = String(localStorage.getItem('nano_push_endpoint') || '').trim().replace(/\/+$/, '');
+    if (ep && (/(^|\.)peek-test\.nano315\.online$/i.test(ep) || /nano-test-ceshi/i.test(ep))) {
+      localStorage.setItem('nano_push_endpoint', 'https://nanopush.nano315.online');
+    }
+  } catch (e) {}
+
   /* ============================================================
      IndexedDB 防降级 shim
      ------------------------------------------------------------
@@ -213,4 +222,19 @@
   window.addEventListener('resize', apply);
   window.addEventListener('orientationchange', apply);
   try { if (window.visualViewport) window.visualViewport.addEventListener('resize', apply); } catch (e) {}
+
+  // 通知宿主页面「这一帧已经可以显示」，用来尽早收起「正在打开…」。
+  // nano-runtime 是每个子页面最早加载的脚本，不用等其它重脚本全部执行完。
+  function notifyFrameReady() {
+    try {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({ type: 'nanoFrameReady' }, '*');
+      }
+    } catch (e) {}
+  }
+  if (document.readyState === 'complete') notifyFrameReady();
+  else {
+    document.addEventListener('DOMContentLoaded', notifyFrameReady, { once: true });
+    window.addEventListener('load', notifyFrameReady, { once: true });
+  }
 })();

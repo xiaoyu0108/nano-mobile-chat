@@ -1,13 +1,13 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<script src="../js/nano-runtime.js?v=20261023a"></script>
+<script src="../js/nano-runtime.js?v=20261026d"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>角色关系</title>
 <link rel="stylesheet" href="../css/inner-setting.css?v=20261024i">
-<link rel="stylesheet" href="../css/char-relations.css?v=20261025c">
-<script src="../js/appearance.js"></script>
+<link rel="stylesheet" href="../css/char-relations.css?v=20261026e">
+<script src="../js/appearance.js?v=20261026d"></script>
 </head>
 <body>
 
@@ -37,8 +37,8 @@
         <div class="list-item">
             <div class="item-left">
                 <div class="item-icon" style="color:#3a3a3c;">◎</div>
-                <div class="item-text">私下聊天</div>
-                <div class="rel-item-desc">允许这个 char 和你勾选的角色私下聊天；两个人都开启才会生成。</div>
+                <div class="item-text">悄悄话</div>
+                <div class="rel-item-desc">允许这个 char 和你勾选的角色说悄悄话；两个人都开启才会生成。</div>
             </div>
             <div class="item-right">
                 <input type="checkbox" class="ios-switch" id="privateEnabled">
@@ -71,7 +71,7 @@
     </div>
 
     <div class="rel-auto-note" id="autoNote">
-        开启私下聊天后，大约每 3 天会自动刷新一次（只在你打开 App 时检查，一次只生成一段，避免浪费 API）。
+        开启悄悄话后，大约每 3 天会自动刷新一次（只在你打开 App 时检查，一次只生成一段，避免浪费 API）。
     </div>
 
     <div class="rel-section-title">和谁有关系</div>
@@ -81,16 +81,16 @@
     <div class="list-group rel-char-list" id="shareList">
         <div class="rel-empty">正在读取角色…</div>
     </div>
-    <div class="rel-tip">只有这里勾选的角色，才会进入 ta 的共享上下文，也才会和 ta 私下聊天。只显示当前 user 绑定的角色。</div>
+    <div class="rel-tip">只有这里勾选的角色，才会进入 ta 的共享上下文，也才会和 ta 说悄悄话。只显示当前 user 绑定的角色。</div>
 
     <div class="rel-actions">
-        <button id="openRecords" class="rel-primary" type="button">查看他们的聊天记录</button>
+        <button id="openRecords" class="rel-primary" type="button">查看悄悄话</button>
     </div>
 </div>
 
 <div class="rel-toast" id="relToast"></div>
 
 <script src="../js/swipe-back.js"></script>
-<script src="../js/char-relations.js?v=20261025e"></script>
+<script src="../js/char-relations.js?v=20261026f"></script>
 </body>
 </html>

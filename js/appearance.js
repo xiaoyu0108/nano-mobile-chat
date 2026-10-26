@@ -642,30 +642,10 @@ function applyChatCss(css) {
     }
 
     // ---- 字体 ----
-    // Cloudflare 字体代理：可在控制台执行
-    //   localStorage.setItem('nano_cf_font_proxy', 'https://你的worker.workers.dev/?url=')
-    // 或设置 window.NANO_CF_FONT_PROXY 覆盖。留空时自动使用公共 Cloudflare CORS 代理。
-    function getCfFontProxy() {
-        try {
-            if (window.NANO_CF_FONT_PROXY) return String(window.NANO_CF_FONT_PROXY);
-            var v = localStorage.getItem('nano_cf_font_proxy');
-            if (v) return String(v);
-        } catch (e) {}
-        return '';
-    }
-    function fontProxyList(raw) {
-        var u = String(raw || '').trim();
-        if (!/^https?:/i.test(u)) return [];
-        var enc = encodeURIComponent(u);
-        var out = [];
-        var custom = getCfFontProxy();
-        if (custom) out.push(custom.indexOf('{url}') !== -1 ? custom.replace('{url}', enc) : custom + enc);
-        out.push('https://test.cors.workers.dev/?' + u);
-        out.push('https://cors.isomorphic-git.org/' + u);
-        out.push('https://api.allorigins.win/raw?url=' + enc);
-        out.push('https://corsproxy.io/?url=' + enc);
-        out.push('https://api.codetabs.com/v1/proxy?quest=' + enc);
-        return out.filter(function (x, i, a) { return x && a.indexOf(x) === i; });
+    // 字体不再走任何代理：公共代理不稳定、还会拖慢字体加载。
+    // 字体直链能直接加载就加载，不能加载就直接失败。
+    function fontProxyList() {
+        return [];
     }
     function normalizeFontUrl(raw) {
         var u = String(raw || '').trim();

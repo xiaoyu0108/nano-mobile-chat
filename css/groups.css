@@ -375,6 +375,13 @@ html.keyboard-open .chat-container {
     padding: 12px 14px 14px; border-top: 0; opacity: 1;
 }
 .bubble-card .card-footer.status-only { padding: 10px 14px 12px; }
+.bubble-card .card-hint {
+    padding: 2px 14px 12px;
+    font-size: 12px;
+    line-height: 1.45;
+    color: #8e8e93;
+    text-align: left;
+}
 .bubble-card .card-footer-text {
     flex: 1; min-width: 0; display: flex; align-items: center;
     font-size: 12px; line-height: 1.4; color: #8e8e93;

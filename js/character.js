@@ -1240,9 +1240,15 @@
         const file = this.files[0];
         if (!file) return;
 
-        // 只有 PNG 角色卡导入需要设备激活；TXT / DOC / DOCX / JSON 不限制。
-        // ===== 处理 DOC / DOCX 文件（按需加载解析库，不影响页面加载速度） =====
+        // 只有 PNG 角色卡导入需要设备激活；TXT / DOC / DOCX 不限制。
+        // 直接导入 .json 角色卡已关闭，只允许 PNG 角色卡。
         const lowerName = (file.name || '').toLowerCase();
+        if (lowerName.endsWith('.json')) {
+            fileInput.value = '';
+            showInfo('不支持 JSON', '角色导入只接受 PNG 角色卡、TXT / DOC / DOCX 文本，不再直接导入 JSON 文件。');
+            return;
+        }
+        // ===== 处理 DOC / DOCX 文件（按需加载解析库，不影响页面加载速度） =====
         if (lowerName.endsWith('.doc') || lowerName.endsWith('.docx')) {
             fileInput.value = '';
             ensureMammoth().then(function(mammoth) {
@@ -1274,17 +1280,11 @@
             return;
         }
         
-        // ===== 处理 TXT / JSON =====
+        // ===== 处理 TXT =====
         const reader = new FileReader();
         reader.onload = function(ev) {
             try {
                 let text = ev.target.result;
-                if (file.name.endsWith('.json')) {
-                    try {
-                        const json = JSON.parse(text);
-                        text = JSON.stringify(json, null, 2);
-                    } catch(err) {}
-                }
                 inputSetting.value = text;
                 fileInput.value = '';
             } catch(err) {
@@ -1434,35 +1434,8 @@
         const file = this.files[0];
         if (!file) return;
         importPngFileInput.value = '';
-        // ===== 兼容直接导入 JSON 角色卡文件 =====
-        const isJson = /\.json$/i.test(file.name || '') || file.type === 'application/json';
-        if (isJson) {
-            const jr = new FileReader();
-            jr.onload = function(ev) {
-                try {
-                    let text = String(ev.target.result || '').replace(/^\uFEFF/, '').trim();
-                    let cardData = null;
-                    try { cardData = JSON.parse(text); } catch (e2) { cardData = parseLooseJson(text); }
-                    if (!cardData || typeof cardData !== 'object') { showInfo('导入失败', '这不是有效的角色卡 JSON。'); return; }
-                    const parsedC = parseCardData(cardData);
-                    if (isEditMode) exitEditMode();
-                    openEditModal(null);
-                    if (parsedC.name) inputName.value = parsedC.name;
-                    if (parsedC.gender) inputGender.value = parsedC.gender;
-                    if (parsedC.nationality) inputNationality.value = parsedC.nationality;
-                    if (parsedC.setting) inputSetting.value = parsedC.setting;
-                    tempGreetings = Array.isArray(parsedC.greetings) ? parsedC.greetings.slice() : [];
-                    if (parsedC.embeddedWorldbook && parsedC.embeddedWorldbook.entries && parsedC.embeddedWorldbook.entries.length) {
-                        importEmbeddedWorldbook(parsedC.embeddedWorldbook).then(function(wb) {
-                            if (wb && !worldbookBindings.some(w => w.id === wb.id)) { worldbookBindings.push({ id: wb.id, group: wb.group || '' }); renderWorldbookList(); }
-                        }).catch(function() {});
-                    }
-                } catch(err) {
-                    showInfo('导入失败', '解析 JSON 遇到错误: ' + (err.message || err));
-                }
-            };
-            jr.onerror = function() { showInfo('导入失败', '读取文件失败'); };
-            jr.readAsText(file);
+        if (/\.json$/i.test(file.name || '') || file.type === 'application/json') {
+            showInfo('不支持 JSON', '角色导入只接受 PNG 角色卡。请导入酒馆 PNG，或把设定作为 TXT / DOCX 文本导入。');
             return;
         }
         // ⭐ pako 按需加载（原为 <head> 阻塞脚本，现改为用到时再加载）

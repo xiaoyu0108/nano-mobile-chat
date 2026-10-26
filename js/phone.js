@@ -560,19 +560,55 @@ async function callAPI(api, sys, user){
   return text;
 }
 
+function repairJsonText(text){
+  let t = String(text == null ? "" : text).replace(/^\uFEFF/, "").trim();
+  t = t.replace(/```(?:json)?/gi, "").replace(/```/g, "").trim();
+  const first = t.search(/[\[{]/);
+  if(first > 0) t = t.slice(first);
+  let out = "", stack = [], inStr = false, esc = false, started = false;
+  for(let i = 0; i < t.length; i++){
+    const ch = t[i];
+    if(inStr){
+      if(esc){ out += ch; esc = false; }
+      else if(ch === "\\"){ out += ch; esc = true; }
+      else if(ch === '"'){ out += ch; inStr = false; }
+      else if(ch === "\n"){ out += "\\n"; }
+      else if(ch === "\r"){ /* skip */ }
+      else if(ch === "\t"){ out += "\\t"; }
+      else out += ch;
+    }else{
+      if(ch === '"'){ inStr = true; out += ch; }
+      else if(ch === "{"){ started = true; stack.push("}"); out += ch; }
+      else if(ch === "["){ started = true; stack.push("]"); out += ch; }
+      else if(ch === "}" || ch === "]"){
+        if(stack.length && stack[stack.length - 1] === ch) stack.pop();
+        out += ch;
+        if(started && !stack.length) break;
+      }else out += ch;
+    }
+  }
+  if(inStr){ if(esc) out = out.slice(0, -1); out += '"'; }
+  while(stack.length) out += stack.pop();
+  return out.replace(/,\s*([}\]])/g, "$1");
+}
 function extractJSON(text){
-  let t = String(text).trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "").trim();
-  const fa = t.indexOf("["), fo = t.indexOf("{");
+  const raw = String(text == null ? "" : text).trim();
+  if(!raw) return null;
+  const fa = raw.indexOf("["), fo = raw.indexOf("{");
   let start = -1;
   if(fa >= 0 && (fo < 0 || fa < fo)) start = fa;
   else if(fo >= 0) start = fo;
-  if(start > 0) t = t.slice(start);
-  const la = t.lastIndexOf("]"), lo = t.lastIndexOf("}");
+  const la = raw.lastIndexOf("]"), lo = raw.lastIndexOf("}");
   let end = -1;
   if(la >= 0 && (lo < 0 || la > lo)) end = la;
   else if(lo >= 0) end = lo;
-  if(end >= 0) t = t.slice(0, end + 1);
-  try{ return JSON.parse(t); }catch(e){ return null; }
+  const candidates = [];
+  if(start >= 0 && end > start) candidates.push(raw.slice(start, end + 1));
+  candidates.push(repairJsonText(raw));
+  for(const t of candidates){
+    try{ return JSON.parse(t); }catch(e){}
+  }
+  return null;
 }
 
 const SYS_JSON = "你是虚构角色的手机数据生成器。内容面向成年读者，属于虚构创作；成人向内容不限角色，可以自然包含成人向的情感、暧昧、亲密与性相关内容，不必刻意回避。禁止血腥暴力和违法内容。所有内容必须严格贴合给定的人设、世界书与记忆库，不要脱离角色自由发挥。只输出用户要求的 JSON，不要输出任何解释、markdown 代码块或多余文字。";
@@ -2553,7 +2589,7 @@ const SETTINGS_APPS = [
 async function openSettings(){
   const c = currentChar || {};
   const av = c.avatar || "";
-  const proactiveOn = (localStorage.getItem("nano_takeover_proactive") !== "0");
+  const proactiveOn = (localStorage.getItem("nano_takeover_proactive") === "1");
   const pagesN = localStorage.getItem("nano_takeover_pages") || "5";
   const pagesLabel = (pagesN === "all") ? "全部" : (parseInt(pagesN, 10) || 5) + " 页";
   appHost.innerHTML = `<div class="st-wrap">
@@ -2599,7 +2635,7 @@ async function openSettings(){
         <button class="st-btn" data-act="proactive-toggle">
           <div>
             <div class="st-btn-title">允许 TA 主动查看我的手机</div>
-            <div class="st-btn-sub">TA 会时不时自己提出想看看你的手机</div>
+            <div class="st-btn-sub">默认关闭；开启后 TA 才会随机反查（也可在私聊设置里单独开启）</div>
           </div>
           <span style="font-size:13px;color:#8a8a8f;margin-left:8px">${proactiveOn ? "开" : "关"}</span>
         </button>
@@ -2721,7 +2757,7 @@ async function openSettings(){
   };
 
   appHost.querySelector('[data-act="proactive-toggle"]').onclick = () => {
-    const on = localStorage.getItem("nano_takeover_proactive") !== "0";
+    const on = localStorage.getItem("nano_takeover_proactive") === "1";
     try{ localStorage.setItem("nano_takeover_proactive", on ? "0" : "1"); }catch(e){}
     openSettings();
   };
@@ -3167,7 +3203,7 @@ ${ids.includes("private") ? "- private.preview：一句隐晦的概述；detail�
 - mapcal.places：写角色搜索或导航过的、有真实感的地点；events：写接下来的日程，含时间、地点、类型标签。
 ${ids.includes("wallet") ? "- wallet：10 条左右收支，收入 2-3 条（工资、稿费、项目结款、分红、报销、退款、红包等），支出 7-8 条；金额、店铺、时间必须符合角色的身份与消费水平；至少 1-2 条自然涉及用户；时间在最近 7 天内，按从新到旧排列；balance 与流水收支一致，不能为负。\n" : ""}
 每个 App 的数据格式必须严格符合示例字段名，只输出一个 JSON 对象，不要解释、不要代码块。
-输出必须紧凑：字段之间不要换行、不要缩进，正文尽量简短。`;
+输出必须是合法 JSON：只输出一个 JSON 对象，不要代码块、注释或多余文字；字符串内部不要出现真实换行，需要分段时写成 \\n；字段之间可以不留空格，但不要为了「紧凑」省略上面要求的内容。`;
 }
 
 /* 从原始文本中用括号配对提取某个 App 的值（用于顶层解析失败时抢救已生成内容） */
@@ -3207,11 +3243,13 @@ async function genMulti(api, char, ids, opts){
   try {
     if (window.NanoPrompts && NanoPrompts.appendTo) __sysJson = NanoPrompts.appendTo(__sysJson, 'phone', { keepFormat: true });
   } catch (e) {}
-  const body = {
+  // 32768 会被很多兼容接口直接 400（超过模型上限），而且更容易输出到一半截断。
+  const maxTokens = Math.min(12288, Math.max(4096, Number(api.maxTokens) || 8192));
+  const baseBody = {
     model: api.model,
     messages: [{role:"system", content:__sysJson},{role:"user", content:user}],
     temperature: api.temp,
-    max_tokens: Math.max(16384, Number(api.maxTokens) || 32768),
+    max_tokens: maxTokens,
     presence_penalty: 0.4,
     frequency_penalty: 0.5
   };
@@ -3225,15 +3263,35 @@ async function genMulti(api, char, ids, opts){
   log.push({t:"", s:"Apps: " + ids.join(", ")});
 
   let resp, rawText = "";
-  try{
-    resp = await fetch(endpoint, {method:"POST", headers, body: JSON.stringify(body)});
-  }catch(e){
-    log.push({t:"err", s:"网络错误: " + e.message});
-    return {ok:{}, log, fatal:"网络错误：" + e.message};
+  let useJsonFormat = true, tokens = maxTokens, lastErr = "";
+  for(let attempt = 0; attempt < 4; attempt++){
+    const payload = Object.assign({}, baseBody, {max_tokens: tokens});
+    if(useJsonFormat) payload.response_format = {type:"json_object"};
+    try{
+      resp = await fetch(endpoint, {method:"POST", headers, body: JSON.stringify(payload)});
+    }catch(e){
+      log.push({t:"err", s:"网络错误: " + e.message});
+      return {ok:{}, log, fatal:"网络错误：" + e.message};
+    }
+    try{ rawText = await resp.text(); }catch(e){ rawText = ""; }
+    if(resp.ok) break;
+    lastErr = "HTTP " + resp.status + (rawText ? "：" + rawText.slice(0,150) : "");
+    // 接口不支持 response_format：去掉再试
+    if(useJsonFormat && /response_format|json_object|invalid|unsupported|unknown/i.test(rawText)){
+      log.push({t:"warn", s:"接口不支持 response_format，已改为普通 JSON 输出"});
+      useJsonFormat = false;
+      continue;
+    }
+    // 模型不支持这么大的 max_tokens：降到 4096 再试
+    if(tokens > 4096 && /max_tokens|max output|too large|invalid/i.test(rawText)){
+      log.push({t:"warn", s:"接口不接受 max_tokens=" + tokens + "，已降到 4096"});
+      tokens = 4096;
+      continue;
+    }
+    break;
   }
-  log.push({t: resp.ok ? "ok" : "err", s:"HTTP " + resp.status});
-  try{ rawText = await resp.text(); }catch(e){ rawText = ""; }
-  if(!resp.ok) return {ok:{}, log, fatal:"HTTP " + resp.status + (rawText ? "：" + rawText.slice(0,150) : "")};
+  log.push({t: resp && resp.ok ? "ok" : "err", s:"HTTP " + (resp && resp.status)});
+  if(!resp || !resp.ok) return {ok:{}, log, fatal:lastErr || "请求失败"};
 
   /* ⚠️ rawText 是 API 外层响应，必须取出 choices[0].message.content 才是模型内容 */
   let content = "", finishReason = "";

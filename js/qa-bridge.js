@@ -404,7 +404,7 @@
         '3. 不替用户说话，不描写用户的动作或心理，不写旁白和括号动作。'
       ].join('\n'));
     } else {
-      parts.push('【平台】Q&A 是一个国际化提问箱/私信平台，用户和 char、陌生人都在同一个平台上交流。陌生人可能来自不同国家。保持活人感、贴人设，绝不解释自己是 AI，绝不跳出角色。');
+      parts.push('【平台】Q&A 是一个国际化提问箱/私信平台，用户和 char、陌生人都在同一个平台上交流。陌生人可能来自不同国家。保持活人感、贴人设，绝不解释自己是 AI，绝不跳出角色。提问和回答都像随手打字，不要采访腔、客服腔、报告腔；陌生网友默认不认识你，不要装熟或猜成某个熟人；只有人设/世界书/角色关系里明确认识，才可以认出对方。');
       // Q&A 很适合 deeptalk：借 DeepSeek 式「先理解、再推理、后表达」的内部思考方式，
       // 但只输出最终回答，不展示思维链。
       parts.push([
@@ -439,6 +439,11 @@
         // 推理模型可能把最终 JSON 放在 reasoning_content；但纯思维链不要当成正文返回。
         var rc = msg.reasoning_content.trim();
         if (/^[\[{]/.test(rc)) return rc;
+        var js = rc.search(/[\[{]/);
+        if (js > -1) {
+          var jt = rc.slice(js);
+          if (/[\]}]/.test(jt)) return jt;
+        }
       }
     }
     if (data.response && typeof data.response === 'string') return data.response.trim();
@@ -538,18 +543,22 @@
     };
     // Q&A 的 JSON 输出比普通聊天长，预算太低会直接截断。至少给 1400，
     // 并且遇到 finish_reason=length 时自动用更大的预算重试一次。
-    var startTokens = Math.max(parseInt(meta.maxTokens, 10) || 0, 1400);
+    var startTokens = Math.max(parseInt(meta.maxTokens, 10) || 0, 2200);
     var budgets = [startTokens];
     if (meta.retryOnLength !== false) budgets.push(Math.min(16000, Math.round(startTokens * 1.8)));
     var lastContent = '';
+    var useJson = meta.json !== false;
+    var jsonFallbackUsed = false;
     for (var attempt = 0; attempt < budgets.length; attempt++) {
-      var body = JSON.stringify({
+      var bodyObj = {
         model: cfg.mainModel,
         messages: msgs,
         max_tokens: budgets[attempt],
         temperature: isFinite(meta.temp) ? meta.temp : temp,
         stream: false
-      });
+      };
+      if (useJson) bodyObj.response_format = { type: 'json_object' };
+      var body = JSON.stringify(bodyObj);
       try { console.info('[Q&A] 请求', { model: cfg.mainModel, messages: msgs.length, max_tokens: budgets[attempt], url: base + '/chat/completions' }); } catch (e) {}
       var resp = await requestAI(base + '/chat/completions', headers, body);
       var rawText = String((resp && resp.text) || '');
@@ -557,6 +566,13 @@
       try { data = rawText ? JSON.parse(rawText) : null; } catch (e) {}
       if (!resp || !resp.ok) {
         var httpMsg = (data && ((data.error && data.error.message) || data.message)) || (resp && resp.status ? 'HTTP ' + resp.status : (resp && resp.error) || '请求失败');
+        // 部分兼容接口不支持 response_format，会直接 400：去掉后重试同一档预算。
+        if (useJson && !jsonFallbackUsed && /response_format|json_object|400|invalid|unsupported|unknown/i.test(String(httpMsg) + ' ' + rawText)) {
+          useJson = false;
+          jsonFallbackUsed = true;
+          attempt--;
+          continue;
+        }
         var detail = rawText ? ('；响应：' + rawText.replace(/\s+/g, ' ').slice(0, 300)) : '';
         var e1 = new Error('Q&A API 请求失败：' + httpMsg + '（模型：' + cfg.mainModel + '，地址：' + base + '/chat/completions）' + detail);
         e1.status = resp && resp.status;

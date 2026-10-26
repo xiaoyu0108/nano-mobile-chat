@@ -73,9 +73,9 @@ window.NANO_ASSISTANT_KB = {
     { file: 'js/cloud-backup.js', name: '云端备份逻辑' },
     { file: 'html/char-relations.html', name: '角色关系（按 char 单独设置）' },
     { file: 'js/char-relations.js', name: '角色关系设置逻辑' },
-    { file: 'html/char-chats.html', name: '角色聊天记录' },
-    { file: 'js/char-chats.js', name: '角色聊天记录逻辑' },
-    { file: 'js/char-secret-chat.js', name: '角色私下聊天（自动/手动生成）' }
+    { file: 'html/char-chats.html', name: '悄悄话记录' },
+    { file: 'js/char-chats.js', name: '悄悄话记录逻辑' },
+    { file: 'js/char-secret-chat.js', name: '角色悄悄话（自动/手动生成）' }
   ],
 
   // 数据存储位置（写入时要遵守）

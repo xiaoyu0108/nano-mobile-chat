@@ -11,7 +11,14 @@
     var GH_API = 'https://api.github.com';
     var GH_FILE = 'nano-backup.json';
     var GH_TAG = 'Nano 云端备份';
-    var MAX_BYTES = 24 * 1024 * 1024;
+    // Gist 超过 10MB 的文件无法通过 raw_url 直接下载（官方要求 clone），
+    // 所以分片必须小于 10MB：这里用 8MB。应用层不再限制总大小；
+    // 实际上限由 GitHub Gist（最多 300 个文件）和手机内存决定。
+    var CHUNK_BYTES = 8 * 1024 * 1024;
+    var PART_PREFIX = 'nano-backup-part-';
+    function partName(i) {
+        return PART_PREFIX + String(i + 1).padStart(3, '0') + '.txt';
+    }
 
     function $(id) { return document.getElementById(id); }
 
@@ -187,7 +194,7 @@
             if (typeof AbortController !== 'undefined') {
                 controller = new AbortController();
                 o.signal = controller.signal;
-                timer = setTimeout(function () { try { controller.abort(); } catch (e) {} }, 45000);
+                timer = setTimeout(function () { try { controller.abort(); } catch (e) {} }, 90000);
             }
             o.headers = Object.assign({
                 'Accept': 'application/vnd.github+json',
@@ -319,11 +326,18 @@
             try {
                 file = g.files && (g.files[GH_FILE] || g.files[Object.keys(g.files)[0]]);
             } catch (e) {}
+            var total = (file && file.size) || 0;
+            // 分片备份：清单本身很小，真实大小要把所有 part 加起来。
+            try {
+                Object.keys(g.files || {}).forEach(function (name) {
+                    if (name.indexOf(PART_PREFIX) === 0) total += ((g.files[name] && g.files[name].size) || 0);
+                });
+            } catch (e) {}
             items.push({
                 id: g.id,
                 desc: g.description,
                 updatedAt: g.updated_at || g.created_at,
-                size: (file && file.size) || 0
+                size: total
             });
         });
         items.sort(function (a, b) {
@@ -358,11 +372,13 @@
         }
     }
 
-    async function ghUpload() {
-        if (!ghToken()) { toast('请先连接 GitHub'); return; }
-        if (!confirm('将把本机全部数据压缩后上传到你的 GitHub（私有 Gist）。\n备份包含聊天记录和图片，继续？')) return;
+    async function ghUpload(opts) {
+        opts = opts || {};
+        var isAuto = !!opts.auto;
+        if (!ghToken()) { if (!isAuto) toast('请先连接 GitHub'); return false; }
+        if (!isAuto && !confirm('将把本机全部数据压缩后上传到你的 GitHub（私有 Gist）。\n备份包含聊天记录和图片，继续？')) return false;
         setGhBusy(true);
-        showProgress('正在上传到 GitHub');
+        if (!isAuto) showProgress('正在上传到 GitHub');
         try {
             var pack = await packBackup();
             setProgress(58, '生成备份文件…');
@@ -376,31 +392,100 @@
                 jsonBytes: pack.jsonBytes,
                 data: b64
             });
-            if (payload.length > MAX_BYTES) {
-                throw new Error('压缩后仍有 ' + fmtSize(payload.length) + '，超过 GitHub Gist 的安全上限（24MB）。请先删除旧备份，或改用本地导出。');
+            var chunks = [];
+            for (var off = 0; off < payload.length; off += CHUNK_BYTES) {
+                chunks.push(payload.slice(off, off + CHUNK_BYTES));
             }
-            setProgress(68, '上传 ' + fmtSize(payload.length) + '…');
-            await ghRequest('/gists', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    description: GH_TAG + ' · ' + fmtTime(new Date()),
-                    public: false,
-                    files: (function () {
-                        var f = {};
-                        f[GH_FILE] = { content: payload };
-                        return f;
-                    })()
-                })
-            });
+            if (!chunks.length) chunks.push('');
+            // GitHub 单个 Gist 最多返回 300 个文件；这是平台限制，不是应用限制。
+            if (chunks.length > 290) {
+                throw new Error('备份需要 ' + chunks.length + ' 个分片，超过 GitHub Gist 的 300 文件上限。请改用本地导出，或先清理部分聊天/图片数据。');
+            }
+            var manifest = {
+                format: 'nano-cloud-backup-manifest',
+                version: 2,
+                complete: false,
+                createdAt: new Date().toISOString(),
+                origin: location.origin,
+                jsonBytes: pack.jsonBytes,
+                size: payload.length,
+                parts: chunks.map(function (_, i) { return partName(i); })
+            };
+            setProgress(66, '创建备份（' + chunks.length + ' 个分片，共 ' + fmtSize(payload.length) + '）…');
+            var created = null;
+            try {
+                created = await ghRequest('/gists', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        description: GH_TAG + (isAuto ? ' · 自动' : '') + ' · ' + fmtTime(new Date()),
+                        public: false,
+                        files: (function () {
+                            var f = {};
+                            f[GH_FILE] = { content: JSON.stringify(manifest) };
+                            return f;
+                        })()
+                    })
+                });
+                if (!created || !created.id) throw new Error('GitHub 没有返回 Gist ID');
+                // 逐个 PATCH 分片：单个请求不会过大，失败时删除半成品 Gist。
+                for (var i = 0; i < chunks.length; i++) {
+                    var f = {};
+                    f[partName(i)] = { content: chunks[i] };
+                    await ghRequest('/gists/' + encodeURIComponent(created.id), {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ files: f })
+                    });
+                    setProgress(66 + Math.round(30 * (i + 1) / chunks.length), '上传分片 ' + (i + 1) + '/' + chunks.length + '…');
+                }
+                // 所有分片成功后再把清单标记为完成；中途退出/失败时恢复端会明确提示备份不完整。
+                manifest.complete = true;
+                var doneFile = {};
+                doneFile[GH_FILE] = { content: JSON.stringify(manifest) };
+                await ghRequest('/gists/' + encodeURIComponent(created.id), {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ files: doneFile })
+                });
+            } catch (upErr) {
+                if (created && created.id) {
+                    try { await ghRequest('/gists/' + encodeURIComponent(created.id), { method: 'DELETE' }); } catch (e) {}
+                }
+                throw upErr;
+            }
             setProgress(100, '上传完成');
-            toast('已上传到 GitHub 私有 Gist');
-            try { await ghLoadList(true); } catch (listErr) { toast('上传成功，但刷新列表失败：' + friendlyError(listErr), 4000); }
+            if (!isAuto) toast('已上传到 GitHub 私有 Gist（' + chunks.length + ' 个分片）');
+            try {
+                await ghLoadList(true);
+                // 自动备份每次新建 Gist，再按设置的份数删除最旧的（0 = 不限制）。
+                if (isAuto) await ghPruneAuto(auto.cfg.keep);
+            } catch (listErr) {
+                if (!isAuto) toast('上传成功，但刷新列表失败：' + friendlyError(listErr), 4000);
+            }
+            return true;
         } catch (e) {
-            toast('上传失败：' + friendlyError(e), 4000);
+            if (!isAuto) toast('上传失败：' + friendlyError(e), 4000);
+            return false;
         } finally {
             setGhBusy(false);
-            setTimeout(hideProgress, 800);
+            if (!isAuto) setTimeout(hideProgress, 800);
+        }
+    }
+
+    async function ghPruneAuto(keep) {
+        keep = Number(keep);
+        if (!keep) return;   // 0 = 不限制，保留全部自动备份
+        var autos = (gh.items || []).filter(function (x) {
+            return x && /自动/.test(String(x.desc || ''));
+        });
+        autos.sort(function (a, b) {
+            return String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || ''));
+        });
+        for (var i = Math.max(0, keep); i < autos.length; i++) {
+            try {
+                await ghRequest('/gists/' + encodeURIComponent(autos[i].id), { method: 'DELETE' });
+            } catch (e) {}
         }
     }
 
@@ -409,6 +494,13 @@
         var res = await fetch(url, { cache: 'no-store' });
         if (!res.ok) throw new Error('下载备份失败（HTTP ' + res.status + '）');
         return res.text();
+    }
+    async function readGistFile(file) {
+        if (!file) return '';
+        var text = typeof file.content === 'string' ? file.content : '';
+        // GitHub 对大于 1MB 的文件只返回 truncated 标记，需要走 raw_url。
+        if ((file.truncated || !text) && file.raw_url) text = await fetchTextUrl(file.raw_url);
+        return text || '';
     }
 
     async function ghRestore(it) {
@@ -421,12 +513,26 @@
             var file = null;
             try { file = g.files && (g.files[GH_FILE] || g.files[Object.keys(g.files)[0]]); } catch (e) {}
             if (!file) throw new Error('这条 Gist 里没有备份文件');
-            setProgress(30, '下载备份内容…');
-            var content = file.content || '';
-            if (file.truncated && file.raw_url) content = await fetchTextUrl(file.raw_url);
+            setProgress(24, '读取备份清单…');
+            var content = await readGistFile(file);
             if (!content) throw new Error('备份内容为空');
-            setProgress(46, '解压备份…');
             var wrap = JSON.parse(content);
+            if (wrap && wrap.format === 'nano-cloud-backup-manifest') {
+                if (wrap.complete === false) throw new Error('这条备份没有上传完成（缺少分片），请删除后重新备份');
+                var names = Array.isArray(wrap.parts) ? wrap.parts : [];
+                if (!names.length) throw new Error('备份清单里没有分片');
+                var pieces = [];
+                for (var pi = 0; pi < names.length; pi++) {
+                    var pf = g.files && g.files[names[pi]];
+                    if (!pf) throw new Error('缺少备份分片：' + names[pi]);
+                    pieces.push(await readGistFile(pf));
+                    setProgress(24 + Math.round(22 * (pi + 1) / names.length), '下载分片 ' + (pi + 1) + '/' + names.length + '…');
+                }
+                content = pieces.join('');
+                if (!content) throw new Error('备份分片内容为空');
+                wrap = JSON.parse(content);
+            }
+            setProgress(46, '解压备份…');
             var data = wrap;
             if (wrap && wrap.format === 'nano-cloud-backup') {
                 var bytes = new Uint8Array(base64ToArrayBuffer(wrap.data || ''));
@@ -512,8 +618,8 @@
         }
         if (status) {
             status.textContent = connected
-                ? (cfBase().replace(/^https?:\/\//, '') + ' · 数据在你的 Cloudflare 账号')
-                : '未连接 · 数据存进你自己的 Cloudflare Worker';
+                ? (cfBase().replace(/^https?:\/\//, '') + ' · ' + (cf.cfg && cf.cfg.store === 'r2' ? 'R2（无 24MB 限制）' : (cf.cfg && cf.cfg.store === 'kv' ? 'KV（单个 24MB 上限）' : '数据在你的 Cloudflare 账号')))
+                : '未连接 · 推荐绑定 R2，不再受 24MB 限制';
         }
         ['cfSave', 'cfDisconnect'].forEach(function (id) {
             var b = $(id); if (b) b.disabled = cf.busy;
@@ -568,7 +674,8 @@
     async function cfLoadList(quiet) {
         if (!(cfBase() && cfToken())) return;
         if (!quiet) toast('正在读取 Cloudflare 备份…');
-        var data = await cfJson('/list?prefix=nano-backup-');
+            var data = await cfJson('/list?prefix=nano-backup-');
+            if (data.store) { cf.cfg.store = data.store; writeCfg(CF_KEY, cf.cfg); }
         var items = (Array.isArray(data.keys) ? data.keys : []).map(function (k) {
             var meta = k.metadata || {};
             return {
@@ -604,7 +711,7 @@
                 if (res.status === 401) msg = '密码错误';
                 throw new Error(msg);
             }
-            cf.cfg = { url: url, token: token };
+            cf.cfg = { url: url, token: token, store: data.store || '' };
             writeCfg(CF_KEY, cf.cfg);
             if ($('cfUrl')) $('cfUrl').value = url;
             updateCfUI();
@@ -624,17 +731,17 @@
         }
     }
 
-    async function cfUpload() {
-        if (!(cfBase() && cfToken())) { toast('请先连接 Cloudflare'); return; }
-        if (!confirm('将把本机全部数据压缩后上传到你自己的 Cloudflare Worker。\n备份包含聊天记录和图片，继续？')) return;
+    async function cfUpload(opts) {
+        opts = opts || {};
+        var isAuto = !!opts.auto;
+        if (!(cfBase() && cfToken())) { if (!isAuto) toast('请先连接 Cloudflare'); return false; }
+        if (!isAuto && !confirm('将把本机全部数据压缩后上传到你自己的 Cloudflare Worker。\n备份包含聊天记录和图片，继续？')) return false;
         setCfBusy(true);
-        showProgress('正在上传到 Cloudflare');
+        if (!isAuto) showProgress('正在上传到 Cloudflare');
         try {
             var pack = await packBackup();
-            if (pack.bytes.length > MAX_BYTES) {
-                throw new Error('压缩后仍有 ' + fmtSize(pack.bytes.length) + '，超过 Cloudflare KV 的 24MB 上限。请先删除旧备份，或改用本地导出 / GitHub。');
-            }
-            var key = 'nano-backup-' + stamp() + '.bak';
+            // R2 不限制 24MB；如果 Worker 仍绑的是 KV，后端会返回明确错误。
+            var key = isAuto ? 'nano-backup-auto.bak' : ('nano-backup-' + stamp() + '.bak');
             var meta = encodeURIComponent(JSON.stringify({
                 createdAt: new Date().toISOString(),
                 origin: location.origin,
@@ -649,13 +756,15 @@
             });
             if (!data || data.ok === false) throw new Error((data && data.error) || '上传失败');
             setProgress(100, '上传完成');
-            toast('已上传到 Cloudflare');
-            try { await cfLoadList(true); } catch (listErr) { toast('上传成功，但刷新列表失败：' + friendlyError(listErr), 4000); }
+            if (!isAuto) toast('已上传到 Cloudflare ' + (data.store === 'r2' ? 'R2' : 'KV'));
+            try { await cfLoadList(true); } catch (listErr) { if (!isAuto) toast('上传成功，但刷新列表失败：' + friendlyError(listErr), 4000); }
+            return true;
         } catch (e) {
-            toast('上传失败：' + friendlyError(e), 4200);
+            if (!isAuto) toast('上传失败：' + friendlyError(e), 4200);
+            return false;
         } finally {
             setCfBusy(false);
-            setTimeout(hideProgress, 800);
+            if (!isAuto) setTimeout(hideProgress, 800);
         }
     }
 
@@ -722,7 +831,7 @@
     async function loadWorkerCode() {
         var box = $('cfCodeBox');
         try {
-            var res = await fetch('../backup-worker/index.js?v=20261025a', { cache: 'no-store' });
+            var res = await fetch('../backup-worker/index.js?v=20261026d', { cache: 'no-store' });
             if (!res.ok) throw new Error('HTTP ' + res.status);
             workerCode = await res.text();
             if (box) box.textContent = workerCode;
@@ -758,8 +867,127 @@
         });
     }
 
+    // ================= 自动备份 =================
+    var AUTO_KEY = 'nano_auto_backup';
+    var isAutoFrame = /(?:^|[?&])auto=1(?:&|$)/.test(location.search || '');
+    var auto = {
+        cfg: (function () {
+            var c = readCfg(AUTO_KEY) || {};
+            return {
+                enabled: c.enabled === true,
+                target: c.target === 'gh' ? 'gh' : 'cf',
+                minutes: [30, 180, 480, 720, 1440].indexOf(Number(c.minutes)) >= 0 ? Number(c.minutes) : 480,
+                keep: [0, 3, 5, 10].indexOf(Number(c.keep)) >= 0 ? Number(c.keep) : 3,
+                lastAt: Number(c.lastAt) || 0,
+                lastStatus: String(c.lastStatus || ''),
+                nextTryAt: Number(c.nextTryAt) || 0
+            };
+        })(),
+        timer: null,
+        running: false
+    };
+
+    function autoSave(patch) {
+        if (patch && typeof patch === 'object') Object.assign(auto.cfg, patch);
+        writeCfg(AUTO_KEY, auto.cfg);
+        updateAutoUI();
+        if (window.parent && window.parent !== window) {
+            try { window.parent.postMessage({ type: 'nanoAutoBackupChanged' }, '*'); } catch (e) {}
+        }
+    }
+
+    function updateAutoUI() {
+        var en = $('autoEnabled'), target = $('autoTarget'), interval = $('autoInterval'), keep = $('autoKeep'), status = $('autoStatus');
+        if (en) en.checked = !!auto.cfg.enabled;
+        if (target) target.value = auto.cfg.target;
+        if (interval) interval.value = String(auto.cfg.minutes);
+        if (keep) keep.value = String(auto.cfg.keep);
+        if (status) {
+            var when = auto.cfg.lastAt ? new Date(auto.cfg.lastAt).toLocaleString() : '还没备份过';
+            status.textContent = (auto.cfg.enabled ? '已开启' : '未开启') + ' · 上次：' + when +
+                (auto.cfg.lastStatus ? ' · ' + auto.cfg.lastStatus : '') +
+                (auto.cfg.enabled && auto.running ? ' · 正在备份…' : '');
+        }
+    }
+
+    function autoDue() {
+        if (!auto.cfg.enabled) return false;
+        var now = Date.now();
+        if (auto.cfg.nextTryAt && now < auto.cfg.nextTryAt) return false;
+        return now - (auto.cfg.lastAt || 0) >= auto.cfg.minutes * 60000;
+    }
+
+    async function runAutoBackup() {
+        if (auto.running || auto.busy) return;
+        if (!auto.cfg.enabled || !autoDue()) return;
+        if (gh.busy || cf.busy) return;
+        var target = auto.cfg.target;
+        if (target === 'gh' && !ghToken()) {
+            auto.cfg.lastStatus = '未连接 GitHub';
+            auto.cfg.nextTryAt = Date.now() + 3600 * 1000;
+            autoSave();
+            return;
+        }
+        if (target === 'cf' && !(cfBase() && cfToken())) {
+            auto.cfg.lastStatus = '未连接 Cloudflare';
+            auto.cfg.nextTryAt = Date.now() + 3600 * 1000;
+            autoSave();
+            return;
+        }
+        auto.running = true;
+        auto.cfg.lastStatus = '正在上传…';
+        updateAutoUI();
+        var ok = false;
+        try {
+            ok = target === 'gh' ? await ghUpload({ auto: true }) : await cfUpload({ auto: true });
+        } catch (e) {
+            ok = false;
+        }
+        auto.running = false;
+        if (ok) {
+            auto.cfg.lastAt = Date.now();
+            auto.cfg.lastStatus = '成功';
+            auto.cfg.nextTryAt = 0;
+        } else {
+            auto.cfg.lastStatus = '失败，10 分钟后重试';
+            auto.cfg.nextTryAt = Date.now() + 10 * 60 * 1000;
+        }
+        autoSave();
+    }
+
+    function startAutoScheduler() {
+        updateAutoUI();
+        if (auto.timer) return;
+        auto.timer = setInterval(function () {
+            if (autoDue()) runAutoBackup();
+        }, 60 * 1000);
+        setTimeout(function () { if (autoDue()) runAutoBackup(); }, 12000);
+    }
+
     // ================= 初始化 =================
     function init() {
+        if (isAutoFrame) {
+            // 由首页隐藏 iframe 加载：只跑定时器，不渲染备份页。
+            try { document.documentElement.style.display = 'none'; } catch (e) {}
+            startAutoScheduler();
+            window.addEventListener('storage', function (e) {
+                if (e && e.key === AUTO_KEY) {
+                    auto.cfg = (function () {
+                        var c = readCfg(AUTO_KEY) || {};
+                        return {
+                            enabled: c.enabled === true,
+                        target: c.target === 'gh' ? 'gh' : 'cf',
+                        minutes: [30, 180, 480, 720, 1440].indexOf(Number(c.minutes)) >= 0 ? Number(c.minutes) : 480,
+                        keep: [0, 3, 5, 10].indexOf(Number(c.keep)) >= 0 ? Number(c.keep) : 3,
+                        lastAt: Number(c.lastAt) || 0,
+                            lastStatus: String(c.lastStatus || ''),
+                            nextTryAt: Number(c.nextTryAt) || 0
+                        };
+                    })();
+                }
+            });
+            return;
+        }
         if (gh.cfg) {
             gh.cfg.token = String(gh.cfg.token || '');
             if ($('ghToken')) $('ghToken').value = gh.cfg.token;
@@ -799,6 +1027,43 @@
                 .then(function () { setCfBusy(false); });
         });
         var cfDisc = $('cfDisconnect'); if (cfDisc) cfDisc.addEventListener('click', cfDisconnect);
+
+        var autoSaveBtn = $('autoSave');
+        if (autoSaveBtn) autoSaveBtn.addEventListener('click', function () {
+            var en = $('autoEnabled'), target = $('autoTarget'), interval = $('autoInterval'), keep = $('autoKeep');
+            var keepVal = keep ? Number(keep.value) : 3;
+            autoSave({
+                enabled: !!(en && en.checked),
+                target: target && target.value === 'gh' ? 'gh' : 'cf',
+                minutes: Number(interval && interval.value) || 480,
+                keep: [0, 3, 5, 10].indexOf(keepVal) >= 0 ? keepVal : 3,
+                nextTryAt: 0
+            });
+            if (auto.cfg.enabled) {
+                startAutoScheduler();
+                toast('已开启自动备份：App 打开时每 ' + (auto.cfg.minutes >= 60 ? (auto.cfg.minutes / 60) + ' 小时' : auto.cfg.minutes + ' 分钟') + '备份一次');
+            } else {
+                toast('已关闭自动备份');
+            }
+        });
+        updateAutoUI();
+        // 多个标签页/隐藏 iframe 共用 lastAt：任一页备份成功后，其它页下一分钟就会跳过。
+        window.addEventListener('storage', function (e) {
+            if (!e || e.key !== AUTO_KEY) return;
+            try {
+                var c = JSON.parse(e.newValue || '{}') || {};
+                auto.cfg.enabled = c.enabled === true;
+                auto.cfg.target = c.target === 'gh' ? 'gh' : 'cf';
+                auto.cfg.minutes = [30, 180, 480, 720, 1440].indexOf(Number(c.minutes)) >= 0 ? Number(c.minutes) : 480;
+                auto.cfg.keep = [0, 3, 5, 10].indexOf(Number(c.keep)) >= 0 ? Number(c.keep) : 3;
+                auto.cfg.lastAt = Number(c.lastAt) || 0;
+                auto.cfg.lastStatus = String(c.lastStatus || '');
+                auto.cfg.nextTryAt = Number(c.nextTryAt) || 0;
+                updateAutoUI();
+            } catch (err) {}
+        });
+        // 在 App 里由首页的隐藏 iframe 负责定时；直接打开备份页时才在这里跑，避免两个定时器重复上传。
+        if (window.parent === window) startAutoScheduler();
 
         var copyBtn = $('cfCopyCode');
         if (copyBtn) copyBtn.addEventListener('click', function () {

@@ -1076,8 +1076,8 @@
         }
 
         var systemContent = opts.system || (isContext
-            ? '你是一个真实的人类，正在刷朋友圈。请以第一人称发布一条简短、自然、有生活气息的朋友圈文案，像真人一样分享日常感受、心情或趣事。不超过30个字。不要加引号，不要解释，直接输出文案内容。'
-            : '你是一个真实的人类，正在朋友圈评论区互动。请根据动态内容，用自然、口语化的方式发表一条简短评论，像真人一样。不超过20个字。不要加引号，不要解释，直接输出评论内容。');
+            ? '你是一个真实的人类，正在刷朋友圈。像随手发动态一样，写一句具体的日常/情绪/吐槽/小事，不要写成汇报、广告或正能量总结。不超过30个字，可以只有半句话。不要加引号，不要解释，直接输出文案内容。'
+            : '你是一个真实的人类，正在朋友圈评论区互动。像熟人随手打字：可以只回一句、一个表情、损一句或问一句，不要客服腔、不要总结、不要小作文。不超过20个字。不要加引号，不要解释，直接输出评论内容。');
         try {
             if (window.NanoPrompts && NanoPrompts.appendTo) systemContent = NanoPrompts.appendTo(systemContent, 'moments', { keepFormat: true });
         } catch (e) {}
@@ -1613,16 +1613,17 @@
             seen[c.name] = 1;
             pool.push({ name: c.name, kind: kind });
         }
+        var SG = window.NanoSocialGraph;
         (npcs || []).forEach(function(n) {
-            // NPC 只在和发布者有关系、或用户本人发动态时才可评论
-            if (isUserPost || !author || npcMentionsChar(n, author.name) || !String(n && (n.relation || n.setting || '')).trim()) add(n, 'npc');
+            // 同学/朋友/陌生人都可以评论公开动态；只限制「绑定 char」之间不随意互串。
+            if (n && n.name) add(n, 'npc');
         });
         if (!isUserPost && author && author.name) add(author, 'char');
         (bound || []).forEach(function(c) {
             if (!c || !c.name) return;
             if (!isUserPost && author && (c.id === author.id || c.name === author.name)) return;
             if (isUserPost) add(c, 'char');
-            else if (author && nameMentionedIn(author, c.name) && nameMentionedIn(c, author.name)) add(c, 'char');
+            else if (author && ((SG && SG.knows(author, c)) || nameMentionedIn(author, c.name))) add(c, 'char');
         });
         return pool;
     }
@@ -1661,24 +1662,23 @@
             if (!c || !c.user) return false;
             if (normName(c.user) === normName(currentUser.name)) return false; // 不允许 AI 冒充用户
             var u = normName(c.user);
+            var SG = window.NanoSocialGraph;
             var commenterNpc = (npcs || []).find(function(n) { return n && normName(n.name) === u; });
-            if (commenterNpc) {
-                if (isUserPost || !author) return true;
-                return npcMentionsChar(commenterNpc, author.name) || !String(commenterNpc.relation || commenterNpc.setting || commenterNpc.desc || '').trim();
-            }
+            if (commenterNpc) return true;   // NPC/同学/好友/陌生人可以评论公开动态
             if (author && normName(author.name) === u) return true;
             var commenter = (bound || []).find(function(x) { return x && normName(x.name) === u; });
             var isChar = !!commenter || charNames.some(function(n) { return normName(n) === u; });
             if (isChar) {
                 if (isUserPost) return true;
-                // char 评论 char：必须双方人设里都明确提到对方，默认不熟
-                return !!(author && commenter && nameMentionedIn(author, commenter.name) && nameMentionedIn(commenter, author.name));
+                // char 评论 char：必须有明确关系（角色关系 / 私聊 / 人设 / 世界书）
+                return !!(author && commenter && SG && SG.knows(author, commenter));
             }
             return false; // 不在花名册里的名字 → 路人甲，丢弃
         });
 
         return kept.map(function(c) {
             var text = String(c.text || '').trim();
+            var u = normName(c.user);
             var to = c.toUser;
             if (!to) {
                 var m = text.match(/^(?:回复|@)\s*([^\s：:，,、]{1,20})\s*[：:，,]?\s*([\s\S]+)$/);
@@ -1699,14 +1699,18 @@
                 } else if (charNames.some(function(n) { return normName(n) === normName(to); })) {
                     var isTarget = !!targets[normName(to)];
                     if (!isTarget) toAllowed = false;
-                    if (toAllowed && !isUserPost && !(author && normName(author.name) === normName(to))) {
+                    if (toAllowed && !(author && normName(author.name) === normName(to))) {
                         var toChar = (bound || []).find(function(x) { return x && normName(x.name) === normName(to); });
-                        toAllowed = !!(author && toChar && nameMentionedIn(author, toChar.name) && nameMentionedIn(toChar, author.name));
+                        var commenterChar = (bound || []).find(function(x) { return x && normName(x.name) === u; });
+                        // 只限制「绑定 char ↔ 绑定 char」；NPC/陌生人回复不限制，回复用户也不限制。
+                        if (toChar && commenterChar) toAllowed = !!(window.NanoSocialGraph && NanoSocialGraph.knows(commenterChar, toChar));
                     }
                     if (toAllowed) o.toUser = to;
                 } else if (npcNames.some(function(n) { return normName(n) === normName(to); })) {
-                    // NPC 只回复实际参与过的人（点赞的人不算）
-                    if (targets[normName(to)]) o.toUser = to;
+                    // NPC 只回复实际参与过、且明确认识的人（点赞的人不算）
+                    var commenterAny = (bound || []).concat(npcs || []).find(function(x) { return x && normName(x.name) === u; });
+                    var targetAny = (bound || []).concat(npcs || []).find(function(x) { return x && normName(x.name) === normName(to); });
+                    if (targets[normName(to)] && window.NanoSocialGraph && commenterAny && targetAny && NanoSocialGraph.knows(commenterAny, targetAny)) o.toUser = to;
                 }
             }
             return o;
@@ -1847,6 +1851,13 @@
             }
 
             if (!item.likes) item.likes = [];
+            var SG = window.NanoSocialGraph;
+            newLikes = (newLikes || []).filter(function (n) {
+                if (!n) return false;
+                var c = (bound || []).find(function (x) { return x && normName(x.name) === normName(n); });
+                if (!c || isUserPost) return true;   // NPC/陌生人点赞不限制
+                return !!(SG && authorChar && SG.knows(authorChar, c));
+            });
             newLikes.forEach(function(n) {
                 if (!item.likes.some(function(x) { return normName(x) === normName(n); })) item.likes.push(n);
             });
@@ -1929,6 +1940,8 @@
             lines.push('- 发布者从上面所有名字里挑 ' + total + ' 个尽量不同的人：大部分是已选角色，也可以有朋友（NPC）；不要总是同一个人发；名字原样使用；');
         }
         lines.push('- 内容是活人发的日常，别一板一眼：会有吐槽、碎碎念、吃到好吃的、遇到无语的人、和谁一起的瞬间、路边看到的风景……可以有 emoji、口语、网络用语；长度不一，有的就一句话，有的三五句，20~60 字为主；');
+        lines.push('- 禁止写成汇报/小作文/广告/正能量总结；允许只发一句、半句话、错别字、重复词、没头没尾的情绪；朋友圈是给熟人看的，不是公开发言；');
+        lines.push('- 评论像熟人随口接话：可以损、可以关心、可以只发“哈哈哈”“？”或一个表情，不要每条都礼貌完整、不要总结对方的话；');
         lines.push('- 一部分是「配图动态」：MEDIA 写 image，并写 IMAGE 描述这张照片拍的是什么（吃的 / 风景 / 宠物 / 牵手 / 自拍等日常照）；其余是纯文字，MEDIA 写 text；这 ' + total + ' 条里至少 1 条 image、至少 1 条 text（除非只要求 1 条）；');
         lines.push('- 每条动态配 2~5 条评论，评论者只能从上面的名字里选，按各自人设与关系自然互动（说笑、抬杠、关心、接梗、互相回复都行）；');
         lines.push('- 重点：不同 char 之间默认互不认识。只有双方人设/关系/世界书里都明确写了认识，才可以互相评论或回复；不认识的 char 绝对不要在同一个评论区出现，更不要互相接话。');
@@ -1936,13 +1949,16 @@
         (chars || []).forEach(function (a) {
             if (!a || !a.name) return;
             var known = (chars || []).filter(function (b) {
-                return b && b !== a && b.name && nameMentionedIn(a, b.name) && nameMentionedIn(b, a.name);
-            }).map(function (b) { return b.name; });
+                return b && b !== a && b.name && ((window.NanoSocialGraph && NanoSocialGraph.knows(a, b)) || nameMentionedIn(a, b.name));
+            }).map(function (b) {
+                var lb = window.NanoSocialGraph && NanoSocialGraph.label ? NanoSocialGraph.label(a, b) : '';
+                return b.name + (lb ? ('（' + lb + '）') : '');
+            });
             if (known.length) relationHints.push(a.name + ' ↔ ' + known.join('、'));
         });
         lines.push('- 已知互相认识的 char：' + (relationHints.length ? relationHints.join('；') : '没有。所有 char 之间默认不互动') + '。');
-        lines.push('- 每条动态的评论以「朋友 / NPC」为主（至少三分之二）；char 只有在上面明确互相认识时才出现，且不要每条动态都让同一批 char 互相捧场。');
-        lines.push('- 朋友 / NPC 也只在和发布者有关系时才评论；没有关系的 NPC 不要硬塞进评论区。');
+        lines.push('- 评论可以来自同学、朋友、同事、NPC 或陌生网友；公开动态有人留言很正常，不需要每个人都有关系。');
+        lines.push('- 只有「绑定的 char 之间」才需要明确关系：不认识的 char 不要在同一条动态下互相评论、接话或互相点赞；朋友/NPC/陌生人不受这个限制。');
         lines.push('- 只有明确认识、有关系的角色才会在同一条动态下互动，不要硬凑；名字必须原样使用名单里的名字；');
         lines.push('- 每条动态尽量都有人点赞：LIKES 写名字（从名单里选，不得包含用户）；');
         lines.push('- 评论者回复别人时写成「评论者|回复对象|内容」，不是回复则写成「评论者||内容」；');

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<script src="../js/nano-runtime.js?v=20261023a"></script>
+<script src="../js/nano-runtime.js?v=20261026d"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>聊天设置</title>
@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://cdn.jsdelivr.net">
     <link rel="dns-prefetch" href="https://unpkg.com">
     <script src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
-    <script src="../js/appearance.js"></script>
+    <script src="../js/appearance.js?v=20261026d"></script>
 </head>
 <body>
 
@@ -168,7 +168,20 @@
                         <option value="high">高 · 每轮多次</option>
                         <option value="medium" selected>中 · 每轮 1 条</option>
                         <option value="low">低 · 每 2~3 轮 1 条</option>
+                        <option value="off">关闭 · 不出现语音气泡</option>
                     </select>
+                </div>
+            </div>
+            <div class="list-item" id="allowTakeoverItem">
+                <div class="item-left">
+                    <div class="item-icon" style="color: #8e8e93;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="3"></rect><path d="M11 18h2"></path><path d="M9 8.5c1.2-1 4.8-1 6 0"></path></svg>
+                    </div>
+                    <div class="item-text">允许 TA 反查手机</div>
+                </div>
+                <div class="item-right">
+                    <span id="allowTakeoverStatus" style="margin-right: 4px;">关闭</span>
+                    <input type="checkbox" class="ios-switch" id="allowTakeoverToggle">
                 </div>
             </div>
             <div class="list-item" id="transItem">
@@ -751,7 +764,7 @@
     <script src="../js/nano-tts.js?v=20261024e"></script>
     <script src="../js/nano-call-ringtone.js?v=20261024a"></script>
     <script src="../js/nano-call-bg.js?v=20261025b"></script>
-    <script src="../js/inner-setting.js?v=20261025c"></script>
+    <script src="../js/inner-setting.js?v=20261026f"></script>
 
 <script src="../js/api-float.js?v=20261023a"></script>
 <script src="../swipe-back.js"></script>

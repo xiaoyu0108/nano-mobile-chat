@@ -179,7 +179,8 @@
 
     function statusFoot(text) {
         if (!text) return '';
-        return '<div class="card-footer status-only"><span class="card-footer-text">' + esc(text) + '</span></div>';
+        // 需要对方确认的提示直接作为卡片内的一行说明，不再单独做成一个底部小框。
+        return '<div class="card-hint">' + esc(text) + '</div>';
     }
 
     function build(cardData, opts) {
@@ -274,7 +275,7 @@
                 else if (kind === 'char_share') sFoot = actions([['拒绝', 'store-reject-char', false], ['帮他买', 'store-buy-char', true]]);
                 else sFoot = actions([['拒绝', 'store-reject-char', false], ['帮他付', 'store-pay-char', true]]);
             } else {
-                sFoot = statusFoot(kind === 'pay_request' ? '等待 TA 代付（点右下角回复）' : '等待 TA 决定（点右下角回复）');
+                sFoot = statusFoot(kind === 'pay_request' ? '等待 TA 代付' : '等待 TA 决定');
             }
             var sMain = cd.amount ? mainAmount('订单金额', cd.amount, null, cd) : mainTitle('bag', '商城订单', cd.title || '商城', itemText || cd.sub || '', cd);
             html = header(sIcon, sHead, time) + sMain +
@@ -293,7 +294,7 @@
             var fFoot = '';
             if (st === 'active') fFoot = statusFoot('已开启 · 已用 ¥' + used.toFixed(2));
             else if (st === 'rejected') fFoot = statusFoot('已拒绝');
-            else if (issuer === 'user') fFoot = statusFoot('等待对方回应（点右下角回复）');
+            else if (issuer === 'user') fFoot = statusFoot('等待对方回应');
             else fFoot = actions([['拒绝', 'family-reject', false], ['接受', 'family-accept', true]]);
             html = header(fIcon, fHead, time) +
                 mainTitle('card', '亲属卡', '亲属卡', '额度 ¥' + lim.toFixed(2)) +
@@ -365,7 +366,7 @@
                 ? statusFoot(isUserInvite ? '对方已同意，已加入群聊' : '已同意，可在聊天页进入该群')
                 : (st === 'rejected'
                     ? statusFoot(isUserInvite ? '对方拒绝了邀请' : '已拒绝')
-                    : (isUserInvite ? statusFoot('等待 ' + (cd.toName || '对方') + ' 回应（点右下角回复）')
+                    : (isUserInvite ? statusFoot('等待 ' + (cd.toName || '对方') + ' 回应')
                         : actions([['拒绝', 'reject', false], ['同意', 'accept', true]])));
             html = header(iIcon, iHead, time) +
                 mainTitle('users', '群聊邀请', title, '群聊：' + (cd.groupName || '')) +
@@ -403,7 +404,7 @@
             else if (st === 'ended') lFoot = statusFoot('一起听已结束');
             else if (st === 'expired') lFoot = statusFoot('邀请已过期');
             else if (lDir === 'char') lFoot = actions([['婉拒', 'listen-reject', false], ['接收', 'listen-accept', true]]);
-            else lFoot = statusFoot('等待 ' + (cd.toName || '对方') + ' 回应（点右下角回复）');
+                else lFoot = statusFoot('等待 ' + (cd.toName || '对方') + ' 回应');
             html = header(lIcon, lHead, time) +
                 mainTitle('headphones', '一起听', song || '一起听', lSub) +
                 info([
@@ -434,7 +435,7 @@
                 var cst = cd.status || 'pending';
                 if (cst === 'accepted') cFoot2 = 'TA 已同意，可回到情侣空间开通';
                 else if (cst === 'rejected') cFoot2 = 'TA 暂时没有答应';
-                else cFoot2 = '点右下角「回复」，让 TA 决定是否开通';
+                else cFoot2 = '';
             }
             html = header(kind === 'takeover' ? 'phone' : 'heart', cHead2, time) +
                 mainTitle(kInfo[1], '情侣空间', cTitle2, '') +

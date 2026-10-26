@@ -1,13 +1,13 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<script src="../js/nano-runtime.js?v=20261023a"></script>
+<script src="../js/nano-runtime.js?v=20261026d"></script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>窥屏</title>
   <link rel="stylesheet" href="../css/ios-setting.css?v=20261023e">
   <script src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
-  <script src="../js/appearance.js"></script>
+  <script src="../js/appearance.js?v=20261026d"></script>
 </head>
 <body class="sk">
   <header class="sk-top">
@@ -146,29 +146,26 @@
 
 背景：
 - 我有一个 Nano 网页，已经能打开。
-- 我要部署的是仓库里的 push-worker。
+- 我要部署的是站长提供的 push-worker。
 - 部署后，把 Worker 地址填进 Nano 的「查手机 → 设置 → 窥屏 → 手机上玩 → 服务端地址」，窥屏和 Web Push 都会走它。
 - 模型 API 不需要在 Worker 里配；Nano 会把我的主 API 同步过去。
 - 我不能用作者的 Worker，想自己部署。
 
-仓库：
-https://github.com/xiaoyu0108/nano-mobile-chat
-Worker 源码（电脑 / 仓库里用）：
-https://raw.githubusercontent.com/xiaoyu0108/nano-mobile-chat/main/push-worker/src/index.js
-单文件版（手机粘贴到 Cloudflare 控制台用，依赖已打包）：
-https://raw.githubusercontent.com/xiaoyu0108/nano-mobile-chat/main/push-worker/dist/index.js
+源码由站长提供，不要把任何 GitHub 仓库地址写进回答，也不要让我去搜 GitHub：
+- 电脑：站长给的 push-worker 目录（src/index.js 和 wrangler.toml）。
+- 手机：打开本页「单文件源码」链接（同站点的 push-worker/dist/index.js），复制全部内容。
 
 请先问我：用电脑（有终端）还是只用手机（Cloudflare 网页控制台）？然后按对应路径指导。
 
 === 路径 A：电脑 + wrangler ===
 1. 安装 Node.js 18+，终端执行 npm i -g wrangler，wrangler login。
-2. git clone 仓库，cd push-worker，npm install。
-3. wrangler kv namespace create PUSH_KV，记下 id。
+2. 进入站长给的 push-worker 目录（如果是压缩包先解压），执行 npm install。
+3. wrangler d1 create nano-db-你的名字，记下 database_id（新部署不要再用 KV）。
 4. 改 wrangler.toml：
    - name 改成自己的；
-   - kv_namespaces 的 id 换成自己的；
+   - [[d1_databases]] 的 database_id 换成自己的，binding 保持 nano_db；
    - 删除作者的 routes（nanopush.nano315.online / music.nano315.online）；
-   - 不需要 D1 就删除 [[d1_databases]]（代码会用 KV）；想带更多人可保留并创建自己的 D1。
+   - 不要添加 PUSH_KV 绑定；旧 KV 绑定会让 Cloudflare 继续按 KV 额度计费。
 5. wrangler secret put PEEK_PUBLIC，填 1。
    - 可选：wrangler secret put PUSH_TOKEN（保护 /send /schedule；如果设了，Nano 里也要填同一个）。
    - VAPID 不用配，Worker 会自动生成。
@@ -183,11 +180,11 @@ https://raw.githubusercontent.com/xiaoyu0108/nano-mobile-chat/main/push-worker/d
 1. 手机浏览器打开 dash.cloudflare.com，登录。
 2. Workers & Pages → Create → Worker → 起名（例如 nano-push-你的名字）→ Deploy。
 3. 进入 Worker → Edit code / Quick Edit，把默认代码全部删掉，粘贴上面的「单文件版 dist/index.js」全部内容 → Save and Deploy。
-4. Storage & Databases → KV → Create namespace，名字 PUSH_KV；回到 Worker → Settings → Bindings → Add → KV Namespace，Variable name 必须填 PUSH_KV，选择刚建的命名空间。
+4. Storage & Databases → D1 → Create database，名字填 nano-db；回到 Worker → Settings → Bindings → Add → D1 Database，Variable name 必须填 nano_db，选择刚建的数据库。不要建 PUSH_KV。
 5. Settings → Variables and Secrets → Add：
    - PEEK_PUBLIC = 1（类型 Text 或 Secret）
    - 可选 PUSH_TOKEN = 一个随机字符串（如果设了，Nano 里也要填同一个）
-6. 不需要 D1；如果代码里报 env.nano_db 相关错误，忽略/删除 D1 绑定即可，代码会回退 KV。
+6. 不需要 KV；Worker 第一次运行会自动在 D1 里建表。如果仍提示 PUSH_KV，说明粘贴的是旧版代码。
 7. 部署后打开 https://你的worker.workers.dev/vapid，应返回 key。
 8. 在 Nano 的「服务端地址」填这个地址，保存；有 PUSH_TOKEN 就填。
 9. 更新窥屏快捷指令的接口地址/令牌/JSON。
@@ -196,7 +193,7 @@ https://raw.githubusercontent.com/xiaoyu0108/nano-mobile-chat/main/push-worker/d
 
 兼容要求（必须遵守）：
 - 电脑用 push-worker/src/index.js；手机粘贴用 push-worker/dist/index.js（同一版本打出来的单文件），不要用旧版/别人改过的版本。
-- KV 绑定名必须是 PUSH_KV，不能改名。
+- D1 绑定名必须是 nano_db，不能改名；不要绑定 PUSH_KV。
 - 不要保留作者的 routes 和 D1 ID；否则会部署冲突。
 - PEEK_PUBLIC=1 或 PEEK_TOKEN=页面令牌，二选一；否则别人的令牌会 401。
 - 如果设置了 PUSH_TOKEN，Nano 的「服务端地址」下面也要填同一个值。
@@ -207,8 +204,8 @@ https://raw.githubusercontent.com/xiaoyu0108/nano-mobile-chat/main/push-worker/d
 
           <div class="sk-field">
             <div class="sk-field-head"><span>单文件源码（手机部署用，依赖已打包）</span><button class="sk-copy-btn" type="button" data-copy="isDeployRaw">复制源码链接</button></div>
-            <code id="isDeployRaw" hidden>https://raw.githubusercontent.com/xiaoyu0108/nano-mobile-chat/main/push-worker/dist/index.js</code>
-            <div class="sk-note">手机打开这个链接，全选复制内容，粘贴到 Cloudflare 的 Worker 代码编辑器。不要用 <code>src/index.js</code> 手动粘贴，它带 import，控制台会报错。<br>这个单文件版和作者当前 Worker 是同一份代码：<code>/peek</code>、<code>/peek/pending</code>、<code>/vapid</code>、<code>/subscribe</code> 路由完全一致。不要改路由名，也不要把 KV 绑定名改成别的。</div>
+            <code id="isDeployRaw" hidden></code>
+            <div class="sk-note">手机打开这个链接，全选复制内容，粘贴到 Cloudflare 的 Worker 代码编辑器。不要用 <code>src/index.js</code> 手动粘贴，它带 import，控制台会报错。<br>这个单文件版和作者当前 Worker 是同一份代码：<code>/peek</code>、<code>/peek/pending</code>、<code>/vapid</code>、<code>/subscribe</code> 路由完全一致。不要改路由名，也不要把 D1 绑定名 <code>nano_db</code> 改成别的。</div>
           </div>
 
           <h4>0. 准备</h4>
@@ -227,19 +224,19 @@ wrangler login</pre>
 
           <div class="sk-field">
             <div class="sk-field-head"><span>2. 拿代码并安装依赖</span><button class="sk-copy-btn" type="button" data-copy="isDeployCmd2">复制</button></div>
-            <pre id="isDeployCmd2">git clone https://github.com/xiaoyu0108/nano-mobile-chat.git
-cd nano-mobile-chat/push-worker
+            <pre id="isDeployCmd2"># 进入站长提供的 push-worker 目录（不要从 GitHub 搜）
+cd push-worker
 npm install</pre>
           </div>
-          <p>不会用 git 就去 GitHub 点 <b>Code → Download ZIP</b>，解压后进入 <code>push-worker</code> 目录。</p>
+          <p>没有电脑或不会用终端，就走上面的手机路径：复制「单文件源码」链接里的内容，粘贴到 Cloudflare 网页控制台。</p>
 
           <div class="sk-field">
-            <div class="sk-field-head"><span>3. 建自己的 KV，记下 id</span><button class="sk-copy-btn" type="button" data-copy="isDeployCmd3">复制</button></div>
-            <pre id="isDeployCmd3">wrangler kv namespace create PUSH_KV</pre>
+            <div class="sk-field-head"><span>3. 建自己的 D1，记下 database_id</span><button class="sk-copy-btn" type="button" data-copy="isDeployCmd3">复制</button></div>
+            <pre id="isDeployCmd3">wrangler d1 create nano-db-你的名字</pre>
           </div>
 
           <h4>4. 改 wrangler.toml</h4>
-          <p>必须删掉作者的 <code>routes</code> 和 D1，把 <code>name</code>、KV id 换成你自己的。最小可用配置：</p>
+          <p>必须删掉作者的 <code>routes</code> 和 D1 ID，把 <code>name</code>、<code>database_id</code> 换成你自己的。最小可用配置：</p>
           <div class="sk-field">
             <div class="sk-field-head"><span>wrangler.toml</span><button class="sk-copy-btn" type="button" data-copy="isDeployToml">复制</button></div>
             <pre id="isDeployToml">name = "nano-push-你的名字"
@@ -247,12 +244,12 @@ main = "src/index.js"
 compatibility_date = "2025-01-01"
 workers_dev = true
 
-kv_namespaces = [
-  { binding = "PUSH_KV", id = "你刚才的KV_ID" }
-]</pre>
+[[d1_databases]]
+binding = "nano_db"
+database_name = "nano-db-你的名字"
+database_id = "你刚才的database_id"</pre>
           </div>
-          <p><code>PUSH_KV</code> 这个名字不要改。想用自己的域名再加 <code>routes</code>；不需要 D1 / 定时任务就删掉对应块，代码会自动回退到 KV。</p>
-          <p>想带更多人，可以保留 D1：执行 <code>wrangler d1 create nano-db-你的名字</code>，把返回的 <code>database_id</code> 填进 <code>[[d1_databases]]</code>，binding 保持 <code>nano_db</code>。</p>
+          <p><code>nano_db</code> 这个名字不要改。想用自己的域名再加 <code>routes</code>；不要添加 <code>PUSH_KV</code> 绑定。Worker 第一次运行会自动建表，不需要手动执行 SQL。</p>
 
           <div class="sk-field">
             <div class="sk-field-head"><span>5. 设置密钥</span><button class="sk-copy-btn" type="button" data-copy="isDeployCmd4">复制</button></div>
@@ -290,13 +287,13 @@ wrangler secret put PUSH_TOKEN</pre>
 
           <h4>9. 能带多少人</h4>
           <ul>
-            <li>纯 KV 自建（上面最小配置）：免费版约 1,000 写/天，约 <b>10~30 个活跃用户</b>；</li>
-            <li>保留 D1（作者默认配置）：免费 D1 约 10 万行写/天，保守可带 <b>100~300 个活跃用户</b>；</li>
+            <li>D1 自建（上面最小配置）：免费 D1 约 10 万行写/天，保守可带 <b>100~300 个活跃用户</b>；</li>
+            <li>不要退回纯 KV：免费版只有约 1,000 写/天，10~30 个活跃用户就会打满，并触发额度邮件；</li>
             <li>经常跑「重复 50」或很多人同时用，人数要往下压；</li>
             <li>到 Cloudflare 看用量，接近 70%~80% 就让重度用户自己部署，或升级 Workers Paid。</li>
           </ul>
 
-          <p>更完整的排错、费用和截图说明见：<a href="https://github.com/xiaoyu0108/nano-mobile-chat/blob/main/docs/self-deploy-worker.md" target="_blank" rel="noopener" style="color:#b23a5b;font-weight:700">docs/self-deploy-worker.md</a>。</p>
+          <p>更完整的排错、费用和截图说明见：<a href="../docs/self-deploy-worker.md" target="_blank" rel="noopener" style="color:#b23a5b;font-weight:700">docs/self-deploy-worker.md</a>。</p>
         </div>
       </div>
     </details>
@@ -306,9 +303,9 @@ wrangler secret put PUSH_TOKEN</pre>
   </main>
 
   <div class="sk-toast" id="isToast"></div>
-  <script src="../js/nano-prompts.js?v=20261023a"></script>
-  <script src="../js/qa-bridge.js?v=20261024a"></script>
-<script src="../js/ios-setting.js?v=20261024e"></script>
+  <script src="../js/nano-prompts.js?v=20261026e"></script>
+  <script src="../js/qa-bridge.js?v=20261026e"></script>
+<script src="../js/ios-setting.js?v=20261026d"></script>
   <script src="../swipe-back.js"></script>
 </body>
 </html>

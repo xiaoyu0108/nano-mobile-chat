@@ -1334,6 +1334,9 @@ function postParticipantNames(post) {
 // 评论区可用名单：发帖人 + 已有参与者 + 好友/NPC/陌生网友
 function buildCommenterPool(post, bound, npcs, strangers) {
   const authorName = post && post.user;
+  const authorObj = resolveAuthor(authorName, bound, npcs, strangers);
+  const isUserAuthor = normName(authorName) === normName(userProfile.name);
+  const SG = window.NanoSocialGraph;
   const pool = [], seen = {};
   function add(n) {
     if (!n || normName(n) === normName(userProfile.name) || seen[normName(n)]) return;
@@ -1341,10 +1344,40 @@ function buildCommenterPool(post, bound, npcs, strangers) {
   }
   if (authorName) add(authorName);
   postParticipantNames(post).forEach(add);
-  (bound || []).forEach(c => add(c && c.name));
-  (npcs || []).forEach(c => add(c && c.name));
+  (bound || []).forEach(c => {
+    if (!c || !c.name) return;
+    // 用户自己的帖子：绑定角色都认识用户，可以评论；角色帖子：必须有明确关系。
+    if (isUserAuthor || (authorObj && SG && SG.knows(authorObj, c))) add(c.name);
+  });
+  // 同学/朋友/陌生网友可以评论公开帖子；只限制绑定 char 之间不随意互串。
+  (npcs || []).forEach(c => { if (c && c.name) add(c.name); });
+  // 陌生人帖子下的陌生网友是公开平台的一部分，保留；但不会和已知 char 硬凑关系。
   (strangers || []).forEach(c => add(c && c.name));
   return pool;
+}
+
+function filterInsKnownReplies(list, post, bound, npcs, strangers) {
+  const SG = window.NanoSocialGraph;
+  if (!SG) return list;
+  const author = resolveAuthor(post && post.user, bound, npcs, strangers);
+  const isUserAuthor = normName(post && post.user) === normName(userProfile.name);
+  const knownChars = (bound || []);   // 只限制用户绑定的 char；NPC/陌生人不限制
+  function asKnown(name) {
+    const c = resolveAuthor(name, bound, npcs, strangers);
+    if (!c) return null;
+    return knownChars.some(x => x && (normName(x.name) === normName(c.name))) ? c : null;
+  }
+  return (list || []).filter(c => {
+    if (!c || !c.user) return false;
+    const commenter = asKnown(c.user);
+    // 陌生网友可以评论公开帖子；已知 char 必须认识作者（用户本人除外）
+    if (commenter && !isUserAuthor && author && !SG.knows(author, commenter)) return false;
+    if (c.toUser) {
+      const target = asKnown(c.toUser);
+      if (target && commenter && !SG.knows(commenter, target)) delete c.toUser;
+    }
+    return true;
+  });
 }
 
 function parseCommentLines(raw) {
@@ -1474,7 +1507,7 @@ async function generateCommentsForPost(post, bound, npcs, strangers) {
     '- 每条不超过 25 字，口语化，像真人。\n\n' +
     '严格按下面格式输出（不要编号、不要解释）：\n评论者|回复对象|内容\n（不是回复别人时第二段留空，写成「评论者||内容」）';
   const raw = await callChatApi([{ role: 'system', content: system }, { role: 'user', content: userMsg }], 'sub');
-  const parsed = filterCommentList(parseCommentLines(raw), post.user, pool, existingNames);
+  const parsed = filterInsKnownReplies(filterCommentList(parseCommentLines(raw), post.user, pool, existingNames), post, bound, npcs, strangers);
   if (!parsed.length) return 0;
   appendInteractions(post, parsed);
   return parsed.length;
@@ -1504,11 +1537,24 @@ function buildForumPrompt(chars, npcs, strangers, recent, opts) {
   }
   if (tag) lines.push('- 所有帖子都必须围绕话题 #' + tag + '，并把它写进 TAGS；');
   if (desc) lines.push('- 话题描述与方向（必须严格符合）：' + desc + '；');
-  lines.push('- 文案像真人发帖：口语、有生活感、贴合各自人设与平台氛围，30~80 字；');
-  lines.push('- 每条帖子配 3~5 条初始评论，评论者只能从上面的名字里选，按各自人设与关系自然互动；');
+  lines.push('- 文案像真人刷手机随手发的：口语、具体、有生活感，30~80 字；允许短句、碎碎念、吐槽、提问、玩梗、错别字和表情；不要写成旅行博主/广告文案/工作汇报，也不要每条都升华总结；');
+  lines.push('- 每条帖子配 3~5 条初始评论，评论者只能从上面的名字里选，按各自人设与关系自然互动；评论像随手打字，可以只回一句、发表情、歪楼，不要客服腔；');
+  lines.push('- 已知 char 之间只有明确关系（人设/世界书/角色关系/私聊记录）才能互相评论或接话；不认识的 char 不要出现在同一条评论区；同学、朋友、NPC、陌生网友可以自由评论公开帖子；');
   lines.push('- 评论者回复别人时写成「评论者|回复对象|内容」，不是回复则写成「评论者||内容」；');
   lines.push('- 严禁以用户身份发帖、点赞或评论；');
   lines.push('- 每条评论不超过 25 字。');
+  try {
+    const pairs = [];
+    for (let i = 0; i < charList.length; i++) {
+      for (let j = i + 1; j < charList.length; j++) {
+        const a = charList[i], b = charList[j];
+        if (!a || !b || !window.NanoSocialGraph || !NanoSocialGraph.knows(a, b)) continue;
+        const lb = NanoSocialGraph.label ? NanoSocialGraph.label(a, b) : '';
+        pairs.push(a.name + ' ↔ ' + b.name + (lb ? ('（' + lb + '）') : ''));
+      }
+    }
+    lines.push('- 已知 char 关系：' + (pairs.length ? pairs.join('；') : '没有。绑定的 char 之间默认不互动') + '。');
+  } catch (e) {}
   return ADULT_PLATFORM_NOTE + '\n' + SAFE_REWRITE_NOTE + '\n\n' + userPersonaBlock() + '\n\n' + persona +
     '\n\n【最近的帖子（可延续话题，别重复）】\n' + (recent || '（暂无）') +
     '\n\n' + lines.join('\n') +

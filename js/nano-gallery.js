@@ -3,10 +3,103 @@
     var KEY = 'nano_gallery_v1';
     var TOMB_KEY = 'nano_gallery_deleted_v1';
     var EMOJI_PURGE_KEY = 'nano_gallery_emoji_purged_v2';
+    var DB_NAME = 'nano_gallery_db';
+    var DB_STORE = 'items';
+    var _dbPromise = null;
 
     function urlKey(u) {
         u = String(u || '');
         return u.slice(0, 120) + '#' + u.length;
+    }
+
+    // 图库记录放 IndexedDB：localStorage 只有约 5MB，几张 base64 大图就会写失败，
+    // 表现就是“刚生成能看到，回到图库就没了”。IndexedDB 容量大得多。
+    function openDb() {
+        if (typeof indexedDB === 'undefined') return Promise.resolve(null);
+        if (_dbPromise) return _dbPromise;
+        _dbPromise = new Promise(function (resolve) {
+            try {
+                var req = indexedDB.open(DB_NAME, 1);
+                req.onupgradeneeded = function (e) {
+                    var db = e.target.result;
+                    if (!db.objectStoreNames.contains(DB_STORE)) db.createObjectStore(DB_STORE, { keyPath: 'key' });
+                };
+                req.onsuccess = function () { resolve(req.result); };
+                req.onerror = function () { resolve(null); };
+                req.onblocked = function () { resolve(null); };
+            } catch (e) { resolve(null); }
+        });
+        return _dbPromise;
+    }
+    function dbPut(rec) {
+        if (!rec || !rec.url) return;
+        openDb().then(function (db) {
+            if (!db) return;
+            try {
+                var tx = db.transaction(DB_STORE, 'readwrite');
+                var item = Object.assign({}, rec, { key: urlKey(rec.url) });
+                tx.objectStore(DB_STORE).put(item);
+            } catch (e) {}
+        }).catch(function () {});
+    }
+    function dbAll() {
+        return openDb().then(function (db) {
+            if (!db) return [];
+            return new Promise(function (resolve) {
+                try {
+                    var req = db.transaction(DB_STORE, 'readonly').objectStore(DB_STORE).getAll();
+                    req.onsuccess = function () { resolve(Array.isArray(req.result) ? req.result : []); };
+                    req.onerror = function () { resolve([]); };
+                } catch (e) { resolve([]); }
+            });
+        }).catch(function () { return []; });
+    }
+    function dbDelete(keys) {
+        if (!keys || !keys.length) return;
+        openDb().then(function (db) {
+            if (!db) return;
+            try {
+                var tx = db.transaction(DB_STORE, 'readwrite');
+                var st = tx.objectStore(DB_STORE);
+                keys.forEach(function (k) { try { st.delete(k); } catch (e) {} });
+            } catch (e) {}
+        }).catch(function () {});
+    }
+    function dbClear() {
+        openDb().then(function (db) {
+            if (!db) return;
+            try { db.transaction(DB_STORE, 'readwrite').objectStore(DB_STORE).clear(); } catch (e) {}
+        }).catch(function () {});
+    }
+    function blobToDataUrl(blob) {
+        return new Promise(function (resolve, reject) {
+            try {
+                var fr = new FileReader();
+                fr.onload = function () { resolve(String(fr.result || '')); };
+                fr.onerror = reject;
+                fr.readAsDataURL(blob);
+            } catch (e) { reject(e); }
+        });
+    }
+    var _remotePending = {};
+    // 生图接口常返回会过期的临时 URL。能在后台下载就转成 data URL 永久存进 IndexedDB；
+    // 下载失败（CORS/网络）就保留原 URL，不影响当前显示。
+    function cacheRemoteImage(rec, u) {
+        var k = urlKey(u);
+        if (_remotePending[k]) return;
+        _remotePending[k] = 1;
+        fetch(u, { cache: 'force-cache' }).then(function (r) {
+            if (!r || !r.ok) throw new Error('http ' + (r && r.status));
+            return r.blob();
+        }).then(blobToDataUrl).then(function (data) {
+            if (!data || data.length > 8 * 1024 * 1024) return;
+            var oldKey = urlKey(u);
+            var arr = read().filter(function (x) { return urlKey(x && x.url) !== oldKey; });
+            write(arr);
+            dbDelete([oldKey]);
+            var copy = Object.assign({}, rec, { url: data });
+            add(copy);
+        }).catch(function () {}).then(function () { delete _remotePending[k]; });
     }
     function isEmojiRecord(x) {
         if (!x || typeof x !== 'object') return false;
@@ -52,7 +145,7 @@
                 var cleaned = arr.filter(function (x) { return !isEmojiRecord(x); });
                 var removed = arr.length - cleaned.length;
                 if (removed > 0) {
-                    localStorage.setItem(KEY, JSON.stringify(cleaned.slice(0, 400)));
+                    localStorage.setItem(KEY, JSON.stringify(cleaned));
                     localStorage.setItem('nano_gallery_purged_count', String(removed));
                 }
             }
@@ -70,26 +163,61 @@
         } catch (e) { return []; }
     }
     function write(arr) {
-        try { localStorage.setItem(KEY, JSON.stringify((arr || []).slice(0, 400))); } catch (e) {}
+        var list = (arr || []);
+        try {
+            localStorage.setItem(KEY, JSON.stringify(list));
+            return true;
+        } catch (e) {
+            // localStorage 塞不下大图时，保留 http 图片的索引；base64 大图仍在 IndexedDB 里。
+            try {
+                var light = list.filter(function (x) { return !/^data:image\//i.test(String(x && x.url || '')); });
+                localStorage.removeItem(KEY);
+                localStorage.setItem(KEY, JSON.stringify(light));
+                return true;
+            } catch (e2) {
+                try { localStorage.removeItem(KEY); } catch (e3) {}
+                return false;
+            }
+        }
     }
     function add(rec) {
         if (!rec || !rec.url || isEmojiRecord(rec)) return;
         var u = String(rec.url);
-        if (!/^(data:image\/|https?:\/\/)/i.test(u)) return;
-        var arr = read();
-        var k = urlKey(u);
-        for (var i = 0; i < arr.length; i++) {
-            if (arr[i] && urlKey(arr[i].url) === k) { untomb(k); return; }
+        // 有些生图接口给的是 blob: 临时地址，页面一换就失效；先转成 data URL 再入库。
+        if (/^blob:/i.test(u)) {
+            try {
+                fetch(u).then(function (r) { return r.blob(); }).then(blobToDataUrl).then(function (dataUrl) {
+                    if (dataUrl) { rec.url = dataUrl; add(rec); }
+                }).catch(function () {});
+            } catch (e) {}
+            return;
         }
-        arr.unshift({
+        if (!/^(data:image\/|https?:\/\/)/i.test(u)) return;
+        try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function () {}); } catch (e) {}
+        var k = urlKey(u);
+        var item = {
             url: u,
             source: String(rec.source || '聊天'),
             charName: String(rec.charName || ''),
             prompt: String(rec.prompt || '').slice(0, 500),
             createdAt: Number(rec.createdAt) || Date.now()
-        });
+        };
+        // base64 大图只写 IndexedDB，不碰 5MB 的 localStorage，避免解析/写入卡顿和配额失败。
+        if (/^data:image\//i.test(u)) {
+            dbPut(item);
+            untomb(k);
+            try { window.dispatchEvent(new CustomEvent('nano-gallery-updated')); } catch (e) {}
+            return;
+        }
+        var arr = read();
+        for (var i = 0; i < arr.length; i++) {
+            if (arr[i] && urlKey(arr[i].url) === k) { untomb(k); dbPut(arr[i]); return; }
+        }
+        dbPut(item);
+        arr.unshift(item);
         untomb(k);
         write(arr);
+        cacheRemoteImage(item, u);
         try { window.dispatchEvent(new CustomEvent('nano-gallery-updated')); } catch (e) {}
     }
     function collectFromObject(obj, source, out, depth) {
@@ -200,11 +328,30 @@
         out.sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
         return out;
     }
+    function mergeWithDb(base, extra) {
+        var tombs = {};
+        readTombs().forEach(function (k) { tombs[k] = 1; });
+        var seen = {}, out = [];
+        (base || []).concat(extra || []).forEach(function (x) {
+            if (!x || !x.url || isEmojiRecord(x)) return;
+            var k = urlKey(x.url);
+            if (!k || tombs[k] || seen[k]) return;
+            seen[k] = 1;
+            out.push(x);
+        });
+        out.sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
+        return out;
+    }
     function allAsync() {
         var base = all();
-        if (typeof localforage === 'undefined') return Promise.resolve(base);
-        return Promise.all([localforage.keys(), loadCharNames()]).then(function (res) {
-            var keys = res[0] || [], charNames = res[1] || {};
+        var dbP = dbAll().catch(function () { return []; });
+        if (typeof localforage === 'undefined') {
+            return dbP.then(function (dbItems) { return mergeWithDb(base, dbItems); });
+        }
+        return Promise.all([dbP, localforage.keys(), loadCharNames()]).then(function (res) {
+            var dbItems = res[0] || [];
+            base = mergeWithDb(base, dbItems);
+            var keys = res[1] || [], charNames = res[2] || {};
             var chatKeys = (keys || []).filter(function (k) { return /^chat_messages_/.test(k); }).slice(0, 40);
             return Promise.all(chatKeys.map(function (k) {
                 var cid = String(k).replace(/^chat_messages_/, '');
@@ -260,6 +407,7 @@
         // 关键：不管这张图来自 nano_gallery_v1、localStorage 扫描还是聊天 IndexedDB，
         // 都先登记墓碑。以前只登记“当前同步可见”的图，聊天里异步扫出来的图删完又回来了。
         keyList.forEach(tomb);
+        dbDelete(keyList);
         var arr = read();
         var keep = arr.filter(function (x) {
             return !(x && x.url && keys[urlKey(x.url)]);
@@ -271,12 +419,14 @@
     function clear() {
         all().forEach(function (x) { if (x && x.url) tomb(urlKey(x.url)); });
         write([]);
+        dbClear();
         try { window.dispatchEvent(new CustomEvent('nano-gallery-updated')); } catch (e) {}
         // 聊天记录是异步读的，补一轮墓碑，确保一键清空后不会再被扫描回来
         if (typeof localforage !== 'undefined') {
             allAsync().then(function (list) {
                 (list || []).forEach(function (x) { if (x && x.url) tomb(urlKey(x.url)); });
                 write([]);
+                dbClear();
                 try { window.dispatchEvent(new CustomEvent('nano-gallery-updated')); } catch (e) {}
             }).catch(function () {});
         }

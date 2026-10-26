@@ -1423,6 +1423,11 @@
   }
 
   async function submitForm() {
+    var pol = window.NanoAccount && NanoAccount.currentPolicy ? NanoAccount.currentPolicy() : null;
+    if (pol && pol.allowMarketUpload === false) {
+      toast('集市上传已暂时关闭，本月额度用完后会在下月重新开放；现在仍可浏览和下载');
+      return;
+    }
     if (!$('resourceTitle').value.trim()) { toast('请填写资源名称'); return; }
     var btn = $('submitBtn');
     btn.disabled = true; btn.textContent = '发布中…';

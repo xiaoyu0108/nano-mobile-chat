@@ -2808,7 +2808,7 @@
     }
     // 跳回该角色的 chat_inner，由它把「我发出的邀请卡片」挂到正确的会话里
     postOpenChatForChar(charId, char.name || '', song.name, song.artist);
-    showToast('已向 ' + (char.name || '对方') + ' 发送一起听邀请，点右下角回复等 TA 决定');
+    showToast('已向 ' + (char.name || '对方') + ' 发送一起听邀请，等 TA 回应');
   }
 
   // 把一段回复拆成多条短消息，像真人聊天一样逐条发

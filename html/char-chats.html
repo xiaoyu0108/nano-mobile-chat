@@ -1,12 +1,12 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<script src="../js/nano-runtime.js?v=20261023a"></script>
+<script src="../js/nano-runtime.js?v=20261026d"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>角色聊天</title>
+<title>悄悄话</title>
 <link rel="stylesheet" href="../css/char-chats.css?v=20261025c">
-<script src="../js/appearance.js"></script>
+<script src="../js/appearance.js?v=20261026d"></script>
 </head>
 <body>
 
@@ -14,7 +14,7 @@
     <button class="cc-back" id="ccBack" data-back aria-label="返回">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
     </button>
-    <div class="cc-title">角色聊天</div>
+    <div class="cc-title">悄悄话</div>
     <div class="cc-nav-space"></div>
 </div>
 
@@ -22,7 +22,7 @@
     <div class="cc-hero">
         <div class="cc-hero-title">他们私下聊了什么</div>
         <div class="cc-hero-desc">
-            只有双方都在「角色关系」里开启私下聊天，才会自动生成。大约 3 天刷新一次，
+            只有双方都在「角色关系」里开启悄悄话，才会自动生成。大约 3 天刷新一次，
             一次只生成一段；也可以在这里手动生成。生成后会写进两个角色的记忆。
         </div>
         <div class="cc-hero-note" id="ccAutoNote">正在读取设置…</div>
@@ -42,12 +42,12 @@
             </select>
         </div>
         <button class="cc-primary" id="ccGenerate" type="button">让他们聊聊</button>
-        <div class="cc-hint" id="ccGenerateHint">两个角色都要开启私下聊天。</div>
+        <div class="cc-hint" id="ccGenerateHint">两个角色都要开启悄悄话。</div>
     </section>
 
-    <div class="cc-section-title">聊天记录</div>
+    <div class="cc-section-title">悄悄话记录</div>
     <div class="cc-list" id="ccList">
-        <div class="cc-empty">还没有私下聊天记录</div>
+        <div class="cc-empty">还没有悄悄话</div>
     </div>
 </main>
 
@@ -71,6 +71,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
 <script src="../js/swipe-back.js"></script>
-<script src="../js/char-chats.js?v=20261026a"></script>
+<script src="../js/whisper-store.js?v=20261026a"></script>
+<script src="../js/char-chats.js?v=20261026g"></script>
 </body>
 </html>

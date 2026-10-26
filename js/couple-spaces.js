@@ -434,55 +434,115 @@ async function callMainApi(messages, opts) {
     throw new Error('未配置主 API。请先到「API」页面填写主模型的地址、Key 和模型名，并点击保存。');
   }
   const baseUrl = toV1Base(resolveApiHost(cfg.mainUrl));
-  const token = 'csreq_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
-  const resultKey = csResultKey(token);
-  const body = JSON.stringify({
-    model: opts.model || cfg.mainModel,
-    messages: messages,
-    max_tokens: opts.maxTokens || 900,
-    temperature: opts.temp != null ? opts.temp : (typeof cfg.mainTemp === 'number' ? cfg.mainTemp : (parseFloat(cfg.mainTemp) || 0.8))
-  });
-  csPendingSet({ kind: opts.kind || '', token: token, resultKey: resultKey, ts: Date.now() });
+  const headers = { 'Authorization': 'Bearer ' + String(cfg.mainKey).trim(), 'Content-Type': 'application/json' };
+  const model = opts.model || cfg.mainModel;
+  const temp = opts.temp != null ? opts.temp : (typeof cfg.mainTemp === 'number' ? cfg.mainTemp : (parseFloat(cfg.mainTemp) || 0.8));
+  const baseMax = Math.max(400, Number(opts.maxTokens) || 900);
+  const budgets = opts.retryOnLength === false ? [baseMax] : [baseMax, Math.min(12000, Math.round(baseMax * 1.8))];
+  const endpoint = baseUrl + '/chat/completions';
   apiInFlight = true;
-  let result;
+  let lastContent = '';
   try {
-    result = await sendProxyRequest({
-      token: token, resultKey: resultKey,
-      url: baseUrl + '/chat/completions',
-      method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + String(cfg.mainKey).trim(), 'Content-Type': 'application/json' },
-      body: body
-    });
+    for (let bi = 0; bi < budgets.length; bi++) {
+      let useJson = !!opts.json;
+      for (;;) {
+        const token = 'csreq_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+        const resultKey = csResultKey(token);
+        const payload = {
+          model: model,
+          messages: messages,
+          max_tokens: budgets[bi],
+          temperature: temp
+        };
+        if (useJson) payload.response_format = { type: 'json_object' };
+        csPendingSet({ kind: opts.kind || '', token: token, resultKey: resultKey, ts: Date.now() });
+        let result;
+        try {
+          result = await sendProxyRequest({
+            token: token, resultKey: resultKey,
+            url: endpoint,
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify(payload)
+          });
+        } finally {
+          csPendingSet(null);
+        }
+        if (!result) throw new Error('请求没有返回结果，请重试。');
+        if (result.error) throw new Error('网络错误：' + result.error + '\n请检查网络连接，或确认 API 地址在手机上可访问（localhost 需改成电脑局域网 IP）。');
+        if (!result.ok) {
+          const apiMsg = extractApiErrorMessage(result.text);
+          const e = new Error(describeHttpError(result.status) + (apiMsg ? '\n\n服务端返回：' + apiMsg : '') + '\n\n请求地址：' + endpoint + '\n模型：' + model);
+          e.status = result.status; e.body = String(result.text || '');
+          // 兼容接口不支持 response_format 时去掉它再试一次
+          if (useJson && /response_format|json_object|400|invalid|unsupported|unknown/i.test(String(apiMsg + result.text))) {
+            useJson = false;
+            continue;
+          }
+          throw e;
+        }
+        let data = null;
+        try { data = JSON.parse(result.text || '{}'); } catch (e) { throw new Error('接口返回的内容不是合法的 JSON，可能不是兼容 OpenAI 的接口。\n\n原始返回片段：' + String(result.text || '').slice(0, 300)); }
+        const choice = (data.choices && data.choices[0]) || {};
+        const msg = choice.message || {};
+        const content = msg.content || choice.text || msg.reasoning_content || '';
+        if (!content) throw new Error('模型没有返回可用内容（choices 为空）。可能触发了内容过滤、达到长度上限或模型参数不兼容。');
+        lastContent = content;
+        // 被 max_tokens 截断：用更大的预算再试一次；最后一次仍截断则返回已生成内容。
+        if (choice.finish_reason === 'length' && bi < budgets.length - 1) break;
+        return content;
+      }
+    }
+    return lastContent;
   } finally {
     apiInFlight = false;
   }
-  csPendingSet(null);
-  if (!result) throw new Error('请求没有返回结果，请重试。');
-  if (result.error) throw new Error('网络错误：' + result.error + '\n请检查网络连接，或确认 API 地址在手机上可访问（localhost 需改成电脑局域网 IP）。');
-  if (!result.ok) {
-    const apiMsg = extractApiErrorMessage(result.text);
-    throw new Error(describeHttpError(result.status) + (apiMsg ? '\n\n服务端返回：' + apiMsg : '') + '\n\n请求地址：' + baseUrl + '/chat/completions\n模型：' + (opts.model || cfg.mainModel));
-  }
-  let data = null;
-  try { data = JSON.parse(result.text || '{}'); } catch (e) { throw new Error('接口返回的内容不是合法的 JSON，可能不是兼容 OpenAI 的接口。\n\n原始返回片段：' + String(result.text || '').slice(0, 300)); }
-  const content = (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || '';
-  if (!content) throw new Error('模型没有返回可用内容（choices 为空）。可能触发了内容过滤、达到长度上限或模型参数不兼容。');
-  return content;
 }
 
+function repairJsonText(text) {
+  let t = String(text == null ? '' : text).replace(/^\uFEFF/, '').trim();
+  t = t.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
+  const first = t.search(/[\[{]/);
+  if (first > 0) t = t.slice(first);
+  let out = '', stack = [], inStr = false, esc = false, started = false;
+  for (let i = 0; i < t.length; i++) {
+    const ch = t[i];
+    if (inStr) {
+      if (esc) { out += ch; esc = false; }
+      else if (ch === '\\') { out += ch; esc = true; }
+      else if (ch === '"') { out += ch; inStr = false; }
+      else if (ch === '\n') { out += '\\n'; }
+      else if (ch === '\r') { /* skip */ }
+      else if (ch === '\t') { out += '\\t'; }
+      else out += ch;
+    } else {
+      if (ch === '"') { inStr = true; out += ch; }
+      else if (ch === '{') { started = true; stack.push('}'); out += ch; }
+      else if (ch === '[') { started = true; stack.push(']'); out += ch; }
+      else if (ch === '}' || ch === ']') {
+        if (stack.length && stack[stack.length - 1] === ch) stack.pop();
+        out += ch;
+        if (started && !stack.length) break;
+      } else out += ch;
+    }
+  }
+  if (inStr) { if (esc) out = out.slice(0, -1); out += '"'; }
+  while (stack.length) out += stack.pop();
+  return out.replace(/,\s*([}\]])/g, '$1');
+}
 function parseJsonLoose(text, fallback) {
   if (!text) return fallback;
-  let t = String(text).trim();
-  t = t.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
-  try { return JSON.parse(t); } catch (e) {}
+  const t = String(text).trim();
   const starts = [t.indexOf('['), t.indexOf('{')].filter((i) => i > -1);
-  if (!starts.length) return fallback;
-  const start = Math.min.apply(null, starts);
-  const endArr = t.lastIndexOf(']');
-  const endObj = t.lastIndexOf('}');
-  const end = Math.max(endArr, endObj);
-  if (end > start) {
-    try { return JSON.parse(t.slice(start, end + 1)); } catch (e) {}
+  const candidates = [t];
+  if (starts.length) {
+    const start = Math.min.apply(null, starts);
+    const end = Math.max(t.lastIndexOf(']'), t.lastIndexOf('}'));
+    if (end > start) candidates.push(t.slice(start, end + 1));
+  }
+  candidates.push(repairJsonText(t));
+  for (const c of candidates) {
+    try { return JSON.parse(c); } catch (e) {}
   }
   return fallback;
 }
@@ -864,8 +924,7 @@ function renderCharSelect() {
     ${accepted
       ? `<button class="btn dark enter" onclick="enterSpace()">TA 已同意 · 进入情侣空间</button>`
       : (pending
-        ? `<div class="hint" style="text-align:center;color:#a9a29a;font-size:12px;line-height:1.7;margin:6px 0 12px">邀请已发送。去私聊点右下角「回复」，让 TA 表态。</div>
-           <button class="btn dark enter" onclick="openChatWithChar()">去私聊等 TA 回复</button>
+        ? `<button class="btn dark enter" onclick="openChatWithChar()">去私聊等 TA 回复</button>
            <button class="btn" style="margin-top:10px;background:#f3eeea;color:#8a8280" onclick="sendCoupleInvite()">重新发送邀请卡</button>`
         : `<button class="btn dark enter" onclick="sendCoupleInvite()">发送邀请卡给 TA</button>`)}
     ${rejected ? `<div class="hint" style="text-align:center;color:#c98b8b;font-size:12px;margin-top:12px">TA 这一次没有答应。可以再聊聊，或稍后再邀请。</div>` : ''}
@@ -1483,7 +1542,18 @@ function apiErr(e) {
 }
 
 function questionsFromApi(raw, count, fallbackPool) {
-  const arr = parseJsonLoose(raw, null);
+  const parsed = parseJsonLoose(raw, null);
+  let arr = parsed;
+  // response_format=json_object 时，模型可能返回 {"questions":[...]} 而不是裸数组。
+  if (!Array.isArray(arr) && parsed && typeof parsed === 'object') {
+    for (const k of ['questions', 'items', 'data', 'list', 'survey']) {
+      if (Array.isArray(parsed[k])) { arr = parsed[k]; break; }
+    }
+    if (!Array.isArray(arr)) {
+      const first = Object.keys(parsed).map((k) => parsed[k]).find((v) => Array.isArray(v));
+      arr = first || null;
+    }
+  }
   const out = [];
   if (Array.isArray(arr)) {
     arr.forEach((it) => {
@@ -1512,6 +1582,15 @@ function questionsFromApi(raw, count, fallbackPool) {
 
 function answersFromApi(raw, count, optionCount) {
   let arr = parseJsonLoose(raw, null);
+  if (!Array.isArray(arr) && arr && typeof arr === 'object') {
+    for (const k of ['answers', 'choices', 'data', 'result', 'picks']) {
+      if (Array.isArray(arr[k])) { arr = arr[k]; break; }
+    }
+    if (!Array.isArray(arr)) {
+      const first = Object.keys(arr).map((k) => arr[k]).find((v) => Array.isArray(v));
+      if (first) arr = first;
+    }
+  }
   if (!Array.isArray(arr)) {
     const nums = String(raw || '').match(/\d+/g) || [];
     arr = nums;
@@ -1641,7 +1720,7 @@ async function requestSurveyQuestions() {
   try {
     const sys = buildCharSystem('你正在参与「默契调查」小游戏，需要设计一套关于你和对方的选择题。题目要贴合你们的人设与关系，健康自然，不要露骨。');
     const usr = '请生成 10 道关于你们两人的选择题，只输出 JSON 数组，格式：[{"q":"题目","o":["选项1","选项2","选项3","选项4"]}, ...]，共 10 题，不要解释。';
-    const raw = await callMainApi([{ role: 'system', content: sys }, { role: 'user', content: usr }], { maxTokens: 1400, temp: 0.95, kind: 'survey-questions' });
+    const raw = await callMainApi([{ role: 'system', content: sys }, { role: 'user', content: usr }], { maxTokens: 3200, temp: 0.95, kind: 'survey-questions', json: true });
     await applySurveyQuestions(raw);
   } catch (e) { apiErr(e); } finally { setBusy(false); }
 }
@@ -1661,7 +1740,7 @@ async function requestSurveyChar() {
     const recent = qs.map((q, i) => `${q[0]} 我的选择：${q[1][state.survey.user[i]]}`).join('\n');
     const sys = buildCharSystem('你正在和对方一起做「默契调查」。请完全按你的性格、经历和设定真实作答，不要迎合对方。', recent);
     const usr = `请看下面 ${qs.length} 道题，按你自己会怎么选作答。只输出 JSON 数组，例如 [0,2,1,3,...]，每个元素是选项序号（0=A，1=B，2=C，3=D），共 ${qs.length} 个，不要解释。\n${list}`;
-    const raw = await callMainApi([{ role: 'system', content: sys }, { role: 'user', content: usr }], { maxTokens: 240, temp: 0.7, kind: 'survey-answers' });
+    const raw = await callMainApi([{ role: 'system', content: sys }, { role: 'user', content: usr }], { maxTokens: 500, temp: 0.7, kind: 'survey-answers' });
     await applySurveyAnswers(answersFromApi(raw, 10, 4));
   } catch (e) { apiErr(e); } finally { setBusy(false); }
 }
@@ -1776,7 +1855,7 @@ async function requestPersonQs() {
   try {
     const sys = buildCharSystem('你正在参与「情侣人格测评」，需要设计一套关于关系倾向的选择题。题目要贴合你们的人设与关系，健康自然，不要露骨。');
     const usr = '请生成 12 道关于关系倾向的选择题（靠近、留白、稳定、探索四个维度各 3 题）。只输出 JSON 数组，格式：[{"q":"题目","o":["选项1","选项2","选项3","选项4"]}, ...]，共 12 题，不要解释。';
-    const raw = await callMainApi([{ role: 'system', content: sys }, { role: 'user', content: usr }], { maxTokens: 1600, temp: 0.95, kind: 'personality-questions' });
+    const raw = await callMainApi([{ role: 'system', content: sys }, { role: 'user', content: usr }], { maxTokens: 3200, temp: 0.95, kind: 'personality-questions', json: true });
     await applyPersonalityQuestions(raw);
   } catch (e) { apiErr(e); } finally { setBusy(false); }
 }
@@ -1796,7 +1875,7 @@ async function requestPersonality() {
     const recent = qs.map((q, i) => `${q[0]} 我的选择：${q[1][state.personality.user[i]]}`).join('\n');
     const sys = buildCharSystem('你正在和对方一起做「情侣人格测评」。请完全按你的性格与设定真实作答，不要迎合对方。', recent);
     const usr = `请看下面 ${qs.length} 道题，按你自己会怎么选作答。只输出 JSON 数组，例如 [0,2,1,3,...]，每个元素是选项序号（0=A，1=B，2=C，3=D），共 ${qs.length} 个，不要解释。\n${list}`;
-    const raw = await callMainApi([{ role: 'system', content: sys }, { role: 'user', content: usr }], { maxTokens: 260, temp: 0.7, kind: 'personality-answers' });
+    const raw = await callMainApi([{ role: 'system', content: sys }, { role: 'user', content: usr }], { maxTokens: 500, temp: 0.7, kind: 'personality-answers' });
     await applyPersonalityAnswers(raw);
   } catch (e) { apiErr(e); } finally { setBusy(false); }
 }
@@ -1875,7 +1954,7 @@ async function submitJudge() {
     const recent = state.judge.case + '\n' + state.judge.user;
     const sys = buildCharSystem('你正在参与「审判庭」：对方描述了一件两人之间发生的事，并写下“如果是我，我会怎么做”。你要以你本人的视角真实回应，不要一味迎合，也不要攻击。', recent);
     const usr = `事件：${state.judge.case}\n对方说“如果是我，我会怎么做”：${state.judge.user || '（未填写）'}\n\n请只输出 JSON：\n{"perspective":"以${name}的视角回应这件事，第一人称，80-200字","verdict":"客观的第三方整理与点评，60-150字","danmu":[{"who":"网友昵称","text":"一句弹幕评论"}, ...]}\ndanmu 给 6 条，昵称要多样、像真实网友，评论要口语化、有立场、可不一致。不要输出 JSON 以外的内容。`;
-    const raw = await callMainApi([{ role: 'system', content: sys }, { role: 'user', content: usr }], { maxTokens: 1200, temp: 0.95, kind: 'judge' });
+    const raw = await callMainApi([{ role: 'system', content: sys }, { role: 'user', content: usr }], { maxTokens: 2600, temp: 0.95, kind: 'judge', json: true });
     await applyJudge(raw);
   } catch (e) { apiErr(e); } finally { setBusy(false); }
 }
@@ -1899,7 +1978,7 @@ async function requestDanmu() {
     const name = state.char.name || '角色';
     const sys = buildCharSystem('你正在为「审判庭」生成观众弹幕。弹幕是围观的第三方网友评论，不是角色本人的话。', state.judge.case);
     const usr = `事件：${state.judge.case}\n${name} 的视角：${state.judge.char}\n\n请生成 8 条新的观众弹幕，只输出 JSON 数组：[{"who":"网友昵称","text":"一句评论"}, ...]，昵称多样、评论口语化有立场，不要和已有弹幕重复。\n已有弹幕：${(state.judge.danmu || []).map((d) => d.text).join(' / ') || '（无）'}`;
-    const raw = await callMainApi([{ role: 'system', content: sys }, { role: 'user', content: usr }], { maxTokens: 800, temp: 1, kind: 'judge-danmu' });
+    const raw = await callMainApi([{ role: 'system', content: sys }, { role: 'user', content: usr }], { maxTokens: 1600, temp: 1, kind: 'judge-danmu', json: true });
     await applyDanmu(raw);
   } catch (e) { apiErr(e); } finally { setBusy(false); }
 }
@@ -1958,7 +2037,7 @@ async function generateExchangeReply(kind) {
       usr = `对方的日记：\n"""\n${cur.user}\n"""\n\n请写下你自己的一天作为交换，可以自然提到对方日记里的内容。直接输出日记内容本身，不要解释。`;
     }
     const sys = buildCharSystem(extra, recent);
-    const raw = await callMainApi([{ role: 'system', content: sys }, { role: 'user', content: usr }], { maxTokens: 1400, temp: 0.9, kind: isLetter ? 'exchange-letters' : 'exchange-diary' });
+    const raw = await callMainApi([{ role: 'system', content: sys }, { role: 'user', content: usr }], { maxTokens: 2600, temp: 0.9, kind: isLetter ? 'exchange-letters' : 'exchange-diary' });
     await applyExchangeReply(kind, (raw || '').trim());
   } catch (e) {
     apiErr(e);
@@ -2068,7 +2147,7 @@ async function requestChatReply() {
   try {
     const sys = buildCharSystem('你们刚玩完一局「你画我猜」，正在轻松地聊天。请以你的性格自然回应，短句为主。', (d.word || '') + history);
     const usr = `这一局我画的题目是「${d.word}」，你猜的是「${d.guess || ''}」。\n最近的聊天：\n${history || '（暂无）'}\n\n请你说一句话继续聊（1-2 句，不要解释规则，不要暴露这是游戏）。`;
-    const raw = await callMainApi([{ role: 'system', content: sys }, { role: 'user', content: usr }], { maxTokens: 300, temp: 0.95, kind: 'draw-chat' });
+    const raw = await callMainApi([{ role: 'system', content: sys }, { role: 'user', content: usr }], { maxTokens: 600, temp: 0.95, kind: 'draw-chat' });
     await applyDrawChat(raw);
   } catch (e) { apiErr(e); } finally { setBusy(false); }
 }
@@ -2126,7 +2205,7 @@ async function finishDraw() {
     const raw = await callMainApi([
       { role: 'system', content: sys },
       { role: 'user', content: [{ type: 'text', text: usr }, { type: 'image_url', image_url: { url: state.draw.drawing } }] }
-    ], { maxTokens: 300, temp: 0.9, kind: 'draw-guess' });
+    ], { maxTokens: 600, temp: 0.9, kind: 'draw-guess' });
     await applyDrawGuess(raw);
   } catch (e) {
     apiErr(e);

@@ -55,6 +55,10 @@ crons = ["*/5 * * * *"]
 # REMIND_TIMES = "09:00,12:30,20:00,23:00"
 # REMIND_TEXT = "你的自定义提醒文案"
 [vars]
+# 注册邀请码：只存在 Worker 环境里，前端拿不到。
+# 建议改用 secret：wrangler secret put ACCOUNT_REGISTER_CODE
+# 开源/分享本仓库前，删掉下面这一行，改用 secret，避免邀请码公开。
+ACCOUNT_REGISTER_CODE = "NANO-VIP-8899"
 # 设为 "0" 后，集市不再显示迁移前留在 KV 的旧帖子（数据仍在，只是隐藏）。
 # 想彻底删除旧 KV 帖子：Cloudflare Dashboard → KV → nano-push → 删除 market:* 键。
 INCLUDE_LEGACY_MARKET = "1"

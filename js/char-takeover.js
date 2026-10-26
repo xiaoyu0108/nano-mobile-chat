@@ -614,7 +614,37 @@
         if (TK.abort || !TK.active) { return; }
         saveSeen(viewedIds);
         await finishCard(info);
+        // 查完不能直接把话题丢下：让角色针对这次看到的内容再说 1~2 句。
+        try { await sayAfterFinish(info); } catch (e) {}
         end('finished');
+    }
+
+    async function sayAfterFinish(info) {
+        if (!TK.log.length) return;
+        var seen = TK.log.slice(-4).map(function (w) {
+            var lines = (w.bubbles || []).slice(0, 2).map(function (b) { return String(b || '').slice(0, 80); }).filter(Boolean);
+            return '· ' + (w.name || w.app || '页面') + (lines.length ? ('：' + lines.join(' / ')) : '');
+        }).join('\n');
+        var sys = systemText();
+        var usr = '你刚刚翻完' + (info.name || 'TA') + '的手机，看到了这些内容：\n' + seen +
+            '\n\n用你的人设自然地说 1~2 句反应（可以调侃、吃醋、关心、心虚、装作没看到，或顺着刚看到的内容接话）。' +
+            '不要总结成报告，不要复述页面，不要跳出角色，不要解释你是 AI。只输出 JSON：{"bubbles":["第一句","第二句"]}';
+        var content = '';
+        try { content = await callApi([{ role: 'system', content: sys }, { role: 'user', content: usr }], 600); } catch (e) {}
+        var parsed = firstJson(content) || {};
+        var arr = extractBubbles(content);
+        if (!arr) arr = Array.isArray(parsed.bubbles) ? parsed.bubbles : (parsed.bubbles ? [parsed.bubbles] : []);
+        var msgs = (arr || []).map(cleanText).filter(function (t) { return t && t.length <= 180; }).slice(0, 2);
+        if (!msgs.length) {
+            var firstApp = (TK.log.filter(function (w) { return w && w.name; })[0] || {}).name || '手机';
+            msgs = ['（把手机放回桌上）看完了。你最近在「' + firstApp + '」里忙的事，我都看到了。'];
+        }
+        var s = shell();
+        if (!s || !s.postToChat) return;
+        for (var i = 0; i < msgs.length; i++) {
+            try { s.postToChat({ type: 'NANO_CHAR_SAY', chatId: String(info.id), text: msgs[i] }); } catch (e) {}
+            if (i < msgs.length - 1) await sleep(520);
+        }
     }
 
     // 用户夺回控制：立刻交还手机，角色反应随后再发
@@ -735,16 +765,23 @@
             return true;
         } catch (e) { return false; }
     }
+    function dayKeyForToday() {
+        var d = new Date();
+        return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
+    }
     function checkProactive() {
         try {
             if (TK.active) return;
-            if (localStorage.getItem('nano_takeover_proactive') === '0') return;
-            // 全天最多一名角色被反查
-            var d = new Date();
-            var dayKey = d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
-            if (localStorage.getItem('nano_takeover_day') === dayKey) return;
+            // 两个入口任一开启才允许随机反查：查手机设置里的全局开关，或私聊设置里的单角色开关。
+            var globalOn = localStorage.getItem('nano_takeover_proactive') === '1';
             var lc = JSON.parse(localStorage.getItem('nano_last_chat') || 'null');
             if (!lc || !lc.id || lc.id === 'nano_ai' || String(lc.id || '').indexOf('nano_ai_') === 0) return;   // 纳米不参与反查
+            var perCharRaw = localStorage.getItem('chat_setting_takeover_' + lc.id);
+            var perCharOn = perCharRaw === '1' || perCharRaw === 'true';
+            if (!globalOn && !perCharOn) return;
+            // 全天最多一名角色被反查
+            var dayKey = dayKeyForToday();
+            if (localStorage.getItem('nano_takeover_day') === dayKey) return;
             // 同一角色 14 天内只被反查一次
             var perChar = parseInt(localStorage.getItem('nano_takeover_char_at_' + lc.id) || '0', 10) || 0;
             if (Date.now() - perChar < 14 * 24 * 3600 * 1000) return;

@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
-<script src="../js/nano-runtime.js?v=20261023a"></script>
+<script src="../js/nano-runtime.js?v=20261026d"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>美化</title>
@@ -132,15 +132,6 @@
 <div class="url-row"><input class="name" id="fontUrl" type="url" placeholder="字体直链 .ttf/.otf/.woff2 或字体 CSS 链接"><button class="tool apply" id="urlApply">连接</button></div>
 </div>
 
-<div class="group">
-<div class="labelrow"><span class="label">字体代理（国外字体用）</span><button class="tool-sm" id="fontProxySave">保存</button></div>
-<div class="url-row"><input class="name" id="fontProxy" type="url" placeholder="https://nanopush.nano315.online/font?url="></div>
-<div style="font-size:11px;line-height:1.65;color:#8e8e93;margin-top:6px">
-Catbox 等「字体文件直链」被墙或跨域时，填上面的 Worker 代理地址。Google Fonts 的 CSS 链接会走公共代理。留空则只用公共代理。<br>
-部署：电脑进入 <b>push-worker</b> 目录 → <b>npx wrangler deploy</b> → 把 <b>https://你的域名/font?url=</b> 填到这里保存。
-</div>
-</div>
-
 <div class="tools"><button class="tool" id="fontClear">清空</button><button class="tool" id="fontRestore">还原</button><button class="tool apply" id="fontApply">应用</button></div>
 
 <div class="group"><div class="labelrow"><span class="label">预设</span></div><div class="presetrow"><select id="fontPreset"></select><button class="delete" id="fontDelete" aria-label="删除">
@@ -155,10 +146,10 @@ Catbox 等「字体文件直链」被墙或跨域时，填上面的 Worker 代�
 
 <script src="../js/nano-global-template.js?v=20261021a"></script>
 <script src="../js/nano-chat-template.js?v=20261021h"></script>
-        <script src="../js/nano-chat-theme-gray-pink.js?v=20261025f"></script>
+        <script src="../js/nano-chat-theme-gray-pink.js?v=20261026d"></script>
 <script src="../js/avatar-frame.js?v=20261010a"></script>
 <script src="../js/nano-export.js?v=20261015a"></script>
-<script src="../js/beautify.js?v=20261023e"></script>
+<script src="../js/beautify.js?v=20261026d"></script>
         <script src="../js/api-float.js?v=20261025b"></script>
 <script src="../swipe-back.js"></script>
 <script>

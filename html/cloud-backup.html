@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<script src="../js/nano-runtime.js?v=20261023a"></script>
+<script src="../js/nano-runtime.js?v=20261026d"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>云端备份</title>
@@ -9,7 +9,7 @@
 <link rel="stylesheet" href="../css/backup.css">
 <link rel="stylesheet" href="../css/panel-ui.css?v=20261020j">
 <link rel="stylesheet" href="../css/cloud-backup.css?v=20261025a">
-<script src="../js/appearance.js"></script>
+<script src="../js/appearance.js?v=20261026d"></script>
 </head>
 <body class="panel-backup cloud-backup-page">
 
@@ -74,6 +74,7 @@
                     <li>点页面最下面的 <b>Generate token</b>，复制以 <code>ghp_</code> 开头的令牌。<b>它只显示一次</b>，关掉页面就看不到了。</li>
                     <li>回到本页，把令牌粘贴到上面的输入框 → 点 <b>连接 / 测试</b>。成功后会显示你的 @用户名。</li>
                     <li>点 <b>上传备份</b>。程序会在你的 GitHub 里创建一个<b>私有 Gist</b>；每上传一次就是一个新版本，不会覆盖旧版本。</li>
+                <li>不再设置应用层大小限制：程序会把备份切成 8MB 的分片上传，恢复时按清单自动拼接。<br>实际能存多大取决于 GitHub Gist（最多 300 个文件）和手机内存；特别大的备份建议同时保留本地导出。</li>
                     <li>换手机 / 重装后：粘贴同一个令牌 → 连接 → 在列表里点 <b>恢复</b>（会覆盖本机现有数据，请先确认）。</li>
                 </ol>
                 <div class="tut-note">
@@ -88,6 +89,62 @@
         </div>
     </section>
 
+    <!-- ================= 自动备份 ================= -->
+    <section class="cloud-card" id="autoCard">
+        <div class="cloud-head">
+            <span class="cloud-logo cf">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>
+            </span>
+            <div class="cloud-title-wrap">
+                <div class="cloud-title">自动备份</div>
+                <div class="cloud-sub">App 打开时到点自动上传；关闭期间不跑，下次打开会补一次</div>
+            </div>
+            <span class="cloud-badge" id="autoBadge">可选</span>
+        </div>
+        <div class="cloud-body">
+            <div class="field">
+                <label class="field-label" style="display:flex;align-items:center;gap:8px">
+                    <input type="checkbox" id="autoEnabled" style="width:16px;height:16px">
+                    开启自动备份
+                </label>
+            </div>
+            <div class="field">
+                <span class="field-label">备份到</span>
+                <select id="autoTarget" class="field-input">
+                    <option value="cf">Cloudflare R2（推荐，无 24MB 限制）</option>
+                    <option value="gh">GitHub 私有 Gist（保留份数可在下面设置）</option>
+                </select>
+            </div>
+            <div class="field">
+                <span class="field-label">备份间隔</span>
+                <select id="autoInterval" class="field-input">
+                    <option value="30">30 分钟（频繁，注意空间）</option>
+                    <option value="180">3 小时</option>
+                    <option value="480">8 小时</option>
+                    <option value="720">12 小时</option>
+                    <option value="1440">24 小时</option>
+                </select>
+            </div>
+            <div class="field">
+                <span class="field-label">GitHub 自动备份保留份数</span>
+                <select id="autoKeep" class="field-input">
+                    <option value="3">3 份（第 4 次删最旧，等效覆盖）</option>
+                    <option value="5">5 份</option>
+                    <option value="10">10 份</option>
+                    <option value="0">不限制（保留全部，会持续增加）</option>
+                </select>
+                <div class="cloud-sub" style="margin-top:4px">只影响 GitHub 自动备份；手动上传的备份永远不会被自动删除。Cloudflare R2 自动备份固定覆盖同一个文件。</div>
+            </div>
+            <div class="cloud-sub" id="autoStatus" style="margin:4px 0 10px">未开启 · 还没备份过</div>
+            <div class="btn-row">
+                <button class="cloud-btn primary" id="autoSave" type="button">保存自动备份设置</button>
+            </div>
+            <div class="tut-warn" style="margin-top:10px">
+                自动备份只能在本 App 打开时运行（iOS 不允许网页在完全退出后后台跑）。30 分钟适合临时保护，长期建议 8/12/24 小时，避免产生过多云端版本。
+            </div>
+        </div>
+    </section>
+
     <!-- ================= Cloudflare ================= -->
     <section class="cloud-card" id="cfCard">
         <div class="cloud-head">
@@ -95,8 +152,8 @@
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M17.6 9.3a5.5 5.5 0 0 0-10.4-1.6A4.3 4.3 0 0 0 3.4 16h14.1a3.4 3.4 0 0 0 .1-6.7Z"/></svg>
             </span>
             <div class="cloud-title-wrap">
-                <div class="cloud-title">Cloudflare 云端备份</div>
-                <div class="cloud-sub" id="cfStatus">未连接 · 数据存进你自己的 Cloudflare Worker</div>
+                <div class="cloud-title">Cloudflare 云端备份（R2）</div>
+                <div class="cloud-sub" id="cfStatus">未连接 · 推荐绑定 R2，不再受 24MB 限制</div>
             </div>
             <span class="cloud-badge" id="cfBadge">未配置</span>
         </div>
@@ -125,12 +182,13 @@
             <details class="tutorial">
                 <summary>查看 Cloudflare 详细教程（第一次用必看）</summary>
                 <ol>
-                    <li>打开 <b>dash.cloudflare.com</b>，登录<strong>你自己的</strong> Cloudflare 账号（免费注册即可，这个方案不需要信用卡）。</li>
+                    <li>打开 <b>dash.cloudflare.com</b>，登录<strong>你自己的</strong> Cloudflare 账号（免费注册即可；R2 需要绑定付款方式，但 10GB 免费额度内不扣费）。</li>
                     <li>左侧点 <b>Workers &amp; Pages</b> → <b>Create</b> → <b>Worker</b> → 名字填 <code>nano-backup</code> → <b>Deploy</b>。</li>
                     <li>部署后点 <b>Edit code</b>，把编辑器里的默认代码<b>全部删掉</b>，粘贴下面这段代码，再点右上角 <b>Deploy</b>。</li>
-                    <li>左侧点 <b>Storage &amp; Databases</b> → <b>KV</b> → <b>Create namespace</b>，名字填 <code>nano-backup-kv</code> → 创建。</li>
-                    <li>回到 <b>Workers &amp; Pages</b> → 打开 <code>nano-backup</code> → <b>Settings</b> → <b>Bindings</b> → <b>Add</b> → <b>KV Namespace</b>。
-                        变量名必须填 <code>BACKUP_KV</code>，右边选择刚创建的 <code>nano-backup-kv</code>，保存并重新部署。</li>
+                    <li>左侧点 <b>Storage &amp; Databases</b> → <b>R2</b> → <b>Create bucket</b>，名字填 <code>nano-backups</code>（R2 免费额度 10GB，需要先绑定付款方式，但在免费额度内不扣费）。</li>
+                    <li>回到 <b>Workers &amp; Pages</b> → 打开 <code>nano-backup</code> → <b>Settings</b> → <b>Bindings</b> → <b>Add</b> → <b>R2 Bucket</b>。
+                        变量名必须填 <code>BACKUP_R2</code>，右边选择刚创建的 <code>nano-backups</code>，保存并重新部署。</li>
+                    <li>不想开 R2 也可以继续绑 <b>KV</b>（变量名 <code>BACKUP_KV</code>），但单个备份仍限制 24MB；R2 没有这个限制。</li>
                     <li>还是在 <b>Settings</b> → <b>Variables and Secrets</b> → <b>Add</b>：
                         名称填 <code>BACKUP_TOKEN</code>，值填一串只有你知道的长密码（建议 24 位以上随机字符），类型选 <b>Secret</b>，保存并部署。</li>
                     <li>在 Worker 的 <b>Settings</b> → <b>Domains &amp; Routes</b> 里确认 <b>workers.dev</b> 已启用，复制形如
@@ -146,8 +204,9 @@
                 <pre class="code-box" id="cfCodeBox">正在读取 backup-worker/index.js…</pre>
 
                 <div class="tut-note">
-                    <b>免费额度：</b>KV 总空间 1GB，单个备份最大 24MB（程序会自动压缩，仍超限会提示）。
-                    备份多了请删旧的；占用可在 Cloudflare 的 KV 页面查看。
+                    <b>R2 免费额度：</b>10GB 存储，单个备份没有 24MB 限制（程序仍会先压缩）。
+                    如果只绑了 KV，则仍有 24MB 单值限制；建议绑 R2 或使用 GitHub 备份。
+                    备份多了请删旧的；占用可在 Cloudflare 的 R2 / KV 页面查看。
                 </div>
                 <div class="tut-warn">
                     <code>BACKUP_TOKEN</code> 是这个备份接口唯一的密码，泄露后别人可以读写你的备份。
@@ -174,7 +233,7 @@
 
 <script src="../js/pako.min.js"></script>
 <script src="../js/backup.js?v=20261025c"></script>
-<script src="../js/cloud-backup.js?v=20261025a"></script>
+<script src="../js/cloud-backup.js?v=20261026f"></script>
 <script src="../js/swipe-back.js"></script>
 </body>
 </html>

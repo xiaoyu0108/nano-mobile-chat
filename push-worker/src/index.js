@@ -1920,13 +1920,19 @@ function accRole(user) {
   return user && user.role === 'admin' ? 'admin' : 'user';
 }
 async function accReadPolicy(env) {
+  const defaults = { allowUserImport: false, allowRegister: true, allowMarketUpload: true };
   const raw = await kv(env).get('acct:policy');
-  if (!raw) return { allowUserImport: false };
+  if (!raw) return defaults;
   try {
-    const p = JSON.parse(raw);
-    return { allowUserImport: !!(p && p.allowUserImport) };
+    const p = JSON.parse(raw) || {};
+    return {
+      allowUserImport: p.allowUserImport === true,
+      // 旧策略没有这两个字段时保持「允许」，避免升级后突然关闭注册/集市上传。
+      allowRegister: p.allowRegister !== false,
+      allowMarketUpload: p.allowMarketUpload !== false
+    };
   } catch (e) {
-    return { allowUserImport: false };
+    return defaults;
   }
 }
 async function accAdminAccess(request, env, body, auth) {
@@ -2036,11 +2042,15 @@ async function accHandle(request, env, pathname) {
 
   // ---- 注册 ----
   if (pathname === '/account/register' && method === 'POST') {
+    const policy = await accReadPolicy(env);
+    if (policy.allowRegister === false) return json({ ok: false, error: '注册已关闭，只能登录已有账号' }, 403);
     const name = accNormName(body.username);
     const password = String(body.password || '');
     if (!accValidName(name)) return json({ ok: false, error: '用户名需 2-24 位，可用中英文、数字、下划线、点和横线' }, 400);
     if (password.length < 6 || password.length > 128) return json({ ok: false, error: '密码需 6-128 位' }, 400);
-    const inviteNeed = String(env.ACCOUNT_REGISTER_CODE || '');
+    // 邀请码只存在 Worker（secret / vars），不下发到前端；未配置时使用默认码。
+    // 开源/分享 Worker 源码前，删掉这里的默认码，改用 wrangler secret。
+    const inviteNeed = String(env.ACCOUNT_REGISTER_CODE || 'NANO-VIP-8899');
     if (inviteNeed && String(body.invite || '') !== inviteNeed) return json({ ok: false, error: '注册邀请码不正确' }, 403);
     if (await accReadUser(env, name)) return json({ ok: false, error: '这个用户名已经被注册' }, 409);
     const salt = accB64(crypto.getRandomValues(new Uint8Array(16)));
@@ -2260,7 +2270,7 @@ async function accHandle(request, env, pathname) {
     const auth = await accAuth(env, body.token);
     const admin = await accAdminAccess(request, env, body, auth);
     if (!admin.ok) return json({ ok: false, error: admin.error }, 403);
-    const listed = await kv(env).list({ prefix: 'acct:user:', limit: 300 });
+    const listed = await kv(env).list({ prefix: 'acct:user:', limit: 1000 });
     const out = [];
     for (const k of (listed.keys || [])) {
       try {
@@ -2333,12 +2343,18 @@ async function accHandle(request, env, pathname) {
     return json({ ok: true, username: user.u, role: 'admin' });
   }
 
-  // ---- 管理员：设置导入权限策略 ----
+  // ---- 管理员：设置导入 / 注册 / 集市上传策略 ----
   if (pathname === '/account/admin/policy' && method === 'POST') {
     const auth = await accAuth(env, body.token);
     const admin = await accAdminAccess(request, env, body, auth);
     if (!admin.ok) return json({ ok: false, error: admin.error }, 403);
-    const policy = { allowUserImport: body.allowUserImport === true, updatedAt: Date.now() };
+    const cur = await accReadPolicy(env);
+    const policy = {
+      allowUserImport: typeof body.allowUserImport === 'boolean' ? body.allowUserImport : cur.allowUserImport,
+      allowRegister: typeof body.allowRegister === 'boolean' ? body.allowRegister : cur.allowRegister,
+      allowMarketUpload: typeof body.allowMarketUpload === 'boolean' ? body.allowMarketUpload : cur.allowMarketUpload,
+      updatedAt: Date.now()
+    };
     await kv(env).put('acct:policy', JSON.stringify(policy));
     return json({ ok: true, policy: policy });
   }
@@ -2772,7 +2788,7 @@ export default {
       return json({
         ok: true,
         service: 'nano-peek',
-        build: '2026-10-25-r2-live',
+        build: '2026-10-26-social',
         method: 'POST /peek',
         publicMode: publicMode,
         tokenConfigured: !!env.PEEK_TOKEN,
@@ -3335,6 +3351,9 @@ export default {
 
     // POST /market/post          发布：{ item, summary, token }
     if (pathname === '/market/post' && request.method === 'POST') {
+      // 管理员可随时关闭「上传」；列出/下载/计数不受影响，额度重置后再打开即可。
+      const policy = await accReadPolicy(env);
+      if (policy.allowMarketUpload === false) return json({ ok: false, error: '集市上传已关闭，本月额度用完后会在下月重新开放' }, 403);
       let body = {};
       try { body = await request.json(); } catch (e) {}
       const item = body.item, summary = body.summary, token = String(body.token || '');
@@ -3479,7 +3498,7 @@ export default {
       }
     }
 
-    return json({ ok: true, info: 'nano-push alive', build: '2026-10-25-r2-live' });
+    return json({ ok: true, info: 'nano-push alive', build: '2026-10-26-social' });
   },
 
   // 每 5 分钟触发：处理 KV 里的预约任务 + 无后台主动消息 / 朋友圈

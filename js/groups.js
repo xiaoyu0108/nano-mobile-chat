@@ -558,7 +558,8 @@
         }
         var mainHtml = '<div class="card-main"><div class="icon-wrap">' + iconSvg + '</div><div style="flex:1;min-width:0;"><div class="card-title">' + title + '</div><div class="card-sub">' + sub + '</div></div></div>';
         if (cd.cardType === 'chain') card.innerHTML = mainHtml + extra;
-        else card.innerHTML = mainHtml + '<div class="card-footer"><span class="card-footer-text">' + footer + '</span>' + extra + '</div>';
+        else if (extra) card.innerHTML = mainHtml + '<div class="card-footer"><span class="card-footer-text">' + footer + '</span>' + extra + '</div>';
+        else card.innerHTML = mainHtml + '<div class="card-hint">' + footer + '</div>';
         return card;
     }
 

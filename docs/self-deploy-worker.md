@@ -5,8 +5,12 @@
 
 - 窥屏 / 屏幕速聊走你自己的 Worker；
 - Web Push 也走你自己的 Worker；
-- 数据、KV、VAPID 都是你自己的；
+- 数据（D1）、VAPID 都是你自己的；
 - 模型 API 仍然用你自己在 Nano 里配置的那套。
+
+> **2026-10 重要更新**：Bark 推送已经彻底移除，正式 Worker 默认使用 **D1**，不再依赖 `PUSH_KV`。
+> 如果你之前按旧教程绑定过 `PUSH_KV`，请到 Cloudflare 删除这个 KV 绑定并重新部署，否则会继续消耗 KV，并收到「KV 额度 50%」邮件。
+> 旧测试 Worker `nano-test-ceshi` / `peek-test.nano315.online` 必须直接删除。
 
 > 如果你不想折腾，直接用作者的默认 Worker 也能玩。
 > 默认地址是 `https://nanopush.nano315.online`，Nano 里不用改。
@@ -16,14 +20,14 @@
 
 ## 0. 先选一种方式
 
-| 方式 | 你要做什么 | 模型费用 | Worker / KV 费用 | 适合 |
+| 方式 | 你要做什么 | 模型费用 | Worker / D1 费用 | 适合 |
 | --- | --- | --- | --- | --- |
 | 用作者的默认 Worker | 什么都不用部署，Nano 里保持默认地址 | 你自己的 API | 作者承担 | 先试试、朋友少 |
 | 自己部署 Worker | 按下面步骤做一次 | 你自己的 API | 你自己的 Cloudflare 免费额度 | 想隔离数据、常用、和朋友一起玩 |
 | 作者开公用模式 | 作者设置 `PEEK_PUBLIC=1` | 每个用户自己的 API | 作者承担 | 朋友多、不想折腾 |
 
 > 公用模式下，作者的模型 API **不会**被使用；每个人必须自己配置主 API。
-> 作者承担的是 Cloudflare Worker / KV 的免费额度。
+> 作者承担的是 Cloudflare Worker / D1 的免费额度。
 
 ---
 
@@ -34,8 +38,7 @@
 1. 一个 **Cloudflare 账号**（免费注册，不用买域名）；
 2. **Node.js 18 或更高版本**（安装时一路下一步即可）；
 3. 能打开终端（Windows 用 PowerShell，Mac 用 Terminal）；
-4. Nano 的仓库地址：
-   `https://github.com/xiaoyu0108/nano-mobile-chat`
+4. 站长提供的 `push-worker` 目录或压缩包（不要把仓库地址写进前端）
 
 > 不需要买服务器，也不需要会写代码。下面命令可以逐行复制。
 
@@ -52,19 +55,18 @@ npm -v
 
 ## 2. 拿到代码
 
-### 方式 A：用 git 克隆（推荐）
+### 方式 A：用站长提供的仓库/压缩包
 
 ```bash
-git clone https://github.com/xiaoyu0108/nano-mobile-chat.git
-cd nano-mobile-chat/push-worker
+# 把站长给你的仓库或压缩包解压后，进入 push-worker
+cd push-worker
 ```
 
-### 方式 B：下载 ZIP
+### 方式 B：直接拿压缩包
 
-1. 打开 `https://github.com/xiaoyu0108/nano-mobile-chat`
-2. 点绿色 **Code → Download ZIP**
-3. 解压
-4. 在终端进入解压后的 `push-worker` 目录
+1. 找站长要 `push-worker` 的压缩包（或整站压缩包）
+2. 解压
+3. 在终端进入解压后的 `push-worker` 目录
 
 后面的命令都在 `push-worker` 目录里执行。
 
@@ -78,8 +80,10 @@ cd nano-mobile-chat/push-worker
 手机上不要直接粘贴 `src/index.js`：它带 `import` 依赖，控制台会报错。要用已经打包好的单文件版：
 
 ```text
-https://raw.githubusercontent.com/xiaoyu0108/nano-mobile-chat/main/push-worker/dist/index.js
+你的站点地址/push-worker/dist/index.js
 ```
+
+（打开 App 的「窥屏 → 手机上玩」教程页，点「复制源码链接」也会给出同站点的地址，不会暴露 GitHub 仓库。）
 
 步骤：
 
@@ -87,20 +91,21 @@ https://raw.githubusercontent.com/xiaoyu0108/nano-mobile-chat/main/push-worker/d
 2. **Workers & Pages → Create → Worker**，起名（例如 `nano-push-你的名字`），点 **Deploy**。
 3. 进入 Worker → **Edit code / Quick Edit**，把默认代码全部删掉。
 4. 打开上面的 `dist/index.js` 链接，全选复制，粘贴进代码编辑器 → **Save and Deploy**。
-5. 建 KV：
-   - **Storage & Databases → KV → Create namespace**，名字 `PUSH_KV`；
-   - 回到 Worker → **Settings → Bindings → Add → KV Namespace**；
-   - **Variable name 必须填 `PUSH_KV`**，选择刚建的命名空间。
+5. 建 D1（推荐，不要再建 `PUSH_KV`）：
+   - **Storage & Databases → D1 → Create database**，名字填 `nano-db`；
+   - 回到 Worker → **Settings → Bindings → Add → D1 Database**；
+   - **Variable name 必须填 `nano_db`**，选择刚建的数据库。
+   - 如果你已经建过 `PUSH_KV`，请把它从 Worker 的 Bindings 里删掉；旧 KV 里的数据不会被新代码使用。
 6. **Settings → Variables and Secrets → Add**：
    - `PEEK_PUBLIC` = `1`（Text 或 Secret 都可以）
    - 可选：`PUSH_TOKEN` = 一个随机字符串；如果设了，Nano 里也要填同一个
-7. 不需要 D1；如果代码报 `env.nano_db` 相关错误，忽略 / 删除 D1 绑定即可，代码会回退到 KV。
-8. 打开 `https://你的worker.workers.dev/vapid`，返回 `key` 就成功。
+7. 不需要 KV；如果代码报 `PUSH_KV` 相关错误，说明你部署的是很旧的版本，请重新复制最新的 `dist/index.js`。
+8. 打开 `https://你的worker.workers.dev/vapid`，返回 `key` 就成功；返回里的 `store` 应该是 `d1`。
 9. 回到 Nano 填地址，步骤见下面第 8 节。
 
-> 手机控制台的代码编辑器比较挤，124KB 的单文件粘贴可能会卡。如果实在粘贴不进去，用电脑，或者用手机浏览器开 GitHub Codespaces 在终端里跑 `wrangler`。
+> 手机控制台的代码编辑器比较挤，单文件粘贴可能会卡。如果实在粘贴不进去，用电脑，或者用手机浏览器开 GitHub Codespaces 在终端里跑 `wrangler`。
 
-> `dist/index.js` 是从当前 `src/index.js` 打包出来的单文件，路由和作者 Worker 完全一致（`/peek`、`/peek/pending`、`/vapid`、`/subscribe`）。不要改路由名，也不要把 KV 绑定名从 `PUSH_KV` 改掉，否则 Nano 会连不上。
+> `dist/index.js` 是从当前 `src/index.js` 打包出来的单文件，路由和作者 Worker 完全一致（`/peek`、`/peek/pending`、`/vapid`、`/subscribe`）。不要改路由名，也不要把 D1 绑定名从 `nano_db` 改掉，否则 Nano 会连不上。
 
 ---
 
@@ -121,9 +126,9 @@ wrangler login
 
 ---
 
-## 4. 建一个你自己的 KV 命名空间（仅建议个人测试）
+## 4. 建一个你自己的 KV 命名空间（仅旧版 / 个人临时测试）
 
-> 想给多人用、长期用，**优先用 D1**（见下面「想带更多人：保留 D1」）。KV 免费额度只有 1,000 写/天，聊天 + 窥屏 + Web Push 很容易打满；D1 免费是 10 万行写/天，宽裕得多。KV 只适合先跑通、个人测试。
+> **新部署请直接用 D1，不要再用 KV。** 这一节只保留给旧版本排错；`PUSH_KV` 免费额度只有 1,000 写/天，聊天 + 窥屏 + Web Push 很容易打满，Cloudflare 就会给你发「额度 50%」邮件。D1 免费是 10 万行写/天，宽裕得多。
 
 ```bash
 wrangler kv namespace create PUSH_KV
@@ -310,7 +315,7 @@ wrangler secret put PUSH_TOKEN
 
 ### 6.3 VAPID：可以不配
 
-Worker 第一次访问 `/vapid` 会自动生成一对 VAPID 密钥并存进 KV。
+Worker 第一次访问 `/vapid` 会自动生成一对 VAPID 密钥并存进 D1（`kv` 表）。
 
 想固定密钥再配：
 
@@ -432,9 +437,9 @@ https://你的地址/vapid
 
 你还在用作者的 `routes`。把 `wrangler.toml` 里的 `routes` 整段删掉，或用你自己的域名。
 
-### 部署报 KV `namespace not found`
+### 部署报 D1 / database not found
 
-`kv_namespaces[0].id` 还是作者的，换成你自己 `wrangler kv namespace create PUSH_KV` 返回的 id。
+`[[d1_databases]]` 的 `database_id` 还是作者的，换成你自己 `wrangler d1 create nano-db-你的名字` 返回的 id；`binding` 必须是 `nano_db`。新部署不要绑定 `PUSH_KV`。
 
 ### 窥屏提示 `unauthorized`
 
@@ -477,31 +482,30 @@ Cloudflare 免费版大致是（以官网当前价格为准）：
 | 项目 | 免费额度 |
 | --- | --- |
 | Workers 请求 | 100,000 次/天 |
-| KV 读取 | 100,000 次/天 |
-| KV 写入 | 1,000 次/天 |
-| KV 存储 | 1 GB |
+| D1 读取 | 500 万行/天 |
+| D1 写入 | 100,000 行/天 |
+| D1 存储 | 5 GB |
 
 ### 每轮窥屏大概消耗
 
 - 1 次 `/peek` 请求；
-- 1 次 KV 写（暂存这一轮）；
-- App 拉取时 1 次 KV 读 + 1 次 KV 写（清空）；
-- 人设 / API / 上下文同步一次约 9 个 key，聊天侧 6 小时内不重复；
+- 1 行 D1 写（暂存这一轮）；
+- App 拉取时 1 行 D1 读 + 1 行 D1 写（清空）；
+- 人设 / API / 上下文同步一次约 9 行，聊天侧 6 小时内不重复；
 - 截图只占存储，不额外增加写入次数。
 
 ### 估算
 
-> 下面的数字是 **纯 KV 自建**（本教程的最小配置，删掉了 D1）的情况。
+> 下面的数字是 **D1 默认配置**（仓库 `wrangler.toml` 的 `nano_db`）。只有旧版/手动删掉 D1 的纯 KV 部署才会受 1,000 写/天限制。
 
-免费版的瓶颈是 **1,000 次写入/天**：
+D1 免费版瓶颈是 **100,000 行写入/天**：
 
-- 每轮约 2 次写入；
-- 大约能撑 **300~500 轮对话/天**；
-- 如果每个活跃用户每天聊 10~20 轮，大约 **10~30 个活跃用户**；
-- 如果每人每天只发几条，能到 **50+**；
-- 如果有人一直跑「重复 50」的快捷指令，几个人就可能把当天额度跑完。
+- 每轮约 2 行写入；
+- 大约能撑 **几万轮对话/天**；
+- 保守估计 **100~300 个活跃用户**；
+- 如果还绑着 `PUSH_KV`，则只有 1,000 写/天，只够 **10~30 个活跃用户**。
 
-Web Push 的订阅和定时任务也会读写 KV，所以不要按「刚好 1,000」算，留一半余量。
+Web Push 的订阅和定时任务也会读写 D1，所以不要按「刚好 100,000」算，留一半余量。
 
 ### 作者的默认 Worker 能带多少人
 
@@ -516,10 +520,10 @@ Web Push 的订阅和定时任务也会读写 KV，所以不要按「刚好 1,00
 - 实际还会受 CPU、D1 延迟、其他功能（集市 / 自动消息 / TTS 代理）影响；
 - **保守估计：100~300 个活跃用户**，重度循环会少一些。
 
-**情况 B：删掉了 D1，纯 KV 自建（本教程默认）**
+**情况 B：删掉了 D1，纯 KV 自建（仅旧版，不推荐）**
 
-- 按上面的 KV 额度算：**10~30 个活跃用户**；
-- 想带更多人，可以保留 D1 或升级 Workers Paid。
+- 按 KV 额度算：**10~30 个活跃用户**；
+- 想带更多人，请恢复 D1 或升级 Workers Paid。
 
 **Workers Paid（约 $5/月）**：额度大很多，可以带更多，具体看 Cloudflare 官网。
 
@@ -529,7 +533,7 @@ Web Push 的订阅和定时任务也会读写 KV，所以不要按「刚好 1,00
 2. 在 Cloudflare 看 **D1 或 KV** 的用量（看你绑定的是哪个），接近 70%~80% 时提醒重度用户换自己的；
 3. 给 `/peek` 加 Rate Limiting，防止有人刷；
 4. 公开给很多人前，考虑 Workers Paid，或者直接发这份自建教程；
-5. 如果自己用的是 D1 版本，自建教程里删掉 D1 的用户容量会小一些，这是正常的。
+5. 自建教程默认要求绑定 D1；如果对方删掉 D1 退回纯 KV，容量会小很多，这是正常的。
 
 > 公用模式下，模型费用是每个用户自己的 API，不会花作者的钱。
 > 作者承担的是 Worker / KV 额度。

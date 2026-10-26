@@ -119,11 +119,19 @@
   }
   function currentPolicy() {
     var p = readJSON(LS_POLICY, null);
-    return { allowUserImport: !!(p && p.allowUserImport === true) };
+    return {
+      allowUserImport: !!(p && p.allowUserImport === true),
+      allowRegister: !(p && p.allowRegister === false),
+      allowMarketUpload: !(p && p.allowMarketUpload === false)
+    };
   }
   function applyPolicy(p) {
     if (!p || typeof p !== 'object') return;
-    writeJSON(LS_POLICY, { allowUserImport: p.allowUserImport === true });
+    writeJSON(LS_POLICY, {
+      allowUserImport: p.allowUserImport === true,
+      allowRegister: p.allowRegister !== false,
+      allowMarketUpload: p.allowMarketUpload !== false
+    });
   }
 
   function currentDevice() {
@@ -399,13 +407,41 @@
     });
   }
 
-  function setUserImportPolicy(allow) {
+  function setPolicy(patch) {
     var auth = currentAuth();
     if (!auth) return Promise.reject(new Error('未登录'));
-    return request('/account/admin/policy', { token: auth.token, allowUserImport: !!allow }).then(function (data) {
-      applyPolicy(data.policy);
+    var cur = currentPolicy();
+    var body = {
+      token: auth.token,
+      allowUserImport: cur.allowUserImport,
+      allowRegister: cur.allowRegister,
+      allowMarketUpload: cur.allowMarketUpload
+    };
+    if (patch && typeof patch === 'object') {
+      if (typeof patch.allowUserImport === 'boolean') body.allowUserImport = patch.allowUserImport;
+      if (typeof patch.allowRegister === 'boolean') body.allowRegister = patch.allowRegister;
+      if (typeof patch.allowMarketUpload === 'boolean') body.allowMarketUpload = patch.allowMarketUpload;
+    }
+    return request('/account/admin/policy', body).then(function (data) {
+      var p = data && data.policy ? data.policy : {};
+      // 旧版 Worker 只认识 allowUserImport，会把新开关丢掉；客户端再默认成“开启”，
+      // 看起来就是开关刚关掉又自己弹回去。这里明确报错，避免假装保存成功。
+      var need = [];
+      if (patch && typeof patch.allowRegister === 'boolean') need.push('allowRegister');
+      if (patch && typeof patch.allowMarketUpload === 'boolean') need.push('allowMarketUpload');
+      if (patch && typeof patch.allowUserImport === 'boolean') need.push('allowUserImport');
+      var missing = need.filter(function (k) { return typeof p[k] !== 'boolean'; });
+      if (missing.length) {
+        var err = new Error('服务器还是旧版，设置没有真正保存。请先在电脑上进入 push-worker 目录执行 npx wrangler deploy，再回来重试。');
+        err.code = 'OLD_SERVER';
+        throw err;
+      }
+      applyPolicy(p);
       return data;
     });
+  }
+  function setUserImportPolicy(allow) {
+    return setPolicy({ allowUserImport: !!allow });
   }
 
   function resetAccount(adminToken, username) {
@@ -463,7 +499,7 @@
           '<div class="nacc-body">' +
             '<div class="nacc-tabs">' +
               '<button type="button" class="nacc-tab active" data-mode="login">登录</button>' +
-              '<button type="button" class="nacc-tab" data-mode="register">注册</button>' +
+              (currentPolicy().allowRegister ? '<button type="button" class="nacc-tab" data-mode="register">注册</button>' : '') +
             '</div>' +
             '<div class="nacc-error" id="naccErr"></div>' +
             '<div class="nacc-actions" style="margin:-4px 0 8px">' +
@@ -522,8 +558,8 @@
               '<input class="nacc-input" id="naccPass" type="password" autocomplete="new-password" placeholder="至少 6 位"></label>' +
             '<label class="nacc-field"><span class="nacc-field-label">确认密码</span>' +
               '<input class="nacc-input" id="naccPass2" type="password" autocomplete="new-password" placeholder="再输入一次"></label>' +
-            '<label class="nacc-field"><span class="nacc-field-label">注册邀请码（如果服务器开启了）</span>' +
-              '<input class="nacc-input" id="naccInvite" autocapitalize="none" spellcheck="false" placeholder="没有就留空"></label>' +
+          '<label class="nacc-field"><span class="nacc-field-label">注册邀请码</span>' +
+          '<input class="nacc-input" id="naccInvite" autocapitalize="none" spellcheck="false" placeholder="请向管理员获取，不会显示在页面上"></label>' +
             '<div class="nacc-actions"><button type="button" class="nacc-btn nacc-btn-primary" id="naccSubmit">注册并登录</button></div>';
         }
         var submit = formEl.querySelector('#naccSubmit');
@@ -822,6 +858,12 @@
         '<div class="nacc-row-sub"> PNG 导入需要激活</div></div>' +
         '<span class="nacc-badge-now" style="background:' + statusColor + ';color:' + statusInk + '">' + esc(statusText) + '</span>' +
         '</div>';
+      if (admin) {
+        inner += '<div class="nacc-row"><div class="nacc-row-main">' +
+          '<div class="nacc-row-label">注册用户总数</div>' +
+          '<div class="nacc-row-sub">用来判断是否要关闭注册</div></div>' +
+          '<span class="nacc-badge-now" id="naccUserCount">…</span></div>';
+      }
       if (needs && !admin) {
         inner += '<div class="nacc-actions" style="margin-top:10px;flex-direction:column;align-items:stretch">' +
           '<label class="nacc-field" style="margin:0 0 8px"><span class="nacc-field-label">输入管理员给你的激活码</span>' +
@@ -845,6 +887,13 @@
     var adminHtml = '';
     if (admin) {
       adminHtml =
+        pageSection('注册与共享集市', '关闭注册后只能登录已有账号；关闭集市上传后所有人只能下载，下个月额度重置后再打开即可继续上传。',
+          '<div class="nacc-row"><div class="nacc-row-main"><div class="nacc-row-label">允许新账号注册</div>' +
+          '<div class="nacc-row-sub">' + (policy.allowRegister ? '已开启：知道邀请码的人可以注册' : '已关闭：只能登录，不能注册') + '</div></div>' +
+          '<label class="nacc-switch"><input type="checkbox" id="naccAllowRegister"' + (policy.allowRegister ? ' checked' : '') + '><i></i></label></div>' +
+          '<div class="nacc-row"><div class="nacc-row-main"><div class="nacc-row-label">允许共享集市上传</div>' +
+          '<div class="nacc-row-sub">' + (policy.allowMarketUpload ? '已开启：可以发布新资源' : '已关闭：只能浏览和下载') + '</div></div>' +
+          '<label class="nacc-switch"><input type="checkbox" id="naccAllowMarketUpload"' + (policy.allowMarketUpload ? ' checked' : '') + '><i></i></label></div>') +
         pageSection('导入权限', '默认只有管理员能导入角色卡、世界书、规则等文件。开启下面开关后，所有已登录的普通用户都可以导入。',
           '<div class="nacc-row"><div class="nacc-row-main"><div class="nacc-row-label">允许普通账号导入</div>' +
           '<div class="nacc-row-sub">' + (policy.allowUserImport ? '已开启：所有登录用户都能导入' : '已关闭：仅管理员可导入') + '</div></div>' +
@@ -866,7 +915,7 @@
           '<div class="nacc-actions"><button type="button" class="nacc-btn nacc-btn-soft" id="naccSaveApi">保存地址</button>' +
           '<button type="button" class="nacc-btn nacc-btn-soft" id="naccTestApi">测试连接</button>' +
           '<button type="button" class="nacc-btn nacc-btn-soft" id="naccResetApi">还原默认</button></div>' +
-          '<p class="nacc-hint">部署时给 Worker 加 secret：<b>ACCOUNT_ADMIN_TOKEN</b>；想限制注册再加 <b>ACCOUNT_REGISTER_CODE</b>。</p>');
+          '<p class="nacc-hint">部署时给 Worker 加 secret：<b>ACCOUNT_ADMIN_TOKEN</b>；注册邀请码用 <b>ACCOUNT_REGISTER_CODE</b>（只存服务端，不会显示给用户）。</p>');
     }
 
     var claimHtml = '';
@@ -975,6 +1024,30 @@
         toast((err && err.message) || '保存失败');
       });
     });
+    var allowReg = root.querySelector('#naccAllowRegister');
+    if (allowReg) allowReg.addEventListener('change', function () {
+      allowReg.disabled = true;
+      setPolicy({ allowRegister: allowReg.checked }).then(function () {
+        toast(allowReg.checked ? '已允许注册' : '已关闭注册，只能登录');
+        renderPage();
+      }).catch(function (err) {
+        allowReg.checked = !allowReg.checked;
+        allowReg.disabled = false;
+        toast((err && err.message) || '保存失败');
+      });
+    });
+    var allowMarket = root.querySelector('#naccAllowMarketUpload');
+    if (allowMarket) allowMarket.addEventListener('change', function () {
+      allowMarket.disabled = true;
+      setPolicy({ allowMarketUpload: allowMarket.checked }).then(function () {
+        toast(allowMarket.checked ? '已允许集市上传' : '已关闭集市上传，仅可下载');
+        renderPage();
+      }).catch(function (err) {
+        allowMarket.checked = !allowMarket.checked;
+        allowMarket.disabled = false;
+        toast((err && err.message) || '保存失败');
+      });
+    });
     var exitAdminBtn = root.querySelector('#naccExitAdmin');
     if (exitAdminBtn) exitAdminBtn.addEventListener('click', function () {
       if (!confirm('退出管理员模式？当前账号会变回普通用户。')) return;
@@ -1039,6 +1112,14 @@
       }).catch(function (err) {
         box.innerHTML = '<div class="nacc-empty">' + esc((err && err.message) || '加载失败') + '</div>';
       });
+    }
+    function loadAdminUserCount() {
+      var el = root.querySelector('#naccUserCount');
+      if (!el || !isAdmin()) return;
+      adminUsers().then(function (data) {
+        var list = data && Array.isArray(data.users) ? data.users : [];
+        el.textContent = String(list.length);
+      }).catch(function () { el.textContent = '—'; });
     }
     function loadAdminUsers() {
       var box = root.querySelector('#naccAdminUserList');
@@ -1163,6 +1244,7 @@
       if (gate && gate.open) gate.open();
       else toast('免责声明组件未加载');
     });
+    loadAdminUserCount();
   }
 
   function init() {

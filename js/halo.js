@@ -1670,7 +1670,9 @@ async function generateRoomContent(mode){
   sys.push('必须严格按照给定的【板块描述】【直播标题】【话题】【简介】和主播人设来生成，不能跑题、不能生成与板块主题无关的内容。');
   if(mode==='both') sys.push('主播卡片：主播之间互动，也会回应弹幕区的其他观众——不只是回应某一个人。narration 用 2-3 句画面/动作/氛围描写；speech 是主播实际说的话，可以稍长（1-3 句），口语化、有来有回。');
   else sys.push('本次只生成弹幕，不要生成或修改主播卡片（cards 返回空数组）。');
-  sys.push('弹幕：一次生成 12-20 条（绝对不少于 8 条），来自不同观众，风向多元——有夸奖、有挑刺骂声、有粗俗直白、有打趣玩梗、有提问、有求主播互动，紧扣板块与简介。');
+  sys.push('这是直播闲聊，不是主持晚会、不是念稿、不是工作汇报：主播可以停顿、喝水、跑题、接半句、笑一下，不必每句都完整回应。');
+  sys.push('弹幕：一次生成 12-20 条（绝对不少于 8 条），来自不同观众，风向多元——有夸奖、有挑刺骂声、有粗俗直白、有打趣玩梗、有提问、有求主播互动，紧扣板块与简介。弹幕要短、乱、口语、可复读可歪楼，不要整齐礼貌的“观众发言”。');
+  sys.push('观众是匿名陌生网友：不要把你认识的角色名字写成观众名，除非世界书/人设明确写了 TA 也在看这场直播并且认识主播；不认识的 char 不要出现在直播间互动。');
   sys.push('【必须读用户最新发言】生成前先理解用户刚发的弹幕/主播卡片内容；主播卡片和弹幕都要针对性地回应或接住用户的话，不能无视。');
   sys.push('弹幕必须先回应用户刚发的弹幕/卡片内容（如果有）。');
   sys.push(DIVERSITY_NOTE);
@@ -1695,13 +1697,23 @@ async function generateRoomContent(mode){
     .map(c=>({who:String((c&&c.who)||'A').slice(0,2),narration:String((c&&c.narration)||'').trim(),speech:String((c&&c.speech)||'').trim()}))
     .filter(c=>c.narration||c.speech);
   const banned=[hostName,currentIdentity().name].filter(Boolean);
+  const SG=window.NanoSocialGraph;
+  const realNames={};
+  (S._realChars||[]).forEach(c=>{if(c&&c.name)realNames[String(c.name)]=c;});
+  // 主播是角色本人时，只有明确认识的角色才能以实名出现在观众里；否则一律当陌生观众。
+  function audienceAllowed(name){
+    if(!hostChar||!SG)return true;
+    const c=realNames[name];
+    if(!c)return true;
+    return SG.knows(hostChar,c);
+  }
   const barrage=(Array.isArray(obj&&obj.barrage)?obj.barrage:[])
     .map(b=>({name:String((b&&b.name)||'').slice(0,20),text:String((b&&b.text)||'').trim()}))
-    .filter(b=>b.text&&banned.indexOf(b.name)<0)
+    .filter(b=>b.text&&banned.indexOf(b.name)<0&&audienceAllowed(b.name))
     .map(b=>({name:b.name||rand(CN_AUDIENCE)||'',text:b.text}));
   const gifts=(Array.isArray(obj&&obj.gifts)?obj.gifts:[]).slice(0,2)
     .map(g=>({name:String((g&&g.name)||'观众').slice(0,20),gift:String((g&&g.gift)||'星星').slice(0,10),value:Number(g&&g.value)||1}))
-    .filter(g=>banned.indexOf(g.name)<0);
+    .filter(g=>banned.indexOf(g.name)<0&&audienceAllowed(g.name));
   return {cards,barrage,gifts};
 }
 async function refreshRoom(){
