@@ -2667,7 +2667,8 @@ async function send() {
 
 const PENDING_KEY = 'offline_reply_pending_v1_' + (offlineChatId || 'none') + '_' + offlineScene;
 
-async function requestReply() {
+async function requestReply(opts) {
+  const continueMode = !!(opts && opts.continue);
   sendBtn.disabled = true;
   isReplying = true;
   render();
@@ -2675,10 +2676,12 @@ async function requestReply() {
   try {
     try { localStorage.setItem(PENDING_KEY, String(Date.now())); } catch (e) {}
     sendBtn.style.opacity = '.55';
-    const history = messages.map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.content, name: m.name }));
+    const history = messages.map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.content, name: m.name, ts: Number(m.ts) || Number(String(m.id || '').split('-')[0]) || 0 }));
+    // 续写：不新增存档消息，只在本次请求末尾临时加一条「继续」，让模型接着上一张卡片往下写
+    if (continueMode) history.push({ role: 'user', content: '（继续）' });
     let result;
     try {
-      result = await callMainAPI(history);
+      result = await callMainAPI(history, { continue: continueMode });
     } catch (err) {
       // 用户主动停止 / 超时中止：不重试、不弹错误框
       if (err && err.aborted) throw err;
@@ -2686,7 +2689,7 @@ async function requestReply() {
       // 5xx 或网络抖动才重试一次。
       if (err && err.status >= 400 && err.status < 500) throw err;
       await new Promise(r => setTimeout(r, 1200));
-      result = await callMainAPI(history);
+      result = await callMainAPI(history, { continue: continueMode });
     }
     let reply = typeof result === 'string' ? result : (result?.reply ?? result?.content ?? result?.message ?? '');
     try {
@@ -2783,7 +2786,7 @@ function buildOfflineForeignInstruction() {
     + '除台词外，所有旁白、动作、环境、心理、叙述全部用中文写；不要把描写也写成外语，也不要给中文描写加外语翻译。\n'
     + '如果一句话里既有动作又有台词，动作留在中文旁白里，只有引号/对话部分写成「母语（中文翻译）」。';
 }
-async function callMainAPI(history) {
+async function callMainAPI(history, opts) {
   const rules = await loadRulesFromDB();
   const personMap = { auto: '由模型根据上下文自然决定', first: '第一人称', second: '第二人称', third: '第三人称' };
 
@@ -2995,20 +2998,24 @@ async function callMainAPI(history) {
     let timeBlock = '';
     try {
       const taOn = settings.timeAware !== false;
+      const __nat = (offlineCharRecord && (offlineCharRecord.nationality || offlineCharRecord.country)) || '';
       if (taOn && window.NanoHoliday && window.NanoHoliday.buildTimeBlock) {
-        let lastUserMs = 0;
+        let lastUserMs = 0, lastAiMs = 0;
         try {
-          const rights = [];
-          for (let i = history.length - 1; i >= 0 && rights.length < 2; i--) {
-            const m = history[i];
-            if (m && m.role === 'user' && m.ts) rights.push(m.ts);
+          // 跳过本轮连续发来的用户消息，取更早的最后一条用户消息；角色上一次开口单独记录
+          let i = history.length - 1;
+          while (i >= 0 && (!history[i] || history[i].role !== 'user')) i--;
+          while (i >= 0 && history[i] && history[i].role === 'user') i--;
+          for (; i >= 0; i--) {
+            if (history[i] && history[i].role === 'user' && history[i].ts) { lastUserMs = history[i].ts; break; }
           }
-          if (rights.length >= 2 && rights[1]) lastUserMs = rights[1];
-          else if (rights.length === 1 && (Date.now() - rights[0]) > 3600000) lastUserMs = rights[0];
+          for (let j = history.length - 1; j >= 0; j--) {
+            if (history[j] && history[j].role !== 'user' && history[j].ts) { lastAiMs = history[j].ts; break; }
+          }
         } catch (e) {}
-        timeBlock = window.NanoHoliday.buildTimeBlock(new Date(), { lastUserMs: lastUserMs }) + '\n\n';
+        timeBlock = window.NanoHoliday.buildTimeBlock(new Date(), { lastUserMs: lastUserMs, lastAiMs: lastAiMs, nationality: __nat }) + '\n\n';
       } else if (!taOn && window.NanoHoliday && window.NanoHoliday.buildVagueTimeBlock) {
-        timeBlock = window.NanoHoliday.buildVagueTimeBlock(new Date()) + '\n\n';
+        timeBlock = window.NanoHoliday.buildVagueTimeBlock(new Date(), { nationality: __nat }) + '\n\n';
       }
     } catch (e) {}
     let wb = { front: '', middle: '', back: '' };
@@ -3016,7 +3023,7 @@ async function callMainAPI(history) {
     let scheduleBlock = '';
     try {
       if (!offlineIsGroup && window.NanoScheduleBridge && window.NanoScheduleBridge.refreshContext) {
-        scheduleBlock = await window.NanoScheduleBridge.refreshContext({ charId: offlineChatId, charName: settings.charName });
+        scheduleBlock = await window.NanoScheduleBridge.refreshContext({ charId: offlineChatId, charName: settings.charName, nationality: (offlineCharRecord && (offlineCharRecord.nationality || offlineCharRecord.country)) || '' });
         if (scheduleBlock) scheduleBlock = scheduleBlock + '\n\n';
       }
     } catch (e) {}
@@ -3050,6 +3057,14 @@ async function callMainAPI(history) {
       const cyc = window.NanoCycle && NanoCycle.promptBlock(offlineChatId || (settings && settings.chatId));
       if (cyc) finalSystemPrompt += '\n\n' + cyc;
     } catch (e) {}
+    // 续写模式：不是新一轮对话，也不是回复用户，只是把上一张卡片往下写
+    if (opts && opts.continue) {
+      finalSystemPrompt += '\n\n【续写模式 · 本轮唯一任务】你现在不是重新开始一段对话，也不是在回复用户。请直接接着你上一条已经写出的正文继续往下写：\n'
+        + '- 从上次停下的地方自然接续；不要重新开头、不要复述上一段、不要总结前文、不要更换场景或时间线。\n'
+        + '- 保持同一人称、视角、文风和尺度；如果上一段停在动作、对白或半句话，就顺着写下去。\n'
+        + '- 不要在正文里回应「继续」这个指令，不要写“好的/我继续”之类的话，不要问用户问题。\n'
+        + '- 结尾照常输出 [thinking:…] [heart:…] [plot:…] 三段。';
+    }
     const promptStr = finalSystemPrompt + '\n\n' + chatText;
 
     // 线下长文按「目标字数」估算输出 token：中文约 1.8 token/字，再加思维链/心声/剧情选项的余量。
@@ -3207,6 +3222,18 @@ async function doReroll() {
 }
 
 // ============================================================
+// 12.1 续写：接着上一张卡片继续往下写（不新增用户消息）
+// ============================================================
+async function continueWriting() {
+  if (isReplying) { showToast('正在生成中，请稍等'); return; }
+  const last = messages[messages.length - 1];
+  if (!last || !String(last.content || '').trim()) { showToast('上面还没有可以续写的内容'); return; }
+  // 最后一条是用户发言时，就当作正常回复
+  if (last.role !== 'assistant') { await requestReply(); return; }
+  await requestReply({ continue: true });
+}
+
+// ============================================================
 // 12A. 输入框圆形头像按钮 + 竖向菜单（重roll / 整理 / 楼层预览 / 回顶 / 回底 + 插件）
 // ============================================================
 const OM_PLUGIN_KEY = 'offline_menu_plugins';
@@ -3239,6 +3266,7 @@ function omUpdateAvatar() {
 
 const omBuiltinItems = [
   { id: 'reroll', label: '重roll', icon: '<svg viewBox="0 0 24 24"><path d="M19 8a7.5 7.5 0 0 0-13.5-1.9L4 8.5"/><path d="M4 5v3.5h3.5"/><path d="M5 16a7.5 7.5 0 0 0 13.5 1.9l1.5-2.4"/><path d="M20 19v-3.5h-3.5"/></svg>', run: function () { doReroll(); } },
+  { id: 'continue', label: '续写', icon: '<svg viewBox="0 0 24 24"><path d="M4 7h9"/><path d="M4 12h13"/><path d="M4 17h7"/><path d="m18 14 3 3-3 3"/><path d="M21 17h-6"/></svg>', run: function () { continueWriting(); } },
   { id: 'opening', label: '换开场白', icon: '<svg viewBox="0 0 24 24"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>', run: function () { openOpeningPicker({ mode: 'switch' }); } },
   { id: 'invite', label: '邀请角色', icon: '<svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/></svg>', run: function () { omOpenInvite(); } },
   { id: 'stories', label: '存档', icon: '<svg viewBox="0 0 24 24"><path d="M6 4h12a1 1 0 0 1 1 1v15l-7-4-7 4V5a1 1 0 0 1 1-1z"/></svg>', run: function () { openStorySessions(); } },
@@ -3423,6 +3451,7 @@ function omRunPlugins() {
     getMessages: function () { return messages; },
     scrollToFloor: function (i) { omScrollToFloor(i); },
     reroll: function () { doReroll(); },
+    continue: function () { continueWriting(); },
     tidy: function () { omTidy(); },
     openFloors: function () { omOpenFloors(); },
     scrollTop: function () { chat.scrollTo({ top: 0, behavior: 'smooth' }); },

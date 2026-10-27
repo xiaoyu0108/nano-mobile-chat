@@ -23,8 +23,8 @@
     return m ? (+m[1]) * 60 + (+m[2]) : 0;
   }
   function nowMin() { var d = new Date(); return d.getHours() * 60 + d.getMinutes(); }
-  function nowText() {
-    var d = new Date();
+  function nowText(d) {
+    d = (d instanceof Date) ? d : new Date();
     return dstr(d) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
   }
   function esc(s) {
@@ -145,8 +145,8 @@
       .sort(function (a, b) { return toMin(a.start) - toMin(b.start); });
   }
 
-  function currentEvent(data) {
-    var d = today(), nm = nowMin();
+  function currentEvent(data, dayKey, mins) {
+    var d = dayKey || today(), nm = (typeof mins === 'number') ? mins : nowMin();
     var list = eventsOf(data, d);
     for (var i = 0; i < list.length; i++) {
       var e = list[i];
@@ -162,17 +162,17 @@
     return /睡|就寝|晚安|入睡|睡眠|午睡/.test(s);
   }
 
-  function isLateNight() {
-    var h = new Date().getHours();
+  function isLateNight(d) {
+    var h = (d instanceof Date ? d : new Date()).getHours();
     return h >= 22 || h < 8;
   }
 
   function wakeKey(id) { return 'nano_schedule_wake_' + (id || 'default'); }
 
-  function readWake(id) {
+  function readWake(id, dayKey) {
     try {
       var o = JSON.parse(localStorage.getItem(wakeKey(id)) || 'null');
-      return o && o.date === today() ? o : null;
+      return o && o.date === (dayKey || today()) ? o : null;
     } catch (e) { return null; }
   }
 
@@ -197,18 +197,20 @@
     return '- ' + s;
   }
 
-  function buildBlock(data, id, name) {
+  function buildBlock(data, id, name, wallNow) {
     if (!data) return '';
-    var d = today();
+    // wallNow：角色所在地的「墙上时间」（外国角色不能按设备时区判断作息）
+    var wn = (wallNow instanceof Date) ? wallNow : new Date();
+    var d = dstr(wn);
     var todayEvents = eventsOf(data, d);
-    var tm = new Date(Date.now() + 86400000);
+    var tm = new Date(wn.getTime() + 86400000);
     var tomorrow = dstr(tm);
     var tomorrowEvents = eventsOf(data, tomorrow);
-    var cur = currentEvent(data);
-    var wake = readWake(id);
+    var cur = currentEvent(data, d, wn.getHours() * 60 + wn.getMinutes());
+    var wake = readWake(id, d);
     var lines = [];
     lines.push('【你的真实日程 · 当前状态（重要）】');
-    lines.push('现在时间：' + nowText() + '。');
+    lines.push('现在时间：' + nowText(wn) + '。');
     if (todayEvents.length) {
       lines.push('你今天的安排：');
       todayEvents.slice(0, 16).forEach(function (e) { lines.push(eventLine(e, true)); });
@@ -235,7 +237,7 @@
         lines.push('【你刚被用户叫醒】你本来在' + (wokeEvent ? ('「' + (wokeEvent.title || '睡觉') + '」') : '睡觉') +
           '，是用户把你叫醒的。你知道是 TA 叫醒的你，可以自然表现出困倦、被打断、或者被吵醒后的真实反应，不要装作没发生过。');
       }
-    } else if (cur && isSleepEvent(cur) && isLateNight()) {
+    } else if (cur && isSleepEvent(cur) && isLateNight(wn)) {
       lines.push('【你正在睡觉】现在是深夜，你正在睡觉。若被消息吵到，你会是半睡半醒的状态；不要主动说自己被叫醒，除非用户确实叫了你。');
     }
     try {
@@ -262,7 +264,14 @@
       cache.charId = id || (store.lastCharId || '');
       cache.charName = name;
       cache.data = data;
-      cache.block = data ? buildBlock(data, cache.charId, name) : '';
+      // 角色当地时间（与系统提示词的时间块一致，避免日程说「现在 12:00」而角色那边是凌晨）
+      var wallNow = null;
+      try {
+        if (window.NanoHoliday && window.NanoHoliday.wallClock) {
+          wallNow = window.NanoHoliday.wallClock(new Date(), window.NanoHoliday.tzForNationality(opts.nationality || ''));
+        }
+      } catch (e) {}
+      cache.block = data ? buildBlock(data, cache.charId, name, wallNow) : '';
       return cache.block;
     }).catch(function () {
       cache.block = '';

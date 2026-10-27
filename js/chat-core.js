@@ -958,8 +958,9 @@
         prompt += '- 生图不一定是自拍：也可以主动发夕阳、咖啡、电脑桌面、街角、食物、小狗小猫、窗边等日常随拍；发自拍时镜头角度要随机（仰拍/俯拍/侧拍/回头/过肩/对镜/半身/全身），不要每次都同一张正面自拍。\n';
         const __emojiNames = getEmojiNamesForPrompt();
         if (__emojiNames.length) {
-            prompt += '- [emoji:表情名称] 发一张表情包（独占一行），例如 [emoji:' + __emojiNames[0] + ']。' +
-                '可用表情名称（列表开头是最近添加的，优先用这些）：' + __emojiNames.slice(0, 120).join('、') + '。名称必须与列表完全一致，一次只发一张。\n';
+            const __emojiExample = __emojiNames[Math.floor(Math.random() * Math.min(__emojiNames.length, 40))] || __emojiNames[0];
+            prompt += '- [emoji:表情名称] 发一张表情包（独占一行），例如 [emoji:' + __emojiExample + ']。' +
+                '可用表情名称（各分组都在里面，每次换着挑，不要总用最新加的那一张，也不要连续两轮用同一张）：' + __emojiNames.slice(0, 120).join('、') + '。名称必须与列表完全一致，一次只发一张。\n';
         }
         prompt += '- [creategroup:群名|成员=人设,成员=人设] 你根据自己的人设/生活/世界书新建一个群聊（群主是你自己，不是用户）并邀请用户加入，成员要带 2~5 个你的朋友等 NPC（用“名字=人设”写清各自性格/身份，人设里不要出现逗号），例如 [creategroup:乐队闲聊|陈屿=主唱性格火爆,林晚=鼓手话少内敛]。名字必须是符合你国籍/世界观的真实人名，优先使用世界书/人设里已有的相关人物，禁止旅行者/新朋友/老张/小A 这类占位名字。仅在用户明确说“建个群/拉我进群/有没有不带我的群”或剧情自然需要时使用。\n';
         prompt += '- [inviteme:群名] 把用户拉进你确实已经在的现有群，群名只能用下面【你所在的群聊】里真实列出的名字，禁止虚构或张冠李戴。\n';
@@ -1009,7 +1010,7 @@
         }
         if (__emojiNames.length) {
             prompt += '\n【表情包 · 很轻的辅助表达】\n';
-            prompt += '想发就发，不想发也行，不必每轮都发：[emoji:名称]（独占一行，一次一张），名称从列表里挑。表情包只是随手一张图，最多表示一点情绪，不用刻意选“最贴切”的，也不用解释它。\n';
+            prompt += '想发就发，不想发也行，不必每轮都发：[emoji:名称]（独占一行，一次一张），名称从列表里挑，每次换不同分组、不同的一张。表情包只是随手一张图，最多表示一点情绪，不用刻意选“最贴切”的，也不用解释它。\n';
             prompt += '对方发表情包时，感受一下大致气氛就够了；别逐字解读画面或备注，别把“喝酒/哭/发誓”之类贴图当成现实行为，也别追问“你怎么了/你是不是在哭/你又喝酒了”。get 不到意思就当普通消息略过，不必回应表情包本身。\n';
         }
         try {
@@ -1251,32 +1252,37 @@
 
         const timeAware = getChatSetting('timeAware', true);
         if (timeAware) {
-            // 对方上一次联系（找最近两条「对方」消息的时间戳，取更早那条作为上次联系）
+            // 上次聊天时间：跳过「本轮」连续发来的用户消息，取更早的最后一条用户消息；
+            // 再和角色上一次开口的时间取更晚者，作为「你们上一次接触」的时间点。
             let lastUserMs = 0, lastAiMs = 0;
             try { lastAiMs = parseInt(localStorage.getItem('nano_last_ai_' + chatId) || '0', 10) || 0; } catch (e) {}
             try {
-                const rights = [];
-                for (let i = messages.length - 1; i >= 0 && rights.length < 2; i--) {
+                let i = messages.length - 1;
+                while (i >= 0 && (!messages[i] || messages[i].recalled || messages[i].type !== 'right')) i--;
+                while (i >= 0 && messages[i] && !messages[i].recalled && messages[i].type === 'right') i--;
+                for (; i >= 0; i--) {
                     const m = messages[i];
-                    if (m && !m.recalled && m.type === 'right') rights.push(m.ts || 0);
+                    if (m && !m.recalled && m.type === 'right') { lastUserMs = m.ts || 0; break; }
                 }
-                if (rights.length >= 2 && rights[1]) lastUserMs = rights[1];
-                else if (rights.length === 1 && rights[0] && (Date.now() - rights[0]) > 3600000) lastUserMs = rights[0];
             } catch (e) {}
             if (window.NanoHoliday && window.NanoHoliday.buildTimeBlock) {
-                prompt += '\n' + window.NanoHoliday.buildTimeBlock(new Date(), { lastUserMs: lastUserMs, lastAiMs: lastAiMs }) + '\n';
+                prompt += '\n' + window.NanoHoliday.buildTimeBlock(new Date(), {
+                    lastUserMs: lastUserMs,
+                    lastAiMs: lastAiMs,
+                    nationality: nationality
+                }) + '\n';
             } else {
                 const now = new Date();
                 const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
                 const timeStr = now.getFullYear() + '年' + (now.getMonth() + 1) + '月' + now.getDate() + '日 星期' + weekdays[now.getDay()] + ' ' +
                     String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
                 prompt += '\n【当前时间】现在是 ' + timeStr + '。请务必以这个真实日期/时间为准，不要把它当成昨天或更早——跨天、跨周都要按上面的日期判断。\n';
-                prompt += '【时间以系统为准 · 不可乱改】这个时间就是真的，**绝对不要自行更改、编造或推进时间**（不要凭空说"已经第二天了""过了好几天了"），除非对方明确说明过了多久或发生了跨越时间的事。\n';
-                prompt += '【时间感知】你清楚自己隔了多久没和对方聊：如果隔了几天甚至更久，你心里有数，但不要反复强调、不要一直埋怨或追问对方为什么这么久才来；最多自然地带一句（例如“好久不见”），然后正常继续。若对方主动说出经过的时间，以对方说的为准。\n';
+                prompt += '【时间关系 · 铁律】如果上次聊天是昨晚、现在已经是第二天早上，就必须按「今天早上」说话，绝不允许继续昨晚的晚安或把今天当成昨晚。\n';
+                prompt += '【真实时间 · 用户无法干扰】时间线按真实时间走，用户不能把时间倒退或重置。\n';
             }
         } else if (window.NanoHoliday && window.NanoHoliday.buildVagueTimeBlock) {
             // 关闭时间观念：只知道大致时段，不知道确切时间/日期，跟对方说的走
-            prompt += '\n' + window.NanoHoliday.buildVagueTimeBlock(new Date()) + '\n';
+            prompt += '\n' + window.NanoHoliday.buildVagueTimeBlock(new Date(), { nationality: nationality }) + '\n';
         }
 
         // 日程：让角色知道自己此刻真实在做什么，并允许聊天改变计划时回写日程
@@ -1307,8 +1313,8 @@
 
         if (coupleAnnivNotice) prompt += '\n' + coupleAnnivNotice + '\n';
         if (__emojiNames.length) {
-            prompt += '\n【可用表情包名称】' + __emojiNames.slice(0, 16).join('、') + '。\n' +
-                '偶尔想发时用 [emoji:名称] 单独一行即可，名称要和列表一致；不发也正常，不要为了凑表情而发，也不要解释表情。\n';
+            prompt += '\n【可用表情包名称（分属不同分组）】' + __emojiNames.slice(0, 24).join('、') + '。\n' +
+                '偶尔想发时用 [emoji:名称] 单独一行即可，名称要和列表一致；每次尽量换一张没发过的，不要反复用同一张、也不要只用最新添加的那张。不发也正常，不要为了凑表情而发，也不要解释表情。\n';
         }
         prompt += '\n【回复前自检】1) 这段话像不像【角色人设】里的人会说的？2) 有没有违背或漏掉【世界书】里相关设定？3) 有没有用到最近的【长期记忆】？4) 有没有在不合适的场合主动开黄腔或油腻？有就收住；但对方主动推进的成年人亲密话题不要回避、不要说教、不要过度敏感。答不上来就重新组织，再输出。\n';
         prompt += '\n现在开始和' + user + '对话。做你自己，自然一点。';
@@ -5727,6 +5733,7 @@
         collapseExpanded = 0;
         lastCollapseSig = '';
         pendingJumpMsgId = null;
+        try { localStorage.removeItem('nano_last_ai_' + chatId); } catch (e) {}
         renderMessages();
         saveMessages();
     }
@@ -6888,33 +6895,69 @@
             return hit || null;
         }).catch(function() { return null; });
     }
-    // 供系统提示词同步读取：已有表情包名称列表
+    // 供系统提示词同步读取：已有表情包名称列表。
+    // 各分组轮换、每次调用整体旋转，避免模型永远只挑「最新添加的那一张」。
+    let __emojiRotate = 0;
+    function __emojiOrderNames(flat, buckets, recent) {
+        const rot = __emojiRotate++;
+        let groups = [];
+        if (buckets && buckets.length) {
+            groups = buckets.map(function (b, gi) {
+                const off = b.length ? ((rot + gi * 3) % b.length) : 0;
+                return b.slice(off).concat(b.slice(0, off));
+            });
+        } else if (flat && flat.length) {
+            const off = rot % flat.length;
+            groups = [flat.slice(off).concat(flat.slice(0, off))];
+        }
+        const out = [], seen = {};
+        const maxLen = groups.reduce(function (a, b) { return Math.max(a, b.length); }, 0);
+        for (let k = 0; k < maxLen; k++) {
+            for (let gi = 0; gi < groups.length; gi++) {
+                const n = groups[gi][k];
+                if (!n || seen[n]) continue;
+                seen[n] = 1;
+                out.push(n);
+            }
+        }
+        // 最近刚发过的表情排到后面，逼模型换别的分组/别的表情
+        const fresh = [], used = [];
+        out.forEach(function (n) { (recent.indexOf(n) > -1 ? used : fresh).push(n); });
+        return fresh.concat(used);
+    }
     function getEmojiNamesForPrompt() {
         try {
-            // 表情页每次保存都会同步写一份“名称清单”（不含图片），优先用它：
-            // 这样刚用照片添加的表情包，即使当前聊天页还没重新读 IDB，角色也能立刻看到。
+            // 最近发过的表情名（含各分组），用于避免连续重复同一张
+            const recent = [];
             try {
-                const cachedFirst = JSON.parse(localStorage.getItem('nano_emoji_names') || '[]');
-                if (Array.isArray(cachedFirst) && cachedFirst.length) return cachedFirst.map(String);
-            } catch (e0) {}
+                for (let i = messages.length - 1; i >= 0 && recent.length < 10; i--) {
+                    const mm = messages[i];
+                    const nm = mm && mm.imageData && mm.imageData.emojiName;
+                    if (nm) recent.push(String(nm));
+                }
+            } catch (e) {}
+            // 优先用完整分组数据，才能做到「各分组轮换」
             let data = emojiData;
-            // 聊天页刚打开 / 刚上传完表情时，异步缓存可能还没回来；
-            // 表情页保存时已同步写过 localStorage，这里用同步备份兜底。
             if (!data || !Array.isArray(data.emojiGroups)) {
                 try { data = JSON.parse(localStorage.getItem('nano_emoji_data') || localStorage.getItem('peach_home_data') || 'null'); } catch (e) { data = null; }
             }
-            if (!data || !Array.isArray(data.emojiGroups)) return [];
-            const items = [];
-            data.emojiGroups.forEach(function(g) {
-                (g.emojis || []).forEach(function(e) {
-                    if (e && e.name) items.push({ name: String(e.name), at: Number(e.addedAt) || 0, id: String(e.id || '') });
+            if (!data || !Array.isArray(data.emojiGroups)) {
+                // 兜底：表情页保存时同步写的名称清单（没有分组信息，只能整体轮换）
+                try {
+                    const cached = JSON.parse(localStorage.getItem('nano_emoji_names') || '[]');
+                    if (Array.isArray(cached) && cached.length) return __emojiOrderNames(cached.map(String), null, recent);
+                } catch (e0) {}
+                return [];
+            }
+            const buckets = [];
+            data.emojiGroups.forEach(function (g) {
+                const arr = [];
+                (g.emojis || []).forEach(function (e) {
+                    if (e && e.name && arr.indexOf(String(e.name)) < 0) arr.push(String(e.name));
                 });
+                if (arr.length) buckets.push(arr);
             });
-            // 最近添加的排前面（新增表情包会带 addedAt），让角色优先看到并主动使用。
-            items.sort(function(a, b) { return (b.at - a.at) || String(b.id).localeCompare(String(a.id)); });
-            const names = [];
-            items.forEach(function(x) { if (names.indexOf(x.name) < 0) names.push(x.name); });
-            return names;
+            return __emojiOrderNames(null, buckets, recent);
         } catch (e) { return []; }
     }
 
@@ -8197,6 +8240,19 @@
                 return list.filter(function (u) { return typeof u === 'string' && u.indexOf('data:image') === 0; });
             }
             function pickImageUrl(m) { const a = pickImageUrls(m); return a.length ? a[0] : null; }
+            // 时间感知开启时：给历史消息加「角色当地时间」标注。
+            // 这样模型能直接看到「昨晚 23:50」和「今早 08:02」不是同一时间段，不会接着昨晚说晚安。
+            const __taOn = getChatSetting('timeAware', true) && !isNanoChat;
+            const __tzOpts = { nationality: (characterData && (characterData.nationality || characterData.country)) || '' };
+            const __stampMsgTime = function (m, text) {
+                if (!__taOn || !m || !m.ts || !text) return text;
+                try {
+                    if (window.NanoHoliday && window.NanoHoliday.fmtMoment) {
+                        return '（' + window.NanoHoliday.fmtMoment(m.ts, __tzOpts) + '）' + text;
+                    }
+                } catch (e) {}
+                return text;
+            };
             let userMessages = [];
             for (let i = messages.length - 1; i >= 0; i--) {
                 const m = messages[i];
@@ -8205,7 +8261,7 @@
                     break;
                 }
                 if (m.type === 'right' && !m.recalled) {
-                    const desc = describeMsgForAI(m);
+                    const desc = __stampMsgTime(m, describeMsgForAI(m));
                     const imgs = pickImageUrls(m);
                     if (desc || imgs.length) userMessages.unshift({ text: desc || '（用户发来一张图片）', image: imgs[0] || null, images: imgs });
                 }
@@ -8216,7 +8272,7 @@
                 // 上一句当成用户再问一遍，否则模型会对着自己的话重复作答。
                 const lastMsg = messages[messages.length - 1];
                 if (lastMsg && lastMsg.type === 'right') {
-                    const desc = describeMsgForAI(lastMsg);
+                    const desc = __stampMsgTime(lastMsg, describeMsgForAI(lastMsg));
                     const imgs = pickImageUrls(lastMsg);
                     userMessages = [{ text: desc || (userMessage && String(userMessage).trim()) || '（用户发来一张图片）', image: imgs[0] || null, images: imgs }];
                 } else {
@@ -8250,8 +8306,11 @@
             // （链接 / 上传图片 / 纳米助手 / 其它页面）新加的表情包，角色这一轮都能读到并使用。
             try { await getEmojiData(true); } catch (e) {}
             // 刷新角色日程上下文（当前在做什么、今天/明天安排、是否被叫醒）
-            try { if (window.NanoScheduleBridge) await window.NanoScheduleBridge.refreshContext(); } catch (e) {}
+            try { if (window.NanoScheduleBridge) await window.NanoScheduleBridge.refreshContext({ charId: chatId, charName: displayName, nationality: (characterData && (characterData.nationality || characterData.country)) || '' }); } catch (e) {}
             let __sys = buildSystemPrompt();
+            if (__taOn) {
+                __sys += '\n\n【聊天记录时间标注】对话记录里每条消息前括号中的日期和时间，是系统标注的真实发送时间（按你的当地时间）。它只用来判断隔了多久、是早上还是深夜；你自己回复时不要输出这种时间标注。';
+            }
             // 纳米助手 / 链接抓取：额外资料并入 system，而不是伪装成用户消息。
             // 之前作为 user 追加，模型会把网页 JSON、脚本片段当成“用户发的乱码”。
             if (extraContext) {
@@ -8335,7 +8394,7 @@
                 for (let i = histStart; i <= lastAIIdx; i++) {
                     const m = messages[i];
                     if (!m || m.recalled || nanoIsErrorMsg(m)) continue;
-                    const desc = describeMsgForAI(m);
+                    const desc = __stampMsgTime(m, describeMsgForAI(m));
                     if (!desc) continue;
                     if (m.type === 'left') {
                         history.push({ role: 'assistant', content: desc });
@@ -8370,6 +8429,23 @@
                 const __wbr = ((__wbd.front || '') + (__wbd.middle || '') + (__wbd.back || '')).trim();
                 if (__wbr) history.push({ role: 'system', content: '【世界书 · 关键设定（再次强调 · 优先级最高 · 每一轮都要遵守）】\n' + __wbr.slice(0, 4000) });
             } catch (e) {}
+
+            // 时间锚点（极简版·放在最新用户消息前）：长提示词容易把开头的时间感知挤掉，
+            // 这里在 recency 位置再钉一次「现在几点、隔了多久」。
+            if (__taOn) {
+                try {
+                    if (window.NanoHoliday && window.NanoHoliday.nowAnchor) {
+                        const __lastAi = parseInt(localStorage.getItem('nano_last_ai_' + chatId) || '0', 10) || 0;
+                        history.push({
+                            role: 'system',
+                            content: '【时间锚点 · 回复前先确认】' + window.NanoHoliday.nowAnchor(new Date(), {
+                                nationality: __tzOpts.nationality,
+                                lastAiMs: __lastAi
+                            }) + '。如果现在和上一条消息不是同一天，不要接着昨天的早晚安说。'
+                        });
+                    }
+                } catch (e) {}
+            }
 
             let __imgBudget = 8; // 一次最多真正带上 8 张图，避免请求体过大
             let __appendedUser = false;
@@ -9200,6 +9276,9 @@
 
     async function processReply(reply, quoteTarget) {
         if (!reply) return;
+        // 语音气泡频率：buildSystemPrompt 里的同名变量只在该函数内有效，
+        // 这里必须重新读取，否则模型一旦输出 [voice:...] 就会抛 ReferenceError，整轮回复渲染失败。
+        const vFreq = getChatSetting('voiceFreq', 'medium');
         if (isNanoChat && window.NanoAssistant) {
             // 纳米助手：不走进度/心声/卡片等角色逻辑
             currentTurn++;
@@ -9368,7 +9447,7 @@
                         }
                         const display = content || zh;
                         // 频率设为「关闭」时，即使模型硬输出 [voice] 也降级成普通文字气泡。
-                        if (__vFreq === 'off') {
+                        if (vFreq === 'off') {
                             addMessage('left', display, timeStr, null, false, false, null, null, zh || null, null, false, null, false, null);
                             continue;
                         }
@@ -9478,7 +9557,7 @@
                             let voiceZh = '';
                             const vi = voiceText.indexOf('||');
                             if (vi > -1) { voiceZh = voiceText.slice(vi + 2).trim(); voiceText = voiceText.slice(0, vi).trim(); }
-                            if (__vFreq === 'off') {
+                            if (vFreq === 'off') {
                                 addMessage('left', voiceText || voiceZh, timeStr, null, false, false, null, null, voiceZh || null,
                                     null, false, null, false, null);
                             } else {

@@ -870,25 +870,36 @@
     // ================= 自动备份 =================
     var AUTO_KEY = 'nano_auto_backup';
     var isAutoFrame = /(?:^|[?&])auto=1(?:&|$)/.test(location.search || '');
+    function normalizeAutoCfg(c) {
+        c = c || {};
+        var hhmm = (function (v) {
+            var m = /^(\d{1,2}):(\d{2})$/.exec(String(v || ''));
+            if (!m) return '04:00';
+            var h = Number(m[1]), mi = Number(m[2]);
+            if (!(h >= 0 && h <= 23 && mi >= 0 && mi <= 59)) return '04:00';
+            return (h < 10 ? '0' : '') + h + ':' + (mi < 10 ? '0' : '') + mi;
+        })(c.time);
+        return {
+            enabled: c.enabled === true,
+            target: c.target === 'gh' ? 'gh' : 'cf',
+            mode: c.mode === 'daily' ? 'daily' : 'interval',
+            time: hhmm,
+            minutes: [30, 180, 480, 720, 1440].indexOf(Number(c.minutes)) >= 0 ? Number(c.minutes) : 480,
+            keep: [0, 3, 5, 10].indexOf(Number(c.keep)) >= 0 ? Number(c.keep) : 3,
+            lastAt: Number(c.lastAt) || 0,
+            lastStatus: String(c.lastStatus || ''),
+            nextTryAt: Number(c.nextTryAt) || 0
+        };
+    }
     var auto = {
-        cfg: (function () {
-            var c = readCfg(AUTO_KEY) || {};
-            return {
-                enabled: c.enabled === true,
-                target: c.target === 'gh' ? 'gh' : 'cf',
-                minutes: [30, 180, 480, 720, 1440].indexOf(Number(c.minutes)) >= 0 ? Number(c.minutes) : 480,
-                keep: [0, 3, 5, 10].indexOf(Number(c.keep)) >= 0 ? Number(c.keep) : 3,
-                lastAt: Number(c.lastAt) || 0,
-                lastStatus: String(c.lastStatus || ''),
-                nextTryAt: Number(c.nextTryAt) || 0
-            };
-        })(),
+        cfg: normalizeAutoCfg(readCfg(AUTO_KEY)),
         timer: null,
         running: false
     };
 
     function autoSave(patch) {
         if (patch && typeof patch === 'object') Object.assign(auto.cfg, patch);
+        auto.cfg = normalizeAutoCfg(auto.cfg);
         writeCfg(AUTO_KEY, auto.cfg);
         updateAutoUI();
         if (window.parent && window.parent !== window) {
@@ -897,23 +908,47 @@
     }
 
     function updateAutoUI() {
-        var en = $('autoEnabled'), target = $('autoTarget'), interval = $('autoInterval'), keep = $('autoKeep'), status = $('autoStatus');
+        var en = $('autoEnabled'), target = $('autoTarget'), mode = $('autoMode'),
+            interval = $('autoInterval'), time = $('autoTime'), keep = $('autoKeep'),
+            intervalField = $('autoIntervalField'), timeField = $('autoTimeField'), status = $('autoStatus');
         if (en) en.checked = !!auto.cfg.enabled;
         if (target) target.value = auto.cfg.target;
+        if (mode) mode.value = auto.cfg.mode;
         if (interval) interval.value = String(auto.cfg.minutes);
+        if (time) time.value = auto.cfg.time;
         if (keep) keep.value = String(auto.cfg.keep);
+        if (intervalField) intervalField.style.display = auto.cfg.mode === 'daily' ? 'none' : '';
+        if (timeField) timeField.style.display = auto.cfg.mode === 'daily' ? '' : 'none';
         if (status) {
             var when = auto.cfg.lastAt ? new Date(auto.cfg.lastAt).toLocaleString() : '还没备份过';
-            status.textContent = (auto.cfg.enabled ? '已开启' : '未开启') + ' · 上次：' + when +
+            var plan = auto.cfg.mode === 'daily'
+                ? ('每天 ' + auto.cfg.time + '（本机时间）')
+                : ('每 ' + (auto.cfg.minutes >= 60 ? (auto.cfg.minutes / 60) + ' 小时' : auto.cfg.minutes + ' 分钟'));
+            status.textContent = (auto.cfg.enabled ? '已开启 · ' + plan : '未开启') + ' · 上次：' + when +
                 (auto.cfg.lastStatus ? ' · ' + auto.cfg.lastStatus : '') +
                 (auto.cfg.enabled && auto.running ? ' · 正在备份…' : '');
         }
+    }
+
+    // 每天固定时间的「今天目标时刻」（本机时区）
+    function dailyTargetMs(nowMs) {
+        var now = new Date(nowMs || Date.now());
+        var m = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(String(auto.cfg.time || '04:00'));
+        var hh = m ? Number(m[1]) : 4;
+        var mm = m ? Number(m[2]) : 0;
+        return new Date(now.getFullYear(), now.getMonth(), now.getDate(), hh, mm, 0, 0).getTime();
     }
 
     function autoDue() {
         if (!auto.cfg.enabled) return false;
         var now = Date.now();
         if (auto.cfg.nextTryAt && now < auto.cfg.nextTryAt) return false;
+        if (auto.cfg.mode === 'daily') {
+            var target = dailyTargetMs(now);
+            // 还没到今天定的时间；或者今天这个点之后已经备份过
+            if (now < target) return false;
+            return (auto.cfg.lastAt || 0) < target;
+        }
         return now - (auto.cfg.lastAt || 0) >= auto.cfg.minutes * 60000;
     }
 
@@ -972,18 +1007,7 @@
             startAutoScheduler();
             window.addEventListener('storage', function (e) {
                 if (e && e.key === AUTO_KEY) {
-                    auto.cfg = (function () {
-                        var c = readCfg(AUTO_KEY) || {};
-                        return {
-                            enabled: c.enabled === true,
-                        target: c.target === 'gh' ? 'gh' : 'cf',
-                        minutes: [30, 180, 480, 720, 1440].indexOf(Number(c.minutes)) >= 0 ? Number(c.minutes) : 480,
-                        keep: [0, 3, 5, 10].indexOf(Number(c.keep)) >= 0 ? Number(c.keep) : 3,
-                        lastAt: Number(c.lastAt) || 0,
-                            lastStatus: String(c.lastStatus || ''),
-                            nextTryAt: Number(c.nextTryAt) || 0
-                        };
-                    })();
+                    auto.cfg = normalizeAutoCfg(readCfg(AUTO_KEY) || {});
                 }
             });
             return;
@@ -1030,35 +1054,43 @@
 
         var autoSaveBtn = $('autoSave');
         if (autoSaveBtn) autoSaveBtn.addEventListener('click', function () {
-            var en = $('autoEnabled'), target = $('autoTarget'), interval = $('autoInterval'), keep = $('autoKeep');
+            var en = $('autoEnabled'), target = $('autoTarget'), mode = $('autoMode'),
+                interval = $('autoInterval'), time = $('autoTime'), keep = $('autoKeep');
             var keepVal = keep ? Number(keep.value) : 3;
+            var timeVal = time ? String(time.value || '') : '';
             autoSave({
                 enabled: !!(en && en.checked),
                 target: target && target.value === 'gh' ? 'gh' : 'cf',
+                mode: mode && mode.value === 'daily' ? 'daily' : 'interval',
+                time: /^([01]?\d|2[0-3]):[0-5]\d$/.test(timeVal) ? timeVal : '04:00',
                 minutes: Number(interval && interval.value) || 480,
                 keep: [0, 3, 5, 10].indexOf(keepVal) >= 0 ? keepVal : 3,
                 nextTryAt: 0
             });
             if (auto.cfg.enabled) {
                 startAutoScheduler();
-                toast('已开启自动备份：App 打开时每 ' + (auto.cfg.minutes >= 60 ? (auto.cfg.minutes / 60) + ' 小时' : auto.cfg.minutes + ' 分钟') + '备份一次');
+                if (auto.cfg.mode === 'daily') {
+                    toast('已开启自动备份：每天 ' + auto.cfg.time + '（本机时间）备份一次');
+                } else {
+                    toast('已开启自动备份：App 打开时每 ' + (auto.cfg.minutes >= 60 ? (auto.cfg.minutes / 60) + ' 小时' : auto.cfg.minutes + ' 分钟') + '备份一次');
+                }
             } else {
                 toast('已关闭自动备份');
             }
+        });
+        var autoModeSel = $('autoMode');
+        if (autoModeSel) autoModeSel.addEventListener('change', function () {
+            var daily = autoModeSel.value === 'daily';
+            var inf = $('autoIntervalField'), tf = $('autoTimeField');
+            if (inf) inf.style.display = daily ? 'none' : '';
+            if (tf) tf.style.display = daily ? '' : 'none';
         });
         updateAutoUI();
         // 多个标签页/隐藏 iframe 共用 lastAt：任一页备份成功后，其它页下一分钟就会跳过。
         window.addEventListener('storage', function (e) {
             if (!e || e.key !== AUTO_KEY) return;
             try {
-                var c = JSON.parse(e.newValue || '{}') || {};
-                auto.cfg.enabled = c.enabled === true;
-                auto.cfg.target = c.target === 'gh' ? 'gh' : 'cf';
-                auto.cfg.minutes = [30, 180, 480, 720, 1440].indexOf(Number(c.minutes)) >= 0 ? Number(c.minutes) : 480;
-                auto.cfg.keep = [0, 3, 5, 10].indexOf(Number(c.keep)) >= 0 ? Number(c.keep) : 3;
-                auto.cfg.lastAt = Number(c.lastAt) || 0;
-                auto.cfg.lastStatus = String(c.lastStatus || '');
-                auto.cfg.nextTryAt = Number(c.nextTryAt) || 0;
+                auto.cfg = normalizeAutoCfg(readCfg(AUTO_KEY) || {});
                 updateAutoUI();
             } catch (err) {}
         });

@@ -45,6 +45,117 @@
   function pad(n) { return (n < 10 ? '0' : '') + n; }
   function keyOf(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
 
+  // ===== 国籍 → 角色当地时间（IANA 时区）=====
+  // 角色的作息、日期、早晚都必须按「他所在国家/城市」的当地时间判断，
+  // 不能永远用设备本地时间（否则美国角色会在中国的早上说晚安）。
+  var TZ_BY_NAT = {
+    '美国': 'America/New_York', 'usa': 'America/New_York', 'united states': 'America/New_York', 'america': 'America/New_York',
+    '英国': 'Europe/London', 'uk': 'Europe/London', 'england': 'Europe/London', 'britain': 'Europe/London',
+    '加拿大': 'America/Toronto', 'canada': 'America/Toronto',
+    '澳大利亚': 'Australia/Sydney', '澳洲': 'Australia/Sydney', 'australia': 'Australia/Sydney',
+    '新西兰': 'Pacific/Auckland', 'new zealand': 'Pacific/Auckland',
+    '法国': 'Europe/Paris', 'france': 'Europe/Paris',
+    '德国': 'Europe/Berlin', 'germany': 'Europe/Berlin',
+    '奥地利': 'Europe/Vienna', 'austria': 'Europe/Vienna',
+    '意大利': 'Europe/Rome', 'italy': 'Europe/Rome',
+    '西班牙': 'Europe/Madrid', 'spain': 'Europe/Madrid',
+    '葡萄牙': 'Europe/Lisbon', 'portugal': 'Europe/Lisbon',
+    '荷兰': 'Europe/Amsterdam', 'netherlands': 'Europe/Amsterdam',
+    '比利时': 'Europe/Brussels', 'belgium': 'Europe/Brussels',
+    '瑞士': 'Europe/Zurich', 'switzerland': 'Europe/Zurich',
+    '瑞典': 'Europe/Stockholm', 'sweden': 'Europe/Stockholm',
+    '挪威': 'Europe/Oslo', 'norway': 'Europe/Oslo',
+    '丹麦': 'Europe/Copenhagen', 'denmark': 'Europe/Copenhagen',
+    '芬兰': 'Europe/Helsinki', 'finland': 'Europe/Helsinki',
+    '波兰': 'Europe/Warsaw', 'poland': 'Europe/Warsaw',
+    '希腊': 'Europe/Athens', 'greece': 'Europe/Athens',
+    '爱尔兰': 'Europe/Dublin', 'ireland': 'Europe/Dublin',
+    '俄罗斯': 'Europe/Moscow', 'russia': 'Europe/Moscow',
+    '乌克兰': 'Europe/Kyiv', 'ukraine': 'Europe/Kyiv',
+    '土耳其': 'Europe/Istanbul', 'turkey': 'Europe/Istanbul',
+    '日本': 'Asia/Tokyo', 'japan': 'Asia/Tokyo',
+    '韩国': 'Asia/Seoul', '南韩': 'Asia/Seoul', 'korea': 'Asia/Seoul',
+    '新加坡': 'Asia/Singapore', 'singapore': 'Asia/Singapore',
+    '马来西亚': 'Asia/Kuala_Lumpur', 'malaysia': 'Asia/Kuala_Lumpur',
+    '泰国': 'Asia/Bangkok', 'thailand': 'Asia/Bangkok',
+    '越南': 'Asia/Ho_Chi_Minh', 'vietnam': 'Asia/Ho_Chi_Minh',
+    '菲律宾': 'Asia/Manila', 'philippines': 'Asia/Manila',
+    '印度尼西亚': 'Asia/Jakarta', '印尼': 'Asia/Jakarta', 'indonesia': 'Asia/Jakarta',
+    '印度': 'Asia/Kolkata', 'india': 'Asia/Kolkata',
+    '巴基斯坦': 'Asia/Karachi', 'pakistan': 'Asia/Karachi',
+    '孟加拉': 'Asia/Dhaka', 'bangladesh': 'Asia/Dhaka',
+    '尼泊尔': 'Asia/Kathmandu', 'nepal': 'Asia/Kathmandu',
+    '斯里兰卡': 'Asia/Colombo', 'sri lanka': 'Asia/Colombo',
+    '沙特阿拉伯': 'Asia/Riyadh', '沙特': 'Asia/Riyadh', 'saudi': 'Asia/Riyadh',
+    '阿联酋': 'Asia/Dubai', '迪拜': 'Asia/Dubai', 'uae': 'Asia/Dubai', 'dubai': 'Asia/Dubai',
+    '以色列': 'Asia/Jerusalem', 'israel': 'Asia/Jerusalem',
+    '伊朗': 'Asia/Tehran', 'iran': 'Asia/Tehran',
+    '墨西哥': 'America/Mexico_City', 'mexico': 'America/Mexico_City',
+    '巴西': 'America/Sao_Paulo', 'brazil': 'America/Sao_Paulo',
+    '阿根廷': 'America/Argentina/Buenos_Aires', 'argentina': 'America/Argentina/Buenos_Aires',
+    '智利': 'America/Santiago', 'chile': 'America/Santiago',
+    '哥伦比亚': 'America/Bogota', 'colombia': 'America/Bogota',
+    '秘鲁': 'America/Lima', 'peru': 'America/Lima',
+    '委内瑞拉': 'America/Caracas', 'venezuela': 'America/Caracas',
+    '古巴': 'America/Havana', 'cuba': 'America/Havana',
+    '埃及': 'Africa/Cairo', 'egypt': 'Africa/Cairo',
+    '南非': 'Africa/Johannesburg', 'south africa': 'Africa/Johannesburg'
+  };
+
+  function isChineseArea(nat) {
+    var n = String(nat || '').trim();
+    if (!n || n === '未知' || n === '未设定' || /^unknown$/i.test(n)) return true;
+    return /中国|中國|china|chinese|台湾|台灣|taiwan|香港|hong\s*kong|澳门|澳門|macau|macao/i.test(n);
+  }
+
+  function tzForNationality(nat) {
+    var n = String(nat || '').trim();
+    if (!n || n === '未知' || n === '未设定' || /^unknown$/i.test(n)) return '';
+    if (/香港|hong\s*kong/i.test(n)) return 'Asia/Hong_Kong';
+    if (/澳门|澳門|macau|macao/i.test(n)) return 'Asia/Macau';
+    if (/台湾|台灣|taiwan/i.test(n)) return 'Asia/Taipei';
+    if (/中国|中國|china|chinese/i.test(n)) return 'Asia/Shanghai';
+    var low = n.toLowerCase();
+    for (var k in TZ_BY_NAT) {
+      if (n.indexOf(k) > -1 || low.indexOf(k.toLowerCase()) > -1) return TZ_BY_NAT[k];
+    }
+    return '';
+  }
+
+  // 把任意时刻换算成「目标时区墙上时间」的 Date：
+  // 只用于读取年月日/星期/几点，不参与时间戳差值计算。
+  var __dtfCache = {};
+  function __dtf(tz) {
+    if (!__dtfCache[tz]) {
+      __dtfCache[tz] = new Intl.DateTimeFormat('en-US', {
+        timeZone: tz, year: 'numeric', month: 'numeric', day: 'numeric',
+        hour: 'numeric', minute: 'numeric', second: 'numeric', hour12: false
+      });
+    }
+    return __dtfCache[tz];
+  }
+  function wallClock(date, tz) {
+    date = date instanceof Date ? date : new Date(date || Date.now());
+    if (!tz) return date;
+    try {
+      var parts = __dtf(tz).formatToParts(date);
+      var m = {};
+      for (var i = 0; i < parts.length; i++) m[parts[i].type] = parts[i].value;
+      var hh = parseInt(m.hour, 10);
+      if (hh === 24) hh = 0;
+      return new Date(parseInt(m.year, 10), parseInt(m.month, 10) - 1, parseInt(m.day, 10),
+        hh || 0, parseInt(m.minute, 10) || 0, parseInt(m.second, 10) || 0);
+    } catch (e) {
+      return date;
+    }
+  }
+
+  function localDescribe(d) {
+    var dow = d.getDay();
+    var rest = (dow === 0 || dow === 6);
+    return '今天是' + keyOf(d) + ' 星期' + WEEKDAYS[dow] + '，' + (rest ? '周末（休息日）' : '工作日');
+  }
+
   function inRest(k) {
     for (var i = 0; i < REST.length; i++) {
       if (k >= REST[i][1] && k <= REST[i][2]) return REST[i];
@@ -128,32 +239,54 @@
   }
 
   // 生成注入到系统提示词里的「时间感知」整块文案
-  // opts: { lastUserMs, lastAiMs }  （epoch ms，可选）
+  // opts: { lastUserMs, lastAiMs, nationality, tz }（epoch ms 可选；nationality 用于换算角色当地时间）
   function buildTimeBlock(now, opts) {
     now = now || new Date();
     opts = opts || {};
-    var o = info(now);
-    var timeStr = now.getFullYear() + '年' + (now.getMonth() + 1) + '月' + now.getDate() + '日 ' +
-      o.weekday + ' ' + pad(now.getHours()) + ':' + pad(now.getMinutes());
+    var nat = String(opts.nationality || '').trim();
+    var tz = opts.tz || tzForNationality(nat);
+    var cn = isChineseArea(nat);
+    var wall = wallClock(now, tz);
+    var o = info(wall);
+    var timeStr = wall.getFullYear() + '年' + (wall.getMonth() + 1) + '月' + wall.getDate() + '日 ' +
+      o.weekday + ' ' + pad(wall.getHours()) + ':' + pad(wall.getMinutes());
+    var dayText = cn ? describe(wall).replace(/^今天是[^，]*，/, '') : localDescribe(wall).replace(/^今天是[^，]*，/, '');
 
     var lines = [];
-    lines.push('【当前时间】现在是 ' + timeStr + '（' + describe(now).replace(/^今天是[^，]*，/, '') + '）。请以此为真实时间基准，不要当成昨天或更早——跨天、跨周都要按上面的日期判断。');
+    lines.push('【当前时间 · 真实】你所在的地方现在是 ' + timeStr + '（' + dayText + '）。' +
+      (tz ? '这是你本人所在地的当地时间，你的作息、早晚、饭点都按这个时间走。' : '这是系统给出的真实时间。') +
+      '请以此为唯一时间基准，不要当成昨天或更早——跨天、跨周都要按上面的日期判断。');
 
-    var lastUserGap = opts.lastUserMs ? fmtGap(Date.now() - opts.lastUserMs) : '';
-    var lastAiGap = opts.lastAiMs ? fmtGap(Date.now() - opts.lastAiMs) : '';
-    if (lastUserGap) lines.push('【隔了多久没联系】对方上一次给你发消息大约是在 ' + lastUserGap + '前，你心里清楚隔了多久，不必装作一直在线。');
-    if (lastAiGap) lines.push('【你上次开口】你上一次和对方说话大约是在 ' + lastAiGap + '前。');
-    lines.push('【时间感知的用法】你清楚彼此隔了多久没聊：如果隔了几天甚至更久，你心里有数，但**不要反复强调、不要一直埋怨或追问对方为什么这么久才来**；最多自然地带一句（例如"好久不见""你终于理我了"），然后正常继续。不要每轮都报时间、报日期、报节日。');
-    lines.push('【时间以系统为准 · 不可乱改】上面的日期/时间就是真实时间，请以此为准判断。**绝对不要自行更改、编造或"推进"时间**——例如不能凭自己说成"已经是第二天了""都过了一星期了""现在是半夜"；也不要自己编造日期、星期、几点几分。除非对方明确说明过了多久、或发生了明确跨越时间的事件，否则时间就按上面这个走。');
-    lines.push('【以对方说的为准】如果对方主动提到经过的时间（例如"过了三天""我们半个月没见了""都一个月了"），一律以对方说的为准，顺着对方的说法走，绝不用系统时间反驳或纠正他。');
+    var lastContactMs = Math.max(Number(opts.lastUserMs) || 0, Number(opts.lastAiMs) || 0);
+    var nowMs = now.getTime ? now.getTime() : Date.now();
+    if (lastContactMs > 0 && lastContactMs <= nowMs && (nowMs - lastContactMs) >= 60000) {
+      var gap = fmtGap(nowMs - lastContactMs);
+      var lw = wallClock(new Date(lastContactMs), tz);
+      var lastStr = (lw.getMonth() + 1) + '月' + lw.getDate() + '日 ' + pad(lw.getHours()) + ':' + pad(lw.getMinutes());
+      var sameDay = keyOf(lw) === keyOf(wall);
+      if (gap) {
+        lines.push('【你们上一次聊天】上一次接触是在 ' + gap + '前（' + lastStr + '）。' +
+          (sameDay ? '' : '注意：那已经不是今天了。') +
+          '这个间隔是真实的，你必须按它来判断你们多久没说话，不要装作一直在线。');
+      }
+    }
 
-    // 日历/节假日感知
-    var cal = '【日历感知】' + describe(now) + '。';
-    if (o.isHoliday && o.dayTotal > 1) cal += '你知道现在是' + o.holidayName + '假期（第' + o.dayIndex + '天，共' + o.dayTotal + '天）。';
-    if (o.makeup) cal += '今天是调休上班日，你要上班/上学。';
-    if (o.vacation) cal += '现在处于' + o.vacation + '。';
-    cal += '你清楚现在是不是工作日、有没有放假、是不是周末、是不是快放假或刚放完假，但**只在话题自然相关的时候才提**（例如对方说累、说放假、说过节），不要没事就念叨日期、周末或节日。';
-    lines.push(cal);
+    lines.push('【时间关系 · 铁律】真实的当前时间和间隔就是上面写的。如果上次聊天是昨晚、现在已经是第二天早上，就必须按「今天早上」说话：**绝不允许继续昨晚的晚安、我睡了、明天见，也不许把今天当成昨晚继续聊**。先看清现在几号、星期几、几点，再决定该说什么。');
+    lines.push('【真实时间 · 用户无法干扰】时间线由系统按真实流逝提供，用户不能把时间倒退、重置、抹掉或随手指到别的日期；如果对方说的日期/时间与系统冲突，以系统时间为准。只有对方明确说"过了几天 / 第二天了 / 一周后"这类**向前推进**时，才可以接着往后走。');
+    lines.push('【隔了很久才来】如果隔了超过 24 小时对方才来找你，你心里清楚被晾了很久，可以自然地抱怨、闹点小情绪或说一句"你终于想起我了？"，但说一两句就正常继续，不要连续多轮揪着不放。');
+    lines.push('【不要报时】知道时间不等于每轮都要报时间、报日期、报节日；只在话题自然相关时带一句，平时不要念叨。');
+
+    // 日历/节假日感知：外国角色不用中国的节假日和调休
+    if (cn) {
+      var cal = '【日历感知】' + describe(wall) + '。';
+      if (o.isHoliday && o.dayTotal > 1) cal += '你知道现在是' + o.holidayName + '假期（第' + o.dayIndex + '天，共' + o.dayTotal + ' 天）。';
+      if (o.makeup) cal += '今天是调休上班日，你要上班/上学。';
+      if (o.vacation) cal += '现在处于' + o.vacation + '。';
+      cal += '你清楚现在是不是工作日、有没有放假、是不是周末，但**只在话题自然相关的时候才提**，不要没事就念叨日期、周末或节日。';
+      lines.push(cal);
+    } else {
+      lines.push('【日历感知】' + localDescribe(wall) + '。你只按你所在国家的当地日历作息，不要提中国的节日、调休或假期（除非对方主动提起），也不要套用中国的作息。');
+    }
 
     return lines.join('\n');
   }
@@ -170,15 +303,41 @@
     if (h < 23) return '晚上';
     return '深夜';
   }
-  function buildVagueTimeBlock(now) {
+  function buildVagueTimeBlock(now, opts) {
     now = now || new Date();
-    var p = vaguePeriod(now);
-    var clock = pad(now.getHours()) + ':' + pad(now.getMinutes());
+    opts = opts || {};
+    var nat = String(opts.nationality || '').trim();
+    var tz = opts.tz || tzForNationality(nat);
+    var wall = wallClock(now, tz);
+    var p = vaguePeriod(wall);
     return [
-      '【时间 · 参考】你大概知道现在差不多是 ' + clock + ' 前后（' + p + '），但**不确定日期、星期，也记不清具体隔了多久**。',
-      '没被特意提及时，说话可以带一点自然的时间感（如"这么晚还没睡？""中午了记得吃饭"），但**不要报具体的日期、星期几**，也别把参考时间说得太死。',
-      '【以对方 / 剧情为准】一旦对方强调或提到了时间（几点、过了多久、几天后…），或剧情里明确推进了时间（"天亮了""第二天""过了一周"），就**以对方和剧情的时间为准**，顺着往后走，绝不用这个参考时间去纠正或反驳。'
+      '【时间 · 模糊参考】你只大概知道现在是' + p + '，但**不确定具体日期、星期，也记不清具体隔了多久**。',
+      '没被特意提及时，说话可以带一点自然的时间感（如"这么晚还没睡？""中午了记得吃饭"），但**不要报具体的日期、星期几或几点几分**，也别把参考时间说得太死。',
+      '【接着上次聊】就算隔了很久没聊，也当作接着上次聊天的时间线继续，不要自行跳到新的一天，也不要强调"好久没聊"。',
+      '【以对方 / 剧情为准】一旦对方强调或提到了时间（几点、过了多久、几天后…），或剧情里明确推进了时间（"天亮了""第二天""过了一周"），就**以对方和剧情的时间为准**，可以自然调整视角与时间线，绝不用这个参考时间去纠正或反驳。'
     ].join('\n');
+  }
+
+  // 把某个时间戳格式化成「角色当地时间」的简短标注，供聊天记录标注使用
+  function fmtMoment(ts, opts) {
+    opts = opts || {};
+    var tz = opts.tz || tzForNationality(opts.nationality);
+    var d = wallClock(new Date(Number(ts) || Date.now()), tz);
+    return (d.getMonth() + 1) + '月' + d.getDate() + '日 ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+
+  // 极简「时间锚点」：放在最新一条用户消息之前，防止长提示词把时间感知挤没
+  function nowAnchor(now, opts) {
+    now = now || new Date();
+    opts = opts || {};
+    var tz = opts.tz || tzForNationality(opts.nationality);
+    var wall = wallClock(now, tz);
+    var s = wall.getFullYear() + '年' + (wall.getMonth() + 1) + '月' + wall.getDate() + '日 星期' +
+      WEEKDAYS[wall.getDay()] + ' ' + pad(wall.getHours()) + ':' + pad(wall.getMinutes());
+    var lastMs = Math.max(Number(opts.lastUserMs) || 0, Number(opts.lastAiMs) || 0);
+    var gap = '';
+    if (lastMs > 0 && lastMs <= now.getTime() && (now.getTime() - lastMs) >= 60000) gap = fmtGap(now.getTime() - lastMs);
+    return s + (gap ? ('，距离你们上次聊天已经 ' + gap) : '');
   }
 
   window.NanoHoliday = {
@@ -187,6 +346,11 @@
     buildTimeBlock: buildTimeBlock,
     buildVagueTimeBlock: buildVagueTimeBlock,
     fmtGap: fmtGap,
+    fmtMoment: fmtMoment,
+    nowAnchor: nowAnchor,
+    wallClock: wallClock,
+    tzForNationality: tzForNationality,
+    isChineseArea: isChineseArea,
     pad: pad
   };
 })();

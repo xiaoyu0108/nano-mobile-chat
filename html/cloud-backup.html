@@ -116,6 +116,13 @@
                 </select>
             </div>
             <div class="field">
+                <span class="field-label">备份计划</span>
+                <select id="autoMode" class="field-input">
+                    <option value="interval">按间隔（打开 App 后每 X 小时）</option>
+                    <option value="daily">每天固定时间（按本机时间）</option>
+                </select>
+            </div>
+            <div class="field" id="autoIntervalField">
                 <span class="field-label">备份间隔</span>
                 <select id="autoInterval" class="field-input">
                     <option value="30">30 分钟（频繁，注意空间）</option>
@@ -124,6 +131,11 @@
                     <option value="720">12 小时</option>
                     <option value="1440">24 小时</option>
                 </select>
+            </div>
+            <div class="field" id="autoTimeField" style="display:none">
+                <span class="field-label">每天备份时间（本机时间）</span>
+                <input type="time" id="autoTime" class="field-input" value="04:00" step="60">
+                <div class="cloud-sub" style="margin-top:4px">按你手机当前的时区计算。到点后如果 App 没开着，下次打开会补一次；当天已经备份过就不会重复。</div>
             </div>
             <div class="field">
                 <span class="field-label">GitHub 自动备份保留份数</span>
@@ -140,7 +152,7 @@
                 <button class="cloud-btn primary" id="autoSave" type="button">保存自动备份设置</button>
             </div>
             <div class="tut-warn" style="margin-top:10px">
-                自动备份只能在本 App 打开时运行（iOS 不允许网页在完全退出后后台跑）。30 分钟适合临时保护，长期建议 8/12/24 小时，避免产生过多云端版本。
+                自动备份只能在本 App 打开时运行（iOS 不允许网页在完全退出后后台跑）。长期建议选「每天固定时间」或 8/12/24 小时间隔，避免产生过多云端版本。
             </div>
         </div>
     </section>
@@ -233,7 +245,7 @@
 
 <script src="../js/pako.min.js"></script>
 <script src="../js/backup.js?v=20261025c"></script>
-<script src="../js/cloud-backup.js?v=20261026f"></script>
+<script src="../js/cloud-backup.js?v=20261027a"></script>
 <script src="../js/swipe-back.js"></script>
 </body>
 </html>

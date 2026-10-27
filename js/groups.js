@@ -1413,17 +1413,22 @@
         var timeAware = settings.timeAware !== false;
         if (timeAware) {
             if (window.NanoHoliday && window.NanoHoliday.buildTimeBlock) {
-                var __lastUserMs = 0;
+                var __lastUserMs = 0, __lastAiMs = 0;
                 try {
-                    var __rights = [];
-                    for (var __i = messages.length - 1; __i >= 0 && __rights.length < 2; __i--) {
+                    // 跳过本轮连续发来的用户消息，取更早的最后一条用户消息作为「上次联系」
+                    var __i = messages.length - 1;
+                    while (__i >= 0 && (!messages[__i] || messages[__i].recalled || messages[__i].type !== 'right')) __i--;
+                    while (__i >= 0 && messages[__i] && !messages[__i].recalled && messages[__i].type === 'right') __i--;
+                    for (; __i >= 0; __i--) {
                         var __m = messages[__i];
-                        if (__m && !__m.recalled && __m.type === 'right') __rights.push(__m.ts || 0);
+                        if (__m && !__m.recalled && __m.type === 'right') { __lastUserMs = __m.ts || 0; break; }
                     }
-                    if (__rights.length >= 2 && __rights[1]) __lastUserMs = __rights[1];
-                    else if (__rights.length === 1 && __rights[0] && (Date.now() - __rights[0]) > 3600000) __lastUserMs = __rights[0];
+                    for (var __j = messages.length - 1; __j >= 0; __j--) {
+                        var __a = messages[__j];
+                        if (__a && !__a.recalled && __a.type !== 'right' && __a.ts) { __lastAiMs = __a.ts; break; }
+                    }
                 } catch (e) {}
-                prompt += '\n' + window.NanoHoliday.buildTimeBlock(new Date(), { lastUserMs: __lastUserMs }) + '\n';
+                prompt += '\n' + window.NanoHoliday.buildTimeBlock(new Date(), { lastUserMs: __lastUserMs, lastAiMs: __lastAiMs }) + '\n';
             } else {
                 var now = new Date();
                 var weekdays = ['日','一','二','三','四','五','六'];

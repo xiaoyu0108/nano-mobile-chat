@@ -867,6 +867,64 @@ function autoLangBlock(c) {
     + '本轮主动消息的正文必须只用' + lang + '写，绝不能用中文当正文；即使人设或上面的说明是中文，也不要改变。'
     + '每行一条气泡，严格按「' + lang + '原文||' + trans + '翻译」的格式输出，用 || 分隔；' + trans + '只能出现在 || 右边作为翻译，翻译要自然口语化。\n';
 }
+
+// 国籍 → 角色当地时间（与前端 js/nano-holiday.js 保持一致）：
+// 主动消息也必须按角色所在国家的当地时间判断早晚，不能一律用北京时间。
+const AUTO_TZ_BY_NAT = {
+  '美国': 'America/New_York', 'usa': 'America/New_York', 'united states': 'America/New_York',
+  '英国': 'Europe/London', 'uk': 'Europe/London', 'england': 'Europe/London',
+  '加拿大': 'America/Toronto', 'canada': 'America/Toronto',
+  '澳大利亚': 'Australia/Sydney', '澳洲': 'Australia/Sydney', 'australia': 'Australia/Sydney',
+  '新西兰': 'Pacific/Auckland', 'new zealand': 'Pacific/Auckland',
+  '法国': 'Europe/Paris', 'france': 'Europe/Paris',
+  '德国': 'Europe/Berlin', 'germany': 'Europe/Berlin', '奥地利': 'Europe/Vienna',
+  '意大利': 'Europe/Rome', 'italy': 'Europe/Rome',
+  '西班牙': 'Europe/Madrid', 'spain': 'Europe/Madrid',
+  '葡萄牙': 'Europe/Lisbon', '荷兰': 'Europe/Amsterdam', '比利时': 'Europe/Brussels',
+  '瑞士': 'Europe/Zurich', '瑞典': 'Europe/Stockholm', '挪威': 'Europe/Oslo',
+  '丹麦': 'Europe/Copenhagen', '芬兰': 'Europe/Helsinki', '波兰': 'Europe/Warsaw',
+  '希腊': 'Europe/Athens', '爱尔兰': 'Europe/Dublin', '俄罗斯': 'Europe/Moscow',
+  '乌克兰': 'Europe/Kyiv', '土耳其': 'Europe/Istanbul',
+  '日本': 'Asia/Tokyo', 'japan': 'Asia/Tokyo',
+  '韩国': 'Asia/Seoul', '南韩': 'Asia/Seoul', 'korea': 'Asia/Seoul',
+  '新加坡': 'Asia/Singapore', '马来西亚': 'Asia/Kuala_Lumpur', '泰国': 'Asia/Bangkok',
+  '越南': 'Asia/Ho_Chi_Minh', '菲律宾': 'Asia/Manila', '印度尼西亚': 'Asia/Jakarta',
+  '印尼': 'Asia/Jakarta', '印度': 'Asia/Kolkata', '巴基斯坦': 'Asia/Karachi',
+  '孟加拉': 'Asia/Dhaka', '尼泊尔': 'Asia/Kathmandu', '斯里兰卡': 'Asia/Colombo',
+  '沙特阿拉伯': 'Asia/Riyadh', '沙特': 'Asia/Riyadh', '阿联酋': 'Asia/Dubai', '迪拜': 'Asia/Dubai',
+  '以色列': 'Asia/Jerusalem', '伊朗': 'Asia/Tehran',
+  '墨西哥': 'America/Mexico_City', '巴西': 'America/Sao_Paulo',
+  '阿根廷': 'America/Argentina/Buenos_Aires', '智利': 'America/Santiago',
+  '哥伦比亚': 'America/Bogota', '秘鲁': 'America/Lima', '委内瑞拉': 'America/Caracas',
+  '古巴': 'America/Havana', '埃及': 'Africa/Cairo', '南非': 'Africa/Johannesburg'
+};
+function autoTz(c) {
+  const n = String((c && c.nationality) || '').trim();
+  if (!n || n === '未知' || n === '未设定') return 'Asia/Shanghai';
+  if (/香港|hong\s*kong/i.test(n)) return 'Asia/Hong_Kong';
+  if (/澳门|澳門|macau|macao/i.test(n)) return 'Asia/Macau';
+  if (/台湾|台灣|taiwan/i.test(n)) return 'Asia/Taipei';
+  if (/中国|中國|china|chinese/i.test(n)) return 'Asia/Shanghai';
+  const low = n.toLowerCase();
+  for (const k of Object.keys(AUTO_TZ_BY_NAT)) {
+    if (n.indexOf(k) > -1 || low.indexOf(k.toLowerCase()) > -1) return AUTO_TZ_BY_NAT[k];
+  }
+  return 'Asia/Shanghai';
+}
+function autoNowText(c, ms) {
+  const d = new Date(Number(ms) || Date.now());
+  try {
+    const parts = new Intl.DateTimeFormat('zh-CN', {
+      timeZone: autoTz(c), year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hour12: false, weekday: 'short'
+    }).formatToParts(d);
+    const m = {};
+    parts.forEach(function (p) { m[p.type] = p.value; });
+    return m.year + '-' + m.month + '-' + m.day + ' ' + (m.weekday || '') + ' ' + m.hour + ':' + m.minute;
+  } catch (e) {
+    return new Date(d.getTime() + 8 * 3600 * 1000).toISOString().slice(0, 16).replace('T', ' ');
+  }
+}
 function cycleBlock(c) {
   const cy = c && c.cycle;
   if (!cy || !cy.lastStart) return '';
@@ -913,7 +971,7 @@ async function generateAutoMessages(env, cfg, busyChatId, avoidId) {
   for (const c of picked) {
     const system = '你是「' + c.name + '」，现在主动给「' + cfg.user.name + '」发消息。\n'
       + (c.setting ? ('【你的人设】\n' + c.setting + '\n\n') : '')
-      + '现在是 ' + new Date(now + 8 * 3600 * 1000).toISOString().slice(0, 16).replace('T', ' ') + '（北京时间）。\n'
+      + '现在是 ' + autoNowText(c, now) + '（你所在地的当地时间）。\n'
       + autoLangBlock(c)
       + cycleBlock(c)
       + recentBlock(c)

@@ -1226,6 +1226,61 @@ function autoLangBlock(c) {
   const trans = /粤语|粵語|cantonese/i.test(lang) ? "\u666E\u901A\u8BDD" : "\u4E2D\u6587";
   return "\u3010\u8BED\u8A00 \xB7 \u6700\u9AD8\u4F18\u5148\u7EA7\u3011\u4F60\u662F" + (c.nationality || "\u5916\u56FD") + "\u4EBA\uFF0C\u6BCD\u8BED\u662F" + lang + "\u3002\u672C\u8F6E\u4E3B\u52A8\u6D88\u606F\u7684\u6B63\u6587\u5FC5\u987B\u53EA\u7528" + lang + "\u5199\uFF0C\u7EDD\u4E0D\u80FD\u7528\u4E2D\u6587\u5F53\u6B63\u6587\uFF1B\u5373\u4F7F\u4EBA\u8BBE\u6216\u4E0A\u9762\u7684\u8BF4\u660E\u662F\u4E2D\u6587\uFF0C\u4E5F\u4E0D\u8981\u6539\u53D8\u3002\u6BCF\u884C\u4E00\u6761\u6C14\u6CE1\uFF0C\u4E25\u683C\u6309\u300C" + lang + "\u539F\u6587||" + trans + "\u7FFB\u8BD1\u300D\u7684\u683C\u5F0F\u8F93\u51FA\uFF0C\u7528 || \u5206\u9694\uFF1B" + trans + "\u53EA\u80FD\u51FA\u73B0\u5728 || \u53F3\u8FB9\u4F5C\u4E3A\u7FFB\u8BD1\uFF0C\u7FFB\u8BD1\u8981\u81EA\u7136\u53E3\u8BED\u5316\u3002\n";
 }
+const AUTO_TZ_BY_NAT = {
+  '美国': 'America/New_York', 'usa': 'America/New_York', 'united states': 'America/New_York',
+  '英国': 'Europe/London', 'uk': 'Europe/London', 'england': 'Europe/London',
+  '加拿大': 'America/Toronto', 'canada': 'America/Toronto',
+  '澳大利亚': 'Australia/Sydney', '澳洲': 'Australia/Sydney', 'australia': 'Australia/Sydney',
+  '新西兰': 'Pacific/Auckland', 'new zealand': 'Pacific/Auckland',
+  '法国': 'Europe/Paris', 'france': 'Europe/Paris',
+  '德国': 'Europe/Berlin', 'germany': 'Europe/Berlin', '奥地利': 'Europe/Vienna',
+  '意大利': 'Europe/Rome', 'italy': 'Europe/Rome',
+  '西班牙': 'Europe/Madrid', 'spain': 'Europe/Madrid',
+  '葡萄牙': 'Europe/Lisbon', '荷兰': 'Europe/Amsterdam', '比利时': 'Europe/Brussels',
+  '瑞士': 'Europe/Zurich', '瑞典': 'Europe/Stockholm', '挪威': 'Europe/Oslo',
+  '丹麦': 'Europe/Copenhagen', '芬兰': 'Europe/Helsinki', '波兰': 'Europe/Warsaw',
+  '希腊': 'Europe/Athens', '爱尔兰': 'Europe/Dublin', '俄罗斯': 'Europe/Moscow',
+  '乌克兰': 'Europe/Kyiv', '土耳其': 'Europe/Istanbul',
+  '日本': 'Asia/Tokyo', 'japan': 'Asia/Tokyo',
+  '韩国': 'Asia/Seoul', '南韩': 'Asia/Seoul', 'korea': 'Asia/Seoul',
+  '新加坡': 'Asia/Singapore', '马来西亚': 'Asia/Kuala_Lumpur', '泰国': 'Asia/Bangkok',
+  '越南': 'Asia/Ho_Chi_Minh', '菲律宾': 'Asia/Manila', '印度尼西亚': 'Asia/Jakarta',
+  '印尼': 'Asia/Jakarta', '印度': 'Asia/Kolkata', '巴基斯坦': 'Asia/Karachi',
+  '孟加拉': 'Asia/Dhaka', '尼泊尔': 'Asia/Kathmandu', '斯里兰卡': 'Asia/Colombo',
+  '沙特阿拉伯': 'Asia/Riyadh', '沙特': 'Asia/Riyadh', '阿联酋': 'Asia/Dubai', '迪拜': 'Asia/Dubai',
+  '以色列': 'Asia/Jerusalem', '伊朗': 'Asia/Tehran',
+  '墨西哥': 'America/Mexico_City', '巴西': 'America/Sao_Paulo',
+  '阿根廷': 'America/Argentina/Buenos_Aires', '智利': 'America/Santiago',
+  '哥伦比亚': 'America/Bogota', '秘鲁': 'America/Lima', '委内瑞拉': 'America/Caracas',
+  '古巴': 'America/Havana', '埃及': 'Africa/Cairo', '南非': 'Africa/Johannesburg'
+};
+function autoTz(c) {
+  const n = String((c && c.nationality) || '').trim();
+  if (!n || n === '未知' || n === '未设定') return 'Asia/Shanghai';
+  if (/香港|hong\s*kong/i.test(n)) return 'Asia/Hong_Kong';
+  if (/澳门|澳門|macau|macao/i.test(n)) return 'Asia/Macau';
+  if (/台湾|台灣|taiwan/i.test(n)) return 'Asia/Taipei';
+  if (/中国|中國|china|chinese/i.test(n)) return 'Asia/Shanghai';
+  const low = n.toLowerCase();
+  for (const k of Object.keys(AUTO_TZ_BY_NAT)) {
+    if (n.indexOf(k) > -1 || low.indexOf(k.toLowerCase()) > -1) return AUTO_TZ_BY_NAT[k];
+  }
+  return 'Asia/Shanghai';
+}
+function autoNowText(c, ms) {
+  const d = new Date(Number(ms) || Date.now());
+  try {
+    const parts = new Intl.DateTimeFormat('zh-CN', {
+      timeZone: autoTz(c), year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hour12: false, weekday: 'short'
+    }).formatToParts(d);
+    const m = {};
+    parts.forEach(function (p) { m[p.type] = p.value; });
+    return m.year + '-' + m.month + '-' + m.day + ' ' + (m.weekday || '') + ' ' + m.hour + ':' + m.minute;
+  } catch (e) {
+    return new Date(d.getTime() + 8 * 3600 * 1000).toISOString().slice(0, 16).replace('T', ' ');
+  }
+}
 function cycleBlock(c) {
   const cy = c && c.cycle;
   if (!cy || !cy.lastStart) return "";
@@ -1274,7 +1329,7 @@ async function generateAutoMessages(env, cfg, busyChatId, avoidId) {
   const out = [];
   const now = Date.now();
   for (const c of picked) {
-    const system = "\u4F60\u662F\u300C" + c.name + "\u300D\uFF0C\u73B0\u5728\u4E3B\u52A8\u7ED9\u300C" + cfg.user.name + "\u300D\u53D1\u6D88\u606F\u3002\n" + (c.setting ? "\u3010\u4F60\u7684\u4EBA\u8BBE\u3011\n" + c.setting + "\n\n" : "") + "\u73B0\u5728\u662F " + new Date(now + 8 * 3600 * 1e3).toISOString().slice(0, 16).replace("T", " ") + "\uFF08\u5317\u4EAC\u65F6\u95F4\uFF09\u3002\n" + autoLangBlock(c) + cycleBlock(c) + recentBlock(c) + '\n\u3010\u786C\u6027\u8981\u6C42\u3011\n- \u53EA\u53D1\u8FD9\u4E00\u6B21\uFF0C\u4E0D\u8981\u8FDE\u7EED\u8FFD\u95EE\u3001\u4E0D\u8981\u590D\u8BFB\u3001\u4E0D\u8981\u4E00\u6B21\u5199\u4E00\u5927\u6BB5\u3002\n- \u5FC5\u987B\u548C\u4E0A\u9762\u7684\u6700\u8FD1\u804A\u5929\u5F3A\u76F8\u5173\uFF1A\u63A5\u4F4F\u8BDD\u9898/\u60C5\u7EEA/\u7EA6\u5B9A\uFF0C\u6216\u5206\u4EAB\u4E00\u4EF6\u521A\u597D\u53D1\u751F\u3001\u80FD\u63A5\u5F97\u4F4F\u7684\u5C0F\u4E8B\u3002\n- \u4E25\u7981\u53E3\u6C34\u8BDD\uFF1A\u7981\u6B62\u201C\u5728\u5417/\u5728\u5E72\u561B/\u5403\u4E86\u5417/\u7761\u4E86\u5417/\u5FD9\u4E0D\u5FD9\u201D\u201C\u60F3\u4F60\u4E86\u201D\u5374\u6CA1\u6709\u4E0B\u6587\uFF1B\u7981\u6B62\u65E0\u5173\u7684\u65E5\u5E38\u6D41\u6C34\u8D26\uFF1B\u7981\u6B62\u62EC\u53F7\u65C1\u767D\uFF1B\u7981\u6B62\u63D0\u7CFB\u7EDF/\u63A8\u9001/AI\u3002\n- \u4E00\u6B21 API \u8C03\u7528\u540C\u65F6\u4EA7\u51FA\uFF1A\u601D\u7EF4\u94FE think\u3001\u5FC3\u58F0 heart\u3001\u6B63\u6587 bubbles\u3002\n- bubbles \u5FC5\u987B\u662F 2~3 \u6761\u5404\u81EA\u72EC\u7ACB\u7684\u6C14\u6CE1\uFF08\u6BCF\u6761 1 \u53E5\uFF0C\u53E3\u8BED\u81EA\u7136\uFF09\uFF0C\u4E0D\u8981\u628A\u591A\u6761\u585E\u8FDB\u540C\u4E00\u6761\u3002\n- heart \u683C\u5F0F\u56FA\u5B9A\u4E3A\u300C\u6B64\u523B\u5370\u8C61||\u5FC3\u58F0\u72EC\u767D\u300D\uFF0C\u5FC3\u58F0 60~120 \u5B57\uFF0C\u5E73\u5B9E\u3001\u4E0D\u8981\u717D\u60C5\u3002\n- \u5916\u56FD\u4EBA / \u7CA4\u8BED\u89D2\u8272\u4ECD\u6309\u4E0A\u9762\u7684\u8BED\u8A00\u89C4\u5219\u8F93\u51FA\u300C\u539F\u6587||\u4E2D\u6587\u7FFB\u8BD1\u300D\u3002\n\u53EA\u8F93\u51FA JSON\uFF0C\u4E0D\u8981\u4EFB\u4F55\u591A\u4F59\u6587\u5B57\uFF1A\n{"think":"\u8FD9\u4E00\u8F6E\u7684\u601D\u8003\uFF0C40~100\u5B57","heart":"\u6B64\u523B\u5370\u8C61||\u5FC3\u58F0\u72EC\u767D","bubbles":["\u7B2C\u4E00\u6761","\u7B2C\u4E8C\u6761","\u7B2C\u4E09\u6761"]}';
+    const system = "\u4F60\u662F\u300C" + c.name + "\u300D\uFF0C\u73B0\u5728\u4E3B\u52A8\u7ED9\u300C" + cfg.user.name + "\u300D\u53D1\u6D88\u606F\u3002\n" + (c.setting ? "\u3010\u4F60\u7684\u4EBA\u8BBE\u3011\n" + c.setting + "\n\n" : "") + "\u73B0\u5728\u662F " + autoNowText(c, now) + "\uFF08\u4F60\u6240\u5728\u5730\u7684\u5F53\u5730\u65F6\u95F4\uFF09\u3002\n" + autoLangBlock(c) + cycleBlock(c) + recentBlock(c) + '\n\u3010\u786C\u6027\u8981\u6C42\u3011\n- \u53EA\u53D1\u8FD9\u4E00\u6B21\uFF0C\u4E0D\u8981\u8FDE\u7EED\u8FFD\u95EE\u3001\u4E0D\u8981\u590D\u8BFB\u3001\u4E0D\u8981\u4E00\u6B21\u5199\u4E00\u5927\u6BB5\u3002\n- \u5FC5\u987B\u548C\u4E0A\u9762\u7684\u6700\u8FD1\u804A\u5929\u5F3A\u76F8\u5173\uFF1A\u63A5\u4F4F\u8BDD\u9898/\u60C5\u7EEA/\u7EA6\u5B9A\uFF0C\u6216\u5206\u4EAB\u4E00\u4EF6\u521A\u597D\u53D1\u751F\u3001\u80FD\u63A5\u5F97\u4F4F\u7684\u5C0F\u4E8B\u3002\n- \u4E25\u7981\u53E3\u6C34\u8BDD\uFF1A\u7981\u6B62\u201C\u5728\u5417/\u5728\u5E72\u561B/\u5403\u4E86\u5417/\u7761\u4E86\u5417/\u5FD9\u4E0D\u5FD9\u201D\u201C\u60F3\u4F60\u4E86\u201D\u5374\u6CA1\u6709\u4E0B\u6587\uFF1B\u7981\u6B62\u65E0\u5173\u7684\u65E5\u5E38\u6D41\u6C34\u8D26\uFF1B\u7981\u6B62\u62EC\u53F7\u65C1\u767D\uFF1B\u7981\u6B62\u63D0\u7CFB\u7EDF/\u63A8\u9001/AI\u3002\n- \u4E00\u6B21 API \u8C03\u7528\u540C\u65F6\u4EA7\u51FA\uFF1A\u601D\u7EF4\u94FE think\u3001\u5FC3\u58F0 heart\u3001\u6B63\u6587 bubbles\u3002\n- bubbles \u5FC5\u987B\u662F 2~3 \u6761\u5404\u81EA\u72EC\u7ACB\u7684\u6C14\u6CE1\uFF08\u6BCF\u6761 1 \u53E5\uFF0C\u53E3\u8BED\u81EA\u7136\uFF09\uFF0C\u4E0D\u8981\u628A\u591A\u6761\u585E\u8FDB\u540C\u4E00\u6761\u3002\n- heart \u683C\u5F0F\u56FA\u5B9A\u4E3A\u300C\u6B64\u523B\u5370\u8C61||\u5FC3\u58F0\u72EC\u767D\u300D\uFF0C\u5FC3\u58F0 60~120 \u5B57\uFF0C\u5E73\u5B9E\u3001\u4E0D\u8981\u717D\u60C5\u3002\n- \u5916\u56FD\u4EBA / \u7CA4\u8BED\u89D2\u8272\u4ECD\u6309\u4E0A\u9762\u7684\u8BED\u8A00\u89C4\u5219\u8F93\u51FA\u300C\u539F\u6587||\u4E2D\u6587\u7FFB\u8BD1\u300D\u3002\n\u53EA\u8F93\u51FA JSON\uFF0C\u4E0D\u8981\u4EFB\u4F55\u591A\u4F59\u6587\u5B57\uFF1A\n{"think":"\u8FD9\u4E00\u8F6E\u7684\u601D\u8003\uFF0C40~100\u5B57","heart":"\u6B64\u523B\u5370\u8C61||\u5FC3\u58F0\u72EC\u767D","bubbles":["\u7B2C\u4E00\u6761","\u7B2C\u4E8C\u6761","\u7B2C\u4E09\u6761"]}';
     const text = await autoChat(env, cfg, [
       { role: "system", content: system },
       { role: "user", content: "\u53D1 2~3 \u6761\u5F3A\u76F8\u5173\u7684\u4E3B\u52A8\u6D88\u606F\u3002" }
