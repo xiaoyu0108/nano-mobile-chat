@@ -192,6 +192,65 @@
   }
   window.NanoFaceRef = { key: faceRefKey, sync: faceRefSync, get: faceRefGet };
 
+  // 生图接口经常返回会过期的临时 URL。消息里如果只存这个 URL，过几天就会变成问号；
+  // 所以在入库前尽量抓成 dataURL（直连 → wsrv 图片代理），失败才保留原地址。
+  var imageCache = {};
+  function blobToDataUrl(blob) {
+    return new Promise(function (resolve) {
+      try {
+        var fr = new FileReader();
+        fr.onload = function () { resolve(String(fr.result || '')); };
+        fr.onerror = function () { resolve(''); };
+        fr.readAsDataURL(blob);
+      } catch (e) { resolve(''); }
+    });
+  }
+  function fetchImageBlob(u, timeout) {
+    return new Promise(function (resolve) {
+      var done = false;
+      var timer = setTimeout(function () { if (!done) { done = true; resolve(null); } }, timeout || 10000);
+      try {
+        fetch(u, { mode: 'cors', cache: 'no-store', credentials: 'omit' }).then(function (r) {
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.blob();
+        }).then(function (b) {
+          if (!b || !/^image\//i.test(b.type || '') || b.size > 8 * 1024 * 1024) throw new Error('bad image');
+          if (done) return;
+          done = true; clearTimeout(timer); resolve(b);
+        }).catch(function () {
+          if (done) return;
+          done = true; clearTimeout(timer); resolve(null);
+        });
+      } catch (e) { if (!done) { done = true; clearTimeout(timer); resolve(null); } }
+    });
+  }
+  function imageToDataUrl(u) {
+    u = String(u || '').trim();
+    if (!u) return Promise.resolve('');
+    if (/^data:image\//i.test(u)) return Promise.resolve(u);
+    if (!/^https?:\/\//i.test(u)) return Promise.resolve('');
+    if (imageCache[u]) return imageCache[u];
+    var attempts = [
+      u,
+      'https://wsrv.nl/?url=' + encodeURIComponent(u) + '&w=1400&output=jpg&q=85',
+      'https://images.weserv.nl/?url=' + encodeURIComponent(u) + '&w=1400&output=jpg&q=85'
+    ];
+    var p = (async function () {
+      for (var i = 0; i < attempts.length; i++) {
+        var blob = await fetchImageBlob(attempts[i], i === 0 ? 8000 : 10000);
+        if (blob) {
+          var data = await blobToDataUrl(blob);
+          if (data) return data;
+        }
+      }
+      return '';
+    })();
+    imageCache[u] = p;
+    p.then(function (v) { if (!v) delete imageCache[u]; });
+    return p;
+  }
+  window.NanoImageCache = { toDataUrl: imageToDataUrl };
+
   // 全局 API 日志：设置页「后台日志」读取。异步加载，不阻塞首屏。
   try {
     if (!window.NanoApiLogs) {

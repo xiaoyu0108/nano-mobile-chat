@@ -73,6 +73,7 @@ window.NANO_CHAT_TEMPLATE = `/* ================================================
   --chat-bottom-mask: transparent;
   /* 纯 CSS 固定翻译模式：0 = 译文合并进同一个气泡；1 = 独立译文气泡 */
   --nano-trans-separate: 0;
+
 }
 
 /* 双击气泡菜单：iPhone 液态玻璃 */
@@ -133,15 +134,60 @@ window.NANO_CHAT_TEMPLATE = `/* ================================================
 .quote-block .quote-name { font-weight: 600; opacity: 0.75; margin-right: 3px; font-size: 12px; flex-shrink: 0; color: #6e6e73; }
 .quote-block .quote-text { opacity: 0.9; color: #6e6e73; word-break: break-word; white-space: pre-wrap; }
 
-/* 翻译文字：两种显示模式都由模板控制
-   1) 独立气泡（默认）：.translation-bubble，位于原文气泡上方；
-   2) 同一气泡：.bubble .translation-text，位于原文下方。
-   想在模板里固定模式，不用聊天设置按钮：
-   - 模板 JS 里写 window.NANO_TRANSLATION_SEPARATE = 1;  // 独立
-   - 或 window.NANO_TRANSLATION_SEPARATE = 0;             // 同一气泡
-   - 给 body 加 data-nano-trans-separate="1" / "0"。
-   - 最推荐：直接在模板 CSS 里写 :root { --nano-trans-separate: 1; }（0 = 合并）
-     纯 CSS 即可，优先级高于聊天设置里的「翻译气泡」开关。 */
+/* ============================================================
+   【翻译气泡 · 模板最高准则】
+   ------------------------------------------------------------
+   模板写什么，线上就按什么显示。私聊设置里的「翻译气泡分开与否」
+   只是兜底：只有模板既没写变量、也没写 data 属性时才生效。
+
+   A. 译文与原文在同一个气泡（推荐默认）
+   DOM：
+     <div class="message-row left|right">
+       <div class="message-content">
+         <div class="bubble other|me">
+           原文
+           <span class="translation-text other|me">译文</span>
+         </div>
+       </div>
+     </div>
+   写法：
+     :root { --nano-trans-separate: 0; }
+     .bubble .translation-text{
+       display:block; margin-top:4px; padding-top:4px;
+       border-top:.5px solid rgba(128,128,128,.2);
+       font-size:14px; opacity:.8; color:inherit;
+     }
+     .bubble.me .translation-text{ border-top-color:rgba(255,255,255,.2); }
+
+   B. 译文单独一个气泡（在原文上方）
+   DOM：
+     <div class="message-row left|right">
+       <div class="message-content">
+         <div class="translation-bubble translation-text other|me">译文</div>
+         <div class="bubble other|me">原文</div>
+       </div>
+     </div>
+   写法：
+     :root { --nano-trans-separate: 1; }
+     .translation-bubble{
+       display:block; align-self:flex-start;
+       margin:0 0 4px; padding:6px 10px; border-radius:12px;
+       background:rgba(0,0,0,.05); color:#6c6c70;
+       font-size:13px; line-height:1.4;
+       max-width:100%; overflow-wrap:anywhere;
+     }
+     .translation-bubble.me{
+       align-self:flex-end;
+       background:rgba(0,122,255,.12); color:#0060df;
+     }
+
+   C. 固定模式的其他写法（任选其一，优先级：
+      body[data-nano-trans-separate] > CSS 变量 > 模板 JS > 聊天设置）
+     - body 加 data-nano-trans-separate="1" / "0"
+     - 模板 JS：window.NANO_TRANSLATION_SEPARATE = 1 / 0
+   注意：同一气泡和独立气泡的 DOM 不同，你的 CSS 必须按上面
+   两种结构分别写；只改颜色不改结构时，两种结构都要能正常显示。
+   ============================================================ */
 .bubble .translation-text {
   display: block; margin-top: 4px; padding-top: 4px;
   border-top: 0.5px solid rgba(128, 128, 128, 0.2);
@@ -400,52 +446,75 @@ window.NANO_CHAT_TEMPLATE = `/* ================================================
    兼容旧选择器：.card-main / .card-title / .card-sub / .icon-wrap /
    .card-footer / .card-btn 仍然保留。
 
-   ==================== 长方形卡片配方 ====================
-   默认是「图标在上、文字在下」的初始模板。想做旧版长方形横排：
-   .bubble-card { --card-width: 320px; }
-   .bubble-card .main-section { flex-direction: row; align-items: center;
-     text-align: left; gap: 10px; padding: 12px; border-bottom: 0; }
-   .bubble-card .main-icon { margin: 0; }
-   .bubble-card .main-text { display: flex; flex-direction: column; flex: 1;
-     min-width: 0; align-items: flex-start; gap: 2px; }
-   .bubble-card .main-label,
-   .bubble-card .main-title,
-   .bubble-card .amount { text-align: left; }
-   .bubble-card .card-title { font-size: 17px; font-weight: 600; line-height: 1.3; }
-   .bubble-card .card-sub { font-size: 12px; opacity: 0.85; margin-top: 3px; }
+   ==================== 方形 / 长方形卡片 ====================
+   卡片尺寸完全由模板控制，默认宽度 300px；任何卡片类型都适用：
+   - 正方形：
+     .bubble-card { --card-width: 300px; --card-min-height: 300px; }
+     .bubble-card .main-section { flex: 1; justify-content: center; }
+   - 长方形（横排，推荐）：
+     .bubble-card { --card-width: 320px; --card-min-height: 160px; }
+     .bubble-card .main-section { flex-direction: row; align-items: center;
+       text-align: left; gap: 10px; padding: 12px; border-bottom: 0; }
+     .bubble-card .main-icon { margin: 0; }
+     .bubble-card .main-text { display: flex; flex-direction: column; flex: 1;
+       min-width: 0; align-items: flex-start; gap: 2px; }
+     .bubble-card .main-label,
+     .bubble-card .main-title,
+     .bubble-card .amount { text-align: left; }
+   - 其他尺寸：直接写 width / min-height / max-height / border-radius。
    旧卡片结构里的 .card-main / .card-title / .card-sub / .icon-wrap 都还在，
-   之前针对这些条目名写的美化可以继续复用；检测到旧 .card-main / .icon-wrap
-   选择器时会自动补上横向长方形布局，不需要重写旧美化。
+   之前针对这些条目名写的美化可以继续复用。
 
-   ==================== 隐藏 / 添加卡片内信息 ====================
-   数据层（写入 cardData）：
-   - info: [['标签','内容','icon名'], ...]  完全替换默认 4 条
-   - fields / rows: 同上，三种写法等价
-   - extraInfo: [['标签','内容','icon名'], ...]  在默认 4 条后追加
-   - hideInfo: true  或  info: []  隐藏整块信息区
+   ==================== 卡片板块：增 / 删 / 改 ====================
+   卡片 DOM 是固定兼容格式，板块按顺序是：
+   .card-header（状态栏）→ .main-section（主区）→ .info-section（信息区）
+   → .message-box（留言/备注）→ .card-footer（按钮/状态）
+   任意板块都可以单独隐藏或改样式：
+   - 隐藏状态栏：.bubble-card .card-header { display:none; }
+   - 隐藏信息区：.bubble-card .info-section { display:none; }
+   - 隐藏第 4 条信息：.bubble-card .info-item:nth-child(4){ display:none; }
+   - 信息区改单列：.bubble-card .info-grid{ grid-template-columns:1fr; }
+   - 隐藏留言：.bubble-card .card-note{ display:none; }
+   - 隐藏按钮：.bubble-card .card-footer{ display:none; }
+   添加板块（推荐用 JS，和卡片同生共死）：
+     @js
+       observe('.bubble-card', function(card){
+         if (card.querySelector('.my-block')) return;
+         var box = document.createElement('div');
+         box.className = 'my-block';
+         box.textContent = '我加的板块';
+         card.appendChild(box);
+       });
+     或者用 CSS 伪元素加纯文字/图标：
+     .bubble-card .info-section::after{ content:'自定义提示'; display:block; }
+
+   ==================== 数据层兼容字段 ====================
+   - info / fields / rows: [['标签','内容','icon名'], ...]  完全替换信息区
+   - extraInfo / extraFields: [...]  在默认信息后追加板块
+   - hideInfo: true 或 info: []  隐藏整块信息
    - width / cardWidth、height / cardHeight  直接指定卡片尺寸
    - iconSvg（内联 SVG）/ icon（图片 URL）  替换主图标
-   CSS 层：
-   - .bubble-card .info-section { display: none; }   隐藏整块
-   - .bubble-card .info-item:nth-child(4) { display: none; } 隐藏第 4 条
-   - .bubble-card .info-grid { grid-template-columns: 1fr; } 改成单列
-   - .bubble-card { --card-width: 300px; --card-min-height: 180px; } 改尺寸 */
+   - footer: '状态文字'  自定义底部状态
+   颜色、圆角、间距、字体、阴影都可以在模板 CSS 里任意改；
+   卡片类型 class（transfer / gift / store / scheduleReport / scheduleChange /
+   charSecretChat 等）仍保留，旧美化选择器不会失效。 */
 .nano-chat-inner .bubble-card {
     position: relative; width: var(--card-width, 300px); max-width: 100%;
     height: auto; min-height: var(--card-min-height, 0); aspect-ratio: auto;
     box-sizing: border-box;
-    background: #ffffff; color: #111111;
-    border: 1px solid #e5e5e5; border-radius: 16px;
-    box-shadow: 0 6px 20px rgba(0,0,0,0.08);
+    background: var(--card-bg, #ffffff); color: var(--card-text, #111111);
+    border: var(--card-border, 1px solid #e5e5e5); border-radius: var(--card-radius, 16px);
+    box-shadow: var(--card-shadow, 0 6px 20px rgba(0,0,0,0.08));
     overflow: hidden; font-size: 14px; line-height: 1.3;
 }
 .nano-chat-inner .bubble-card.right { align-self: flex-end; }
 .nano-chat-inner .bubble-card.left { align-self: flex-start; }
+/* 默认不生成伪元素；但不要加 !important，方便美化里给卡片加自己的 SVG/装饰 */
 .nano-chat-inner .bubble-card::before,
-.nano-chat-inner .bubble-card::after { content: none !important; display: none !important; }
+.nano-chat-inner .bubble-card::after { content: none; display: none; }
 .nano-chat-inner .bubble-card .card-header {
     display: flex; align-items: center; justify-content: space-between; gap: 8px;
-    padding: 10px 14px; background: #111111; color: #ffffff;
+    padding: 10px 14px; background: var(--card-header-bg, #111111); color: var(--card-header-text, #ffffff);
 }
 .nano-chat-inner .bubble-card .status {
     display: flex; align-items: center; gap: 6px; min-width: 0;
@@ -639,6 +708,7 @@ window.NANO_CHAT_TEMPLATE = `/* ================================================
   padding: var(--chat-topbar-pad, var(--chat-safe-top)) 12px 6px;
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
 }
+
 /* 群聊顶栏的返回 / 群名 / 头像与单聊共享上面「2.1 顶栏」那套透明胶囊样式。
    想单独改群聊或去掉胶囊，在这里写 .nano-groups … 覆盖即可（例如 background: transparent）。 */
 .nano-groups .group-notice-bar { display: flex; align-items: center; gap: 8px; padding: 8px 16px; background: #fef6e0; font-size: 13px; color: #8a6d1f; flex-shrink: 0; margin: 0 12px 6px; border-radius: 8px; }
@@ -892,39 +962,66 @@ window.NANO_CHAT_TEMPLATE = `/* ================================================
    .nano-chat-inner .message-avatar { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #ff6fa0; }
 */
 
-/* 配方 C：把顶栏「头像」从设置按钮上剥离成独立覆盖装饰，可自由移动；
-   设置按钮原地不动、照样能点（头像只是它的覆盖装饰）。
-   原理：头像图片/占位文字脱离按钮的布局流（position:fixed），按钮只留一个透明点击区。
-   —— 想移动头像只改 left / right / top；不想要阴影就删掉 box-shadow。
+/* 配方 C（可选，不影响初始 UI）：极简顶栏
+   ------------------------------------------------------------
+   想要「返回 → char 头像 → 昵称 → SVG 设置按钮」时再加，初始 UI 不会被改。
+   因为初始 DOM 里头像和设置按钮是同一个元素，CSS 单独改不出来，
+   需要先加一小段 @js 把头像图片移到独立容器，再应用下面的 CSS。
 
-   .nano-chat-inner .topbar-avatar,
-   .nano-groups .topbar-avatar {
-     position: relative !important;           // 设置按钮留在顶栏原位
-     overflow: visible !important;
-     background: transparent !important;
-     border: none !important;
-     box-shadow: none !important;
-     backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
+   1) 在聊天美化里加一个真正的 @js 块（下面这段放进 / * @js ... * /）：
+      (function(){
+        if (document.querySelector('.topbar-char-avatar')) return;
+        var top = document.querySelector('.topbar');
+        var av = document.getElementById('topbarAvatar');
+        var img = document.getElementById('avatarImage');
+        var ph = document.getElementById('avatarPlaceholder');
+        if (!top || !av) return;
+        var box = document.createElement('div');
+        box.className = 'topbar-char-avatar';
+        if (img) box.appendChild(img);
+        if (ph) box.appendChild(ph);
+        var back = document.getElementById('backBtn');
+        if (back) back.insertAdjacentElement('afterend', box);
+        else top.insertBefore(box, top.firstChild);
+        av.innerHTML = '';
+        av.classList.add('topbar-settings-svg');
+      })();
+
+   2) CSS：
+   .nano-chat-inner .topbar { justify-content: flex-start !important; gap: 10px !important; }
+   .nano-chat-inner .topbar-char-avatar {
+     order: 1; width: 44px; height: 44px; min-width: 44px; border-radius: 50%;
+     overflow: hidden; box-shadow: 0 0 0 2px rgba(244,183,204,.85), 0 3px 10px rgba(0,0,0,.1);
+     display: flex; align-items: center; justify-content: center; flex: 0 0 auto;
    }
-   .nano-chat-inner .topbar-avatar > img,
-   .nano-chat-inner .topbar-avatar > span,
-   .nano-groups .topbar-avatar > img,
-   .nano-groups .topbar-avatar > span {
-     position: fixed !important;              // 固定定位 = 可放到屏幕任意位置
-     left: auto !important;
-     right: 16px;                             // ← 改这里可左右移动头像
-     top: calc(var(--safe-top, 0px) + 10px);  // ← 改这里可上下移动头像
-     width: 52px !important; height: 52px !important;
-     border-radius: 50% !important;
-     object-fit: cover;
-     z-index: 26 !important;
-     pointer-events: none !important;         // 装饰层不挡点击，点击仍落到设置按钮
-     box-shadow: 0 4px 14px rgba(0, 0, 0, .18);
+   .nano-chat-inner .topbar-char-avatar > img,
+   .nano-chat-inner .topbar-char-avatar > span {
+     width: 100% !important; height: 100% !important; display: flex !important;
+     align-items: center !important; justify-content: center !important;
+     object-fit: cover !important; border-radius: 50% !important;
    }
-   // 可选：给透明的设置按钮自己加个可见图标（设置自己渲染）
-   // .nano-chat-inner .topbar-avatar::before { content: "⚙"; font-size: 18px; color: #8e8e93; }
+   .nano-chat-inner .topbar .topbar-title {
+     order: 2 !important; position: static !important; transform: none !important;
+     margin: 0 !important; padding: 0 !important; background: transparent !important;
+     border: 0 !important; box-shadow: none !important; text-align: left !important;
+     max-width: 52% !important; font-weight: 700 !important;
+   }
+   .nano-chat-inner .topbar .topbar-settings-svg {
+     order: 3 !important; margin-left: auto !important;
+     width: 34px !important; height: 34px !important; min-width: 34px !important;
+     padding: 0 !important; background: transparent !important; border: 0 !important;
+     box-shadow: none !important; overflow: visible !important;
+     display: flex !important; align-items: center !important; justify-content: center !important;
+     font-size: 0 !important;
+   }
+   .nano-chat-inner .topbar .topbar-settings-svg::before {
+     content: "" !important; display: block !important; width: 22px !important; height: 22px !important;
+     background: #8e8e93 !important;
+     -webkit-mask: url("data:image/svg+xml,...你的SVG...") center / contain no-repeat !important;
+     mask: url("data:image/svg+xml,...你的SVG...") center / contain no-repeat !important;
+   }
+   返回按钮已经是最左侧原生按钮，不需要再动。
 */
-
 /* 配方 K：顶栏整体 DIY（移动 / 隐藏 / 换样式；返回、设置按钮功能保持不变）
    顶栏 = .nano-chat-inner .topbar（群聊为 .nano-groups .topbar）。三个子元素：
    .back-btn 返回 · .topbar-title 昵称 · .topbar-avatar 设置按钮。改样式不影响点击逻辑。
@@ -946,7 +1043,7 @@ window.NANO_CHAT_TEMPLATE = `/* ================================================
    // ⑥ 设置按钮换成图片（隐藏图标但保留点击）：
    .nano-chat-inner .topbar-avatar > img, .nano-chat-inner .topbar-avatar > span { visibility: hidden; }
    .nano-chat-inner .topbar-avatar { background: url("https://your.cdn/settings.png") center / cover no-repeat !important; }
-   // 想把「头像」从设置按钮上剥离单独移动 → 配方 C；只移动消息头像 → 配方 L。
+   // 顶栏头像是独立的 .topbar-char-avatar，设置按钮是最右边的 .topbar-avatar；只移动消息头像 → 配方 L。
 */
 
 /* ============================================================
@@ -1174,17 +1271,60 @@ window.NANO_CHAT_TEMPLATE = `/* ================================================
 */
 
 /* 配方 J：给顶栏/底栏加遮罩（默认透明，气泡从栏下穿过）
-   结构层已把 .topbar/.bottom-bar 固定成悬浮透明，直接写 background 会被覆盖；
-   请用变量加遮罩（px / 渐变 / URL 图片都行）：
+   两种写法都有效；推荐用变量，简单且不会被基础样式干扰：
    :root { --chat-topbar-mask: linear-gradient(#fff 60%, rgba(255,255,255,0)); }
    :root { --chat-bottom-mask: linear-gradient(transparent, #fff 40%); }
+   // 纯实色：
+   :root { --chat-topbar-mask: #fff; --chat-bottom-mask: #fff; }
+   // 直接用 background 也可以，但必须写全选择器并加 !important：
+   body.nano-chat-inner .topbar, body.nano-groups .topbar,
+   body.nano-chat-inner .bottom-bar, body.nano-groups .bottom-bar {
+     background: #fff !important;
+   }
    // 用图片做底栏遮罩：
    :root { --chat-bottom-mask: url("https://your.cdn/bottom.png") center / cover no-repeat; }
-   // 群聊底栏未启用悬浮结构，仍可直接写 background：
-   .nano-groups .bottom-bar {
-     background: url("https://your.cdn/bottom.png") center / cover no-repeat;
-   }
 */
+
+/* ============================================================
+   6. DIY 覆盖区（把自定义规则放这里，放最下面）
+   ------------------------------------------------------------
+   顶栏/卡片的基础样式带 .nano-chat-inner / .nano-groups 前缀，
+   所以只写 .topbar / .bubble-card 有时会被基础样式压住。
+   想稳定覆盖，用 body.nano-chat-inner 前缀或加 !important：
+
+   // 顶栏实色 + 可点击：
+   body.nano-chat-inner .topbar {
+     background: #fff !important;
+     pointer-events: auto !important;
+   }
+
+   // 卡片尺寸（方形 / 长方形）：
+   body.nano-chat-inner .bubble-card {
+     --card-width: 320px;
+     --card-min-height: 180px;
+     border-radius: 20px !important;
+   }
+
+   // 给卡片加一个额外 SVG（不动 HTML）：
+   body.nano-chat-inner .bubble-card .main-icon::after {
+     content: url("data:image/svg+xml,%3Csvg ... %3E");
+     width: 18px; height: 18px; display: block; margin-top: 6px;
+   }
+
+   // 给卡片加一个文字板块（需要一点 JS，参考上面的 @js 写法）：
+   //   observe('.bubble-card', function(card){
+   //     if (card.querySelector('.my-card-block')) return;
+   //     var d = document.createElement('div');
+   //     d.className = 'my-card-block';
+   //     d.textContent = '自定义板块';
+   //     card.appendChild(d);
+   //   });
+
+   // 去掉卡片里的某个板块：
+   body.nano-chat-inner .bubble-card .info-section { display: none !important; }
+   body.nano-chat-inner .bubble-card .card-footer { display: none !important; }
+   // 想恢复时删掉对应规则即可。
+   ============================================================ */
 
 /* ============================================================
    5. 弹层速查（结构说明，默认不改样式，需要时自行覆盖）

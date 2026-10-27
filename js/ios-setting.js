@@ -266,9 +266,57 @@
     }
 
     // 把私聊里的世界书 / 长期记忆也带上。只有一句人设时，快捷指令最容易 OOC。
+    function readWalletBalance() {
+        return new Promise(function (resolve) {
+            try {
+                var uid = 'm_default';
+                try {
+                    var h = JSON.parse(localStorage.getItem('nano_mask_data') || 'null') ||
+                        JSON.parse(localStorage.getItem('nano_home_data') || 'null') || null;
+                    uid = String((h && (h.currentMaskId || (h.masks && h.masks[0] && h.masks[0].id))) || 'm_default');
+                } catch (e) {}
+                var req = indexedDB.open('nano_wallet_db', 1);
+                req.onupgradeneeded = function (e) {
+                    try {
+                        var d = e.target.result;
+                        if (!d.objectStoreNames.contains('wallet_data')) d.createObjectStore('wallet_data', { keyPath: 'key' });
+                    } catch (err) {}
+                };
+                req.onsuccess = function (e) {
+                    try {
+                        var store = e.target.result.transaction('wallet_data', 'readonly').objectStore('wallet_data');
+                        var r = store.get('wallet_data__' + uid);
+                        r.onsuccess = function () {
+                            var v = r.result && r.result.value;
+                            if (!v) {
+                                var r2 = store.get('wallet_data');
+                                r2.onsuccess = function () {
+                                    var v2 = r2.result && r2.result.value;
+                                    resolve(v2 ? Number(v2.balance) || 0 : 5000);
+                                };
+                                r2.onerror = function () { resolve(5000); };
+                                return;
+                            }
+                            if (Array.isArray(v.cards) && v.cards.length) {
+                                resolve(v.cards.reduce(function (s, c) { return s + (Number(c && c.balance) || 0); }, 0));
+                            } else resolve(Number(v.balance) || 0);
+                        };
+                        r.onerror = function () { resolve(5000); };
+                    } catch (err) { resolve(5000); }
+                };
+                req.onerror = function () { resolve(5000); };
+            } catch (e) { resolve(5000); }
+        });
+    }
+
     async function fullPeekSystemAsync() {
         var recentList = await recentContextAsync();
         var p = fullPeekSystem(recentList);
+        try {
+            var bal = await readWalletBalance();
+            p += '\n【用户真实经济状况】用户钱包当前余额约 ¥' + (Number(bal) || 0).toFixed(2) +
+                '。这是系统里的真实数据，不要凭空说用户没钱、欠钱、吃不起饭或暗示用户很穷；提到钱时以这个余额和你看到的具体情境为准。\n';
+        } catch (e) {}
         var c = currentChar();
         var ctx = recentList.map(function (m) { return m.content; }).join('\n');
         try {
@@ -331,7 +379,30 @@
         var imgBody = peekBody('image');
         var txtBody = peekBody('text');
         el.innerHTML = ''
-            + '<h4>截图 → TA 点评（推荐直接传图片）</h4>'
+            + '<h4>最简版（先照这个配，能跑通再加功能）</h4>'
+            + '<ol>'
+            + '<li>快捷指令 App → <b>+</b> 新建，命名「窥屏」。</li>'
+            + '<li>加动作：<code>截屏</code> → <code>Base64 编码</code>（关闭换行）。</li>'
+            + '<li>加 <code>获取 URL 内容</code>：<br>'
+            + '地址 <code>' + esc(ep || '（先填服务端地址）') + '</code><br>'
+            + '方法 <code>POST</code>；头部 <code>X-Peek-Token</code> = <code>' + esc(tok || '（令牌）') + '</code><br>'
+            + '请求体选 <b>文件</b>，引用一个文本动作，内容：'
+            + '<pre class="sk-guide-json">' + esc('{"chatId":"' + (id || '角色ID') + '","image":"data:image/jpeg;base64,<Base64结果>"}') + '</pre>'
+            + '把 <code>&lt;Base64结果&gt;</code> 换成第 2 步的 Base64 变量。</li>'
+            + '<li>加 <code>获取字典值</code>，键 <code>reply</code>。</li>'
+            + '<li>加 <code>显示提醒</code>，内容放 <code>reply</code>。运行一次能弹点评就成功了。</li>'
+            + '</ol>'
+            + '<h4>连续聊（它自己反复执行）</h4>'
+            + '<ol>'
+            + '<li>在「显示提醒」后加 <code>要求输入</code>（提示：你想说什么）。</li>'
+            + '<li>再加 <code>获取 URL 内容</code>：地址/头部同上，请求体选 <b>文件</b> → 文本动作：'
+            + '<pre class="sk-guide-json">' + esc('{"chatId":"' + (id || '角色ID') + '","text":"<要求输入的变量>"}') + '</pre>'
+            + '把 <code>&lt;要求输入的变量&gt;</code> 换成「要求输入」的结果。</li>'
+            + '<li>再接 <code>获取字典值</code> → <code>显示提醒</code>，然后把这四步放进 <code>重复</code>（50 或 100 次）。</li>'
+            + '<li>在「要求输入」后加 <code>如果</code>：输入 <code>退出</code> → <code>停止此快捷指令</code>。</li>'
+            + '<li>第一轮带 image，之后只发 text；chatId 不变，所有轮次都会进同一个私聊。</li>'
+            + '</ol>'
+            + '<h4>完整版（可选：缩放/压缩/识图兜底）</h4>'
             + '<ol>'
             + '<li>打开「快捷指令」App，右上角 <b>+</b> 新建，命名「窥屏」。</li>'
             + '<li>添加动作 <code>截屏</code>。</li>'
@@ -362,6 +433,15 @@
             + '<li><code>text</code> 的值直接插入上一步「要求输入」的变量。用 JSON 字段时 Shortcuts 会自动处理引号和换行，不会把 JSON 拼坏。</li>'
             + '<li>再接 <code>获取字典值</code> → <code>显示提醒</code>，就可以一轮一轮聊下去。</li>'
             + '</ol>'
+            + '<h4>连续聊：让它自己反复执行</h4>'
+            + '<ol>'
+            + '<li>在「显示提醒」后面加 <code>重复</code>，次数填 <b>50</b> 或 <b>100</b>。</li>'
+            + '<li>把 <code>要求输入</code> → <code>获取 URL 内容</code> → <code>获取字典值</code> → <code>显示提醒</code> 放进「重复」里面。</li>'
+            + '<li>请求体继续用 JSON：<code>{"chatId":"' + esc(id || '角色ID') + '","text":"&lt;要求输入的变量&gt;"}</code>。<br>'
+            + '第一轮可以带 image；从第二轮开始把 image 换成 text，这样同一角色会一直接上文。</li>'
+            + '<li>在「要求输入」后面加 <code>如果</code>：如果输入是 <code>退出</code>，就 <code>停止此快捷指令</code>，避免无限循环。</li>'
+            + '<li>也可以不用「重复」，每次运行快捷指令只聊一轮；只要 chatId 不变，回到 Nano 后所有轮次都会按顺序进同一个私聊。</li>'
+            + '</ol>'
             + '<h4>更顺手的触发</h4>'
             + '<ol>'
             + '<li><b>轻点背面</b>：设置 → 辅助功能 → 触控 → 轻点背面 → 轻点两下 → 选「窥屏」。</li>'
@@ -390,7 +470,15 @@
             '回话请求体 JSON：',
             peekBody('text'),
             '',
-            '具体步骤：',
+            '最简版（先照这个配）：',
+            '1. 新建快捷指令「窥屏」→ 截屏 → Base64 编码（关闭换行）。',
+            '2. 获取 URL 内容：POST 上面的接口地址；头部 X-Peek-Token = 上面的令牌；请求体选「文件」引用文本：',
+            '   {"chatId":"' + id + '","image":"data:image/jpeg;base64,<Base64结果>"}',
+            '   把 <Base64结果> 换成 Base64 变量。',
+            '3. 获取字典值 reply → 显示提醒。运行一次能弹点评就成功。',
+            '连续聊：显示提醒后加「要求输入」→ 再发一次 URL 请求（请求体换成 {"chatId":"' + id + '","text":"<要求输入的变量>"}）→ reply → 显示提醒；把这四步放进「重复」50/100 次。输入“退出”时用「如果」停止。',
+            '',
+            '完整版步骤：',
             '1. 打开「快捷指令」App，右上角 + 新建，命名「窥屏」。',
             '2. 添加动作：截屏 → 调整图像大小（宽 900，高留空）→ 转换图像（JPEG 0.7）→ Base64 编码（关闭行长度换行）。',
             '   原图直接 Base64 很容易请求超时；一定要先缩放和压成 JPEG。',
@@ -405,6 +493,8 @@
             '   如果只能收到“看不到图片”，检查主 API 模型是否支持识图，以及 image 字段是否以 data:image/jpeg;base64, 开头。',
             '',
             '想连续聊：再加「要求输入」拿到文字，用 chatId / appId / text 三个 JSON 字段再发一轮。',
+            '连续自动聊：把「要求输入 → 获取URL内容 → 获取字典值 → 显示提醒」放进「重复」50/100 次；输入“退出”时用「如果」停止快捷指令。',
+            '第一轮可以带 image，之后每轮只发 text；chatId 不变，所有轮次都会进同一个私聊。',
             '想更快：设置 → 辅助功能 → 触控 → 轻点背面 → 双击 → 选这个快捷指令。'
         ].join('\n');
     }

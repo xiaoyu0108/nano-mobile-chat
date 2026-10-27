@@ -21,6 +21,7 @@
         userPlus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>',
         users: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
         calendar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg>',
+        secret: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5a3.5 3.5 0 0 1-3.5 3.5H14l-3.2 2.2V18H8a3.5 3.5 0 0 1-3.5-3.5v-7A3.5 3.5 0 0 1 8 4h8.5A3.5 3.5 0 0 1 20 7.5v7z"/><path d="M8.5 9.5h7M8.5 12.5h4"/></svg>',
         scheduleEdit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="17" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h17"/><path d="m14.5 15.2 2.8-2.8 2.3 2.3-2.8 2.8-2.8.5.5-2.8z"/></svg>',
         hash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h16M4 15h16M10 3 8 21M16 3l-2 18"/></svg>',
         box: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 8-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>',
@@ -590,6 +591,18 @@
                     ['接龙状态', '进行中', 'box'],
                     ['发起时间', time || '刚刚', 'clock']
                 ]) + chainHtml + (side === 'right' ? statusFoot('由你发起') : actions([['我要接龙', '', true, 'data-chain="' + esc(cd.chainId || '') + '"']]));
+        } else if (type === 'charSecretChat') {
+            var secretLines = Array.isArray(cd.secretLines) ? cd.secretLines : [];
+            var firstLine = secretLines[0] || {};
+            var secretPreview = String(firstLine.text || firstLine.translation || '').slice(0, 80);
+            html = header('secret', '角色悄悄话', time) +
+                mainTitle('secret', '角色悄悄话', cd.title || '两个人私下聊了几句', cd.sub || ('共 ' + secretLines.length + ' 句')) +
+                info([
+                    ['对话双方', cd.title || '—', 'users'],
+                    ['记录句数', secretLines.length + ' 句', 'hash'],
+                    ['记录时间', time || '刚刚', 'clock']
+                ]) +
+                (secretPreview ? note(secretPreview) : '') + statusFoot('');
         } else if (type === 'cycle') {
             html = header('calendar', cd.title || '经期提醒', time) +
                 mainTitle('calendar', '经期提醒', cd.sub || '', cd.date || '', cd) +

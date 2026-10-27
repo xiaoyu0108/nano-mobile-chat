@@ -267,7 +267,17 @@
         return turns.length;
     }
 
+    let peekPulling = false;
     async function pullPeek(onlyChat) {
+        if (peekPulling) return;
+        peekPulling = true;
+        try {
+            await pullPeekInner(onlyChat);
+        } finally {
+            peekPulling = false;
+        }
+    }
+    async function pullPeekInner(onlyChat) {
         var base = '', token = '';
         try { base = localStorage.getItem('nano_peek_url') || ''; } catch (e) {}
         if (!base) { try { base = localStorage.getItem('nano_push_endpoint') || ''; } catch (e) {} }
@@ -285,7 +295,7 @@
     }
 
     window.NanoIOSBridge = {
-        version: '20261025b',
+        version: '20261027h',
         queue: function (item) { var l = loadPending(); l.push(item || {}); savePending(l); },
         drain: drain,
         pullPeek: pullPeek,
@@ -300,6 +310,17 @@
             setTimeout(function () { try { pullPeek(); } catch (e) {} }, 1400);
         }
     });
+    // iOS PWA 从快捷指令回来后有时不触发 visibilitychange；pageshow/focus + 前台定时兜底。
+    window.addEventListener('pageshow', function () {
+        setTimeout(drain, 600);
+        setTimeout(function () { try { pullPeek(); } catch (e) {} }, 1200);
+    });
+    window.addEventListener('focus', function () {
+        setTimeout(function () { try { pullPeek(); } catch (e) {} }, 700);
+    });
+    setInterval(function () {
+        if (!document.hidden) { try { pullPeek(); } catch (e) {} }
+    }, 30000);
 
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
     else boot();

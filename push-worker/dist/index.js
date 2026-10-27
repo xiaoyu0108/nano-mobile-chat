@@ -651,8 +651,8 @@ function marketRowToItem(row) {
 function subId(endpoint) {
   return "sub:" + btoa(endpoint).replace(/[^a-zA-Z0-9]/g, "").slice(-48);
 }
-function subKey(endpoint, appId, deviceId, userId) {
-  return "sub2:" + cleanAppId(appId) + ":" + cleanDeviceId(deviceId) + ":" + cleanUserId(userId) + ":" + subId(endpoint).slice(4);
+function subKey(endpoint, appId, deviceId2, userId2) {
+  return "sub2:" + cleanAppId(appId) + ":" + cleanDeviceId(deviceId2) + ":" + cleanUserId(userId2) + ":" + subId(endpoint).slice(4);
 }
 function cleanPart(v, fallback, max) {
   const s = String(v == null ? "" : v).replace(/[^a-zA-Z0-9_.-]/g, "").slice(0, max || 80);
@@ -668,19 +668,19 @@ function cleanUserId(v) {
   const s = String(v == null ? "" : v).replace(/:/g, "_").slice(0, 80);
   return s || "default";
 }
-function autoScope(appId, deviceId, userId) {
-  return cleanAppId(appId) + ":" + cleanDeviceId(deviceId) + ":" + cleanUserId(userId);
+function autoScope(appId, deviceId2, userId2) {
+  return cleanAppId(appId) + ":" + cleanDeviceId(deviceId2) + ":" + cleanUserId(userId2);
 }
-function autoKey(kind, appId, deviceId, userId) {
-  return "auto2:" + kind + ":" + autoScope(appId, deviceId, userId);
+function autoKey(kind, appId, deviceId2, userId2) {
+  return "auto2:" + kind + ":" + autoScope(appId, deviceId2, userId2);
 }
-function autoActiveKey(appId, deviceId) {
-  return "auto2:active:" + cleanAppId(appId) + ":" + cleanDeviceId(deviceId);
+function autoActiveKey(appId, deviceId2) {
+  return "auto2:active:" + cleanAppId(appId) + ":" + cleanDeviceId(deviceId2);
 }
 var AUTO_INDEX_KEY = "auto2:_index";
 var JOB_INDEX_KEY = "job:_index";
-function autoScopeOf(appId, deviceId, userId) {
-  return cleanAppId(appId) + ":" + cleanDeviceId(deviceId) + ":" + cleanUserId(userId);
+function autoScopeOf(appId, deviceId2, userId2) {
+  return cleanAppId(appId) + ":" + cleanDeviceId(deviceId2) + ":" + cleanUserId(userId2);
 }
 async function readIndex(env, key) {
   try {
@@ -742,16 +742,16 @@ async function addJobId(env, id) {
   if (arr.indexOf(id) === -1) await writeIndex(env, JOB_INDEX_KEY, arr.concat(id));
 }
 var ACTIVE_CACHE = /* @__PURE__ */ new Map();
-async function touchActive(env, appId, deviceId, userId, force) {
+async function touchActive(env, appId, deviceId2, userId2, force) {
   appId = cleanAppId(appId);
-  deviceId = cleanDeviceId(deviceId);
-  userId = cleanUserId(userId);
-  const cacheKey = appId + ":" + deviceId;
+  deviceId2 = cleanDeviceId(deviceId2);
+  userId2 = cleanUserId(userId2);
+  const cacheKey = appId + ":" + deviceId2;
   const now = Date.now();
   const hit = ACTIVE_CACHE.get(cacheKey);
-  if (!force && hit && hit.userId === userId && now - hit.checkedAt < 10 * 60 * 1e3) return;
+  if (!force && hit && hit.userId === userId2 && now - hit.checkedAt < 10 * 60 * 1e3) return;
   try {
-    const key = autoActiveKey(appId, deviceId);
+    const key = autoActiveKey(appId, deviceId2);
     const raw = await kv(env).get(key);
     if (raw && !force) {
       let old = {};
@@ -760,18 +760,18 @@ async function touchActive(env, appId, deviceId, userId, force) {
       } catch (e) {
         old = {};
       }
-      if (String(old.userId || "") === userId && now - (Number(old.at) || 0) < 6 * 3600 * 1e3) {
-        ACTIVE_CACHE.set(cacheKey, { userId, checkedAt: now });
+      if (String(old.userId || "") === userId2 && now - (Number(old.at) || 0) < 6 * 3600 * 1e3) {
+        ACTIVE_CACHE.set(cacheKey, { userId: userId2, checkedAt: now });
         return;
       }
     }
     await kv(env).put(key, JSON.stringify({
-      userId,
+      userId: userId2,
       appId,
-      deviceId,
+      deviceId: deviceId2,
       at: now
     }), { expirationTtl: 60 * 60 * 24 * 7 });
-    ACTIVE_CACHE.set(cacheKey, { userId, checkedAt: now });
+    ACTIVE_CACHE.set(cacheKey, { userId: userId2, checkedAt: now });
   } catch (e) {
   }
 }
@@ -933,22 +933,22 @@ async function peekApiConfig(env, appId, chatId, body, owner, realAppId) {
     const model = String(v.model || "").trim();
     return url && key && model ? { url, key, model } : null;
   };
-  const deviceId = cleanDeviceId(owner && owner.deviceId || body && body.deviceId || "default");
-  let userId = cleanUserId(owner && owner.userId || body && body.userId || "");
-  if (!userId || userId === "default") {
+  const deviceId2 = cleanDeviceId(owner && owner.deviceId || body && body.deviceId || "default");
+  let userId2 = cleanUserId(owner && owner.userId || body && body.userId || "");
+  if (!userId2 || userId2 === "default") {
     try {
-      const rawActive = await kv(env).get(autoActiveKey(realAppId || appId, deviceId));
+      const rawActive = await kv(env).get(autoActiveKey(realAppId || appId, deviceId2));
       if (rawActive) {
         const active = JSON.parse(rawActive);
-        if (active && active.userId) userId = cleanUserId(active.userId);
+        if (active && active.userId) userId2 = cleanUserId(active.userId);
       }
     } catch (e) {
     }
   }
-  if (!userId) userId = "default";
+  if (!userId2) userId2 = "default";
   if (!peekPublic(env)) {
     try {
-      const raw = await kv(env).get(autoKey("config", realAppId || appId, deviceId, userId));
+      const raw = await kv(env).get(autoKey("config", realAppId || appId, deviceId2, userId2));
       if (raw) {
         const cfg = JSON.parse(raw);
         const api = cleanApi(cfg && cfg.api);
@@ -1052,6 +1052,7 @@ function sanitizeAutoConfig(body) {
     },
     chars,
     api,
+    walletBalance: Math.max(0, Number(body.walletBalance) || 0),
     updatedAt: Date.now()
   };
 }
@@ -1390,7 +1391,7 @@ async function generateAutoMessages(env, cfg, busyChatId, avoidId) {
   const out = [];
   const now = Date.now();
   for (const c of picked) {
-    const system = "\u4F60\u662F\u300C" + c.name + "\u300D\uFF0C\u73B0\u5728\u4E3B\u52A8\u7ED9\u300C" + cfg.user.name + "\u300D\u53D1\u6D88\u606F\u3002\n" + (c.setting ? "\u3010\u4F60\u7684\u4EBA\u8BBE\u3011\n" + c.setting + "\n\n" : "") + "\u73B0\u5728\u662F " + autoNowText(c, now) + "\uFF08\u4F60\u6240\u5728\u5730\u7684\u5F53\u5730\u65F6\u95F4\uFF09\u3002\n" + autoLangBlock(c) + cycleBlock(c) + recentBlock(c) + '\n\u3010\u786C\u6027\u8981\u6C42\u3011\n- \u53EA\u53D1\u8FD9\u4E00\u6B21\uFF0C\u4E0D\u8981\u8FDE\u7EED\u8FFD\u95EE\u3001\u4E0D\u8981\u590D\u8BFB\u3001\u4E0D\u8981\u4E00\u6B21\u5199\u4E00\u5927\u6BB5\u3002\n- \u5FC5\u987B\u548C\u4E0A\u9762\u7684\u6700\u8FD1\u804A\u5929\u5F3A\u76F8\u5173\uFF1A\u63A5\u4F4F\u8BDD\u9898/\u60C5\u7EEA/\u7EA6\u5B9A\uFF0C\u6216\u5206\u4EAB\u4E00\u4EF6\u521A\u597D\u53D1\u751F\u3001\u80FD\u63A5\u5F97\u4F4F\u7684\u5C0F\u4E8B\u3002\n- \u4E25\u7981\u53E3\u6C34\u8BDD\uFF1A\u7981\u6B62\u201C\u5728\u5417/\u5728\u5E72\u561B/\u5403\u4E86\u5417/\u7761\u4E86\u5417/\u5FD9\u4E0D\u5FD9\u201D\u201C\u60F3\u4F60\u4E86\u201D\u5374\u6CA1\u6709\u4E0B\u6587\uFF1B\u7981\u6B62\u65E0\u5173\u7684\u65E5\u5E38\u6D41\u6C34\u8D26\uFF1B\u7981\u6B62\u62EC\u53F7\u65C1\u767D\uFF1B\u7981\u6B62\u63D0\u7CFB\u7EDF/\u63A8\u9001/AI\u3002\n- \u4E00\u6B21 API \u8C03\u7528\u540C\u65F6\u4EA7\u51FA\uFF1A\u601D\u7EF4\u94FE think\u3001\u5FC3\u58F0 heart\u3001\u6B63\u6587 bubbles\u3002\n- bubbles \u5FC5\u987B\u662F 2~3 \u6761\u5404\u81EA\u72EC\u7ACB\u7684\u6C14\u6CE1\uFF08\u6BCF\u6761 1 \u53E5\uFF0C\u53E3\u8BED\u81EA\u7136\uFF09\uFF0C\u4E0D\u8981\u628A\u591A\u6761\u585E\u8FDB\u540C\u4E00\u6761\u3002\n- heart \u683C\u5F0F\u56FA\u5B9A\u4E3A\u300C\u6B64\u523B\u5370\u8C61||\u5FC3\u58F0\u72EC\u767D\u300D\uFF0C\u5FC3\u58F0 60~120 \u5B57\uFF0C\u5E73\u5B9E\u3001\u4E0D\u8981\u717D\u60C5\u3002\n- \u5916\u56FD\u4EBA / \u7CA4\u8BED\u89D2\u8272\u4ECD\u6309\u4E0A\u9762\u7684\u8BED\u8A00\u89C4\u5219\u8F93\u51FA\u300C\u539F\u6587||\u4E2D\u6587\u7FFB\u8BD1\u300D\u3002\n\u53EA\u8F93\u51FA JSON\uFF0C\u4E0D\u8981\u4EFB\u4F55\u591A\u4F59\u6587\u5B57\uFF1A\n{"think":"\u8FD9\u4E00\u8F6E\u7684\u601D\u8003\uFF0C40~100\u5B57","heart":"\u6B64\u523B\u5370\u8C61||\u5FC3\u58F0\u72EC\u767D","bubbles":["\u7B2C\u4E00\u6761","\u7B2C\u4E8C\u6761","\u7B2C\u4E09\u6761"]}';
+    const system = "\u4F60\u662F\u300C" + c.name + "\u300D\uFF0C\u73B0\u5728\u4E3B\u52A8\u7ED9\u300C" + cfg.user.name + "\u300D\u53D1\u6D88\u606F\u3002\n" + (c.setting ? "\u3010\u4F60\u7684\u4EBA\u8BBE\u3011\n" + c.setting + "\n\n" : "") + "\u73B0\u5728\u662F " + autoNowText(c, now) + "\uFF08\u4F60\u6240\u5728\u5730\u7684\u5F53\u5730\u65F6\u95F4\uFF09\u3002\n" + (typeof cfg.walletBalance === "number" ? "\u3010\u7528\u6237\u771F\u5B9E\u7ECF\u6D4E\u72B6\u51B5\u3011\u7528\u6237\u94B1\u5305\u5F53\u524D\u4F59\u989D\u7EA6 \xA5" + Number(cfg.walletBalance).toFixed(2) + "\u3002\u8FD9\u662F\u771F\u5B9E\u6570\u636E\uFF0C\u4E0D\u8981\u51ED\u7A7A\u8BF4\u7528\u6237\u6CA1\u94B1\u3001\u6B20\u94B1\u6216\u5403\u4E0D\u8D77\u996D\u3002\n" : "") + autoLangBlock(c) + cycleBlock(c) + recentBlock(c) + '\n\u3010\u786C\u6027\u8981\u6C42\u3011\n- \u53EA\u53D1\u8FD9\u4E00\u6B21\uFF0C\u4E0D\u8981\u8FDE\u7EED\u8FFD\u95EE\u3001\u4E0D\u8981\u590D\u8BFB\u3001\u4E0D\u8981\u4E00\u6B21\u5199\u4E00\u5927\u6BB5\u3002\n- \u5FC5\u987B\u548C\u4E0A\u9762\u7684\u6700\u8FD1\u804A\u5929\u5F3A\u76F8\u5173\uFF1A\u63A5\u4F4F\u8BDD\u9898/\u60C5\u7EEA/\u7EA6\u5B9A\uFF0C\u6216\u5206\u4EAB\u4E00\u4EF6\u521A\u597D\u53D1\u751F\u3001\u80FD\u63A5\u5F97\u4F4F\u7684\u5C0F\u4E8B\u3002\n- \u4E25\u7981\u53E3\u6C34\u8BDD\uFF1A\u7981\u6B62\u201C\u5728\u5417/\u5728\u5E72\u561B/\u5403\u4E86\u5417/\u7761\u4E86\u5417/\u5FD9\u4E0D\u5FD9\u201D\u201C\u60F3\u4F60\u4E86\u201D\u5374\u6CA1\u6709\u4E0B\u6587\uFF1B\u7981\u6B62\u65E0\u5173\u7684\u65E5\u5E38\u6D41\u6C34\u8D26\uFF1B\u7981\u6B62\u62EC\u53F7\u65C1\u767D\uFF1B\u7981\u6B62\u63D0\u7CFB\u7EDF/\u63A8\u9001/AI\u3002\n- \u4E00\u6B21 API \u8C03\u7528\u540C\u65F6\u4EA7\u51FA\uFF1A\u601D\u7EF4\u94FE think\u3001\u5FC3\u58F0 heart\u3001\u6B63\u6587 bubbles\u3002\n- bubbles \u5FC5\u987B\u662F 2~3 \u6761\u5404\u81EA\u72EC\u7ACB\u7684\u6C14\u6CE1\uFF08\u6BCF\u6761 1 \u53E5\uFF0C\u53E3\u8BED\u81EA\u7136\uFF09\uFF0C\u4E0D\u8981\u628A\u591A\u6761\u585E\u8FDB\u540C\u4E00\u6761\u3002\n- heart \u683C\u5F0F\u56FA\u5B9A\u4E3A\u300C\u6B64\u523B\u5370\u8C61||\u5FC3\u58F0\u72EC\u767D\u300D\uFF0C\u5FC3\u58F0 60~120 \u5B57\uFF0C\u5E73\u5B9E\u3001\u4E0D\u8981\u717D\u60C5\u3002\n- \u5916\u56FD\u4EBA / \u7CA4\u8BED\u89D2\u8272\u4ECD\u6309\u4E0A\u9762\u7684\u8BED\u8A00\u89C4\u5219\u8F93\u51FA\u300C\u539F\u6587||\u4E2D\u6587\u7FFB\u8BD1\u300D\u3002\n\u53EA\u8F93\u51FA JSON\uFF0C\u4E0D\u8981\u4EFB\u4F55\u591A\u4F59\u6587\u5B57\uFF1A\n{"think":"\u8FD9\u4E00\u8F6E\u7684\u601D\u8003\uFF0C40~100\u5B57","heart":"\u6B64\u523B\u5370\u8C61||\u5FC3\u58F0\u72EC\u767D","bubbles":["\u7B2C\u4E00\u6761","\u7B2C\u4E8C\u6761","\u7B2C\u4E09\u6761"]}';
     const text = await autoChat(env, cfg, [
       { role: "system", content: system },
       { role: "user", content: "\u53D1 2~3 \u6761\u5F3A\u76F8\u5173\u7684\u4E3B\u52A8\u6D88\u606F\u3002" }
@@ -1524,11 +1525,11 @@ async function autoNotify(env, cfg, subs, payload) {
   }
   return 0;
 }
-async function runAutoPush(env, appId, deviceId, userId) {
+async function runAutoPush(env, appId, deviceId2, userId2) {
   appId = cleanAppId(appId);
-  deviceId = cleanDeviceId(deviceId);
-  userId = cleanUserId(userId);
-  const raw = await kv(env).get(autoKey("config", appId, deviceId, userId));
+  deviceId2 = cleanDeviceId(deviceId2);
+  userId2 = cleanUserId(userId2);
+  const raw = await kv(env).get(autoKey("config", appId, deviceId2, userId2));
   if (!raw) return;
   let cfg;
   try {
@@ -1539,7 +1540,7 @@ async function runAutoPush(env, appId, deviceId, userId) {
   if (!cfg || !cfg.enabled) return;
   let state = {};
   try {
-    const s = await kv(env).get(autoKey("state", appId, deviceId, userId));
+    const s = await kv(env).get(autoKey("state", appId, deviceId2, userId2));
     state = s ? JSON.parse(s) : {};
   } catch (e) {
     state = {};
@@ -1549,7 +1550,7 @@ async function runAutoPush(env, appId, deviceId, userId) {
   const momentDue = !!(cfg.momentEnabled && now >= (Number(state.nextMomentAt) || 0));
   if (!msgDue && !momentDue) return;
   try {
-    const activeRaw = await kv(env).get(autoActiveKey(appId, deviceId));
+    const activeRaw = await kv(env).get(autoActiveKey(appId, deviceId2));
     if (activeRaw) {
       let active = "";
       try {
@@ -1557,19 +1558,19 @@ async function runAutoPush(env, appId, deviceId, userId) {
       } catch (e) {
         active = "";
       }
-      if (active && active !== userId) return;
+      if (active && active !== userId2) return;
     }
   } catch (e) {
   }
   let subsCache = null;
   async function subsOnce() {
     if (subsCache) return subsCache;
-    subsCache = await getSubs(env, userId, deviceId, appId);
+    subsCache = await getSubs(env, userId2, deviceId2, appId);
     return subsCache;
   }
   let busyChatId = "";
   try {
-    busyChatId = String(await kv(env).get("auto2:call:" + cleanAppId(appId) + ":" + userId) || "");
+    busyChatId = String(await kv(env).get("auto2:call:" + cleanAppId(appId) + ":" + userId2) || "");
   } catch (e) {
   }
   let dirty = false;
@@ -1586,7 +1587,7 @@ async function runAutoPush(env, appId, deviceId, userId) {
     }
     if (msgs.length) {
       state.lastMsgChar = String(msgs[0].chatId || "");
-      const key = autoKey("msg", appId, deviceId, userId);
+      const key = autoKey("msg", appId, deviceId2, userId2);
       let list = [];
       try {
         const old = await kv(env).get(key);
@@ -1628,7 +1629,7 @@ async function runAutoPush(env, appId, deviceId, userId) {
         posts = [];
       }
       if (posts.length) {
-        const key = autoKey("moments", appId, deviceId, userId);
+        const key = autoKey("moments", appId, deviceId2, userId2);
         let list = [];
         try {
           const old = await kv(env).get(key);
@@ -1651,7 +1652,7 @@ async function runAutoPush(env, appId, deviceId, userId) {
       }
     }
   }
-  if (dirty) await kv(env).put(autoKey("state", appId, deviceId, userId), JSON.stringify(state));
+  if (dirty) await kv(env).put(autoKey("state", appId, deviceId2, userId2), JSON.stringify(state));
 }
 function peekModelText(data) {
   if (!data) return "";
@@ -2360,12 +2361,12 @@ async function accDropSession(env, name, sess) {
 }
 async function accIssueSession(env, user, body) {
   const now = Date.now();
-  const deviceId = String(body && body.deviceId || "").slice(0, 80) || accRandomHex(8);
+  const deviceId2 = String(body && body.deviceId || "").slice(0, 80) || accRandomHex(8);
   const deviceName = String(body && body.deviceName || "").slice(0, 80) || "\u672A\u77E5\u8BBE\u5907";
   const ua = String(body && body.ua || "").slice(0, 300);
   let list = await accReadSessions(env, user.u);
   list = list.filter(function(s) {
-    return !(deviceId && s.deviceId === deviceId);
+    return !(deviceId2 && s.deviceId === deviceId2);
   });
   const evicted = [];
   while (list.length >= ACC_MAX_DEVICES) {
@@ -2383,7 +2384,7 @@ async function accIssueSession(env, user, body) {
   const sess = {
     sid,
     token,
-    deviceId,
+    deviceId: deviceId2,
     deviceName,
     ua,
     at: now,
@@ -2467,12 +2468,12 @@ function accCode(prefix, groups) {
   }
   return out;
 }
-function accDeviceKey(user, deviceId) {
-  return "acct:dev:" + accLowerName(user.u) + ":" + String(deviceId || "");
+function accDeviceKey(user, deviceId2) {
+  return "acct:dev:" + accLowerName(user.u) + ":" + String(deviceId2 || "");
 }
-async function accReadDevice(env, user, deviceId) {
-  if (!user || !deviceId) return null;
-  const raw = await kv(env).get(accDeviceKey(user, deviceId));
+async function accReadDevice(env, user, deviceId2) {
+  if (!user || !deviceId2) return null;
+  const raw = await kv(env).get(accDeviceKey(user, deviceId2));
   if (!raw) return null;
   try {
     return JSON.parse(raw);
@@ -2514,21 +2515,21 @@ async function accReadDeviceByCode(env, code) {
     return null;
   }
 }
-async function accNewActivationCode(env, user, deviceId) {
+async function accNewActivationCode(env, user, deviceId2) {
   for (let i = 0; i < 10; i++) {
     const code = accCode("ACT", 2);
     const exists = await kv(env).get("acct:actcode:" + code);
     if (!exists) {
-      await kv(env).put("acct:actcode:" + code, JSON.stringify({ u: user.u, deviceId }));
+      await kv(env).put("acct:actcode:" + code, JSON.stringify({ u: user.u, deviceId: deviceId2 }));
       return code;
     }
   }
   return accCode("ACT", 3);
 }
-async function accEnsureDevice(env, user, deviceId, deviceName) {
-  if (!user || !deviceId) return null;
+async function accEnsureDevice(env, user, deviceId2, deviceName) {
+  if (!user || !deviceId2) return null;
   const now = Date.now();
-  let dev = await accReadDevice(env, user, deviceId);
+  let dev = await accReadDevice(env, user, deviceId2);
   if (!dev) {
     let deviceCode = accCode("DEV", 2);
     let tries = 0;
@@ -2537,7 +2538,7 @@ async function accEnsureDevice(env, user, deviceId, deviceName) {
       tries++;
     }
     dev = {
-      deviceId,
+      deviceId: deviceId2,
       deviceName: deviceName || "\u672A\u77E5\u8BBE\u5907",
       deviceCode,
       activated: false,
@@ -2545,8 +2546,8 @@ async function accEnsureDevice(env, user, deviceId, deviceName) {
       at: now,
       lastSeen: now
     };
-    await kv(env).put(accDeviceKey(user, deviceId), JSON.stringify(dev));
-    await kv(env).put("acct:devcode:" + deviceCode, JSON.stringify({ u: user.u, deviceId }));
+    await kv(env).put(accDeviceKey(user, deviceId2), JSON.stringify(dev));
+    await kv(env).put("acct:devcode:" + deviceCode, JSON.stringify({ u: user.u, deviceId: deviceId2 }));
     return dev;
   }
   let changed = false;
@@ -2558,7 +2559,7 @@ async function accEnsureDevice(env, user, deviceId, deviceName) {
     dev.lastSeen = now;
     changed = true;
   }
-  if (changed) await kv(env).put(accDeviceKey(user, deviceId), JSON.stringify(dev));
+  if (changed) await kv(env).put(accDeviceKey(user, deviceId2), JSON.stringify(dev));
   return dev;
 }
 async function accHandle(request, env, pathname) {
@@ -2640,8 +2641,8 @@ async function accHandle(request, env, pathname) {
     });
     if (changed) await accSaveSessions(env, auth.user.u, list);
     const policy = await accReadPolicy(env);
-    const deviceId = auth.session.deviceId || "";
-    const dev = await accEnsureDevice(env, auth.user, deviceId, auth.session.deviceName);
+    const deviceId2 = auth.session.deviceId || "";
+    const dev = await accEnsureDevice(env, auth.user, deviceId2, auth.session.deviceName);
     const isAdmin = accRole(auth.user) === "admin";
     return json({
       ok: true,
@@ -2659,10 +2660,10 @@ async function accHandle(request, env, pathname) {
     const auth = await accAuth(env, body.token);
     if (!auth) return json({ ok: false, error: "\u8BF7\u5148\u767B\u5F55\u8D26\u53F7" }, 401);
     if (auth.user.banned === true) return json({ ok: false, error: "\u8BE5\u8D26\u53F7\u5DF2\u88AB\u505C\u7528" }, 403);
-    const deviceId = auth.session.deviceId || "";
-    if (!deviceId) return json({ ok: false, error: "\u672C\u673A\u6CA1\u6709\u8BBE\u5907\u6807\u8BC6\uFF0C\u8BF7\u9000\u51FA\u540E\u91CD\u65B0\u767B\u5F55" }, 400);
-    let dev = await accReadDevice(env, auth.user, deviceId);
-    if (!dev) dev = await accEnsureDevice(env, auth.user, deviceId, auth.session.deviceName);
+    const deviceId2 = auth.session.deviceId || "";
+    if (!deviceId2) return json({ ok: false, error: "\u672C\u673A\u6CA1\u6709\u8BBE\u5907\u6807\u8BC6\uFF0C\u8BF7\u9000\u51FA\u540E\u91CD\u65B0\u767B\u5F55" }, 400);
+    let dev = await accReadDevice(env, auth.user, deviceId2);
+    if (!dev) dev = await accEnsureDevice(env, auth.user, deviceId2, auth.session.deviceName);
     if (dev.activated === true) return json({ ok: true, device: accPublicDevice(dev), needsActivation: false });
     if (!dev.activationCode) {
       return json({ ok: false, error: "\u672C\u673A\u8FD8\u6CA1\u6709\u751F\u6210\u6FC0\u6D3B\u7801\u3002\u8BF7\u628A\u8BBE\u5907\u7801\u53D1\u7ED9\u7BA1\u7406\u5458\uFF0C\u7531\u7BA1\u7406\u5458\u751F\u6210\u3002" }, 403);
@@ -2674,7 +2675,7 @@ async function accHandle(request, env, pathname) {
     dev.activated = true;
     dev.activationAt = Date.now();
     dev.lastSeen = Date.now();
-    await kv(env).put(accDeviceKey(auth.user, deviceId), JSON.stringify(dev));
+    await kv(env).put(accDeviceKey(auth.user, deviceId2), JSON.stringify(dev));
     return json({ ok: true, device: accPublicDevice(dev), needsActivation: false });
   }
   if (pathname === "/account/logout" && method === "POST") {
@@ -2903,8 +2904,8 @@ async function accHandle(request, env, pathname) {
     if (auth.user.banned === true) {
       return json({ ok: false, error: "\u8BE5\u8D26\u53F7\u5DF2\u88AB\u505C\u7528", code: "ACCOUNT_BANNED" }, 403);
     }
-    const deviceId = auth.session.deviceId || "";
-    let dev = await accReadDevice(env, auth.user, deviceId);
+    const deviceId2 = auth.session.deviceId || "";
+    let dev = await accReadDevice(env, auth.user, deviceId2);
     const role = accRole(auth.user);
     const needActivation = body.needActivation === true;
     if (role !== "admin" && needActivation && (!dev || dev.activated !== true)) {
@@ -3236,16 +3237,16 @@ var index_default = {
       const body = await request.json();
       const items = Array.isArray(body.items) ? body.items : [];
       const appId = cleanAppId(body.appId);
-      const deviceId = cleanDeviceId(body.deviceId);
-      const userId = cleanUserId(body.userId);
+      const deviceId2 = cleanDeviceId(body.deviceId);
+      const userId2 = cleanUserId(body.userId);
       let count = 0;
       const ids = [];
       for (const it of items) {
         if (!it || !it.at) continue;
         const job = Object.assign({}, it, {
           appId: cleanAppId(it.appId || appId),
-          deviceId: cleanDeviceId(it.deviceId || deviceId),
-          userId: cleanUserId(it.userId || userId)
+          deviceId: cleanDeviceId(it.deviceId || deviceId2),
+          userId: cleanUserId(it.userId || userId2)
         });
         const id = "job:" + Number(job.at) + ":" + Math.random().toString(36).slice(2, 8);
         await kv(env).put(id, JSON.stringify(job));
@@ -3360,19 +3361,41 @@ var index_default = {
       } catch (e) {
       }
       if (!system) system = String(body.system || "");
+      try {
+        const wDev = cleanDeviceId(owner && owner.deviceId || body.deviceId || deviceId);
+        let wUser = cleanUserId(owner && owner.userId || body.userId || userId);
+        if (!wUser || wUser === "default") {
+          const rawAct = await kv(env).get(autoActiveKey(realAppId, wDev));
+          if (rawAct) {
+            try {
+              const a = JSON.parse(rawAct);
+              if (a && a.userId) wUser = cleanUserId(a.userId);
+            } catch (e) {
+            }
+          }
+        }
+        const rawW = await kv(env).get(autoKey("config", realAppId, wDev, wUser));
+        if (rawW) {
+          const pcfg = JSON.parse(rawW);
+          if (pcfg && typeof pcfg.walletBalance === "number") {
+            system += "\n\u3010\u7528\u6237\u771F\u5B9E\u7ECF\u6D4E\u72B6\u51B5\u3011\u7528\u6237\u94B1\u5305\u5F53\u524D\u4F59\u989D\u7EA6 \xA5" + Number(pcfg.walletBalance).toFixed(2) + "\u3002\u8FD9\u662F\u7CFB\u7EDF\u91CC\u7684\u771F\u5B9E\u6570\u636E\uFF0C\u4E0D\u8981\u51ED\u7A7A\u8BF4\u7528\u6237\u6CA1\u94B1\u3001\u6B20\u94B1\u3001\u5403\u4E0D\u8D77\u996D\u6216\u6697\u793A\u7528\u6237\u5F88\u7A77\u3002\n";
+          }
+        }
+      } catch (e) {
+      }
       const charName = peekCharName(system);
       if (!system && !peekPublic(env)) {
         try {
-          const deviceId = cleanDeviceId(owner && owner.deviceId || body.deviceId);
-          let userId = cleanUserId(owner && owner.userId || body.userId);
-          if (!userId || userId === "default") {
-            const rawActive = await kv(env).get(autoActiveKey(realAppId, deviceId));
+          const deviceId2 = cleanDeviceId(owner && owner.deviceId || body.deviceId);
+          let userId2 = cleanUserId(owner && owner.userId || body.userId);
+          if (!userId2 || userId2 === "default") {
+            const rawActive = await kv(env).get(autoActiveKey(realAppId, deviceId2));
             if (rawActive) {
               const active = JSON.parse(rawActive);
-              if (active && active.userId) userId = cleanUserId(active.userId);
+              if (active && active.userId) userId2 = cleanUserId(active.userId);
             }
           }
-          const rawCfg = await kv(env).get(autoKey("config", realAppId, deviceId, userId));
+          const rawCfg = await kv(env).get(autoKey("config", realAppId, deviceId2, userId2));
           if (rawCfg) {
             const cfg = JSON.parse(rawCfg);
             const c = (cfg && Array.isArray(cfg.chars) ? cfg.chars : []).find(function(x) {
@@ -3406,6 +3429,10 @@ var index_default = {
         if (out) {
           reply = out.text || null;
           peekErr = out.error || "";
+          if (reply && /(余额不足|额度不足|欠费|insufficient.?quota|exceeded.*quota|API.*(余额|额度)|account.*balance)/i.test(reply)) {
+            peekErr = reply;
+            reply = null;
+          }
         }
       } catch (e) {
         peekErr = String(e && e.message || e || "");
@@ -3413,6 +3440,7 @@ var index_default = {
       if (!reply) {
         const hasEnvApi = !peekPublic(env) && !!(env.PEEK_API_URL && env.PEEK_API_KEY && env.PEEK_MODEL);
         const errDetail = String(peekErr || "").replace(/\s+/g, " ").slice(0, 180);
+        const upstreamLimit = /quota|insufficient|balance|余额|额度|402|429|rate.?limit|too many/i.test(errDetail);
         if (!apiCfg) {
           return json({
             ok: false,
@@ -3423,7 +3451,8 @@ var index_default = {
         return json({
           ok: false,
           error: "model",
-          reply: peekPublic(env) ? "\u5DF2\u7ECF\u6709\u6A21\u578B API\uFF0C\u4F46\u8FD9\u6B21\u6CA1\u6709\u62FF\u5230\u56DE\u590D" + (errDetail ? "\uFF08\u4E0A\u6E38\uFF1A" + errDetail + "\uFF09" : "") + "\u3002\u8BF7\u68C0\u67E5\u4E2D\u8F6C\u7AD9\u662F\u5426\u652F\u6301\u56FE\u7247\u8F93\u5165\u3001\u6A21\u578B\u662F\u5426\u771F\u7684\u652F\u6301\u8BC6\u56FE\uFF0C\u4EE5\u53CA Key/\u989D\u5EA6/\u63A5\u53E3\u5730\u5740\u3002" : hasEnvApi ? "\u6A21\u578B\u6CA1\u6709\u8FD4\u56DE\u5185\u5BB9" + (errDetail ? "\uFF08\u4E0A\u6E38\uFF1A" + errDetail + "\uFF09" : "") + "\uFF1A\u8BF7\u68C0\u67E5 PEEK_API_URL / PEEK_API_KEY / PEEK_MODEL \u6216\u6A21\u578B\u662F\u5426\u652F\u6301\u8BC6\u56FE\u3002" : "\u670D\u52A1\u7AEF\u8FD8\u6CA1\u6709\u6A21\u578B API\uFF1A\u8BF7\u5728 Nano \u91CC\u6253\u5F00\u4E00\u6B21\u804A\u5929\u540C\u6B65\u4E3B API\uFF0C\u6216\u5728 Worker \u914D\u7F6E PEEK_API_URL / PEEK_API_KEY / PEEK_MODEL\u3002"
+          reply: peekPublic(env) ? upstreamLimit ? "\u8FD9\u6B21\u8BC6\u56FE\u63A5\u53E3\u6CA1\u6709\u8FD4\u56DE\u5185\u5BB9\uFF08\u4E0A\u6E38\u9650\u6D41\u6216\u4E34\u65F6\u9519\u8BEF\uFF09\u3002\u7A0D\u540E\u518D\u8BD5\uFF0C\u6216\u6362\u4E00\u4E2A\u652F\u6301\u56FE\u7247\u8F93\u5165\u7684\u6A21\u578B\u3002" : "\u8FD9\u6B21\u8BC6\u56FE\u63A5\u53E3\u6CA1\u6709\u8FD4\u56DE\u5185\u5BB9" + (errDetail ? "\uFF08\u4E0A\u6E38\uFF1A" + errDetail + "\uFF09" : "") + "\u3002\u8BF7\u68C0\u67E5\u6A21\u578B\u662F\u5426\u652F\u6301\u56FE\u7247\u8F93\u5165\u3001\u63A5\u53E3\u5730\u5740\u548C Key \u662F\u5426\u5BF9\u5E94\u3002" : hasEnvApi ? upstreamLimit ? "PEEK \u6A21\u578B\u63A5\u53E3\u8FD9\u6B21\u6CA1\u6709\u8FD4\u56DE\u5185\u5BB9\uFF08\u4E0A\u6E38\u9650\u6D41\u6216\u4E34\u65F6\u9519\u8BEF\uFF09\uFF1B\u7A0D\u540E\u518D\u8BD5\u6216\u66F4\u6362\u652F\u6301\u8BC6\u56FE\u7684\u6A21\u578B\u3002" : "\u6A21\u578B\u6CA1\u6709\u8FD4\u56DE\u5185\u5BB9" + (errDetail ? "\uFF08\u4E0A\u6E38\uFF1A" + errDetail + "\uFF09" : "") + "\uFF1A\u8BF7\u68C0\u67E5 PEEK_API_URL / PEEK_API_KEY / PEEK_MODEL \u6216\u6A21\u578B\u662F\u5426\u652F\u6301\u8BC6\u56FE\u3002" : "\u670D\u52A1\u7AEF\u8FD8\u6CA1\u6709\u6A21\u578B API\uFF1A\u8BF7\u5728 Nano \u91CC\u6253\u5F00\u4E00\u6B21\u804A\u5929\u540C\u6B65\u4E3B API\uFF0C\u6216\u5728 Worker \u914D\u7F6E PEEK_API_URL / PEEK_API_KEY / PEEK_MODEL\u3002",
+          detail: errDetail
         }, 502);
       }
       const MAX_IMAGE_CHARS = env.DB || env.nano_db ? 480 * 1024 : 4 * 1024 * 1024;
@@ -3624,9 +3653,9 @@ var index_default = {
       if (!autoOk(request, env, body)) return json({ ok: false, error: "unauthorized" }, 401);
       const cfg = sanitizeAutoConfig(body);
       const appId = cleanAppId(body.appId);
-      const deviceId = cleanDeviceId(body.deviceId);
-      const userId = cleanUserId(cfg.user.id || body.userId);
-      const cfgKey = autoKey("config", appId, deviceId, userId);
+      const deviceId2 = cleanDeviceId(body.deviceId);
+      const userId2 = cleanUserId(cfg.user.id || body.userId);
+      const cfgKey = autoKey("config", appId, deviceId2, userId2);
       let oldCfgRaw = "";
       try {
         oldCfgRaw = await kv(env).get(cfgKey);
@@ -3649,17 +3678,17 @@ var index_default = {
       }
       if (cfgChanged) await kv(env).put(cfgKey, JSON.stringify(cfg));
       try {
-        const scope = autoScopeOf(appId, deviceId, userId);
+        const scope = autoScopeOf(appId, deviceId2, userId2);
         if (cfg.enabled) await addAutoScope(env, scope);
         else await removeAutoScope(env, scope);
       } catch (e) {
       }
       try {
-        await touchActive(env, appId, deviceId, userId, false);
+        await touchActive(env, appId, deviceId2, userId2, false);
       } catch (e) {
       }
       const now = Date.now();
-      const stateKey = autoKey("state", appId, deviceId, userId);
+      const stateKey = autoKey("state", appId, deviceId2, userId2);
       let state = {};
       let stateRaw = "";
       try {
@@ -3705,7 +3734,7 @@ var index_default = {
         }
       }
       if (stateChanged) await kv(env).put(stateKey, JSON.stringify(state));
-      return json({ ok: true, enabled: cfg.enabled, appId, deviceId, userId, nextMsgAt: state.nextMsgAt || 0, nextMomentAt: state.nextMomentAt || 0 });
+      return json({ ok: true, enabled: cfg.enabled, appId, deviceId: deviceId2, userId: userId2, nextMsgAt: state.nextMsgAt || 0, nextMomentAt: state.nextMomentAt || 0 });
     }
     if (pathname === "/auto/cycle" && request.method === "POST") {
       let body = {};
@@ -3746,10 +3775,10 @@ var index_default = {
       }
       if (!autoOk(request, env, body)) return json({ ok: false, error: "unauthorized" }, 401);
       const appId = cleanAppId(body.appId);
-      const userId = cleanUserId(body.userId);
+      const userId2 = cleanUserId(body.userId);
       const chatId = String(body.chatId || "");
       const active = !!body.active && !!chatId;
-      const key = "auto2:call:" + appId + ":" + userId;
+      const key = "auto2:call:" + appId + ":" + userId2;
       try {
         if (active) await kv(env).put(key, chatId, { expirationTtl: 60 * 60 * 3 });
         else await kv(env).delete(key);
@@ -3761,20 +3790,20 @@ var index_default = {
       if (!autoOk(request, env, null)) return json({ ok: false, error: "unauthorized" }, 401);
       const sp = new URL(request.url).searchParams;
       const appId = cleanAppId(sp.get("appId"));
-      const userId = cleanUserId(sp.get("userId"));
-      const deviceId = cleanDeviceId(sp.get("deviceId"));
+      const userId2 = cleanUserId(sp.get("userId"));
+      const deviceId2 = cleanDeviceId(sp.get("deviceId"));
       try {
-        await touchActive(env, appId, deviceId, userId, false);
+        await touchActive(env, appId, deviceId2, userId2, false);
       } catch (e) {
       }
       let messages = [], moments = [];
       try {
-        const raw = await kv(env).get(autoKey("msg", appId, deviceId, userId));
+        const raw = await kv(env).get(autoKey("msg", appId, deviceId2, userId2));
         messages = raw ? JSON.parse(raw) : [];
       } catch (e) {
       }
       try {
-        const raw = await kv(env).get(autoKey("moments", appId, deviceId, userId));
+        const raw = await kv(env).get(autoKey("moments", appId, deviceId2, userId2));
         moments = raw ? JSON.parse(raw) : [];
       } catch (e) {
       }
@@ -3788,13 +3817,13 @@ var index_default = {
       }
       if (!autoOk(request, env, body)) return json({ ok: false, error: "unauthorized" }, 401);
       const appId = cleanAppId(body.appId);
-      const userId = cleanUserId(body.userId);
-      const deviceId = cleanDeviceId(body.deviceId);
+      const userId2 = cleanUserId(body.userId);
+      const deviceId2 = cleanDeviceId(body.deviceId);
       const mIds = Array.isArray(body.messageIds) ? body.messageIds : [];
       const pIds = Array.isArray(body.momentIds) ? body.momentIds : [];
       if (mIds.length) {
         try {
-          const key = autoKey("msg", appId, deviceId, userId);
+          const key = autoKey("msg", appId, deviceId2, userId2);
           const raw = await kv(env).get(key);
           const list = raw ? JSON.parse(raw) : [];
           await kv(env).put(key, JSON.stringify(list.filter(function(x) {
@@ -3805,7 +3834,7 @@ var index_default = {
       }
       if (pIds.length) {
         try {
-          const key = autoKey("moments", appId, deviceId, userId);
+          const key = autoKey("moments", appId, deviceId2, userId2);
           const raw = await kv(env).get(key);
           const list = raw ? JSON.parse(raw) : [];
           await kv(env).put(key, JSON.stringify(list.filter(function(x) {
@@ -4106,10 +4135,10 @@ var index_default = {
       for (const scope of scopes) {
         const parts = String(scope || "").split(":");
         const appId = parts[0] || "legacy";
-        const deviceId = parts[1] || "default";
-        const userId = parts[2] || "default";
+        const deviceId2 = parts[1] || "default";
+        const userId2 = parts[2] || "default";
         try {
-          await runAutoPush(env, appId, deviceId, userId);
+          await runAutoPush(env, appId, deviceId2, userId2);
         } catch (e) {
         }
       }
@@ -4175,12 +4204,12 @@ var index_default = {
     }
   }
 };
-async function getSubs(env, userId, deviceId, appId) {
+async function getSubs(env, userId2, deviceId2, appId) {
   const out = [];
   const seen = {};
   const wantApp = appId ? cleanAppId(appId) : "";
-  const wantUser = userId ? cleanUserId(userId) : "";
-  const wantDevice = deviceId ? cleanDeviceId(deviceId) : "";
+  const wantUser = userId2 ? cleanUserId(userId2) : "";
+  const wantDevice = deviceId2 ? cleanDeviceId(deviceId2) : "";
   let keys = [];
   try {
     let prefix = "sub2:";

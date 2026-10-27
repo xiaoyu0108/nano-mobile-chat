@@ -129,6 +129,13 @@
     }
     function loadRecords() {
         var arr = parseJson(localStorage.getItem(RECORDS_KEY), []);
+        // 旧版会把「用户 × 角色」的 1:1 聊天也塞进这里（source: chat）。
+        // 悄悄话记录只应该有角色 × 角色的记录，这里直接把旧的 1:1 记录过滤掉。
+        if (Array.isArray(arr)) {
+            var clean = arr.filter(function (r) { return r && r.source !== 'chat'; });
+            if (clean.length !== arr.length) { try { localStorage.setItem(RECORDS_KEY, JSON.stringify(clean)); } catch (e) {} }
+            arr = clean;
+        }
         // 不再按当前 user / 绑定角色过滤：只要记录本身完整就展示。
         // 否则自动生成、切换 user、或角色后来解绑时，记录会「生成了但列表里没有」。
         return mergeRecords(Array.isArray(arr) ? arr : []);
@@ -136,6 +143,7 @@
     function loadRecordsAsync() {
         if (!window.NanoWhisperStore) return Promise.resolve(loadRecords());
         return NanoWhisperStore.getAll().then(function (dbList) {
+            dbList = (Array.isArray(dbList) ? dbList : []).filter(function (r) { return r && r.source !== 'chat'; });
             return mergeRecords(loadRecords(), dbList);
         }).catch(function () { return loadRecords(); });
     }
@@ -315,7 +323,7 @@
             cardData: {
                 cardType: 'charSecretChat',
                 title: (rec.a.name || 'A') + ' × ' + (rec.b.name || 'B') + ' 的悄悄话',
-                sub: '点击查看完整对话',
+                sub: '共 ' + rec.lines.length + ' 句',
                 secretRecordId: rec.id,
                 secretAt: rec.at,
                 secretLines: rec.lines.map(function (l) {

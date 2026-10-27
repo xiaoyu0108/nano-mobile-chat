@@ -122,6 +122,15 @@
     for (var j = 0; j < bNames.length; j++) if (textMentions(a, bNames[j])) return true;
     return false;
   }
+  // 严格版：只认明确的关系设置 / 悄悄话记录，不靠人设里偶然提到的名字。
+  // 用于后台自动生成的朋友圈互动，避免“只是世界书里提过一嘴”就被当成熟人。
+  function knowsStrict(a, b) {
+    if (!a || !b) return false;
+    var aid = idOf(a), bid = idOf(b);
+    if (aid && bid && aid === bid) return false;
+    return !!(relPair(a, b) || secretPair(a, b) || idListHas(a, bid) || idListHas(b, aid));
+  }
+
   function filterKnown(author, candidates) {
     return (candidates || []).filter(function (c) {
       if (!c) return false;
@@ -147,6 +156,7 @@
     idOf: idOf,
     namesOf: namesOf,
     knows: knows,
+    knowsStrict: knowsStrict,
     label: label,
     filterKnown: filterKnown,
     findByName: findByName

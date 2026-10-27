@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <script src="../js/nano-runtime.js?v=20261026d"></script>
+  <script src="../js/nano-runtime.js?v=20261027f"></script>
   <script src="../js/group-store.js?v=20261021a"></script>
   <script src="../js/appearance.js?v=20261026d"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
@@ -1184,7 +1184,7 @@
     </div>
   </div>
 
-  <script defer src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
+  <script defer src="../js/localforage.min.js?v=20261027a"></script>
   <script>
 (function () {
   'use strict';
@@ -1392,17 +1392,46 @@
     } catch (e) { return ''; }
   }
 
+  function slimPreview(m) {
+    if (!m) return null;
+    return {
+      type: m.type, time: m.time, text: String(m.text || '').slice(0, 300),
+      isCard: !!m.isCard, isImage: !!m.isImage, emojiName: m.emojiName || '',
+      cardData: m.cardData ? {
+        cardType: m.cardData.cardType, title: String(m.cardData.title || '').slice(0, 80),
+        sub: String(m.cardData.sub || '').slice(0, 100), note: String(m.cardData.note || '').slice(0, 100)
+      } : null,
+      imageData: m.imageData ? {
+        desc: String(m.imageData.desc || '').slice(0, 60),
+        isEmoji: !!m.imageData.isEmoji,
+        emojiName: m.imageData.emojiName || ''
+      } : null
+    };
+  }
   async function getLastMessage(chatId) {
+    // 优先读 chat-core 保存的轻量预览，绝不再为了列表去解析整段带图消息。
+    try {
+      const raw = localStorage.getItem('nano_last_preview_' + chatId);
+      if (raw) return JSON.parse(raw);
+    } catch (e) {}
     const key = 'chat_messages_' + chatId;
     if (window.localforage) {
       try {
         const m = await localforage.getItem(key);
-        if (Array.isArray(m) && m.length) return m[m.length - 1];
+        if (Array.isArray(m) && m.length) {
+          const last = m[m.length - 1];
+          try { localStorage.setItem('nano_last_preview_' + chatId, JSON.stringify(slimPreview(last))); } catch (e) {}
+          return last;
+        }
       } catch (e) {}
     }
     try {
       const m = JSON.parse(localStorage.getItem(key) || '[]');
-      if (Array.isArray(m) && m.length) return m[m.length - 1];
+      if (Array.isArray(m) && m.length) {
+        const last = m[m.length - 1];
+        try { localStorage.setItem('nano_last_preview_' + chatId, JSON.stringify(slimPreview(last))); } catch (e) {}
+        return last;
+      }
     } catch (e) {}
     return null;
   }
@@ -1506,6 +1535,49 @@
   }
 
   /* ================= 数据加载 ================= */
+  function getPreviewFast(chatId) {
+    try {
+      const raw = localStorage.getItem('nano_last_preview_' + chatId);
+      if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    try {
+      const m = JSON.parse(localStorage.getItem('chat_messages_' + chatId) || '[]');
+      if (Array.isArray(m) && m.length) return slimPreview(m[m.length - 1]);
+    } catch (e) {}
+    return null;
+  }
+
+  async function backfillPreviews(ids) {
+    let changed = false;
+    for (let i = 0; i < ids.length; i++) {
+      const id = String(ids[i]);
+      const row = friendsData.find(function (x) { return String(x.id) === id && x.type === 'single'; });
+      if (!row) continue;
+      const last = await getLastMessage(id);
+      if (!last) continue;
+      row.msg = (last.type === 'right' ? '我：' : '') + previewText(last);
+      row.time = timeText(last);
+      row.lastTs = messageSortTs(last);
+      changed = true;
+      if (i % 3 === 2) {
+        friendsData.sort(function (a, b) {
+          if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+          if ((b.lastTs || 0) !== (a.lastTs || 0)) return (b.lastTs || 0) - (a.lastTs || 0);
+          return String(a.name).localeCompare(String(b.name), 'zh-CN');
+        });
+        if (currentTab === 'friends') renderCurrent();
+      }
+    }
+    if (changed) {
+      friendsData.sort(function (a, b) {
+        if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+        if ((b.lastTs || 0) !== (a.lastTs || 0)) return (b.lastTs || 0) - (a.lastTs || 0);
+        return String(a.name).localeCompare(String(b.name), 'zh-CN');
+      });
+      if (currentTab === 'friends') renderCurrent();
+    }
+  }
+
   async function loadFriends() {
     allChars = await getCharacters();
     const pinned = getPinnedIds();
@@ -1528,9 +1600,13 @@
         return String(c.bindUser) === String(currentUser.id) && !c.nanoAssistant;
       });
     }
+    const missingPreviews = [];
     const rows = await Promise.all(list.map(async function (c) {
       const id = String(c.id);
-      const last = await getLastMessage(id);
+      // 列表首屏只读 localStorage 轻量预览；没有预览的旧聊天放到后台慢慢补，
+      // 否则每个角色都要从 IndexedDB 读整段消息，图片多时首页会卡 30 秒。
+      let last = getPreviewFast(id);
+      if (!last) { missingPreviews.push(id); }
       const remark = getRemark(id);
       return {
         id: id,
@@ -1549,6 +1625,7 @@
       return String(a.name).localeCompare(String(b.name), 'zh-CN');
     });
     friendsData = rows;
+    if (missingPreviews.length) setTimeout(function () { backfillPreviews(missingPreviews); }, 600);
   }
 
   function getGroupLastMessage(groupId) {

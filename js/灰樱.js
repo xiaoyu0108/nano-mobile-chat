@@ -3400,12 +3400,15 @@ async function offExtractViaMain(chatText) {
   if (!/\/v1$/i.test(url)) url += '/v1';
   const key = String(cfg.mainKey || '').trim();
   const model = cfg.mainModel || 'gpt-3.5-turbo';
-  const prompt = '你是记忆提取助手。下面是某角色与用户的一段对话（可能是线下长文记录）。请挑出真正值得长期记住的信息：重要事件、约定与承诺、关键关系进展、称呼与喜好的变化、双方说过的重要话与关键决定。要求：\n'
+  const charName = String(settings.charName || '角色');
+  const userName = String(settings.userName || '用户');
+  const prompt = '你就是「' + charName + '」本人。下面是「我」和「' + userName + '」的一段对话（可能是线下长文记录）。请以「我」的第一人称，写下我真正会记住、会在意的事：重要事件、约定与承诺、关键关系进展、称呼与喜好的变化、我们说过的重要话与关键决定。\n'
+    + '【视角铁律】每条都必须用「我」来写；不要写「' + charName + '和' + userName + '……」这种第三人称总结；不是复述对话，而是像我在事后回想。\n'
     + '- 只保留有长期价值的关键点，合并同类，删掉寒暄、日常口水话和没有后续影响的小事；\n'
-    + '- 每条具体、像人记住的一件事实，40~160 字，写清人物、经过与影响；\n'
+    + '- 每条 80~180 字，至少包含：当时的具体场景/对话细节 + 我当时的感受 + 这件事对我和TA意味着什么；不要只写一句结论或几个字；\n'
     + '- 最多 5 条，宁缺毋滥；确实没有值得记的就什么都不要输出；\n'
-    + '- 一行一条，格式：【类型|重要度】内容；重要度 1~5 由你判断，不能全部写 3：5=刻骨铭心/改变关系，4=重要且长期影响，3=稳定信息，2=轻量偏好，1=可记可不记；\n'
-    + '- 不要编号、不要解释、不要照抄对话原文。\n\n对话：\n' + chatText;
+    + '- 一行一条，格式：【类型|重要度】内容；重要度 1~5 由我判断，不能全部写 3：5=刻骨铭心/改变关系，4=重要且长期影响，3=稳定信息，2=轻量偏好，1=可记可不记；\n'
+    + '- 保留名字、地点、数字、具体物品和原话；不要编号、不要解释、不要照抄对话原文。\n\n对话：\n' + chatText;
   const resp = await fetch(url + '/chat/completions', {
     method: 'POST',
     headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json' },

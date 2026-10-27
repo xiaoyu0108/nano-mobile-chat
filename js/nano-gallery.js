@@ -1,6 +1,7 @@
 (function () {
     'use strict';
     var KEY = 'nano_gallery_v1';
+    var CHAT_SCAN_KEY = 'nano_gallery_chat_scan_v1';
     var TOMB_KEY = 'nano_gallery_deleted_v1';
     var EMOJI_PURGE_KEY = 'nano_gallery_emoji_purged_v2';
     var DB_NAME = 'nano_gallery_db';
@@ -88,10 +89,13 @@
         var k = urlKey(u);
         if (_remotePending[k]) return;
         _remotePending[k] = 1;
-        fetch(u, { cache: 'force-cache' }).then(function (r) {
-            if (!r || !r.ok) throw new Error('http ' + (r && r.status));
-            return r.blob();
-        }).then(blobToDataUrl).then(function (data) {
+        var p = (window.NanoImageCache && NanoImageCache.toDataUrl)
+            ? NanoImageCache.toDataUrl(u)
+            : fetch(u, { cache: 'force-cache' }).then(function (r) {
+                if (!r || !r.ok) throw new Error('http ' + (r && r.status));
+                return r.blob();
+            }).then(blobToDataUrl);
+        p.then(function (data) {
             if (!data || data.length > 8 * 1024 * 1024) return;
             var oldKey = urlKey(u);
             var arr = read().filter(function (x) { return urlKey(x && x.url) !== oldKey; });
@@ -348,6 +352,19 @@
         if (typeof localforage === 'undefined') {
             return dbP.then(function (dbItems) { return mergeWithDb(base, dbItems); });
         }
+        // 旧版图库靠扫描聊天记录迁移图片。现在生图入库时已经 add 到图库，
+        // 每次打开都扫描全部聊天会把几百张大图重新 JSON.parse 一遍，导致页面卡 30 秒。
+        // 只迁移一次，之后直接读图库数据库；用户手动清理后新图仍由生成流程写入。
+        var needScan = true;
+        try { needScan = localStorage.getItem(CHAT_SCAN_KEY) !== '1'; } catch (e) {}
+        // 本地图库已有记录就不再扫聊天；只有真正空图库才需要旧数据迁移。
+        if (needScan && base.length) {
+            try { localStorage.setItem(CHAT_SCAN_KEY, '1'); } catch (e) {}
+            needScan = false;
+        }
+        if (!needScan) {
+            return dbP.then(function (dbItems) { return mergeWithDb(base, dbItems); });
+        }
         return Promise.all([dbP, localforage.keys(), loadCharNames()]).then(function (res) {
             var dbItems = res[0] || [];
             base = mergeWithDb(base, dbItems);
@@ -394,6 +411,7 @@
                     });
                 });
                 base.sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
+                try { localStorage.setItem(CHAT_SCAN_KEY, '1'); } catch (e) {}
                 return base;
             });
         }).catch(function () { return base; });

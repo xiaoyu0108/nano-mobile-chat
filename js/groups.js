@@ -7,14 +7,17 @@
     // 译文显示模式：true=独立气泡（气泡外），false=与原文同一气泡
     function translationSeparate(){
         try {
-            if (typeof window.NANO_TRANSLATION_SEPARATE !== 'undefined') return !!window.NANO_TRANSLATION_SEPARATE;
             var attr = document.body && document.body.getAttribute('data-nano-trans-separate');
             if (attr === '1' || attr === '0') return attr === '1';
             var cssVar = '';
             try { cssVar = String(getComputedStyle(document.body).getPropertyValue('--nano-trans-separate') || '').trim(); } catch (err) {}
             if (cssVar === '1' || cssVar === '0') return cssVar === '1';
-            return localStorage.getItem('nano_trans_separate') !== '0';
-        } catch (e) { return true; }
+            if (typeof window.NANO_TRANSLATION_SEPARATE !== 'undefined') return !!window.NANO_TRANSLATION_SEPARATE;
+            var saved = '';
+            try { saved = localStorage.getItem('nano_trans_separate'); } catch (err) {}
+            if (saved === '0' || saved === '1') return saved === '1';
+            return false;
+        } catch (e) { return false; }
     }
     window.addEventListener('storage', function(e){ if(e && e.key === 'nano_trans_separate'){ try{ renderMessages(); }catch(err){} } });
     window.addEventListener('nano-chat-theme-applied', function(){ try{ renderMessages(); }catch(err){} });
@@ -1239,11 +1242,18 @@
                     });
                 }
                 return r.json();
-            }).then(function(d){
+            }).then(async function(d){
                 var item = d && d.data && d.data[0];
                 var url = item && item.url;
                 if (!url && item && item.b64_json) url = 'data:image/png;base64,' + item.b64_json;
                 if (!url) throw new Error('生图接口未返回图片');
+                try {
+                    if (window.NanoImageCache && /^https?:\/\//i.test(url)) {
+                        var local = await NanoImageCache.toDataUrl(url);
+                        if (local) url = local;
+                    }
+                } catch(e) {}
+                try { if (window.NanoGallery) NanoGallery.add({ url: url, source: '群聊', charName: member.name || '', prompt: desc }); } catch(e) {}
                 if (opts.replaceMsgId) {
                     var msg = messages.find(function(x){ return x.id === opts.replaceMsgId; });
                     if (msg) {

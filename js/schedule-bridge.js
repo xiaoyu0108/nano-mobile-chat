@@ -657,6 +657,17 @@
     return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(s + '</svg>');
   }
 
+  function persistScheduleImage(src, name, prompt) {
+    var p = (src && window.NanoImageCache && /^https?:\/\//i.test(src))
+      ? NanoImageCache.toDataUrl(src).catch(function () { return ''; })
+      : Promise.resolve('');
+    return p.then(function (local) {
+      var u = local || src;
+      try { if (window.NanoGallery && u) NanoGallery.add({ url: u, source: '日程', charName: name || '', prompt: prompt || '' }); } catch (e) {}
+      return u;
+    });
+  }
+
   function finishReport(id, name, eventId, src, kind, prompt) {
     return readStore().then(function (fresh) {
       var data = findData(fresh, id, name);
@@ -758,7 +769,9 @@
         var item = j && j.data && j.data[0];
         var src = item && (item.url || (item.b64_json ? 'data:image/png;base64,' + item.b64_json : ''));
         if (!src) throw new Error('生图接口没有返回图片地址');
-        finishReport(job.charId, job.charName, job.eventId, src, 'api', job.prompt).then(function () {
+        persistScheduleImage(src, job.charName, job.prompt).then(function (local) {
+          return finishReport(job.charId, job.charName, job.eventId, local, 'api', job.prompt);
+        }).then(function () {
           clearImgJob(job.token);
         });
       } catch (e) {
@@ -829,7 +842,9 @@
             var item = j && j.data && j.data[0];
             var src = item && (item.url || (item.b64_json ? 'data:image/png;base64,' + item.b64_json : ''));
             if (!src) throw new Error('生图接口没有返回图片地址');
-            return finishReport(id, name, ev.id, src, 'api', prompt).then(function (r) {
+            return persistScheduleImage(src, name, prompt).then(function (local) {
+              return finishReport(id, name, ev.id, local, 'api', prompt);
+            }).then(function (r) {
               clearImgJob(token);
               return r ? { ok: true } : { ok: false, error: '图片已生成，但写入日程失败' };
             });

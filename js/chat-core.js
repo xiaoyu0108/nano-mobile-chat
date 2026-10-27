@@ -1738,8 +1738,34 @@
             if (recent.length) localStorage.setItem('nano_recent_text_' + chatId, JSON.stringify(recent));
             else localStorage.removeItem('nano_recent_text_' + chatId);
         } catch (e) {}
+        // 聊天列表只需要的「最后一条」轻量副本：避免每次进 App 都把每个角色
+        // 几百条带图片的消息从 IndexedDB 全量读出来解析一遍（这是 30s 卡顿的大头）。
+        try {
+            let last = null;
+            for (let i = (messages || []).length - 1; i >= 0; i--) {
+                const m = messages[i];
+                if (m && !m.recalled) { last = m; break; }
+            }
+            if (last) {
+                const slim = {
+                    type: last.type, time: last.time, text: String(last.text || '').slice(0, 300),
+                    isCard: !!last.isCard, isImage: !!last.isImage, emojiName: last.emojiName || '',
+                    cardData: last.cardData ? {
+                        cardType: last.cardData.cardType, title: String(last.cardData.title || '').slice(0, 80),
+                        sub: String(last.cardData.sub || '').slice(0, 100), note: String(last.cardData.note || '').slice(0, 100)
+                    } : null,
+                    imageData: last.imageData ? {
+                        desc: String(last.imageData.desc || '').slice(0, 60),
+                        isEmoji: !!last.imageData.isEmoji,
+                        emojiName: last.imageData.emojiName || ''
+                    } : null
+                };
+                localStorage.setItem('nano_last_preview_' + chatId, JSON.stringify(slim));
+            } else {
+                localStorage.removeItem('nano_last_preview_' + chatId);
+            }
+        } catch (e) {}
         notifyChatListPreview();
-        registerChatRecord();
         syncMessagesToMemory();
     }
 
@@ -2080,22 +2106,27 @@
     }
 
     function __memBuildPrompt(charName, currentUser) {
-        return `你是记忆提取助手，从角色与用户的聊天记录中提取值得长期记住的信息，用于构建向量记忆库。
+        return `你就是「${charName}」本人，不是在写第三方报告。请以「我」的第一人称，从我和「${currentUser}」的聊天记录里，写下我真正会记住、会在意的事。
+
+【视角铁律】
+- 每条记忆都必须用「我」来写：我记得什么、我当时怎么想、我答应过什么。
+- 不要写「${charName}和${currentUser}……」「TA……」「两人……」这种第三人称总结。
+- 不是复述聊天，而是像我在事后回想，把它记进自己的记忆里。
 
 必须重点提取、尽量详细记录：
-1. 重要事件：双方经历的大事，如约定、见面、纪念日、吵架和好、项目进展等。
+1. 重要事件：我们一起经历的大事，如约定、见面、纪念日、吵架和好、项目进展等。
 2. ${currentUser}的习惯与偏好：作息、饮食、喜好、雷区、口头禅、性格特点。
-3. 双方关系与情感：是异地恋、朋友还是家人；相处模式、称呼、亲昵方式。
-4. 地理位置：${charName}和${currentUser}各自所在的城市/地点，尤其是异地恋时双方的位置。
-5. 社交关系：双方认识的人、家人、朋友、同事等关系网。
+3. 我们的关系与情感：是异地恋、朋友还是家人；相处模式、称呼、亲昵方式。
+4. 地理位置：我和${currentUser}各自所在的城市/地点，尤其是异地恋时双方的位置。
+5. 社交关系：我们认识的人、家人、朋友、同事等关系网。
 6. 情感状态与承诺：说过的重要的话、答应过的事、情绪变化。
 7. 其他值得记住的细节。
 
 格式：每条独立一行，以【类型】开头，如：
-【重要事件】${charName}和${currentUser}约定下周在长沙见面。
-【偏好】${currentUser}喜欢喝冰美式，不吃香菜。
+【重要事件】我和${currentUser}约好下周在长沙见面。我住在岳麓区，TA住在五一广场附近；TA说会提前一天过来，我嘴上说不用，其实已经把那天下午空出来了。
+【偏好】${currentUser}喜欢喝冰美式，不吃香菜。我记住了，点单时会下意识避开香菜。
 
-要求：记忆是长期使用的，越具体越详细越好，保留名字、地点、数字；每条60-150字，宁可多不可少；只输出有实质内容的记忆。`;
+要求：每条 80~180 字，至少包含当时的具体场景/对话细节 + 我当时的感受 + 这件事对我和TA意味着什么；不要只写一句结论或几个字；保留名字、地点、数字、具体物品和原话；只输出有实质内容的记忆。`;
     }
 
     function __memCallLlm(baseUrl, key, model, chatText, charName, currentUser) {
@@ -2812,6 +2843,39 @@
         return vb;
     }
 
+    // 旧消息里只存了生图临时 URL 的，进聊天后后台慢慢转成本地 dataURL。
+    async function repairRemoteImages(limit) {
+        if (!window.NanoImageCache || !window.NanoImageCache.toDataUrl) return;
+        limit = limit || 4;
+        let done = 0, changed = false;
+        for (let i = messages.length - 1; i >= 0 && done < limit; i--) {
+            const m = messages[i];
+            if (!m) continue;
+            let u = '', apply = null;
+            if (m.imageData && m.imageData.url && /^https?:\/\//i.test(m.imageData.url)) {
+                u = m.imageData.url;
+                apply = function (d) { m.imageData.url = d; };
+            } else if (m.cardData && m.cardData.img && /^https?:\/\//i.test(m.cardData.img)) {
+                u = m.cardData.img;
+                apply = function (d) { m.cardData.img = d; };
+            }
+            if (!u || !apply) continue;
+            done++;
+            try {
+                const d = await NanoImageCache.toDataUrl(u);
+                if (d) {
+                    apply(d);
+                    changed = true;
+                    try { if (window.NanoGallery) NanoGallery.add({ url: d, source: '聊天', charName: (characterData && characterData.name) || chatName || '', prompt: (m.imageData && m.imageData.prompt) || '' }); } catch (e) {}
+                }
+            } catch (e) {}
+        }
+        if (changed) {
+            try { renderMessages(); } catch (e) {}
+            try { saveMessages(); } catch (e) {}
+        }
+    }
+
     function showCharSecretChatCard(cd) {
         try {
             const old = document.getElementById('nanoCharSecretViewer');
@@ -3265,20 +3329,19 @@
     // 译文显示模式：true=独立气泡（在原文气泡外），false=与原文同一气泡
     function translationSeparate() {
         try {
-            // 私聊里开了「强制翻译」时，必须一个气泡一条独立译文，避免模板把它合并掉。
-            if (getChatSetting('forceTranslate', false)) return true;
-            // 模板可直接固定模式（优先级高于聊天设置按钮）：
-            // 1) 模板 JS：window.NANO_TRANSLATION_SEPARATE = 1/0
-            // 2) body 属性：data-nano-trans-separate="1/0"
-            // 3) 模板 CSS：--nano-trans-separate: 1/0（纯 CSS 即可切换独立/合并）
-            if (typeof window.NANO_TRANSLATION_SEPARATE !== 'undefined') return !!window.NANO_TRANSLATION_SEPARATE;
+            // 以当前模板为准：初见默认同一气泡，灰粉默认独立气泡。
+            // 用户手动设置只在明确写过 0/1 时覆盖模板；不再因为“强制翻译”而强制拆气泡。
             var attr = document.body && document.body.getAttribute('data-nano-trans-separate');
             if (attr === '1' || attr === '0') return attr === '1';
             var cssVar = '';
             try { cssVar = String(getComputedStyle(document.body).getPropertyValue('--nano-trans-separate') || '').trim(); } catch (err) {}
             if (cssVar === '1' || cssVar === '0') return cssVar === '1';
-            return localStorage.getItem('nano_trans_separate') !== '0';
-        } catch (e) { return true; }
+            if (typeof window.NANO_TRANSLATION_SEPARATE !== 'undefined') return !!window.NANO_TRANSLATION_SEPARATE;
+            var saved = '';
+            try { saved = localStorage.getItem('nano_trans_separate'); } catch (err) {}
+            if (saved === '0' || saved === '1') return saved === '1';
+            return false;
+        } catch (e) { return false; }
     }
     // 设置页改模式时（跨文档）重渲染
     window.addEventListener('storage', function (e) {
@@ -3519,6 +3582,22 @@
                     const img = document.createElement('img');
                     img.src = imageData.url;
                     img.alt = imageData.desc || '图片';
+                    // 旧消息里可能只存了会过期的临时 URL：加载失败时尝试转成本地 dataURL 并回写。
+                    img.onerror = async function () {
+                        if (img.dataset.retried) return;
+                        img.dataset.retried = '1';
+                        try {
+                            if (!window.NanoImageCache || !/^https?:\/\//i.test(imageData.url)) return;
+                            const local = await NanoImageCache.toDataUrl(imageData.url);
+                            if (!local) return;
+                            img.src = local;
+                            imageData.url = local;
+                            const mm = messages.find(function (x) { return x && x.id === id; });
+                            if (mm && mm.imageData) mm.imageData.url = local;
+                            try { if (window.NanoGallery) NanoGallery.add({ url: local, source: '聊天', charName: (characterData && characterData.name) || chatName || '', prompt: imageData.genPrompt || '' }); } catch (e) {}
+                            saveMessages();
+                        } catch (e) {}
+                    };
                     ib.appendChild(img);
                     ib.addEventListener('click', function(e) {
                         e.stopPropagation();
@@ -6124,20 +6203,25 @@
     }
     function filterMomentInteractionsByGraph(items, authors) {
         var SG = window.NanoSocialGraph;
-        if (!SG || !Array.isArray(items)) return items;
+        if (!Array.isArray(items)) return items;
+        if (!SG) { items.forEach(function (o) { if (o) { o.likes = []; o.comments = []; } }); return items; }
         var all = (authors || []).concat(allCharacters || []);
         items.forEach(function (o) {
             if (!o) return;
+            // 作者可能是名单外的 NPC（同学/朋友），保留它的互动；但真实 char 之间仍按关系过滤。
             var author = socialCharByName(o.author, all) || { name: o.author };
             o.likes = (Array.isArray(o.likes) ? o.likes : []).filter(function (n) {
                 if (!n || n === o.author) return false;
                 var c = socialCharByName(n, all);
-                return !c || SG.knows(author, c);
+                // 名单外的同学/朋友/NPC 可以互动；名单里的已绑定 char 必须明确认识。
+                if (!c || c.isNpc || c.isNPC) return true;
+                return (SG.knowsStrict || SG.knows)(author, c);
             });
             o.comments = (Array.isArray(o.comments) ? o.comments : []).filter(function (c) {
                 if (!c || !c.user || String(c.user) === String(o.author)) return false;
                 var u = socialCharByName(c.user, all);
-                if (!u || !SG.knows(author, u)) return false;
+                if (!u || u.isNpc || u.isNPC) return true;
+                if (!(SG.knowsStrict || SG.knows)(author, u)) return false;
                 if (c.toUser) {
                     var t = socialCharByName(c.toUser, all);
                     if (t && !SG.knows(u, t)) delete c.toUser;
@@ -6175,14 +6259,16 @@
             return '· ' + a.name + (st ? ('：' + st) : '');
         }).join('\n');
         let sys = '下面这几位是用户的好友，他们的动态会出现在同一个朋友圈里：' + authorNames + '。\n'
-            + '注意：他们不一定互相认识；只有人设/世界书/角色关系/私聊记录里明确认识的两个人，才可以在评论区互动或互相回复。不认识的 char 不要出现在同一条动态的评论区，也不要互相点赞。\n'
+            + '注意：他们不一定互相认识。已绑定的 char 之间，只有角色关系/悄悄话记录里明确认识，才可以在评论区互动或互相回复；不认识的 char 不要出现在同一条动态的评论区，也不要互相点赞。'
+            + '但作者现实里的同学、朋友、同事、邻居等 NPC 可以正常点赞/评论，不要因为不在名单里就全部删掉。\n'
             + '请为其中 2~3 个人各写一条朋友圈动态（可以是同一天的不同时间段：早晨/午后/傍晚/深夜），每个人只写一条，'
             + '内容贴合各自的人设、身份和当天心情，彼此不要重复、不要互相复述。\n'
             + '【拒绝流水账】严禁把动态写成日程记录或流水账：不要“早上…中午…晚上…”地罗列作息，也不要“今天天气不错 / 吃了三明治 / 上班好累 / 晚安”这种谁都能发的空话。每条都要落到一件具体的事或一个具体的细节（一个地点、一个人、一句话、刚发生的一个小插曲，或一种有来由的情绪），要有只有这个人此刻才会发的东西。宁少勿滥。\n'
             + '【重要 · 朋友圈不是聊天】这是发在朋友圈的动态，不是私聊：不要对任何人说话，不要提问，不要出现「你要不要/你去吗/在吗/一起吃吗」这类约人或聊天的语气；'
             + '只分享自己的日常与心情，像真人随手发的一条动态。禁止 AI 腔、禁止解释、禁止出戏。\n'
-            + '【必须带互动】每条动态都要像真实朋友圈一样有点赞和评论：1~3 个人点赞，1~3 条评论；'
-            + '点赞者和评论者只能从上文的名单里选（不能是动态作者本人，也绝对不能是用户本人），评论要贴合评论者与作者的关系，可以互相接话、调侃、关心。\n'
+            + '【互动规则】可以写 1~3 个点赞、1~3 条评论。点赞者/评论者可以是名单里明确认识的 char，也可以是名单外但合理的同学、朋友、同事、邻居等 NPC（他们本来就存在于作者的生活里）。'
+            + '名单里的已绑定 char 如果和作者不认识，绝对不要出现在互动里；不能是作者本人，也绝对不能是用户本人。'
+            + '如果实在没有任何合理的人可以互动，likes/comments 留空，不要硬凑。\n'
             + '只输出一个 JSON 数组，不要多余内容：[{"author":"发动态的人名（必须是：' + authorNames + '之一）","text":"动态文案","wantImage":true 或 false,"imagePrompt":"若想配图，描述这张照片的画面；不配图则留空","location":"地点或空字符串","likes":["点赞者名字"],"comments":[{"user":"评论者名字","toUser":"回复对象名字，没有就留空","text":"评论内容"}]}]';
         try { if (window.NanoPrompts && NanoPrompts.appendTo) sys = NanoPrompts.appendTo(sys, 'moments', { keepFormat: true }); } catch (e) {}
         const userMsg = '【朋友圈成员与人设】\n' + authorInfo + '\n\n'
@@ -6215,8 +6301,9 @@
             if (!names.length) return;
             const sys = '你是朋友圈互动生成器。根据每条动态的作者和内容，生成像真人一样的点赞和评论。评论要短、口语、碎片化，像随手打字：可以只回“哈哈哈”“？”“好家伙”、玩梗、损一句或问一个具体细节；不要长评、客服腔和升华总结。\n'
                 + '只输出一个 JSON 数组，不要多余内容：[{"index":0,"likes":["点赞者名字"],"comments":[{"user":"评论者名字","toUser":"回复对象名字，没有就留空","text":"评论内容"}]}]\n'
-                + '评论者/点赞者只能从这些名字里选：' + names.join('、') + '；不要用动态作者本人点赞，绝对不能出现用户本人。每条 1~3 个赞、1~3 条评论。\n'
-                + '只有和作者明确认识（人设/世界书/角色关系/私聊记录）的人才能点赞或评论；不认识的 char 直接跳过，不要硬凑。';
+                + '评论者/点赞者优先从这些名字里选：' + names.join('、') + '；也可以写名单外合理的同学/朋友/同事 NPC。不要用动态作者本人点赞，绝对不能出现用户本人。\n'
+                + '名单里的已绑定 char，只有和作者明确认识（角色关系/悄悄话记录）才能点赞或评论；不认识的 char 直接跳过。'
+                + '如果某条动态没有任何合理的人，likes/comments 留空，不要硬凑。';
             const userMsg = posts.map(function (p, i) {
                 return (i + 1) + '. 作者：' + p.author + '\n内容：' + String(p.text || '').slice(0, 220);
             }).join('\n\n') + '\n\n请为每一段生成互动（index 从 0 开始）。';
@@ -6272,10 +6359,9 @@
             const SG = window.NanoSocialGraph;
             const authorObj = socialCharByName(p.author, allCharacters);
             const others = (names || []).filter(function (n) {
-                if (!n || n === p.author) return false;
-                if (!SG) return true;
+                if (!n || n === p.author || !SG || !authorObj) return false;
                 const c = socialCharByName(n, allCharacters);
-                return !!(authorObj && c && SG.knows(authorObj, c));
+                return !!(c && (SG.knowsStrict || SG.knows)(authorObj, c));
             });
             let touched = false;
             if ((!p.likes || !p.likes.length) && others.length) {
@@ -7669,7 +7755,14 @@
         if (!imgModel) {
             throw new Error('未配置生图模型');
         }
-        const registerImage = function (u) {
+        const registerImage = async function (u) {
+            // 临时 URL 先抓成本地 dataURL，避免几天后过期变问号/被系统清掉。
+            try {
+                if (u && window.NanoImageCache && /^https?:\/\//i.test(u)) {
+                    const local = await NanoImageCache.toDataUrl(u);
+                    if (local) u = local;
+                }
+            } catch (e) {}
             try { if (window.NanoGallery && u) window.NanoGallery.add({ url: u, source: '聊天', charName: (characterData && characterData.name) || chatName || '', prompt: prompt }); } catch (e) {}
             return u;
         };
@@ -7755,8 +7848,8 @@
                 if (editResp.ok) {
                     const ed = await editResp.json();
                     const eitem = ed && ed.data && ed.data[0];
-                    if (eitem && eitem.url) return registerImage(eitem.url);
-                    if (eitem && eitem.b64_json) return registerImage('data:image/png;base64,' + eitem.b64_json);
+                    if (eitem && eitem.url) return await registerImage(eitem.url);
+                    if (eitem && eitem.b64_json) return await registerImage('data:image/png;base64,' + eitem.b64_json);
                 }
             } catch (e) {
                 console.warn('[Image] 锁脸图生图失败，改用普通生图:', e && e.message);
@@ -7787,8 +7880,8 @@
         }
         const data = await response.json();
         const item = data && data.data && data.data[0];
-        if (item && item.url) return registerImage(item.url);
-        if (item && item.b64_json) return registerImage('data:image/png;base64,' + item.b64_json);
+        if (item && item.url) return await registerImage(item.url);
+        if (item && item.b64_json) return await registerImage('data:image/png;base64,' + item.b64_json);
         throw new Error('生图接口未返回图片');
     }
 
@@ -11112,6 +11205,17 @@
                 };
             }))).filter(Boolean);
             const canSend = chars.length > 0;
+            let walletBalance = 5000;
+            try {
+                const wd = await readWalletRecord();
+                if (wd) {
+                    if (Array.isArray(wd.cards) && wd.cards.length) {
+                        walletBalance = wd.cards.reduce(function (s, c) { return s + (Number(c && c.balance) || 0); }, 0);
+                    } else if (typeof wd.balance === 'number') {
+                        walletBalance = wd.balance;
+                    }
+                }
+            } catch (e) {}
             const payload = {
                 token: autoPushToken(),
                 appId: autoAppId(),
@@ -11123,6 +11227,7 @@
                 intervalMinutes: globals.intervalMinutes,
                 momentIntervalHours: globals.momentIntervalHours,
                 user: { id: uid, name: (curUser && curUser.name) || currentUserName || '我' },
+                walletBalance: walletBalance,
                 chars: chars,
                 api: (cfg && cfg.mainKey) ? { url: cfg.mainUrl || '', key: cfg.mainKey || '', model: cfg.mainModel || '' } : null,
                 reset: !!(opts && opts.reset)
@@ -13271,6 +13376,7 @@ if (data.type === 'NANO_VOICE_CALL_CARD' || data.type === 'NANO_VIDEO_CALL_CARD'
             console.log('[Chat] 缓存加载完成，消息数:', messages.length);
             // 旧链接卡片补封面（异步、只补最近 5 张）
             setTimeout(function () { try { refreshStaleLinkPreviewImages(5); } catch (e) {} }, 1500);
+            setTimeout(function () { try { repairRemoteImages(4); } catch (e) {} }, 5000);
             refreshMemoryHints();
             try { if (window.NanoBadge) window.NanoBadge.setContext(chatId); } catch (e) {}
             try { showPendingUserInvite(); } catch (e) {}

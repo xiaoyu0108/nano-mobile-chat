@@ -427,6 +427,13 @@ async function generateInsImage(prompt, opts) {
 }
 
 async function urlToDataURL(url) {
+  // 直连被 CORS 拦下时走公共图片代理；生图临时 URL 过期前必须落成本地 dataURL。
+  if (window.NanoImageCache) {
+    try {
+      const cached = await NanoImageCache.toDataUrl(url);
+      if (cached) return cached;
+    } catch (e) {}
+  }
   const resp = await fetch(url, { mode: 'cors' });
   if (!resp.ok) throw new Error('HTTP ' + resp.status);
   const blob = await resp.blob();

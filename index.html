@@ -2,7 +2,7 @@
 <html lang="zh">
 <head>
     <meta charset="UTF-8">
-    <script src="js/nano-runtime.js?v=20261027a"></script>
+    <script src="js/nano-runtime.js?v=20261027f"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <script>
     // 版本升级时强制清一次缓存并重载：避免手机/PWA 一直跑旧 JS（屏幕共享/思维链等问题）
@@ -48,7 +48,7 @@
     <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
     <!-- 聊天/通话/设置页会同步加载 localforage；在这里提前拉，避免它们卡在 CDN 往返上 -->
-    <link rel="preload" as="script" href="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js">
+    <link rel="preload" as="script" href="js/localforage.min.js">
     <link rel="dns-prefetch" href="https://unpkg.com">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" media="print" onload="this.media='all'">
     <link rel="stylesheet" href="common.css">
@@ -4460,7 +4460,7 @@ setTimeout(function () {
 </script>
     <script src="js/api-float.js?v=20261025h"></script>
 <script src="js/mem-link.js?v=20261006a"></script>
-<script src="js/aux-memory.js?v=20261021k"></script>
+<script src="js/aux-memory.js?v=20261027k"></script>
 <script src="js/user-scope.js?v=20261020j"></script>
 <script src="js/nano-notify.js?v=20261024b"></script>
 <script src="js/nano-push.js?v=20261027a"></script>
@@ -4469,11 +4469,11 @@ setTimeout(function () {
 <script src="js/char-takeover.js?v=20261026e"></script>
 <script src="js/nano-prompts.js?v=20261027d"></script>
 <script src="js/screen-share.js?v=20261027a"></script>
-<script src="js/ios-bridge.js?v=20261027a"></script>
+<script src="js/ios-bridge.js?v=20261027k"></script>
 <script src="js/auto-push-bridge.js?v=20261027a"></script>
 <script src="js/online-catchup.js?v=20261027a"></script>
 <script src="js/whisper-store.js?v=20261026a"></script>
-<script src="js/char-secret-chat.js?v=20261026g"></script>
+<script src="js/char-secret-chat.js?v=20261027f"></script>
 </div>
     <!-- 小号试探：居中弹窗（不暴露是谁）-->
     <div class="alt-probe-overlay" id="altProbeOverlay">

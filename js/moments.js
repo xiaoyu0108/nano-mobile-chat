@@ -853,6 +853,15 @@
         var model = settings.imageModel || 'dall-e-3';
         var positivePrompt = settings.imagePositivePrompt || '';
         var negativePrompt = settings.imageNegativePrompt || '';
+        var persist = async function (u) {
+            try {
+                if (u && window.NanoImageCache && /^https?:\/\//i.test(u)) {
+                    var d = await NanoImageCache.toDataUrl(u);
+                    if (d) return d;
+                }
+            } catch (e) {}
+            return u;
+        };
 
         if (!settings.imageEnabled) {
             throw {
@@ -939,7 +948,7 @@
                 if (fedits.ok) {
                     var fdata = await fedits.json();
                     var fit = fdata && fdata.data && fdata.data[0];
-                    if (fit && fit.url) return fit.url;
+                    if (fit && fit.url) return await persist(fit.url);
                     if (fit && fit.b64_json) return 'data:image/png;base64,' + fit.b64_json;
                 }
             } catch (fe) { console.warn('[朋友圈生图] 锁脸图生图失败，改用普通生图:', fe && fe.message); }
@@ -1016,8 +1025,8 @@
                 hint: '服务端明确返回了 error 字段，请根据上面内容排查（可能是 prompt 被拒、模型不存在、参数不合法等）。'
             };
         }
-        if (data && data.data && data.data[0] && data.data[0].url) return data.data[0].url;
-        if (data && data.images && data.images[0]) return data.images[0];
+        if (data && data.data && data.data[0] && data.data[0].url) return await persist(data.data[0].url);
+        if (data && data.images && data.images[0]) return await persist(data.images[0]);
 
         throw {
             type: 'image', stage: 'format',

@@ -53,6 +53,15 @@
         if (!rawUrl || !key || !model) throw new Error('请先在 API → 生图里配置地址、Key 和模型');
         var base = toV1(rawUrl);
         var faceRef = String(opts.faceRef || '');
+        var persist = async function (u) {
+            try {
+                if (u && window.NanoImageCache && /^https?:\/\//i.test(u)) {
+                    var d = await NanoImageCache.toDataUrl(u);
+                    if (d) return d;
+                }
+            } catch (e) {}
+            return u;
+        };
         if (faceRef && faceRef.indexOf('data:') === 0) {
             try {
                 var fd = new FormData();
@@ -65,7 +74,7 @@
                 if (er.ok) {
                     var ed = await er.json();
                     var ei = ed && ed.data && ed.data[0];
-                    if (ei && ei.url) return ei.url;
+                    if (ei && ei.url) return await persist(ei.url);
                     if (ei && ei.b64_json) return 'data:image/png;base64,' + ei.b64_json;
                 }
             } catch (e) {}
@@ -84,7 +93,7 @@
         }
         var data = await resp.json();
         var item = data && data.data && data.data[0];
-        if (item && item.url) return item.url;
+        if (item && item.url) return await persist(item.url);
         if (item && item.b64_json) return 'data:image/png;base64,' + item.b64_json;
         throw new Error('生图接口未返回图片');
     }

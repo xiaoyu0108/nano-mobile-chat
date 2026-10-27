@@ -139,7 +139,13 @@
 
     function loadRecords() {
         var arr = parseJson(localStorage.getItem(RECORDS_KEY), []);
-        return Array.isArray(arr) ? arr.filter(function (r) { return r && r.a && r.b && Array.isArray(r.lines) && r.lines.length; }) : [];
+        // 悄悄话只记录角色 × 角色；旧的「用户 × 角色」1:1 记录（source: chat）不再混进来。
+        if (!Array.isArray(arr)) return [];
+        var clean = arr.filter(function (r) {
+            return r && r.source !== 'chat' && r.a && r.b && Array.isArray(r.lines) && r.lines.length;
+        });
+        if (clean.length !== arr.length) { try { localStorage.setItem(RECORDS_KEY, JSON.stringify(clean)); } catch (e) {} }
+        return clean;
     }
     // 记录只保留展示需要的字段。头像经常是 dataURL，存进 localStorage 很容易把
     // 5MB 配额撑满，导致 setItem 静默失败：生成成功、弹窗能看到，但列表里没有卡片。

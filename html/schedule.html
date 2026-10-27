@@ -1,11 +1,12 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<script src="../js/nano-runtime.js?v=20261026d"></script>
-<script src="../js/nano-idb.js"></script>
+<script src="../js/nano-runtime.js?v=20261027f"></script>
+  <script src="../js/nano-idb.js"></script>
+  <script src="../js/nano-gallery.js?v=20261027h"></script>
 <script>window.__NANO_FONT_ONLY = true;</script>
 <script src="../js/appearance.js?v=20261026d"></script>
-<script src="../js/schedule-bridge.js?v=20261027d"></script>
+<script src="../js/schedule-bridge.js?v=20261027f"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
 <title>日程</title>
@@ -828,10 +829,21 @@ function artSVG(seed){
   for(let i=0;i<5;i++){const x=r()*W;s+=`<line x1="${x.toFixed(0)}" y1="0" x2="${x.toFixed(0)}" y2="${H}" stroke="#000" stroke-opacity=".05"/>`}
   return 'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(s+'</svg>');
 }
+async function finalizeImageResult(out,prompt){
+  if(!out||!out.src)return out;
+  try{
+    if(window.NanoImageCache&&/^https?:\/\//i.test(out.src)){
+      const local=await NanoImageCache.toDataUrl(out.src);
+      if(local)out.src=local;
+    }
+  }catch(e){}
+  try{if(window.NanoGallery)NanoGallery.add({url:out.src,source:'日程',charName:(CHAR&&CHAR.name)||S.settings.name||'',prompt:prompt||''})}catch(e){}
+  return out;
+}
 async function genImage(ev,custom){
   const st=S.settings,prompt=(custom||'').trim()||buildPrompt(ev);
   try{
-    if(hooks.generateImage){const src=await hooks.generateImage({prompt,event:ev});return {src,kind:'api',prompt}}
+    if(hooks.generateImage){const src=await hooks.generateImage({prompt,event:ev});return finalizeImageResult({src,kind:'api',prompt},prompt)}
     const cfg=await getMainConfig();
     const imgUrl=(cfg&&cfg.imgUrl)||st.imgUrl||'';
     const imgKey=(cfg&&cfg.imgKey)||st.imgKey||'';
@@ -857,7 +869,7 @@ async function genImage(ev,custom){
         fd.append('model',imgModel||'');fd.append('prompt',fullPrompt);fd.append('n','1');fd.append('size',st.imgSize||'1024x1024');
         fd.append('image',new Blob([u8],{type:mime}),'face.png');
         const er=await fetch(editsEndpoint,{method:'POST',headers:imgKey?{Authorization:'Bearer '+imgKey}:{},body:fd});
-        if(er.ok)return parseImageText(await er.text(),prompt);
+        if(er.ok)return finalizeImageResult(parseImageText(await er.text(),prompt),prompt);
       }catch(e){}
     }
     const bodyObj={model:imgModel||undefined,prompt:fullPrompt,n:1,size:st.imgSize||'1024x1024'};
@@ -869,11 +881,11 @@ async function genImage(ev,custom){
       activeImgJobToken=token;
       writeImgJob({token,resultKey,charId:CHAR?String(CHAR.id):'',eventId:ev.id,prompt,startedAt:Date.now()});
       const raw=await requestViaParent(endpoint,headers,body,token,resultKey);
-      return parseImageText(raw,prompt);
+      return finalizeImageResult(parseImageText(raw,prompt),prompt);
     }
     const r=await fetch(endpoint,{method:'POST',headers,body});
     if(!r.ok)throw new Error('生图接口返回 HTTP '+r.status);
-    return parseImageText(await r.text(),prompt);
+    return finalizeImageResult(parseImageText(await r.text(),prompt),prompt);
   }catch(err){
     const e=new Error((err&&err.message)||'生图失败');
     e.background=!!(err&&err.background);
@@ -890,6 +902,23 @@ const overlap=(a,b)=>toMin(a.start)<toMin(b.end)&&toMin(b.start)<toMin(a.end);
 const isLive=e=>e.date===today()&&e.status==='todo'&&toMin(e.start)<=nowMin()&&nowMin()<toMin(e.end);
 const isPast=e=>e.date===today()&&toMin(e.end)<=nowMin();
 // 时间已过的待办自动划掉：纯本地状态，不调用 API。今天刚结束的留 2 小时给到点报备。
+// 旧日程里可能只存了会过期的生图 URL：后台慢慢转成本地 dataURL，能救回多少算多少。
+async function repairScheduleImages(){
+  if(!window.NanoImageCache)return;
+  let changed=0;
+  const list=Object.keys(STORE.chars||{}).map(function(k){return STORE.chars[k]}).filter(Boolean);
+  for(const ch of list){
+    if(!ch||!Array.isArray(ch.events))continue;
+    for(const e of ch.events){
+      if(changed>=4)break;
+      if(!e||!e.img||!e.img.src||!/^https?:\/\//i.test(e.img.src))continue;
+      const d=await NanoImageCache.toDataUrl(e.img.src);
+      if(d){e.img.src=d;changed++;try{if(window.NanoGallery)NanoGallery.add({url:d,source:'日程',charName:ch.settings&&ch.settings.name||'',prompt:e.img.prompt||''})}catch(err){}}
+    }
+  }
+  if(changed)persistStore();
+}
+
 function autoClosePastStore(){
   const td=today(),nm=nowMin();let changed=false;
   Object.keys(STORE.chars||{}).forEach(function(k){
@@ -1512,6 +1541,7 @@ $('#list').addEventListener('click',e=>{
   try{
     STORE=await loadStore();
     autoClosePastStore();
+    setTimeout(function(){ repairScheduleImages().catch(function(){}); }, 3500);
     CHARS=pickableChars(await loadCharacters());
   }catch(e){STORE=normalizeStore(STORE);CHARS=[]}
   if(!CHARS.length){renderCharPlaceholder();toast('还没有可用的角色');return}

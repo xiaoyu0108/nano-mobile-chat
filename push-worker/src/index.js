@@ -718,6 +718,7 @@ function sanitizeAutoConfig(body) {
     },
     chars: chars,
     api: api,
+    walletBalance: Math.max(0, Number(body.walletBalance) || 0),
     updatedAt: Date.now()
   };
 }
@@ -979,6 +980,7 @@ async function generateAutoMessages(env, cfg, busyChatId, avoidId) {
     const system = '你是「' + c.name + '」，现在主动给「' + cfg.user.name + '」发消息。\n'
       + (c.setting ? ('【你的人设】\n' + c.setting + '\n\n') : '')
       + '现在是 ' + autoNowText(c, now) + '（你所在地的当地时间）。\n'
+      + (typeof cfg.walletBalance === 'number' ? ('【用户真实经济状况】用户钱包当前余额约 ¥' + Number(cfg.walletBalance).toFixed(2) + '。这是真实数据，不要凭空说用户没钱、欠钱或吃不起饭。\n') : '')
       + autoLangBlock(c)
       + cycleBlock(c)
       + recentBlock(c)
@@ -2937,6 +2939,23 @@ export default {
           || '';
       } catch (e) {}
       if (!system) system = String(body.system || '');
+      // 用最近一次同步的钱包余额覆盖/补充，避免角色凭空说用户没钱。
+      try {
+        const wDev = cleanDeviceId((owner && owner.deviceId) || body.deviceId || deviceId);
+        let wUser = cleanUserId((owner && owner.userId) || body.userId || userId);
+        if (!wUser || wUser === 'default') {
+          const rawAct = await kv(env).get(autoActiveKey(realAppId, wDev));
+          if (rawAct) { try { const a = JSON.parse(rawAct); if (a && a.userId) wUser = cleanUserId(a.userId); } catch (e) {} }
+        }
+        const rawW = await kv(env).get(autoKey('config', realAppId, wDev, wUser));
+        if (rawW) {
+          const pcfg = JSON.parse(rawW);
+          if (pcfg && typeof pcfg.walletBalance === 'number') {
+            system += '\n【用户真实经济状况】用户钱包当前余额约 ¥' + Number(pcfg.walletBalance).toFixed(2) +
+              '。这是系统里的真实数据，不要凭空说用户没钱、欠钱、吃不起饭或暗示用户很穷。\n';
+          }
+        }
+      } catch (e) {}
       const charName = peekCharName(system);
       // 再兜底：从 /auto/config 同步的角色卡里找这条聊天的人设
       // 公用模式跳过：那是站点/设备维度的数据，不能把站长的角色卡给陌生人。
@@ -2989,11 +3008,20 @@ export default {
       let peekErr = '';
       try {
         const out = await peekModel(env, system, text, image, history, apiCfg, context);
-        if (out) { reply = out.text || null; peekErr = out.error || ''; }
+        if (out) {
+          reply = out.text || null;
+          peekErr = out.error || '';
+          // 上游偶尔把限流/额度错误当成正文返回；不要把这句当成角色说的话。
+          if (reply && /(余额不足|额度不足|欠费|insufficient.?quota|exceeded.*quota|API.*(余额|额度)|account.*balance)/i.test(reply)) {
+            peekErr = reply;
+            reply = null;
+          }
+        }
       } catch (e) { peekErr = String((e && e.message) || e || ''); }
       if (!reply) {
         const hasEnvApi = !peekPublic(env) && !!(env.PEEK_API_URL && env.PEEK_API_KEY && env.PEEK_MODEL);
         const errDetail = String(peekErr || '').replace(/\s+/g, ' ').slice(0, 180);
+        const upstreamLimit = /quota|insufficient|balance|余额|额度|402|429|rate.?limit|too many/i.test(errDetail);
         // 区分「没找到你这个令牌分区的 API」和「API 找到了但模型没返回」，不要再混成一句话。
         if (!apiCfg) {
           return json({
@@ -3008,10 +3036,15 @@ export default {
           ok: false,
           error: 'model',
           reply: peekPublic(env)
-            ? ('已经有模型 API，但这次没有拿到回复' + (errDetail ? '（上游：' + errDetail + '）' : '') + '。请检查中转站是否支持图片输入、模型是否真的支持识图，以及 Key/额度/接口地址。')
+            ? (upstreamLimit
+              ? '这次识图接口没有返回内容（上游限流或临时错误）。稍后再试，或换一个支持图片输入的模型。'
+              : ('这次识图接口没有返回内容' + (errDetail ? '（上游：' + errDetail + '）' : '') + '。请检查模型是否支持图片输入、接口地址和 Key 是否对应。'))
             : (hasEnvApi
-              ? ('模型没有返回内容' + (errDetail ? '（上游：' + errDetail + '）' : '') + '：请检查 PEEK_API_URL / PEEK_API_KEY / PEEK_MODEL 或模型是否支持识图。')
-              : '服务端还没有模型 API：请在 Nano 里打开一次聊天同步主 API，或在 Worker 配置 PEEK_API_URL / PEEK_API_KEY / PEEK_MODEL。')
+              ? (upstreamLimit
+                ? 'PEEK 模型接口这次没有返回内容（上游限流或临时错误）；稍后再试或更换支持识图的模型。'
+                : ('模型没有返回内容' + (errDetail ? '（上游：' + errDetail + '）' : '') + '：请检查 PEEK_API_URL / PEEK_API_KEY / PEEK_MODEL 或模型是否支持识图。'))
+              : '服务端还没有模型 API：请在 Nano 里打开一次聊天同步主 API，或在 Worker 配置 PEEK_API_URL / PEEK_API_KEY / PEEK_MODEL。'),
+          detail: errDetail
         }, 502);
       }
       // 截图也存进这一轮，App 拉取后会把截图和 TA 的评论一起放进私聊。
