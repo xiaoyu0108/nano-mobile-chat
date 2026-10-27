@@ -58,7 +58,7 @@
 
     function baseUrl() {
         var b = '';
-        try { b = (localStorage.getItem('nano_push_endpoint') || '').trim(); } catch (e) {}
+        try { b = (localStorage.getItem('nano_push_endpoint') || localStorage.getItem('nano_peek_url') || '').trim(); } catch (e) {}
         if (!b) b = 'https://nanopush.nano315.online';
         return b.replace(/\/+$/, '');
     }
@@ -98,8 +98,17 @@
     }
     function chatReadyFor(chatId) {
         try {
+            if (document.hidden) return false;
             var f = document.getElementById('chatInnerFrame');
             if (!f || !f.contentWindow) return false;
+            // 聊天帧可能只是被隐藏（用户已经回到聊天列表），这时不能再当成“正在看”，
+            // 否则消息会静默插进隐藏的聊天里，聊天列表也没有未读红点。
+            if (f.style && f.style.display === 'none') return false;
+            try {
+                var cs = window.getComputedStyle(f);
+                if (cs && (cs.display === 'none' || cs.visibility === 'hidden')) return false;
+            } catch (e) {}
+            if (f.getClientRects && f.getClientRects().length === 0) return false;
             var loaded = String(f.getAttribute('data-loaded-url') || f.getAttribute('src') || '');
             if (chatId && loaded && loaded.indexOf('chat=' + encodeURIComponent(chatId)) < 0 && loaded.indexOf('chat=' + chatId) < 0) return false;
             if (!f.contentWindow.__nanoChatReady) return false;
@@ -157,6 +166,8 @@
         var u = readJSON(UNREAD_KEY, {});
         u[chatId] = (parseInt(u[chatId] || 0, 10) || 0) + 1;
         writeJSON(UNREAD_KEY, u);
+        // 让聊天列表/通知栏立刻刷新，不用等重新打开页面。
+        try { window.postMessage({ type: 'nanoUnreadUpdated', chatId: String(chatId) }, '*'); } catch (e) {}
     }
     function markRead(chatId) {
         if (!chatId) return;
@@ -290,6 +301,16 @@
                     });
                     store[m.chatId] = list;
                     bumpUnread(String(m.chatId));
+                    // App 还开着但不在这个私聊时，也弹一次内置/系统通知；
+                    // 这样即使 Web Push 被系统限制，也不会完全不知道 TA 发了消息。
+                    try {
+                        if (window.NanoNotify && NanoNotify.notify) {
+                            NanoNotify.notify(m.name || 'TA', bubbles[0] || '你有一条新消息', {
+                                channel: 'chat', target: 'chat:' + String(m.chatId),
+                                avatar: m.avatar || '', name: m.name || 'TA', force: true
+                            });
+                        }
+                    } catch (e) {}
                 }
                 handledMsgIds.push(m.id);
             });
@@ -314,6 +335,14 @@
                 try {
                     var mf = document.getElementById('momentsFrame');
                     if (mf && mf.contentWindow) mf.contentWindow.postMessage({ type: 'momentsDataUpdated' }, '*');
+                } catch (e) {}
+                try { window.postMessage({ type: 'nanoUnreadUpdated' }, '*'); } catch (e) {}
+                try {
+                    if (window.NanoNotify && NanoNotify.notify) {
+                        NanoNotify.notify('朋友圈', (moments[0] && moments[0].author ? (moments[0].author + ' 发了新动态') : '朋友圈有新动态'), {
+                            channel: 'moment', target: 'moments', force: true
+                        });
+                    }
                 } catch (e) {}
             }
         }

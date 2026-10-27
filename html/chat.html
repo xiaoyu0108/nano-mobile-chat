@@ -379,6 +379,23 @@
       white-space: nowrap;
     }
 
+    .chat-unread {
+      min-width: 20px;
+      height: 20px;
+      padding: 0 6px;
+      margin-left: 6px;
+      border-radius: 10px;
+      background: #ff3b30;
+      color: #fff;
+      font-size: 12px;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      box-sizing: border-box;
+    }
+
     .chat-item.pinned .name::before {
       content: "";
       display: inline-block;
@@ -1451,6 +1468,26 @@
     return '';
   }
 
+  function readUnreadMap() {
+    try {
+      const raw = localStorage.getItem('nano_unread_counts');
+      const o = raw ? JSON.parse(raw) : {};
+      return (o && typeof o === 'object') ? o : {};
+    } catch (e) { return {}; }
+  }
+  function getUnread(id) {
+    return parseInt(readUnreadMap()[String(id)] || 0, 10) || 0;
+  }
+  function clearUnread(id) {
+    try {
+      const u = readUnreadMap();
+      if (u[String(id)]) {
+        delete u[String(id)];
+        localStorage.setItem('nano_unread_counts', JSON.stringify(u));
+      }
+    } catch (e) {}
+  }
+
   function getPinnedIds() {
     try {
       const key = currentUser ? String(currentUser.id) : 'default';
@@ -1600,13 +1637,15 @@
         ? ' style="background-image:url(\'' + String(item.avatar).replace(/'/g, '%27').replace(/"/g, '%22') + '\')"'
         : '';
       const avatar = '<div class="avatar"' + bg + '>' + (item.avatar ? '' : esc(initial)) + '</div>';
+      const unread = getUnread(item.id);
+      const unreadHtml = unread > 0 ? '<span class="chat-unread">' + (unread > 99 ? '99+' : unread) + '</span>' : '';
       return '<div class="chat-item ' + (item.pinned ? 'pinned' : '') + '" data-id="' + escAttr(item.id) + '" data-type="' + item.type + '" data-name="' + escAttr(item.name) + '" data-avatar="' + escAttr(item.avatar || '') + '">' +
         '<div class="swipe-actions">' +
           '<button class="pin-btn" data-action="pin"><svg viewBox="0 0 24 24"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/></svg><span>' + (item.pinned ? '取消置顶' : '置顶') + '</span></button>' +
           '<button class="del-btn" data-action="delete"><svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg><span>删除</span></button>' +
         '</div>' +
         '<div class="chat-item-inner">' + avatar +
-          '<div class="content"><div class="row1"><span class="name">' + esc(item.name) + '</span><span class="time">' + esc(item.time) + '</span></div>' +
+          '<div class="content"><div class="row1"><span class="name" style="flex:1;min-width:0;">' + esc(item.name) + '</span>' + unreadHtml + '<span class="time">' + esc(item.time) + '</span></div>' +
           '<div class="msg">' + esc(item.msg) + '</div></div>' +
         '</div>' +
       '</div>';
@@ -1788,6 +1827,9 @@
         const id = item.dataset.id;
         const name = item.dataset.name || '';
         const avatar = item.dataset.avatar || '';
+        clearUnread(id);
+        const badge = item.querySelector('.chat-unread');
+        if (badge) badge.remove();
         if (item.dataset.type === 'group') {
           if (!post({ type: 'openGroupChat', groupId: id, groupName: name })) {
             location.href = 'groups.html?group=' + encodeURIComponent(id);
@@ -2164,6 +2206,9 @@
       if (d.type === 'contactsDataUpdated' || d.type === 'nanoCharUpdated') {
         loadFriends().then(function () { if (currentTab === 'friends') renderCurrent(); renderProfile(); });
       }
+      if (d.type === 'nanoUnreadUpdated') {
+        renderCurrent();
+      }
       if (d.type === 'nanoChatGoHome') {
         activatePage('chat');
         if (d.tab === 'friends' || d.tab === 'groups') activateTab(d.tab);
@@ -2175,6 +2220,9 @@
       if (e.key.indexOf(GROUP_KEY) === 0 || e.key.indexOf(GROUP_MSG_PREFIX) === 0 || e.key.indexOf(GROUP_DATA_PREFIX) === 0) {
         loadGroups();
         if (currentTab === 'groups') renderCurrent();
+      }
+      if (e.key === 'nano_unread_counts' || e.key === 'nano_chat_activity') {
+        renderCurrent();
       }
       if (e.key === HOME_KEY) {
         maskData = loadMaskLocal() || maskData;

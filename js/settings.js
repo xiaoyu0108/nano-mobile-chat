@@ -853,7 +853,7 @@ const APP_ICONS = {
       }
     } catch (e) {}
     var endpoint = '';
-    try { endpoint = (localStorage.getItem('nano_push_endpoint') || '').trim(); } catch (e) {}
+    try { endpoint = (localStorage.getItem('nano_push_endpoint') || localStorage.getItem('nano_peek_url') || '').trim(); } catch (e) {}
     if (!endpoint) endpoint = 'https://nanopush.nano315.online';
     var key = '';
     try { key = (localStorage.getItem('nano_push_vapid') || '').trim(); } catch (e) {}

@@ -30,17 +30,50 @@
     }
 
     var SS = { active: false, info: null, cfg: null, ctx: {}, stream: null, panel: null, log: null, statusEl: null, video: null, lastAt: 0, busy: false, timer: null, comments: [], cardPosted: false, mode: 'screen' };
+
+    // 当前私聊帧打开的是哪个角色。postToChat 只发给当前帧，
+    // 如果它是别的角色/根本没打开，直接 post 等于把消息丢掉。
+    function openChatId() {
+        try {
+            var top = window;
+            try { if (window.top && window.top.document) top = window.top; } catch (e) {}
+            var ids = ['chatInnerFrame', 'chatInnerFrame2', 'chatInnerFrame3', 'overlayFrame', 'overlayFrame2'];
+            for (var i = 0; i < ids.length; i++) {
+                var f = top.document.getElementById(ids[i]);
+                if (!f) continue;
+                if (f.style && f.style.display === 'none') continue;
+                var url = String(f.getAttribute('data-loaded-url') || f.src || '');
+                if (url.indexOf('chat_inner.html') === -1) continue;
+                try {
+                    var id = new URL(url, top.location.href).searchParams.get('chat');
+                    if (id) return String(id);
+                } catch (e) {}
+            }
+        } catch (e) {}
+        return '';
+    }
+
+    function stashComments(list) {
+        if (!SS.info || !list || !list.length) return;
+        try {
+            var key = 'nano_screen_pending_' + String(SS.info.id);
+            var arr = [];
+            try { arr = JSON.parse(sessionStorage.getItem(key) || '[]') || []; } catch (e) { arr = []; }
+            list.forEach(function (b) { if (b) arr.push(String(b)); });
+            sessionStorage.setItem(key, JSON.stringify(arr.slice(-20)));
+        } catch (e) {}
+    }
+
     // 面板放在外壳（index.html）里，切到别的页面也会一直显示；点评同时收集成一张卡片
     function postCard() {
         if (SS.cardPosted || !SS.info || !SS.comments.length) return;
         SS.cardPosted = true;
         try {
-            var s = shell(); if (!s || !s.postToChat) return;
             var what = SS.mode === 'camera' ? '你的镜头' : (SS.mode === 'photo' ? '你发来的截图' : '你的屏幕');
             var detail = '（' + (SS.info.name || 'TA') + ' 看了' + what + '）\n' + SS.comments.map(function (b) {
                 var p = splitBy(b); return '　' + p.main + (p.sub ? ('（' + p.sub + '）') : '');
             }).join('\n');
-            s.postToChat({
+            var card = {
                 type: 'NANO_TAKEOVER_CARD',
                 chatId: String(SS.info.id),
                 title: (SS.info.name || 'TA') + ' 看了' + what,
@@ -48,7 +81,13 @@
                 detail: detail,
                 log: [{ name: (SS.mode === 'camera' ? '镜头' : (SS.mode === 'photo' ? '截图' : '屏幕')), bubbles: SS.comments.slice() }],
                 startedAt: Date.now()
-            });
+            };
+            if (openChatId() === String(SS.info.id)) {
+                var s = shell();
+                if (s && s.postToChat && s.postToChat(card)) return;
+            }
+            // 私聊没打开 / 开的是别人：先暂存，进入该角色私聊时 chat-core 会补成卡片。
+            try { sessionStorage.setItem('nano_pending_takeover_card', JSON.stringify(card)); } catch (e) {}
         } catch (e) {}
     }
 
@@ -281,20 +320,19 @@
     // 把点评送进「私聊」：优先让聊天写入角色消息；外壳/会话不可用时先暂存，等打开该私聊时补发
     function deliverToPrivateChat(bubbles) {
         if (!bubbles || !bubbles.length || !SS.info) return;
+        var target = String(SS.info.id);
         try {
-            var s = shell();
-            if (s && s.postToChat) {
-                bubbles.forEach(function (b) { s.postToChat({ type: 'NANO_CHAR_SAY', chatId: String(SS.info.id), text: String(b) }); });
-                return;
+            if (openChatId() === target) {
+                var s = shell();
+                if (s && s.postToChat) {
+                    var ok = true;
+                    bubbles.forEach(function (b) { ok = s.postToChat({ type: 'NANO_CHAR_SAY', chatId: target, text: String(b) }) !== false && ok; });
+                    if (ok) return;
+                }
             }
         } catch (e) {}
-        try {
-            var key = 'nano_screen_pending_' + String(SS.info.id);
-            var arr = [];
-            try { arr = JSON.parse(sessionStorage.getItem(key) || '[]') || []; } catch (e) {}
-            bubbles.forEach(function (b) { arr.push(String(b)); });
-            sessionStorage.setItem(key, JSON.stringify(arr.slice(-20)));
-        } catch (e) {}
+        // 当前没打开这个私聊：一定先暂存，等进入私聊时补发，不能静默丢掉。
+        stashComments(bubbles);
     }
     // 展示气泡 + 写进私聊 + 通知
     function emitBubbles(bubbles) {

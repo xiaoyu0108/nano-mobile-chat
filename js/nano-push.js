@@ -36,9 +36,9 @@
     function readConfig() {
         var endpoint = '', vapid = '', token = '';
         try {
-            endpoint = (localStorage.getItem('nano_push_endpoint') || '').trim();
+            endpoint = (localStorage.getItem('nano_push_endpoint') || localStorage.getItem('nano_peek_url') || '').trim();
             vapid = (localStorage.getItem('nano_push_vapid') || '').trim();
-            token = (localStorage.getItem('nano_push_token') || '').trim();
+            token = (localStorage.getItem('nano_push_token') || localStorage.getItem('nano_peek_token') || '').trim();
         } catch (e) {}
         endpoint = endpoint.replace(/\/+$/, '');
         // 旧测试 Worker 仍带 Bark / KV 逻辑，读到就自动迁回正式 Worker。
@@ -176,15 +176,19 @@
             if (perm !== 'granted') throw new Error('通知权限未授予：请在浏览器或系统设置里允许 Nano 的通知');
             return registerSW();
         }).then(function (reg) {
+            var usedKey = '';
+            try { usedKey = localStorage.getItem('nano_push_vapid_used') || ''; } catch (e) {}
+            var keyChanged = !!(usedKey && usedKey !== cfg.vapid);
             return reg.pushManager.getSubscription().then(function (sub) {
-                if (sub && !force) return sub;
-                // 用户点「重新订阅」时清掉旧订阅，解决安卓旧订阅 / 旧 VAPID 导致的 push service error
-                if (sub && force) {
+                if (sub && !force && !keyChanged) return sub;
+                // 用户点「重新订阅」或服务端 VAPID 换过：旧订阅对新公钥无效，必须重建
+                if (sub && (force || keyChanged)) {
                     return sub.unsubscribe().catch(function () {}).then(function () { return subscribe(reg); });
                 }
                 return subscribe(reg);
             });
         }).then(function (sub) {
+            try { localStorage.setItem('nano_push_vapid_used', cfg.vapid); } catch (e) {}
             return postJSON(cfg.endpoint + '/subscribe', {
                 subscription: sub.toJSON ? sub.toJSON() : sub,
                 userId: currentAutoUserId(),
@@ -234,6 +238,14 @@
         return postJSON(cfg.endpoint + '/schedule', { appId: appId(), deviceId: autoDeviceId(), userId: currentAutoUserId(), items: list });
     }
 
+    function cancel(ids) {
+        var cfg = readConfig();
+        if (!cfg.endpoint) return Promise.resolve({ ok: true, count: 0 });
+        var list = (Array.isArray(ids) ? ids : [ids]).filter(Boolean);
+        if (!list.length) return Promise.resolve({ ok: true, count: 0 });
+        return postJSON(cfg.endpoint + '/schedule/cancel', { appId: appId(), deviceId: autoDeviceId(), userId: currentAutoUserId(), ids: list });
+    }
+
     function status() {
         var cfg = readConfig();
         var out = { configured: !!(cfg.endpoint && cfg.vapid), endpoint: cfg.endpoint, permission: (typeof Notification !== 'undefined' ? Notification.permission : 'unsupported'), subscribed: false, appId: appId(), deviceId: autoDeviceId(), userId: currentAutoUserId() };
@@ -250,6 +262,12 @@
             if (!swSupported() || Notification.permission !== 'granted') return Promise.resolve(false);
             var cfg = readConfig();
             if (!cfg.endpoint || !cfg.vapid) return Promise.resolve(false);
+            // 服务端公钥变了：旧订阅已经无效，自动重建一次，否则后台推送会静默失败。
+            var usedKey = '';
+            try { usedKey = localStorage.getItem('nano_push_vapid_used') || ''; } catch (e) {}
+            if (usedKey && usedKey !== cfg.vapid) {
+                return enable(true).then(function () { return true; }).catch(function () { return false; });
+            }
             var last = parseInt(localStorage.getItem('nano_push_meta_sync_at') || '0', 10) || 0;
             var identity = appId() + '|' + autoDeviceId() + '|' + currentAutoUserId();
             var lastIdentity = localStorage.getItem('nano_push_meta_identity') || '';
@@ -281,17 +299,42 @@
         } catch (e) { return Promise.resolve(false); }
     }
 
+    // 服务端可能因为重新部署/清 KV 换掉 VAPID。旧订阅对新公钥无效时，
+    // 浏览器不会报错但会静默收不到推送；启动时对一下公钥并自动重建订阅。
+    function syncVapid() {
+        try {
+            var cfg = readConfig();
+            if (!cfg.endpoint) return Promise.resolve(false);
+            return fetch(cfg.endpoint.replace(/\/+$/, '') + '/vapid', { cache: 'no-store' })
+                .then(function (r) { return r.json(); })
+                .then(function (j) {
+                    var key = (j && (j.publicKey || j.vapid || j.key)) || '';
+                    if (!key) return false;
+                    var used = '';
+                    try { used = localStorage.getItem('nano_push_vapid_used') || ''; } catch (e) {}
+                    // 只要还没用当前公钥重建过订阅，就重建一次；旧订阅在服务端换钥后会静默失效。
+                    if (key !== cfg.vapid) saveConfig(cfg.endpoint, key, cfg.token);
+                    if (key === used) return false;
+                    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+                        return enable(true).then(function () { return true; }).catch(function () { return false; });
+                    }
+                    return true;
+                }).catch(function () { return false; });
+        } catch (e) { return Promise.resolve(false); }
+    }
+
     window.NanoPush = {
         setup: function (endpoint, vapid, token) { saveConfig(endpoint, vapid, token); return readConfig(); },
         enable: enable,
         refreshSubscription: refreshSubscription,
         disable: disable,
         schedule: schedule,
+        cancel: cancel,
         status: status,
         appId: appId,
         deviceId: autoDeviceId,
         userId: currentAutoUserId,
         config: readConfig
     };
-    try { setTimeout(function () { refreshSubscription(); }, 1600); } catch (e) {}
+    try { setTimeout(function () { syncVapid().then(function () { refreshSubscription(); }); }, 1600); } catch (e) {}
 })();

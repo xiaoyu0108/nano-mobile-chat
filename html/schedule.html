@@ -5,7 +5,7 @@
 <script src="../js/nano-idb.js"></script>
 <script>window.__NANO_FONT_ONLY = true;</script>
 <script src="../js/appearance.js?v=20261026d"></script>
-<script src="../js/schedule-bridge.js?v=20261019d"></script>
+<script src="../js/schedule-bridge.js?v=20261027d"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
 <title>日程</title>
@@ -837,9 +837,32 @@ async function genImage(ev,custom){
     const imgKey=(cfg&&cfg.imgKey)||st.imgKey||'';
     const imgModel=(cfg&&cfg.imgModel)||st.imgModel||'';
     if(!imgUrl)throw new Error('还没有配置生图 API，请到「API → 生图」填写地址、Key 和模型');
-    const endpoint=ep(imgUrl,'/images/generations');
+    let faceRef='';
+    try{
+      if(window.NanoFaceRef&&NanoFaceRef.get)faceRef=await NanoFaceRef.get(CHAR?String(CHAR.id):String(st.charId||''));
+    }catch(e){}
+    const note=faceRef?'【锁脸说明】人物参考图只用于保持长相（五官、脸型、肤色、发色）一致；请完全忽略参考图的姿势、角度、表情、背景与构图，按当前场景重新构图。\n':'';
+    const fullPrompt=note+prompt;
+    const cleanImg=String(imgUrl).replace(/\/images\/(generations|edits)$/i,'').replace(/\/+$/,'');
+    const endpoint=cleanImg+'/images/generations';
+    const editsEndpoint=cleanImg+'/images/edits';
     const headers={'Content-Type':'application/json',...(imgKey?{Authorization:'Bearer '+imgKey}:{})};
-    const body=JSON.stringify({model:imgModel||undefined,prompt,n:1,size:st.imgSize||'1024x1024'});
+    // 有锁脸参考先尝试图生图，尽量贴近参考脸；失败再退回带 reference 字段的普通生图。
+    if(faceRef&&String(faceRef).indexOf('data:')===0){
+      try{
+        const comma=faceRef.indexOf(','),mime=(faceRef.slice(5,comma).split(';')[0])||'image/png';
+        const bin=atob(faceRef.slice(comma+1)),u8=new Uint8Array(bin.length);
+        for(let i=0;i<bin.length;i++)u8[i]=bin.charCodeAt(i);
+        const fd=new FormData();
+        fd.append('model',imgModel||'');fd.append('prompt',fullPrompt);fd.append('n','1');fd.append('size',st.imgSize||'1024x1024');
+        fd.append('image',new Blob([u8],{type:mime}),'face.png');
+        const er=await fetch(editsEndpoint,{method:'POST',headers:imgKey?{Authorization:'Bearer '+imgKey}:{},body:fd});
+        if(er.ok)return parseImageText(await er.text(),prompt);
+      }catch(e){}
+    }
+    const bodyObj={model:imgModel||undefined,prompt:fullPrompt,n:1,size:st.imgSize||'1024x1024'};
+    if(faceRef){bodyObj.image=faceRef;bodyObj.reference_image=[faceRef];bodyObj.input_reference_image=[faceRef];}
+    const body=JSON.stringify(bodyObj);
     if(window.parent&&window.parent!==window){
       const token='schedimg_'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
       const resultKey='sched_img_result_'+token;
@@ -866,6 +889,19 @@ const byId=id=>S.events.find(e=>e.id===id);
 const overlap=(a,b)=>toMin(a.start)<toMin(b.end)&&toMin(b.start)<toMin(a.end);
 const isLive=e=>e.date===today()&&e.status==='todo'&&toMin(e.start)<=nowMin()&&nowMin()<toMin(e.end);
 const isPast=e=>e.date===today()&&toMin(e.end)<=nowMin();
+// 时间已过的待办自动划掉：纯本地状态，不调用 API。今天刚结束的留 2 小时给到点报备。
+function autoClosePastStore(){
+  const td=today(),nm=nowMin();let changed=false;
+  Object.keys(STORE.chars||{}).forEach(function(k){
+    const ch=STORE.chars[k];if(!ch||!Array.isArray(ch.events))return;
+    ch.events.forEach(function(e){
+      if(!e||e.status!=='todo'||!e.date)return;
+      const past=String(e.date)<td||(String(e.date)===td&&toMin(e.end)+120<nm);
+      if(past){e.status='done';e.autoClosed=true;e.autoClosedAt=Date.now();e.log=e.log||[];e.log.push({t:new Date().toTimeString().slice(0,5),m:'时间已过，自动划掉'});changed=true}
+    });
+  });
+  if(changed)persistStore();
+}
 const logEv=(e,m)=>{e.log=e.log||[];e.log.push({t:nowT(),m})};
 const dateLabel=d=>{const x=parseD(d);return `${x.getMonth()+1}月${x.getDate()}日 周${WK[x.getDay()]}`};
 function statusText(e){
@@ -1418,6 +1454,7 @@ function ensureWindow(){
 let lastDay=today();
 setInterval(()=>{
   if(!CHAR)return;
+  autoClosePastStore();
   if(today()!==lastDay){lastDay=today();ensureWindow();sel=0;render();return}
   if(!sheetOpen())render();
 },30000);
@@ -1474,6 +1511,7 @@ $('#list').addEventListener('click',e=>{
 (async function boot(){
   try{
     STORE=await loadStore();
+    autoClosePastStore();
     CHARS=pickableChars(await loadCharacters());
   }catch(e){STORE=normalizeStore(STORE);CHARS=[]}
   if(!CHARS.length){renderCharPlaceholder();toast('还没有可用的角色');return}

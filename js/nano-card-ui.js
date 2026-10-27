@@ -21,6 +21,7 @@
         userPlus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>',
         users: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
         calendar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg>',
+        scheduleEdit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="17" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h17"/><path d="m14.5 15.2 2.8-2.8 2.3 2.3-2.8 2.8-2.8.5.5-2.8z"/></svg>',
         hash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h16M4 15h16M10 3 8 21M16 3l-2 18"/></svg>',
         box: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 8-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>',
         gift: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="13" rx="2"/><path d="M3 12h18M12 8v13"/><path d="M12 8S10.5 3 8 3a2.5 2.5 0 0 0 0 5h4z"/><path d="M12 8s1.5-5 4-5a2.5 2.5 0 0 1 0 5h-4z"/></svg>',
@@ -99,15 +100,17 @@
 
     var currentCard = null;
 
-    function mainAmount(label, amount, iconName, cd) {
+    function mainAmount(label, amount, iconName, cd, noteText) {
         cd = cd || currentCard;
         // 金额卡默认不带图标（与初始模板一致）；数据里给了 iconSvg/icon 时才渲染
         var hasCustomIcon = !!(cd && (cd.iconSvg || cd.svg || cd.icon));
+        var note = String(noteText == null ? '' : noteText).trim();
         return '<div class="main-section card-main">' +
             (iconName || hasCustomIcon ? '<div class="main-icon icon-wrap">' + iconHtml(iconName || 'wallet', cd) + '</div>' : '') +
             '<div class="main-text card-main-text">' +
             '<div class="main-label card-title">' + esc(label || '金额') + '</div>' +
             '<div class="amount card-sub">' + money(amount) + '</div>' +
+            (note ? '<div class="main-sub card-note-inline">' + esc(note) + '</div>' : '') +
             '</div></div>';
     }
 
@@ -177,6 +180,21 @@
             '</span></div>';
     }
 
+    // 图标按钮：用于日程修改的「取消 / 确认」，不显示文字，只保留 title/aria-label
+    function iconActions(buttons) {
+        if (!buttons || !buttons.length) return '';
+        return '<div class="card-footer"><span class="card-actions">' + buttons.map(function (b) {
+            var name = b[0] || 'check';
+            var act = b[1] || '';
+            var primary = !!b[2];
+            var label = b[3] || '';
+            return '<button type="button" class="btn ' + (primary ? 'btn-primary primary' : 'btn-secondary secondary return-btn') +
+                ' card-btn" data-act="' + esc(act) + '" title="' + esc(label) + '" aria-label="' + esc(label) + '"' +
+                ' style="width:34px;height:34px;min-width:34px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;">' +
+                '<span style="width:18px;height:18px;display:block;">' + icon(name) + '</span></button>';
+        }).join('') + '</span></div>';
+    }
+
     function statusFoot(text) {
         if (!text) return '';
         // 需要对方确认的提示直接作为卡片内的一行说明，不再单独做成一个底部小框。
@@ -220,12 +238,13 @@
             else if (st === 'returned') foot = statusFoot(side === 'right' ? '对方已退还' : '这笔转账已退还');
             else if (side === 'right') foot = statusFoot('等待对方接收');
             else foot = actions([['退还', 'return', false], ['接收', 'receive', true]]);
+            var transferNote = String(cd.note || (cd.title && cd.title !== '转账' ? cd.title : '')).trim();
             html = header(headIcon, headText, time) +
-                mainAmount('转账金额', amount, null, cd) +
+                mainAmount('转账金额', amount, null, cd, transferNote) +
                 info([
                     ['转账人', roles.sender, 'user'],
                     ['收款人', roles.recipient, 'user'],
-                    ['转账说明', cd.title || '转账', 'hash'],
+                    ['转账说明', transferNote || '转账', 'hash'],
                     ['交易时间', cd.time || '刚刚', 'clock']
                 ], cd) + foot;
         } else if (type === 'gift') {
@@ -244,6 +263,10 @@
             var giftSub = cd.amount
                 ? ('价值 ' + String(cd.amount) + (cd.sub ? ' · ' + cd.sub : ''))
                 : (cd.sub || '');
+            var giftNote = String(cd.note || '').trim();
+            if (giftNote && String(giftSub).indexOf(giftNote) === -1) {
+                giftSub = [giftSub, giftNote].filter(Boolean).join(' · ');
+            }
             html = header(gIcon, gHead, time) +
                 mainTitle('gift', side === 'left' ? '收到一份礼物' : '送出一份礼物', cd.title || '礼物', giftSub, cd) +
                 info([
@@ -342,7 +365,7 @@
                     ['分享人', side === 'left' ? other : me, 'user'],
                     ['坐标', coord || '未提供', 'hash'],
                     ['分享时间', time || '刚刚', 'clock']
-                ]) + statusFoot('点击卡片查看位置详情');
+                ]);
         } else if (type === 'addfriend') {
             var aName = cd.altName || '小号';
             var aSetting = cd.altSetting || '陌生人';
@@ -390,7 +413,7 @@
                     ['通话时长', missed ? '未接通' : dur, 'clock'],
                     ['呼叫方向', side === 'left' ? '对方来电' : '我拨出', 'user'],
                     ['通话时间', time || '刚刚', 'calendar']
-                ]) + statusFoot('点击卡片查看通话详情');
+                ]);
         } else if (type === 'listen') {
             var song = String(cd.title || '').trim();
             var artist = String(cd.sub || '').trim();
@@ -429,8 +452,8 @@
             var kInfo = kindMap[kind] || ['情侣空间', 'heart'];
             var cTitle2 = cd.title || (kind === 'invite' ? '情侣空间邀请' : (kind === 'takeover' ? 'TA 查看了你的手机' : '情侣空间'));
             var cHead2 = kind === 'invite' ? '情侣空间邀请' : (kind === 'takeover' ? '手机查看分享' : '情侣空间分享');
-            var cFoot2 = '点击卡片查看完整内容';
-            if (kind === 'takeover') cFoot2 = '点击查看 TA 看到的内容';
+            var cFoot2 = '';
+            if (kind === 'takeover') cFoot2 = '';
             else if (kind === 'invite') {
                 var cst = cd.status || 'pending';
                 if (cst === 'accepted') cFoot2 = 'TA 已同意，可回到情侣空间开通';
@@ -470,7 +493,7 @@
                     ['文件大小', fsize, 'box'],
                     ['发送人', side === 'right' ? me : other, 'user'],
                     ['发送时间', time || '刚刚', 'clock']
-                ]) + note(preview) + statusFoot('点击卡片查看文件内容');
+                ]) + note(preview);
         } else if (type === 'study') {
             var studyMins = Number(cd.minutes || 0);
             var studyPomos = Number(cd.pomos || 0);
@@ -481,7 +504,7 @@
                     ['专注时长', studyMins ? (studyMins + ' 分钟') : (cd.duration || '—'), 'clock'],
                     ['完成番茄', studyPomos ? (studyPomos + ' 个') : '—', 'checkCircle'],
                     ['陪伴 char', side === 'left' ? other : me, 'user']
-                ]) + note(cd.summary || '') + statusFoot('点击查看本次学习内容与对话');
+                ]) + note(cd.summary || '');
         } else if (type === 'scheduleReport') {
             var imgSrc = String(cd.img || '');
             var imgHtml = imgSrc ? '<div class="card-image"><img src="' + esc(imgSrc) + '" alt=""></div>' : '';
@@ -493,7 +516,32 @@
                     ['地点', cd.place || '—', 'pin'],
                     ['记录人', side === 'left' ? other : me, 'user'],
                     ['记录时间', time || '刚刚', 'calendar']
-                ]) + note(cd.note || '') + statusFoot('点击查看图片与备注');
+                ]) + note(cd.note || '');
+        } else if (type === 'scheduleChange') {
+            var changeLabel = function (ch) {
+                if (!ch) return '';
+                if (ch.kind === 'cancel') {
+                    return '划掉「' + (ch.title || '安排') + '」' + (ch.reason ? '：' + ch.reason : '');
+                }
+                if (ch.kind === 'move') {
+                    return '「' + (ch.title || '安排') + '」 ' + (ch.oldStart || '') + '-' + (ch.oldEnd || '') +
+                        ' → ' + (ch.start || '') + '-' + (ch.end || '') + (ch.reason ? '：' + ch.reason : '');
+                }
+                return '新增 ' + (ch.date || '') + ' ' + (ch.start || '') + '-' + (ch.end || '') +
+                    '「' + (ch.title || '新安排') + '」' + (ch.place ? '（' + ch.place + '）' : '');
+            };
+            var changeList = (Array.isArray(cd.changes) ? cd.changes : []).map(function (ch) {
+                return '<div class="main-sub" style="text-align:left;margin-top:6px;line-height:1.55;">' + esc(changeLabel(ch)) + '</div>';
+            }).join('');
+            var scFoot = st === 'pending'
+                ? iconActions([['x', 'schedule-deny', false, '取消'], ['check', 'schedule-allow', true, '确认']])
+                : '';
+            var scHead = st === 'pending' ? '日程修改待确认' : (st === 'allowed' ? '日程修改已生效' : '日程修改已忽略');
+            html = header('scheduleEdit', scHead, time) +
+                '<div class="main-section card-main"><div class="main-icon icon-wrap">' + icon('scheduleEdit') + '</div>' +
+                '<div class="main-text card-main-text" style="width:100%;text-align:left;">' +
+                '<div class="main-label card-title">' + (st === 'pending' ? 'TA 想调整这些安排' : (st === 'allowed' ? '允许后已生效' : '这次没有修改')) + '</div>' +
+                changeList + '</div></div>' + scFoot;
         } else if (type === 'redpacket') {
             var rpCount = Math.max(1, parseInt(cd.count, 10) || 1);
             var rpClaims = Array.isArray(cd.claims) ? cd.claims.length : 0;
@@ -507,7 +555,7 @@
                     ['红包个数', rpCount + ' 个', 'hash'],
                     ['发送人', side === 'left' ? other : me, 'user'],
                     ['红包状态', rpStatus, 'box']
-                ]) + statusFoot(cd.opened ? '已拆开' : (rpDone ? '已领完' : '点击领取'));
+                ]) + statusFoot(cd.opened ? '已拆开' : (rpDone ? '已领完' : ''));
         } else if (type === 'notice') {
             var confirmed = cd.confirmed || {};
             var count = Object.keys(confirmed).length + 1;

@@ -1212,16 +1212,24 @@
             pushMsg({ type:'left', senderId:member.id, isImage:true, text:desc, imageData:{ textImage:true, desc:desc } });
         };
         if (settings.allowImage === false) { fallback(); return; }
-        getGroupApiConfig().then(function(config){
+        var faceRefP = (window.NanoFaceRef && NanoFaceRef.get)
+            ? Promise.resolve(NanoFaceRef.get(member.id)).catch(function(){ return ''; })
+            : Promise.resolve('');
+        Promise.all([getGroupApiConfig(), faceRefP]).then(function(pair){
+            var config = pair[0], faceRef = pair[1] || '';
             var imgUrl = config && (config.imgUrl || '').trim();
             var imgKey = config && (config.imgKey || '').trim();
             var imgModel = config && (config.imgModel || '').trim();
             if (!imgUrl || !imgKey || !imgModel) { fallback(); return; }
             var baseUrl = toV1Base(resolveApiHost(imgUrl));
+            var fullDesc = desc;
+            if (faceRef) fullDesc = '【锁脸说明】人物参考图只用于保持长相（五官、脸型、肤色、发色）一致；请完全忽略参考图的姿势、角度、表情、背景与构图，按当前场景重新构图。\n' + desc;
+            var body = { model:imgModel, prompt:fullDesc, n:1, size:'1024x1024' };
+            if (faceRef) { body.image = faceRef; body.reference_image = [faceRef]; body.input_reference_image = [faceRef]; }
             fetch(baseUrl + '/images/generations', {
                 method:'POST',
                 headers:{ 'Authorization':'Bearer ' + imgKey, 'Content-Type':'application/json' },
-                body: JSON.stringify({ model:imgModel, prompt:desc, n:1, size:'1024x1024' })
+                body: JSON.stringify(body)
             }).then(function(r){
                 if (!r.ok) {
                     return r.text().then(function(t){

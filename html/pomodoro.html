@@ -267,6 +267,7 @@ textarea.field{height:84px;padding:11px 15px;resize:none;line-height:1.6}
 .m.c{align-self:flex-start;background:#fff;border:1px solid var(--line);border-bottom-left-radius:6px}
 .m.u{align-self:flex-end;background:var(--dark);color:#fff;border-bottom-right-radius:6px}
 .m .mq{font-size:12px;line-height:1.45;opacity:.72;border-left:2px solid currentColor;padding-left:7px;margin-bottom:6px;white-space:pre-wrap;max-height:64px;overflow:hidden}
+.m .mimg{display:block;max-width:100%;max-height:220px;border-radius:12px;margin:2px 0 5px;object-fit:cover}
 .m .mtr{margin-top:6px;padding-top:5px;border-top:1px dashed rgba(46,46,50,.18);font-size:12px;line-height:1.45;opacity:.68;font-weight:400}
 .m.u .mtr{border-top-color:rgba(255,255,255,.28)}
 .m[data-i]{-webkit-user-select:none;user-select:none}
@@ -442,7 +443,8 @@ textarea.field{height:84px;padding:11px 15px;resize:none;line-height:1.6}
     <div class="ch-b" id="chBody"></div>
     <div class="quick" id="chQuick"></div>
     <div class="ch-quote" id="chQuote"><span class="qc" id="chQuoteText"></span><button id="chQuoteClose" aria-label="取消引用"></button></div>
-    <div class="ch-f"><button class="ghost" id="chReroll" aria-label="重roll"></button><input id="chIn" placeholder="和 ta 说点什么" enterkeyhint="send" autocomplete="off"><button class="ghost" id="chReply" aria-label="回复"></button><button id="chSend" aria-label="发送"></button></div>
+    <div class="ch-f"><button class="ghost" id="chReroll" aria-label="重roll"></button><input id="chIn" placeholder="和 ta 说点什么" enterkeyhint="send" autocomplete="off"><button class="ghost" id="chPhoto" aria-label="发图片"></button><button class="ghost" id="chReply" aria-label="回复"></button><button id="chSend" aria-label="发送"></button></div>
+    <input type="file" id="chImg" accept="image/*" hidden>
   </div>
   <div class="msg-menu" id="msgMenu"><button data-a="quote">引用</button><button data-a="del" class="del">删除</button></div>
   <div class="modal-mask" id="errModal"><div class="modal-box"><h3 id="errTitle">请求失败</h3><p id="errMsg"></p><button id="errOk">知道了</button></div></div>
@@ -450,7 +452,7 @@ textarea.field{height:84px;padding:11px 15px;resize:none;line-height:1.6}
 </div>
 
 <script defer src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
-<script src="../js/qa-bridge.js?v=20261026e"></script>
+<script src="../js/qa-bridge.js?v=20261027a"></script>
 <script>
 (function(){
 /* ---------- 工具 ---------- */
@@ -474,6 +476,7 @@ const ICON={
   send:P('<path d="M21 3L10.5 13.5M21 3l-7 18-3.5-7.5L3 10z"/>'),
   reroll:P('<path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/>'),
   reply:P('<path d="M9.5 7L4.5 12l5 5M4.5 12h9a6 6 0 0 1 6 6v1"/>'),
+  photo:P('<rect x="3.5" y="5" width="17" height="14" rx="2.5"/><circle cx="9" cy="10" r="1.8"/><path d="M4.5 17l4.5-4.5 3.2 3.2 2.3-2.3 5 5"/>'),
   tune:P('<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>'),
   down:P('<path d="M6 9l6 6 6-6"/>'),
   right:P('<path d="M9 6l6 6-6 6"/>'),
@@ -671,6 +674,49 @@ function beep(){
 }
 const leftText=()=>{const s=Math.max(0,Math.ceil(T.remaining/1000));return `${Math.floor(s/60)} 分 ${s%60} 秒`};
 
+/* ---------- 到点提醒（页面被切后台/锁屏也尽量推送） ---------- */
+function pushApi(){
+  try{return window.NanoPush||window.parent.NanoPush||window.top.NanoPush||null}catch(e){return null}
+}
+function pomoStoredJobIds(){
+  try{return JSON.parse(localStorage.getItem('nano_pomo_push_ids')||'[]')||[]}catch(e){return []}
+}
+function pomoSetJobIds(ids){
+  try{localStorage.setItem('nano_pomo_push_ids',JSON.stringify(ids||[]))}catch(e){}
+}
+async function pomoCancelPush(){
+  const api=pushApi(),ids=pomoStoredJobIds();
+  pomoSetJobIds([]);
+  if(!api||!api.cancel||!ids.length)return;
+  try{await api.cancel(ids)}catch(e){}
+}
+async function pomoSchedulePush(){
+  const api=pushApi();
+  if(!api||!api.schedule||!T.running||!T.endAt)return;
+  await pomoCancelPush();
+  const phase=T.phase;
+  const title=phase==='focus'?'番茄钟 · 专注结束':'番茄钟 · 休息结束';
+  const body=phase==='focus'?`${S.set.theme||'学习'}这一轮完成啦，起来活动一下。`:'休息结束，回来继续学习吧。';
+  try{
+    const r=await api.schedule([{at:T.endAt,title,body,target:'pomodoro',tag:'pomodoro-'+phase,renotify:true}]);
+    if(r&&Array.isArray(r.ids))pomoSetJobIds(r.ids);
+  }catch(e){}
+}
+function pomoNotifyDone(wasFocus){
+  try{
+    const api=pushApi();
+    let nn=null;
+    try{nn=window.NanoNotify||(window.parent&&window.parent.NanoNotify)||(window.top&&window.top.NanoNotify)||null}catch(e){}
+    if(nn&&nn.notify){
+      nn.notify(wasFocus?'番茄钟 · 专注结束':'番茄钟 · 休息结束',wasFocus?'这一轮完成啦，起来活动一下。':'休息结束，回来继续学习吧。',{channel:'pomodoro',target:'pomodoro',force:true,tag:'pomodoro-done'});
+      return;
+    }
+    if(api&&api.config&&'Notification' in window&&Notification.permission==='granted'){
+      new Notification(wasFocus?'番茄钟 · 专注结束':'番茄钟 · 休息结束',{body:wasFocus?'这一轮完成啦，起来活动一下。':'休息结束，回来继续学习吧。'});
+    }
+  }catch(e){}
+}
+
 function render(){
   const total=dur(T.phase),sec=Math.max(0,Math.ceil(T.remaining/1000));
   const tm=`${pad(Math.floor(sec/60))}:${pad(sec%60)}`;
@@ -719,10 +765,11 @@ function start(){
     }
   }
   T.running=true;T.last=Date.now();T.endAt=T.last+T.remaining;
+  pomoSchedulePush();
   render();
 }
-function pause(){tick();T.running=false;render()}
-function setPhase(p){T.phase=p;T.remaining=dur(p);T.running=false;T.mid=false;render()}
+function pause(){tick();T.running=false;pomoCancelPush();render()}
+function setPhase(p){T.phase=p;T.remaining=dur(p);T.running=false;T.mid=false;pomoCancelPush();render()}
 function flushRecord(done){
   if(T.phase!=='focus'){T.acc=0;return}
   if(done||T.acc>=(T.test?3:60)){
@@ -749,6 +796,8 @@ function complete(){
   const nx=wasFocus?(T.cycle%S.set.rounds===0?'long':'short'):'focus';
   if(wasLong)T.cycle=0;
   setPhase(nx);beep();
+  // 后台由预约推送 / say() 的系统通知负责；前台补一个内置通知栏提示。
+  if(!document.hidden)pomoNotifyDone(wasFocus);
   if(wasFocus){
     if(session)currentSession=session;
     say('done',true).then(()=>{if(session){writeSessionMemory(session);scheduleStudyCard(100);}});
@@ -794,7 +843,7 @@ async function aiCall(messages,meta){
   if(!window.QABridge||!QABridge.callAI)throw new Error('还没有连接主 API，请先在 API 页配置接口');
   const c=curChar();
   return await QABridge.callAI(messages,Object.assign({
-    charId:c?c.id:'',charName:c?c.name:'',lang:c?c.lang:'中文',app:'pomodoro',maxTokens:450
+    charId:c?c.id:'',charName:c?c.name:'',lang:c?c.lang:'中文',app:'pomodoro',maxTokens:450,json:false
   },meta||{}));
 }
 function showApiError(e){
@@ -843,7 +892,11 @@ function sysPrompt(c){
 }
 function histFor(c,n){
   const foreign=isForeignChar(c);
-  return (S.chat[c.id]||[]).slice(-n).map(m=>({role:m.r==='u'?'user':'assistant',content:(m.q?`（引用：${m.q}）`:'')+m.t+(m.tr?(foreign?`||${m.tr}`:`\n（${translationLabel(c)}：${m.tr}）`):'')}));
+  return (S.chat[c.id]||[]).slice(-n).map(m=>{
+    const text=(m.q?`（引用：${m.q}）`:'')+(m.t||'')+(m.tr?(foreign?`||${m.tr}`:`\n（${translationLabel(c)}：${m.tr}）`):'');
+    const content=m.img?[{type:'text',text:text||'（发来一张图片）'},{type:'image_url',image_url:{url:m.img}}]:text;
+    return {role:m.r==='u'?'user':'assistant',content};
+  });
 }
 function sentenceParts(s){
   const t=String(s||'').replace(/\r/g,'').trim();
@@ -953,6 +1006,36 @@ function sendUser(text,quote){
   const c=curChar();text=String(text||'').trim();if(!c||!text)return;
   pushMsg(c,'u',text,quote?{q:quote}:null);
   updateChatControls();
+}
+function readChatImage(file){
+  return new Promise(resolve=>{
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      const img=new Image();
+      img.onload=()=>{
+        try{
+          const scale=Math.min(1,900/Math.max(img.width,img.height));
+          const cv=document.createElement('canvas');
+          cv.width=Math.max(1,Math.round(img.width*scale));
+          cv.height=Math.max(1,Math.round(img.height*scale));
+          cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
+          resolve(cv.toDataURL('image/jpeg',0.82));
+        }catch(e){resolve(ev.target.result)}
+      };
+      img.onerror=()=>resolve(ev.target.result);
+      img.src=ev.target.result;
+    };
+    reader.onerror=()=>resolve(null);
+    reader.readAsDataURL(file);
+  });
+}
+async function sendImage(file){
+  const c=curChar();if(!c||typing||!file)return;
+  const url=await readChatImage(file);
+  if(!url){toast('图片读取失败');return}
+  pushMsg(c,'u','',{img:url});
+  updateChatControls();
+  await generateReply(c);
 }
 async function generateReply(c,ev,avoid){
   if(!c||typing)return;
@@ -1129,7 +1212,7 @@ function renderChat(){
   arr.forEach((m,i)=>{
     if(!last||m.at-last>10*60*1000){const d=new Date(m.at);html+=`<div class="tstamp">${pad(d.getHours())}:${pad(d.getMinutes())}</div>`}
     last=m.at;
-    html+=`<div class="m ${m.r==='u'?'u':'c'}" data-i="${i}">${m.q?`<div class="mq">${esc(m.q)}</div>`:''}${esc(m.t)}${m.tr?`<div class="mtr">${esc(m.tr)}</div>`:''}</div>`;
+    html+=`<div class="m ${m.r==='u'?'u':'c'}" data-i="${i}">${m.q?`<div class="mq">${esc(m.q)}</div>`:''}${m.img?`<img class="mimg" src="${esc(m.img)}" alt="图片">`:''}${esc(m.t)}${m.tr?`<div class="mtr">${esc(m.tr)}</div>`:''}</div>`;
   });
   if(!arr.length&&!typing)html+=`<div class="tstamp">和 ${esc(c.name)} 打个招呼吧</div>`;
   if(typing)html+=`<div class="m c typing"><i></i><i></i><i></i></div>`;
@@ -1138,12 +1221,13 @@ function renderChat(){
   updateChatControls();
 }
 function updateChatControls(){
-  const send=$('#chSend'),replyBtn=$('#chReply'),roll=$('#chReroll');
+  const send=$('#chSend'),replyBtn=$('#chReply'),roll=$('#chReroll'),photo=$('#chPhoto');
   if(!send||!replyBtn||!roll)return;
   const c=curChar(),arr=c?(S.chat[c.id]||[]):[];
   const txt=($('#chIn')&&$('#chIn').value||'').trim();
   const last=arr[arr.length-1];
   send.disabled=typing||!txt;
+  if(photo)photo.disabled=typing;
   replyBtn.disabled=typing||!!txt||!last||last.r!=='u';
   roll.disabled=typing||!arr.length;
 }
@@ -1173,6 +1257,12 @@ function msgFromEvent(e){
   return Number.isFinite(i)?{m,i}:null;
 }
 $('#chSend').onclick=doSend;
+$('#chPhoto').onclick=()=>{if(!typing)$('#chImg').click()};
+$('#chImg').addEventListener('change',async e=>{
+  const f=e.target.files&&e.target.files[0];
+  e.target.value='';
+  if(f)await sendImage(f);
+});
 $('#chReply').onclick=doReply;
 $('#chReroll').onclick=reroll;
 $('#chQuoteClose').onclick=()=>{clearQuote();updateChatControls();};
@@ -1387,9 +1477,10 @@ $('#nSave').onclick=()=>{
 $('#dateText').textContent=(()=>{const d=new Date();return `${d.getMonth()+1} 月 ${d.getDate()} 日 周${'日一二三四五六'[d.getDay()]}`})();
 $('#btnReset').innerHTML=ICON.reset;$('#btnSkip').innerHTML=ICON.skip;$('#selClose').innerHTML=ICON.close;$('#backBtn').innerHTML=ICON.back;
 $('#backBtn').onclick=closeApp;
-$('#chSend').innerHTML=ICON.send;$('#chReply').innerHTML=ICON.reply;$('#chReroll').innerHTML=ICON.reroll;
+$('#chSend').innerHTML=ICON.send;$('#chReply').innerHTML=ICON.reply;$('#chReroll').innerHTML=ICON.reroll;$('#chPhoto').innerHTML=ICON.photo;
 $('#chQuoteClose').innerHTML=ICON.close;$('#chClose').innerHTML=ICON.down;
 renderTop();renderSet();render();placeFab();
+pomoCancelPush();
 (async()=>{
   await loadLibChars();
   renderTop();renderSet();render();placeFab();

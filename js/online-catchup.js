@@ -31,7 +31,8 @@
             // 否则「上线补发 + 本机定时」会各发一条，看起来像 char 一直发。
             for (var i = 0; i < localStorage.length; i++) {
                 var k = localStorage.key(i) || '';
-                if (k.indexOf('chat_setting_autoMsg_') !== 0) continue;
+                // 排除 autoMsgInterval_（它也以前缀开头），否则关掉主动消息仍会误判为已开启
+                if (k.indexOf('chat_setting_autoMsg_') !== 0 || k.indexOf('chat_setting_autoMsgInterval_') === 0) continue;
                 try { if (JSON.parse(localStorage.getItem(k))) return false; } catch (e) {}
             }
             return true;

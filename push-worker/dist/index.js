@@ -726,6 +726,16 @@ async function getAutoScopes(env) {
     return [];
   }
 }
+async function removeJobId(env, id) {
+  try {
+    const arr = await readIndex(env, JOB_INDEX_KEY);
+    const next = arr.filter(function(x) {
+      return String(x) !== String(id);
+    });
+    if (next.length !== arr.length) await writeIndex(env, JOB_INDEX_KEY, next);
+  } catch (e) {
+  }
+}
 async function addJobId(env, id) {
   const arr = await readIndex(env, JOB_INDEX_KEY);
   if (arr === null) return;
@@ -1000,16 +1010,16 @@ function sanitizeAutoConfig(body) {
       forceTranslate: !!(c && c.forceTranslate),
       forceLang: String(c && c.forceLang || "").slice(0, 40),
       // 最近聊天上下文：后台生成必须接得上你们刚聊过的话题，不能凭空发口水话
-      recent: (Array.isArray(c && c.recent) ? c.recent.slice(-6) : []).map(function(r) {
+      recent: (Array.isArray(c && c.recent) ? c.recent.slice(-20) : []).map(function(r) {
         return {
           who: r && r.who === "user" ? "user" : "char",
-          text: String(r && r.text || "").replace(/\s+/g, " ").trim().slice(0, 160)
+          text: String(r && r.text || "").replace(/\s+/g, " ").trim().slice(0, 400)
         };
       }).filter(function(r) {
         return r.text;
       }),
       // 月潮：只有用户开放权限的角色才会带这份数据
-      cycle: function() {
+      cycle: (function() {
         const cy = c && c.cycle;
         if (!cy || !/^\d{4}-\d{2}-\d{2}$/.test(String(cy.lastStart || ""))) return null;
         return {
@@ -1019,7 +1029,7 @@ function sanitizeAutoConfig(body) {
           periodLength: Math.max(2, Math.min(14, parseInt(cy.periodLength, 10) || 5)),
           remindDays: Math.max(0, Math.min(14, parseInt(cy.remindDays, 10) || 0))
         };
-      }()
+      })()
     };
   }).filter(function(c) {
     return c.id && c.name;
@@ -1226,59 +1236,110 @@ function autoLangBlock(c) {
   const trans = /粤语|粵語|cantonese/i.test(lang) ? "\u666E\u901A\u8BDD" : "\u4E2D\u6587";
   return "\u3010\u8BED\u8A00 \xB7 \u6700\u9AD8\u4F18\u5148\u7EA7\u3011\u4F60\u662F" + (c.nationality || "\u5916\u56FD") + "\u4EBA\uFF0C\u6BCD\u8BED\u662F" + lang + "\u3002\u672C\u8F6E\u4E3B\u52A8\u6D88\u606F\u7684\u6B63\u6587\u5FC5\u987B\u53EA\u7528" + lang + "\u5199\uFF0C\u7EDD\u4E0D\u80FD\u7528\u4E2D\u6587\u5F53\u6B63\u6587\uFF1B\u5373\u4F7F\u4EBA\u8BBE\u6216\u4E0A\u9762\u7684\u8BF4\u660E\u662F\u4E2D\u6587\uFF0C\u4E5F\u4E0D\u8981\u6539\u53D8\u3002\u6BCF\u884C\u4E00\u6761\u6C14\u6CE1\uFF0C\u4E25\u683C\u6309\u300C" + lang + "\u539F\u6587||" + trans + "\u7FFB\u8BD1\u300D\u7684\u683C\u5F0F\u8F93\u51FA\uFF0C\u7528 || \u5206\u9694\uFF1B" + trans + "\u53EA\u80FD\u51FA\u73B0\u5728 || \u53F3\u8FB9\u4F5C\u4E3A\u7FFB\u8BD1\uFF0C\u7FFB\u8BD1\u8981\u81EA\u7136\u53E3\u8BED\u5316\u3002\n";
 }
-const AUTO_TZ_BY_NAT = {
-  '美国': 'America/New_York', 'usa': 'America/New_York', 'united states': 'America/New_York',
-  '英国': 'Europe/London', 'uk': 'Europe/London', 'england': 'Europe/London',
-  '加拿大': 'America/Toronto', 'canada': 'America/Toronto',
-  '澳大利亚': 'Australia/Sydney', '澳洲': 'Australia/Sydney', 'australia': 'Australia/Sydney',
-  '新西兰': 'Pacific/Auckland', 'new zealand': 'Pacific/Auckland',
-  '法国': 'Europe/Paris', 'france': 'Europe/Paris',
-  '德国': 'Europe/Berlin', 'germany': 'Europe/Berlin', '奥地利': 'Europe/Vienna',
-  '意大利': 'Europe/Rome', 'italy': 'Europe/Rome',
-  '西班牙': 'Europe/Madrid', 'spain': 'Europe/Madrid',
-  '葡萄牙': 'Europe/Lisbon', '荷兰': 'Europe/Amsterdam', '比利时': 'Europe/Brussels',
-  '瑞士': 'Europe/Zurich', '瑞典': 'Europe/Stockholm', '挪威': 'Europe/Oslo',
-  '丹麦': 'Europe/Copenhagen', '芬兰': 'Europe/Helsinki', '波兰': 'Europe/Warsaw',
-  '希腊': 'Europe/Athens', '爱尔兰': 'Europe/Dublin', '俄罗斯': 'Europe/Moscow',
-  '乌克兰': 'Europe/Kyiv', '土耳其': 'Europe/Istanbul',
-  '日本': 'Asia/Tokyo', 'japan': 'Asia/Tokyo',
-  '韩国': 'Asia/Seoul', '南韩': 'Asia/Seoul', 'korea': 'Asia/Seoul',
-  '新加坡': 'Asia/Singapore', '马来西亚': 'Asia/Kuala_Lumpur', '泰国': 'Asia/Bangkok',
-  '越南': 'Asia/Ho_Chi_Minh', '菲律宾': 'Asia/Manila', '印度尼西亚': 'Asia/Jakarta',
-  '印尼': 'Asia/Jakarta', '印度': 'Asia/Kolkata', '巴基斯坦': 'Asia/Karachi',
-  '孟加拉': 'Asia/Dhaka', '尼泊尔': 'Asia/Kathmandu', '斯里兰卡': 'Asia/Colombo',
-  '沙特阿拉伯': 'Asia/Riyadh', '沙特': 'Asia/Riyadh', '阿联酋': 'Asia/Dubai', '迪拜': 'Asia/Dubai',
-  '以色列': 'Asia/Jerusalem', '伊朗': 'Asia/Tehran',
-  '墨西哥': 'America/Mexico_City', '巴西': 'America/Sao_Paulo',
-  '阿根廷': 'America/Argentina/Buenos_Aires', '智利': 'America/Santiago',
-  '哥伦比亚': 'America/Bogota', '秘鲁': 'America/Lima', '委内瑞拉': 'America/Caracas',
-  '古巴': 'America/Havana', '埃及': 'Africa/Cairo', '南非': 'Africa/Johannesburg'
+var AUTO_TZ_BY_NAT = {
+  "\u7F8E\u56FD": "America/New_York",
+  "usa": "America/New_York",
+  "united states": "America/New_York",
+  "\u82F1\u56FD": "Europe/London",
+  "uk": "Europe/London",
+  "england": "Europe/London",
+  "\u52A0\u62FF\u5927": "America/Toronto",
+  "canada": "America/Toronto",
+  "\u6FB3\u5927\u5229\u4E9A": "Australia/Sydney",
+  "\u6FB3\u6D32": "Australia/Sydney",
+  "australia": "Australia/Sydney",
+  "\u65B0\u897F\u5170": "Pacific/Auckland",
+  "new zealand": "Pacific/Auckland",
+  "\u6CD5\u56FD": "Europe/Paris",
+  "france": "Europe/Paris",
+  "\u5FB7\u56FD": "Europe/Berlin",
+  "germany": "Europe/Berlin",
+  "\u5965\u5730\u5229": "Europe/Vienna",
+  "\u610F\u5927\u5229": "Europe/Rome",
+  "italy": "Europe/Rome",
+  "\u897F\u73ED\u7259": "Europe/Madrid",
+  "spain": "Europe/Madrid",
+  "\u8461\u8404\u7259": "Europe/Lisbon",
+  "\u8377\u5170": "Europe/Amsterdam",
+  "\u6BD4\u5229\u65F6": "Europe/Brussels",
+  "\u745E\u58EB": "Europe/Zurich",
+  "\u745E\u5178": "Europe/Stockholm",
+  "\u632A\u5A01": "Europe/Oslo",
+  "\u4E39\u9EA6": "Europe/Copenhagen",
+  "\u82AC\u5170": "Europe/Helsinki",
+  "\u6CE2\u5170": "Europe/Warsaw",
+  "\u5E0C\u814A": "Europe/Athens",
+  "\u7231\u5C14\u5170": "Europe/Dublin",
+  "\u4FC4\u7F57\u65AF": "Europe/Moscow",
+  "\u4E4C\u514B\u5170": "Europe/Kyiv",
+  "\u571F\u8033\u5176": "Europe/Istanbul",
+  "\u65E5\u672C": "Asia/Tokyo",
+  "japan": "Asia/Tokyo",
+  "\u97E9\u56FD": "Asia/Seoul",
+  "\u5357\u97E9": "Asia/Seoul",
+  "korea": "Asia/Seoul",
+  "\u65B0\u52A0\u5761": "Asia/Singapore",
+  "\u9A6C\u6765\u897F\u4E9A": "Asia/Kuala_Lumpur",
+  "\u6CF0\u56FD": "Asia/Bangkok",
+  "\u8D8A\u5357": "Asia/Ho_Chi_Minh",
+  "\u83F2\u5F8B\u5BBE": "Asia/Manila",
+  "\u5370\u5EA6\u5C3C\u897F\u4E9A": "Asia/Jakarta",
+  "\u5370\u5C3C": "Asia/Jakarta",
+  "\u5370\u5EA6": "Asia/Kolkata",
+  "\u5DF4\u57FA\u65AF\u5766": "Asia/Karachi",
+  "\u5B5F\u52A0\u62C9": "Asia/Dhaka",
+  "\u5C3C\u6CCA\u5C14": "Asia/Kathmandu",
+  "\u65AF\u91CC\u5170\u5361": "Asia/Colombo",
+  "\u6C99\u7279\u963F\u62C9\u4F2F": "Asia/Riyadh",
+  "\u6C99\u7279": "Asia/Riyadh",
+  "\u963F\u8054\u914B": "Asia/Dubai",
+  "\u8FEA\u62DC": "Asia/Dubai",
+  "\u4EE5\u8272\u5217": "Asia/Jerusalem",
+  "\u4F0A\u6717": "Asia/Tehran",
+  "\u58A8\u897F\u54E5": "America/Mexico_City",
+  "\u5DF4\u897F": "America/Sao_Paulo",
+  "\u963F\u6839\u5EF7": "America/Argentina/Buenos_Aires",
+  "\u667A\u5229": "America/Santiago",
+  "\u54E5\u4F26\u6BD4\u4E9A": "America/Bogota",
+  "\u79D8\u9C81": "America/Lima",
+  "\u59D4\u5185\u745E\u62C9": "America/Caracas",
+  "\u53E4\u5DF4": "America/Havana",
+  "\u57C3\u53CA": "Africa/Cairo",
+  "\u5357\u975E": "Africa/Johannesburg"
 };
 function autoTz(c) {
-  const n = String((c && c.nationality) || '').trim();
-  if (!n || n === '未知' || n === '未设定') return 'Asia/Shanghai';
-  if (/香港|hong\s*kong/i.test(n)) return 'Asia/Hong_Kong';
-  if (/澳门|澳門|macau|macao/i.test(n)) return 'Asia/Macau';
-  if (/台湾|台灣|taiwan/i.test(n)) return 'Asia/Taipei';
-  if (/中国|中國|china|chinese/i.test(n)) return 'Asia/Shanghai';
+  const n = String(c && c.nationality || "").trim();
+  if (!n || n === "\u672A\u77E5" || n === "\u672A\u8BBE\u5B9A") return "Asia/Shanghai";
+  if (/香港|hong\s*kong/i.test(n)) return "Asia/Hong_Kong";
+  if (/澳门|澳門|macau|macao/i.test(n)) return "Asia/Macau";
+  if (/台湾|台灣|taiwan/i.test(n)) return "Asia/Taipei";
+  if (/中国|中國|china|chinese/i.test(n)) return "Asia/Shanghai";
   const low = n.toLowerCase();
   for (const k of Object.keys(AUTO_TZ_BY_NAT)) {
     if (n.indexOf(k) > -1 || low.indexOf(k.toLowerCase()) > -1) return AUTO_TZ_BY_NAT[k];
   }
-  return 'Asia/Shanghai';
+  return "Asia/Shanghai";
 }
 function autoNowText(c, ms) {
   const d = new Date(Number(ms) || Date.now());
   try {
-    const parts = new Intl.DateTimeFormat('zh-CN', {
-      timeZone: autoTz(c), year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit', hour12: false, weekday: 'short'
+    const parts = new Intl.DateTimeFormat("zh-CN", {
+      timeZone: autoTz(c),
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+      weekday: "short"
     }).formatToParts(d);
     const m = {};
-    parts.forEach(function (p) { m[p.type] = p.value; });
-    return m.year + '-' + m.month + '-' + m.day + ' ' + (m.weekday || '') + ' ' + m.hour + ':' + m.minute;
+    parts.forEach(function(p) {
+      m[p.type] = p.value;
+    });
+    return m.year + "-" + m.month + "-" + m.day + " " + (m.weekday || "") + " " + m.hour + ":" + m.minute;
   } catch (e) {
-    return new Date(d.getTime() + 8 * 3600 * 1000).toISOString().slice(0, 16).replace('T', ' ');
+    return new Date(d.getTime() + 8 * 3600 * 1e3).toISOString().slice(0, 16).replace("T", " ");
   }
 }
 function cycleBlock(c) {
@@ -1365,7 +1426,7 @@ async function generateAutoMoments(env, cfg, busyChatId, maxChars) {
     return c.name;
   });
   const profiles = picked.map(function(c) {
-    const recent = (c.recent || []).slice(-3).map(function(r) {
+    const recent = (c.recent || []).slice(-8).map(function(r) {
       return (r.who === "user" ? "\u7528\u6237\uFF1A" : "TA\uFF1A") + r.text;
     }).join("\uFF1B");
     return "\xB7 " + c.name + "\uFF1A" + String(c.setting || "").slice(0, 500) + (recent ? "\n  \u6700\u8FD1\u804A\u5929\uFF1A" + recent : "");
@@ -1545,7 +1606,7 @@ async function runAutoPush(env, appId, deviceId, userId) {
           bubbles: Array.isArray(m.bubbles) ? m.bubbles : null,
           target: "chat:" + m.chatId,
           tag: "auto-" + m.chatId,
-          renotify: false,
+          renotify: true,
           icon,
           name: m.name,
           channel: "chat",
@@ -1583,7 +1644,7 @@ async function runAutoPush(env, appId, deviceId, userId) {
           body: pushText(posts[0] && posts[0].author + " \u53D1\u4E86\u65B0\u52A8\u6001", "\u670B\u53CB\u5708\u6709\u65B0\u52A8\u6001"),
           target: "moments",
           tag: "auto-moments",
-          renotify: false,
+          renotify: true,
           channel: "moment",
           appId
         });
@@ -1659,7 +1720,8 @@ function peekGeminiEndpoint(raw, model) {
 function peekImageUrl(image) {
   let s = String(image || "").trim();
   if (!s) return "";
-  if (/^data:image\//i.test(s) || /^https?:\/\//i.test(s)) return s;
+  if (/^data:image\//i.test(s)) return s.replace(/\s+/g, "");
+  if (/^https?:\/\//i.test(s)) return s;
   if (/^[A-Za-z0-9+/=\s]+$/.test(s) && s.length > 100) {
     return "data:image/jpeg;base64," + s.replace(/\s+/g, "");
   }
@@ -1688,7 +1750,8 @@ async function peekModel(env, system, text, image, history, apiCfg, context) {
   const url = provider === "anthropic" ? peekAnthropicEndpoint(rawUrl) : provider === "gemini" ? peekGeminiEndpoint(rawUrl, model) : modelEndpoint(rawUrl);
   const isResponses = provider === "openai" && /\/responses$/i.test(url);
   const imageUrl = peekImageUrl(image);
-  const textPrompt = text || "\u770B\u770B\u6211\u73B0\u5728\u5C4F\u5E55\u4E0A\u662F\u4EC0\u4E48\uFF0C\u7528\u4F60\u7684\u4EBA\u8BBE\u968F\u53E3\u8BF4\u4E00\u53E5\u3002";
+  const imagePrompt = "\u8FD9\u662F\u7528\u6237\u521A\u521A\u53D1\u7ED9\u4F60\u7684\u5B9E\u65F6\u622A\u56FE\u3002\u5148\u7528\u4E00\u4E24\u53E5\u8BDD\u5177\u4F53\u8BF4\u51FA\u753B\u9762\u91CC\u771F\u5B9E\u5B58\u5728\u7684\u5185\u5BB9\uFF08\u754C\u9762/\u4EBA\u7269/\u6587\u5B57/\u573A\u666F\uFF09\uFF0C\u518D\u4EE5\u4F60\u7684\u4EBA\u8BBE\u968F\u53E3\u70B9\u8BC4\u3002\u4E0D\u8981\u5047\u88C5\u770B\u4E0D\u5230\u56FE\uFF0C\u4E5F\u4E0D\u8981\u6CDB\u6CDB\u800C\u8C08\u3002";
+  const textPrompt = [String(text || "").trim(), imageUrl ? imagePrompt : ""].filter(Boolean).join("\n\n") || "\u770B\u770B\u6211\u73B0\u5728\u5C4F\u5E55\u4E0A\u662F\u4EC0\u4E48\uFF0C\u7528\u4F60\u7684\u4EBA\u8BBE\u968F\u53E3\u8BF4\u4E00\u53E5\u3002";
   const baseMessages = [];
   (context || []).forEach(function(m) {
     if (!m || !m.content) return;
@@ -1814,7 +1877,7 @@ async function peekModel(env, system, text, image, history, apiCfg, context) {
   } else if (provider === "gemini") {
     r = await callGemini(!!imageUrl);
   } else {
-    r = await callOpenAI(!!imageUrl, "max_tokens", "object", {});
+    r = await callOpenAI(!!imageUrl, "max_tokens", "object", { imageFirst: true });
     if (!r.text) r = await callOpenAI(!!imageUrl, "max_tokens", "object", { temperature: false });
     if (!r.text && imageUrl) r = await callOpenAI(true, "max_tokens", "string", { temperature: false });
     if (!r.text && imageUrl) r = await callOpenAI(true, "max_tokens", "raw", { temperature: false });
@@ -2875,7 +2938,7 @@ async function accHandle(request, env, pathname) {
   }
   return json({ ok: false, error: "not found" }, 404);
 }
-var src_default = {
+var index_default = {
   async fetch(request, env) {
     if (request.method === "OPTIONS") return new Response(null, { headers: CORS });
     const __reqUrl = new URL(request.url);
@@ -3176,6 +3239,7 @@ var src_default = {
       const deviceId = cleanDeviceId(body.deviceId);
       const userId = cleanUserId(body.userId);
       let count = 0;
+      const ids = [];
       for (const it of items) {
         if (!it || !it.at) continue;
         const job = Object.assign({}, it, {
@@ -3189,6 +3253,24 @@ var src_default = {
           await addJobId(env, id);
         } catch (e) {
         }
+        ids.push(id);
+        count++;
+      }
+      return json({ ok: true, count, ids });
+    }
+    if (pathname === "/schedule/cancel" && request.method === "POST") {
+      if (!tokenOk(request, env)) return json({ ok: false, error: "unauthorized" }, 401);
+      const body = await request.json().catch(function() {
+        return {};
+      });
+      const list = Array.isArray(body.ids) ? body.ids : body.id ? [body.id] : [];
+      let count = 0;
+      for (const id of list) {
+        try {
+          await kv(env).delete(String(id));
+        } catch (e) {
+        }
+        await removeJobId(env, id);
         count++;
       }
       return json({ ok: true, count });
@@ -3221,6 +3303,12 @@ var src_default = {
       });
     }
     if (pathname === "/peek" && request.method === "POST") {
+      let peekImageInput = function(v) {
+        if (!v) return "";
+        if (Array.isArray(v)) return peekImageInput(v[0]);
+        if (typeof v === "object") return peekImageInput(v.data || v.dataUrl || v.base64 || v.url || v.image || "");
+        return String(v).trim();
+      };
       let body = {};
       try {
         body = await request.json();
@@ -3296,7 +3384,7 @@ var src_default = {
         }
       }
       const text = String(body.text || "").trim();
-      const image = String(body.image || "").trim();
+      const image = peekImageInput(body.image || body.screenshot || body.image_url || body.imageData || body.images);
       if (!text && !image) {
         return json({ ok: false, error: "empty", reply: "\u6CA1\u6709\u6536\u5230\u5C4F\u5E55\u5185\u5BB9\uFF1A\u8BF7\u5728\u5FEB\u6377\u6307\u4EE4\u91CC\u4F20\u5165\u622A\u56FE\u6216\u6587\u5B57\u3002" }, 400);
       }
@@ -4115,7 +4203,7 @@ async function getSubs(env, userId, deviceId, appId) {
       const s = JSON.parse(v);
       if (!s || !s.endpoint) continue;
       const subApp = cleanAppId(s.appId);
-      if (wantApp && subApp !== wantApp) continue;
+      if (wantApp && s.appId && subApp !== wantApp) continue;
       if (wantDevice && cleanDeviceId(s.deviceId) !== wantDevice) continue;
       if (wantUser && cleanUserId(s.userId) !== wantUser) continue;
       if (seen[s.endpoint]) continue;
@@ -4161,5 +4249,5 @@ async function sendAll(env, payload) {
   return subs.length;
 }
 export {
-  src_default as default
+  index_default as default
 };

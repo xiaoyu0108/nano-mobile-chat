@@ -205,20 +205,44 @@
     function charName() { var c = currentChar(); return c ? (c.name || c.id) : '角色'; }
     function persona() { var c = currentChar(); return c ? String(c.setting || c.desc || c.persona || '') : ''; }
 
+    function recentFromArray(arr) {
+        if (!Array.isArray(arr)) return [];
+        return arr.filter(function (m) {
+            return m && m.text && !m.isCard && !m.recalled && (m.type === 'left' || m.type === 'right');
+        }).slice(-12).map(function (m) {
+            return { role: m.type === 'right' ? 'user' : 'assistant', content: String(m.text).slice(0, 900) };
+        });
+    }
     function recentContext() {
+        // chat-core 在 IndexedDB 保存消息时同步维护了轻量镜像；优先读它，否则窥屏人设里
+        // 永远看不到你们刚聊过什么（旧 localStorage 副本在有 IndexedDB 时不会写）。
+        try {
+            var mirror = localStorage.getItem('nano_recent_text_' + selectedId);
+            if (mirror) {
+                var list = JSON.parse(mirror);
+                if (Array.isArray(list) && list.length) {
+                    return list.slice(-12).map(function (m) {
+                        return { role: m.who === 'user' ? 'user' : 'assistant', content: String(m.text || '').slice(0, 900) };
+                    }).filter(function (m) { return m.content; });
+                }
+            }
+        } catch (e) {}
         try {
             var arr = JSON.parse(localStorage.getItem('chat_messages_' + selectedId) || '[]');
-            if (!Array.isArray(arr)) return [];
-            return arr.filter(function (m) {
-                return m && m.text && !m.isCard && !m.recalled && (m.type === 'left' || m.type === 'right');
-            }).slice(-12).map(function (m) {
-                return { role: m.type === 'right' ? 'user' : 'assistant', content: String(m.text).slice(0, 900) };
-            });
+            return recentFromArray(arr);
         } catch (e) { return []; }
+    }
+    async function recentContextAsync() {
+        var got = recentContext();
+        if (got.length) return got;
+        try {
+            if (typeof localforage === 'undefined' || !localforage.getItem) return got;
+            return recentFromArray(await localforage.getItem('chat_messages_' + selectedId));
+        } catch (e) { return got; }
     }
 
     // 和私聊同一套人设 / 世界规则 / 最近上下文，不再只是「人设原文 + 一句点评」。
-    function fullPeekSystem() {
+    function fullPeekSystem(ctxOverride) {
         var c = currentChar();
         var name = charName();
         var p = '你是「' + name + '」，一个真实的人，不是 AI、不是助手、不是模型。\n';
@@ -230,7 +254,7 @@
         try {
             if (window.NanoPrompts && NanoPrompts.appendTo) p = NanoPrompts.appendTo(p, 'online');
         } catch (e) {}
-        var ctx = recentContext();
+        var ctx = Array.isArray(ctxOverride) ? ctxOverride : recentContext();
         if (ctx.length) {
             p += '\n【你们最近的聊天】\n' + ctx.map(function (m) {
                 return (m.role === 'user' ? '对方：' : name + '：') + m.content;
@@ -243,9 +267,10 @@
 
     // 把私聊里的世界书 / 长期记忆也带上。只有一句人设时，快捷指令最容易 OOC。
     async function fullPeekSystemAsync() {
-        var p = fullPeekSystem();
+        var recentList = await recentContextAsync();
+        var p = fullPeekSystem(recentList);
         var c = currentChar();
-        var ctx = recentContext().map(function (m) { return m.content; }).join('\n');
+        var ctx = recentList.map(function (m) { return m.content; }).join('\n');
         try {
             if (window.QABridge && QABridge.getWorldbookText && c) {
                 var wb = await QABridge.getWorldbookText(c, ctx);
@@ -306,30 +331,35 @@
         var imgBody = peekBody('image');
         var txtBody = peekBody('text');
         el.innerHTML = ''
-            + '<h4>截图 → TA 点评</h4>'
+            + '<h4>截图 → TA 点评（推荐直接传图片）</h4>'
             + '<ol>'
             + '<li>打开「快捷指令」App，右上角 <b>+</b> 新建，命名「窥屏」。</li>'
             + '<li>添加动作 <code>截屏</code>。</li>'
             + '<li>添加动作 <code>调整图像大小</code>：宽度填 <b>900</b>，高度留空（自动）。原图直接 Base64 经常会导致请求超时。</li>'
-            + '<li>添加动作 <code>转换图像</code>：格式选 <b>JPEG</b>，质量 <b>0.7</b>。</li>'
+            + '<li>添加动作 <code>转换图像</code>：格式选 <b>JPEG</b>，质量 <b>0.7</b>。不转换就一定要把下面 image 前缀改成 <code>data:image/png;base64,</code>。</li>'
             + '<li>添加动作 <code>Base64 编码</code>，关闭「行长度换行」。</li>'
             + '<li>添加动作 <code>获取 URL 内容</code>：<br>'
             + '地址：<code>' + esc(ep || '（先填服务端地址）') + '</code><br>'
             + '方法：<code>POST</code><br>'
-            + '请求体：选 <b>文件</b> → 引用一个 <code>文本</code> 动作，内容粘贴下面这段 JSON：'
-            + '<pre class="sk-guide-json">' + esc(imgBody) + '</pre>'
-            + '把 <code>&lt;把上一步的 Base64 结果插到这里&gt;</code> 替换成第 3 步的 Base64 变量。</li>'
+            + '头部：添加 <code>X-Peek-Token</code>，值填 <code>' + esc(tok || '（令牌）') + '</code><br>'
+            + '请求体选 <b>JSON</b>，添加这三个字段：<br>'
+            + '· <code>chatId</code> = <code>' + esc(id || '（角色 ID）') + '</code><br>'
+            + '· <code>appId</code> = <code>' + esc(appId()) + '</code><br>'
+            + '· <code>image</code> = 先输入 <code>data:image/jpeg;base64,</code>，后面紧跟蓝色的 <b>Base64 已编码</b> 变量（中间不要有空格或换行）。</li>'
+            + '<li><b>不要</b>再用「文本」动作手拼 JSON：图片 Base64 很长，手动拼很容易多出换行或引号，Worker 会直接解析失败。<br>'
+            + '如果你已经用文本 JSON，也可以继续用下面这段自动生成的版本：<pre class="sk-guide-json">' + esc(imgBody) + '</pre>'
+            + '把 <code>&lt;把上一步的 Base64 结果插到这里&gt;</code> 替换成 Base64 变量。</li>'
+            + '<li><b>模型不支持识图时的兜底：</b>再加一个 <code>从图像中提取文本</code>，然后在 JSON 里增加 <code>text</code> 字段放识别结果；Worker 会同时把截图和文字交给模型，至少不会完全看不到内容。</li>'
             + '<li>添加动作 <code>获取字典值</code>，键填 <code>reply</code>。</li>'
-            + '<li>添加动作 <code>显示提醒</code>，内容用上一步的 <code>reply</code>。运行一次，应该能弹出 TA 的点评。</li>'
+            + '<li>添加动作 <code>显示提醒</code>，内容用上一步的 <code>reply</code>。运行一次，应该能弹出 TA 的点评，并且能说出图里的具体内容。</li>'
             + '<li>回到 Nano，打开角色「' + esc(name) + '」（ID <code>' + esc(id || '—') + '</code>）的私聊，这轮对话会自动补进来。</li>'
             + '</ol>'
+            + '<div class="warn">如果 TA 能回复但看不到图片：确认 <b>image</b> 字段是 <code>data:image/jpeg;base64,</code> + Base64 变量，且主 API 的模型支持识图；先在「API 页」用支持图片输入的模型测试一次。旧版教程里的纯文字/OCR 只识别文字，不会让模型看见画面。</div>'
             + '<h4>继续聊（可选）</h4>'
             + '<ol>'
             + '<li>在「显示提醒」后面加 <code>要求输入</code>，拿到你打的字。</li>'
-            + '<li>再加一个 <code>获取 URL 内容</code>，地址和方法同上；请求体换成下面这段 JSON：'
-            + '<pre class="sk-guide-json">' + esc(txtBody) + '</pre>'
-            + '把 <code>&lt;把「要求输入」拿到的文字插到这里&gt;</code> 替换成上一步输入的文字。</li>'
-            + '<li>如果输入里带英文双引号或换行，先在「要求输入」后面加「替换文本」把 <code>"</code> 换成 <code>\\"</code>、换行换成 <code>\\n</code>，否则 JSON 会拼坏。</li>'
+            + '<li>再加一个 <code>获取 URL 内容</code>，地址和方法同上；请求体选 <b>JSON</b>，字段用 <code>chatId</code>、<code>appId</code>、<code>text</code>，</li>'
+            + '<li><code>text</code> 的值直接插入上一步「要求输入」的变量。用 JSON 字段时 Shortcuts 会自动处理引号和换行，不会把 JSON 拼坏。</li>'
             + '<li>再接 <code>获取字典值</code> → <code>显示提醒</code>，就可以一轮一轮聊下去。</li>'
             + '</ol>'
             + '<h4>更顺手的触发</h4>'
@@ -364,13 +394,17 @@
             '1. 打开「快捷指令」App，右上角 + 新建，命名「窥屏」。',
             '2. 添加动作：截屏 → 调整图像大小（宽 900，高留空）→ 转换图像（JPEG 0.7）→ Base64 编码（关闭行长度换行）。',
             '   原图直接 Base64 很容易请求超时；一定要先缩放和压成 JPEG。',
-            '3. 添加「获取 URL 内容」：地址填上面的接口地址，方法 POST，请求体选「文件」，引用一个「文本」动作，内容粘贴上面的截图 JSON。',
-            '   把 <把上一步的 Base64 结果插到这里> 替换成 Base64 变量。',
+            '3. 添加「获取 URL 内容」：地址填上面的接口地址，方法 POST。',
+            '   头部：X-Peek-Token = 上面的令牌。',
+            '   请求体选 JSON，字段：chatId = 角色 ID；appId = ' + appId() + '；image = data:image/jpeg;base64, 后面紧跟 Base64 变量。',
+            '   不要用「文本」动作手拼 JSON；Base64 很长，手动拼很容易多出换行/引号导致解析失败。',
+            '   可选兜底：加「从图像中提取文本」，并在 JSON 里加 text 字段放 OCR 结果；模型不支持识图时也能读文字。',
             '4. 添加「获取字典值」：reply → 显示提醒。',
-            '5. 先测纯文字：把截图 JSON 里的 image 换成 text: "测试"，确认能收到 reply；再加图片，便于区分是网络超时还是图片/模型超时。',
-            '6. 运行。TA 的回复会弹出；回到 Nano 打开这个角色的私聊，消息会自动补进来。',
+            '5. 先测纯文字：把 image 字段换成 text: "测试"，确认能收到 reply；再加图片，便于区分是网络超时还是图片/模型问题。',
+            '6. 运行。TA 的回复会弹出，并且能说出图里的具体内容；回到 Nano 打开这个角色的私聊，消息会自动补进来。',
+            '   如果只能收到“看不到图片”，检查主 API 模型是否支持识图，以及 image 字段是否以 data:image/jpeg;base64, 开头。',
             '',
-            '想连续聊：再加「要求输入」拿到文字，用回话 JSON 再发一轮（把占位符换成输入的文字）。',
+            '想连续聊：再加「要求输入」拿到文字，用 chatId / appId / text 三个 JSON 字段再发一轮。',
             '想更快：设置 → 辅助功能 → 触控 → 轻点背面 → 双击 → 选这个快捷指令。'
         ].join('\n');
     }
@@ -430,7 +464,7 @@
             var api = (apiCfg && apiCfg.mainUrl && apiCfg.mainKey && apiCfg.mainModel)
                 ? { url: apiCfg.mainUrl, key: apiCfg.mainKey, model: apiCfg.mainModel }
                 : null;
-            var hist = recentContext();
+            var hist = await recentContextAsync();
             // 签名必须带上服务端地址 / 令牌 / appId：只换 Worker 时人设没变，
             // 旧逻辑会误判“已经同步过”而跳过，导致新 Worker 的分区里一直没有 API。
             var sig = baseUrl + '|' + getPeekToken() + '|' + appId() + '|' + String(selectedId || '')

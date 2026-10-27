@@ -206,13 +206,20 @@
         });
         if (added) {
             arr.sort(function (a, b) { return (a.ts || 0) - (b.ts || 0); });
-            try { localStorage.setItem(key, JSON.stringify(arr.slice(-80))); } catch (e) {}
+            try { localStorage.setItem(key, JSON.stringify(arr.slice(-80))); }
+            catch (e) {
+                // 图片太大时先丢图保文字，避免整轮窥屏都落不了地。
+                try {
+                    arr.forEach(function (t) { if (t && t.image) { t.image = ''; t.imageOmitted = true; } });
+                    localStorage.setItem(key, JSON.stringify(arr.slice(-80)));
+                } catch (e2) { return false; }
+            }
         }
-        return added;
+        return true;
     }
     function peekCandidateChats() {
-        // 回到 App 时最多补拉 2 个：最近配置的窥屏角色 + 当前打开的角色（如果在窥屏列表里）。
-        // 不做定时器；其他角色等打开聊天时由 chat-core 拉一次。
+        // 回到 App 时补拉最近配置过的窥屏角色。之前只查 2 个，换过角色后
+        // 快捷指令的 chatId 很容易不在候选里，表现就是「窥屏有回复、私聊不出现」。
         var list = [];
         try {
             var raw = JSON.parse(localStorage.getItem('nano_peek_chats') || '[]');
@@ -227,9 +234,12 @@
             if (lc && lc.id) current = String(lc.id);
         } catch (e) {}
         var out = [];
-        if (last) out.push(last);
-        if (current && current !== last && list.indexOf(current) !== -1) out.push(current);
-        return out.slice(0, 2);
+        function add(id) { id = String(id || ''); if (id && out.indexOf(id) === -1) out.push(id); }
+        if (last) add(last);
+        if (current) add(current);
+        // 最近 6 个窥屏角色都试一次；有轮次才 ack，没有请求也很轻。
+        for (var i = list.length - 1; i >= 0 && out.length < 6; i--) add(list[i]);
+        return out;
     }
 
     async function pullOnePeek(chatId, base, token) {
@@ -241,7 +251,8 @@
         try { data = await r.json(); } catch (e) {}
         var turns = (data && Array.isArray(data.turns)) ? data.turns : [];
         if (!turns.length) return 0;
-        stashPeekTurns(chatId, turns);
+        // 落库失败（本地存储满）时不要 ack，避免这轮直接丢失。
+        if (!stashPeekTurns(chatId, turns)) return 0;
         // 已落到本机就可以清空服务端；聊天没开着也不会丢。
         try {
             await fetch(base + '/peek/ack', {

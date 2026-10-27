@@ -28,7 +28,7 @@
             title: name,
             sub: '来自 ' + window.__chat.currentUserName + (amount > 0 ? ' · ¥' + amount.toFixed(2) : '') + (note ? ' · ' + note : ''),
             amount: amount > 0 ? ('¥' + amount.toFixed(2)) : '',
-            footer: '点击领取',
+            footer: '',
             status: 'pending'
         };
         window.__chat.addMessage('right', '', timeStr, null, false, true, cardData);

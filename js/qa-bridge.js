@@ -517,12 +517,19 @@
       throw new Error('未配置主 API（请先到 API 页填写地址、Key、模型）');
     }
     var msgs = (Array.isArray(messages) ? messages : []).map(function (m) {
-      return { role: m.role || 'user', content: String(m.content == null ? '' : m.content) };
+      // 保留多模态数组（图片 + 文字），番茄钟等页面发图时需要它进入模型；
+      // 普通字符串仍然原样处理。
+      var content = Array.isArray(m.content) ? m.content : String(m.content == null ? '' : m.content);
+      return { role: m.role || 'user', content: content };
     });
     if (!msgs.length) msgs.push({ role: 'user', content: '（空）' });
+    function textOf(c) {
+      if (Array.isArray(c)) return c.map(function (p) { return p && p.type === 'text' ? String(p.text || '') : '[图片]'; }).join(' ');
+      return String(c == null ? '' : c);
+    }
     var ctxMeta = Object.assign({}, meta);
     if (!ctxMeta.recentText) {
-      ctxMeta.recentText = msgs.map(function (m) { return m.role + '：' + m.content; }).join('\n').slice(-3000);
+      ctxMeta.recentText = msgs.map(function (m) { return m.role + '：' + textOf(m.content); }).join('\n').slice(-3000);
     }
     var ctx = await buildContext(ctxMeta);
     var sys = ctx;

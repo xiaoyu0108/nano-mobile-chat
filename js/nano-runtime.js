@@ -146,6 +146,52 @@
   } catch (e) {}
   window.NANO_ROOT = root;
 
+  // 锁脸参考统一读取：localStorage 优先，旧的大图只写进 IndexedDB 时回退到 localforage。
+  // 所有生图入口（私聊 / 日程 / 朋友圈 / INS / 线下 / 群聊）共用这一份，避免各页面各读各的。
+  function faceRefKey(id) { return 'chat_setting_faceRef_' + String(id || ''); }
+  function faceRefSync(id) {
+    try {
+      var raw = localStorage.getItem(faceRefKey(id));
+      if (!raw) return '';
+      try { return String(JSON.parse(raw) || ''); } catch (e) { return String(raw || ''); }
+    } catch (e) { return ''; }
+  }
+  function faceRefGet(id) {
+    var local = faceRefSync(id);
+    if (local) return Promise.resolve(local);
+    try {
+      if (typeof localforage !== 'undefined' && typeof localforage.getItem === 'function') {
+        return localforage.getItem(faceRefKey(id)).then(function (v) {
+          return v ? String(v) : '';
+        }).catch(function () { return ''; });
+      }
+    } catch (e) {}
+    // 少数页面没有加载 localforage：直接读它默认的 IndexedDB 库，旧的大图也能取到。
+    return new Promise(function (resolve) {
+      try {
+        if (typeof indexedDB === 'undefined') { resolve(''); return; }
+        var req = indexedDB.open('localforage');
+        // 库不存在时不要顺手创建空库，否则会破坏 localforage 自己的建表流程。
+        req.onupgradeneeded = function (e) {
+          try { e.target.transaction.abort(); } catch (err) {}
+          resolve('');
+        };
+        req.onsuccess = function (e) {
+          try {
+            var db = e.target.result;
+            if (!db.objectStoreNames.contains('keyvaluepairs')) { try { db.close(); } catch (err) {} resolve(''); return; }
+            var g = db.transaction('keyvaluepairs', 'readonly').objectStore('keyvaluepairs').get(faceRefKey(id));
+            g.onsuccess = function () { try { db.close(); } catch (err) {} resolve(g.result ? String(g.result) : ''); };
+            g.onerror = function () { try { db.close(); } catch (err) {} resolve(''); };
+          } catch (err) { resolve(''); }
+        };
+        req.onerror = function () { resolve(''); };
+        req.onblocked = function () { resolve(''); };
+      } catch (e) { resolve(''); }
+    });
+  }
+  window.NanoFaceRef = { key: faceRefKey, sync: faceRefSync, get: faceRefGet };
+
   // 全局 API 日志：设置页「后台日志」读取。异步加载，不阻塞首屏。
   try {
     if (!window.NanoApiLogs) {

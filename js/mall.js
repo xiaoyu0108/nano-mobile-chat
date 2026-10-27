@@ -812,7 +812,7 @@
                     items: giftItems.map(function (it) {
                         return { name: it.product.name, price: Number(it.product.price || 0), qty: Number(it.qty || 1), image: it.product.image || '', cat: it.product.cat || 'gift' };
                     }),
-                    footer: '点击领取',
+                    footer: '',
                     status: 'pending'
                 };
                 queueCard(ctx.recipient, { card: giftCard, side: 'right', notice: '你把商城礼物送给了 ' + recipientName });
@@ -1031,7 +1031,7 @@
                     title: item.name,
                     sub: '来自 ' + userName() + ' 的礼物',
                     amount: money(item.price),
-                    footer: '点击领取',
+                    footer: '',
                     status: 'pending'
                 },
                 side: 'right',

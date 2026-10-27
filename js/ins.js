@@ -353,8 +353,11 @@ async function generateInsImage(prompt, opts) {
   let subject = '';
   if (opts && opts.charId) {
     try {
-      const raw = localStorage.getItem('chat_setting_faceRef_' + opts.charId);
-      if (raw) { try { faceRef = JSON.parse(raw); } catch (e) { faceRef = raw; } }
+      if (window.NanoFaceRef && NanoFaceRef.get) faceRef = await NanoFaceRef.get(opts.charId);
+      else {
+        const raw = localStorage.getItem('chat_setting_faceRef_' + opts.charId);
+        if (raw) { try { faceRef = JSON.parse(raw); } catch (e) { faceRef = raw; } }
+      }
     } catch (e) {}
   }
   if (opts && opts.char) {
@@ -1486,7 +1489,7 @@ async function generateCommentsForPost(post, bound, npcs, strangers) {
     (c.replies || []).some(r => normName(r.user) === normName(userProfile.name))
   );
   const hasUserComment = userComments.length > 0;
-  const system = '你是一个真实的人类，请同时扮演多个角色以及平台上的普通网友，在社交平台评论区自然地聊天。严格贴合各自人设、关系与世界书，保持活人感，绝不 OOC，禁止 AI 腔，禁止解释，禁止出戏。所有角色均为成年人。' + ADULT_PLATFORM_NOTE;
+  const system = '你是一个真实的人类，请同时扮演多个角色以及平台上的普通网友，在社交平台评论区自然地聊天。严格贴合各自人设、关系与世界书，保持活人感，绝不 OOC，禁止 AI 腔、解释和出戏。评论要短、口语、碎片化，像随手打字：可以玩梗、只回一句、只发一个表情或问一个具体细节；不要长评、客套话和升华总结。所有角色均为成年人。' + ADULT_PLATFORM_NOTE;
   const userMsg = userPersonaBlock() + '\n\n' + persona +
     '\n\n【本帖子可以出现的评论者（只能使用这些名字，不要创造新名字）】\n' + pool.map(n => '· ' + n).join('\n') +
     '\n\n【这条帖子（所有评论必须紧扣它的具体内容，禁止跑题）】\n作者：' + post.user +
@@ -1537,7 +1540,7 @@ function buildForumPrompt(chars, npcs, strangers, recent, opts) {
   }
   if (tag) lines.push('- 所有帖子都必须围绕话题 #' + tag + '，并把它写进 TAGS；');
   if (desc) lines.push('- 话题描述与方向（必须严格符合）：' + desc + '；');
-  lines.push('- 文案像真人刷手机随手发的：口语、具体、有生活感，30~80 字；允许短句、碎碎念、吐槽、提问、玩梗、错别字和表情；不要写成旅行博主/广告文案/工作汇报，也不要每条都升华总结；');
+  lines.push('- 文案像真人刷手机随手发的：口语、短句、碎片化，经常省略主语，30~80 字也可以更短；低信息密度、高生活感，允许碎碎念、吐槽、提问、玩梗、错别字和表情；题材可以是吃喝、旅行、日常、宠物、天气、开心/emo、追星、避雷、攻略、测评、健身、读书、职场、提问、段子、恋爱日常、热点八卦；不要写成旅行博主/硬广/工作汇报，也不要每条都升华总结；广告只做隐晦暗广；');
   lines.push('- 每条帖子配 3~5 条初始评论，评论者只能从上面的名字里选，按各自人设与关系自然互动；评论像随手打字，可以只回一句、发表情、歪楼，不要客服腔；');
   lines.push('- 已知 char 之间只有明确关系（人设/世界书/角色关系/私聊记录）才能互相评论或接话；不认识的 char 不要出现在同一条评论区；同学、朋友、NPC、陌生网友可以自由评论公开帖子；');
   lines.push('- 评论者回复别人时写成「评论者|回复对象|内容」，不是回复则写成「评论者||内容」；');

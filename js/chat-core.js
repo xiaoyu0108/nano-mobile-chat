@@ -984,7 +984,8 @@
             prompt += '开启后**每一轮都必须**在气泡之间穿插动作/神态描写，可以一条或多条，随气泡出现；单独一行输出 [act:描写内容]，例如 [act:听到这句先是愣了下，才慢慢把视线从屏幕挪到你脸上]。\n';
             prompt += '每条动描要把「动作」和「态度/情绪」连贯地写在一起：先写你做了什么、身体和手的小动作，再写这个动作里透出的态度、情绪和神态变化（例如“先把手机扣在桌上，指尖还压着屏幕没松，语气听着平静，其实已经有点不高兴了”）。约 30~60 字，是一句连贯、有前因后果的完整描写，不要只丢一个孤立的动作词，也不要几句各说各的、接不上。\n';
             prompt += '【动描风格 · 清爽自然】只写细微、真实、日常的小动作和当下反应，紧扣你的人设、身份和此刻情绪，神态要与语气一致；像随手记录，不刻意、不做作、不油腻、不重复，不要写成大段旁白或心理独白。\n';
-            prompt += '【动描禁词】严禁小说腔、装腔和油腻特写，例如：勾唇一笑、微微一笑、勾起嘴角、邪魅一笑、眸色一沉、眼神一暗、喉结滚动、低笑一声、摘下金丝眼镜、推了推眼镜、挑眉、玩味地看着你、声音沙哑/低哑、指尖划过、把人圈进怀里 等。也不要每轮都写“笑”。\n';
+            prompt += '【动描禁词】严禁小说腔、装腔和油腻特写，例如：顶上颚、舌抵上颚、舌尖抵上颚、咬碎、轻笑、低笑、漫不经心、顶一下嘴角、勾唇一笑、微微一笑、勾起嘴角、邪魅一笑、眸色一沉、眼神一暗、喉结滚动、低笑一声、似笑非笑、下颌线绷紧、尾音上扬、摘下金丝眼镜、推了推眼镜、挑眉、玩味地看着你、声音沙哑/低哑、指尖划过、把人圈进怀里 等。也不要每轮都写“笑”。\n';
+            prompt += '【动描正确写法】就是普通人在日常里会做的小动作：拿手机、看路、把杯子挪开、回消息慢半拍、被呛到、找钥匙、把外套搭在椅背上。轻喜剧感来自处境和反应，不来自刻意搞笑；不要喜剧化、段子化，不每个动作都带性暗示，不把日常写成慢镜头、偶像剧或散文。\n';
         }
 
         // 语音气泡频率：off=不出现；high=每轮2条以上；medium=每轮约1条；low=约2轮1条
@@ -1723,6 +1724,20 @@
         } catch (e) {
             console.error('[存储] 保存失败:', e);
         }
+        // 轻量「最近对话」镜像：主消息在 IndexedDB，其他页面/Worker 同步上下文时
+        // 不能只读 localStorage 的旧副本（通常不存在），否则后台主动消息永远接不上上文。
+        try {
+            const recent = (messages || []).filter(function (m) {
+                return m && !m.recalled && !m.isCard && m.text && (m.type === 'left' || m.type === 'right');
+            }).slice(-24).map(function (m) {
+                return {
+                    who: m.type === 'right' ? 'user' : 'char',
+                    text: String(m.text).replace(/\s+/g, ' ').trim().slice(0, 240)
+                };
+            }).filter(function (x) { return x.text; });
+            if (recent.length) localStorage.setItem('nano_recent_text_' + chatId, JSON.stringify(recent));
+            else localStorage.removeItem('nano_recent_text_' + chatId);
+        } catch (e) {}
         notifyChatListPreview();
         registerChatRecord();
         syncMessagesToMemory();
@@ -2851,7 +2866,6 @@
                 '<div style="font-size:12px;color:#8e8e93;margin-bottom:4px;">学习陪伴 · ' + (cardData.date || '') + '</div>' +
                 '<div class="card-title" style="font-size:15px;">' + clean(cardData.title || '学习') + '</div>' +
                 '<div class="card-sub" style="margin-top:5px;line-height:1.55;">' + (mins ? (mins + ' 分钟 · ') : '') + clean(cardData.summary || '') + '</div>' +
-                '<div class="card-footer"><span class="card-footer-text">点击查看本次学习与对话</span></div>' +
                 '</div>';
         }
         if (cardData.cardType === 'scheduleReport') {
@@ -3079,8 +3093,7 @@
         } else if (cardData.cardType === 'charSecretChat') {
             const clean = function (v) { return String(v == null ? '' : v).replace(/[<>&"]/g, ''); };
             const icon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zM8 11c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>';
-            return '<div class="card-main"><div class="icon-wrap">' + icon + '</div><div><div class="card-title">' + clean(cardData.title || '角色悄悄话') + '</div><div class="card-sub">' + clean(cardData.sub || '点击查看完整对话') + '</div></div></div>' +
-                '<div class="card-footer"><span class="card-footer-text">点击查看他们的聊天记录</span></div>';
+            return '<div class="card-main"><div class="icon-wrap">' + icon + '</div><div><div class="card-title">' + clean(cardData.title || '角色悄悄话') + '</div><div class="card-sub">' + clean(cardData.sub || '') + '</div></div></div>';
         } else if (cardData.cardType === 'couple') {
             // 情侣空间分享卡片
             const kind = cardData.coupleKind || '';
@@ -3097,9 +3110,9 @@
             };
             const icon = iconMap[kind] || '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21.2l7.8-7.8 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>';
             const title = cardData.title || (kind === 'invite' ? '情侣空间邀请' : (kind === 'takeover' ? 'TA 查看了你的手机' : '情侣空间'));
-            let footerText = '来自情侣空间 · 点击卡片查看/让TA分析';
+            let footerText = '来自情侣空间';
             if (kind === 'takeover') {
-                footerText = '点击查看 TA 看到的内容';
+                footerText = '';
             } else if (kind === 'invite') {
                 const st = cardData.status || 'pending';
                 if (st === 'accepted') footerText = 'TA 已同意，可回到情侣空间开通';
@@ -5062,6 +5075,39 @@
         saveMessages();
     }
 
+    function allowScheduleChange(msg) {
+        if (!msg || !msg.cardData || (msg.cardData.status || 'pending') !== 'pending') return;
+        if (!window.NanoScheduleBridge || !NanoScheduleBridge.applyChanges) {
+            showAlert('日程修改失败', '日程模块没有加载，请刷新后重试。');
+            return;
+        }
+        const changes = Array.isArray(msg.cardData.changes) ? msg.cardData.changes : [];
+        msg.cardData.status = 'allowed';
+        renderMessages();
+        NanoScheduleBridge.applyChanges(changes, { charId: chatId, charName: displayName }).then(function (n) {
+            if (n > 0) {
+                addSystemNotice('日程已按你的允许修改（' + n + ' 项）');
+            } else {
+                msg.cardData.status = 'pending';
+                addSystemNotice('日程没有变化（可能已被删除或时间无效）');
+            }
+            renderMessages();
+            saveMessages();
+        }).catch(function () {
+            msg.cardData.status = 'pending';
+            renderMessages();
+            showAlert('日程修改失败', '没有写入日程，请稍后再试。');
+        });
+    }
+
+    function denyScheduleChange(msg) {
+        if (!msg || !msg.cardData || (msg.cardData.status || 'pending') !== 'pending') return;
+        msg.cardData.status = 'denied';
+        addSystemNotice('已忽略这次日程修改');
+        renderMessages();
+        saveMessages();
+    }
+
     // 用户发来、仍待 AI 表态的转账/礼物卡片（右侧）
     function getPendingUserCards() {
         const out = [];
@@ -6029,9 +6075,11 @@
         try {
             mem = String(__memHints || '').split('\n').filter(Boolean).slice(-8).join('\n');
         } catch (e) {}
-        const sys = '你是「' + (displayName || charName || '角色') + '」，一个真实的人。请发一条朋友圈动态。严格贴合你的人设与你们的关系，像真人发朋友圈一样自然，禁止 AI 腔、禁止解释、禁止出戏。\n' +
+        let sys = '你是「' + (displayName || charName || '角色') + '」，一个真实的人。请发一条朋友圈动态。严格贴合你的人设与你们的关系，像真人发朋友圈一样自然，禁止 AI 腔、禁止解释、禁止出戏。\n' +
+            '口语、短句、碎片化，经常省略主语；低信息密度、高生活感、松弛不端着。可以只有半句/一个词/一个 emoji，也可以偶尔发一条认真的深夜小作文。题材从吃喝玩乐、旅游、日常碎片、宠物、天气、开心、emo、吐槽、发疯、追星、避雷、攻略、测评、健身打卡、读书、职场、提问、投票、段子、恋爱日常、热点八卦里自然长出来。广告只做隐晦暗广，先讲真实体验和小缺点。\n' +
             '不要写成流水账或日程记录：拒绝“早上…中午…晚上…”地罗列作息，也拒绝“今天天气不错 / 吃了三明治 / 上班好累 / 晚安”这类谁都能发的空话；要落到一件具体的事或一个具体的细节，有只有你此刻才会发的东西。\n' +
             '只输出一个 JSON，不要多余内容：{"text":"动态文案","wantImage":true 或 false,"imagePrompt":"若想配图，描述这张照片的画面；不配图则留空","location":"地点或空字符串"}';
+        try { if (window.NanoPrompts && NanoPrompts.appendTo) sys = NanoPrompts.appendTo(sys, 'moments', { keepFormat: true }); } catch (e) {}
         const userMsg = (setting ? ('【你的人设】\n' + setting.slice(0, 600) + '\n\n') : '') +
             (mem ? ('【最近发生的事】\n' + mem + '\n\n') : '') +
             '【现在】' + timeStr + '（' + uName + '在你的好友里）。发一条自然、具体、不流水账的朋友圈。';
@@ -6126,7 +6174,7 @@
             } catch (e) {}
             return '· ' + a.name + (st ? ('：' + st) : '');
         }).join('\n');
-        const sys = '下面这几位是用户的好友，他们的动态会出现在同一个朋友圈里：' + authorNames + '。\n'
+        let sys = '下面这几位是用户的好友，他们的动态会出现在同一个朋友圈里：' + authorNames + '。\n'
             + '注意：他们不一定互相认识；只有人设/世界书/角色关系/私聊记录里明确认识的两个人，才可以在评论区互动或互相回复。不认识的 char 不要出现在同一条动态的评论区，也不要互相点赞。\n'
             + '请为其中 2~3 个人各写一条朋友圈动态（可以是同一天的不同时间段：早晨/午后/傍晚/深夜），每个人只写一条，'
             + '内容贴合各自的人设、身份和当天心情，彼此不要重复、不要互相复述。\n'
@@ -6136,6 +6184,7 @@
             + '【必须带互动】每条动态都要像真实朋友圈一样有点赞和评论：1~3 个人点赞，1~3 条评论；'
             + '点赞者和评论者只能从上文的名单里选（不能是动态作者本人，也绝对不能是用户本人），评论要贴合评论者与作者的关系，可以互相接话、调侃、关心。\n'
             + '只输出一个 JSON 数组，不要多余内容：[{"author":"发动态的人名（必须是：' + authorNames + '之一）","text":"动态文案","wantImage":true 或 false,"imagePrompt":"若想配图，描述这张照片的画面；不配图则留空","location":"地点或空字符串","likes":["点赞者名字"],"comments":[{"user":"评论者名字","toUser":"回复对象名字，没有就留空","text":"评论内容"}]}]';
+        try { if (window.NanoPrompts && NanoPrompts.appendTo) sys = NanoPrompts.appendTo(sys, 'moments', { keepFormat: true }); } catch (e) {}
         const userMsg = '【朋友圈成员与人设】\n' + authorInfo + '\n\n'
             + (mem ? ('【最近发生的事】\n' + mem + '\n\n') : '')
             + '【现在】' + timeStr + '（' + uName + '在他们的好友里，但朋友圈动态不是说给 ' + uName + ' 听的，只是他们各自的日常分享）。'
@@ -6164,7 +6213,7 @@
             if (posts.every(function (p) { return p.comments && p.comments.length; })) return;
             const names = authors.map(function (a) { return a.name; }).filter(Boolean);
             if (!names.length) return;
-            const sys = '你是朋友圈互动生成器。根据每条动态的作者和内容，生成像真人一样的点赞和评论。\n'
+            const sys = '你是朋友圈互动生成器。根据每条动态的作者和内容，生成像真人一样的点赞和评论。评论要短、口语、碎片化，像随手打字：可以只回“哈哈哈”“？”“好家伙”、玩梗、损一句或问一个具体细节；不要长评、客服腔和升华总结。\n'
                 + '只输出一个 JSON 数组，不要多余内容：[{"index":0,"likes":["点赞者名字"],"comments":[{"user":"评论者名字","toUser":"回复对象名字，没有就留空","text":"评论内容"}]}]\n'
                 + '评论者/点赞者只能从这些名字里选：' + names.join('、') + '；不要用动态作者本人点赞，绝对不能出现用户本人。每条 1~3 个赞、1~3 条评论。\n'
                 + '只有和作者明确认识（人设/世界书/角色关系/私聊记录）的人才能点赞或评论；不认识的 char 直接跳过，不要硬凑。';
@@ -9274,6 +9323,17 @@
         }
     }
 
+    function addScheduleChangeCard(changes, timeStr) {
+        if (!Array.isArray(changes) || !changes.length) return;
+        addMessage('left', '', timeStr, null, false, true, {
+            cardType: 'scheduleChange',
+            title: '日程修改',
+            summary: 'TA 想调整 ' + changes.length + ' 项安排',
+            changes: changes,
+            status: 'pending'
+        });
+    }
+
     async function processReply(reply, quoteTarget) {
         if (!reply) return;
         // 语音气泡频率：buildSystemPrompt 里的同名变量只在该函数内有效，
@@ -9288,9 +9348,15 @@
         reply = cleanReplyText(reply);
         if (!reply) return;
 
-        // 聊天里改变计划：读取隐藏的 [schedule:...] 标记并回写日程，然后从气泡里移除标记
+        // 聊天里改变计划：读取隐藏的 [schedule:...] 标记，生成「日程修改卡片」等用户确认；
+        // 不再直接改日程，避免角色单方面替用户做决定。
+        let __schedChanges = [];
         try {
-            if (window.NanoScheduleBridge && NanoScheduleBridge.applyMarkers) {
+            if (window.NanoScheduleBridge && NanoScheduleBridge.parseMarkers) {
+                const __sp = await NanoScheduleBridge.parseMarkers(reply, { charId: chatId, charName: displayName });
+                reply = __sp.text;
+                __schedChanges = Array.isArray(__sp.changes) ? __sp.changes : [];
+            } else if (window.NanoScheduleBridge && NanoScheduleBridge.applyMarkers) {
                 reply = await NanoScheduleBridge.applyMarkers(reply, { charId: chatId, charName: displayName });
             }
         } catch (e) {}
@@ -9462,7 +9528,7 @@
                     } else if (tag.kind === 'transfer') {
                         addMessage('left', '', timeStr, null, false, true, { cardType: 'transfer', amount: '¥' + tag.payload, title: '转账', footer: '待领取' });
                     } else if (tag.kind === 'gift') {
-                        addMessage('left', '', timeStr, null, false, true, { cardType: 'gift', title: '送出礼物', sub: tag.payload || '一份心意', footer: '点击领取' });
+                        addMessage('left', '', timeStr, null, false, true, { cardType: 'gift', title: '送出礼物', sub: tag.payload || '一份心意', footer: '' });
                     } else if (tag.kind === 'call') {
                         triggerIncomingCall('通话', /视频/.test(String(tag.payload || '')));
                     } else if (tag.kind === 'creategroup') {
@@ -9526,6 +9592,7 @@
                     }
                 }
             }
+            addScheduleChangeCard(__schedChanges, timeStr);
             saveMessages();
             return;
         }
@@ -9549,7 +9616,7 @@
                                 { cardType: 'transfer', amount: '¥' + tag.payload, title: '转账', footer: '待领取' });
                         } else if (tag.kind === 'gift') {
                             addMessage('left', '', timeStr, null, false, true,
-                                { cardType: 'gift', title: '送出礼物', sub: tag.payload || '一份心意', footer: '点击领取' });
+                                { cardType: 'gift', title: '送出礼物', sub: tag.payload || '一份心意', footer: '' });
                         } else if (tag.kind === 'voice') {
                             const parts = tag.payload.split('|');
                             const dur = parseInt(parts[0]) || 6;
@@ -9671,6 +9738,7 @@
                     }
                 }
             }
+            addScheduleChangeCard(__schedChanges, timeStr);
             console.log('[Chat] 回复完成，共 ' + sentCount + ' 条消息');
             saveMessages();
         })();
@@ -10654,9 +10722,17 @@
         });
         if (added) {
             arr.sort(function (a, b) { return (a.ts || 0) - (b.ts || 0); });
-            try { localStorage.setItem(key, JSON.stringify(arr.slice(-80))); } catch (e) {}
+            try { localStorage.setItem(key, JSON.stringify(arr.slice(-80))); }
+            catch (e) {
+                // 截图太大把 localStorage 写爆时，先丢掉图片只保留文字和评论，
+                // 至少私聊能接上这轮；不要因为一张图把整轮都卡死。
+                try {
+                    arr.forEach(function (t) { if (t && t.image) { t.image = ''; t.imageOmitted = true; } });
+                    localStorage.setItem(key, JSON.stringify(arr.slice(-80)));
+                } catch (e2) { return false; }
+            }
         }
-        return added;
+        return true;
     }
     function consumePendingPeekTurns() {
         var key = peekStashKey(chatId);
@@ -10691,6 +10767,9 @@
             if (!id) return;
             var base = peekBaseUrl();
             var token = peekToken();
+            // 只要本机有窥屏服务地址/令牌就拉，不再依赖 nano_peek_chats 是否包含这个角色。
+            // 否则快捷指令换了 chatId、但页面还没同步列表时，私聊永远收不到这轮。
+            if (!base || !token) return;
             var app = autoAppId();
             var url = base + '/peek/pending?chatId=' + encodeURIComponent(id) + '&appId=' + encodeURIComponent(app) + '&token=' + encodeURIComponent(token);
             var r = await fetch(url, { cache: 'no-store' });
@@ -10699,7 +10778,8 @@
             try { data = await r.json(); } catch (e) {}
             var turns = (data && Array.isArray(data.turns)) ? data.turns : [];
             if (!turns.length) return;
-            stashPeekTurns(id, turns);
+            // 只有真正落到本机才 ack；本地存储满时保留服务端轮次，下次还能补拉。
+            if (!stashPeekTurns(id, turns)) return;
             try {
                 await fetch(base + '/peek/ack', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -10822,7 +10902,7 @@
     let autoPushSyncing = false;
     function autoPushBase() {
         var b = '';
-        try { b = (localStorage.getItem('nano_push_endpoint') || '').trim(); } catch (e) {}
+        try { b = (localStorage.getItem('nano_push_endpoint') || localStorage.getItem('nano_peek_url') || '').trim(); } catch (e) {}
         if (!b) b = 'https://nanopush.nano315.online';
         return b.replace(/\/+$/, '');
     }
@@ -10881,7 +10961,10 @@
                 const key = localStorage.key(i) || '';
                 let val = null;
                 try { val = JSON.parse(localStorage.getItem(key)); } catch (e) { continue; }
-                if (key.indexOf('chat_setting_autoMsg_') === 0) {
+                // 只认真正的开关 key。以前用 indexOf 前缀判断，会把
+                // chat_setting_autoMsgInterval_xxx / autoMomentInterval_xxx 也当成「已开启」，
+                // 导致用户明明关着主动消息，Worker 仍然定时生成并推送。
+                if (/^chat_setting_autoMsg_/.test(key) && !/^chat_setting_autoMsgInterval_/.test(key)) {
                     const cid = key.slice('chat_setting_autoMsg_'.length);
                     if (val) {
                         out.msgEnabled = true;
@@ -10891,8 +10974,8 @@
                         if (cid === chatId) { msgCurrent = true; out.intervalMinutes = mins; }
                         else if (!msgCurrent) out.intervalMinutes = mins;
                     }
-                } else if (key.indexOf('chat_setting_autoMoment_') === 0 || key.indexOf('chat_setting_autoSocial_') === 0) {
-                    const prefix = key.indexOf('chat_setting_autoMoment_') === 0 ? 'chat_setting_autoMoment_' : 'chat_setting_autoSocial_';
+                } else if (/^chat_setting_autoMoment_/.test(key) && !/^chat_setting_autoMomentInterval_/.test(key)) {
+                    const prefix = 'chat_setting_autoMoment_';
                     const cid = key.slice(prefix.length);
                     if (val) {
                         out.momentEnabled = true;
@@ -10950,21 +11033,42 @@
                     }
                 } catch (e) { uid = 'default'; }
             }
-            // 后台生成必须接得上最近聊天：把每个角色最近 6 条有效消息一起同步给 Worker。
+            // 后台生成必须接得上最近聊天：把每个角色最近的有效消息一起同步给 Worker。
+            // 主消息在 IndexedDB，优先读 saveMessages 维护的轻量镜像；旧数据再回退到 localStorage 副本。
+            const recentFromArray = function (arr, limit) {
+                if (!Array.isArray(arr)) return [];
+                return arr.filter(function (m) {
+                    return m && !m.recalled && m.text && !m.isCard && !m.isImage && !m.isVoice &&
+                        (m.type === 'left' || m.type === 'right');
+                }).slice(-(limit || 12)).map(function (m) {
+                    return {
+                        who: m.type === 'right' ? 'user' : 'char',
+                        text: String(m.text).replace(/\s+/g, ' ').trim().slice(0, 240)
+                    };
+                }).filter(function (x) { return x.text; });
+            };
             const recentFor = function (cid) {
                 try {
+                    const mirror = localStorage.getItem('nano_recent_text_' + cid);
+                    if (mirror) {
+                        const arr = JSON.parse(mirror);
+                        if (Array.isArray(arr) && arr.length) return arr.slice(-12);
+                    }
+                } catch (e) {}
+                try {
                     const raw = localStorage.getItem('chat_messages_' + cid);
-                    const arr = raw ? JSON.parse(raw) : [];
-                    if (!Array.isArray(arr)) return [];
-                    return arr.filter(function (m) {
-                        return m && !m.recalled && m.text && !m.isCard && !m.isImage && !m.isVoice;
-                    }).slice(-6).map(function (m) {
-                        return {
-                            who: m.type === 'right' ? 'user' : 'char',
-                            text: String(m.text).replace(/\s+/g, ' ').trim().slice(0, 160)
-                        };
-                    }).filter(function (x) { return x.text; });
+                    return recentFromArray(raw ? JSON.parse(raw) : [], 12);
                 } catch (e) { return []; }
+            };
+            // 老用户没有镜像时，直接从 IndexedDB 读一次，保证主动消息第一轮就有上下文。
+            const recentForAsync = async function (cid) {
+                const got = recentFor(cid);
+                if (got.length) return got;
+                try {
+                    if (typeof localforage === 'undefined' || !localforage.getItem) return got;
+                    const arr = await localforage.getItem('chat_messages_' + cid);
+                    return recentFromArray(arr, 12);
+                } catch (e) { return got; }
             };
             const candidates = allCharacters.filter(function (c) {
                 if (!c || !c.id || !c.name || c.nanoAssistant) return false;
@@ -10978,7 +11082,7 @@
             const hasActivityData = Object.keys(activity).length > 0;
             const recent = candidates.filter(function (c) { return Number(activity[c.id] || 0) >= cutoff; });
             const chosen = recent.length ? recent : (hasActivityData ? [] : candidates);
-            const chars = chosen.map(function (c) {
+            const chars = (await Promise.all(chosen.map(async function (c) {
                 var cyc = null;
                 try { cyc = window.NanoCycle && NanoCycle.workerCycle(c.id); } catch (e) {}
                 var nat = String(c.nationality || c.country || '').trim();
@@ -11004,9 +11108,9 @@
                     forceTranslate: __force,
                     forceLang: __forceLang,
                     cycle: cyc || null,
-                    recent: recentFor(String(c.id))
+                    recent: await recentForAsync(String(c.id))
                 };
-            });
+            }))).filter(Boolean);
             const canSend = chars.length > 0;
             const payload = {
                 token: autoPushToken(),
@@ -11071,7 +11175,7 @@
             window.__serverAutoPushActive = false;
             try { localStorage.setItem('nano_server_auto_push', '0'); } catch (e2) {}
             try { if (getChatSetting('autoMsg', false)) scheduleNextAutoMsg(); } catch (e2) {}
-            try { if (getChatSetting('autoMoment', false) || getChatSetting('autoSocial', false)) scheduleNextAutoMoment(); } catch (e2) {}
+            try { if (getChatSetting('autoMoment', false)) scheduleNextAutoMoment(); } catch (e2) {}
         } finally {
             autoPushSyncing = false;
         }
@@ -11384,6 +11488,8 @@
             const act = actionBtn.dataset.act;
             if (act === 'receive') receiveCard(msg);
             else if (act === 'return') returnCard(msg);
+            else if (act === 'schedule-allow') allowScheduleChange(msg);
+            else if (act === 'schedule-deny') denyScheduleChange(msg);
             else if (act === 'accept') acceptGroupInvite(msg);
             else if (act === 'reject') rejectGroupInvite(msg);
             else if (act === 'listen-accept') { setListenStatus(msg, 'accepted'); addSystemNotice('你接受了一起听邀请'); notifyListenAccepted(msg); }
@@ -12956,11 +13062,11 @@ if (callCard) {
         } else if (data.type === 'autoMsgIntervalChanged') {
             setAutoMsgState(getChatSetting('autoMsg', false), data.interval, { reset: true });
         } else if (data.type === 'autoMomentChanged') {
-            setAutoMomentState(!!data.enabled || getChatSetting('autoSocial', false), data.interval, { first: true, reset: true });
+            setAutoMomentState(getChatSetting('autoMoment', false), data.interval, { first: true, reset: true });
         } else if (data.type === 'autoSocialChanged') {
             setAutoMomentState(getChatSetting('autoMoment', false) || !!data.enabled, data.interval || getChatSetting('autoMomentInterval', 24), { first: true, reset: true });
         } else if (data.type === 'autoMomentIntervalChanged') {
-            setAutoMomentState(getChatSetting('autoMoment', false) || getChatSetting('autoSocial', false), data.interval, { reset: true });
+            setAutoMomentState(getChatSetting('autoMoment', false), data.interval, { reset: true });
         } else if (data.type === 'timeAwareChanged' || data.type === 'allowImageChanged' || data.type === 'allowMomentImageChanged') {
             // 无需实时处理（构建提示词/生图时读取设置）
         }
@@ -13152,18 +13258,16 @@ if (data.type === 'NANO_VOICE_CALL_CARD' || data.type === 'NANO_VIDEO_CALL_CARD'
             // 窥屏轮次不做前台定时轮询：快捷指令跑完回到 App 时，外层 ios-bridge
             // 会立即补拉并广播 NANO_PEEK_UPDATED；这里只在进入聊天时拉一次。
             try { consumePendingPeekTurns(); } catch (e) {}
-            if (peekSyncEnabled(chatId)) {
-                pullPeekTurnsForCurrentChat().then(function () {
-                    try { consumePendingPeekTurns(); } catch (e) {}
-                }).catch(function () {});
-            }
+            pullPeekTurnsForCurrentChat().then(function () {
+                try { consumePendingPeekTurns(); } catch (e) {}
+            }).catch(function () {});
             if (jumpMsgId) {
                 setTimeout(function() { jumpToMessage(jumpMsgId); }, 100);
             }
             // 启动主动发消息定时（若之前已开启）
             try { setAutoMsgState(getChatSetting('autoMsg', false), getChatSetting('autoMsgInterval', 8)); } catch (e) {}
             // 启动主动发朋友圈定时（若之前已开启）
-            try { setAutoMomentState(getChatSetting('autoMoment', false) || getChatSetting('autoSocial', false), getChatSetting('autoMomentInterval', 24), { first: shouldDoFirstAutoMoment() }); } catch (e) {}
+            try { setAutoMomentState(getChatSetting('autoMoment', false), getChatSetting('autoMomentInterval', 24), { first: shouldDoFirstAutoMoment() }); } catch (e) {}
             console.log('[Chat] 缓存加载完成，消息数:', messages.length);
             // 旧链接卡片补封面（异步、只补最近 5 张）
             setTimeout(function () { try { refreshStaleLinkPreviewImages(5); } catch (e) {} }, 1500);

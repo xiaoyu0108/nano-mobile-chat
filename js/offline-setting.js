@@ -162,6 +162,33 @@ async function loadAllData() {
       if (ruleGroups.length !== before) await saveRules();
     } catch (e) {}
 
+    // 内置「文风」规则组：文风写在规则里，用户按需开启一种即可。
+    try {
+      if (localStorage.getItem('nano_offline_style_group_v1') !== '1') {
+        const STYLE_GROUP_ID = 'offline-style';
+        const list = (window.NanoOfflineStyles && NanoOfflineStyles.list) || [];
+        if (list.length && !(ruleGroups || []).some(function (g) { return g && g.id === STYLE_GROUP_ID; })) {
+          ruleGroups.push({
+            id: STYLE_GROUP_ID,
+            name: '文风（线下 · 开启一种）',
+            enabled: true,
+            expanded: false,
+            rules: list.map(function (s) {
+              return {
+                id: 'style-' + s.id,
+                name: s.name,
+                enabled: false,
+                content: s.prompt + '\n参考语感（只学节奏和语气，不要照抄内容）：\n' + s.example +
+                    '\n以上文风优先级高于默认文风；但仍必须服从角色人设、世界书、线下规则、用户行动预测和输出格式。'
+              };
+            })
+          });
+          await saveRules();
+        }
+        if (list.length) localStorage.setItem('nano_offline_style_group_v1', '1');
+      }
+    } catch (e) {}
+
     // 内置规则组升级：确保 God 组存在，并补齐 / 刷新内置神规则（不动用户自建规则）
     try {
       if (localStorage.getItem('nano_offline_god_v9') !== '1') {

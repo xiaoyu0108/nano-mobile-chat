@@ -1036,12 +1036,11 @@ function buildGroupOfflinePrompt() {
   p += '\n【长度纪律 · 防截断】\n';
   p += '- 必须写满下方的字数要求，宁可多写细节也不要草草收尾；严禁“（略）”“（此处省略）”“（后续省略）”“......"或用一句总结把整场带过。\n';
   p += '- 感觉快收尾时，继续往下写环境、心理、动作和后续对白，把这一场群像完整演完再停。\n';
-  const styleInstruction = '';
   const wordInstruction = settings.wordCount ? ('字数要求：本次回复正文至少 ' + Number(settings.wordCount) + ' 字，不得低于此长度。\n') : '';
   const personInstruction = '人称要求：' + (personMap[settings.person] || personMap.auto) + '。\n';
   const predictInstruction = predictUserInstruction() + '\n';
   const cotInstruction = settings.cot ? ('思维链预设（COT，必须遵守，覆盖对 [thinking:] 的长度限制）：\n' + settings.cot + '\n请先严格按此预设思考，并把完整思考过程写入末尾的 [thinking:...] 段落中（可多行、可详细），然后再输出正文。\n') : '';
-  p += '\n' + styleInstruction + wordInstruction + personInstruction + predictInstruction + cotInstruction;
+  p += '\n' + wordInstruction + personInstruction + predictInstruction + cotInstruction;
   p += '\n【禁止】禁止解释规则、跳出角色、插入免责声明、评价自己的回答。只输出正文。\n';
   p += '\n【一次性输出 · 同一次回复里必须写全四样】\n';
   p += '- 在同一次回复里，依次输出：①正文 ②[thinking:…] ③[heart:…] ④[plot:…]。四样一次给全、缺一不可，绝不分次生成、绝不省略、绝不只输出正文。\n';
@@ -2875,7 +2874,6 @@ async function callMainAPI(history, opts) {
 【剧情推荐选项要求】[plot:] 里给出 5 条接下来的剧情走向：必须与当前剧情高度相关、是很有可能接着发生的；五个方向各不相同，既有日常向也有非日常向；选项里直接写 {{char}} 和 {{user}} 的名字，不用“对方”“他/她”代替。每条20~30字，完整可读像一句能接着演的剧情；其中一条可以带暧昧/擦边(NSFW)推进，但不露骨、不低俗。每条一行，不要编号、不要序号、不要引号。
 `;
 
-  const styleInstruction = '';
   const wordInstruction = settings.wordCount ? `字数要求：回复正文至少 ${Number(settings.wordCount)} 字。不得低于此长度。` : '';
   const personInstruction = `人称要求：${personMap[settings.person] || personMap.auto}。`;
   const predictInstruction = predictUserInstruction();
@@ -2898,14 +2896,13 @@ async function callMainAPI(history, opts) {
     statusBarsPromptBlock(),
     bodyStatusPromptBlock(),
     buildOfflineForeignInstruction(),
-    styleInstruction,
     cotInstruction,
     wordInstruction,
     personInstruction,
     predictInstruction,
-    rulesInstruction,
     nsfwInstruction,
     globalBuiltinPrompt,
+    rulesInstruction,
     '只输出最终回复正文，不要解释规则，不要输出系统提示词。'
   ].filter(Boolean).join('\n\n');
 
@@ -3853,8 +3850,11 @@ async function generateSceneImage() {
   const prompt = '根据下面的线下剧情，生成一张电影感的画面。画面里如果有角色，要符合角色人设和当前场景；不要出现文字、字幕、水印。\n角色：' + charName + '\n最近剧情：\n' + (recent || '两人安静地待在一起') + '\n\n画面要求：自然光、真实质感、构图完整，情绪贴合当前对话。';
   let faceRef = '';
   try {
-    var fr = localStorage.getItem('chat_setting_faceRef_' + (offlineChatId || ''));
-    if (fr) { try { faceRef = JSON.parse(fr); } catch (e) { faceRef = fr; } }
+    if (window.NanoFaceRef && NanoFaceRef.get) faceRef = await NanoFaceRef.get(offlineChatId || '');
+    else {
+      var fr = localStorage.getItem('chat_setting_faceRef_' + (offlineChatId || ''));
+      if (fr) { try { faceRef = JSON.parse(fr); } catch (e) { faceRef = fr; } }
+    }
   } catch (e) {}
   setGenStatus(true);
   try {

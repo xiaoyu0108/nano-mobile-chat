@@ -891,7 +891,10 @@
         var faceRef = '';
         var subject = '';
         try {
-            if (opts && opts.charId) faceRef = charChatSetting(opts.charId, 'faceRef', '') || '';
+            if (opts && opts.charId) {
+                if (window.NanoFaceRef && NanoFaceRef.get) faceRef = await NanoFaceRef.get(opts.charId);
+                else faceRef = charChatSetting(opts.charId, 'faceRef', '') || '';
+            }
             var ch = opts && opts.char;
             if (ch) {
                 var bits = [];
@@ -1076,7 +1079,7 @@
         }
 
         var systemContent = opts.system || (isContext
-            ? '你是一个真实的人类，正在刷朋友圈。像随手发动态一样，写一句具体的日常/情绪/吐槽/小事，不要写成汇报、广告或正能量总结。不超过30个字，可以只有半句话。不要加引号，不要解释，直接输出文案内容。'
+            ? '你是一个真实的人类，正在刷朋友圈。像随手发动态一样：口语、短句、碎片化，经常省略主语；低信息密度、高生活感、松弛不端着。写具体的日常/情绪/吐槽/小事，可以只有半句、一个词、一个 emoji；不要写成汇报、硬广、旅行博主腔或正能量总结。广告只能是隐晦暗广。不超过30个字。不要加引号，不要解释，直接输出文案内容。'
             : '你是一个真实的人类，正在朋友圈评论区互动。像熟人随手打字：可以只回一句、一个表情、损一句或问一句，不要客服腔、不要总结、不要小作文。不超过20个字。不要加引号，不要解释，直接输出评论内容。');
         try {
             if (window.NanoPrompts && NanoPrompts.appendTo) systemContent = NanoPrompts.appendTo(systemContent, 'moments', { keepFormat: true });
@@ -1807,7 +1810,7 @@
             var userComments = (item.comments || []).filter(function(c) { return normName(c.user) === normName(currentUser.name); });
             var hasUserComment = userComments.length > 0;
 
-            var system = '你是一个真实的人类，请同时扮演多个角色以及他们的朋友，在朋友圈评论区自然地聊天。严格贴合各自人设、关系与世界书，保持活人感，绝不 OOC，禁止 AI 腔，禁止解释，禁止出戏。';
+            var system = '你是一个真实的人类，请同时扮演多个角色以及他们的朋友，在朋友圈评论区自然地聊天。严格贴合各自人设、关系与世界书，保持活人感，绝不 OOC，禁止 AI 腔、解释和出戏。评论要短、口语、碎片化，像随手打字：可以只回“哈哈哈”“？”“好家伙”“这家我知道”，可以损、可以关心、可以只发一个表情；不要长评、客服腔、升华总结。';
             var charNamesForPrompt = (bound || []).map(function(c) { return c && c.name; }).filter(Boolean).join('、');
             var userMsg = persona +
                 '\n\n【本动态可以出现的评论者（只能使用这些名字，不要创造新名字）】\n' + pool.map(function(c) { return '· ' + c.name; }).join('\n') +

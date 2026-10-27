@@ -406,6 +406,13 @@ async function getAutoScopes(env) {
     return scopes;
   } catch (e) { return []; }
 }
+async function removeJobId(env, id) {
+  try {
+    const arr = await readIndex(env, JOB_INDEX_KEY);
+    const next = arr.filter(function (x) { return String(x) !== String(id); });
+    if (next.length !== arr.length) await writeIndex(env, JOB_INDEX_KEY, next);
+  } catch (e) {}
+}
 async function addJobId(env, id) {
   const arr = await readIndex(env, JOB_INDEX_KEY);
   if (arr === null) return;
@@ -673,10 +680,10 @@ function sanitizeAutoConfig(body) {
       forceTranslate: !!(c && c.forceTranslate),
       forceLang: String((c && c.forceLang) || '').slice(0, 40),
       // 最近聊天上下文：后台生成必须接得上你们刚聊过的话题，不能凭空发口水话
-      recent: (Array.isArray(c && c.recent) ? c.recent.slice(-6) : []).map(function (r) {
+      recent: (Array.isArray(c && c.recent) ? c.recent.slice(-20) : []).map(function (r) {
         return {
           who: (r && r.who === 'user') ? 'user' : 'char',
-          text: String((r && r.text) || '').replace(/\s+/g, ' ').trim().slice(0, 160)
+          text: String((r && r.text) || '').replace(/\s+/g, ' ').trim().slice(0, 400)
         };
       }).filter(function (r) { return r.text; }),
       // 月潮：只有用户开放权限的角色才会带这份数据
@@ -1010,7 +1017,7 @@ async function generateAutoMoments(env, cfg, busyChatId, maxChars) {
   const picked = pickRandom(source, count);
   const names = picked.map(function (c) { return c.name; });
   const profiles = picked.map(function (c) {
-    const recent = (c.recent || []).slice(-3).map(function (r) {
+    const recent = (c.recent || []).slice(-8).map(function (r) {
       return (r.who === 'user' ? '用户：' : 'TA：') + r.text;
     }).join('；');
     return '· ' + c.name + '：' + String(c.setting || '').slice(0, 500)
@@ -1155,7 +1162,7 @@ async function runAutoPush(env, appId, deviceId, userId) {
           bubbles: Array.isArray(m.bubbles) ? m.bubbles : null,
           target: 'chat:' + m.chatId,
           tag: 'auto-' + m.chatId,
-          renotify: false,
+          renotify: true,
           icon: icon,
           name: m.name,
           channel: 'chat',
@@ -1185,7 +1192,7 @@ async function runAutoPush(env, appId, deviceId, userId) {
           body: pushText(posts[0] && (posts[0].author + ' 发了新动态'), '朋友圈有新动态'),
           target: 'moments',
           tag: 'auto-moments',
-          renotify: false,
+          renotify: true,
           channel: 'moment',
           appId: appId
         });
@@ -1265,7 +1272,9 @@ function peekGeminiEndpoint(raw, model) {
 function peekImageUrl(image) {
   let s = String(image || '').trim();
   if (!s) return '';
-  if (/^data:image\//i.test(s) || /^https?:\/\//i.test(s)) return s;
+  // dataURL 里的 Base64 不能带换行/空格：部分网关会直接当成坏图或返回「看不到图片」。
+  if (/^data:image\//i.test(s)) return s.replace(/\s+/g, '');
+  if (/^https?:\/\//i.test(s)) return s;
   if (/^[A-Za-z0-9+/=\s]+$/.test(s) && s.length > 100) {
     return 'data:image/jpeg;base64,' + s.replace(/\s+/g, '');
   }
@@ -1303,7 +1312,10 @@ async function peekModel(env, system, text, image, history, apiCfg, context) {
       : modelEndpoint(rawUrl);
   const isResponses = provider === 'openai' && /\/responses$/i.test(url);
   const imageUrl = peekImageUrl(image);
-  const textPrompt = text || '看看我现在屏幕上是什么，用你的人设随口说一句。';
+  const imagePrompt = '这是用户刚刚发给你的实时截图。先用一两句话具体说出画面里真实存在的内容（界面/人物/文字/场景），再以你的人设随口点评。不要假装看不到图，也不要泛泛而谈。';
+  // 同时支持「截图」和「截图 + OCR 文本」：模型不支持识图时，至少还能读 OCR 文本。
+  const textPrompt = [String(text || '').trim(), imageUrl ? imagePrompt : ''].filter(Boolean).join('\n\n') ||
+    '看看我现在屏幕上是什么，用你的人设随口说一句。';
 
   const baseMessages = [];
   (context || []).forEach(function (m) {
@@ -1432,7 +1444,7 @@ async function peekModel(env, system, text, image, history, apiCfg, context) {
   } else if (provider === 'gemini') {
     r = await callGemini(!!imageUrl);
   } else {
-    r = await callOpenAI(!!imageUrl, 'max_tokens', 'object', {});
+    r = await callOpenAI(!!imageUrl, 'max_tokens', 'object', { imageFirst: true });
     // 中转站/推理模型常不接受 temperature，去掉再试
     if (!r.text) r = await callOpenAI(!!imageUrl, 'max_tokens', 'object', { temperature: false });
     // 有些网关只接受字符串形式的 image_url，换一种格式再试
@@ -2810,6 +2822,7 @@ export default {
       const deviceId = cleanDeviceId(body.deviceId);
       const userId = cleanUserId(body.userId);
       let count = 0;
+      const ids = [];
       for (const it of items) {
         if (!it || !it.at) continue;
         const job = Object.assign({}, it, {
@@ -2820,6 +2833,20 @@ export default {
         const id = 'job:' + Number(job.at) + ':' + Math.random().toString(36).slice(2, 8);
         await kv(env).put(id, JSON.stringify(job));
         try { await addJobId(env, id); } catch (e) {}
+        ids.push(id);
+        count++;
+      }
+      return json({ ok: true, count: count, ids: ids });
+    }
+    // 取消预约：番茄钟暂停/重置/提前结束时撤掉还没触发的后台提醒
+    if (pathname === '/schedule/cancel' && request.method === 'POST') {
+      if (!tokenOk(request, env)) return json({ ok: false, error: 'unauthorized' }, 401);
+      const body = await request.json().catch(function () { return {}; });
+      const list = Array.isArray(body.ids) ? body.ids : (body.id ? [body.id] : []);
+      let count = 0;
+      for (const id of list) {
+        try { await kv(env).delete(String(id)); } catch (e) {}
+        await removeJobId(env, id);
         count++;
       }
       return json({ ok: true, count: count });
@@ -2935,7 +2962,15 @@ export default {
         } catch (e) {}
       }
       const text = String(body.text || '').trim();
-      const image = String(body.image || '').trim();
+      // 兼容不同版本的快捷指令：image / screenshot / image_url / imageData 都可能出现，
+      // 也兼容对象形式和 images 数组，避免「发了图但 Worker 收到空字符串」。
+      function peekImageInput(v) {
+        if (!v) return '';
+        if (Array.isArray(v)) return peekImageInput(v[0]);
+        if (typeof v === 'object') return peekImageInput(v.data || v.dataUrl || v.base64 || v.url || v.image || '');
+        return String(v).trim();
+      }
+      const image = peekImageInput(body.image || body.screenshot || body.image_url || body.imageData || body.images);
       if (!text && !image) {
         return json({ ok: false, error: 'empty', reply: '没有收到屏幕内容：请在快捷指令里传入截图或文字。' }, 400);
       }
@@ -3644,8 +3679,9 @@ async function getSubs(env, userId, deviceId, appId) {
       const s = JSON.parse(v);
       if (!s || !s.endpoint) continue;
       // 站点隔离：纳米 / 旧 Nano / 其它部署绝不互相收推送。
+      // 但升级前的老订阅没有 appId，只按设备/用户匹配，不能因为缺字段就永远收不到。
       const subApp = cleanAppId(s.appId);
-      if (wantApp && subApp !== wantApp) continue;
+      if (wantApp && s.appId && subApp !== wantApp) continue;
       // 设备隔离：电脑和手机各推各的 char，绝不串设备。
       if (wantDevice && cleanDeviceId(s.deviceId) !== wantDevice) continue;
       // 用户隔离：只推给完全相同的 userId（不再把 default 当万能匹配）。

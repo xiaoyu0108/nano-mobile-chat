@@ -246,7 +246,7 @@
       }
     } catch (e) {}
     lines.push('');
-    lines.push('【日程变动标记（必须遵守）】如果这轮聊天真的改变了你的计划（取消、改期、临时新增安排），在回复最后单独一行输出下面其中一个标记；标记不会显示给用户。只有确实改变时才输出，不要为了输出而改变计划：');
+    lines.push('【日程变动标记（必须遵守）】如果这轮聊天真的改变了你的计划（取消、改期、临时新增安排），在回复最后单独一行输出下面其中一个标记；标记不会显示给用户。系统会先生成一张「日程修改卡片」，等用户点允许后才真正改日程，所以不要自己在正文里宣布已经改好。只有确实改变、且用户也同意时才输出，不要为了输出而改变计划；如果你已经口头答应改日程，就必须同步输出对应标记，否则就等于没有改。');
     lines.push('[schedule:cancel|事件ID|原因]');
     lines.push('[schedule:move|事件ID|新开始HH:MM|新结束HH:MM|原因]');
     lines.push('[schedule:add|YYYY-MM-DD|HH:MM|HH:MM|标题|地点|备注]');
@@ -260,6 +260,8 @@
     if (cache.loading) return cache.loading;
     cache.loading = readStore().then(function (store) {
       var data = findData(store, id, name);
+      // 过期的待办先本地划掉，再生成给模型的日程上下文；不调用 API。
+      if (autoClosePast(data)) { try { writeStore(store); } catch (e) {} }
       cache.store = store;
       cache.charId = id || (store.lastCharId || '');
       cache.charName = name;
@@ -367,69 +369,91 @@
     return String(text || '').replace(/^\s+|\s+$/g, '').replace(/\n{3,}/g, '\n\n');
   }
 
-  function applyMarkers(text, opts) {
-    opts = opts || {};
-    var src = String(text || '');
-    var re = /\[schedule:(cancel|move|add)\|([^\]]+)\]/ig;
-    var found = [];
-    var m;
-    while ((m = re.exec(src)) !== null) found.push({ full: m[0], act: String(m[1]).toLowerCase(), args: m[2] });
-    if (!found.length) return Promise.resolve(src);
-    var cleaned = src.replace(re, '').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n');
-    cleaned = stripTags(cleaned);
+  // 过期的待办自动划掉：只改本地状态，不调用任何 API。
+  // 今天刚结束的留 2 小时给到点报备；超过 2 小时或日期已过就自动完成。
+  function autoClosePast(data) {
+    if (!data || !Array.isArray(data.events)) return false;
+    var now = new Date();
+    var d = dstr(now);
+    var nm = now.getHours() * 60 + now.getMinutes();
+    var changed = false;
+    data.events.forEach(function (e) {
+      if (!e || e.status !== 'todo' || !e.date) return;
+      var pastDate = String(e.date) < d;
+      var pastToday = String(e.date) === d && toMin(e.end) + 120 < nm;
+      if (pastDate || pastToday) {
+        e.status = 'done';
+        e.autoClosed = true;
+        e.autoClosedAt = Date.now();
+        e.log = e.log || [];
+        if (e.log.length < 30) e.log.push({ t: nowText().slice(11), m: '时间已过，自动划掉' });
+        changed = true;
+      }
+    });
+    return changed;
+  }
 
+  function applyChanges(changes, opts) {
+    opts = opts || {};
+    changes = Array.isArray(changes) ? changes : [];
+    if (!changes.length) return Promise.resolve(0);
     var id = String(opts.charId || getCharId() || '');
     var name = String(opts.charName || getCharName() || '');
     return readStore().then(function (store) {
       var data = findData(store, id, name);
-      if (!data) return cleaned;
+      if (!data) {
+        if (!id) return 0;
+        if (!store.chars) store.chars = {};
+        data = { settings: { charId: id, name: name || 'char' }, events: [], gen: {} };
+        store.chars[id] = data;
+      }
       if (!Array.isArray(data.events)) data.events = [];
       var byId = {};
       data.events.forEach(function (e) { if (e && e.id) byId[String(e.id)] = e; });
-      var changed = false;
-      found.forEach(function (it) {
-        var parts = it.args.split('|').map(function (s) { return String(s || '').trim(); });
-        if (it.act === 'cancel') {
-          var ev = byId[String(parts[0])];
+      var n = 0;
+      changes.forEach(function (it) {
+        if (!it) return;
+        if (it.kind === 'cancel') {
+          var ev = byId[String(it.eventId)];
           if (ev && ev.status !== 'cancelled') {
             ev.status = 'cancelled';
-            ev.reason = parts[1] || '聊天里改变了计划';
+            ev.reason = it.reason || '聊天里改变了计划';
             ev.chatEditedAt = Date.now();
             ev.log = ev.log || [];
             ev.log.push({ t: nowText().slice(11), m: '聊天后划掉：' + ev.reason });
-            changed = true;
+            n++;
           }
-        } else if (it.act === 'move') {
-          var mv = byId[String(parts[0])];
-          var st = /^\d{1,2}:\d{2}$/.test(parts[1] || '') ? parts[1] : '';
-          var en = /^\d{1,2}:\d{2}$/.test(parts[2] || '') ? parts[2] : '';
+        } else if (it.kind === 'move') {
+          var mv = byId[String(it.eventId)];
+          var st = /^\d{1,2}:\d{2}$/.test(it.start || '') ? it.start : '';
+          var en = /^\d{1,2}:\d{2}$/.test(it.end || '') ? it.end : '';
           if (mv && st && en && toMin(en) > toMin(st)) {
             if (!mv.movedFrom) mv.movedFrom = mv.start;
             mv.start = st.length === 4 ? '0' + st : st;
             mv.end = en.length === 4 ? '0' + en : en;
             mv.chatEditedAt = Date.now();
             mv.log = mv.log || [];
-            mv.log.push({ t: nowText().slice(11), m: '聊天后改期：' + mv.start + '-' + mv.end + (parts[3] ? '（' + parts[3] + '）' : '') });
-            changed = true;
+            mv.log.push({ t: nowText().slice(11), m: '聊天后改期：' + mv.start + '-' + mv.end + (it.reason ? '（' + it.reason + '）' : '') });
+            n++;
           }
-        } else if (it.act === 'add') {
-          var date = /^\d{4}-\d{2}-\d{2}$/.test(parts[0] || '') ? parts[0] : today();
-          var as = /^\d{1,2}:\d{2}$/.test(parts[1] || '') ? parts[1] : '';
-          var ae = /^\d{1,2}:\d{2}$/.test(parts[2] || '') ? parts[2] : '';
-          var title = parts[3] || '';
+        } else if (it.kind === 'add') {
+          var date = /^\d{4}-\d{2}-\d{2}$/.test(it.date || '') ? it.date : today();
+          var as = /^\d{1,2}:\d{2}$/.test(it.start || '') ? it.start : '';
+          var ae = /^\d{1,2}:\d{2}$/.test(it.end || '') ? it.end : '';
+          var title = it.title || '';
           if (as && ae && title && toMin(ae) > toMin(as)) {
             data.events.push({
               id: 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
               date: date, start: as.length === 4 ? '0' + as : as, end: ae.length === 4 ? '0' + ae : ae,
-              title: title, place: parts[4] || '', who: '', note: parts[5] || '',
+              title: title, place: it.place || '', who: '', note: it.note || '',
               mood: '', tag: 'life', status: 'todo', log: [{ t: nowText().slice(11), m: '聊天后新增安排' }],
               chatEditedAt: Date.now()
             });
-            changed = true;
+            n++;
           }
         }
       });
-      if (!changed) return cleaned;
+      if (!n) return 0;
       store.lastCharId = store.lastCharId || id;
       return writeStore(store).then(function () {
         try {
@@ -437,9 +461,50 @@
             window.parent.postMessage({ type: 'nanoScheduleUpdated', source: 'chat', charId: id }, '*');
           }
         } catch (e) {}
-        return cleaned;
+        return n;
       });
-    }).catch(function () { return cleaned; });
+    }).catch(function () { return 0; });
+  }
+
+  // 只解析、不落库：私聊里先生成「日程修改卡片」，用户点允许后再 applyChanges。
+  function parseMarkers(text, opts) {
+    opts = opts || {};
+    var src = String(text || '');
+    var re = /\[schedule:(cancel|move|add)\|([^\]]+)\]/ig;
+    var raw = [];
+    var m;
+    while ((m = re.exec(src)) !== null) raw.push({ act: String(m[1]).toLowerCase(), args: m[2] });
+    var cleaned = stripTags(src.replace(re, '').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n'));
+    if (!raw.length) return Promise.resolve({ text: cleaned, changes: [] });
+    var id = String(opts.charId || getCharId() || '');
+    var name = String(opts.charName || getCharName() || '');
+    return readStore().then(function (store) {
+      var data = findData(store, id, name);
+      var byId = {};
+      (data && Array.isArray(data.events) ? data.events : []).forEach(function (e) { if (e && e.id) byId[String(e.id)] = e; });
+      var changes = raw.map(function (it) {
+        var parts = it.args.split('|').map(function (s) { return String(s || '').trim(); });
+        if (it.act === 'cancel') {
+          var ev = byId[String(parts[0])];
+          if (!ev) return null;
+          return { kind: 'cancel', eventId: String(ev.id), title: ev.title || '安排', oldDate: ev.date, oldStart: ev.start, oldEnd: ev.end, reason: parts[1] || '' };
+        }
+        if (it.act === 'move') {
+          var mv = byId[String(parts[0])];
+          if (!mv) return null;
+          return { kind: 'move', eventId: String(mv.id), title: mv.title || '安排', oldDate: mv.date, oldStart: mv.start, oldEnd: mv.end, start: parts[1] || '', end: parts[2] || '', reason: parts[3] || '' };
+        }
+        return { kind: 'add', date: /^\d{4}-\d{2}-\d{2}$/.test(parts[0] || '') ? parts[0] : today(), start: parts[1] || '', end: parts[2] || '', title: parts[3] || '新安排', place: parts[4] || '', note: parts[5] || '' };
+      }).filter(Boolean);
+      return { text: cleaned, changes: changes };
+    }).catch(function () { return { text: cleaned, changes: [] }; });
+  }
+
+  // 兼容旧调用：没有确认卡片时仍然直接应用。
+  function applyMarkers(text, opts) {
+    return parseMarkers(text, opts).then(function (p) {
+      return applyChanges(p.changes, opts).then(function () { return p.text; });
+    });
   }
 
   function readApiConfig() {
@@ -480,6 +545,71 @@
   function epImg(u, suf) {
     u = String(u || '').trim().replace(/\/+$/, '');
     return u.endsWith(suf) ? u : u + suf;
+  }
+  function imageEndpoint(u, kind) {
+    u = String(u || '').trim().replace(/\/+$/, '');
+    u = u.replace(/\/images\/(generations|edits)$/i, '');
+    return u + (kind === 'edit' ? '/images/edits' : '/images/generations');
+  }
+  function editUrl(u) { return imageEndpoint(u, 'edit'); }
+  function dataUrlToBlob(u) {
+    var comma = String(u).indexOf(',');
+    var mime = (String(u).slice(5, comma).split(';')[0]) || 'image/png';
+    var bin = atob(String(u).slice(comma + 1));
+    var arr = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    return new Blob([arr], { type: mime });
+  }
+  function faceRefFor(id) {
+    try {
+      if (window.NanoFaceRef && NanoFaceRef.get) return Promise.resolve(NanoFaceRef.get(id)).catch(function () { return ''; });
+    } catch (e) {}
+    try {
+      var raw = localStorage.getItem('chat_setting_faceRef_' + (id || ''));
+      if (raw) { try { return Promise.resolve(String(JSON.parse(raw) || '')); } catch (e) { return Promise.resolve(String(raw)); } }
+    } catch (e) {}
+    return Promise.resolve('');
+  }
+  function faceNote() {
+    return '【锁脸说明】提供的人物参考图只用于保持长相（五官、脸型、肤色、发色）一致；请完全忽略参考图的姿势、角度、表情、背景与构图，按当前场景重新构图。';
+  }
+  // 有锁脸参考先走 /images/edits（multipart），失败再退回带 reference 字段的普通生图。
+  function requestImage(cfg, prompt, faceRef, relay) {
+    var url = imageEndpoint(cfg.imgUrl, 'gen');
+    var headers = { 'Content-Type': 'application/json' };
+    if (cfg.imgKey) headers.Authorization = 'Bearer ' + cfg.imgKey;
+    var note = faceRef ? faceNote() : '';
+    var fullPrompt = note ? (note + '\n' + prompt) : prompt;
+    function viaEdits() {
+      if (!faceRef || String(faceRef).indexOf('data:') !== 0) return Promise.reject(new Error('no data ref'));
+      var fd = new FormData();
+      fd.append('model', cfg.imgModel || '');
+      fd.append('prompt', fullPrompt);
+      fd.append('n', '1');
+      fd.append('size', '1024x1024');
+      fd.append('image', dataUrlToBlob(faceRef), 'face.png');
+      return fetch(editUrl(cfg.imgUrl), {
+        method: 'POST',
+        headers: cfg.imgKey ? { Authorization: 'Bearer ' + cfg.imgKey } : {},
+        body: fd
+      }).then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.text();
+      });
+    }
+    function viaJson() {
+      var body = JSON.stringify(Object.assign({ model: cfg.imgModel || undefined, prompt: fullPrompt, n: 1, size: '1024x1024' },
+        faceRef ? { image: faceRef, reference_image: [faceRef], input_reference_image: [faceRef] } : {}));
+      return fetch(url, { method: 'POST', headers: headers, body: body }).then(function (r) {
+        if (!r.ok) throw new Error('生图接口返回 HTTP ' + r.status);
+        return r.text();
+      }).catch(function (err) {
+        // 某些页面受 CORS 限制：退回外壳代发，避免日程生图直接失败。
+        if (typeof relay !== 'function') throw err;
+        return relay(url, headers, body);
+      });
+    }
+    return viaEdits().catch(function () { return viaJson(); });
   }
 
   function buildImagePrompt(data, ev) {
@@ -664,7 +794,8 @@
       due.sort(function (a, b) { return toMin(a.start) - toMin(b.start); });
       var ev = due[0];
       var prompt = buildImagePrompt(data, ev);
-      return readApiConfig().then(function (cfg) {
+      return Promise.all([readApiConfig(), faceRefFor(id)]).then(function (pair) {
+        var cfg = pair[0], faceRef = pair[1] || '';
         if (!cfg || !cfg.imgUrl) {
           return { ok: false, error: '还没有配置生图 API，请到「API → 生图」填写地址、Key 和模型' };
         }
@@ -680,27 +811,19 @@
           data.imgGenAt = Date.now();
           ev.imgTriedAt = Date.now();
           try { localStorage.setItem(imgDayKey(id), d); } catch (e) {}
-          var url = epImg(cfg.imgUrl, '/images/generations');
-          var headers = { 'Content-Type': 'application/json' };
-          if (cfg.imgKey) headers.Authorization = 'Bearer ' + cfg.imgKey;
-          var body = JSON.stringify({ model: cfg.imgModel || undefined, prompt: prompt, n: 1, size: '1024x1024' });
           return writeStore(store).then(function () {
           var token = 'schedimg_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
           var resultKey = 'sched_img_result_' + token;
           var job = { token: token, resultKey: resultKey, charId: id, charName: name, eventId: ev.id, prompt: prompt, startedAt: Date.now() };
           writeImgJob(job);
-          var req;
-          if (window.parent && window.parent !== window) {
-            req = requestParent(url, headers, body, token, resultKey).then(function (r) {
+          var relay = function (url2, headers2, body2) {
+            if (!(window.parent && window.parent !== window)) return Promise.reject(new Error('没有可用的代发窗口'));
+            return requestParent(url2, headers2, body2, token, resultKey).then(function (r) {
               if (!r.ok) throw new Error(r.error || r.text || ('HTTP ' + (r.status || '')));
               return String(r.text || '');
             });
-          } else {
-            req = fetch(url, { method: 'POST', headers: headers, body: body }).then(function (res) {
-              if (!res.ok) throw new Error('生图接口返回 HTTP ' + res.status);
-              return res.text();
-            });
-          }
+          };
+          var req = requestImage(cfg, prompt, faceRef, relay);
           return req.then(function (raw) {
             var j = JSON.parse(String(raw || '{}'));
             var item = j && j.data && j.data[0];
@@ -772,6 +895,8 @@
     generateDueReport: generateDueReport,
     takeReports: takeReports,
     applyMarkers: applyMarkers,
+    parseMarkers: parseMarkers,
+    applyChanges: applyChanges,
     currentEvent: function () { return currentEvent(cache.data); },
     isSleeping: function () { return sleepingNow(cache.data); },
     markWoken: function () {
