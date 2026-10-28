@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<script src="../js/nano-runtime.js?v=20261028c"></script>
+<script src="../js/nano-runtime.js?v=20261028e"></script>
 <meta charset="UTF-8">
 <script src="../js/nano-idb.js"></script>
 <script>window.__NANO_FONT_ONLY = true;</script>
@@ -307,14 +307,48 @@ img{-webkit-user-drag:none;user-drag:none}
 .pr .ic3 .on{color:#141414}.pr .ic3 .on svg{fill:#141414}
 .pr .cap{display:block;font-size:8.5px;letter-spacing:.9px;line-height:1.35;color:#222;max-height:23px;overflow:hidden;flex:none}
 .pr .clip{position:absolute;right:-2px;top:-4px;transform:rotate(14deg);color:#555;filter:drop-shadow(0 1px 1px rgba(0,0,0,.2));display:grid}
-.wi.pr2{overflow:visible}
-.pf2{position:absolute;background:rgba(250,250,250,var(--wo));border:1px solid rgba(0,0,0,calc(.07 * var(--wo)));border-radius:4px;box-shadow:0 8px 20px rgba(0,0,0,calc(.14 * var(--wo)));padding:7% 7% 20% 7%;display:flex}
+.wi.pr2{overflow:visible;container-type:size;container-name:pf2box}
+.pf2{position:absolute;background:rgba(252,252,252,var(--wo));border:1px solid rgba(0,0,0,calc(.07 * var(--wo)));border-radius:4px;box-shadow:0 8px 20px rgba(0,0,0,calc(.14 * var(--wo)));padding:6.5% 6.5% 17.5% 6.5%;display:flex}
 .pf2 .img-slot{flex:1}
 .pf2.a{left:5%;top:17%;width:55%;height:80%;transform:rotate(-4deg);z-index:2}
 .pf2.b{left:40%;top:2%;width:55%;height:78%;transform:rotate(5deg)}
-.pf2 .tp{position:absolute;z-index:3;background:rgba(150,152,146,.62);clip-path:polygon(0 0,100% 0,98% 12%,100% 25%,98% 37%,100% 50%,98% 62%,100% 75%,98% 87%,100% 100%,0 100%,2% 87%,0 75%,2% 62%,0 50%,2% 37%,0 25%,2% 12%)}
+.pf2 .tp{position:absolute;z-index:3;background:linear-gradient(180deg,rgba(255,255,255,.92),rgba(246,246,244,.55));box-shadow:0 1px 3px rgba(0,0,0,.06);clip-path:polygon(0 0,100% 0,98% 12%,100% 25%,98% 37%,100% 50%,98% 62%,100% 75%,98% 87%,100% 100%,0 100%,2% 87%,0 75%,2% 62%,0 50%,2% 37%,0 25%,2% 12%)}
 .pf2.b .tp{left:18%;top:-5%;width:62%;height:12%;transform:rotate(-7deg)}
 .pf2.a .tp{left:-16%;top:8%;width:42%;height:11%;transform:rotate(-45deg)}
+/* 3×4 竖版：两张拍立得上下错开，而不是被拉成细长条 */
+@container pf2box (max-aspect-ratio: 1/1){
+  .pf2.a{left:5%;top:6%;width:62%;height:43%;transform:rotate(-5deg)}
+  .pf2.b{left:33%;top:51%;width:62%;height:43%;transform:rotate(4deg)}
+  .pf2.a .tp{left:-9%;top:7%;width:38%;height:9%;transform:rotate(-42deg)}
+  .pf2.b .tp{left:20%;top:-4%;width:56%;height:9%;transform:rotate(-6deg)}
+}
+/* 三连拍立得 4×2：横向三张，轻微重叠 */
+.wi.pf3{overflow:visible}
+.pf3 .stack3{position:absolute;inset:7% 4%;display:flex;flex-direction:row;align-items:stretch;justify-content:center}
+.pf3 .card3{position:relative;flex:1;min-width:0;background:rgba(252,252,252,var(--wo));border:1px solid rgba(0,0,0,calc(.06 * var(--wo)));border-radius:2px;box-shadow:0 5px 14px rgba(0,0,0,calc(.1 * var(--wo)));padding:5% 5% 13%;display:flex;transform:rotate(-1.4deg)}
+.pf3 .card3 + .card3{margin-left:-3.2%}
+.pf3 .card3:nth-child(2){transform:rotate(1.2deg);z-index:2}
+.pf3 .card3:nth-child(3){transform:rotate(-.6deg);z-index:3}
+.pf3 .card3 .pic2{flex:1;min-height:0}
+.pf3 .card3 .tp{position:absolute;z-index:4;left:50%;top:-3.5%;width:38%;height:7%;transform:translateX(-50%) rotate(-4deg);background:linear-gradient(180deg,rgba(255,255,255,.94),rgba(246,246,244,.55));box-shadow:0 1px 2px rgba(0,0,0,.06)}
+/* 查手机同款：对话气泡小组件 */
+.wi.cw{background:transparent;border:0;box-shadow:none;overflow:hidden}
+.cw .in{position:absolute;inset:7% 5%;display:flex;flex-direction:column;justify-content:center;gap:10%}
+.cw .row{display:flex;align-items:flex-end;gap:5%;width:100%}
+.cw .row.r{justify-content:flex-end}
+.cw .bb{position:relative;max-width:74%;padding:5px 10px;border-radius:16px;background:rgba(255,255,255,var(--wo));color:#141414;font-size:12px;line-height:1.35;box-shadow:0 4px 12px rgba(0,0,0,.08);word-break:break-word}
+.cw .row.r .bb{background:rgba(34,34,34,var(--wo));color:#fff}
+.cw .rd{font-size:8px;color:#a8a8a8;margin-bottom:2px;flex:none}
+/* 查手机同款：拍立得相纸 */
+.wi.prm{background:transparent;border:0;box-shadow:none;overflow:visible}
+.prm .mini{position:absolute;inset:3% 4%;background:rgba(255,255,255,var(--wo));box-shadow:0 7px 18px rgba(0,0,0,calc(.12 * var(--wo)));padding:3% 4% 4%;display:flex;flex-direction:column;transform:rotate(-1deg)}
+.prm .mini .pic2{flex:none;height:78%;background:#ededeb}
+.prm .mini .ttl{margin-top:3%;font:600 10px Georgia,"Times New Roman",serif;color:#686862;letter-spacing:.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prm .mini .cap{position:absolute;left:8%;bottom:5%;font:7px/1.25 "Courier New",monospace;color:#777771;white-space:pre-line}
+.prm .mini .dt{position:absolute;right:8%;bottom:5%;font:7px "Courier New",monospace;color:#999992}
+.prm .mini .tp{position:absolute;z-index:5;width:28%;height:8%;background:linear-gradient(90deg,rgba(255,255,255,.92),rgba(245,245,243,.58));box-shadow:0 1px 2px rgba(0,0,0,.05)}
+.prm .mini .tp.t{top:-3%;left:0;transform:rotate(-38deg)}
+.prm .mini .tp.b{right:-5%;bottom:5%;transform:rotate(-47deg)}
 .editing .it.wd .pr2{outline:1.5px dashed rgba(0,0,0,.15);outline-offset:-1px;border-radius:18px}
 
 /* ---- online card ---- */
@@ -335,7 +369,7 @@ img{-webkit-user-drag:none;user-drag:none}
 .mq .pb:active{transform:scale(.92)}
 .mq.w2{justify-content:space-between}
 .mq.w2 .ttl{display:none}
-.wi.cp{background:rgba(214,214,214,var(--wo));border-radius:44px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;gap:10px;color:#141414}
+.wi.cp{background:rgba(247,247,247,var(--wo));border:1px solid rgba(0,0,0,calc(.045 * var(--wo)));box-shadow:0 6px 18px rgba(0,0,0,calc(.05 * var(--wo)));border-radius:44px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;gap:10px;color:#141414}
 .cp .ct{flex:1;min-width:0;text-align:center;font-size:17px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
 .cp .stl,.cp .str{display:grid;flex:none}
 .cp.w2{padding:0 18px}
@@ -725,8 +759,14 @@ Object.assign(WD,{
   inner:it=>`<div class="top">${slot(it,'cv','i',300,'cv')}<div class="tx2">${tx(it,'title','ttl')}${tx(it,'artist','art')}</div><span class="cast">${ic('cast',28,1.9)}</span></div><div class="ctl"><span class="b${it.d&&it.d.like?' on':''}" data-act="like">${ic('heart',26,1.9)}</span><span class="b">${icf('prev',24)}</span><span class="b play" data-act="play">${icf(it._play?'pause':'play',28)}</span><span class="b">${icf('next',24)}</span><span class="b lyr">词</span></div><div class="prog">${tx(it,'t0')}<div class="trk"><i></i></div>${tx(it,'t1')}</div>`},
  polaroid:{w:2,h:2,name:'拍立得',cls:'pr',d:{cap:'几帧生活痕迹🥯ʕ •ᴥ•ʔ🥯'},sizes:[[2,2],[2,3],[3,3],[4,4]],
   inner:it=>`<div class="fr">${slot(it,'img','i',900,'pic2')}<div class="ic3"><span data-act="like" class="${it.d&&it.d.like?'on':''}">${ic('heart',15,1.8)}</span>${ic('camera',15,1.8)}${ic('share',15,1.8)}</div>${tx(it,'cap','cap')}</div><span class="clip">${ic('clip',24,2)}</span>`},
- polaroid2:{w:3,h:2,name:'双拍立得',cls:'pr2',d:{},sizes:[[3,2],[4,2],[3,3],[4,3]],
-  inner:it=>`<div class="pf2 b"><i class="tp"></i>${slot(it,'b','i',900,'pic2')}</div><div class="pf2 a"><i class="tp"></i>${slot(it,'a','i',900,'pic2')}</div>`},
+ polaroid2:{w:4,h:3,name:'双拍立得',cls:'pr2',d:{},sizes:[[4,3],[4,4],[3,4],[3,3]],
+   inner:it=>`<div class="pf2 b"><i class="tp"></i>${slot(it,'b','i',900,'pic2')}</div><div class="pf2 a"><i class="tp"></i>${slot(it,'a','i',900,'pic2')}</div>`},
+ polaroid3:{w:4,h:2,name:'三连拍立得',cls:'pf3',d:{},sizes:[[4,2],[4,3]],
+   inner:it=>`<div class="stack3"><div class="card3"><i class="tp"></i>${slot(it,'a','i',900,'pic2')}</div><div class="card3"><i class="tp"></i>${slot(it,'b','i',900,'pic2')}</div><div class="card3"><i class="tp"></i>${slot(it,'c','i',900,'pic2')}</div></div>`},
+ chatwidget:{w:2,h:2,name:'对话',cls:'cw',d:{l1:'愿君多采撷',l2:'此物最相思'},sizes:[[2,2],[4,2],[4,3]],
+   inner:it=>`<div class="in"><div class="row"><div class="bb">${tx(it,'l1')}</div><div class="rd">已读</div></div><div class="row r"><div class="rd">已读</div><div class="bb">${tx(it,'l2')}</div></div></div>`},
+ polaroidmini:{w:2,h:2,name:'拍立得相纸',cls:'prm',d:{title:'Everyday moments.',caption:'collect the moments\nyou never want to forget',date:'Nov. 07'},sizes:[[2,2],[2,3],[3,3],[4,4]],
+   inner:it=>`<div class="mini"><div class="tp t"></div><div class="tp b"></div>${slot(it,'img','i',900,'pic2')}<div class="ttl">${tx(it,'title')}</div><div class="cap">${tx(it,'caption')}</div><div class="dt">${tx(it,'date')}</div></div>`},
  online:{w:2,h:2,name:'在线名片',cls:'ol card',d:{name:'nano',sub:'nano',st:'在线'},sizes:[[2,2],[2,3],[4,2]],
   inner:it=>`${slot(it,'av','u',480,'av')}${tx(it,'name','nm')}${tx(it,'sub','sb')}<div class="pill2"><i class="dot${it.d&&it.d.off?' off':''}" data-act="dot"></i>${tx(it,'st')}</div>`},
  miniplayer:{w:4,h:0.5,name:'迷你播放器',cls:'mq',d:{title:'nano'},sizes:[[2,0.5],[2,1],[3,0.5],[3,1],[4,0.5],[4,1]],
@@ -748,7 +788,7 @@ const NANO='nano',EDIT='请编辑';
 const DEFS={call:{name:NANO},bubbles:{t1:'ㅎㅇ',t2:'嗯'},send:{title:'发送',label:'甜点',t:'很幸福的最近ฅ •ﻌ•♡',tag:'幸福',go:'응'},stats:{name:NANO,sub:'很幸福的最近ฅ •ﻌ•♡',n1:'128',n2:'2.4k',n3:'356'},
  post:{name:NANO,time:'刚刚',text:POST_CAPTIONS[0]},menu:{name:NANO,uid:NANO,sig:'life is…🤍ྀི⁃ ⩊ ⁃'},about:{bubble:'幸福就在当下🍮💭',text:NANO},moment:{name:NANO,time:'刚刚  发布于 中国'},grid:{name:NANO,sub:'帧帧瞬间 (๑´0`๑)',n1:'128',n2:'2.4k',n3:'356'}};
 Object.keys(DEFS).forEach(k=>Object.assign(WD[k].d,DEFS[k]));
-const WORDER=['clock','photo','photow','call','bubbles','about','online','send','stats','ins','music','miniplayer','capsule','polaroid','polaroid2','post','moment','grid'];
+const WORDER=['clock','photo','photow','call','bubbles','chatwidget','polaroidmini','about','online','send','stats','ins','music','miniplayer','capsule','polaroid','polaroid2','polaroid3','post','moment','grid'];
 
 /* 内置 HTML 小组件模板（初始尺寸按 m×n：行×列）
    初始文案统一写在各模板的 copy 里；留空就是无文案，后续只改这里即可。

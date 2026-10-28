@@ -302,7 +302,7 @@
 
     // ===== NPC 花名册（按面具缓存；必须是符合设定的现实关系人物，禁止路人甲） =====
     var NPC_ROSTER_PREFIX = 'nano_moments_npcs_';
-    var NPC_ROLE_BLACKLIST = /(旅行者|游客|路人|路人甲|陌生人|新朋友|网友|客人|顾客|邻居|同事|同学|老师|医生|护士|警官|警察|司机|阿姨|叔叔|大爷|大妈|女士|先生|小姐|老板|店主|店长|店员|朋友|好友|某人|总裁|助理|前台|保安|服务生|路人角色|NPC|npc)/;
+    var NPC_ROLE_BLACKLIST = /(旅行者|游客|路人|路人甲|陌生人|神秘人|神秘|未知|某人|那位|这位|新朋友|网友|客人|顾客|邻居|同事|同学|老师|医生|护士|警官|警察|司机|阿姨|叔叔|大爷|大妈|女士|先生|小姐|老板|店主|店长|店员|朋友|好友|总裁|助理|前台|保安|服务生|路人角色|NPC|npc)/;
 
     function isGenericNpcName(name) {
         var n = String(name == null ? '' : name).trim();
@@ -331,6 +331,33 @@
             localStorage.setItem(rosterKey(), JSON.stringify(list || []));
             localStorage.setItem(rosterSrcKey(), JSON.stringify(charIds || []));
         } catch (e) {}
+    }
+
+    // AI 花名册生成失败时的兜底：真实感中文全名 + 与角色的现实关系。
+    // 只用来保证评论区不会只剩 char 互相说话，之后仍会被 AI 花名册替换。
+    function fallbackNpcRoster(chars) {
+        var pool = [
+            { name: '周予安', rel: '大学同学', gender: '女', setting: '大学同学，嘴甜但吐槽精准，爱吃火锅。' },
+            { name: '林知夏', rel: '同事', gender: '女', setting: '工作上的同事，做事利落，喜欢发猫片和咖啡。' },
+            { name: '沈叙白', rel: '朋友', gender: '男', setting: '认识多年的朋友，话不多，偶尔冷幽默。' },
+            { name: '陈晚晴', rel: '邻居', gender: '女', setting: '住在附近的邻居，常在楼下咖啡店碰到。' },
+            { name: '许知远', rel: '前同事', gender: '男', setting: '前同事，爱运动，喜欢发跑步和吃的。' },
+            { name: '顾清和', rel: '同学的朋友', gender: '男', setting: '朋友聚会认识的，慢热但很会接梗。' }
+        ];
+        var base = (chars && chars[0] && chars[0].name) || (currentUser && currentUser.name) || '朋友';
+        var block = {};
+        (chars || []).forEach(function (c) { if (c && c.name) block[normName(c.name)] = 1; });
+        if (currentUser && currentUser.name) block[normName(currentUser.name)] = 1;
+        return pool.filter(function (p) { return !block[normName(p.name)]; }).slice(0, 4).map(function (p) {
+            return {
+                id: 'npc_' + normName(p.name),
+                name: p.name,
+                avatar: generatedAvatar(p.name, p.gender),
+                relation: base + '的' + p.rel,
+                setting: p.setting,
+                gender: p.gender
+            };
+        });
     }
 
     // ===== 顶部生成中提示 =====
@@ -404,7 +431,27 @@
         return lines.join('\n');
     }
 
-    // ===== API 配置读取（与 api.html 一致：IndexedDB nano_api_db/api_data） =====
+    // 生成朋友圈用的人设：char 与 NPC 必须分区，避免模型把两者当成同一个朋友圈子。
+    function buildMomentsPersona(chars, npcs) {
+        var out = '【已选角色（char）· 他们彼此互不认识，绝对不能互相评论/回复/点赞】\n';
+        (chars || []).forEach(function (c) {
+            if (!c || !c.name) return;
+            out += '◇ ' + c.name + (c.gender && c.gender !== '未知' ? ('（' + c.gender + '）') : '') + '\n';
+            out += ((c.setting && String(c.setting).trim()) ? String(c.setting).trim().slice(0, 600) : '（暂无详细设定，按名字与语境自然扮演）') + '\n';
+        });
+        var ids = (chars || []).map(function (c) { return c.id; }).filter(Boolean);
+        var wb = loadWorldbookText(ids);
+        if (wb) out += '\n【世界书】\n' + wb + '\n';
+        out += '\n【NPC / 朋友圈朋友名单（只负责评论、点赞，不是上面这些 char）】\n';
+        (npcs || []).forEach(function (n) {
+            if (!n || !n.name) return;
+            out += '◇ ' + n.name + (n.relation ? ('（' + n.relation + '）') : '') + '\n';
+            out += ((n.setting && String(n.setting).trim()) ? String(n.setting).trim().slice(0, 400) : '（普通朋友，按语境自然评论）') + '\n';
+        });
+        return out;
+    }
+
+
     var DEFAULT_SETTINGS = {
         mainApi: '', mainKey: '', mainModel: '', mainTemperature: 0.7,
         subApi: '', subKey: '', subModel: '', subEnabled: false,
@@ -518,6 +565,12 @@
 
     var currentUser = getCurrentMask() || { id: 'm_default', name: '我', avatar: '', bindChars: [] };
 
+    // 可发朋友圈的「角色」：普通角色 + 用户加的小号（isAltProbe）。
+    // 纯 NPC（isNpc 且不是小号）只作为评论者，不参与发动态。
+    function isPostableChar(c) {
+        return !!(c && c.name && !c.nanoAssistant && (!c.isNpc || c.isAltProbe));
+    }
+
     function getUserBindChars() {
         var binds = [];
         var homeData = loadHomeData();
@@ -529,7 +582,7 @@
         if (binds.length === 0 && contactsData && contactsData.length > 0) {
             for (var i = 0; i < contactsData.length; i++) {
                 var c = contactsData[i];
-                if (c && c.bindUser === currentUser.id && !c.nanoAssistant && !c.isNpc) binds.push(c.id);
+                if (isPostableChar(c) && c.bindUser === currentUser.id) binds.push(c.id);
             }
             if (binds.length > 0 && homeData) {
                 var u = homeData.masks.find(function(m) { return m.id === currentUser.id; });
@@ -540,15 +593,21 @@
         var result = [];
         for (var j = 0; j < contactsData.length; j++) {
             var ch = contactsData[j];
-            if (ch && binds.indexOf(ch.id) !== -1) result.push(ch);
+            if (ch && binds.indexOf(ch.id) !== -1 && isPostableChar(ch)) result.push(ch);
         }
+        // 小号可能没写进 mask.bindChars，但同样属于当前用户，必须出现在选择弹窗里。
+        (dbCharsCache || []).forEach(function(c) {
+            if (!isPostableChar(c)) return;
+            if (String(c.bindUser) !== String(currentUser && currentUser.id)) return;
+            if (!result.some(function(x) { return String(x.id || x.name) === String(c.id || c.name); })) result.push(c);
+        });
         return result.length ? result : dbCharsBoundList();
     }
 
     // 从角色库(IndexedDB)中得到“绑定/可用”的真实角色（当前 User 绑定的角色）
     function dbCharsBoundList() {
         if (!dbCharsCache || !dbCharsCache.length) return [];
-        var boundOnly = dbCharsCache.filter(function(c) { return c && c.name && String(c.bindUser) === String(currentUser && currentUser.id) && !c.isNpc; });
+        var boundOnly = dbCharsCache.filter(function(c) { return isPostableChar(c) && String(c.bindUser) === String(currentUser && currentUser.id); });
         if (boundOnly.length) return boundOnly.slice();
         return [];
     }
@@ -556,7 +615,7 @@
     // NPC：优先用角色库 isNpc 的真实 NPC，其次用按面具生成的「关系人物花名册」
     function dbNpcs() {
         return (dbCharsCache || []).filter(function(c) {
-            return c && c.name && c.isNpc && !c.nanoAssistant && !isGenericNpcName(c.name) &&
+            return c && c.name && c.isNpc && !c.isAltProbe && !c.nanoAssistant && !isGenericNpcName(c.name) &&
                 String(c.bindUser) === String(currentUser && currentUser.id);
         }).map(function(c) {
             return {
@@ -1616,10 +1675,46 @@
         return st.indexOf(charName) !== -1;
     }
 
+    // 清理历史数据里已经生成的 char↔char 互动：char 动态下删掉其它 char 的评论/点赞，
+    // 用户动态下只拆掉 char 之间的回复关系，保留 char 对用户/NPC 的正常互动。
+    function sanitizeCharInteractions() {
+        var set = {};
+        getUserBindChars().forEach(function (c) { if (c && c.name) set[normName(c.name)] = 1; });
+        if (!Object.keys(set).length) return;
+        var changed = false;
+        (momentsData || []).forEach(function (m) {
+            if (!m) return;
+            var authorIsChar = !!set[normName(m.author)];
+            (m.comments || []).forEach(function (c) {
+                if (!c) return;
+                if (authorIsChar && c.user && set[normName(c.user)]) { c.__drop = true; changed = true; }
+                (c.replies || []).forEach(function (r) {
+                    if (!r) return;
+                    var replyIsChar = !!(r.user && set[normName(r.user)]);
+                    if (authorIsChar && replyIsChar) { r.__drop = true; changed = true; }
+                    else if (replyIsChar && r.toUser && set[normName(r.toUser)]) { delete r.toUser; changed = true; }
+                });
+                if (c.replies) c.replies = c.replies.filter(function (r) { return !r.__drop; });
+                if (!authorIsChar && c.user && set[normName(c.user)] && c.toUser && set[normName(c.toUser)]) {
+                    delete c.toUser; changed = true;
+                }
+            });
+            var before = (m.comments || []).length;
+            m.comments = (m.comments || []).filter(function (c) { return !c.__drop; });
+            if (m.comments.length !== before) changed = true;
+            if (authorIsChar && Array.isArray(m.likes)) {
+                var lb = m.likes.length;
+                m.likes = m.likes.filter(function (n) { return !set[normName(n)]; });
+                if (m.likes.length !== lb) changed = true;
+            }
+        });
+        if (changed) { try { saveMomentsData(momentsData); } catch (e) {} }
+    }
+
     // 评论者池
     // - 全部 NPC（关系人物）
-    // - 用户自己发的动态：绑定的 char 都可以评论
-    // - char 发的动态：只有人设里明确认识的 char 才能评论（其它 char 不越界）
+    // - 只有「用户本人发的动态」才允许绑定 char 评论
+    // - char 发的动态：char 之间完全不互动，评论区只出现 NPC
     function buildCommenterPool(author, bound, npcs, isUserPost) {
         var pool = [], seen = {};
         function add(c, kind) {
@@ -1629,18 +1724,16 @@
             seen[c.name] = 1;
             pool.push({ name: c.name, kind: kind });
         }
-        var SG = window.NanoSocialGraph;
+        var authorName = author && author.name;
         (npcs || []).forEach(function(n) {
-            // 同学/朋友/陌生人都可以评论公开动态；只限制「绑定 char」之间不随意互串。
-            if (n && n.name) add(n, 'npc');
+            if (!n || !n.name) return;
+            // 作者本人不给自己评论
+            if (authorName && normName(n.name) === normName(authorName)) return;
+            add(n, 'npc');
         });
-        if (!isUserPost && author && author.name) add(author, 'char');
-        (bound || []).forEach(function(c) {
-            if (!c || !c.name) return;
-            if (!isUserPost && author && (c.id === author.id || c.name === author.name)) return;
-            if (isUserPost) add(c, 'char');
-            else if (author && ((SG && SG.knows(author, c)) || nameMentionedIn(author, c.name))) add(c, 'char');
-        });
+        if (isUserPost) {
+            (bound || []).forEach(function(c) { add(c, 'char'); });
+        }
         return pool;
     }
 
@@ -1660,7 +1753,7 @@
         return null;
     }
 
-    // 过滤：禁止冒充用户；丢弃花名册之外的路人甲；纠正回复对象（只能回复实际参与过的人）
+    // 过滤：禁止冒充用户；丢弃花名册之外的路人甲；char 之间绝对不互动
     function filterCommentList(list, author, bound, npcs, isUserPost, existingUsers) {
         var npcNames = (npcs || []).map(function(c) { return c && c.name; }).filter(Boolean);
         var charNames = (bound || []).map(function(c) { return c && c.name; }).filter(Boolean);
@@ -1678,17 +1771,12 @@
             if (!c || !c.user) return false;
             if (normName(c.user) === normName(currentUser.name)) return false; // 不允许 AI 冒充用户
             var u = normName(c.user);
-            var SG = window.NanoSocialGraph;
+            if (author && normName(author.name) === u) return false; // 作者不给自己评论
             var commenterNpc = (npcs || []).find(function(n) { return n && normName(n.name) === u; });
-            if (commenterNpc) return true;   // NPC/同学/好友/陌生人可以评论公开动态
-            if (author && normName(author.name) === u) return true;
-            var commenter = (bound || []).find(function(x) { return x && normName(x.name) === u; });
-            var isChar = !!commenter || charNames.some(function(n) { return normName(n) === u; });
-            if (isChar) {
-                if (isUserPost) return true;
-                // char 评论 char：必须有明确关系（角色关系 / 私聊 / 人设 / 世界书）
-                return !!(author && commenter && SG && SG.knows(author, commenter));
-            }
+            if (commenterNpc) return true;   // NPC 可以评论任何动态
+            var commenterChar = (bound || []).find(function(x) { return x && normName(x.name) === u; });
+            // char 只在用户本人的动态下出现；char 发的动态评论区不允许任何其他 char。
+            if (commenterChar || charNames.some(function(n) { return normName(n) === u; })) return !!isUserPost;
             return false; // 不在花名册里的名字 → 路人甲，丢弃
         });
 
@@ -1696,6 +1784,7 @@
             var text = String(c.text || '').trim();
             var u = normName(c.user);
             var to = c.toUser;
+            var commenterIsChar = charNames.some(function(n) { return normName(n) === u; });
             if (!to) {
                 var m = text.match(/^(?:回复|@)\s*([^\s：:，,、]{1,20})\s*[：:，,]?\s*([\s\S]+)$/);
                 if (m) { to = m[1].trim(); text = m[2].trim(); }
@@ -1704,8 +1793,10 @@
             var mentionPool = rosterNames.concat((currentUser && currentUser.name) ? [currentUser.name] : []);
             var mentioned = inferAddressee(text, mentionPool);
             if (mentioned && normName(mentioned) !== normName(c.user)) {
+                var mentionedIsChar = charNames.some(function(n) { return normName(n) === normName(mentioned); });
+                // char 互相点名：把称呼清掉，绝不建立 char↔char 的回复关系
                 text = text.replace(new RegExp('^@?\\s*' + mentioned.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[\\s，,：:]?'), '');
-                if (targets[normName(mentioned)]) to = mentioned;
+                if (targets[normName(mentioned)] && !(commenterIsChar && mentionedIsChar)) to = mentioned;
             }
             var o = { user: c.user, text: text };
             var toAllowed = !!to && normName(to) !== normName(c.user);
@@ -1713,20 +1804,12 @@
                 if (normName(to) === normName(currentUser.name)) {
                     o.toUser = currentUser.name; // 回复用户
                 } else if (charNames.some(function(n) { return normName(n) === normName(to); })) {
-                    var isTarget = !!targets[normName(to)];
-                    if (!isTarget) toAllowed = false;
-                    if (toAllowed && !(author && normName(author.name) === normName(to))) {
-                        var toChar = (bound || []).find(function(x) { return x && normName(x.name) === normName(to); });
-                        var commenterChar = (bound || []).find(function(x) { return x && normName(x.name) === u; });
-                        // 只限制「绑定 char ↔ 绑定 char」；NPC/陌生人回复不限制，回复用户也不限制。
-                        if (toChar && commenterChar) toAllowed = !!(window.NanoSocialGraph && NanoSocialGraph.knows(commenterChar, toChar));
-                    }
+                    if (!targets[normName(to)]) toAllowed = false;
+                    // char↔char 永远不允许回复；NPC 回复 char 可以
+                    if (toAllowed && commenterIsChar) toAllowed = false;
                     if (toAllowed) o.toUser = to;
                 } else if (npcNames.some(function(n) { return normName(n) === normName(to); })) {
-                    // NPC 只回复实际参与过、且明确认识的人（点赞的人不算）
-                    var commenterAny = (bound || []).concat(npcs || []).find(function(x) { return x && normName(x.name) === u; });
-                    var targetAny = (bound || []).concat(npcs || []).find(function(x) { return x && normName(x.name) === normName(to); });
-                    if (targets[normName(to)] && window.NanoSocialGraph && commenterAny && targetAny && NanoSocialGraph.knows(commenterAny, targetAny)) o.toUser = to;
+                    if (targets[normName(to)]) o.toUser = to;
                 }
             }
             return o;
@@ -1789,11 +1872,17 @@
             settings = await getSettings();
 
             var bound = ((boundOverride && boundOverride.length) ? boundOverride : getUserBindChars())
-                .filter(function(c) { return c && c.name && !c.isNpc && !c.nanoAssistant; });
+                .filter(isPostableChar);
             var npcs = (npcsOverride && npcsOverride.length) ? npcsOverride : generateContextNPCs();
             // 没有朋友（NPC）花名册时先生成一份，保证评论区能刷出 NPC 互动
             if (!npcs.length && !(npcsOverride && npcsOverride.length) && bound.length) {
                 try { await generateNpcRoster(bound); npcs = generateContextNPCs(); } catch (e) {}
+                if (!npcs.length) {
+                    try {
+                        saveNpcRoster(fallbackNpcRoster(bound), bound.map(function(c) { return String(c.id || c.name); }));
+                        npcs = generateContextNPCs();
+                    } catch (e) {}
+                }
             }
             var isUserPost = normName(item.author) === normName(currentUser.name);
             var authorNpc = findNpcByName(npcs, item.author);
@@ -1809,12 +1898,12 @@
                 return;
             }
 
-            var persona = buildPersonaBlock(bound.concat(npcs));
+            var persona = buildMomentsPersona(bound, npcs);
             var pool = buildCommenterPool(authorChar, bound, npcs, isUserPost);
             if (!pool.length) {
                 showApiError({
                     type: 'text', stage: 'config',
-                    reason: '没有可用角色',
+                    reason: '没有可用评论者',
                     hint: '请先绑定角色，或在刷新朋友圈时生成朋友名单，再来生成评论。'
                 });
                 return;
@@ -1823,7 +1912,7 @@
             var userComments = (item.comments || []).filter(function(c) { return normName(c.user) === normName(currentUser.name); });
             var hasUserComment = userComments.length > 0;
 
-            var system = '你是一个真实的人类，请同时扮演多个角色以及他们的朋友，在朋友圈评论区自然地聊天。严格贴合各自人设、关系与世界书，保持活人感，绝不 OOC，禁止 AI 腔、解释和出戏。评论要短、口语、碎片化，像随手打字：可以只回“哈哈哈”“？”“好家伙”“这家我知道”，可以损、可以关心、可以只发一个表情；不要长评、客服腔、升华总结。';
+            var system = '你是朋友圈里的真实人类。评论区只能使用给定名单里的 NPC 名字；已选角色（char）之间互不认识、绝不互相评论/回复/点赞，char 发的动态下不要出现任何其他 char。评论要短、口语、碎片化，像随手打字：可以只回“哈哈哈”“？”“好家伙”“这家我知道”，可以损、可以关心、可以只发一个表情；不要长评、客服腔、升华总结。';
             var charNamesForPrompt = (bound || []).map(function(c) { return c && c.name; }).filter(Boolean).join('、');
             var userMsg = persona +
                 '\n\n【本动态可以出现的评论者（只能使用这些名字，不要创造新名字）】\n' + pool.map(function(c) { return '· ' + c.name; }).join('\n') +
@@ -1836,7 +1925,9 @@
                 (hasUserComment ? ('- 必须至少 1 条回复用户本人（回复对象写「' + (currentUser.name || '用户') + '」），自然接住 TA 说的话；\n') : '') +
                 '- 回复对象必须是这条动态下真正发过言的人（动态作者或评论区里出现过的人），不要回复只点赞的人；\n' +
                 '- 每条评论的内容要和「回复对象」一致，不要张冠李戴；\n' +
-                '- 其余评论在角色与朋友之间互相接话、调侃、附和，符合各自人设与关系；\n' +
+                (isUserPost
+                    ? '- 角色可以评论用户、NPC 可以评论任何参与者；但角色之间不要互相回复或接话；\n'
+                    : '- 这条是 char 的动态：评论者只能是 NPC 名单里的人（或用户本人），绝对不要出现其他 char 的名字；NPC 之间/NPC 回复作者可以自然接话；\n') +
                 '- 严禁以用户身份发言、点赞或评论；\n' +
                 '- 每条不超过 25 字，口语化，像真人。\n' +
                 '- 另外给出 3~6 个点赞者的名字，只能从上面的名单里选。\n\n' +
@@ -1867,12 +1958,12 @@
             }
 
             if (!item.likes) item.likes = [];
-            var SG = window.NanoSocialGraph;
             newLikes = (newLikes || []).filter(function (n) {
                 if (!n) return false;
+                if (normName(n) === normName(item.author)) return false; // 作者不给自己点赞
                 var c = (bound || []).find(function (x) { return x && normName(x.name) === normName(n); });
-                if (!c || isUserPost) return true;   // NPC/陌生人点赞不限制
-                return !!(SG && authorChar && SG.knows(authorChar, c));
+                if (!c) return true;        // NPC 点赞不限制
+                return isUserPost;          // char 只在用户本人的动态下点赞；char 之间不互相点赞
             });
             newLikes.forEach(function(n) {
                 if (!item.likes.some(function(x) { return normName(x) === normName(n); })) item.likes.push(n);
@@ -1899,7 +1990,7 @@
 
     // ===== 全局刷新：先选要生成哪些 char（弹窗），再在此基础上补 NPC =====
     document.getElementById('btnRefreshGlobal').addEventListener('click', function() {
-        var bound = getUserBindChars().filter(function(c) { return c && c.name && !c.isNpc; });
+        var bound = getUserBindChars().filter(isPostableChar);
         if (!bound.length) {
             runGlobalGenerate([]);
             return;
@@ -1946,37 +2037,37 @@
 
     function buildPostsPrompt(chars, npcs, wantNpcCount, recent, opts) {
         opts = opts || {};
-        var persona = buildPersonaBlock((chars || []).concat(npcs || []));
-        var total = opts.total || (3 + Math.floor(Math.random() * 2)); // 一次生成 3~4 条
+        var persona = buildMomentsPersona(chars, npcs);
+        var total = opts.total || (4 + Math.floor(Math.random() * 2)); // 一次生成 4~5 条
+        var npcNames = (npcs || []).map(function (n) { return n && n.name; }).filter(Boolean);
+        var charNames = (chars || []).map(function (c) { return c && c.name; }).filter(Boolean);
+        var charQuota = Math.min(charNames.length, total);
+        var npcFill = Math.max(0, total - charQuota);
         var lines = [];
         lines.push('请一次性生成 ' + total + ' 条朋友圈动态，每条自带点赞和评论互动，像真人随手发的日常：');
         if (opts.onlyChars) {
-            lines.push('- 发布者从上面的已选角色里挑，尽量不同的人各发一条，名字原样使用；');
+            lines.push('- 发布者只能从已选角色里挑，尽量不同的人各发一条，名字原样使用；');
         } else {
-            lines.push('- 发布者从上面所有名字里挑 ' + total + ' 个尽量不同的人：大部分是已选角色，也可以有朋友（NPC）；不要总是同一个人发；名字原样使用；');
+            if (charQuota > 0) {
+                lines.push('- 【发帖人优先级】先让已选角色发帖：' + charNames.slice(0, charQuota).join('、') + ' 每人至少 1 条，作者不要重复；');
+            }
+            if (npcFill > 0) {
+                lines.push('- 已选角色不足 ' + total + ' 条，剩下的 ' + npcFill + ' 条必须由 NPC 名单里的人发帖补足（' + (npcNames.slice(0, Math.max(npcFill, 1)).join('、') || 'NPC') + '），不要空着，也不要重复作者；');
+            } else {
+                lines.push('- 已选角色数量足够，' + total + ' 条全部由已选角色发，挑 ' + total + ' 位不同的人，作者不要重复；');
+            }
         }
         lines.push('- 内容是活人发的日常，别一板一眼：会有吐槽、碎碎念、吃到好吃的、遇到无语的人、和谁一起的瞬间、路边看到的风景……可以有 emoji、口语、网络用语；长度不一，有的就一句话，有的三五句，20~60 字为主；');
         lines.push('- 禁止写成汇报/小作文/广告/正能量总结；允许只发一句、半句话、错别字、重复词、没头没尾的情绪；朋友圈是给熟人看的，不是公开发言；');
         lines.push('- 评论像熟人随口接话：可以损、可以关心、可以只发“哈哈哈”“？”或一个表情，不要每条都礼貌完整、不要总结对方的话；');
         lines.push('- 一部分是「配图动态」：MEDIA 写 image，并写 IMAGE 描述这张照片拍的是什么（吃的 / 风景 / 宠物 / 牵手 / 自拍等日常照）；其余是纯文字，MEDIA 写 text；这 ' + total + ' 条里至少 1 条 image、至少 1 条 text（除非只要求 1 条）；');
-        lines.push('- 每条动态配 2~5 条评论，评论者只能从上面的名字里选，按各自人设与关系自然互动（说笑、抬杠、关心、接梗、互相回复都行）；');
-        lines.push('- 重点：不同 char 之间默认互不认识。只有双方人设/关系/世界书里都明确写了认识，才可以互相评论或回复；不认识的 char 绝对不要在同一个评论区出现，更不要互相接话。');
-        var relationHints = [];
-        (chars || []).forEach(function (a) {
-            if (!a || !a.name) return;
-            var known = (chars || []).filter(function (b) {
-                return b && b !== a && b.name && ((window.NanoSocialGraph && NanoSocialGraph.knows(a, b)) || nameMentionedIn(a, b.name));
-            }).map(function (b) {
-                var lb = window.NanoSocialGraph && NanoSocialGraph.label ? NanoSocialGraph.label(a, b) : '';
-                return b.name + (lb ? ('（' + lb + '）') : '');
-            });
-            if (known.length) relationHints.push(a.name + ' ↔ ' + known.join('、'));
-        });
-        lines.push('- 已知互相认识的 char：' + (relationHints.length ? relationHints.join('；') : '没有。所有 char 之间默认不互动') + '。');
-        lines.push('- 评论可以来自同学、朋友、同事、NPC 或陌生网友；公开动态有人留言很正常，不需要每个人都有关系。');
-        lines.push('- 只有「绑定的 char 之间」才需要明确关系：不认识的 char 不要在同一条动态下互相评论、接话或互相点赞；朋友/NPC/陌生人不受这个限制。');
-        lines.push('- 只有明确认识、有关系的角色才会在同一条动态下互动，不要硬凑；名字必须原样使用名单里的名字；');
-        lines.push('- 每条动态尽量都有人点赞：LIKES 写名字（从名单里选，不得包含用户）；');
+        lines.push('- 每条动态必须配 2~4 个点赞（LIKES 写 2~4 个名字）和 2~4 条评论；不要只写点赞不写评论，也不要只写评论不写点赞；');
+        lines.push('- 评论者/点赞者只能从上面的名字里选；' + (npcNames.length ? ('可用评论者/NPC：' + npcNames.join('、') + '；') : ''));
+        lines.push('- 【最高优先级】已选角色（char）之间互不认识、互不互动：无论人设/世界书里是否提到对方，都不得互相评论、回复、点赞，也不要在同一条动态的评论区同时出现。');
+        lines.push('- char 发的动态：评论者和点赞者只能来自 NPC 名单（或用户本人），绝对禁止出现其他 char 的名字；没有 NPC 名单时宁可少评论，也不要让 char 互相接话。');
+        lines.push('- 用户本人发的动态（如果出现）：char 可以评论用户，但 char 之间仍然不能互相回复；NPC 可以正常参与。');
+        lines.push('- NPC 是真实的朋友/同学/同事/家人，评论要符合各自关系；NPC 可以回复 NPC，也可以回复 char 或用户。');
+        lines.push('- 每条动态的 LIKES 都不能为空：char 的动态 LIKES 只能写 NPC 名字；不得包含用户；');
         lines.push('- 评论者回复别人时写成「评论者|回复对象|内容」，不是回复则写成「评论者||内容」；');
         lines.push('- 严禁以用户身份发动态、点赞或评论；');
         lines.push('- 每条评论不超过 25 字。');
@@ -1984,13 +2075,13 @@
             '\n\n【最近的朋友圈（可延续话题，别重复）】\n' + (recent || '（暂无）') +
             '\n\n' + lines.join('\n') +
             '\n\n严格按下面格式输出（不要 markdown、不要编号、不要多余解释）：\n' +
-            '===MOMENT===\nAUTHOR: 名字\nMEDIA: image 或 text\nIMAGE: 若 MEDIA=image，写这句照片拍的是什么（如：融化的草莓冰淇淋特写）；纯文字留空\nTEXT: 文案\nLOCATION: 地点（可留空）\nLIKES: 名字1,名字2（可留空，不得包含用户）\nCOMMENT: 评论者|回复对象|内容\nCOMMENT: 评论者||内容\n\n（下一条动态重复 ===MOMENT=== 结构）';
+            '===MOMENT===\nAUTHOR: 名字\nMEDIA: image 或 text\nIMAGE: 若 MEDIA=image，写这句照片拍的是什么（如：融化的草莓冰淇淋特写）；纯文字留空\nTEXT: 文案\nLOCATION: 地点（可留空）\nLIKES: 名字1,名字2（必须 2~4 个，不得包含用户）\nCOMMENT: 评论者|回复对象|内容\nCOMMENT: 评论者||内容\n（每条动态必须写 2~4 条 COMMENT）\n\n（下一条动态重复 ===MOMENT=== 结构）';
     }
 
     async function requestPosts(chars, npcs, wantNpcCount, recent, opts) {
-        var system = '你是一个真实的人类，请同时扮演下面列出的角色以及他们的朋友，发布日常朋友圈并自然地互相点赞、评论互动。严格贴合各自人设、彼此关系与世界书，保持活人感与生活气息，绝不 OOC，禁止 AI 腔，禁止解释，禁止出戏。';
+        var system = '你是朋友圈里的真实人类。请发布日常动态，并只让 NPC 朋友（或用户本人）在评论区接话。已选角色（char）之间互不认识、绝不互相评论/回复/点赞；不要把 char 放进别人的评论区。严格贴合各自人设、NPC 关系与世界书，保持活人感，绝不 OOC，禁止 AI 腔、解释和出戏。';
         var userMsg = buildPostsPrompt(chars, npcs, wantNpcCount, recent, opts);
-        var raw = await fetchAIResponse(userMsg, true, { apiPref: 'main', system: system, maxTokens: 2600, temperature: 0.95 });
+        var raw = await fetchAIResponse(userMsg, true, { apiPref: 'main', system: system, maxTokens: 3400, temperature: 0.95 });
         return parseMomentBlocks(raw);
     }
 
@@ -2027,7 +2118,7 @@
         try {
             settings = await getSettings();
 
-            var boundAll = getUserBindChars().filter(function(c) { return c && c.name && !c.isNpc; });
+            var boundAll = getUserBindChars().filter(isPostableChar);
             var selected = boundAll.filter(function(c) {
                 return !selectedIds || !selectedIds.length || selectedIds.indexOf(String(c.id || c.name)) !== -1;
             });
@@ -2041,6 +2132,14 @@
             if (needRoster) {
                 try { await generateNpcRoster(selected); } catch (e) { console.warn('NPC 花名册生成失败', e); }
                 npcs = generateContextNPCs();
+            }
+            // 花名册为空（模型没按格式返回 / 全被过滤）时用本地兜底，保证评论区真的有 NPC。
+            if (!npcs.length) {
+                try {
+                    var fb = fallbackNpcRoster(selected);
+                    saveNpcRoster(fb, selected.map(function(c) { return String(c.id || c.name); }));
+                    npcs = generateContextNPCs();
+                } catch (e) {}
             }
 
             var allChars = selected.concat(npcs);
@@ -2058,27 +2157,17 @@
                 return '· ' + (m.author || '') + '：' + (m.text || '') + (cs ? ('\n  评论：' + cs) : '');
             }).join('\n');
 
-            var npcPostCount = 1 + Math.floor(Math.random() * 2);
+            // 一次 API 生成正文 + 点赞 + 评论。优先让已选角色发帖，数量不够再用 NPC 补足。
+            var total = 4 + Math.floor(Math.random() * 2);
+            var npcFill = Math.max(0, total - Math.min(selected.length, total));
             var parsed;
             try {
-                parsed = await requestPosts(selected, npcs, npcPostCount, recent, {});
+                parsed = await requestPosts(selected, npcs, npcFill, recent, { total: total, npcFill: npcFill });
+                parsed = (parsed || []).slice(0, total);
             } catch (err) {
                 showApiError(err);
                 try { if (window.NanoRefresh) NanoRefresh.fail(err, { key: 'moments' }); } catch (e) {}
                 return;
-            }
-
-            // 覆盖不足时补生成一次，尽量保证至少 2 位已选角色都有动态
-            if (selected.length >= 2) {
-                var covered = {};
-                parsed.forEach(function(p) { var c = findCharByName(selected, p.author); if (c) covered[normName(c.name)] = 1; });
-                if (Object.keys(covered).length < Math.min(2, selected.length)) {
-                    var missing = selected.filter(function(c) { return !covered[normName(c.name)]; });
-                    try {
-                        var more = await requestPosts(missing, [], 0, recent, { onlyChars: true, total: Math.min(Math.max(missing.length, 1), 2) });
-                        parsed = parsed.concat(more);
-                    } catch (e) {}
-                }
             }
 
             if (!parsed.length) {
@@ -2108,9 +2197,15 @@
                     var ln = findNpcByName(npcs, n);
                     if (ln) return ln.name;
                     return null;
-                }).filter(Boolean);
+                }).filter(function(n) {
+                    if (!n) return false;
+                    if (normName(n) === normName(cn)) return false; // 作者不给自己点赞
+                    // char 发的动态：只允许 NPC 点赞，char 之间不互相点赞
+                    if (ch && findCharByName(selected, n)) return false;
+                    return true;
+                }).slice(0, 4);
 
-                var comments = filterCommentList(p.comments || [], authorObj, selected, npcs, false).slice(0, 6);
+                var comments = filterCommentList(p.comments || [], authorObj, selected, npcs, false).slice(0, 4);
 
                 newPosts.push({
                     id: 'gen_' + Date.now() + '_' + i,
@@ -2170,23 +2265,45 @@
                             var genUrl = await generateImage(promptText, { charId: gid, char: gch });
                             if (genUrl) {
                                 cp.images = [genUrl]; cp.genPrompt = promptText; cp.media = 'image'; madeCount++; needForce = false;
-                                try { if (window.NanoGallery) window.NanoGallery.add({ url: genUrl, source: '朋友圈', charName: (gch && gch.name) || cp.author || '', prompt: promptText }); } catch (e) {}
+                                try { if (window.NanoGallery) window.NanoGallery.add({ url: genUrl, source: '朋友圈', charName: (gch && gch.name) || cp.author || '', prompt: promptText, generated: true }); } catch (e) {}
                             }
                         } catch (e) {}
                     }
                 }
             }
 
-            // 兜底互动：模型偶尔只写文案不写 LIKES/COMMENT，保证刷新出来的动态不是空评论区。
-            var poolNames = selected.concat(npcs).filter(function(n) { return n && n.name; }).map(function(n) { return n.name; });
+            // 兜底互动：模型偶尔只写文案不写 LIKES/COMMENT，保证每条动态都有 2~4 个赞和 2~4 条评论。
+            var npcPoolNames = npcs.filter(function(n) { return n && n.name; }).map(function(n) { return n.name; });
+            var likePoolNames = selected.concat(npcs).filter(function(n) { return n && n.name; }).map(function(n) { return n.name; });
             var canned = ['这条也太真实了', '哈哈哈哈', '我也想去', '注意休息呀', '好看', '下次带我'];
+            function addUnique(list, name) {
+                if (!name) return false;
+                if (normName(name) === normName(currentUser.name)) return false;
+                if (list.some(function(x) { return normName(x) === normName(name); })) return false;
+                list.push(name);
+                return true;
+            }
             newPosts.forEach(function(p, pi) {
-                var others = poolNames.filter(function(n) { return n !== p.author; });
-                if (!others.length) return;
-                if (!p.likes || !p.likes.length) p.likes = others.slice(0, Math.min(2, others.length));
-                if (!p.comments || !p.comments.length) {
-                    p.comments = [{ user: others[0], toUser: '', text: canned[(pi + String(p.author || '').length) % canned.length] }];
+                var authorIsChar = !!findCharByName(selected, p.author);
+                var likePool = (authorIsChar ? npcPoolNames : likePoolNames).filter(function(n) { return normName(n) !== normName(p.author); });
+                var commentPool = npcPoolNames.filter(function(n) { return normName(n) !== normName(p.author); });
+                if (!p.likes) p.likes = [];
+                var seenLikes = {};
+                p.likes = p.likes.filter(function(n) {
+                    var k = normName(n);
+                    if (!k || k === normName(p.author) || seenLikes[k]) return false;
+                    seenLikes[k] = 1;
+                    return true;
+                });
+                for (var li = 0; li < likePool.length && p.likes.length < 2; li++) addUnique(p.likes, likePool[li]);
+                p.likes = p.likes.slice(0, 4);
+                if (!p.comments) p.comments = [];
+                for (var ci2 = 0; ci2 < commentPool.length && p.comments.length < 2; ci2++) {
+                    var who = commentPool[(pi + ci2) % commentPool.length];
+                    if (p.comments.some(function(c) { return normName(c.user) === normName(who); })) continue;
+                    p.comments.push({ user: who, toUser: '', text: canned[(pi + ci2 + String(p.author || '').length) % canned.length] });
                 }
+                p.comments = p.comments.slice(0, 4);
             });
 
             momentsData = newPosts.concat(momentsData);
@@ -2389,7 +2506,7 @@
                 item.images = [url];
                 item.genPrompt = val;
                 delete item.imageText;
-                try { if (window.NanoGallery) window.NanoGallery.add({ url: url, source: '朋友圈', charName: item.author || '', prompt: val }); } catch (e) {}
+                try { if (window.NanoGallery) window.NanoGallery.add({ url: url, source: '朋友圈', charName: item.author || '', prompt: val, generated: true }); } catch (e) {}
                 saveMomentsData(momentsData);
                 renderFeed();
                 openImageViewer(item.id, 0);
@@ -2797,6 +2914,7 @@
             // 角色在后台自动发了朋友圈：重新拉取数据并刷新列表
             loadMomentsData(function(items) {
                 momentsData = items || [];
+                try { sanitizeCharInteractions(); } catch (e) {}
                 try { renderFeed(); } catch (err) {}
             });
             return;
@@ -2851,6 +2969,7 @@
         openDB(function() {
             loadMomentsData(function(items) {
                 momentsData = items || [];
+                try { sanitizeCharInteractions(); } catch (e) {}
                 renderFeed();
             });
         });
@@ -2874,6 +2993,7 @@
             contextNPCs = generateContextNPCs();
             allAvailableChars = boundChars.concat(contextNPCs);
             console.log('[Moments] 角色库加载', dbCharsCache.length, '可用角色', allAvailableChars.length);
+            try { sanitizeCharInteractions(); } catch (e) {}
             try { renderFeed(); } catch (e) {}
         });
 

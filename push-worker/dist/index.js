@@ -2215,7 +2215,25 @@ async function fetchLinkPreview(url) {
   if (j && j.text) {
     const data = parseJinaText(j.text);
     if ((data.title || data.content) && !linkLooksBlocked("", data)) {
-      return Object.assign({ url: u.href, via: "jina" }, data);
+      const out = Object.assign({ url: u.href, via: "jina" }, data);
+      if ((!out.images || !out.images.length) && /xiaohongshu|xhslink/i.test(u.hostname)) {
+        try {
+          const jh = await fetchTextWithTimeout("https://r.jina.ai/" + u.href, {
+            "User-Agent": mobileUA,
+            "X-Return-Format": "html",
+            "Accept": "text/html, application/xhtml+xml, */*;q=0.8",
+            "Accept-Language": "zh-CN,zh;q=0.9"
+          }, 15e3);
+          if (jh && jh.text) {
+            const hd = parseLinkPage(jh.text);
+            if (hd.images && hd.images.length) out.images = hd.images.slice(0, 6);
+            if (!out.title && hd.title) out.title = hd.title;
+            if (!out.desc && hd.desc) out.desc = hd.desc;
+          }
+        } catch (e) {
+        }
+      }
+      return out;
     }
   }
   return null;
@@ -3408,7 +3426,7 @@ var index_default = {
       return json({
         ok: true,
         service: "nano-peek",
-        build: "2026-10-28-imgpush",
+        build: "2026-10-28-imgpush2",
         method: "POST /peek",
         publicMode,
         tokenConfigured: !!env.PEEK_TOKEN,

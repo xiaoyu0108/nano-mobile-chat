@@ -367,29 +367,28 @@
 
 .ni-image-actions {
   display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
-  padding: 10px 13px 13px;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px 12px;
 }
 
-.ni-image-actions button {
-  height: 31px;
-  padding: 0 11px;
+.ni-image-actions button,
+.ni-image-actions .ni-act {
+  width: 34px;
+  height: 34px;
+  padding: 0;
   border: 1px solid var(--n-line);
-  border-radius: 11px;
+  border-radius: 10px;
   background: var(--n-subtle);
   color: var(--n-ink2);
-  font: inherit;
-  font-size: 11px;
-  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
 }
-.ni-image-actions button:active { transform: scale(.96); }
-.ni-image-actions button.accent {
-  border-color: transparent;
-  background: var(--n-accent-soft);
-  color: var(--n-accent);
-}
+.ni-image-actions button:active { transform: scale(.94); }
+.ni-image-actions button svg { width: 17px; height: 17px; }
 .ni-image-actions button.danger {
   border-color: transparent;
   background: rgba(255,59,48,.1);
@@ -492,6 +491,69 @@
   box-shadow: 0 2px 7px rgba(0,0,0,.1);
 }
 
+.ni-quote-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 4px 8px;
+  padding: 7px 10px;
+  border-left: 3px solid var(--n-accent);
+  border-radius: 10px;
+  background: var(--n-accent-soft);
+}
+.ni-quote-bar[hidden] { display: none; }
+.ni-quote-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ni-quote-main b {
+  font-size: 10.5px;
+  font-weight: 800;
+  color: var(--n-accent);
+}
+.ni-quote-main span {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--n-ink2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ni-quote-close {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(0,0,0,.08);
+  color: var(--n-muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.ni-quote-inline {
+  margin-bottom: 7px;
+  padding: 5px 8px;
+  border-left: 2px solid currentColor;
+  border-radius: 6px;
+  background: rgba(0,0,0,.06);
+  font-size: 11.5px;
+  line-height: 1.45;
+  opacity: .78;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.ni-quote-inline b {
+  display: block;
+  margin-bottom: 1px;
+  font-size: 10px;
+  font-weight: 800;
+}
+
 .ni-attach-preview {
   position: relative;
   width: 74px;
@@ -527,6 +589,8 @@
 .ni-size[hidden] { display: none; }
 
 .ni-size {
+  flex: none;
+  max-width: 118px;
   height: 34px;
   border: 1px solid var(--n-line);
   border-radius: 12px;
@@ -797,136 +861,150 @@
 .ni-toast.show { opacity: 1; transform: translate(-50%, 0); }
 
 /* ===== 更多菜单 ===== */
+.ni-more-sheet { padding: 0; }
+.ni-more-sheet .ni-more-card { max-width: 100%; }
+
 .ni-more-card {
   width: 100%;
-  max-width: 520px;
-  border: 1px solid var(--n-line);
-  border-radius: 0;
+  max-width: 100%;
+  border: 0;
+  border-radius: 20px 20px 0 0;
   background: var(--n-surface);
-  box-shadow: 0 28px 80px rgba(0,0,0,.32);
-  padding: 18px 14px calc(14px + var(--safe-bottom, env(safe-area-inset-bottom, 0px)));
+  box-shadow: 0 -10px 40px rgba(0,0,0,.18);
+  padding: 16px 12px calc(16px + var(--safe-bottom, env(safe-area-inset-bottom, 0px)));
   animation: niSheetIn .22s cubic-bezier(.3,.8,.35,1);
 }
 
 .ni-more-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 14px 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 
 .ni-more-item {
+  width: calc(25% - 3px);
   border: 0;
+  border-radius: 12px;
   background: transparent;
   color: var(--n-ink2);
   font: inherit;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 7px;
-  padding: 4px 0;
+  justify-content: flex-start;
+  gap: 4px;
+  padding: 8px 4px;
+  text-align: center;
   cursor: pointer;
+  transition: background .15s, transform .15s;
 }
+.ni-more-item:active { background: rgba(0,0,0,.04); transform: scale(.94); }
 
 .ni-more-item > span:last-child {
-  font-size: 11.5px;
-  font-weight: 700;
-}
-
-.ni-more-icon {
-  width: 52px;
-  height: 52px;
-  border-radius: 17px;
-  display: grid;
-  place-items: center;
-  color: #fff;
-  box-shadow: 0 8px 20px rgba(0,0,0,.12);
-}
-.ni-more-icon svg { width: 25px; height: 25px; }
-
-.ni-more-cancel {
-  width: 100%;
-  height: 44px;
-  margin-top: 14px;
-  border: 0;
-  border-radius: 0;
-  background: var(--n-subtle);
-  color: var(--n-ink2);
-  font: inherit;
-  font-size: 13px;
-  font-weight: 750;
-  cursor: pointer;
-}
-
-/* ===== 消息菜单 ===== */
-.ni-msg-card {
-  width: 100%;
-  max-width: 520px;
-  border: 1px solid var(--n-line);
-  border-radius: 0;
-  background: var(--n-surface);
-  box-shadow: 0 28px 80px rgba(0,0,0,.32);
-  padding: 16px 14px calc(14px + var(--safe-bottom, env(safe-area-inset-bottom, 0px)));
-  animation: niSheetIn .22s cubic-bezier(.3,.8,.35,1);
-}
-
-.ni-msg-head {
-  padding: 2px 6px 14px;
-}
-
-.ni-msg-head b {
-  display: block;
-  font-size: 13px;
-  font-weight: 760;
+  font-size: 11px;
+  font-weight: 400;
   color: var(--n-ink);
 }
 
-.ni-msg-head span {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  margin-top: 5px;
-  font-size: 11.5px;
-  line-height: 1.55;
-  color: var(--n-muted);
-}
-
-.ni-msg-actions {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-}
-
-.ni-msg-actions button {
+.ni-more-icon {
+  flex: none;
+  width: 54px;
   height: 54px;
-  border: 1px solid var(--n-line);
-  border-radius: 0;
-  background: var(--n-subtle);
-  color: var(--n-ink2);
-  font: inherit;
-  font-size: 11.5px;
-  font-weight: 720;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(0,0,0,.08);
+}
+.ni-more-icon svg { width: 25px; height: 25px; }
+
+.ni-more-cancel { display: none; }
+
+/* ===== 双击气泡菜单（与私聊小菜单一致） ===== */
+.ni-longpress-menu {
+  display: none;
+  position: fixed;
+  background: rgba(255,255,255,.85);
+  backdrop-filter: blur(40px);
+  -webkit-backdrop-filter: blur(40px);
+  border-radius: 16px;
+  border: 0.5px solid rgba(255,255,255,.5);
+  box-shadow: 0 8px 40px rgba(0,0,0,.12);
+  z-index: 300;
+  padding: 6px 4px;
+  min-width: 160px;
+  overflow: hidden;
+}
+.ni-longpress-menu.on { display: block; }
+.ni-longpress-menu .ni-menu-item {
   display: flex;
   align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border: none;
+  background: none;
+  width: 100%;
+  font-size: 14px;
+  color: #1c1c1e;
+  cursor: pointer;
+  border-radius: 10px;
+  transition: background .1s;
+  font-weight: 400;
+  -webkit-tap-highlight-color: transparent;
+}
+.ni-longpress-menu .ni-menu-item:active { background: rgba(0,0,0,.04); }
+.ni-longpress-menu .ni-mi-icon { width: 20px; font-size: 14px; color: #8e8e93; text-align: center; display: flex; align-items: center; justify-content: center; }
+.ni-longpress-menu .ni-mi-icon svg { width: 16px; height: 16px; }
+.ni-longpress-menu .ni-menu-item.danger { color: #ff3b30; }
+.ni-longpress-menu .ni-menu-item.danger .ni-mi-icon { color: #ff3b30; }
+.ni-longpress-menu .ni-menu-divider { height: 0.5px; background: rgba(0,0,0,.04); margin: 4px 8px; }
+
+/* ===== 图片大图（与私聊图片查看器一致） ===== */
+.ni-image-viewer {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.92);
+  z-index: 2000;
+  display: none;
+  align-items: center;
   justify-content: center;
-  gap: 6px;
+  flex-direction: column;
+}
+.ni-image-viewer.on { display: flex; }
+.ni-image-viewer img {
+  max-width: 92vw;
+  max-height: 70vh;
+  object-fit: contain;
+  border-radius: 8px;
+}
+.ni-iv-actions {
+  position: absolute;
+  bottom: 34px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  gap: 22px;
+  z-index: 2001;
+}
+.ni-iv-act {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  color: #fff;
+  font-size: 13px;
+  padding: 10px 16px;
+  border-radius: 14px;
+  background: rgba(255,255,255,.16);
   cursor: pointer;
 }
-
-.ni-msg-actions button svg {
-  width: 18px;
-  height: 18px;
-  flex: none;
-}
-
-.ni-msg-actions button.danger {
-  color: #c04552;
-  background: #fff1f2;
-}
+.ni-iv-act:active { background: rgba(255,255,255,.28); }
 
 @media (max-width: 420px) {
-  .ni-more-icon { width: 46px; height: 46px; border-radius: 15px; }
+  .ni-more-icon { width: 46px; height: 46px; border-radius: 13px; }
   .ni-more-icon svg { width: 22px; height: 22px; }
+  .ni-more-item { padding: 8px 2px; }
 }
 
 @media (max-width: 420px) {

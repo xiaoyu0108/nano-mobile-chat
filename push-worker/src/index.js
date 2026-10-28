@@ -1811,7 +1811,26 @@ async function fetchLinkPreview(url) {
   if (j && j.text) {
     const data = parseJinaText(j.text);
     if ((data.title || data.content) && !linkLooksBlocked('', data)) {
-      return Object.assign({ url: u.href, via: 'jina' }, data);
+      const out = Object.assign({ url: u.href, via: 'jina' }, data);
+      // 小红书正文能抓到、但封面常常被 Jina 的 markdown 过滤掉。再要一份 HTML，
+      // 从 og:image / imageList 里补封面，避免卡片只剩红底白字。
+      if ((!out.images || !out.images.length) && /xiaohongshu|xhslink/i.test(u.hostname)) {
+        try {
+          const jh = await fetchTextWithTimeout('https://r.jina.ai/' + u.href, {
+            'User-Agent': mobileUA,
+            'X-Return-Format': 'html',
+            'Accept': 'text/html, application/xhtml+xml, */*;q=0.8',
+            'Accept-Language': 'zh-CN,zh;q=0.9'
+          }, 15000);
+          if (jh && jh.text) {
+            const hd = parseLinkPage(jh.text);
+            if (hd.images && hd.images.length) out.images = hd.images.slice(0, 6);
+            if (!out.title && hd.title) out.title = hd.title;
+            if (!out.desc && hd.desc) out.desc = hd.desc;
+          }
+        } catch (e) {}
+      }
+      return out;
     }
   }
   return null;
@@ -2997,7 +3016,7 @@ export default {
       return json({
         ok: true,
         service: 'nano-peek',
-        build: '2026-10-28-imgpush',
+        build: '2026-10-28-imgpush2',
         method: 'POST /peek',
         publicMode: publicMode,
         tokenConfigured: !!env.PEEK_TOKEN,

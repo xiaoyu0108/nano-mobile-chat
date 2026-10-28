@@ -213,7 +213,7 @@ async function refreshLiveViaAI(selectedNames){
     const topic=scopeNames.indexOf(String(L.topic))>-1?String(L.topic):scopeNames[i%scopeNames.length];
     const cards=(Array.isArray(L&&L.cards)?L.cards:[]).map(cc=>({who:String((cc&&cc.who)||'A').slice(0,2),narration:String((cc&&cc.narration)||'').trim(),speech:String((cc&&cc.speech)||'').trim()})).filter(cc=>cc.narration||cc.speech);
     const banned=[host,currentIdentity().name].filter(Boolean);
-    const barrage=(Array.isArray(L&&L.barrage)?L.barrage:[]).map(b=>({name:String((b&&b.name)||'').slice(0,20),text:String((b&&b.text)||'').trim()})).filter(b=>b.text&&banned.indexOf(b.name)<0).map(b=>({name:b.name||rand(CN_AUDIENCE)||'',text:b.text}));
+    const barrage=(Array.isArray(L&&L.barrage)?L.barrage:[]).map(b=>({name:String((b&&b.name)||'').slice(0,20),text:String((b&&b.text)||'').trim()})).filter(b=>b.text&&banned.indexOf(b.name)<0&&!charByName(b.name)).map(b=>({name:b.name||rand(CN_AUDIENCE)||'',text:b.text}));
     S.liveRooms.unshift({
       id:Date.now()+i,title:String(L.title||'随便聊聊').slice(0,30),topic,
       desc:String(L.intro||'').slice(0,120),
@@ -1700,12 +1700,13 @@ async function generateRoomContent(mode){
   const SG=window.NanoSocialGraph;
   const realNames={};
   (S._realChars||[]).forEach(c=>{if(c&&c.name)realNames[String(c.name)]=c;});
-  // 主播是角色本人时，只有明确认识的角色才能以实名出现在观众里；否则一律当陌生观众。
+  // 主播是角色本人时，其它 char 一律不能以实名出现在观众/弹幕里：
+  // 角色之间互不认识、不互动；只有 NPC 和陌生观众可以出现。
   function audienceAllowed(name){
-    if(!hostChar||!SG)return true;
-    const c=realNames[name];
-    if(!c)return true;
-    return SG.knows(hostChar,c);
+    // 用户自己直播时，char 可以作为观众出现；角色/陌生人直播时，
+    // 其他 char 不能以实名混进弹幕，避免 char 之间互相认识/互动。
+    if(S.isHost) return true;
+    return !realNames[name];
   }
   const barrage=(Array.isArray(obj&&obj.barrage)?obj.barrage:[])
     .map(b=>({name:String((b&&b.name)||'').slice(0,20),text:String((b&&b.text)||'').trim()}))

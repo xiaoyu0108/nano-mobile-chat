@@ -10,6 +10,40 @@
   var PRESET_DATA_KEY = 'nano_api_presets_data';
   var PRESET_LIST_KEY = 'nano_api_preset_list';
   var PROMPTS_KEY = 'nano_api_prompts';
+  var TOMB_KEY = KEY + '_deleted';
+
+  function readTombstones() {
+    try {
+      var raw = localStorage.getItem(TOMB_KEY);
+      var obj = raw ? JSON.parse(raw) : {};
+      return obj && typeof obj === 'object' ? obj : {};
+    } catch (e) { return {}; }
+  }
+  function writeTombstones(map) {
+    try {
+      var keys = Object.keys(map);
+      if (keys.length > 3000) {
+        keys.sort(function (a, b) { return (map[a] || 0) - (map[b] || 0); });
+        keys.slice(0, keys.length - 3000).forEach(function (k) { delete map[k]; });
+      }
+      localStorage.setItem(TOMB_KEY, JSON.stringify(map));
+    } catch (e) {}
+  }
+  function tombstoneItems(ids) {
+    var map = readTombstones();
+    var now = Date.now();
+    (ids || []).forEach(function (id) { if (id) map[id] = now; });
+    writeTombstones(map);
+  }
+  function applyTombstones(s) {
+    if (!s) return s;
+    var map = readTombstones();
+    (s.sessions || []).forEach(function (sess) {
+      if (!sess) return;
+      sess.items = (sess.items || []).filter(function (it) { return it && !map[it.id]; });
+    });
+    return s;
+  }
 
   function $(id) { return document.getElementById(id); }
   function esc(s) {
@@ -22,7 +56,8 @@
   function defaultStore() {
     return {
       sessions: [], currentId: '', presets: [], basePresetId: '', importedApiName: '',
-      useBasePrompt: true, basePositive: '', baseNegative: '', size: '768x1344', mode: 'image'
+      useBasePrompt: true, basePositive: '', baseNegative: '', size: '768x1344', mode: 'image',
+      savedAt: 0
     };
   }
   function normalize(s) {
@@ -36,6 +71,7 @@
     s.basePresetId = String(s.basePresetId || '');
     s.importedApiName = String(s.importedApiName || '');
     s.size = String(s.size || '768x1344');
+    s.savedAt = Number(s.savedAt) || 0;
     s.presets.forEach(function (p) {
       if (!p) return;
       if (p.positive == null && p.content != null) p.positive = String(p.content || '');
@@ -44,13 +80,111 @@
     });
     return s;
   }
-  function load() {
+  function loadLocal() {
     try {
       var raw = localStorage.getItem(KEY);
-      return normalize(raw ? JSON.parse(raw) : null);
-    } catch (e) { return normalize(null); }
+      return applyTombstones(normalize(raw ? JSON.parse(raw) : null));
+    } catch (e) { return applyTombstones(normalize(null)); }
   }
-  var state = load();
+  // 和生图室共用同一份状态：完整记录（含图片）在 IndexedDB，localStorage 只是精简镜像。
+  function lightState(src) {
+    src = src || {};
+    var copy = {};
+    Object.keys(src).forEach(function (k) { copy[k] = src[k]; });
+    copy.sessions = (src.sessions || []).map(function (sess) {
+      if (!sess) return sess;
+      var s2 = {};
+      Object.keys(sess).forEach(function (k) { s2[k] = sess[k]; });
+      s2.items = (sess.items || []).map(function (it) {
+        if (!it) return it;
+        var i2 = {};
+        Object.keys(it).forEach(function (k) { i2[k] = it[k]; });
+        if (typeof i2.url === 'string' && /^data:/i.test(i2.url)) i2.url = '';
+        if (typeof i2.image === 'string' && /^data:/i.test(i2.image)) i2.image = '';
+        return i2;
+      });
+      return s2;
+    });
+    return copy;
+  }
+  function writeLocal(src) {
+    try { localStorage.setItem(KEY, JSON.stringify(lightState(src))); }
+    catch (e) { try { localStorage.removeItem(KEY); } catch (e2) {} }
+  }
+  function fillHeavyMedia(targetSession, heavySession) {
+    var byId = {};
+    ((heavySession && heavySession.items) || []).forEach(function (it) {
+      if (it && it.id) byId[it.id] = it;
+    });
+    ((targetSession && targetSession.items) || []).forEach(function (it) {
+      var h = it && it.id ? byId[it.id] : null;
+      if (!h) return;
+      if (!it.url && h.url) it.url = h.url;
+      if (!it.image && h.image) it.image = h.image;
+    });
+  }
+  function localHasChanges(light, heavy) {
+    var heavyById = {};
+    (heavy.sessions || []).forEach(function (hs) { if (hs && hs.id) heavyById[hs.id] = hs; });
+    return (light.sessions || []).some(function (ls) {
+      if (!ls) return false;
+      var hs = ls.id ? heavyById[ls.id] : null;
+      if (!hs) return (ls.items || []).length > 0;
+      return (Number(ls.updatedAt) || 0) > (Number(hs.updatedAt) || 0) ||
+        ((ls.items || []).length !== (hs.items || []).length);
+    });
+  }
+  function mergeHeavyLight(heavy, light) {
+    if (!heavy) return normalize(light);
+    if (!light) return normalize(heavy);
+    var ht = Number(heavy.savedAt) || 0;
+    var lt = Number(light.savedAt) || 0;
+    if (lt > ht || (lt === ht && localHasChanges(light, heavy))) {
+      var heavyById = {};
+      (heavy.sessions || []).forEach(function (hs) { if (hs && hs.id) heavyById[hs.id] = hs; });
+      (light.sessions || []).forEach(function (ls) {
+        var hs = ls && ls.id ? heavyById[ls.id] : null;
+        if (hs) fillHeavyMedia(ls, hs);
+      });
+      return normalize(light);
+    }
+    var lightById = {};
+    (light.sessions || []).forEach(function (ls) { if (ls && ls.id) lightById[ls.id] = ls; });
+    var merged = [];
+    (heavy.sessions || []).forEach(function (hs) {
+      var ls = hs && hs.id ? lightById[hs.id] : null;
+      if (ls && (Number(ls.updatedAt) || 0) >= (Number(hs.updatedAt) || 0)) {
+        fillHeavyMedia(ls, hs);
+        merged.push(ls);
+      } else {
+        merged.push(hs);
+      }
+    });
+    (light.sessions || []).forEach(function (ls) {
+      if (ls && ls.id && (ls.items || []).length && !(heavy.sessions || []).some(function (hs) { return hs && hs.id === ls.id; })) merged.push(ls);
+    });
+    heavy.sessions = merged;
+    return normalize(heavy);
+  }
+  function idbReady() { return !!(window.NanoIDB && window.NanoIDB.get && window.NanoIDB.set); }
+  var hydrated = false;
+  var saveChain = Promise.resolve();
+  var idbTimer = null;
+
+  function hydrate() {
+    return new Promise(function (resolve) {
+      if (!idbReady()) { hydrated = true; resolve(); return; }
+      window.NanoIDB.get(KEY).then(function (heavy) {
+        var local = loadLocal();
+        state = applyTombstones(heavy ? mergeHeavyLight(heavy, local) : local);
+        hydrated = true;
+        writeLocal(state);
+        resolve();
+      }).catch(function () { hydrated = true; resolve(); });
+    });
+  }
+
+  var state = loadLocal();
 
   var apiData = {};
   var apiNames = [];
@@ -65,15 +199,56 @@
     if (text) savedTimer = setTimeout(function () { el.textContent = '修改会自动保存'; }, 1800);
   }
 
+  function writeIdb() {
+    if (!idbReady() || !hydrated) return;
+    var snapshot = {
+      basePositive: state.basePositive,
+      baseNegative: state.baseNegative,
+      useBasePrompt: state.useBasePrompt,
+      presets: state.presets,
+      basePresetId: state.basePresetId,
+      importedApiName: state.importedApiName,
+      size: state.size
+    };
+    var localSessions = state.sessions || [];
+    var localCurrentId = state.currentId;
+    saveChain = saveChain.then(function () {
+      return window.NanoIDB.get(KEY);
+    }).then(function (latest) {
+      var next = normalize(latest || state);
+      Object.keys(snapshot).forEach(function (k) { next[k] = snapshot[k]; });
+      // 设置页只改提示词；但「清空本窗口记录」也会改 sessions。
+      // 按窗口 updatedAt 合并，避免这里用 IDB 里的旧记录把刚清空的聊天又写回来。
+      var localById = {};
+      localSessions.forEach(function (ls) { if (ls && ls.id) localById[ls.id] = ls; });
+      next.sessions = (next.sessions || []).map(function (hs) {
+        var ls = hs && hs.id ? localById[hs.id] : null;
+        if (ls && (Number(ls.updatedAt) || 0) >= (Number(hs.updatedAt) || 0)) return ls;
+        return hs;
+      });
+      var currentId = localCurrentId;
+      if (!next.sessions.some(function (s) { return s && s.id === currentId; })) {
+        currentId = next.sessions.length ? next.sessions[0].id : '';
+      }
+      next.currentId = currentId;
+      next = applyTombstones(next);
+      next.savedAt = Math.max(Date.now(), (Number(next.savedAt) || 0) + 1);
+      state = next;
+      writeLocal(state);
+      return window.NanoIDB.set(KEY, state);
+    }).catch(function () {});
+  }
+
   function save(show) {
-    try {
-      localStorage.setItem(KEY, JSON.stringify(state));
-      if (show !== false) savedLabel('已保存');
-      return true;
-    } catch (e) {
-      savedLabel('保存失败：本地空间不足');
-      return false;
+    state = applyTombstones(state);
+    state.savedAt = Math.max(Date.now(), (Number(state.savedAt) || 0) + 1);
+    writeLocal(state);
+    if (idbReady() && hydrated) {
+      clearTimeout(idbTimer);
+      idbTimer = setTimeout(writeIdb, 260);
     }
+    if (show !== false) savedLabel('已保存');
+    return true;
   }
 
   function joinPromptList(v) {
@@ -463,25 +638,36 @@
     if (!s) { savedLabel('当前没有可清空的窗口'); return; }
     if (!(s.items || []).length) { savedLabel('当前窗口没有记录'); return; }
     if (!confirm('清空当前窗口的聊天与生成记录？')) return;
+    var ids = (s.items || []).map(function (x) { return x && x.id; });
     s.items = [];
-    s.updatedAt = Date.now();
+    s.updatedAt = Math.max(Date.now(), (Number(s.updatedAt) || 0) + 1);
     save();
+    tombstoneItems(ids);
     savedLabel('已清空本窗口记录');
   }
 
   function init() {
-    bind();
-    fillFields(state.basePositive, state.baseNegative);
-    var use = $('nisUseBase');
-    if (use) use.checked = state.useBasePrompt !== false;
-    renderPresetOptions();
-    loadApiPresets();
-    try {
-      if (window.parent && window.parent !== window) {
-        window.parent.postMessage({ type: 'setTitle', title: '生图设置' }, '*');
-        window.parent.postMessage({ type: 'pageLoaded', page: 'nano_image_settings' }, '*');
-      }
-    } catch (e) {}
+    hydrate().then(function () {
+      bind();
+      fillFields(state.basePositive, state.baseNegative);
+      var use = $('nisUseBase');
+      if (use) use.checked = state.useBasePrompt !== false;
+      renderPresetOptions();
+      loadApiPresets();
+      window.addEventListener('pagehide', function () {
+        if (idbTimer) { clearTimeout(idbTimer); idbTimer = null; }
+        try { writeIdb(); } catch (e) {}
+      });
+      document.addEventListener('visibilitychange', function () {
+        if (!document.hidden && idbTimer) { clearTimeout(idbTimer); idbTimer = null; writeIdb(); }
+      });
+      try {
+        if (window.parent && window.parent !== window) {
+          window.parent.postMessage({ type: 'setTitle', title: '生图设置' }, '*');
+          window.parent.postMessage({ type: 'pageLoaded', page: 'nano_image_settings' }, '*');
+        }
+      } catch (e) {}
+    });
   }
 
   init();

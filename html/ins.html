@@ -1,13 +1,13 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<script src="../js/nano-runtime.js?v=20261028c"></script>
+<script src="../js/nano-runtime.js?v=20261028e"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>Forum</title>
 <link rel="stylesheet" href="../css/ins.css?v=20261020j">
 <script src="../js/appearance.js?v=20261026d"></script>
-<script src="../js/nano-gallery.js?v=20261028c"></script>
+<script src="../js/nano-gallery.js?v=20261028e"></script>
 </head>
 <body>
 <div class="app" id="appRoot">
@@ -20,7 +20,6 @@
     <button onclick="go('search')"><svg class="icon" viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="6.5"/><path d="m16 16 5 5"/></svg></button>
   </div>
 </header>
-
 <main class="content" id="content">
 <section id="home" class="page active">
 <div class="stories">
@@ -28,8 +27,6 @@
 </div>
 <div class="feed" id="feed"></div>
 </section>
-
-
 <section id="search" class="page">
   <div class="search-page">
     <div class="searchbox">
@@ -37,7 +34,6 @@
       <input placeholder="搜索 tag，回车确认" id="searchInput" onkeydown="handleSearchKey(event)">
       <button class="search-go" onclick="doSearch()">搜索</button>
     </div>
-
     <div class="search-section">
       <div class="search-section-head">
         <h4>推荐话题</h4>
@@ -48,14 +44,12 @@
       </div>
       <div class="tag-cloud" id="recommendTagCloud"></div>
     </div>
-
     <div class="search-section">
       <h4>推荐用户</h4>
       <div id="suggestUsers"></div>
     </div>
   </div>
 </section>
-
 <section id="tagResult" class="page">
   <div class="tag-result-head">
     <button class="back" onclick="go('search')" data-back><svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
@@ -67,11 +61,9 @@
   <div class="tag-result-desc" id="tagResultDesc" style="display:none"></div>
   <div class="tag-result-list" id="tagResultList"></div>
 </section>
-
 <section id="activity" class="page"><div class="activity">
 <div class="empty-state" style="padding:40px 0;color:#8a8a8e;font-size:13px;text-align:center;">暂无动态</div>
 </div></section>
-
 <section id="profile" class="page">
   <div class="dm-head">
     <div class="page-title" onclick="goBack()">Profile</div>
@@ -95,7 +87,6 @@
   </div>
   <div class="profile-grid" id="profileGrid"></div>
 </section>
-
 <section id="charProfile" class="page">
   <div class="dm-head">
     <button class="back" onclick="charProfileBack()" data-back><svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
@@ -119,7 +110,6 @@
   </div>
   <div class="profile-grid" id="charProfileGrid"></div>
 </section>
-
 <section id="dm" class="page">
   <div class="dm-head">
     <div class="page-title" onclick="goBack()">Messages</div>
@@ -134,7 +124,6 @@
     <div id="dmStrangers" style="display:none"></div>
   </div>
 </section>
-
 <section id="detail" class="page">
   <div class="detail-head">
     <button class="back" onclick="detailBack()" data-back><svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
@@ -148,7 +137,6 @@
     <button class="send" onclick="sendComment()" id="commentSendBtn">发送</button>
   </div>
 </section>
-
 <section id="chat" class="page">
   <div class="chat-head">
     <button class="back" onclick="go('dm')" data-back><svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
@@ -172,7 +160,6 @@
     <button class="send-btn" id="chatSendBtn" onclick="sendChatMessage()">回复</button>
   </div>
 </section>
-
 <section id="publish" class="page">
   <div class="publish-head"><div class="create-title" onclick="goBack()">Create</div></div>
   <div class="publish-tabs">
@@ -219,7 +206,6 @@
   </div>
 </section>
 </main>
-
 <nav class="bottom" id="bottomNav">
 <button class="nav-item active" onclick="go('home',this)"><svg class="icon nav-icon" viewBox="0 0 24 24"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg></button>
 <button class="nav-item" onclick="go('search',this)"><svg class="icon nav-icon" viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="6.5"/><path d="m16 16 5 5"/></svg></button>
@@ -227,7 +213,6 @@
 <button class="nav-item" onclick="go('dm',this)"><svg class="icon nav-icon" viewBox="0 0 24 24"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg></button>
 <button class="nav-item" onclick="go('profile',this)"><div class="nav-avatar letter-avatar me" id="navAvatarLetter" style="width:25px;height:25px;font-size:12px">你</div></button>
 </nav>
-
 <!-- 编辑资料弹窗 -->
 <div class="modal" id="editModal">
   <div class="modal-card">
@@ -250,9 +235,7 @@
     </div>
   </div>
 </div>
-
 <input id="avatarUploadInput" type="file" accept="image/*" hidden onchange="onAvatarPicked(event)">
-
 <!-- 帖子操作弹窗（美化） -->
 <div class="modal" id="menuModal" onclick="closeModal('menuModal')">
   <div class="action-sheet" onclick="event.stopPropagation()">
@@ -268,7 +251,6 @@
     <button class="action-btn cancel" onclick="closeModal('menuModal')" data-close>取消</button>
   </div>
 </div>
-
 <!-- 分享联系人弹窗-->
 <div class="modal" id="shareModal" onclick="closeModal('shareModal')">
   <div class="share-sheet" onclick="event.stopPropagation()">
@@ -277,7 +259,6 @@
     <div class="share-list" id="shareList"></div>
   </div>
 </div>
-
 <!-- 添加推荐话题弹窗（美化版）-->
 <div class="modal" id="addTagModal" onclick="closeModal('addTagModal')">
   <div class="modal-card" onclick="event.stopPropagation()">
@@ -296,12 +277,11 @@
     </div>
   </div>
 </div>
-
 <!-- 刷新Forum：选择要生成帖子的角色 -->
 <div class="modal" id="forumRefreshModal" onclick="closeModal('forumRefreshModal')">
   <div class="modal-card" onclick="event.stopPropagation()">
     <div class="modal-title">选择要生成帖子的角色</div>
-    <div class="refresh-char-hint">可多选。会生成所选角色的帖子，再加上 3 位陌生网友的帖子，并补充他们的朋友（NPC）与评论互动</div>
+    <div class="refresh-char-hint">可多选。一次生成 4~5 条：优先让所选角色各发一条，数量不足时由朋友 NPC 补足；每条自带 2~4 个赞和 2~4 条评论互动</div>
     <div class="refresh-char-list" id="forumRefreshCharList"></div>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeModal('forumRefreshModal')" data-close>取消</button>
@@ -309,7 +289,6 @@
     </div>
   </div>
 </div>
-
 <!-- 我的主页 · 更多设置（生图 / 内容）-->
 <div class="modal" id="profileMenuModal" onclick="closeModal('profileMenuModal')">
   <div class="pm-sheet" onclick="event.stopPropagation()">
@@ -346,7 +325,6 @@
     </div>
   </div>
 </div>
-
 <!-- 加载中（生成期间常驻，切页也不消失） -->
 <div class="ins-loading" id="insLoading">
   <div class="ins-loading-box">
@@ -354,7 +332,6 @@
     <div class="ins-loading-text" id="insLoadingText">加载中…</div>
   </div>
 </div>
-
 <!-- 错误提示弹窗 -->
 <div class="modal" id="errorModal" onclick="closeModal('errorModal')">
   <div class="modal-card" onclick="event.stopPropagation()">
@@ -365,7 +342,6 @@
     </div>
   </div>
 </div>
-
 <!-- 表情包面板（底部弹起）-->
 <div class="ins-emoji-overlay" id="insEmojiOverlay" onclick="closeInsEmojiPanel()">
   <div class="ins-emoji-panel" onclick="event.stopPropagation()">
@@ -378,14 +354,12 @@
     <div class="ins-emoji-empty" id="insEmojiEmpty" style="display:none">暂无表情包，请先在「更多 → 表情包」中添加</div>
   </div>
 </div>
-
 <div class="toast" id="toast"></div>
 </div>
-
 <script src="../js/mem-link.js?v=20261021a"></script>
 <script src="../js/nano-prompts.js?v=20261027d"></script>
 <script src="../js/social-graph.js?v=20261027k"></script>
-<script src="../js/ins.js?v=20261027f"></script>
+<script src="../js/ins.js?v=20261028g"></script>
 <script src="../js/api-float.js"></script>
 <script src="../js/nano-notify.js?v=20261028a"></script>
 <script src="../js/reroll-reason.js?v=20261022a"></script>

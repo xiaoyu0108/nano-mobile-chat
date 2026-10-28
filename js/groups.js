@@ -1253,7 +1253,7 @@
                         if (local) url = local;
                     }
                 } catch(e) {}
-                try { if (window.NanoGallery) NanoGallery.add({ url: url, source: '群聊', charName: member.name || '', prompt: desc }); } catch(e) {}
+                try { if (window.NanoGallery) NanoGallery.add({ url: url, source: '群聊', charName: member.name || '', prompt: desc, generated: true }); } catch(e) {}
                 if (opts.replaceMsgId) {
                     var msg = messages.find(function(x){ return x.id === opts.replaceMsgId; });
                     if (msg) {

@@ -663,7 +663,7 @@
       : Promise.resolve('');
     return p.then(function (local) {
       var u = local || src;
-      try { if (window.NanoGallery && u) NanoGallery.add({ url: u, source: '日程', charName: name || '', prompt: prompt || '' }); } catch (e) {}
+      try { if (window.NanoGallery && u) NanoGallery.add({ url: u, source: '日程', charName: name || '', prompt: prompt || '', generated: true }); } catch (e) {}
       return u;
     });
   }

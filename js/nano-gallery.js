@@ -188,6 +188,11 @@
             write(arr);
             dbDelete([oldKey]);
             var copy = Object.assign({}, rec, { url: data });
+            // 老记录没有 generated 字段：有生图提示词的按生图补标，没提示词的不再回收。
+            if (copy.generated !== true) {
+                if (String(copy.prompt || '').trim()) copy.generated = true;
+                else return;
+            }
             add(copy);
         }).catch(function () {}).then(function () { delete _remotePending[k]; });
     }
@@ -229,8 +234,18 @@
     // 表情包数据主要在 IndexedDB（localStorage 只是精简镜像），清理时再异步补读一次。
     function emojiUrlSetFromDb() {
         return new Promise(function (resolve) {
-            var local = emojiUrlSet();
-            if (local && Object.keys(local).length) { resolve(local); return; }
+            var local = emojiUrlSet() || {};
+            var merged = {};
+            Object.keys(local).forEach(function (k) { merged[k] = 1; });
+            var done = false;
+            function finish(set) {
+                if (done) return;
+                done = true;
+                var out = {};
+                Object.keys(merged).forEach(function (k) { out[k] = 1; });
+                Object.keys(set || {}).forEach(function (k) { out[k] = 1; });
+                resolve(out);
+            }
             try {
                 var req = indexedDB.open('nano_api_db', 2);
                 req.onupgradeneeded = function (e) {
@@ -240,11 +255,11 @@
                         if (!db.objectStoreNames.contains('api_data')) db.createObjectStore('api_data', { keyPath: 'key' });
                     } catch (err) {}
                 };
-                req.onerror = function () { resolve(local || {}); };
+                req.onerror = function () { finish(local); };
                 req.onsuccess = function () {
                     try {
                         var db = req.result;
-                        if (!db.objectStoreNames.contains('emoji_data')) { try { db.close(); } catch (e) {} resolve(local || {}); return; }
+                        if (!db.objectStoreNames.contains('emoji_data')) { try { db.close(); } catch (e) {} finish(local); return; }
                         var r = db.transaction('emoji_data', 'readonly').objectStore('emoji_data').get('nano_emoji_data');
                         r.onsuccess = function () {
                             try {
@@ -254,14 +269,14 @@
                                     ((g && g.emojis) || []).forEach(function (e) { if (e && e.url) set[String(e.url)] = 1; });
                                 });
                                 try { db.close(); } catch (e) {}
-                                resolve(set);
-                            } catch (e) { try { db.close(); } catch (e2) {} resolve(local || {}); }
+                                finish(set);
+                            } catch (e) { try { db.close(); } catch (e2) {} finish(local); }
                         };
-                        r.onerror = function () { try { db.close(); } catch (e) {} resolve(local || {}); };
-                    } catch (e) { resolve(local || {}); }
+                        r.onerror = function () { try { db.close(); } catch (e) {} finish(local); };
+                    } catch (e) { finish(local); }
                 };
-                req.onblocked = function () { resolve(local || {}); };
-            } catch (e) { resolve(local || {}); }
+                req.onblocked = function () { finish(local); };
+            } catch (e) { finish(local); }
         });
     }
     function readTombs() {
@@ -288,27 +303,51 @@
         var i = arr.indexOf(key);
         if (i > -1) { arr.splice(i, 1); writeTombs(arr); }
     }
+    var _purgeStarted = false;
     function purgeEmojiOnce() {
         try {
-            if (localStorage.getItem(EMOJI_PURGE_KEY) === '1') return;
+            if (localStorage.getItem(EMOJI_PURGE_KEY) === '2' || _purgeStarted) return;
+            _purgeStarted = true;
             var raw = localStorage.getItem(KEY);
             var arr = raw ? JSON.parse(raw) : [];
             if (Array.isArray(arr)) {
-                var cleaned = arr.filter(function (x) { return !isEmojiRecord(x); });
-                var removed = arr.length - cleaned.length;
+                var kept = [];
+                arr.forEach(function (x) {
+                    if (!x || !x.url) return;
+                    // 表情包，或聊天里自己发的图片（没有生图提示词）都不属于图库。
+                    if (isEmojiRecord(x) || (String(x.source || '') === '聊天' && !String(x.prompt || '').trim())) {
+                        tomb(urlKey(x.url));
+                        return;
+                    }
+                    kept.push(x);
+                });
+                var removed = arr.length - kept.length;
                 if (removed > 0) {
-                    localStorage.setItem(KEY, JSON.stringify(cleaned));
-                    localStorage.setItem('nano_gallery_purged_count', String(removed));
+                    try { localStorage.setItem(KEY, JSON.stringify(kept)); } catch (e) {}
+                    try { localStorage.setItem('nano_gallery_purged_count', String(removed)); } catch (e) {}
                 }
             }
-            localStorage.setItem(EMOJI_PURGE_KEY, '1');
-            // 图库记录主要存在 IndexedDB：把里面混入的表情包也一并删掉。
-            try {
-                dbAll().then(function (items) {
-                    var keys = (items || []).filter(function (x) { return x && x.url && isEmojiRecord(x); }).map(function (x) { return urlKey(x.url); });
-                    if (keys.length) return dbDelete(keys);
-                }).catch(function () {});
-            } catch (e) {}
+            // 图库记录主要存在 IndexedDB：用「本地镜像 + IndexedDB 里完整表情库」的合集，
+            // 把混入的表情包和自己发的图片彻底删掉，并打上墓碑防止聊天补扫又加回来。
+            emojiUrlSetFromDb().then(function (set) {
+                return dbAll().then(function (items) {
+                    var bad = (items || []).filter(function (x) {
+                        if (!x || !x.url) return false;
+                        if (set && set[String(x.url)]) return true;
+                        if (isEmojiRecord(x)) return true;
+                        // 只清“聊天里自己发的”记录；其他来源的生图可能暂时没有 prompt。
+                        if (String(x.source || '') === '聊天' && !String(x.prompt || '').trim()) return true;
+                        return false;
+                    });
+                    if (!bad.length) return;
+                    bad.forEach(function (x) { tomb(urlKey(x.url)); });
+                    return dbDelete(bad.map(function (x) { return urlKey(x.url); }));
+                });
+            }).then(function () {
+                try { localStorage.setItem(EMOJI_PURGE_KEY, '2'); } catch (e) {}
+            }).catch(function () {
+                try { localStorage.setItem(EMOJI_PURGE_KEY, '2'); } catch (e) {}
+            });
         } catch (e) {}
     }
 
@@ -341,6 +380,9 @@
     }
     function add(rec) {
         if (!rec || !rec.url || isEmojiRecord(rec)) return;
+        // 图库只收「生图 API 生成」的图片。用户自己发的图、表情包、截图一律不进。
+        // 生成流程必须显式传 generated:true，避免以后的调用点又把杂图混进来。
+        if (rec.generated !== true) return;
         var u = String(rec.url);
         // 有些生图接口给的是 blob: 临时地址，页面一换就失效；先转成 data URL 再入库。
         if (/^blob:/i.test(u)) {
@@ -359,6 +401,7 @@
             source: String(rec.source || '聊天'),
             charName: String(rec.charName || ''),
             prompt: String(rec.prompt || '').slice(0, 500),
+            generated: true,
             createdAt: Number(rec.createdAt) || Date.now()
         };
         // base64 大图只写 IndexedDB，不碰 5MB 的 localStorage，避免解析/写入卡顿和配额失败。
@@ -388,14 +431,18 @@
         if (typeof obj !== 'object') return;
         if (isEmojiRecord(obj)) return;
         var charName = obj.author || obj.user || obj.charName || obj.name || '';
+        // 只收生图：有 genPrompt / genImage / ai 标记的记录。朋友圈、Ins 里用户自己
+        // 上传的照片没有这些字段，不能再混进图库。
+        var isGen = !!(obj.genPrompt || obj.genImage || obj.generated === true || obj.isAiImage || obj.ai === true);
         ['image', 'images', 'genImage', 'postImage', 'imageUrl', 'url'].forEach(function (k) {
+            if (!isGen && k !== 'genImage') return;
             var v = obj[k];
             if (typeof v === 'string' && /^(data:image\/|https?:\/\/)/i.test(v)) {
-                out.push({ url: v, source: source, charName: charName, prompt: obj.genPrompt || obj.body || obj.text || '', createdAt: obj.time ? (Date.parse(obj.time) || Date.now()) : Date.now() });
+                out.push({ url: v, source: source, charName: charName, prompt: obj.genPrompt || '', generated: true, createdAt: obj.time ? (Date.parse(obj.time) || Date.now()) : Date.now() });
             } else if (Array.isArray(v)) {
                 v.forEach(function (u) {
                     if (typeof u === 'string' && /^(data:image\/|https?:\/\/)/i.test(u)) {
-                        out.push({ url: u, source: source, charName: charName, prompt: obj.genPrompt || obj.body || obj.text || '', createdAt: obj.time ? (Date.parse(obj.time) || Date.now()) : Date.now() });
+                        out.push({ url: u, source: source, charName: charName, prompt: obj.genPrompt || '', generated: true, createdAt: obj.time ? (Date.parse(obj.time) || Date.now()) : Date.now() });
                     }
                 });
             }
@@ -537,14 +584,15 @@
                     (Array.isArray(msgs) ? msgs : []).forEach(function (m) {
                         if (!m || !m.imageData || m.imageData.isEmoji || m.imageData.emojiName) return;
                         if (m.isEmoji || m.emojiName) return;
+                        // 只补扫「生图 API 生成」的消息：必须带 genPrompt，且不是自己发的图。
+                        // 这样表情包、用户发的照片、链接卡片封面都不会再进图库。
+                        if (m.type === 'right' || !m.imageData.genPrompt) return;
                         var mt = String(m.text || '') + ' ' + String(m.imageData.desc || m.imageData.prompt || '');
-                        // 只看明确的 [emoji:...] / [表情:...] 标记；不能因为照片配文里提到“表情包”
-                        // 就把正常照片排除掉（这是以前图库“照片变少”的原因之一）。
                         if (/\[(emoji|sticker|表情包|表情)\s*:/i.test(mt)) return;
                         if (isEmojiRecord(m) || isEmojiRecord(m.imageData)) return;
                         var u = m.imageData && (m.imageData.url || (m.imageData.urls && m.imageData.urls[0]));
                         if (u && /^(data:image\/|https?:\/\/)/i.test(u)) {
-                            out.push({ url: u, source: '聊天', charName: cname, charId: cid, prompt: m.imageData.prompt || m.text || '', createdAt: Date.parse(m.time || '') || 0 });
+                            out.push({ url: u, source: '聊天', charName: cname, charId: cid, prompt: m.imageData.genPrompt || '', generated: true, createdAt: Date.parse(m.time || '') || 0 });
                         }
                     });
                     return out;

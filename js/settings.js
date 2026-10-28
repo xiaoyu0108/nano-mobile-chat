@@ -532,7 +532,18 @@ const APP_ICONS = {
           .then(function (r) { return r.json(); })
           .then(function (j) {
             if (!j || !j.ok) { status.textContent = '已开启 · 服务端未响应'; return; }
-            if (!j.subs) { status.textContent = '已开启 · 服务端没有订阅记录，请点「重新订阅」'; return; }
+            if (!j.subs) {
+              status.textContent = '已开启 · 服务端没有订阅记录，正在自动补登记…';
+              // 浏览器里有订阅、服务端却没有（换过 Worker/清过 KV/换过面具）时，
+              // 直接把当前订阅重新 POST 一次，用户不用手动点。
+              if (!refreshPush._reregistering && NP && NP.enable) {
+                refreshPush._reregistering = true;
+                Promise.resolve(NP.enable(false)).then(function () {
+                  setTimeout(function () { refreshPush(); refreshPush._reregistering = false; }, 1500);
+                }).catch(function () { refreshPush._reregistering = false; });
+              }
+              return;
+            }
             if (!j.configured || !j.enabled) { status.textContent = '已开启 · 服务端未同步主动消息（打开一次私聊）'; return; }
             var when = '';
             if (j.nextMsgAt) {

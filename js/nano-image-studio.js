@@ -12,6 +12,40 @@
   var PRESET_DATA_KEY = 'nano_api_presets_data';
   var PRESET_LIST_KEY = 'nano_api_preset_list';
   var PROMPTS_KEY = 'nano_api_prompts';
+  var TOMB_KEY = KEY + '_deleted';
+
+  function readTombstones() {
+    try {
+      var raw = localStorage.getItem(TOMB_KEY);
+      var obj = raw ? JSON.parse(raw) : {};
+      return obj && typeof obj === 'object' ? obj : {};
+    } catch (e) { return {}; }
+  }
+  function writeTombstones(map) {
+    try {
+      var keys = Object.keys(map);
+      if (keys.length > 3000) {
+        keys.sort(function (a, b) { return (map[a] || 0) - (map[b] || 0); });
+        keys.slice(0, keys.length - 3000).forEach(function (k) { delete map[k]; });
+      }
+      localStorage.setItem(TOMB_KEY, JSON.stringify(map));
+    } catch (e) {}
+  }
+  function tombstoneItems(ids) {
+    var map = readTombstones();
+    var now = Date.now();
+    (ids || []).forEach(function (id) { if (id) map[id] = now; });
+    writeTombstones(map);
+  }
+  function applyTombstones(s) {
+    if (!s) return s;
+    var map = readTombstones();
+    (s.sessions || []).forEach(function (sess) {
+      if (!sess) return;
+      sess.items = (sess.items || []).filter(function (it) { return it && !map[it.id]; });
+    });
+    return s;
+  }
 
   function $(id) { return document.getElementById(id); }
   function esc(s) {
@@ -38,7 +72,8 @@
       basePositive: '',
       baseNegative: '',
       size: '768x1344',
-      mode: 'image'
+      mode: 'image',
+      savedAt: 0
     };
   }
   function normalize(s) {
@@ -54,6 +89,7 @@
     s.basePresetId = String(s.basePresetId || '');
     s.importedApiName = String(s.importedApiName || '');
     s.size = String(s.size || '768x1344');
+    s.savedAt = Number(s.savedAt) || 0;
     s.presets.forEach(function (p) {
       if (!p) return;
       if (p.positive == null && p.content != null) p.positive = String(p.content || '');
@@ -73,16 +109,156 @@
     }
     return s;
   }
-  function load() {
+  function loadLocal() {
     var raw = null;
     try { raw = localStorage.getItem(KEY); } catch (e) {}
     var s = null;
     try { s = raw ? JSON.parse(raw) : null; } catch (e) { s = null; }
-    return normalize(s);
+    return applyTombstones(normalize(s));
   }
-  var state = load();
+  // 聊天/生图记录里的图片是 data URL，一张就有几 MB。localStorage 只有约 5MB，
+  // 写不下时 save() 会失败，删掉的消息下次打开又回来。这里把完整记录放进 IndexedDB，
+  // localStorage 只留一份不带大图的可同步镜像，并用 savedAt 判断哪一份更新。
+  function lightState(src) {
+    src = src || {};
+    var copy = {};
+    Object.keys(src).forEach(function (k) { copy[k] = src[k]; });
+    copy.sessions = (src.sessions || []).map(function (sess) {
+      if (!sess) return sess;
+      var s2 = {};
+      Object.keys(sess).forEach(function (k) { s2[k] = sess[k]; });
+      s2.items = (sess.items || []).map(function (it) {
+        if (!it) return it;
+        var i2 = {};
+        Object.keys(it).forEach(function (k) { i2[k] = it[k]; });
+        if (typeof i2.url === 'string' && /^data:/i.test(i2.url)) i2.url = '';
+        if (typeof i2.image === 'string' && /^data:/i.test(i2.image)) i2.image = '';
+        return i2;
+      });
+      return s2;
+    });
+    return copy;
+  }
+  function writeLocal(src) {
+    try { localStorage.setItem(KEY, JSON.stringify(lightState(src))); }
+    catch (e) {
+      try { localStorage.removeItem(KEY); } catch (e2) {}
+    }
+  }
+  function fillHeavyMedia(targetSession, heavySession) {
+    var byId = {};
+    ((heavySession && heavySession.items) || []).forEach(function (it) {
+      if (it && it.id) byId[it.id] = it;
+    });
+    ((targetSession && targetSession.items) || []).forEach(function (it) {
+      var h = it && it.id ? byId[it.id] : null;
+      if (!h) return;
+      if (!it.url && h.url) it.url = h.url;
+      if (!it.image && h.image) it.image = h.image;
+    });
+  }
+  function localHasChanges(light, heavy) {
+    var heavyById = {};
+    (heavy.sessions || []).forEach(function (hs) { if (hs && hs.id) heavyById[hs.id] = hs; });
+    return (light.sessions || []).some(function (ls) {
+      if (!ls) return false;
+      var hs = ls.id ? heavyById[ls.id] : null;
+      if (!hs) return (ls.items || []).length > 0;
+      return (Number(ls.updatedAt) || 0) > (Number(hs.updatedAt) || 0) ||
+        ((ls.items || []).length !== (hs.items || []).length);
+    });
+  }
+  function mergeHeavyLight(heavy, light) {
+    if (!heavy) return normalize(light);
+    if (!light) return normalize(heavy);
+    var ht = Number(heavy.savedAt) || 0;
+    var lt = Number(light.savedAt) || 0;
+    // 本地更新，或同级但确实清空/改过窗口时，以本地为准；避免 IDB 旧记录顶掉刚清空的聊天。
+    if (lt > ht || (lt === ht && localHasChanges(light, heavy))) {
+      var heavyById = {};
+      (heavy.sessions || []).forEach(function (hs) { if (hs && hs.id) heavyById[hs.id] = hs; });
+      (light.sessions || []).forEach(function (ls) {
+        var hs = ls && ls.id ? heavyById[ls.id] : null;
+        if (hs) fillHeavyMedia(ls, hs);
+      });
+      return normalize(light);
+    }
+    // IDB 更新时，仍尊重本地刚清空/刚改过的那一个窗口。
+    var lightById = {};
+    (light.sessions || []).forEach(function (ls) { if (ls && ls.id) lightById[ls.id] = ls; });
+    var merged = [];
+    (heavy.sessions || []).forEach(function (hs) {
+      var ls = hs && hs.id ? lightById[hs.id] : null;
+      if (ls && (Number(ls.updatedAt) || 0) >= (Number(hs.updatedAt) || 0)) {
+        fillHeavyMedia(ls, hs);
+        merged.push(ls);
+      } else {
+        merged.push(hs);
+      }
+    });
+    (light.sessions || []).forEach(function (ls) {
+      if (ls && ls.id && (ls.items || []).length && !(heavy.sessions || []).some(function (hs) { return hs && hs.id === ls.id; })) merged.push(ls);
+    });
+    heavy.sessions = merged;
+    return normalize(heavy);
+  }
+  function mergeStoredIntoMemory(memory, stored) {
+    if (!memory || !stored) return memory;
+    if ((Number(stored.savedAt) || 0) >= (Number(memory.savedAt) || 0)) {
+      memory.basePositive = stored.basePositive;
+      memory.baseNegative = stored.baseNegative;
+      memory.useBasePrompt = stored.useBasePrompt;
+      memory.presets = stored.presets;
+      memory.basePresetId = stored.basePresetId;
+      memory.importedApiName = stored.importedApiName;
+      memory.size = stored.size;
+    }
+    var byId = {};
+    (stored.sessions || []).forEach(function (ss) { if (ss && ss.id) byId[ss.id] = ss; });
+    (memory.sessions || []).forEach(function (ms, i) {
+      var ss = ms && ms.id ? byId[ms.id] : null;
+      // 只接受存储里确实更新的窗口；设置页只改提示词时，不会用旧的 sessions 覆盖当前聊天。
+      if (ss && (Number(ss.updatedAt) || 0) > (Number(ms.updatedAt) || 0)) {
+        memory.sessions[i] = ss;
+      }
+    });
+    return memory;
+  }
+  function idbReady() {
+    return !!(window.NanoIDB && window.NanoIDB.get && window.NanoIDB.set);
+  }
+  var hydrated = false;
+  var saveChain = Promise.resolve();
+  function hydrate() {
+    return new Promise(function (resolve) {
+      if (!idbReady()) { hydrated = true; resolve(); return; }
+      window.NanoIDB.get(KEY).then(function (heavy) {
+        var local = state; // 启动时已经读过 localStorage，不再重复解析大 JSON
+        state = applyTombstones(heavy ? mergeHeavyLight(heavy, local) : local);
+        hydrated = true;
+        if (!heavy || (Number(local.savedAt) || 0) >= (Number(heavy.savedAt) || 0)) {
+          try { window.NanoIDB.set(KEY, state); } catch (e) {}
+        }
+        writeLocal(state);
+        resolve();
+      }).catch(function () { hydrated = true; resolve(); });
+    });
+  }
+  function reloadState() {
+    return saveChain.catch(function () {}).then(function () {
+      if (!idbReady()) return;
+      return window.NanoIDB.get(KEY).then(function (heavy) {
+        // 以当前内存状态为准，只接受 localStorage/IDB 里确实更新的窗口。
+        // 这样删除/新消息刚发生时，不会被旧记录顶掉；设置页清空后也能正确同步回来。
+        var memory = mergeStoredIntoMemory(state, loadLocal());
+        state = applyTombstones(heavy ? mergeHeavyLight(heavy, memory) : memory);
+      }).catch(function () {});
+    });
+  }
+  var state = loadLocal();
   var generating = false;
   var pendingImage = '';
+  var pendingQuote = null;
 
   function readAsDataURL(file) {
     return new Promise(function (resolve, reject) {
@@ -128,14 +304,61 @@
     if (box) box.hidden = !pendingImage;
     if (thumb) thumb.src = pendingImage || '';
     renderChips();
+    syncSendButton();
+  }
+
+  function svgIcon(name) {
+    var paths = {
+      redo: '<path d="M20 11a8 8 0 0 0-14.9-3M4 4v4h4M4 13a8 8 0 0 0 14.9 3M20 20v-4h-4"/>',
+      download: '<path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/>',
+      quote: '<path d="M9 17l-5-5 5-5"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/>',
+      ref: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5-5 5-3-3-5 5"/>',
+      del: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/>',
+      copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/>',
+      edit: '<path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-3-3L5 17v3z"/><path d="M13.5 6.5l3 3"/>',
+      star: '<path d="M12 3l2.6 5.3 5.9.9-4.3 4.2 1 5.9-5.2-2.7-5.2 2.7 1-5.9L3.5 9.2l5.9-.9z"/>'
+    };
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" ' +
+      'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' +
+      (paths[name] || '') + '</svg>';
+  }
+
+  function setPendingQuote(quote) {
+    pendingQuote = quote ? {
+      who: String(quote.who || ''),
+      text: String(quote.text || '').slice(0, 500)
+    } : null;
+    var bar = $('niQuoteBar');
+    var whoEl = $('niQuoteWho');
+    var textEl = $('niQuoteText');
+    if (bar) bar.hidden = !pendingQuote;
+    if (whoEl) whoEl.textContent = pendingQuote ? (pendingQuote.who || '消息') : '';
+    if (textEl) textEl.textContent = pendingQuote ? pendingQuote.text : '';
+  }
+
+  function quoteMessage(id) {
+    var item = findItem(id);
+    if (!item) return;
+    var text = String(item.text || item.fullPrompt || item.prompt || '').trim();
+    if (!text && (item.url || item.image)) text = '一张图片';
+    if (!text) { toast('这条消息没有可引用的内容'); return; }
+    setPendingQuote({ who: item.role === 'user' ? '我' : 'Nano', text: text });
+    closeMsgMenu();
+    var input = $('niPrompt');
+    if (input) { try { input.focus(); } catch (e) {} }
+    toast('已引用，输入你的回复');
   }
 
   function save() {
-    try { localStorage.setItem(KEY, JSON.stringify(state)); return true; }
-    catch (e) {
-      toast('保存失败：本地存储空间不足，可先删除旧图片');
-      return false;
+    state = applyTombstones(state);
+    state.savedAt = Math.max(Date.now(), (Number(state.savedAt) || 0) + 1);
+    writeLocal(state);
+    if (idbReady() && hydrated) {
+      saveChain = saveChain.then(function () {
+        return window.NanoIDB.set(KEY, state);
+      }).catch(function () {});
     }
+    return true;
   }
   function currentSession() {
     var s = state.sessions.find(function (x) { return x.id === state.currentId; });
@@ -334,8 +557,8 @@
     return (content && (content.text || '')) || '';
   }
 
-  function chatHistory() {
-    var items = currentSession().items || [];
+  function chatHistory(source) {
+    var items = source || currentSession().items || [];
     var kept = items.filter(function (x) {
       if (!x) return false;
       if (x.role === 'user') return true;
@@ -345,29 +568,73 @@
     }).slice(-14);
     return kept.map(function (x) {
       if (x.role === 'user') {
+        var userText = (x.quote ? ('引用' + (x.quote.who || '') + '：' + x.quote.text + '\n') : '') + String(x.text || '');
         if (x.image) {
           return {
             role: 'user',
             content: [
-              { type: 'text', text: String(x.text || '请描述这张图片') },
+              { type: 'text', text: userText || '请描述这张图片' },
               { type: 'image_url', image_url: { url: x.image } }
             ]
           };
         }
-        return { role: 'user', content: String(x.text || '') };
+        return { role: 'user', content: userText };
       }
       if (x.kind === 'chat') return { role: 'assistant', content: String(x.text || '') };
       return { role: 'assistant', content: '[已生成图片] ' + String(x.fullPrompt || x.prompt || '') };
     });
   }
 
-  async function sendChat(text, image) {
+  async function sendChat(text, image, quote) {
     if (generating) return;
     var session = currentSession();
-    var userItem = { id: uid('it'), role: 'user', text: text, image: image || '', at: Date.now() };
+    var userItem = { id: uid('it'), role: 'user', text: text, image: image || '', at: Date.now(), awaitingReply: true };
+    if (quote) userItem.quote = { who: String(quote.who || ''), text: String(quote.text || '') };
     session.items.push(userItem);
+    session.updatedAt = Date.now();
+    save();
+    render();
+    scrollBottom();
+  }
+
+  async function replyToUserItem(id) {
+    if (generating) return;
+    var session = currentSession();
+    var list = session.items || [];
+    var idx = -1;
+    list.some(function (x, i) { if (x && x.id === id) { idx = i; return true; } return false; });
+    if (idx < 0) return;
+    var userItem = list[idx];
+    if (!userItem || userItem.role !== 'user' || userItem.replying) return;
+    userItem.awaitingReply = false;
+    userItem.replying = true;
+
+    // 生图指令也走同一个「回复」按钮：第一次发送只落气泡，点回复才生成。
+    if (isImageRequest(userItem.text || '')) {
+      session.updatedAt = Date.now();
+      save();
+      render();
+      scrollBottom();
+      try {
+        await generateImage(userItem.text || '', userItem.image || '', {
+          noUser: true,
+          quote: userItem.quote || null,
+          afterId: userItem.id
+        });
+        userItem.replied = true;
+      } finally {
+        userItem.replying = false;
+        userItem.awaitingReply = false;
+        session.updatedAt = Date.now();
+        save();
+        render();
+        scrollBottom();
+      }
+      return;
+    }
+
     var ai = { id: uid('it'), role: 'ai', kind: 'chat', status: 'loading', at: Date.now() };
-    session.items.push(ai);
+    list.splice(idx + 1, 0, ai);
     session.updatedAt = Date.now();
     save();
     render();
@@ -383,7 +650,7 @@
         sys += '\n用户常用的生图风格偏好：' + String(state.basePositive).trim();
         if (String(state.baseNegative || '').trim()) sys += '\n需要避免：' + String(state.baseNegative).trim();
       }
-      var messages = [{ role: 'system', content: sys }].concat(chatHistory());
+      var messages = [{ role: 'system', content: sys }].concat(chatHistory(list.slice(0, idx + 1)));
       var resp = await fetch(cfg.url + '/chat/completions', {
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + cfg.key, 'Content-Type': 'application/json' },
@@ -403,11 +670,13 @@
       if (!reply) throw new Error('接口没有返回内容');
       ai.text = reply;
       ai.status = 'done';
+      userItem.replied = true;
     } catch (err) {
       ai.status = 'error';
       ai.error = String((err && err.message) || err || '聊天失败');
-      if (image) ai.error += '\n如果模型不支持图片输入，请换用支持视觉的模型。';
+      if (userItem.image) ai.error += '\n如果模型不支持图片输入，请换用支持视觉的模型。';
     } finally {
+      userItem.replying = false;
       setGenerating(false);
       session.updatedAt = Date.now();
       save();
@@ -434,8 +703,7 @@
   function renderMode() {
     var input = $('niPrompt');
     if (input) input.placeholder = '和 Nano 聊天，或直接说「画一张雨夜东京街头的照片」…';
-    var gen = $('niGenerate');
-    if (gen && !generating) gen.textContent = '发送';
+    syncSendButton();
     var empty = $('niEmpty');
     if (empty) {
       var b = empty.querySelector('b');
@@ -458,7 +726,7 @@
     renderFeed();
     renderSessionList();
     var sizeSel = $('niSize');
-    if (sizeSel) sizeSel.value = state.size || '1024x1024';
+    if (sizeSel) sizeSel.value = state.size || '768x1344';
   }
 
   function renderFeed() {
@@ -475,9 +743,11 @@
     if (empty) empty.style.display = 'none';
     feed.innerHTML = items.map(function (item) {
       if (!item) return '';
+      var quoteHtml = item.quote ? ('<div class="ni-quote-inline"><b>' + esc(item.quote.who || '消息') + '</b>' + esc(item.quote.text || '') + '</div>') : '';
       if (item.role === 'user') {
         return '<div class="ni-item user" data-msg-id="' + esc(item.id) + '" data-msg-role="user"><div class="ni-user-bubble">' +
-          (item.image ? '<img class="ni-bubble-img" src="' + esc(item.image) + '" alt="">' : '') +
+          quoteHtml +
+          (item.image ? '<img class="ni-bubble-img" src="' + esc(item.image) + '" alt="" title="查看大图">' : '') +
           esc(item.text || '') + '</div></div>';
       }
       if (item.role !== 'ai') return '';
@@ -497,20 +767,23 @@
           '</div></div>';
       }
       if (item.status === 'error') {
-        return '<div class="ni-item ai"><div class="ni-image-card">' +
+        return '<div class="ni-item ai" data-msg-id="' + esc(item.id) + '" data-msg-role="ai"><div class="ni-image-card">' +
           '<div class="ni-image-meta" style="padding-top:14px;color:#ff6b6b">生成失败：' + esc(item.error || '未知错误') + '</div>' +
-          '<div class="ni-image-actions"><button data-act="retry" data-id="' + esc(item.id) + '" class="accent">重试</button>' +
-          '<button data-act="del" data-id="' + esc(item.id) + '" class="danger">删除</button></div>' +
+          '<div class="ni-image-actions">' +
+            '<button type="button" class="ni-act" data-act="retry" data-id="' + esc(item.id) + '" title="重试" aria-label="重试">' + svgIcon('redo') + '</button>' +
+            '<button type="button" class="ni-act danger" data-act="del" data-id="' + esc(item.id) + '" title="删除" aria-label="删除">' + svgIcon('del') + '</button>' +
+          '</div>' +
           '</div></div>';
       }
-      return '<div class="ni-item ai"><div class="ni-image-card">' +
-        (item.url ? '<div class="ni-image-wrap"><img src="' + esc(item.url) + '" alt="" loading="lazy"></div>' : '') +
+      return '<div class="ni-item ai" data-msg-id="' + esc(item.id) + '" data-msg-role="ai"><div class="ni-image-card">' +
+        (item.url ? '<div class="ni-image-wrap"><img src="' + esc(item.url) + '" alt="" loading="lazy" title="查看大图"></div>' : '') +
         '<div class="ni-image-meta">' + esc(item.fullPrompt || item.prompt || '') + '</div>' +
         '<div class="ni-image-actions">' +
-          '<button data-act="save" data-id="' + esc(item.id) + '" class="' + (item.saved ? '' : 'accent') + '">' + (item.saved ? '已存图库' : '保存到图库') + '</button>' +
-          '<button data-act="ref" data-id="' + esc(item.id) + '">用作参考图</button>' +
-          '<button data-act="again" data-id="' + esc(item.id) + '">再生成</button>' +
-          '<button data-act="del" data-id="' + esc(item.id) + '" class="danger">删除</button>' +
+          '<button type="button" class="ni-act" data-act="again" data-id="' + esc(item.id) + '" title="重roll" aria-label="重roll">' + svgIcon('redo') + '</button>' +
+          '<button type="button" class="ni-act" data-act="download" data-id="' + esc(item.id) + '" title="下载" aria-label="下载">' + svgIcon('download') + '</button>' +
+          '<button type="button" class="ni-act" data-act="quote" data-id="' + esc(item.id) + '" title="引用" aria-label="引用">' + svgIcon('quote') + '</button>' +
+          '<button type="button" class="ni-act" data-act="ref" data-id="' + esc(item.id) + '" title="作为参考图" aria-label="作为参考图">' + svgIcon('ref') + '</button>' +
+          '<button type="button" class="ni-act danger" data-act="del" data-id="' + esc(item.id) + '" title="删除" aria-label="删除">' + svgIcon('del') + '</button>' +
         '</div></div></div>';
     }).join('');
   }
@@ -548,23 +821,60 @@
   }
 
   /* ---------- 生成 / 发送 ---------- */
-  function setGenerating(on) {
-    generating = !!on;
+  function latestPendingUserItem() {
+    var list = currentSession().items || [];
+    for (var i = list.length - 1; i >= 0; i--) {
+      var x = list[i];
+      if (x && x.role === 'user' && x.awaitingReply && !x.replying) return x;
+    }
+    return null;
+  }
+
+  function syncSendButton() {
     var btn = $('niGenerate');
-    if (btn) {
-      btn.disabled = generating;
-      btn.textContent = generating ? '发送中…' : '发送';
+    if (!btn) return;
+    if (generating) {
+      btn.disabled = true;
+      btn.textContent = '处理中…';
+      btn.dataset.mode = '';
+      return;
+    }
+    var input = $('niPrompt');
+    var hasContent = !!(input && String(input.value || '').trim()) || !!pendingImage;
+    var pending = latestPendingUserItem();
+    if (hasContent) {
+      btn.disabled = false;
+      btn.textContent = '发送';
+      btn.dataset.mode = 'send';
+    } else if (pending) {
+      btn.disabled = false;
+      btn.textContent = '回复';
+      btn.dataset.mode = 'reply';
+      btn.dataset.id = pending.id;
+    } else {
+      btn.disabled = true;
+      btn.textContent = '发送';
+      btn.dataset.mode = '';
+      delete btn.dataset.id;
     }
   }
 
-  function detectSize(text) {
+  function setGenerating(on) {
+    generating = !!on;
+    syncSendButton();
+  }
+
+  function detectSize(text, fallback) {
     var t = String(text || '');
-    if (/(?:1\s*[:：]\s*1|正方形|方图|头像)/i.test(t)) return '1024x1024';
-    if (/(?:16\s*[:：]\s*9|横屏|横图|横版|宽屏|电脑壁纸|桌面壁纸)/i.test(t)) return '1344x768';
-    if (/(?:3\s*[:：]\s*2|4\s*[:：]\s*3)/.test(t)) return '1536x1024';
-    if (/(?:2\s*[:：]\s*3|3\s*[:：]\s*4)/.test(t)) return '1024x1536';
-    if (/(?:9\s*[:：]\s*16|竖屏|竖图|手机壁纸|长图|竖版)/.test(t)) return '768x1344';
-    return '768x1344';
+    // 指令里写的比例优先于底部下拉按钮；没写才用下拉里的设置。
+    if (/(?:4\s*[:：比]\s*4|1\s*[:：比]\s*1|正方形|方图|头像)/i.test(t)) return '1024x1024';
+    if (/(?:9\s*[:：比]\s*16|竖屏|竖图|手机壁纸|长图|竖版)/i.test(t)) return '768x1344';
+    if (/(?:16\s*[:：比]\s*9|横屏|横图|横版|宽屏|电脑壁纸|桌面壁纸)/i.test(t)) return '1344x768';
+    if (/(?:3\s*[:：比]\s*4)/.test(t)) return '768x1024';
+    if (/(?:4\s*[:：比]\s*3)/.test(t)) return '1024x768';
+    if (/(?:2\s*[:：比]\s*3)/.test(t)) return '1024x1536';
+    if (/(?:3\s*[:：比]\s*2)/.test(t)) return '1536x1024';
+    return String(fallback || state.size || '768x1344');
   }
 
   async function generateImage(text, image, opts) {
@@ -576,23 +886,34 @@
     if (/^(绘图|生图)\s*\d*$/.test(oldName) || oldName === '新窗口' || oldName === '生图窗口') {
       session.name = text.replace(/\s+/g, ' ').slice(0, 16) || oldName;
     }
+    var quote = opts.quote || null;
     if (!opts.noUser) {
-      session.items.push({ id: uid('it'), role: 'user', text: text, image: image || '', at: Date.now() });
+      var userItem = { id: uid('it'), role: 'user', text: text, image: image || '', at: Date.now() };
+      if (quote) userItem.quote = { who: String(quote.who || ''), text: String(quote.text || '') };
+      session.items.push(userItem);
     }
     var ai = { id: uid('it'), role: 'ai', kind: 'image', status: 'loading', prompt: text, at: Date.now() };
-    session.items.push(ai);
+    if (opts.afterId) {
+      var at = -1;
+      session.items.some(function (x, i) { if (x && x.id === opts.afterId) { at = i; return true; } return false; });
+      if (at >= 0) session.items.splice(at + 1, 0, ai);
+      else session.items.push(ai);
+    } else {
+      session.items.push(ai);
+    }
     session.updatedAt = Date.now();
     save();
     render();
     scrollBottom();
     setGenerating(true);
     try {
-      var full = await buildPrompt(text);
+      var promptText = (quote ? ('引用内容：' + quote.text + '\n') : '') + text;
+      var full = await buildPrompt(promptText);
       if (image) {
         full = '参考上传图片的画风、配色、构图与光线，但不要照搬具体内容。\n' + full;
       }
       ai.fullPrompt = full;
-      var size = detectSize(text);
+      var size = detectSize(text, state.size);
       var url = await NanoImage.generate(full, { size: size, faceRef: image || '' });
       if (!url) throw new Error('接口没有返回图片');
       ai.url = url;
@@ -601,7 +922,7 @@
       ai.saved = false;
       try {
         if (window.NanoGallery && /^(data:image\/|https?:\/\/)/i.test(String(url))) {
-          NanoGallery.add({ url: url, source: 'Nano 生图室', prompt: full, createdAt: Date.now() });
+          NanoGallery.add({ url: url, source: 'Nano 生图室', prompt: full, generated: true, createdAt: Date.now() });
           ai.saved = true;
         }
       } catch (e) {}
@@ -636,6 +957,8 @@
     var text = input ? String(input.value || '').trim() : '';
     var image = pendingImage;
     if (!text && !image) {
+      var pending = latestPendingUserItem();
+      if (pending) { await replyToUserItem(pending.id); return; }
       toast('想聊点什么，或者直接说要画什么？');
       try { input.focus(); } catch (e) {}
       return;
@@ -643,14 +966,17 @@
     if (!text) {
       text = '帮我看看这张图片的画风、构图、光影和配色，并给出可以复用的生图提示词。';
     }
+    var quote = pendingQuote;
     if (input) input.value = '';
     try { input.style.height = 'auto'; } catch (e) {}
     setPendingImage('');
+    setPendingQuote(null);
     closeSheet('niMoreSheet');
-    closeSheet('niMsgSheet');
+    closeMsgMenu();
     try { if (input) input.blur(); } catch (e) {}
-    if (isImageRequest(text)) await generateImage(text, image);
-    else await sendChat(text, image);
+    // 第一次点击只把消息放进气泡；输入框清空后按钮变成「回复」，再点才调用 API。
+    await sendChat(text, image, quote);
+    syncSendButton();
   }
 
   /* ---------- 窗口 ---------- */
@@ -681,6 +1007,7 @@
   function deleteSession(id) {
     var s = state.sessions.find(function (x) { return x.id === id; });
     if (!s) return;
+    var ids = (s.items || []).map(function (x) { return x && x.id; });
     state.sessions = state.sessions.filter(function (x) { return x.id !== id; });
     if (!state.sessions.length) {
       state.sessions.push({ id: uid('ni'), name: '生图 1', items: [], createdAt: Date.now(), updatedAt: Date.now() });
@@ -689,6 +1016,7 @@
       state.currentId = state.sessions[0].id;
     }
     save();
+    tombstoneItems(ids);
     render();
     toast('已删除窗口');
   }
@@ -1007,9 +1335,16 @@
         if (list[j] && list[j].role === 'user') { user = list[j]; break; }
       }
       if (!user) { toast('没有找到对应的提问'); return; }
+      var userText = user.text || '';
+      var userImage = user.image || '';
+      var userQuote = user.quote || null;
       currentSession().items = list.filter(function (x) { return x && x.id !== last.id && x.id !== user.id; });
       save();
-      sendChat(user.text || '', user.image || '');
+      sendChat(userText, userImage, userQuote);
+      var after = currentSession().items || [];
+      for (var k = after.length - 1; k >= 0; k--) {
+        if (after[k] && after[k].role === 'user') { replyToUserItem(after[k].id); break; }
+      }
       return;
     }
     var ref = last.image || previousUserImage(last.id) || pendingImage;
@@ -1022,33 +1357,76 @@
     var s = currentSession();
     if (!(s.items || []).length) { toast('当前窗口已经是空的'); return; }
     if (!confirm('清空当前窗口的聊天与生成记录？')) return;
+    var ids = (s.items || []).map(function (x) { return x && x.id; });
     s.items = [];
-    s.updatedAt = Date.now();
+    s.updatedAt = Math.max(Date.now(), (Number(s.updatedAt) || 0) + 1);
     save();
+    tombstoneItems(ids);
     render();
     toast('已清空当前窗口');
   }
 
   var menuMsgId = '';
 
-  function openMessageMenu(id) {
+  function setMsgAct(id, show) {
+    var el = $(id);
+    if (el) el.style.display = show ? '' : 'none';
+  }
+
+  function closeMsgMenu() {
+    var menu = $('niMsgSheet');
+    if (menu) menu.classList.remove('on');
+    menuMsgId = '';
+  }
+
+  function placeMsgMenu(anchor) {
+    var menu = $('niMsgSheet');
+    if (!menu) return;
+    var vw = window.innerWidth || 1;
+    var vh = window.innerHeight || 1;
+    var pad = 8;
+    var mw = menu.offsetWidth || 170;
+    var mh = menu.offsetHeight || 300;
+    var rect = null;
+    try {
+      var bubble = anchor && (anchor.querySelector('.ni-user-bubble, .ni-chat-bubble, .ni-image-card') || anchor);
+      if (bubble && bubble.getBoundingClientRect) rect = bubble.getBoundingClientRect();
+    } catch (e) {}
+    if (!rect) rect = { left: vw / 2, right: vw / 2, width: 0, top: vh / 2, bottom: vh / 2 };
+    var left = Math.round(rect.left + (rect.width || 0) / 2 - mw / 2);
+    left = Math.max(pad, Math.min(vw - mw - pad, left));
+    var top = rect.bottom + 8;
+    if (top + mh > vh - pad) top = rect.top - mh - 8;
+    top = Math.max(pad, Math.min(vh - mh - pad, top));
+    menu.style.left = left + 'px';
+    menu.style.top = top + 'px';
+  }
+
+  function openMessageMenu(id, anchor) {
     var item = findItem(id);
     if (!item || item.status === 'loading') return;
     menuMsgId = id;
-    var title = $('niMsgTitle');
-    var preview = $('niMsgPreview');
-    if (title) title.textContent = item.role === 'user' ? '我的消息' : 'Nano 回复';
-    if (preview) preview.textContent = String(item.text || (item.image ? '图片' : '') || item.fullPrompt || item.prompt || '').trim().slice(0, 180);
-    var reroll = $('niMsgReroll');
-    if (reroll) reroll.style.display = item.role === 'ai' ? '' : 'none';
-    openSheet('niMsgSheet');
+    var hasText = !!String(item.text || item.fullPrompt || item.prompt || '').trim();
+    var hasImage = !!(item.url || item.image);
+    var isAiImage = item.role === 'ai' && item.kind !== 'chat' && item.status === 'done' && !!item.url;
+    setMsgAct('niMsgCopy', hasText);
+    setMsgAct('niMsgQuote', hasText || hasImage);
+    setMsgAct('niMsgEdit', item.role === 'user');
+    setMsgAct('niMsgFavorite', isAiImage);
+    setMsgAct('niMsgReroll', item.role === 'ai' && item.status === 'done');
+    setMsgAct('niMsgDownload', hasImage);
+    setMsgAct('niMsgRef', hasImage);
+    var menu = $('niMsgSheet');
+    if (!menu) return;
+    menu.classList.add('on');
+    requestAnimationFrame(function () { placeMsgMenu(anchor); });
   }
 
   function copyMessage(id) {
     var item = findItem(id);
     if (!item) return;
     var text = String(item.text || item.fullPrompt || item.prompt || '').trim();
-    if (!text) return;
+    if (!text) { toast('这条消息没有可复制的文字'); return; }
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).then(function () { toast('已复制'); }).catch(function () { toast('复制失败'); });
     } else {
@@ -1063,7 +1441,83 @@
     currentSession().items = currentSession().items.filter(function (x) { return x && x.id !== id; });
     currentSession().updatedAt = Date.now();
     save();
+    // 先写轻量镜像腾出 localStorage 空间，再写删除标记，避免存储满时标记写不进去。
+    tombstoneItems([id]);
     render();
+  }
+
+  function editMessage(id) {
+    var item = findItem(id);
+    if (!item || item.role !== 'user') { toast('只能编辑自己发的消息'); return; }
+    var next = '';
+    try { next = prompt('编辑消息', String(item.text || '')); } catch (e) { return; }
+    if (next == null) return;
+    item.text = String(next);
+    currentSession().updatedAt = Date.now();
+    save();
+    render();
+    toast('已保存');
+  }
+
+  function saveImageToGallery(id) {
+    var item = findItem(id);
+    if (!item || !item.url) { toast('这条消息没有图片'); return; }
+    if (item.saved) { toast('已经在图库里了'); return; }
+    try {
+      if (!window.NanoGallery) throw new Error('no gallery');
+      NanoGallery.add({ url: item.url, source: 'Nano 生图室', prompt: item.fullPrompt || item.prompt || '', generated: true, createdAt: Date.now() });
+      item.saved = true;
+      save();
+      renderFeed();
+      toast('已保存到图库');
+    } catch (e) { toast('保存失败'); }
+  }
+
+  function downloadMessage(id) {
+    var item = findItem(id);
+    var src = item && (item.url || item.image);
+    if (!src) { toast('这条消息没有图片'); return; }
+    var url = String(src);
+    var name = 'nano-' + Date.now() + '.png';
+    function direct(u, revoke) {
+      var a = document.createElement('a');
+      a.href = u;
+      a.download = name;
+      a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      if (revoke) setTimeout(function () { try { URL.revokeObjectURL(u); } catch (e) {} }, 4000);
+    }
+    if (/^data:image\//i.test(url) || /^blob:/i.test(url)) { direct(url, /^blob:/i.test(url)); return; }
+    fetch(url).then(function (r) {
+      if (!r || !r.ok) throw new Error('http');
+      return r.blob();
+    }).then(function (blob) {
+      direct(URL.createObjectURL(blob), true);
+    }).catch(function () { direct(url, false); });
+  }
+
+  var ivMsgId = '';
+
+  function openImageViewer(id) {
+    var item = findItem(id);
+    var src = item && (item.url || item.image);
+    if (!src) return;
+    ivMsgId = id;
+    var viewer = $('niImageViewer');
+    var img = $('niIvImg');
+    if (!viewer || !img) return;
+    img.src = src;
+    var reroll = $('niIvReroll');
+    if (reroll) reroll.style.display = (item.role === 'ai' && item.kind !== 'chat') ? 'flex' : 'none';
+    viewer.classList.add('on');
+  }
+
+  function closeImageViewer() {
+    var viewer = $('niImageViewer');
+    if (viewer) viewer.classList.remove('on');
+    ivMsgId = '';
   }
 
   function rerollMessage(id) {
@@ -1077,10 +1531,24 @@
     for (var i = idx - 1; i >= 0; i--) {
       if (list[i] && list[i].role === 'user') { user = list[i]; break; }
     }
+    if (item.kind === 'image' || (item.kind !== 'chat' && (item.url || item.fullPrompt || item.size))) {
+      var ref = item.image || previousUserImage(item.id) || pendingImage;
+      currentSession().items = list.filter(function (x) { return x && x.id !== item.id; });
+      save();
+      generateImage(item.prompt || '', ref, { noUser: true });
+      return;
+    }
     if (!user) { toast('没有找到对应的提问'); return; }
+    var quote = user.quote || null;
+    var userText = user.text || '';
+    var userImage = user.image || '';
     currentSession().items = list.filter(function (x) { return x && x.id !== item.id && x.id !== user.id; });
     save();
-    sendChat(user.text || '', user.image || '');
+    sendChat(userText, userImage, quote);
+    var after = currentSession().items || [];
+    for (var j = after.length - 1; j >= 0; j--) {
+      if (after[j] && after[j].role === 'user') { replyToUserItem(after[j].id); break; }
+    }
   }
 
   /* ---------- 事件 ---------- */
@@ -1128,6 +1596,7 @@
       input.addEventListener('input', function () {
         input.style.height = 'auto';
         input.style.height = Math.min(input.scrollHeight || 44, 130) + 'px';
+        syncSendButton();
       });
       input.addEventListener('paste', function (e) {
         var items = e.clipboardData && e.clipboardData.items;
@@ -1146,6 +1615,13 @@
 
     var plusBtn = $('niPlusBtn');
     if (plusBtn) plusBtn.addEventListener('click', function () { openSheet('niMoreSheet'); });
+    var sizeSelect = $('niSize');
+    if (sizeSelect) sizeSelect.addEventListener('change', function () {
+      state.size = String(this.value || '768x1344');
+      save();
+      var label = this.options[this.selectedIndex] ? this.options[this.selectedIndex].textContent : this.value;
+      toast('图片比例：' + (label || this.value));
+    });
     var moreSheet = $('niMoreSheet');
     if (moreSheet) {
       moreSheet.addEventListener('click', function (e) {
@@ -1175,19 +1651,45 @@
     var msgSheet = $('niMsgSheet');
     if (msgSheet) {
       msgSheet.addEventListener('click', function (e) {
-        if (e.target === msgSheet) { closeSheet('niMsgSheet'); return; }
+        e.stopPropagation();
         var btn = e.target && e.target.closest ? e.target.closest('[data-msg-act]') : null;
         if (!btn) return;
         var act = btn.getAttribute('data-msg-act');
         var id = menuMsgId;
-        closeSheet('niMsgSheet');
+        closeMsgMenu();
         if (act === 'copy') copyMessage(id);
+        else if (act === 'quote') quoteMessage(id);
+        else if (act === 'edit') setTimeout(function () { editMessage(id); }, 60);
+        else if (act === 'favorite') saveImageToGallery(id);
+        else if (act === 'download') downloadMessage(id);
         else if (act === 'reroll') rerollMessage(id);
+        else if (act === 'ref') {
+          var it = findItem(id);
+          var src = it && (it.url || it.image);
+          if (src) { setPendingImage(src); toast('已添加为参考图'); }
+        }
         else if (act === 'delete') setTimeout(function () { deleteMessage(id); }, 60);
       });
     }
-    var msgCancel = $('niMsgCancel');
-    if (msgCancel) msgCancel.addEventListener('click', function () { closeSheet('niMsgSheet'); });
+    document.addEventListener('click', function (e) {
+      if (!e.target || !e.target.closest || !e.target.closest('#niMsgSheet')) closeMsgMenu();
+    });
+    var ivViewer = $('niImageViewer');
+    if (ivViewer) ivViewer.addEventListener('click', function (e) {
+      if (e.target === ivViewer) closeImageViewer();
+    });
+    var ivClose = $('niIvClose');
+    if (ivClose) ivClose.addEventListener('click', closeImageViewer);
+    var ivDownload = $('niIvDownload');
+    if (ivDownload) ivDownload.addEventListener('click', function () { if (ivMsgId) downloadMessage(ivMsgId); });
+    var ivReroll = $('niIvReroll');
+    if (ivReroll) ivReroll.addEventListener('click', function () {
+      var id = ivMsgId;
+      closeImageViewer();
+      if (id) rerollMessage(id);
+    });
+    var quoteClose = $('niQuoteClose');
+    if (quoteClose) quoteClose.addEventListener('click', function () { setPendingQuote(null); });
 
     var imageFile = $('niImageFile');
     if (imageFile) {
@@ -1227,6 +1729,11 @@
 
     var feed = $('niFeed');
     if (feed) feed.addEventListener('click', function (e) {
+      if (e.target && e.target.tagName === 'IMG') {
+        var imgRow = e.target.closest ? e.target.closest('[data-msg-id]') : null;
+        var imgItem = imgRow ? findItem(imgRow.getAttribute('data-msg-id')) : null;
+        if (imgItem && (imgItem.url || imgItem.image)) { openImageViewer(imgItem.id); return; }
+      }
       var btn = e.target && e.target.closest ? e.target.closest('[data-act]') : null;
       if (!btn) return;
       var act = btn.getAttribute('data-act');
@@ -1234,17 +1741,15 @@
       var item = findItem(id);
       if (!item) return;
       if (act === 'save') {
-        if (item.saved) { toast('已经在图库里了'); return; }
-        try {
-          NanoGallery.add({ url: item.url, source: 'Nano 生图室', prompt: item.fullPrompt || item.prompt || '', createdAt: Date.now() });
-          item.saved = true;
-          save();
-          renderFeed();
-          toast('已保存到图库');
-        } catch (err) { toast('保存失败'); }
+        saveImageToGallery(id);
+      } else if (act === 'download') {
+        downloadMessage(id);
+      } else if (act === 'quote') {
+        quoteMessage(id);
       } else if (act === 'ref') {
-        if (!item.url) return;
-        setPendingImage(item.url);
+        var refSrc = item.url || item.image;
+        if (!refSrc) return;
+        setPendingImage(refSrc);
         toast('已添加为参考图');
       } else if (act === 'copy-chat') {
         var text = String(item.text || '');
@@ -1268,27 +1773,37 @@
           if (list[i] && list[i].role === 'user') { user = list[i]; break; }
         }
         if (!user) { toast('找不到对应的提问'); return; }
+        var retryText = user.text || '';
+        var retryImage = user.image || '';
+        var retryQuote = user.quote || null;
         currentSession().items = list.filter(function (x) { return x && x.id !== id && x.id !== user.id; });
         save();
-        sendChat(user.text || '', user.image || '');
+        sendChat(retryText, retryImage, retryQuote);
+        var retryList = currentSession().items || [];
+        for (var j = retryList.length - 1; j >= 0; j--) {
+          if (retryList[j] && retryList[j].role === 'user') { replyToUserItem(retryList[j].id); break; }
+        }
       } else if (act === 'del') {
         currentSession().items = currentSession().items.filter(function (x) { return x.id !== id; });
         currentSession().updatedAt = Date.now();
         save();
+        tombstoneItems([id]);
         render();
       }
     });
 
     if (feed) {
       feed.addEventListener('dblclick', function (e) {
+        if (e.target && e.target.closest && e.target.closest('button,select,a,input,textarea,[data-act],img')) return;
         var el = e.target && e.target.closest ? e.target.closest('[data-msg-id]') : null;
         if (!el) return;
         e.preventDefault();
-        openMessageMenu(el.getAttribute('data-msg-id'));
+        openMessageMenu(el.getAttribute('data-msg-id'), el);
       });
       var lastTapId = '';
       var lastTapAt = 0;
       feed.addEventListener('touchstart', function (e) {
+        if (e.target && e.target.closest && e.target.closest('button,select,a,input,textarea,[data-act],img')) { lastTapId = ''; lastTapAt = 0; return; }
         var el = e.target && e.target.closest ? e.target.closest('[data-msg-id]') : null;
         if (!el) { lastTapId = ''; lastTapAt = 0; return; }
         var id = el.getAttribute('data-msg-id');
@@ -1296,7 +1811,7 @@
         if (id === lastTapId && now - lastTapAt < 340) {
           lastTapId = '';
           lastTapAt = 0;
-          openMessageMenu(id);
+          openMessageMenu(id, el);
         } else {
           lastTapId = id;
           lastTapAt = now;
@@ -1349,42 +1864,52 @@
 
     document.addEventListener('visibilitychange', function () {
       if (!document.hidden) {
-        try {
-          state = load();
-          renderBasePrompt();
-          render();
-        } catch (e) {}
+        reloadState().then(function () {
+          try { renderBasePrompt(); render(); } catch (e) {}
+        });
         try { loadApiPresets(); } catch (e) {}
       }
     });
     window.addEventListener('pageshow', function () {
-      try {
-        state = load();
-        renderBasePrompt();
-        render();
-        loadApiPresets();
-        if (window.parent && window.parent !== window) window.parent.postMessage({ type: 'setTitle', title: 'Nano 生图室' }, '*');
-      } catch (e) {}
+      reloadState().then(function () {
+        try {
+          renderBasePrompt();
+          render();
+          loadApiPresets();
+          if (window.parent && window.parent !== window) window.parent.postMessage({ type: 'setTitle', title: 'Nano 生图室' }, '*');
+        } catch (e) {}
+      });
+    });
+    window.addEventListener('storage', function (e) {
+      if (!e || e.key !== KEY) return;
+      reloadState().then(function () {
+        try { renderBasePrompt(); render(); } catch (err) {}
+      });
     });
     window.addEventListener('message', function (e) {
       if (!e || !e.data || e.data.type !== 'nanoOverlayReopen') return;
       closeSheet('niSessionSheet');
       closeSheet('niSettingsSheet');
       closeSheet('niMoreSheet');
-      try { render(); loadApiPresets(); } catch (err) {}
+      reloadState().then(function () {
+        try { renderBasePrompt(); render(); loadApiPresets(); } catch (err) {}
+      });
     });
   }
 
   function init() {
-    bind();
-    renderBasePrompt();
-    var size = $('niSize'); if (size) size.value = state.size || '1024x1024';
-    renderMode();
-    render();
-    loadApiPresets().then(function () {
-      try { renderBasePresetOptions(); renderChips(); } catch (e) {}
+    // 先等 IndexedDB 里的完整记录（含图片）加载完，再绑定和渲染，避免用精简镜像覆盖它。
+    hydrate().then(function () {
+      bind();
+      renderBasePrompt();
+      var size = $('niSize'); if (size) size.value = state.size || '768x1344';
+      renderMode();
+      render();
+      loadApiPresets().then(function () {
+        try { renderBasePresetOptions(); renderChips(); } catch (e) {}
+      });
+      try { window.parent.postMessage({ type: 'setTitle', title: 'Nano 生图室' }, '*'); } catch (e) {}
     });
-    try { window.parent.postMessage({ type: 'setTitle', title: 'Nano 生图室' }, '*'); } catch (e) {}
   }
 
   init();

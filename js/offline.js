@@ -3859,7 +3859,7 @@ async function generateSceneImage() {
   setGenStatus(true);
   try {
     const url = await window.NanoImage.generate(prompt, { faceRef: faceRef });
-    try { if (window.NanoGallery) window.NanoGallery.add({ url: url, source: '线下', charName: charName, prompt: prompt }); } catch (e) {}
+    try { if (window.NanoGallery) window.NanoGallery.add({ url: url, source: '线下', charName: charName, prompt: prompt, generated: true }); } catch (e) {}
     showOfflineImageViewer(url, charName);
   } catch (e) {
     showErrorModal('生图失败：' + (e && e.message ? e.message : e));

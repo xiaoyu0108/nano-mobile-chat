@@ -2916,7 +2916,12 @@
                 if (d) {
                     apply(d);
                     changed = true;
-                    try { if (window.NanoGallery) NanoGallery.add({ url: d, source: '聊天', charName: (characterData && characterData.name) || chatName || '', prompt: (m.imageData && m.imageData.prompt) || '' }); } catch (e) {}
+                    // 只把「生图 API 生成的图」补进图库。自己发的图、表情包、链接卡片封面都不进。
+                    const mi = m.imageData || {};
+                    const isGen = !!(mi.genPrompt && !mi.isEmoji && !mi.emojiName && m.type !== 'right');
+                    if (isGen && window.NanoGallery) {
+                        try { NanoGallery.add({ url: d, source: '聊天', charName: (characterData && characterData.name) || chatName || '', prompt: mi.genPrompt, generated: true }); } catch (e) {}
+                    }
                 }
             } catch (e) {}
         }
@@ -3647,7 +3652,9 @@
                             imageData.url = local;
                             const mm = messages.find(function (x) { return x && x.id === id; });
                             if (mm && mm.imageData) mm.imageData.url = local;
-                            try { if (window.NanoGallery) NanoGallery.add({ url: local, source: '聊天', charName: (characterData && characterData.name) || chatName || '', prompt: imageData.genPrompt || '' }); } catch (e) {}
+                            if (imageData.genPrompt && !imageData.isEmoji && !imageData.emojiName && type !== 'right' && window.NanoGallery) {
+                                try { NanoGallery.add({ url: local, source: '聊天', charName: (characterData && characterData.name) || chatName || '', prompt: imageData.genPrompt, generated: true }); } catch (e) {}
+                            }
                             saveMessages();
                         } catch (e) {}
                     };
@@ -3733,9 +3740,11 @@
                     const im = document.createElement('img');
                     im.loading = 'lazy';
                     im.referrerPolicy = 'no-referrer';
-                    im.src = previewImage;
+                    im.src = linkCoverUrl(previewImage);
                     im.alt = '';
                     im.onerror = function () {
+                        // 代理也失败时退回原始地址再试一次，最后才用红底白字占位。
+                        if (!im.dataset.rawTried) { im.dataset.rawTried = '1'; im.src = previewImage; return; }
                         try { thumb.replaceWith(makeFallbackThumb()); } catch (e) {}
                     };
                     thumb.appendChild(im);
@@ -7424,6 +7433,7 @@
     // 旧版本存下来的链接卡片只有虚拟站点图；打开聊天时给最近几张没封面的卡片
     // 重新抓一次帖图/商品图，抓到后原地升级。只处理最近 5 张，避免一次请求太多。
     let linkImgRefreshBusy = false;
+    const linkImgTried = new Set();
     async function refreshStaleLinkPreviewImages(limit) {
         if (linkImgRefreshBusy) return;
         const targets = [];
@@ -7431,8 +7441,9 @@
             const m = messages[i];
             const lp = m && m.linkPreview;
             if (m && !m.recalled && m.type === 'right' && lp && lp.url && !lp.image &&
-                !lp.imageMsgId && !lp._imgRefreshTried) {
-                lp._imgRefreshTried = true;
+                !lp.imageMsgId && !linkImgTried.has(String(m.id))) {
+                // 只在本次会话里记“试过”，不要把标记写进消息，否则一次失败就永远不重试。
+                linkImgTried.add(String(m.id));
                 targets.push(m);
             }
         }
@@ -7489,6 +7500,8 @@
             }
             // 抓取结果缺标题时，保留分享文案里的标题；也保留用户补发的截图封面
             if (!preview.title && msg.linkPreview && msg.linkPreview.title) preview.title = msg.linkPreview.title;
+            // 新一次抓取没拿到封面时，不要覆盖掉旧封面（尤其是之前抓到的真实帖图）。
+            if (!preview.image && msg.linkPreview && msg.linkPreview.image) preview.image = msg.linkPreview.image;
             if (msg.linkPreview && msg.linkPreview.imageMsgId && !preview.image) preview.imageMsgId = msg.linkPreview.imageMsgId;
             msg.linkPreview = preview;
             saveMessages();
@@ -7816,7 +7829,7 @@
                     if (local) u = local;
                 }
             } catch (e) {}
-            try { if (window.NanoGallery && u) window.NanoGallery.add({ url: u, source: '聊天', charName: (characterData && characterData.name) || chatName || '', prompt: prompt }); } catch (e) {}
+            try { if (window.NanoGallery && u) window.NanoGallery.add({ url: u, source: '聊天', charName: (characterData && characterData.name) || chatName || '', prompt: prompt, generated: true }); } catch (e) {}
             return u;
         };
         let faceRef = getChatSetting('faceRef', '') || '';
@@ -8354,6 +8367,20 @@
     }
     // 防盗链 CDN 的图片先经 Worker 代理下载成 dataURL；代理不可用时宁可不发图，
     // 也不要让中转站自己下载失败后把整轮 chat/completions 打成 500。
+    // 小红书/抖音/淘宝的封面 CDN 有防盗链，WebView 直连经常 403，卡片就退化成红底白字。
+    // 统一先走 Worker /image 代理（服务端带 Referer 取图），代理不可用才用原地址。
+    function linkCoverUrl(u) {
+        u = String(u || '').trim();
+        if (!/^https?:\/\//i.test(u)) return u;
+        var cdn = /(xhscdn|xiaohongshu|douyinpic|byteimg|hdslb|sinaimg|alicdn)/i.test(u);
+        if (!cdn) return u;
+        try {
+            var base = autoPushBase();
+            var tok = autoPushToken() || '';
+            if (base) return base + '/image?url=' + encodeURIComponent(u) + (tok ? ('&token=' + encodeURIComponent(tok)) : '');
+        } catch (e) {}
+        return u;
+    }
     async function linkImageForModel(url) {
         url = String(url || '').trim();
         if (!url) return '';
@@ -10887,6 +10914,20 @@
         }
         return true;
     }
+    // 窥屏模型经常用换行写多句话；私聊里按行拆成多个气泡，读起来更像连续聊天，
+    // 而不是一个超长气泡。只有真的多行才拆，单行保持原样。
+    function splitPeekBubbles(text) {
+        var s = String(text || '').replace(/\r/g, '').trim();
+        if (!s) return [];
+        var lines = s.split(/\n+/).map(function (x) { return x.trim(); }).filter(Boolean);
+        if (lines.length > 1) return lines.slice(0, 8);
+        // 单段但有多句：按中英文句末标点再拆，最多 4 个气泡。
+        if (s.length >= 36) {
+            var parts = (s.match(/[^。！？!?…]+[。！？!?…]*/g) || []).map(function (x) { return x.trim(); }).filter(Boolean);
+            if (parts.length > 1 && parts.length <= 6) return parts.slice(0, 4);
+        }
+        return [s];
+    }
     function consumePendingPeekTurns() {
         var key = peekStashKey(chatId);
         var arr = [];
@@ -10909,7 +10950,11 @@
                 try { addMessage('right', u, nowHHMM(), null, false, false, null, null, null, null); } catch (e) {}
             }
             var c = String(t.char || '').trim();
-            if (c) { try { addCharSaid(c); } catch (e) {} }
+            if (c) {
+                splitPeekBubbles(c).forEach(function (part) {
+                    try { addCharSaid(part); } catch (e) {}
+                });
+            }
         });
         try { scrollToBottom(); } catch (e) {}
         try { pushPeekContext(true); } catch (e) {}
