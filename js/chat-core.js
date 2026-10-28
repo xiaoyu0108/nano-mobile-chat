@@ -389,28 +389,11 @@
         };
     }
 
-    // 中转站的模型下拉框偶尔会把分组名一起存进模型 ID（如「[Bu满血]gemini-3.8-flash-c」）。
-    // 上游真正认识的只有方括号后面的模型名；不清理就会报 model_not_found。
-    function normalizeModelName(raw) {
-        let s = String(raw == null ? '' : raw).trim();
-        try {
-            s = s.replace(/^[\[【][^\]】]{1,40}[\]】]\s*/, '').trim();
-            s = s.replace(/^[`'"]+|[`'"]+$/g, '').trim();
-        } catch (e) {}
-        return s;
-    }
-    function normalizeApiConfigModels(cfg) {
-        if (!cfg || typeof cfg !== 'object') return cfg;
-        ['mainModel', 'imgModel', 'subModel', 'ttsModel'].forEach(function (k) {
-            if (cfg[k]) cfg[k] = normalizeModelName(cfg[k]);
-        });
-        return cfg;
-    }
-
+    // 注意：这里只读取 API 配置，不内置、不改写任何模型名。
+    // Worker / 生图 / 聊天都必须原样使用当前 API 页里填写的地址、Key 和模型。
     function getApiConfig() {
         return new Promise(function(resolve) {
             var done = function(cfg) {
-                cfg = normalizeApiConfigModels(cfg);
                 if (cfg && cfg.mainUrl && cfg.mainKey && cfg.mainModel) {
                     resolve(cfg);
                 } else if (cfg) {
@@ -617,9 +600,11 @@
         } catch (e) { return rawUrl; }
     }
 
-    // 统一补全 /v1：自动去掉结尾斜杠，避免出现 /v1/v1 导致连不上
+    // 统一补全 /v1：自动去掉结尾斜杠，避免出现 /v1/v1 导致连不上。
+    // 也兼容用户把完整 /images/generations、/images/edits 地址填进生图 API 的情况。
     function toV1Base(u) {
         let s = String(u || '').trim().replace(/\/+$/, '');
+        s = s.replace(/\/images\/(generations|edits)$/i, '/v1');
         if (!/\/v1$/i.test(s)) s = s + '/v1';
         return s;
     }
@@ -7838,10 +7823,17 @@
         }
         const hasFace = !!(faceRef && faceRef.trim() !== '');
         if (hasFace) {
-            // 兼容部分支持图生图的网关字段
+            // 普通单人图也要明确告诉模型“保持参考图长相”，否则很多网关只把参考图当装饰。
+            if (!/(锁脸|参考图是|保持.{0,8}脸)/.test(prompt)) {
+                prompt += '\n【锁脸】必须严格按照参考图保持人物五官、脸型、发型和肤色一致，不要换脸或生成另一个人。';
+            }
+            body.prompt = prompt;
+            // 兼容不同中转站的图生图字段
             body.image = faceRef;
             body.reference_image = [faceRef];
             body.input_reference_image = [faceRef];
+            body.reference_images = [faceRef];
+            body.ref_image = faceRef;
         }
             let baseUrl = toV1Base(resolveApiHost(imgUrl));
 

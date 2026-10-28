@@ -255,6 +255,13 @@
         await saveModelList('imgModelSelect');
         await saveModelList('subModelSelect');
         await saveModelList('ttsModelSelect');
+        // 主 API 改了（地址 / Key / 模型）就立刻通知外壳同步给 Worker，
+        // 这样窥屏/主动消息下一次请求读取到的就是当前配置，而不是旧模型。
+        try {
+            if (window.parent && window.parent !== window) {
+                window.parent.postMessage({ type: 'nanoApiConfigChanged' }, '*');
+            }
+        } catch (e) {}
     }
 
     // TTS：按接口类型切换默认地址 / 显隐 GroupId / 拉取按钮文案

@@ -1378,7 +1378,7 @@ async function callMainAPI(){
       'Authorization':'Bearer ' + (runtime.api.mainKey||'')
     },
     body:JSON.stringify({
-      model: runtime.api.mainModel || 'gpt-3.5-turbo',
+      model: runtime.api.mainModel || '',
       temperature: runtime.api.mainTemp != null ? runtime.api.mainTemp : 0.8,
       messages
     })

@@ -316,6 +316,9 @@
       var base = toImageBase(resolveApiHost(rawUrl));
       var size = opts.size || '1024x1024';
       var faceRef = String(opts.faceRef || '');
+      if (faceRef && !/(锁脸|参考图是|保持.{0,8}脸)/.test(prompt)) {
+        prompt = String(prompt || '') + '\n【锁脸】必须严格按照参考图保持人物五官、脸型、发型和肤色一致，不要换脸或生成另一个人。';
+      }
       if (faceRef && faceRef.indexOf('data:') === 0) {
         try {
           var fd = new FormData();
@@ -342,7 +345,7 @@
   }
   function generateImageJson(base, key, model, prompt, size, faceRef) {
     var body = { model: model, prompt: String(prompt || ''), n: 1, size: size };
-    if (faceRef) { body.image = faceRef; body.reference_image = [faceRef]; body.input_reference_image = [faceRef]; }
+    if (faceRef) { body.image = faceRef; body.reference_image = [faceRef]; body.input_reference_image = [faceRef]; body.reference_images = [faceRef]; body.ref_image = faceRef; }
     return fetch(base + '/images/generations', {
       method: 'POST',
       headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json' },

@@ -261,7 +261,7 @@
                     label: '副 API',
                     url: config.subUrl,
                     key: config.subKey,
-                    model: config.subModel || 'gpt-3.5-turbo'
+                    model: config.subModel || config.mainModel || ''
                 };
             }
             
@@ -272,7 +272,7 @@
                     label: '主 API',
                     url: config.mainUrl,
                     key: config.mainKey,
-                    model: config.mainModel || 'gpt-3.5-turbo'
+                    model: config.mainModel || ''
                 };
             }
             
@@ -281,7 +281,7 @@
                     label: 'API',
                     url: config.url,
                     key: config.key,
-                    model: config.model || 'gpt-3.5-turbo'
+                    model: config.model || config.mainModel || ''
                 };
             }
             
@@ -1056,7 +1056,7 @@
             } else {
                 endpoint = baseUrl + '/v1/chat/completions';
             }
-            var modelName = apiConfig.model || 'gpt-3.5-turbo';
+            var modelName = apiConfig.model || apiConfig.mainModel || '';
 
             console.log('📡 [AI识别] 使用', apiConfig.label, '地址:', endpoint);
             setStatus('正在使用 ' + apiConfig.label + ' 识别中…', false);

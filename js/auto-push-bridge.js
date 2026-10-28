@@ -389,18 +389,82 @@
         }).catch(function () {});
     }
 
+    // 读取当前主 API（IndexedDB 优先，localStorage 兜底）。
+    // 窥屏/主动消息必须用它实时同步，绝不能内置或固定某个模型名。
+    function readApiConfig() {
+        return new Promise(function (resolve) {
+            var fallback = readJSON('nano_api_config', null);
+            try {
+                if (!('indexedDB' in window)) { resolve(fallback); return; }
+                var req = indexedDB.open('nano_api_db', 2);
+                req.onupgradeneeded = function (e) {
+                    try {
+                        var db = e.target.result;
+                        if (!db.objectStoreNames.contains('api_data')) db.createObjectStore('api_data', { keyPath: 'key' });
+                        if (!db.objectStoreNames.contains('emoji_data')) db.createObjectStore('emoji_data', { keyPath: 'key' });
+                    } catch (err) {}
+                };
+                req.onerror = function () { resolve(fallback); };
+                req.onsuccess = function () {
+                    try {
+                        var db = req.result;
+                        if (!db.objectStoreNames.contains('api_data')) { try { db.close(); } catch (e) {} resolve(fallback); return; }
+                        var g = db.transaction('api_data', 'readonly').objectStore('api_data').get('nano_api_config');
+                        g.onsuccess = function () {
+                            try { db.close(); } catch (e) {}
+                            resolve((g.result && (g.result.value || g.result)) || fallback);
+                        };
+                        g.onerror = function () { try { db.close(); } catch (e) {} resolve(fallback); };
+                    } catch (e) { resolve(fallback); }
+                };
+            } catch (e) { resolve(fallback); }
+        });
+    }
+
+    var lastPeekApiSync = 0;
+    function syncPeekApi(force) {
+        var now = Date.now();
+        if (!force && now - lastPeekApiSync < 15000) return Promise.resolve(false);
+        if (force && now - lastPeekApiSync < 3000) return Promise.resolve(false);
+        lastPeekApiSync = now;
+        return readApiConfig().then(function (cfg) {
+            if (!cfg || !cfg.mainUrl || !cfg.mainKey || !cfg.mainModel) return false;
+            var tk = peekToken();
+            var chatId = '';
+            try { chatId = localStorage.getItem('nano_peek_chat') || ''; } catch (e) {}
+            return fetch(baseUrl() + '/peek/api', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Peek-Token': tk },
+                body: JSON.stringify({
+                    token: tk,
+                    appId: appId(),
+                    deviceId: autoDeviceId(),
+                    userId: autoUserId(),
+                    chatId: chatId || 'latest',
+                    api: { url: cfg.mainUrl, key: cfg.mainKey, model: cfg.mainModel }
+                })
+            }).then(function (r) { return !!(r && r.ok); }).catch(function () { return false; });
+        }).catch(function () { return false; });
+    }
+
     window.addEventListener('message', function (e) {
         var d = e && e.data;
-        if (!d || d.type !== 'nanoCallState') return;
-        setCallState(d.chatId || '', !!d.active);
+        if (!d) return;
+        if (d.type === 'nanoCallState') { setCallState(d.chatId || '', !!d.active); return; }
+        // API 页保存后立刻把当前主 API 同步给 Worker，窥屏下一次请求就用新模型。
+        if (d.type === 'nanoApiConfigChanged') { syncPeekApi(true); return; }
     });
 
-    window.AutoPushBridge = { pull: pull, setCallState: setCallState, appId: appId };
+    window.AutoPushBridge = { pull: pull, setCallState: setCallState, appId: appId, syncPeekApi: syncPeekApi };
 
     // App 启动 / 回前台 / 点通知打开时都补拉一次
     setTimeout(function () { pull(true); }, 3000);
+    setTimeout(function () { syncPeekApi(true); }, 1800);
     document.addEventListener('visibilitychange', function () {
-        if (!document.hidden) setTimeout(function () { pull(); }, 1200);
+        if (!document.hidden) {
+            setTimeout(function () { pull(); }, 1200);
+            syncPeekApi(false);
+        }
     });
     window.addEventListener('focus', function () { pull(); });
 })();

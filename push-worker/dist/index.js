@@ -899,6 +899,9 @@ function peekCharName(system) {
   const m = String(system || "").match(/你是[「"]([^」"]{1,40})[」"]/);
   return m ? String(m[1]).trim() : "";
 }
+function normalizeModelName(raw) {
+  return String(raw == null ? "" : raw).trim();
+}
 function modelEndpoint(raw) {
   let s = String(raw || "").trim().replace(/\/+$/, "");
   if (!s) return "";
@@ -946,6 +949,19 @@ async function peekApiConfig(env, appId, chatId, body, owner, realAppId) {
     }
   }
   if (!userId2) userId2 = "default";
+  try {
+    const rawLatest = await kv(env).get(peekBase(appId, "api:latest"));
+    if (rawLatest) {
+      const latest = cleanApi(JSON.parse(rawLatest));
+      if (latest) return latest;
+    }
+    const raw = await kv(env).get(peekBase(appId, "api:" + chatId));
+    if (raw) {
+      const own = cleanApi(JSON.parse(raw));
+      if (own) return own;
+    }
+  } catch (e) {
+  }
   if (!peekPublic(env)) {
     try {
       const raw = await kv(env).get(autoKey("config", realAppId || appId, deviceId2, userId2));
@@ -956,19 +972,6 @@ async function peekApiConfig(env, appId, chatId, body, owner, realAppId) {
       }
     } catch (e) {
     }
-  }
-  try {
-    const raw = await kv(env).get(peekBase(appId, "api:" + chatId));
-    if (raw) {
-      const own = cleanApi(JSON.parse(raw));
-      if (own) return own;
-    }
-    const rawLatest = await kv(env).get(peekBase(appId, "api:latest"));
-    if (rawLatest) {
-      const latest = cleanApi(JSON.parse(rawLatest));
-      if (latest) return latest;
-    }
-  } catch (e) {
   }
   return null;
 }
@@ -1009,6 +1012,10 @@ function sanitizeAutoConfig(body) {
       foreign: !!(c && c.foreign),
       forceTranslate: !!(c && c.forceTranslate),
       forceLang: String(c && c.forceLang || "").slice(0, 40),
+      // 每个角色自己的主动消息 / 朋友圈开关。老版本没有这两个字段时默认允许，
+      // 避免升级后所有角色都收不到；新版本会显式传 true / false。
+      msgOn: c && c.msgOn === false ? false : true,
+      momentOn: c && c.momentOn === false ? false : true,
       // 最近聊天上下文：后台生成必须接得上你们刚聊过的话题，不能凭空发口水话
       recent: (Array.isArray(c && c.recent) ? c.recent.slice(-20) : []).map(function(r) {
         return {
@@ -1057,9 +1064,9 @@ function sanitizeAutoConfig(body) {
   };
 }
 async function autoChat(env, cfg, messages, maxTokens, temperature) {
-  const url = modelEndpoint(env.AUTO_API_URL || env.PEEK_API_URL || cfg.api && cfg.api.url || "");
-  const key = env.AUTO_API_KEY || env.PEEK_API_KEY || cfg.api && cfg.api.key || "";
-  const model = env.AUTO_MODEL || env.PEEK_MODEL || cfg.api && cfg.api.model || "";
+  const url = modelEndpoint(cfg.api && cfg.api.url || "");
+  const key = cfg.api && cfg.api.key || "";
+  const model = normalizeModelName(cfg.api && cfg.api.model || "");
   if (!url || !key || !model) return null;
   try {
     const resp = await fetch(url, {
@@ -1374,10 +1381,13 @@ function cycleBlock(c) {
   return s;
 }
 async function generateAutoMessages(env, cfg, busyChatId, avoidId) {
-  const pool = cfg.chars.filter(function(c) {
+  const allowed = cfg.chars.filter(function(c) {
+    return c && c.msgOn !== false;
+  });
+  const pool = allowed.filter(function(c) {
     return c.id !== busyChatId && !c.isNpc;
   });
-  let source = pool.length >= 2 ? pool : cfg.chars.filter(function(c) {
+  let source = pool.length >= 2 ? pool : allowed.filter(function(c) {
     return c.id !== busyChatId;
   });
   if (avoidId) {
@@ -1414,10 +1424,13 @@ async function generateAutoMessages(env, cfg, busyChatId, avoidId) {
   return out;
 }
 async function generateAutoMoments(env, cfg, busyChatId, maxChars) {
-  const pool = cfg.chars.filter(function(c) {
+  const allowed = cfg.chars.filter(function(c) {
+    return c && c.momentOn !== false;
+  });
+  const pool = allowed.filter(function(c) {
     return c.id !== busyChatId && !c.isNpc;
   });
-  const source = pool.length ? pool : cfg.chars.filter(function(c) {
+  const source = pool.length ? pool : allowed.filter(function(c) {
     return c.id !== busyChatId;
   });
   if (!source.length) return [];
@@ -1742,10 +1755,23 @@ function peekBase64(buf) {
   return btoa(out);
 }
 async function peekModel(env, system, text, image, history, apiCfg, context) {
-  const allowEnvApi = !peekPublic(env);
-  const rawUrl = (allowEnvApi ? env.PEEK_API_URL : "") || apiCfg && apiCfg.url || "";
-  const key = (allowEnvApi ? env.PEEK_API_KEY : "") || apiCfg && apiCfg.key || "";
-  const model = (allowEnvApi ? env.PEEK_MODEL : "") || apiCfg && apiCfg.model || "";
+  if (!apiCfg || !apiCfg.url || !apiCfg.key || !apiCfg.model) return null;
+  return peekModelOnce(env, system, text, image, history, apiCfg, context, {
+    url: apiCfg.url,
+    key: apiCfg.key,
+    model: apiCfg.model
+  });
+}
+function peekErrorRetryable(err) {
+  const s = String(err || "");
+  if (!s) return false;
+  if (/(insufficient|quota|额度|余额|预扣费|billing|payment|402|403|401|unauthorized|invalid[_\s-]?api[_\s-]?key|permission|model_not_found|no available channel|invalid\s*model)/i.test(s)) return false;
+  return /(temperature|max_tokens|max_completion_tokens|unsupported|invalid|reasoning|image_url|content|format|parameter)/i.test(s);
+}
+async function peekModelOnce(env, system, text, image, history, apiCfg, context, forcedCfg) {
+  const rawUrl = forcedCfg && forcedCfg.url || "";
+  const key = forcedCfg && forcedCfg.key || "";
+  const model = normalizeModelName(forcedCfg && forcedCfg.model || "");
   if (!rawUrl || !key || !model) return null;
   const provider = peekProvider(rawUrl);
   const url = provider === "anthropic" ? peekAnthropicEndpoint(rawUrl) : provider === "gemini" ? peekGeminiEndpoint(rawUrl, model) : modelEndpoint(rawUrl);
@@ -1879,11 +1905,19 @@ async function peekModel(env, system, text, image, history, apiCfg, context) {
     r = await callGemini(!!imageUrl);
   } else {
     r = await callOpenAI(!!imageUrl, "max_tokens", "object", { imageFirst: true });
-    if (!r.text) r = await callOpenAI(!!imageUrl, "max_tokens", "object", { temperature: false });
-    if (!r.text && imageUrl) r = await callOpenAI(true, "max_tokens", "string", { temperature: false });
-    if (!r.text && imageUrl) r = await callOpenAI(true, "max_tokens", "raw", { temperature: false });
-    if (!r.text && imageUrl) r = await callOpenAI(true, "max_tokens", "object", { temperature: false, minimal: true, imageFirst: true });
-    if (!r.text && /max_tokens|max_completion_tokens|unsupported|invalid|reasoning|temperature/i.test(r.error || "")) {
+    if (!r.text && peekErrorRetryable(r.error)) {
+      r = await callOpenAI(!!imageUrl, "max_tokens", "object", { temperature: false });
+    }
+    if (!r.text && imageUrl && peekErrorRetryable(r.error)) {
+      r = await callOpenAI(true, "max_tokens", "string", { temperature: false });
+    }
+    if (!r.text && imageUrl && peekErrorRetryable(r.error)) {
+      r = await callOpenAI(true, "max_tokens", "raw", { temperature: false });
+    }
+    if (!r.text && imageUrl && peekErrorRetryable(r.error)) {
+      r = await callOpenAI(true, "max_tokens", "object", { temperature: false, minimal: true, imageFirst: true });
+    }
+    if (!r.text && peekErrorRetryable(r.error) && /max_tokens|max_completion_tokens|unsupported|invalid|reasoning|temperature/i.test(r.error || "")) {
       r = await callOpenAI(!!imageUrl, "max_completion_tokens", "object", { temperature: false });
     }
   }
@@ -3438,20 +3472,19 @@ var index_default = {
         peekErr = String(e && e.message || e || "");
       }
       if (!reply) {
-        const hasEnvApi = !peekPublic(env) && !!(env.PEEK_API_URL && env.PEEK_API_KEY && env.PEEK_MODEL);
         const errDetail = String(peekErr || "").replace(/\s+/g, " ").slice(0, 180);
         const upstreamLimit = /quota|insufficient|balance|余额|额度|402|429|rate.?limit|too many/i.test(errDetail);
         if (!apiCfg) {
           return json({
             ok: false,
             error: "no_api",
-            reply: peekPublic(env) ? "\u6CA1\u6709\u5728\u8FD9\u4E2A\u4EE4\u724C\u5206\u533A\u627E\u5230\u6A21\u578B API\u3002\u8BF7\u5148\u5728\u81EA\u5DF1\u7684 Nano \u91CC\u914D\u7F6E\u4E3B API\uFF0C\u7136\u540E\u5728\u7AA5\u5C4F\u9875\u9009\u62E9\u89D2\u8272\u3001\u586B\u597D\u670D\u52A1\u7AEF\u5730\u5740\u5E76\u70B9\u4E00\u6B21\u300C\u4FDD\u5B58\u914D\u7F6E\u300D\uFF0C\u8BA9\u9875\u9762\u8C03\u7528 /peek/persona \u628A Key \u540C\u6B65\u5230\u5F53\u524D pk \u7684\u5206\u533A\u3002" : "\u670D\u52A1\u7AEF\u8FD8\u6CA1\u6709\u6A21\u578B API\uFF1A\u8BF7\u5728 Nano \u91CC\u6253\u5F00\u4E00\u6B21\u804A\u5929\u540C\u6B65\u4E3B API\uFF0C\u6216\u5728 Worker \u914D\u7F6E PEEK_API_URL / PEEK_API_KEY / PEEK_MODEL\u3002"
+            reply: peekPublic(env) ? "\u6CA1\u6709\u5728\u8FD9\u4E2A\u4EE4\u724C\u5206\u533A\u627E\u5230\u6A21\u578B API\u3002\u8BF7\u5148\u5728\u81EA\u5DF1\u7684 Nano \u91CC\u914D\u7F6E\u4E3B API\uFF0C\u7136\u540E\u5728\u7AA5\u5C4F\u9875\u9009\u62E9\u89D2\u8272\u3001\u586B\u597D\u670D\u52A1\u7AEF\u5730\u5740\u5E76\u70B9\u4E00\u6B21\u300C\u4FDD\u5B58\u914D\u7F6E\u300D\uFF0C\u8BA9\u9875\u9762\u628A\u5F53\u524D\u4E3B API \u540C\u6B65\u5230\u5F53\u524D pk \u7684\u5206\u533A\u3002" : "\u670D\u52A1\u7AEF\u8FD8\u6CA1\u6709\u5F53\u524D\u4E3B API\uFF1A\u8BF7\u5728 Nano \u7684 API \u9875\u914D\u7F6E\u597D\u5730\u5740 / Key / \u6A21\u578B\uFF0C\u5E76\u6253\u5F00\u4E00\u6B21\u804A\u5929\u6216\u7AA5\u5C4F\u8BBE\u7F6E\u9875\u5B8C\u6210\u540C\u6B65\u3002"
           }, 502);
         }
         return json({
           ok: false,
           error: "model",
-          reply: peekPublic(env) ? upstreamLimit ? "\u8FD9\u6B21\u8BC6\u56FE\u63A5\u53E3\u6CA1\u6709\u8FD4\u56DE\u5185\u5BB9\uFF08\u4E0A\u6E38\u9650\u6D41\u6216\u4E34\u65F6\u9519\u8BEF\uFF09\u3002\u7A0D\u540E\u518D\u8BD5\uFF0C\u6216\u6362\u4E00\u4E2A\u652F\u6301\u56FE\u7247\u8F93\u5165\u7684\u6A21\u578B\u3002" : "\u8FD9\u6B21\u8BC6\u56FE\u63A5\u53E3\u6CA1\u6709\u8FD4\u56DE\u5185\u5BB9" + (errDetail ? "\uFF08\u4E0A\u6E38\uFF1A" + errDetail + "\uFF09" : "") + "\u3002\u8BF7\u68C0\u67E5\u6A21\u578B\u662F\u5426\u652F\u6301\u56FE\u7247\u8F93\u5165\u3001\u63A5\u53E3\u5730\u5740\u548C Key \u662F\u5426\u5BF9\u5E94\u3002" : hasEnvApi ? upstreamLimit ? "PEEK \u6A21\u578B\u63A5\u53E3\u8FD9\u6B21\u6CA1\u6709\u8FD4\u56DE\u5185\u5BB9\uFF08\u4E0A\u6E38\u9650\u6D41\u6216\u4E34\u65F6\u9519\u8BEF\uFF09\uFF1B\u7A0D\u540E\u518D\u8BD5\u6216\u66F4\u6362\u652F\u6301\u8BC6\u56FE\u7684\u6A21\u578B\u3002" : "\u6A21\u578B\u6CA1\u6709\u8FD4\u56DE\u5185\u5BB9" + (errDetail ? "\uFF08\u4E0A\u6E38\uFF1A" + errDetail + "\uFF09" : "") + "\uFF1A\u8BF7\u68C0\u67E5 PEEK_API_URL / PEEK_API_KEY / PEEK_MODEL \u6216\u6A21\u578B\u662F\u5426\u652F\u6301\u8BC6\u56FE\u3002" : "\u670D\u52A1\u7AEF\u8FD8\u6CA1\u6709\u6A21\u578B API\uFF1A\u8BF7\u5728 Nano \u91CC\u6253\u5F00\u4E00\u6B21\u804A\u5929\u540C\u6B65\u4E3B API\uFF0C\u6216\u5728 Worker \u914D\u7F6E PEEK_API_URL / PEEK_API_KEY / PEEK_MODEL\u3002",
+          reply: peekPublic(env) ? upstreamLimit ? "\u8FD9\u6B21\u8BC6\u56FE\u63A5\u53E3\u6CA1\u6709\u8FD4\u56DE\u5185\u5BB9\uFF08\u4E0A\u6E38\u9650\u6D41/\u989D\u5EA6\u6216\u4E34\u65F6\u9519\u8BEF\uFF09\u3002\u7A0D\u540E\u518D\u8BD5\uFF0C\u6216\u68C0\u67E5\u5F53\u524D\u4E3B API \u7684\u989D\u5EA6\u3002" : "\u8FD9\u6B21\u8BC6\u56FE\u63A5\u53E3\u6CA1\u6709\u8FD4\u56DE\u5185\u5BB9" + (errDetail ? "\uFF08\u4E0A\u6E38\uFF1A" + errDetail + "\uFF09" : "") + "\u3002\u8BF7\u68C0\u67E5\u5F53\u524D\u4E3B API \u7684\u6A21\u578B\u662F\u5426\u652F\u6301\u56FE\u7247\u8F93\u5165\u3001\u63A5\u53E3\u5730\u5740\u548C Key \u662F\u5426\u5BF9\u5E94\u3002" : upstreamLimit ? "\u5F53\u524D\u4E3B API \u8FD9\u6B21\u6CA1\u6709\u8FD4\u56DE\u5185\u5BB9\uFF08\u4E0A\u6E38\u9650\u6D41/\u989D\u5EA6\u6216\u4E34\u65F6\u9519\u8BEF\uFF09\uFF1B\u7A0D\u540E\u518D\u8BD5\u6216\u68C0\u67E5\u989D\u5EA6\u3002" : "\u5F53\u524D\u4E3B API \u6CA1\u6709\u8FD4\u56DE\u5185\u5BB9" + (errDetail ? "\uFF08\u4E0A\u6E38\uFF1A" + errDetail + "\uFF09" : "") + "\uFF1A\u8BF7\u68C0\u67E5\u4E3B API \u7684\u6A21\u578B\u662F\u5426\u652F\u6301\u8BC6\u56FE\uFF0C\u4EE5\u53CA\u5730\u5740 / Key \u662F\u5426\u6B63\u786E\u3002",
           detail: errDetail
         }, 502);
       }
@@ -3538,6 +3571,42 @@ var index_default = {
           await kv(env).put(peekBase(appId, "chat:latest"), chatId, { expirationTtl: ttl });
         }
         await kv(env).put(peekOwnerKey(env, token, "latest"), ownerRecord, { expirationTtl: ttl });
+      } catch (e) {
+      }
+      return json({ ok: true });
+    }
+    if (pathname === "/peek/api" && request.method === "POST") {
+      let body = {};
+      try {
+        body = await request.json();
+      } catch (e) {
+      }
+      if (!peekOk(request, env, body)) return json({ ok: false, error: "unauthorized" }, 401);
+      const api = body.api && typeof body.api === "object" ? {
+        url: String(body.api.url || "").trim(),
+        key: String(body.api.key || "").trim(),
+        model: String(body.api.model || "").trim()
+      } : null;
+      if (!api || !api.url || !api.key || !api.model) return json({ ok: false, error: "empty" }, 400);
+      const token = peekTokenValue(request, body);
+      const realAppId = cleanAppId(body.appId);
+      const appId = peekScope(env, realAppId, token);
+      const chatId = String(body.chatId || "latest") || "latest";
+      const ttl = 60 * 60 * 24 * 30;
+      try {
+        await kv(env).put(peekBase(appId, "api:" + chatId), JSON.stringify(api), { expirationTtl: ttl });
+        await kv(env).put(peekBase(appId, "api:latest"), JSON.stringify(api), { expirationTtl: ttl });
+        const ownerRecord = JSON.stringify({
+          appId: realAppId,
+          deviceId: cleanDeviceId(body.deviceId),
+          userId: cleanUserId(body.userId),
+          at: Date.now()
+        });
+        await kv(env).put(peekOwnerKey(env, token, chatId), ownerRecord, { expirationTtl: ttl });
+        await kv(env).put(peekOwnerKey(env, token, "latest"), ownerRecord, { expirationTtl: ttl });
+        if (chatId !== "latest") {
+          await kv(env).put(peekBase(appId, "chat:latest"), chatId, { expirationTtl: ttl });
+        }
       } catch (e) {
       }
       return json({ ok: true });

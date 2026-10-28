@@ -339,7 +339,7 @@
             if (!/\/v1$/i.test(base)) base += '/v1';
             var url = base + '/chat/completions';
             var body = JSON.stringify({
-                model: cfg.mainModel || 'gpt-3.5-turbo',
+                model: cfg.mainModel || '',
                 messages: messages,
                 stream: false,
                 temperature: 0.95,

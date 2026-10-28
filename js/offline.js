@@ -2937,7 +2937,7 @@ async function callMainAPI(history, opts) {
     let mainUrl = String(apiConfig.mainUrl).trim().replace(/\/+$/, '');
     if (!/\/v1$/i.test(mainUrl)) mainUrl += '/v1';
     const mainKey = String(apiConfig.mainKey || '').trim();
-    const mainModel = apiConfig.mainModel || 'gpt-3.5-turbo';
+    const mainModel = apiConfig.mainModel || '';
 
     // 兼容部分 API 不接受首条消息为 assistant：把开头的角色开场白并入系统提示，
     // 其余历史保持原样（正常对话首条是 user，这段逻辑不产生任何改动）。
@@ -4078,7 +4078,7 @@ async function offExtractViaMain(chatText, label) {
   let url = String(cfg.mainUrl).trim().replace(/\/+$/, '');
   if (!/\/v1$/i.test(url)) url += '/v1';
   const key = String(cfg.mainKey || '').trim();
-  const model = cfg.mainModel || 'gpt-3.5-turbo';
+  const model = cfg.mainModel || '';
   const where = String(label || '线下长文记录');
   const charName = String(settings.charName || '角色');
   const userName = String(settings.userName || '用户');

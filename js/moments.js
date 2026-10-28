@@ -406,9 +406,9 @@
 
     // ===== API 配置读取（与 api.html 一致：IndexedDB nano_api_db/api_data） =====
     var DEFAULT_SETTINGS = {
-        mainApi: '', mainKey: '', mainModel: 'gpt-3.5-turbo', mainTemperature: 0.7,
-        subApi: '', subKey: '', subModel: 'gpt-3.5-turbo', subEnabled: false,
-        imageApi: '', imageKey: '', imageModel: 'dall-e-3', imageEnabled: false,
+        mainApi: '', mainKey: '', mainModel: '', mainTemperature: 0.7,
+        subApi: '', subKey: '', subModel: '', subEnabled: false,
+        imageApi: '', imageKey: '', imageModel: '', imageEnabled: false,
         imagePositivePrompt: '', imageNegativePrompt: ''
     };
 
@@ -467,15 +467,15 @@
         return {
             mainApi: mainApi.url || '',
             mainKey: mainApi.key || '',
-            mainModel: mainApi.model || 'gpt-3.5-turbo',
+            mainModel: mainApi.model || '',
             mainTemperature: mainApi.temperature || 0.7,
             subApi: (subApi.enabled ? subApi.url : '') || '',
             subKey: (subApi.enabled ? subApi.key : '') || '',
-            subModel: subApi.model || 'gpt-3.5-turbo',
+            subModel: subApi.model || mainApi.model || '',
             subEnabled: subApi.enabled || false,
             imageApi: (imageApi.enabled ? imageApi.url : '') || '',
             imageKey: (imageApi.enabled ? imageApi.key : '') || '',
-            imageModel: imageApi.model || 'dall-e-3',
+            imageModel: imageApi.model || '',
             imageEnabled: imageApi.enabled || false,
             imagePositivePrompt: imageApi.positivePrompt || '',
             imageNegativePrompt: imageApi.negativePrompt || ''
@@ -497,15 +497,15 @@
             return {
                 mainApi: cfg.mainUrl || '',
                 mainKey: cfg.mainKey || '',
-                mainModel: cfg.mainModel || 'gpt-3.5-turbo',
+                mainModel: cfg.mainModel || '',
                 mainTemperature: (typeof cfg.mainTemp === 'number' ? cfg.mainTemp : parseFloat(cfg.mainTemp)) || 0.7,
                 subApi: cfg.subUrl || '',
                 subKey: cfg.subKey || '',
-                subModel: cfg.subModel || 'gpt-3.5-turbo',
+                subModel: cfg.subModel || cfg.mainModel || '',
                 subEnabled: !!cfg.subToggle && !!cfg.subUrl,
                 imageApi: cfg.imgUrl || '',
                 imageKey: cfg.imgKey || '',
-                imageModel: cfg.imgModel || 'dall-e-3',
+                imageModel: cfg.imgModel || '',
                 imageEnabled: !!(cfg.imgUrl && cfg.imgKey),
                 imagePositivePrompt: pos,
                 imageNegativePrompt: neg
@@ -848,9 +848,11 @@
 
     // ===== 生图 API（失败抛详细错误） =====
     async function generateImage(promptText, opts) {
+        // 每次生图都重新读当前 API 配置，切换模型/Key/地址后立刻生效。
+        try { settings = await getSettings(); } catch (e) {}
         var apiUrl = settings.imageApi;
         var apiKey = settings.imageKey;
-        var model = settings.imageModel || 'dall-e-3';
+        var model = settings.imageModel || '';
         var positivePrompt = settings.imagePositivePrompt || '';
         var negativePrompt = settings.imageNegativePrompt || '';
         var persist = async function (u) {
@@ -1040,6 +1042,8 @@
 
     // ===== 主 API 调用（opts.apiPref: main 用主 API；sub/auto 优先副 API，未配置则主 API） =====
     async function fetchAIResponse(promptText, isContext, opts) {
+        // 每次请求都重新读当前 API 配置，保证跟随 API 页/悬浮球的实时切换。
+        try { settings = await getSettings(); } catch (e) {}
         opts = opts || {};
         var apiUrl, apiKey, model, apiLabel;
         var subReady = settings.subEnabled && settings.subApi && settings.subApi.indexOf('http') === 0;
@@ -1047,12 +1051,12 @@
         if (useSub) {
             apiUrl = settings.subApi;
             apiKey = settings.subKey;
-            model = settings.subModel || 'gpt-3.5-turbo';
+            model = settings.subModel || settings.mainModel || '';
             apiLabel = '副 API';
         } else {
             apiUrl = settings.mainApi;
             apiKey = settings.mainKey;
-            model = settings.mainModel || 'gpt-3.5-turbo';
+            model = settings.mainModel || '';
             apiLabel = '主 API';
         }
 

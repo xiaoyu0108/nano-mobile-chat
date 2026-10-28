@@ -53,6 +53,10 @@
         if (!rawUrl || !key || !model) throw new Error('请先在 API → 生图里配置地址、Key 和模型');
         var base = toV1(rawUrl);
         var faceRef = String(opts.faceRef || '');
+        // 有参考图时必须把“保持这张脸”写进提示词，否则不少中转站只把参考图当普通附件。
+        if (faceRef && !/(锁脸|参考图是|保持.{0,8}脸)/.test(prompt)) {
+            prompt += '\n【锁脸】必须严格按照参考图保持人物五官、脸型、发型和肤色一致，不要换脸或生成另一个人。';
+        }
         var persist = async function (u) {
             try {
                 if (u && window.NanoImageCache && /^https?:\/\//i.test(u)) {
@@ -80,7 +84,7 @@
             } catch (e) {}
         }
         var body = { model: model, prompt: prompt, n: 1, size: opts.size || '1024x1024' };
-        if (faceRef) { body.image = faceRef; body.reference_image = [faceRef]; body.input_reference_image = [faceRef]; }
+        if (faceRef) { body.image = faceRef; body.reference_image = [faceRef]; body.input_reference_image = [faceRef]; body.reference_images = [faceRef]; body.ref_image = faceRef; }
         var resp = await fetch(base + '/images/generations', {
             method: 'POST',
             headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json' },

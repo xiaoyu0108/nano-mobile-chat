@@ -2356,7 +2356,7 @@ async function memExtract(text) {
   let url = String(cfg.mainUrl).trim().replace(/\/+$/, '');
   if (!/\/v1$/i.test(url)) url += '/v1';
   const key = String(cfg.mainKey || '').trim();
-  const model = cfg.mainModel || 'gpt-3.5-turbo';
+  const model = cfg.mainModel || '';
   const prompt = '你是记忆提取助手。从角色与用户的一段对话中，提取值得长期记住的信息（重要事件、约定、喜好、称呼、关系进展、重要的话）。每条30~120字，只输出若干条记忆，一行一条，不要编号、不要解释、不要输出原文。\n\n对话：\n' + text;
   const resp = await fetch(url + '/chat/completions', {
     method: 'POST',

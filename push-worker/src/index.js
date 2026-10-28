@@ -571,16 +571,10 @@ function peekCharName(system) {
   return m ? String(m[1]).trim() : '';
 }
 
-// 中转站 / 模型下拉框经常把分组名放进模型 ID，例如「[Bu满血]gemini-3.8-flash-c」。
-// 真正的模型名是方括号后面的部分；直接把这个字符串发给上游会报
-// model_not_found（No available channel for model ...）。
+// 只做去掉首尾空白的处理，绝不内置、替换或改写模型名。
+// 模型始终来自 App 当前主 API 配置（地址 / Key / 模型一起实时同步）。
 function normalizeModelName(raw) {
-  let s = String(raw == null ? '' : raw).trim();
-  try {
-    s = s.replace(/^[\[【][^\]】]{1,40}[\]】]\s*/, '').trim();
-    s = s.replace(/^[`'"]+|[`'"]+$/g, '').trim();
-  } catch (e) {}
-  return s;
+  return String(raw == null ? '' : raw).trim();
 }
 
 function modelEndpoint(raw) {
@@ -629,7 +623,22 @@ async function peekApiConfig(env, appId, chatId, body, owner, realAppId) {
     } catch (e) {}
   }
   if (!userId) userId = 'default';
-  // 1) 优先用聊天同步上来的最新主 API。
+  // 1) 优先用「窥屏/API 页」实时同步上来的那份：只要用户在 API 页改了模型，
+  //    这里就会立刻跟着变，Worker 不再自己保存/固定任何模型名。
+  //    先读 latest：API 配置是全局的，latest 永远是最新一次同步，避免旧 chat 分区的模型覆盖新配置。
+  try {
+    const rawLatest = await kv(env).get(peekBase(appId, 'api:latest'));
+    if (rawLatest) {
+      const latest = cleanApi(JSON.parse(rawLatest));
+      if (latest) return latest;
+    }
+    const raw = await kv(env).get(peekBase(appId, 'api:' + chatId));
+    if (raw) {
+      const own = cleanApi(JSON.parse(raw));
+      if (own) return own;
+    }
+  } catch (e) {}
+  // 2) 窥屏专用配置还没写过时，用聊天同步上来的最新主 API。
   //    公用模式直接跳过这一步：那是按站点/设备存的，绝不能把站长的 Key 给陌生人用。
   if (!peekPublic(env)) {
     try {
@@ -641,19 +650,6 @@ async function peekApiConfig(env, appId, chatId, body, owner, realAppId) {
       }
     } catch (e) {}
   }
-  // 2) 没有 auto config 时，再用窥屏页保存的那份
-  try {
-    const raw = await kv(env).get(peekBase(appId, 'api:' + chatId));
-    if (raw) {
-      const own = cleanApi(JSON.parse(raw));
-      if (own) return own;
-    }
-    const rawLatest = await kv(env).get(peekBase(appId, 'api:latest'));
-    if (rawLatest) {
-      const latest = cleanApi(JSON.parse(rawLatest));
-      if (latest) return latest;
-    }
-  } catch (e) {}
   return null;
 }
 
@@ -739,11 +735,11 @@ function sanitizeAutoConfig(body) {
   };
 }
 async function autoChat(env, cfg, messages, maxTokens, temperature) {
-  // 优先用 App 同步上来的主 API：用户在 API 页选的模型才是 TA 真正有额度、
-  // 真正支持识图的模型。Worker 的 AUTO_* / PEEK_* 只作兜底，不能反过来覆盖用户配置。
-  const url = modelEndpoint((cfg.api && cfg.api.url) || env.AUTO_API_URL || env.PEEK_API_URL || '');
-  const key = (cfg.api && cfg.api.key) || env.AUTO_API_KEY || env.PEEK_API_KEY || '';
-  const model = normalizeModelName((cfg.api && cfg.api.model) || env.AUTO_MODEL || env.PEEK_MODEL || '');
+  // 只使用 App 实时同步上来的主 API（地址 / Key / 模型一字不改）。
+  // 不内置任何模型名，也不回退到 AUTO_MODEL / PEEK_MODEL，避免“固定模型”和重复扣费。
+  const url = modelEndpoint((cfg.api && cfg.api.url) || '');
+  const key = (cfg.api && cfg.api.key) || '';
+  const model = normalizeModelName((cfg.api && cfg.api.model) || '');
   if (!url || !key || !model) return null;
   try {
     const resp = await fetch(url, {
@@ -1320,28 +1316,24 @@ function peekBase64(buf) {
   return btoa(out);
 }
 
-// 先用 App 同步上来的主 API（用户自己选的、真正有额度的模型），失败再用 Worker 的
-// PEEK_* 兜底。公用模式仍然绝对不允许回退到站长的 PEEK_API_*。
+// 只使用 App 实时同步上来的主 API：地址、Key、模型全部照当前 API 配置原样使用。
+// 不内置模型名，也不自动换 PEEK_MODEL / AUTO_MODEL 重试（那会改模型并重复扣费）。
 async function peekModel(env, system, text, image, history, apiCfg, context) {
-  const list = [];
-  if (apiCfg && apiCfg.url && apiCfg.key && apiCfg.model) {
-    list.push({ url: apiCfg.url, key: apiCfg.key, model: apiCfg.model });
-  }
-  if (!peekPublic(env) && env.PEEK_API_URL && env.PEEK_API_KEY && env.PEEK_MODEL) {
-    const envCfg = { url: env.PEEK_API_URL, key: env.PEEK_API_KEY, model: env.PEEK_MODEL };
-    const dup = list.some(function (c) {
-      return String(c.url) === String(envCfg.url) && String(c.key) === String(envCfg.key) && String(c.model) === String(envCfg.model);
-    });
-    if (!dup) list.push(envCfg);
-  }
-  if (!list.length) return null;
-  let last = null;
-  for (let i = 0; i < list.length; i++) {
-    const out = await peekModelOnce(env, system, text, image, history, apiCfg, context, list[i]);
-    if (out && out.text) return out;
-    if (out && out.error) last = out;
-  }
-  return last;
+  if (!apiCfg || !apiCfg.url || !apiCfg.key || !apiCfg.model) return null;
+  return peekModelOnce(env, system, text, image, history, apiCfg, context, {
+    url: apiCfg.url,
+    key: apiCfg.key,
+    model: apiCfg.model
+  });
+}
+
+// 只有「请求格式不兼容」才值得换一种 body 再试。额度不足、Key 错误、模型不存在
+// 这类错误再重试只会重复预扣费，必须立即停止。
+function peekErrorRetryable(err) {
+  const s = String(err || '');
+  if (!s) return false;
+  if (/(insufficient|quota|额度|余额|预扣费|billing|payment|402|403|401|unauthorized|invalid[_\s-]?api[_\s-]?key|permission|model_not_found|no available channel|invalid\s*model)/i.test(s)) return false;
+  return /(temperature|max_tokens|max_completion_tokens|unsupported|invalid|reasoning|image_url|content|format|parameter)/i.test(s);
 }
 
 async function peekModelOnce(env, system, text, image, history, apiCfg, context, forcedCfg) {
@@ -1491,15 +1483,24 @@ async function peekModelOnce(env, system, text, image, history, apiCfg, context,
     r = await callGemini(!!imageUrl);
   } else {
     r = await callOpenAI(!!imageUrl, 'max_tokens', 'object', { imageFirst: true });
-    // 中转站/推理模型常不接受 temperature，去掉再试
-    if (!r.text) r = await callOpenAI(!!imageUrl, 'max_tokens', 'object', { temperature: false });
+    // 注意：每次重试都是一次新的上游请求，可能重复预扣额度。
+    // 只有确认是格式/参数不兼容时才换一种 body；额度不足、Key 错误、模型不存在立即停止。
+    if (!r.text && peekErrorRetryable(r.error)) {
+      r = await callOpenAI(!!imageUrl, 'max_tokens', 'object', { temperature: false });
+    }
     // 有些网关只接受字符串形式的 image_url，换一种格式再试
-    if (!r.text && imageUrl) r = await callOpenAI(true, 'max_tokens', 'string', { temperature: false });
-    if (!r.text && imageUrl) r = await callOpenAI(true, 'max_tokens', 'raw', { temperature: false });
+    if (!r.text && imageUrl && peekErrorRetryable(r.error)) {
+      r = await callOpenAI(true, 'max_tokens', 'string', { temperature: false });
+    }
+    if (!r.text && imageUrl && peekErrorRetryable(r.error)) {
+      r = await callOpenAI(true, 'max_tokens', 'raw', { temperature: false });
+    }
     // 再退一步：不带历史，只发当前这一条图文，排查中转站对长上下文/多 system 的限制
-    if (!r.text && imageUrl) r = await callOpenAI(true, 'max_tokens', 'object', { temperature: false, minimal: true, imageFirst: true });
+    if (!r.text && imageUrl && peekErrorRetryable(r.error)) {
+      r = await callOpenAI(true, 'max_tokens', 'object', { temperature: false, minimal: true, imageFirst: true });
+    }
     // 新模型只接受 max_completion_tokens 时再试
-    if (!r.text && /max_tokens|max_completion_tokens|unsupported|invalid|reasoning|temperature/i.test(r.error || '')) {
+    if (!r.text && peekErrorRetryable(r.error) && /max_tokens|max_completion_tokens|unsupported|invalid|reasoning|temperature/i.test(r.error || '')) {
       r = await callOpenAI(!!imageUrl, 'max_completion_tokens', 'object', { temperature: false });
     }
   }
@@ -3063,7 +3064,6 @@ export default {
         }
       } catch (e) { peekErr = String((e && e.message) || e || ''); }
       if (!reply) {
-        const hasEnvApi = !peekPublic(env) && !!(env.PEEK_API_URL && env.PEEK_API_KEY && env.PEEK_MODEL);
         const errDetail = String(peekErr || '').replace(/\s+/g, ' ').slice(0, 180);
         const upstreamLimit = /quota|insufficient|balance|余额|额度|402|429|rate.?limit|too many/i.test(errDetail);
         // 区分「没找到你这个令牌分区的 API」和「API 找到了但模型没返回」，不要再混成一句话。
@@ -3072,8 +3072,8 @@ export default {
             ok: false,
             error: 'no_api',
             reply: peekPublic(env)
-              ? '没有在这个令牌分区找到模型 API。请先在自己的 Nano 里配置主 API，然后在窥屏页选择角色、填好服务端地址并点一次「保存配置」，让页面调用 /peek/persona 把 Key 同步到当前 pk 的分区。'
-              : '服务端还没有模型 API：请在 Nano 里打开一次聊天同步主 API，或在 Worker 配置 PEEK_API_URL / PEEK_API_KEY / PEEK_MODEL。'
+              ? '没有在这个令牌分区找到模型 API。请先在自己的 Nano 里配置主 API，然后在窥屏页选择角色、填好服务端地址并点一次「保存配置」，让页面把当前主 API 同步到当前 pk 的分区。'
+              : '服务端还没有当前主 API：请在 Nano 的 API 页配置好地址 / Key / 模型，并打开一次聊天或窥屏设置页完成同步。'
           }, 502);
         }
         return json({
@@ -3081,13 +3081,11 @@ export default {
           error: 'model',
           reply: peekPublic(env)
             ? (upstreamLimit
-              ? '这次识图接口没有返回内容（上游限流或临时错误）。稍后再试，或换一个支持图片输入的模型。'
-              : ('这次识图接口没有返回内容' + (errDetail ? '（上游：' + errDetail + '）' : '') + '。请检查模型是否支持图片输入、接口地址和 Key 是否对应。'))
-            : (hasEnvApi
-              ? (upstreamLimit
-                ? 'PEEK 模型接口这次没有返回内容（上游限流或临时错误）；稍后再试或更换支持识图的模型。'
-                : ('模型没有返回内容' + (errDetail ? '（上游：' + errDetail + '）' : '') + '：请检查 PEEK_API_URL / PEEK_API_KEY / PEEK_MODEL 或模型是否支持识图。'))
-              : '服务端还没有模型 API：请在 Nano 里打开一次聊天同步主 API，或在 Worker 配置 PEEK_API_URL / PEEK_API_KEY / PEEK_MODEL。'),
+              ? '这次识图接口没有返回内容（上游限流/额度或临时错误）。稍后再试，或检查当前主 API 的额度。'
+              : ('这次识图接口没有返回内容' + (errDetail ? '（上游：' + errDetail + '）' : '') + '。请检查当前主 API 的模型是否支持图片输入、接口地址和 Key 是否对应。'))
+            : (upstreamLimit
+              ? '当前主 API 这次没有返回内容（上游限流/额度或临时错误）；稍后再试或检查额度。'
+              : ('当前主 API 没有返回内容' + (errDetail ? '（上游：' + errDetail + '）' : '') + '：请检查主 API 的模型是否支持识图，以及地址 / Key 是否正确。')),
           detail: errDetail
         }, 502);
       }
@@ -3181,6 +3179,41 @@ export default {
           await kv(env).put(peekBase(appId, 'chat:latest'), chatId, { expirationTtl: ttl });
         }
         await kv(env).put(peekOwnerKey(env, token, 'latest'), ownerRecord, { expirationTtl: ttl });
+      } catch (e) {}
+      return json({ ok: true });
+    }
+
+    // 只同步主 API（地址 / Key / 模型）：API 页保存后立即调用，保证 /peek 用的永远是
+    // 当前主 API 的实时配置，而不是某个内置/旧模型。
+    if (pathname === '/peek/api' && request.method === 'POST') {
+      let body = {};
+      try { body = await request.json(); } catch (e) {}
+      if (!peekOk(request, env, body)) return json({ ok: false, error: 'unauthorized' }, 401);
+      const api = body.api && typeof body.api === 'object' ? {
+        url: String(body.api.url || '').trim(),
+        key: String(body.api.key || '').trim(),
+        model: String(body.api.model || '').trim()
+      } : null;
+      if (!api || !api.url || !api.key || !api.model) return json({ ok: false, error: 'empty' }, 400);
+      const token = peekTokenValue(request, body);
+      const realAppId = cleanAppId(body.appId);
+      const appId = peekScope(env, realAppId, token);
+      const chatId = String(body.chatId || 'latest') || 'latest';
+      const ttl = 60 * 60 * 24 * 30;
+      try {
+        await kv(env).put(peekBase(appId, 'api:' + chatId), JSON.stringify(api), { expirationTtl: ttl });
+        await kv(env).put(peekBase(appId, 'api:latest'), JSON.stringify(api), { expirationTtl: ttl });
+        const ownerRecord = JSON.stringify({
+          appId: realAppId,
+          deviceId: cleanDeviceId(body.deviceId),
+          userId: cleanUserId(body.userId),
+          at: Date.now()
+        });
+        await kv(env).put(peekOwnerKey(env, token, chatId), ownerRecord, { expirationTtl: ttl });
+        await kv(env).put(peekOwnerKey(env, token, 'latest'), ownerRecord, { expirationTtl: ttl });
+        if (chatId !== 'latest') {
+          await kv(env).put(peekBase(appId, 'chat:latest'), chatId, { expirationTtl: ttl });
+        }
       } catch (e) {}
       return json({ ok: true });
     }
