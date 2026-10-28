@@ -2,7 +2,7 @@
 <html lang="zh">
 <head>
     <meta charset="UTF-8">
-    <script src="js/nano-runtime.js?v=20261027f"></script>
+    <script src="js/nano-runtime.js?v=20261028c"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <script>
     // 版本升级时强制清一次缓存并重载：避免手机/PWA 一直跑旧 JS（屏幕共享/思维链等问题）
@@ -2703,9 +2703,10 @@ setTimeout(function () {
                     }).catch(function () {});
                 }
             }
-            // 切到后台 / 锁屏时，同步弹一条系统通知，避免只在内页提示而看不到
+            // 切到后台 / 锁屏时，同步弹一条系统通知，避免只在内页提示而看不到。
+            // Web Push 已经由 Service Worker 判断过前台/后台（带 fromPush），这里不再重复弹。
             try {
-                var _notifyBg = !!window.NanoNotify && (typeof window.NanoNotify.isForeground === 'function'
+                var _notifyBg = !opts.fromPush && !!window.NanoNotify && (typeof window.NanoNotify.isForeground === 'function'
                     ? !window.NanoNotify.isForeground()
                     : document.hidden);
                 if (window.NanoNotify && _notifyBg) {
@@ -3825,10 +3826,23 @@ setTimeout(function () {
                         action: data.action || '',
                         url: data.url || '',
                         sound: data.sound || '',
-                        channel: data.channel || ''
+                        channel: data.channel || '',
+                        fromPush: !!data.fromPush
                     });
                     // 前台收到服务端推送：立刻拉 pending，让通知内容同步进聊天/朋友圈
                     if (data.fromPush) {
+                        // 回执给 Service Worker：内置通知已经显示，别再弹系统通知。
+                        try {
+                            // 只有页面确实可见才回执；后台保活时不能把系统通知吞掉。
+                            if (data.pushId && navigator.serviceWorker && !document.hidden) {
+                                var ackMsg = { type: 'nanoPushAck', id: data.pushId };
+                                navigator.serviceWorker.ready.then(function (reg) {
+                                    try { (reg.active || navigator.serviceWorker.controller).postMessage(ackMsg); } catch (e) {}
+                                }).catch(function () {
+                                    try { if (navigator.serviceWorker.controller) navigator.serviceWorker.controller.postMessage(ackMsg); } catch (e) {}
+                                });
+                            }
+                        } catch (e) {}
                         setTimeout(function () {
                             try { if (window.AutoPushBridge) AutoPushBridge.pull(true); } catch (e) {}
                         }, 400);

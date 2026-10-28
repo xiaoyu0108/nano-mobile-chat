@@ -884,6 +884,26 @@ function peekScope(env, appId, token) {
   if (!peekPublic(env)) return a;
   return a + "." + peekTokenHash(token || "anon");
 }
+function peekAppIndexKey(env, token) {
+  if (!peekPublic(env)) return "peek2:appid:local";
+  return "peek2:appid:" + peekTokenHash(token || "anon");
+}
+async function peekRememberApp(env, token, appId) {
+  const a = cleanAppId(appId);
+  if (!a || a === "legacy") return;
+  try {
+    await kv(env).put(peekAppIndexKey(env, token), a, { expirationTtl: 60 * 60 * 24 * 90 });
+  } catch (e) {
+  }
+}
+async function peekResolveApp(env, token) {
+  try {
+    const raw = await kv(env).get(peekAppIndexKey(env, token));
+    return raw ? cleanAppId(raw) : "";
+  } catch (e) {
+    return "";
+  }
+}
 function peekOwnerKey(env, token, chatId) {
   chatId = String(chatId || "default");
   if (!peekPublic(env)) return "peek2:owner:" + chatId;
@@ -3320,12 +3340,75 @@ var index_default = {
       const count = await sendAll(env, { title: "Nano", body: "\u6D4B\u8BD5\u63A8\u9001\uFF1A\u6536\u5230\u5C31\u6210\u529F\u4E86", target: "" });
       return json({ ok: true, count });
     }
+    if (pathname === "/img" && request.method === "GET") {
+      if (String(peekTokenValue(request, {}) || "").length < 8) {
+        return new Response("forbidden", { status: 403, headers: CORS });
+      }
+      let target = "";
+      try {
+        target = new URL(request.url).searchParams.get("url") || "";
+      } catch (e) {
+      }
+      let u = null;
+      try {
+        u = new URL(target);
+      } catch (e) {
+      }
+      if (!u || !/^https?:$/i.test(u.protocol) || u.username || u.password) {
+        return new Response("bad url", { status: 400, headers: CORS });
+      }
+      const host = String(u.hostname || "").toLowerCase();
+      const blocked = !host || host === "localhost" || host === "::1" || /\.local$/i.test(host) || /^127\./.test(host) || /^10\./.test(host) || /^192\.168\./.test(host) || /^169\.254\./.test(host) || /^172\.(1[6-9]|2\d|3[01])\./.test(host) || host.indexOf(":") !== -1;
+      if (blocked) return new Response("blocked", { status: 400, headers: CORS });
+      const withTimeout = async function(url) {
+        const ctrl = new AbortController();
+        const timer = setTimeout(function() {
+          try {
+            ctrl.abort();
+          } catch (e) {
+          }
+        }, 15e3);
+        try {
+          return await fetch(url, {
+            signal: ctrl.signal,
+            redirect: "follow",
+            headers: { "User-Agent": "Mozilla/5.0 (compatible; NanoImageProxy/1.0)", "Accept": "image/*" }
+          });
+        } finally {
+          clearTimeout(timer);
+        }
+      };
+      const candidates = [
+        "https://wsrv.nl/?url=" + encodeURIComponent(u.href) + "&w=1400&output=jpg&q=85",
+        u.href
+      ];
+      try {
+        for (const src of candidates) {
+          const r = await withTimeout(src);
+          if (!r || !r.ok) continue;
+          const ct = String(r.headers.get("content-type") || "").toLowerCase();
+          if (ct && !/^image\//.test(ct)) continue;
+          const len = Number(r.headers.get("content-length") || 0);
+          if (len && len > 12 * 1024 * 1024) continue;
+          const buf = await r.arrayBuffer();
+          if (!buf || buf.byteLength < 64 || buf.byteLength > 12 * 1024 * 1024) continue;
+          return new Response(buf, {
+            headers: Object.assign({}, CORS, {
+              "Content-Type": ct || "image/jpeg",
+              "Cache-Control": "public, max-age=86400"
+            })
+          });
+        }
+      } catch (e) {
+      }
+      return new Response("fetch failed", { status: 502, headers: CORS });
+    }
     if ((pathname === "/peek" || pathname === "/peek/health") && request.method === "GET") {
       const publicMode = peekPublic(env);
       return json({
         ok: true,
         service: "nano-peek",
-        build: "2026-10-26-social",
+        build: "2026-10-28-imgpush",
         method: "POST /peek",
         publicMode,
         tokenConfigured: !!env.PEEK_TOKEN,
@@ -3365,7 +3448,32 @@ var index_default = {
       } catch (e) {
         owner = {};
       }
-      const realAppId = cleanAppId(body.appId || owner.appId || "legacy");
+      let ownerLatest = {};
+      if (!owner.appId && requestedChatId && requestedChatId !== "latest") {
+        try {
+          const rawOwner2 = await kv(env).get(peekOwnerKey(env, token, "latest"));
+          if (rawOwner2) ownerLatest = JSON.parse(rawOwner2) || {};
+        } catch (e) {
+        }
+      }
+      let realAppId = cleanAppId(body.appId || owner.appId || ownerLatest.appId || "legacy");
+      let indexedApp = "";
+      try {
+        indexedApp = await peekResolveApp(env, token);
+      } catch (e) {
+      }
+      if (!body.appId && !owner.appId && !ownerLatest.appId && indexedApp) realAppId = indexedApp;
+      if (indexedApp && indexedApp !== realAppId) {
+        try {
+          const ownApi = await kv(env).get(peekBase(peekScope(env, realAppId, token), "api:latest"));
+          if (!ownApi) {
+            const idxApi = await kv(env).get(peekBase(peekScope(env, indexedApp, token), "api:latest"));
+            if (idxApi) realAppId = indexedApp;
+          }
+        } catch (e) {
+        }
+      }
+      if (ownerLatest.appId) owner = Object.assign({}, ownerLatest, owner);
       const appId = peekScope(env, realAppId, token);
       let chatId = requestedChatId;
       if (!chatId) {
@@ -3535,6 +3643,7 @@ var index_default = {
       const token = peekTokenValue(request, body);
       const realAppId = cleanAppId(body.appId);
       const appId = peekScope(env, realAppId, token);
+      await peekRememberApp(env, token, realAppId);
       const ttl = 60 * 60 * 24 * 30;
       try {
         await kv(env).put(peekBase(appId, "persona:" + chatId), system, { expirationTtl: ttl });
@@ -3591,6 +3700,7 @@ var index_default = {
       const token = peekTokenValue(request, body);
       const realAppId = cleanAppId(body.appId);
       const appId = peekScope(env, realAppId, token);
+      await peekRememberApp(env, token, realAppId);
       const chatId = String(body.chatId || "latest") || "latest";
       const ttl = 60 * 60 * 24 * 30;
       try {
@@ -3854,6 +3964,44 @@ var index_default = {
       } catch (e) {
       }
       return json({ ok: true });
+    }
+    if (pathname === "/auto/status" && request.method === "GET") {
+      if (!autoOk(request, env, null)) return json({ ok: false, error: "unauthorized" }, 401);
+      const sp = new URL(request.url).searchParams;
+      const appId = cleanAppId(sp.get("appId"));
+      const deviceId2 = cleanDeviceId(sp.get("deviceId"));
+      const userId2 = cleanUserId(sp.get("userId"));
+      let cfg = null, state = {};
+      try {
+        const raw = await kv(env).get(autoKey("config", appId, deviceId2, userId2));
+        cfg = raw ? JSON.parse(raw) : null;
+      } catch (e) {
+      }
+      try {
+        const raw = await kv(env).get(autoKey("state", appId, deviceId2, userId2));
+        state = raw ? JSON.parse(raw) : {};
+      } catch (e) {
+      }
+      let subs = [];
+      try {
+        subs = await getSubs(env, userId2, deviceId2, appId);
+      } catch (e) {
+      }
+      return json({
+        ok: true,
+        serverNow: Date.now(),
+        appId,
+        deviceId: deviceId2,
+        userId: userId2,
+        configured: !!cfg,
+        enabled: !!(cfg && cfg.enabled),
+        msgEnabled: !!(cfg && cfg.msgEnabled),
+        momentEnabled: !!(cfg && cfg.momentEnabled),
+        chars: cfg && Array.isArray(cfg.chars) ? cfg.chars.length : 0,
+        nextMsgAt: Number(state.nextMsgAt) || 0,
+        nextMomentAt: Number(state.nextMomentAt) || 0,
+        subs: subs.length
+      });
     }
     if (pathname === "/auto/pending") {
       if (!autoOk(request, env, null)) return json({ ok: false, error: "unauthorized" }, 401);

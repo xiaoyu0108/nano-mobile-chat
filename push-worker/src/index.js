@@ -554,6 +554,24 @@ function peekScope(env, appId, token) {
   if (!peekPublic(env)) return a;
   return a + '.' + peekTokenHash(token || 'anon');
 }
+// 令牌 → 站点 appId 的索引。快捷指令经常只带 token / chatId，不带 appId；
+// 没有这个索引时服务端会把请求当成 legacy 分区，于是「同步过 API 却查不到」，
+// 表现为一直报没有模型、上游 API 站也完全没有调用记录。
+function peekAppIndexKey(env, token) {
+  if (!peekPublic(env)) return 'peek2:appid:local';
+  return 'peek2:appid:' + peekTokenHash(token || 'anon');
+}
+async function peekRememberApp(env, token, appId) {
+  const a = cleanAppId(appId);
+  if (!a || a === 'legacy') return;
+  try { await kv(env).put(peekAppIndexKey(env, token), a, { expirationTtl: 60 * 60 * 24 * 90 }); } catch (e) {}
+}
+async function peekResolveApp(env, token) {
+  try {
+    const raw = await kv(env).get(peekAppIndexKey(env, token));
+    return raw ? cleanAppId(raw) : '';
+  } catch (e) { return ''; }
+}
 function peekOwnerKey(env, token, chatId) {
   chatId = String(chatId || 'default');
   if (!peekPublic(env)) return 'peek2:owner:' + chatId;
@@ -2913,6 +2931,65 @@ export default {
       return json({ ok: true, count });
     }
 
+    // 图片转存代理：生图接口返回的临时 URL 经常因为 CORS / 国内网络而无法在浏览器里
+    // 转成 base64，几个小时后 URL 过期就变成问号。这里由 Worker 代取图片并回传，
+    // 手机只要能连上 Worker 就能把图片永久存进 IndexedDB。
+    if (pathname === '/img' && request.method === 'GET') {
+      // 图片代理只需要一个非空令牌做最基础的防滥用，不参与私用/公用模式的鉴权，
+      // 否则私用 Worker 的 PEEK_TOKEN 和 App 里的 pk 不同，图片就永远转存不了。
+      if (String(peekTokenValue(request, {}) || '').length < 8) {
+        return new Response('forbidden', { status: 403, headers: CORS });
+      }
+      let target = '';
+      try { target = new URL(request.url).searchParams.get('url') || ''; } catch (e) {}
+      let u = null;
+      try { u = new URL(target); } catch (e) {}
+      if (!u || !/^https?:$/i.test(u.protocol) || u.username || u.password) {
+        return new Response('bad url', { status: 400, headers: CORS });
+      }
+      const host = String(u.hostname || '').toLowerCase();
+      const blocked = !host
+        || host === 'localhost' || host === '::1' || /\.local$/i.test(host)
+        || /^127\./.test(host) || /^10\./.test(host) || /^192\.168\./.test(host)
+        || /^169\.254\./.test(host) || /^172\.(1[6-9]|2\d|3[01])\./.test(host)
+        || host.indexOf(':') !== -1;
+      if (blocked) return new Response('blocked', { status: 400, headers: CORS });
+      const withTimeout = async function (url) {
+        const ctrl = new AbortController();
+        const timer = setTimeout(function () { try { ctrl.abort(); } catch (e) {} }, 15000);
+        try {
+          return await fetch(url, {
+            signal: ctrl.signal,
+            redirect: 'follow',
+            headers: { 'User-Agent': 'Mozilla/5.0 (compatible; NanoImageProxy/1.0)', 'Accept': 'image/*' }
+          });
+        } finally { clearTimeout(timer); }
+      };
+      const candidates = [
+        'https://wsrv.nl/?url=' + encodeURIComponent(u.href) + '&w=1400&output=jpg&q=85',
+        u.href
+      ];
+      try {
+        for (const src of candidates) {
+          const r = await withTimeout(src);
+          if (!r || !r.ok) continue;
+          const ct = String(r.headers.get('content-type') || '').toLowerCase();
+          if (ct && !/^image\//.test(ct)) continue;
+          const len = Number(r.headers.get('content-length') || 0);
+          if (len && len > 12 * 1024 * 1024) continue;
+          const buf = await r.arrayBuffer();
+          if (!buf || buf.byteLength < 64 || buf.byteLength > 12 * 1024 * 1024) continue;
+          return new Response(buf, {
+            headers: Object.assign({}, CORS, {
+              'Content-Type': ct || 'image/jpeg',
+              'Cache-Control': 'public, max-age=86400'
+            })
+          });
+        }
+      } catch (e) {}
+      return new Response('fetch failed', { status: 502, headers: CORS });
+    }
+
     // 5) 屏幕速聊（iOS 快捷指令）：截图/文本 → 服务端用保存的 key 调模型 → 返回角色回复，并暂存轮次供 App 合并
     // GET /peek 或 /peek/health：浏览器里直接看配置，避免「能打开根地址」被误认为 /peek 正常。
     if ((pathname === '/peek' || pathname === '/peek/health') && request.method === 'GET') {
@@ -2920,7 +2997,7 @@ export default {
       return json({
         ok: true,
         service: 'nano-peek',
-        build: '2026-10-26-social',
+        build: '2026-10-28-imgpush',
         method: 'POST /peek',
         publicMode: publicMode,
         tokenConfigured: !!env.PEEK_TOKEN,
@@ -2954,7 +3031,31 @@ export default {
         const rawOwner = await kv(env).get(peekOwnerKey(env, token, requestedChatId || 'latest'));
         if (rawOwner) owner = JSON.parse(rawOwner) || {};
       } catch (e) { owner = {}; }
-      const realAppId = cleanAppId(body.appId || owner.appId || 'legacy');
+      let ownerLatest = {};
+      if (!owner.appId && requestedChatId && requestedChatId !== 'latest') {
+        try {
+          const rawOwner2 = await kv(env).get(peekOwnerKey(env, token, 'latest'));
+          if (rawOwner2) ownerLatest = JSON.parse(rawOwner2) || {};
+        } catch (e) {}
+      }
+      // 快捷指令可以不传 appId。依次用：请求体 → 该聊天的 owner → 最近一次同步的 owner
+      // → 令牌索引。绝不能直接落到 legacy，否则同步在 app_xxx 分区里的 API 永远读不到。
+      let realAppId = cleanAppId(body.appId || owner.appId || ownerLatest.appId || 'legacy');
+      let indexedApp = '';
+      try { indexedApp = await peekResolveApp(env, token); } catch (e) {}
+      if (!body.appId && !owner.appId && !ownerLatest.appId && indexedApp) realAppId = indexedApp;
+      // 旧快捷指令里可能还写着换域名前的 appId：该分区没有 API、令牌索引里却有，
+      // 这时自动切到索引分区，避免「明明同步过模型却一直报没有模型」。
+      if (indexedApp && indexedApp !== realAppId) {
+        try {
+          const ownApi = await kv(env).get(peekBase(peekScope(env, realAppId, token), 'api:latest'));
+          if (!ownApi) {
+            const idxApi = await kv(env).get(peekBase(peekScope(env, indexedApp, token), 'api:latest'));
+            if (idxApi) realAppId = indexedApp;
+          }
+        } catch (e) {}
+      }
+      if (ownerLatest.appId) owner = Object.assign({}, ownerLatest, owner);
       const appId = peekScope(env, realAppId, token);
       // 快捷指令可以不传 chatId：App 每次打开聊天 / 保存窥屏配置都会把最近角色写进 chat:latest。
       let chatId = requestedChatId;
@@ -3141,6 +3242,7 @@ export default {
       const token = peekTokenValue(request, body);
       const realAppId = cleanAppId(body.appId);
       const appId = peekScope(env, realAppId, token);
+      await peekRememberApp(env, token, realAppId);
       const ttl = 60 * 60 * 24 * 30;
       try {
         await kv(env).put(peekBase(appId, 'persona:' + chatId), system, { expirationTtl: ttl });
@@ -3198,6 +3300,7 @@ export default {
       const token = peekTokenValue(request, body);
       const realAppId = cleanAppId(body.appId);
       const appId = peekScope(env, realAppId, token);
+      await peekRememberApp(env, token, realAppId);
       const chatId = String(body.chatId || 'latest') || 'latest';
       const ttl = 60 * 60 * 24 * 30;
       try {
@@ -3422,6 +3525,36 @@ export default {
     }
 
     // GET /auto/pending?userId=  拉取服务端生成、还没合并进 App 的消息/朋友圈
+    // GET /auto/status  给设置页看的后台推送自检：配置到底有没有同步上来、
+    // 有没有订阅、下一次主动消息/朋友圈是什么时候。解决「显示已开启但从不推送」无从排查的问题。
+    if (pathname === '/auto/status' && request.method === 'GET') {
+      if (!autoOk(request, env, null)) return json({ ok: false, error: 'unauthorized' }, 401);
+      const sp = new URL(request.url).searchParams;
+      const appId = cleanAppId(sp.get('appId'));
+      const deviceId = cleanDeviceId(sp.get('deviceId'));
+      const userId = cleanUserId(sp.get('userId'));
+      let cfg = null, state = {};
+      try { const raw = await kv(env).get(autoKey('config', appId, deviceId, userId)); cfg = raw ? JSON.parse(raw) : null; } catch (e) {}
+      try { const raw = await kv(env).get(autoKey('state', appId, deviceId, userId)); state = raw ? JSON.parse(raw) : {}; } catch (e) {}
+      let subs = [];
+      try { subs = await getSubs(env, userId, deviceId, appId); } catch (e) {}
+      return json({
+        ok: true,
+        serverNow: Date.now(),
+        appId: appId,
+        deviceId: deviceId,
+        userId: userId,
+        configured: !!cfg,
+        enabled: !!(cfg && cfg.enabled),
+        msgEnabled: !!(cfg && cfg.msgEnabled),
+        momentEnabled: !!(cfg && cfg.momentEnabled),
+        chars: cfg && Array.isArray(cfg.chars) ? cfg.chars.length : 0,
+        nextMsgAt: Number(state.nextMsgAt) || 0,
+        nextMomentAt: Number(state.nextMomentAt) || 0,
+        subs: subs.length
+      });
+    }
+
     if (pathname === '/auto/pending') {
       if (!autoOk(request, env, null)) return json({ ok: false, error: 'unauthorized' }, 401);
       const sp = new URL(request.url).searchParams;

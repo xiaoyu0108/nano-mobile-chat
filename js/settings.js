@@ -521,6 +521,28 @@ const APP_ICONS = {
         else status.textContent = '未配置';
       }
       if (btn) btn.textContent = s.subscribed ? '重新订阅' : '开启';
+      // 浏览器显示「已订阅」不代表服务端真的会推：再问一次 Worker 有没有配置和订阅。
+      if (s.subscribed && status) {
+        status.textContent = '已开启 · 检查服务端…';
+        var qs = '?appId=' + encodeURIComponent(s.appId || '') +
+          '&deviceId=' + encodeURIComponent(s.deviceId || '') +
+          '&userId=' + encodeURIComponent(s.userId || '') +
+          '&token=' + encodeURIComponent((localStorage.getItem('nano_peek_token') || localStorage.getItem('nano_push_token') || ''));
+        fetch(pushEndpoint() + '/auto/status' + qs, { cache: 'no-store' })
+          .then(function (r) { return r.json(); })
+          .then(function (j) {
+            if (!j || !j.ok) { status.textContent = '已开启 · 服务端未响应'; return; }
+            if (!j.subs) { status.textContent = '已开启 · 服务端没有订阅记录，请点「重新订阅」'; return; }
+            if (!j.configured || !j.enabled) { status.textContent = '已开启 · 服务端未同步主动消息（打开一次私聊）'; return; }
+            var when = '';
+            if (j.nextMsgAt) {
+              var d = new Date(j.nextMsgAt);
+              when = ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+            }
+            status.textContent = '已开启 · 后台运行中' + (when ? ('（下次 ' + when + '）') : '');
+          })
+          .catch(function () { status.textContent = '已开启 · 服务端检查失败'; });
+      }
     }).catch(function () { if (status) status.textContent = '检查失败'; });
   }
 
@@ -846,6 +868,13 @@ const APP_ICONS = {
     toast('已还原默认桌面');
   }
 
+  function pushEndpoint() {
+    var endpoint = '';
+    try { endpoint = (localStorage.getItem('nano_push_endpoint') || localStorage.getItem('nano_peek_url') || '').trim(); } catch (e) {}
+    if (!endpoint) endpoint = 'https://nanopush.nano315.online';
+    return endpoint.replace(/\/+$/, '');
+  }
+
   async function enablePush() {
     if (!NP) { toast('推送模块未加载'); return false; }
     // 安卓 Chrome 必须在用户手势里请求通知权限；放到 fetch 之后会丢失手势，
@@ -855,26 +884,29 @@ const APP_ICONS = {
         await Notification.requestPermission();
       }
     } catch (e) {}
-    var endpoint = '';
-    try { endpoint = (localStorage.getItem('nano_push_endpoint') || localStorage.getItem('nano_peek_url') || '').trim(); } catch (e) {}
-    if (!endpoint) endpoint = 'https://nanopush.nano315.online';
+    var endpoint = pushEndpoint();
     var key = '';
     try { key = (localStorage.getItem('nano_push_vapid') || '').trim(); } catch (e) {}
     var token = '';
     try { token = localStorage.getItem('nano_push_token') || localStorage.getItem('nano_peek_token') || ''; } catch (e) {}
-    if (!key) {
-      try {
-        var r = await fetch(endpoint.replace(/\/+$/, '') + '/vapid', { credentials: 'omit' });
-        var j = await r.json();
-        key = (j && (j.publicKey || j.vapid || j.key)) || '';
-      } catch (e) {}
-    }
+    // 每次都向服务端确认当前 VAPID 公钥：Worker 换过密钥后，浏览器里旧的公钥
+    // 会让订阅和新私钥对不上，推送服务直接拒绝，表现就是「一直开着但从来没推送」。
+    var freshKey = '';
+    try {
+      var r = await fetch(endpoint + '/vapid', { credentials: 'omit', cache: 'no-store' });
+      var j = await r.json();
+      freshKey = (j && (j.publicKey || j.vapid || j.key)) || '';
+    } catch (e) {}
+    if (freshKey) key = freshKey;
     if (!key) { toast('服务端未返回 VAPID 公钥'); return false; }
     try {
+      localStorage.setItem('nano_push_vapid', key);
       NP.setup(endpoint, key, token);
+      // 强制重建订阅：旧订阅可能绑定着服务端已经换掉的 VAPID 私钥。
       await NP.enable(true);
       localStorage.setItem('nano_notify_enabled', '1');
       refreshNotify();
+      refreshPush();
       toast('Web Push 已开启');
       return true;
     } catch (e) {

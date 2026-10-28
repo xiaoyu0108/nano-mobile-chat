@@ -1584,11 +1584,57 @@
         } catch (e) {}
     }
 
+    let compactingMessages = false;
+    function compactMessageImagesForStorage() {
+        if (compactingMessages) return Promise.resolve(false);
+        if (!window.NanoImageCache || !NanoImageCache.shrinkDataUrl) return Promise.resolve(false);
+        compactingMessages = true;
+        let changed = false;
+        const jobs = [];
+        const fix = function(obj, key) {
+            const v = obj && obj[key];
+            if (typeof v !== 'string' || v.indexOf('data:image') !== 0 || v.length < 400 * 1024) return;
+            jobs.push(NanoImageCache.shrinkDataUrl(v, 1280, 0.8).then(function(d) {
+                if (d && d !== v) { obj[key] = d; changed = true; }
+            }).catch(function() {}));
+        };
+        messages.forEach(function(m) {
+            if (!m) return;
+            if (m.imageData) {
+                fix(m.imageData, 'url');
+                if (Array.isArray(m.imageData.urls)) {
+                    m.imageData.urls.forEach(function(u, i) {
+                        const v = u;
+                        if (typeof v !== 'string' || v.indexOf('data:image') !== 0 || v.length < 400 * 1024) return;
+                        jobs.push(NanoImageCache.shrinkDataUrl(v, 1280, 0.8).then(function(d) {
+                            if (d && d !== v) { m.imageData.urls[i] = d; changed = true; }
+                        }).catch(function() {}));
+                    });
+                }
+            }
+            if (m.cardData) fix(m.cardData, 'img');
+        });
+        return Promise.all(jobs).then(function() { compactingMessages = false; return changed; })
+            .catch(function() { compactingMessages = false; return changed; });
+    }
     function saveMessages() {
         try {
             if (typeof localforage !== 'undefined') {
-                localforage.setItem(getStorageKey(), messages).catch(function(err) {
-                    console.error('[存储] IndexedDB 保存失败:', err);
+                // 配额满了时 IndexedDB 会直接拒绝整次写入；原代码只打日志，
+                // 结果就是「这张图当时看得见，重开就没了」。这里压缩图片后重试一次。
+                var write = localforage.setItem(getStorageKey(), messages);
+                write.catch(function(err) {
+                    var quota = !!(err && (err.name === 'QuotaExceededError' || err.code === 22 || /quota/i.test(String(err.message || err))));
+                    if (!quota) { console.error('[存储] IndexedDB 保存失败:', err); return; }
+                    console.warn('[存储] 配额不足，压缩聊天图片后重试…');
+                    compactMessageImagesForStorage().then(function(changed) {
+                        if (!changed) throw err;
+                        return localforage.setItem(getStorageKey(), messages);
+                    }).then(function() {
+                        console.log('[存储] 压缩后保存成功');
+                    }).catch(function(err2) {
+                        console.error('[存储] 压缩后仍保存失败:', err2);
+                    });
                 });
             }
 
@@ -3586,6 +3632,9 @@
                     const img = document.createElement('img');
                     img.src = imageData.url;
                     img.alt = imageData.desc || '图片';
+                    // 部分生图 CDN 做了防盗链：带上站点 referer 会直接 403，去掉后反而能显示。
+                    try { img.referrerPolicy = 'no-referrer'; } catch (e) {}
+                    try { img.loading = 'lazy'; } catch (e) {}
                     // 旧消息里可能只存了会过期的临时 URL：加载失败时尝试转成本地 dataURL 并回写。
                     img.onerror = async function () {
                         if (img.dataset.retried) return;
@@ -7762,7 +7811,7 @@
         const registerImage = async function (u) {
             // 临时 URL 先抓成本地 dataURL，避免几天后过期变问号/被系统清掉。
             try {
-                if (u && window.NanoImageCache && /^https?:\/\//i.test(u)) {
+                if (u && window.NanoImageCache && /^(https?:\/\/|blob:)/i.test(u)) {
                     const local = await NanoImageCache.toDataUrl(u);
                     if (local) u = local;
                 }
@@ -13418,7 +13467,11 @@ if (data.type === 'NANO_VOICE_CALL_CARD' || data.type === 'NANO_VIDEO_CALL_CARD'
             console.log('[Chat] 缓存加载完成，消息数:', messages.length);
             // 旧链接卡片补封面（异步、只补最近 5 张）
             setTimeout(function () { try { refreshStaleLinkPreviewImages(5); } catch (e) {} }, 1500);
-            setTimeout(function () { try { repairRemoteImages(4); } catch (e) {} }, 5000);
+            setTimeout(function () { try { repairRemoteImages(12); } catch (e) {} }, 5000);
+            // 回前台再补一轮：临时生图 URL 只要还没过期，就还有机会转存成本地图。
+            document.addEventListener('visibilitychange', function () {
+                if (document.visibilityState === 'visible') setTimeout(function () { try { repairRemoteImages(12); } catch (e) {} }, 1200);
+            });
             refreshMemoryHints();
             try { if (window.NanoBadge) window.NanoBadge.setContext(chatId); } catch (e) {}
             try { showPendingUserInvite(); } catch (e) {}

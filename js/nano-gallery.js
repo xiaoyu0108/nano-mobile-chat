@@ -1,9 +1,9 @@
 (function () {
     'use strict';
     var KEY = 'nano_gallery_v1';
-    // 升到 v2：旧版可能因为 key 碰撞把照片误标成“已删除”，这里强制重新从聊天记录扫一次，
-    // 把还在聊天里的照片恢复回来；扫完写入 v2 标记，之后不再每次打开都全量扫。
-    var CHAT_SCAN_KEY = 'nano_gallery_chat_scan_v2';
+    // 升到 v3：重新从聊天记录补扫一次。之前远程 URL 过期/写入失败的照片如果还留在
+    // 聊天里（已是 base64），这次能重新写回图库；用户手动删过的有墓碑，不会复活。
+    var CHAT_SCAN_KEY = 'nano_gallery_chat_scan_v3';
     // v2：旧版 urlKey 只取前 120 字符 + 长度，同尺寸/同编码的 dataURL 会得到相同的 key，
     // 删一张图时会把别的图一起当成“已删除”过滤掉（用户看到的就是照片莫名其妙被销毁）。
     var TOMB_KEY = 'nano_gallery_deleted_v2';
@@ -99,6 +99,76 @@
         });
     }
     var _remotePending = {};
+    var _recoverStarted = false;
+    var _compactStarted = false;
+    // 历史图库里可能存着几 MB 的原图（聊天里还有一份），把 IndexedDB 配额吃光后，
+    // 新消息写入就会失败、图片"自动消失"。这里在后台把超大图逐张压小，腾出空间。
+    function compactLargeGalleryItems(limit) {
+        if (_compactStarted || !window.NanoImageCache || !NanoImageCache.shrinkDataUrl) return;
+        _compactStarted = true;
+        dbAll().then(function (items) {
+            var big = (items || []).filter(function (x) {
+                return x && /^data:image\//i.test(String(x.url || '')) && String(x.url).length > 700 * 1024 && !isEmojiRecord(x);
+            }).slice(0, limit || 30);
+            var i = 0;
+            (function next() {
+                if (i >= big.length) return;
+                var rec = big[i++];
+                NanoImageCache.shrinkDataUrl(rec.url, 1280, 0.8).then(function (d) {
+                    if (d && d !== rec.url) { rec.url = d; return dbPut(rec); }
+                }).catch(function () {}).then(next);
+            })();
+        }).catch(function () {});
+    }
+    // 压缩兜底：生图原图动辄几 MB，IndexedDB 写入失败时自动降一档再存，避免“生成完就丢”。
+    function shrinkDataUrl(dataUrl, maxSide, quality) {
+        return new Promise(function (resolve) {
+            try {
+                var img = new Image();
+                img.onload = function () {
+                    try {
+                        var scale = Math.min(1, (maxSide || 1280) / Math.max(img.width || 1, img.height || 1));
+                        var c = document.createElement('canvas');
+                        c.width = Math.max(1, Math.round((img.width || 1) * scale));
+                        c.height = Math.max(1, Math.round((img.height || 1) * scale));
+                        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+                        resolve(c.toDataURL('image/jpeg', quality || 0.82));
+                    } catch (e) { resolve(''); }
+                };
+                img.onerror = function () { resolve(''); };
+                img.src = dataUrl;
+            } catch (e) { resolve(''); }
+        });
+    }
+    function putWithFallback(item) {
+        return dbPut(item).then(function (ok) {
+            if (ok || !/^data:image\//i.test(String(item.url || ''))) return ok;
+            return shrinkDataUrl(item.url, 1280, 0.82).then(function (small) {
+                if (!small || small === item.url) return false;
+                item.url = small;
+                return dbPut(item).then(function (ok2) {
+                    if (ok2) return true;
+                    return shrinkDataUrl(small, 900, 0.72).then(function (tiny) {
+                        if (!tiny) return false;
+                        item.url = tiny;
+                        return dbPut(item);
+                    });
+                });
+            });
+        });
+    }
+    // 打开图库时把仍停留在 http 临时地址的记录重新转成 base64。生图站的 URL 通常几小时
+    // 就过期，过期后就再也取不回来；只要还在有效期内，就尽量抢救成永久本地图。
+    function recoverRemoteImages(limit) {
+        if (_recoverStarted || !window.NanoImageCache || !NanoImageCache.toDataUrl) return;
+        _recoverStarted = true;
+        dbAll().then(function (items) {
+            var remotes = (items || []).filter(function (x) {
+                return x && /^https?:\/\//i.test(String(x.url || '')) && !isEmojiRecord(x);
+            }).slice(0, limit || 12);
+            remotes.forEach(function (x) { cacheRemoteImage(x, x.url); });
+        }).catch(function () {});
+    }
     // 生图接口常返回会过期的临时 URL。能在后台下载就转成 data URL 永久存进 IndexedDB；
     // 下载失败（CORS/网络）就保留原 URL，不影响当前显示。
     function cacheRemoteImage(rec, u) {
@@ -293,14 +363,14 @@
         };
         // base64 大图只写 IndexedDB，不碰 5MB 的 localStorage，避免解析/写入卡顿和配额失败。
         if (/^data:image\//i.test(u)) {
-            dbPut(item);
+            putWithFallback(item);
             untomb(k);
             try { window.dispatchEvent(new CustomEvent('nano-gallery-updated')); } catch (e) {}
             return;
         }
         var arr = read();
         for (var i = 0; i < arr.length; i++) {
-            if (arr[i] && urlKey(arr[i].url) === k) { untomb(k); dbPut(arr[i]); return; }
+            if (arr[i] && urlKey(arr[i].url) === k) { untomb(k); putWithFallback(arr[i]); return; }
         }
         dbPut(item);
         arr.unshift(item);
@@ -449,7 +519,16 @@
             var dbItems = res[0] || [];
             base = mergeWithDb(base, dbItems);
             var keys = res[1] || [], charNames = res[2] || {};
-            var chatKeys = (keys || []).filter(function (k) { return /^chat_messages_/.test(k); }).slice(0, 40);
+            var chatKeys = (keys || []).filter(function (k) { return /^chat_messages_/.test(k); });
+            // 优先扫最近活跃的聊天：一次补扫不必把几百个旧会话全部 JSON.parse 一遍。
+            try {
+                var act = JSON.parse(localStorage.getItem('nano_chat_activity') || '{}') || {};
+                chatKeys.sort(function (a, b) {
+                    var ia = String(a).replace(/^chat_messages_/, ''), ib = String(b).replace(/^chat_messages_/, '');
+                    return (Number(act[ib]) || 0) - (Number(act[ia]) || 0);
+                });
+            } catch (e) {}
+            chatKeys = chatKeys.slice(0, 40);
             return Promise.all(chatKeys.map(function (k) {
                 var cid = String(k).replace(/^chat_messages_/, '');
                 var cname = charNames[cid] || '';
@@ -508,6 +587,8 @@
         }).catch(function () { return base; });
     }
     function allAsync() {
+        try { recoverRemoteImages(12); } catch (e) {}
+        try { compactLargeGalleryItems(30); } catch (e) {}
         return Promise.resolve(allAsyncCore()).then(function (list) {
             return emojiUrlSetFromDb().then(function (set) {
                 return (list || []).filter(function (x) {

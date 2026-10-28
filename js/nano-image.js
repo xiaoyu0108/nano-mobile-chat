@@ -59,7 +59,7 @@
         }
         var persist = async function (u) {
             try {
-                if (u && window.NanoImageCache && /^https?:\/\//i.test(u)) {
+                if (u && window.NanoImageCache && /^(https?:\/\/|blob:)/i.test(u)) {
                     var d = await NanoImageCache.toDataUrl(u);
                     if (d) return d;
                 }

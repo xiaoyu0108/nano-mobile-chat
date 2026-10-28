@@ -77,7 +77,7 @@
             var who = x.charName || (x.source === '聊天' ? '未知角色' : '');
             var isSel = !!selected[x.url];
             return '<div class="cell' + (isSel ? ' sel' : '') + '" data-i="' + i + '">' +
-                '<img loading="lazy" src="' + esc(x.url) + '" alt="">' +
+                '<img loading="lazy" referrerpolicy="no-referrer" src="' + esc(x.url) + '" alt="">' +
                 '<div class="tag">' + (who ? '<b>' + esc(who) + '</b>' : '') + '<span>' + esc(x.source || '') + '</span></div>' +
                 '<div class="check">✓</div></div>';
         }).join('');

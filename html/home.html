@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<script src="../js/nano-runtime.js?v=20261027f"></script>
+<script src="../js/nano-runtime.js?v=20261028c"></script>
 <meta charset="UTF-8">
 <script src="../js/nano-idb.js"></script>
 <script>window.__NANO_FONT_ONLY = true;</script>
@@ -765,7 +765,8 @@ const BUILTIN_TEMPLATES=[
   {file:"../gray-pink-dialog-widget.html",name:"gray-pink",label:"灰粉对话",w:4,h:1,copy:{"t0": "☆ nano在呜", "t1": "在呀 ππ"}},
   {file:"../strip1_note.html",name:"strip1-note",label:"便签",w:4,h:1,copy:{"title": "nano", "sub": "今天也是想你的一天", "time": "12:20"}},
   {file:"builtin/blue-album.html",name:"blue-album",label:"粉丝网",w:4,h:2,copy:{"title": "NANO FAN CLUB", "sub": "“为你心动 第 10086 次”"}},
-  {file:"builtin/diary-window.html",name:"diary-window",label:"日记窗",w:2,h:2,sizes:[[2, 2], [3, 3], [4, 4]],copy:{"hd": "nano日记_", "d2": "·今天也有好好想你"}},
+  // 日记窗已下架：保留模板和 type 索引，已放到桌面的旧组件仍能正常显示，但小组件面板不再提供。
+  {file:"builtin/diary-window.html",name:"diary-window",label:"日记窗",w:2,h:2,hidden:true,sizes:[[2, 2], [3, 3], [4, 4]],copy:{"hd": "nano日记_", "d2": "·今天也有好好想你"}},
   {file:"builtin/winter-anniversary.html",name:"winter-anniversary",label:"冬日纪念",w:4,h:2,copy:{"cap": "我们的冬天 未完待续"}},
   {file:"builtin/text-message.html",name:"text-message",label:"文字消息",w:4,h:2,copy:{"msg": "今天也把想说的话，都留给你…"}}
 ];
@@ -1583,6 +1584,7 @@ function openSheet(){
   });
   if(BUILTIN_TEMPLATES.length){
     BUILTIN_TEMPLATES.forEach(t=>{
+      if(t.hidden)return;
       const code=BT_CODE[t.file];
       if(!code){
         const ph=document.createElement('div');ph.className='pvbox';ph.style.cssText='width:120px;height:54px;display:grid;place-items:center;font-size:11px;color:#aaa;border-radius:14px;background:#f7f7f7';ph.textContent='加载中…';gal.appendChild(ph);

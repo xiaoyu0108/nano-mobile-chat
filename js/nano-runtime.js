@@ -233,23 +233,88 @@
       } catch (e) { if (!done) { done = true; clearTimeout(timer); resolve(null); } }
     });
   }
+  // 国内直连 wsrv / 生图 CDN 经常被墙或不允许跨域，图片就永远转不成 base64，
+  // 临时 URL 一过期就变成问号。走自己的 Worker 代理最稳：手机只要能连上 Worker，
+  // 由 Worker 去取图（优先经过 wsrv 压缩）再回传，浏览器侧不存在 CORS 问题。
+  function imageProxyBase() {
+    try {
+      var b = String(localStorage.getItem('nano_push_endpoint') || localStorage.getItem('nano_peek_url') || '').trim().replace(/\/+$/, '');
+      if (b) return b.replace(/\/peek$/i, '');
+    } catch (e) {}
+    return 'https://nanopush.nano315.online';
+  }
+  function imageProxyToken() {
+    try {
+      var t = String(localStorage.getItem('nano_peek_token') || localStorage.getItem('nano_push_token') || '').trim();
+      if (!t) {
+        t = 'pk_' + Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10);
+        localStorage.setItem('nano_peek_token', t);
+        if (!localStorage.getItem('nano_peek_token_initial')) localStorage.setItem('nano_peek_token_initial', t);
+      }
+      return t;
+    } catch (e) { return ''; }
+  }
+  // 统一把转存后的图片压到「够看又便宜」的尺寸：生图原图动辄 2~5MB，
+  // 聊天消息和图库各存一份就会把 IndexedDB 配额撑爆，写入失败后整条消息/图片都会消失。
+  function shrinkDataUrl(dataUrl, maxSide, quality) {
+    return new Promise(function (resolve) {
+      try {
+        if (!/^data:image\//i.test(String(dataUrl || ''))) return resolve(dataUrl || '');
+        var img = new Image();
+        img.onload = function () {
+          try {
+            var w = img.naturalWidth || img.width || 0;
+            var h = img.naturalHeight || img.height || 0;
+            if (!w || !h) return resolve(dataUrl);
+            var scale = Math.min(1, (maxSide || 1400) / Math.max(w, h));
+            if (scale >= 0.999 && dataUrl.length < 700 * 1024) return resolve(dataUrl);
+            var c = document.createElement('canvas');
+            c.width = Math.max(1, Math.round(w * scale));
+            c.height = Math.max(1, Math.round(h * scale));
+            var ctx = c.getContext('2d');
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(0, 0, c.width, c.height);
+            ctx.drawImage(img, 0, 0, c.width, c.height);
+            var out = c.toDataURL('image/jpeg', quality || 0.85);
+            resolve(out && out.length < dataUrl.length ? out : dataUrl);
+          } catch (e) { resolve(dataUrl); }
+        };
+        img.onerror = function () { resolve(dataUrl); };
+        img.src = dataUrl;
+      } catch (e) { resolve(dataUrl || ''); }
+    });
+  }
   function imageToDataUrl(u) {
     u = String(u || '').trim();
     if (!u) return Promise.resolve('');
     if (/^data:image\//i.test(u)) return Promise.resolve(u);
+    // 用户相机 / 本地选图常常是 blob: 临时地址，刷新就失效，先转成 base64。
+    if (/^blob:/i.test(u)) {
+      if (imageCache[u]) return imageCache[u];
+      var bp = fetchImageBlob(u, 8000).then(function (b) {
+        return b ? blobToDataUrl(b).then(function (d) { return shrinkDataUrl(d, 1400, 0.85); }) : '';
+      }).catch(function () { return ''; });
+      imageCache[u] = bp;
+      bp.then(function (v) { if (!v) delete imageCache[u]; });
+      return bp;
+    }
     if (!/^https?:\/\//i.test(u)) return Promise.resolve('');
     if (imageCache[u]) return imageCache[u];
-    var attempts = [
-      u,
+    var attempts = [u];
+    var proxyBase = imageProxyBase();
+    if (proxyBase) {
+      attempts.push(proxyBase + '/img?url=' + encodeURIComponent(u) + '&token=' + encodeURIComponent(imageProxyToken()));
+    }
+    attempts.push(
       'https://wsrv.nl/?url=' + encodeURIComponent(u) + '&w=1400&output=jpg&q=85',
       'https://images.weserv.nl/?url=' + encodeURIComponent(u) + '&w=1400&output=jpg&q=85'
-    ];
+    );
     var p = (async function () {
       for (var i = 0; i < attempts.length; i++) {
         var blob = await fetchImageBlob(attempts[i], i === 0 ? 8000 : 10000);
         if (blob) {
           var data = await blobToDataUrl(blob);
-          if (data) return data;
+          if (data) return await shrinkDataUrl(data, 1400, 0.85);
         }
       }
       return '';
@@ -258,7 +323,7 @@
     p.then(function (v) { if (!v) delete imageCache[u]; });
     return p;
   }
-  window.NanoImageCache = { toDataUrl: imageToDataUrl };
+  window.NanoImageCache = { toDataUrl: imageToDataUrl, shrinkDataUrl: shrinkDataUrl };
 
   // 全局 API 日志：设置页「后台日志」读取。异步加载，不阻塞首屏。
   try {

@@ -8,7 +8,7 @@
    “后台回复”依赖页面常驻 + 音频保活；真正的“关闭也能收到”需要服务端配合（见 push 事件）。 */
 'use strict';
 
-var CACHE = 'nano-static-v334';
+var CACHE = 'nano-static-v336';
 var STATIC_RE = /\.(css|js|png|jpg|jpeg|webp|svg|gif|ico|woff2?|ttf|mp3)$/i;
 var HTML_FRESH_MS = 10 * 60 * 1000;   // 10 分钟内直接用缓存 HTML（页面切换秒开），后台静默更新
 var NET_TIMEOUT_MS = 1200;            // 有缓存时，网络最多等 1.2 秒，超时先上缓存
@@ -143,14 +143,25 @@ self.addEventListener('push', function (event) {
     }
     event.waitUntil((async function () {
         // 只有「真正在前台且窗口有焦点」时才交给内置胶囊通知栏。
-        // 不能用 visibilityState === 'visible'：开启保活音频后，PWA 退到后台仍可能被判定为
-        // visible，结果系统通知被吞掉，表现就是「切后台没有推送，回到 App 才看到」。
+        // 不能只用 visibilityState：开启保活音频后，PWA 退到后台仍可能被判定为
+        // visible，结果系统通知被吞掉。这里改成「先投递内置通知，等 App 回执」：
+        // App 真的收到并显示后才不再弹系统通知；没回执（后台/被冻结）才走系统通知。
+        var pushId = 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+        var acked = false;
+        var onAck = function (e) {
+            try {
+                if (e && e.data && e.data.type === 'nanoPushAck' && String(e.data.id || '') === pushId) acked = true;
+            } catch (err) {}
+        };
         try {
             var list = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-            for (var i = 0; i < list.length; i++) {
-                var c = list[i];
-                var focused = (typeof c.focused === 'boolean') ? c.focused : (c.visibilityState === 'visible');
-                if (c && focused) {
+            var live = (list || []).filter(function (c) {
+                if (!c) return false;
+                return (typeof c.focused === 'boolean') ? c.focused : (c.visibilityState === 'visible');
+            });
+            if (live.length) {
+                try { self.addEventListener('message', onAck); } catch (e) {}
+                live.forEach(function (c) {
                     try {
                         c.postMessage({
                             type: 'appNotify',
@@ -160,11 +171,14 @@ self.addEventListener('push', function (event) {
                             avatar: data.icon || '',
                             name: data.name || data.title || '',
                             target: data.target || '',
-                            fromPush: true
+                            fromPush: true,
+                            pushId: pushId
                         });
-                        return;
                     } catch (e) {}
-                }
+                });
+                await new Promise(function (resolve) { setTimeout(resolve, 1500); });
+                try { self.removeEventListener('message', onAck); } catch (e) {}
+                if (acked) return;
             }
         } catch (e) {}
         return self.registration.showNotification(data.title || 'Nano', (function () {

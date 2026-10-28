@@ -387,7 +387,7 @@
             + '地址 <code>' + esc(ep || '（先填服务端地址）') + '</code><br>'
             + '方法 <code>POST</code>；头部 <code>X-Peek-Token</code> = <code>' + esc(tok || '（令牌）') + '</code><br>'
             + '请求体选 <b>文件</b>，引用一个文本动作，内容：'
-            + '<pre class="sk-guide-json">' + esc('{"chatId":"' + (id || '角色ID') + '","image":"data:image/jpeg;base64,<Base64结果>"}') + '</pre>'
+            + '<pre class="sk-guide-json">' + esc('{"chatId":"' + (id || '角色ID') + '","appId":"' + appId() + '","token":"' + tok + '","image":"data:image/jpeg;base64,<Base64结果>"}') + '</pre>'
             + '把 <code>&lt;Base64结果&gt;</code> 换成第 2 步的 Base64 变量。</li>'
             + '<li>加 <code>获取字典值</code>，键 <code>reply</code>。</li>'
             + '<li>加 <code>显示提醒</code>，内容放 <code>reply</code>。运行一次能弹点评就成功了。</li>'
@@ -396,7 +396,7 @@
             + '<ol>'
             + '<li>在「显示提醒」后加 <code>要求输入</code>（提示：你想说什么）。</li>'
             + '<li>再加 <code>获取 URL 内容</code>：地址/头部同上，请求体选 <b>文件</b> → 文本动作：'
-            + '<pre class="sk-guide-json">' + esc('{"chatId":"' + (id || '角色ID') + '","text":"<要求输入的变量>"}') + '</pre>'
+            + '<pre class="sk-guide-json">' + esc('{"chatId":"' + (id || '角色ID') + '","appId":"' + appId() + '","token":"' + tok + '","text":"<要求输入的变量>"}') + '</pre>'
             + '把 <code>&lt;要求输入的变量&gt;</code> 换成「要求输入」的结果。</li>'
             + '<li>再接 <code>获取字典值</code> → <code>显示提醒</code>，然后把这四步放进 <code>重复</code>（50 或 100 次）。</li>'
             + '<li>在「要求输入」后加 <code>如果</code>：输入 <code>退出</code> → <code>停止此快捷指令</code>。</li>'
@@ -473,7 +473,7 @@
             '最简版（先照这个配）：',
             '1. 新建快捷指令「窥屏」→ 截屏 → Base64 编码（关闭换行）。',
             '2. 获取 URL 内容：POST 上面的接口地址；头部 X-Peek-Token = 上面的令牌；请求体选「文件」引用文本：',
-            '   {"chatId":"' + id + '","image":"data:image/jpeg;base64,<Base64结果>"}',
+            '   {"chatId":"' + id + '","appId":"' + appId() + '","token":"' + tok + '","image":"data:image/jpeg;base64,<Base64结果>"}',
             '   把 <Base64结果> 换成 Base64 变量。',
             '3. 获取字典值 reply → 显示提醒。运行一次能弹点评就成功。',
             '连续聊：显示提醒后加「要求输入」→ 再发一次 URL 请求（请求体换成 {"chatId":"' + id + '","text":"<要求输入的变量>"}）→ reply → 显示提醒；把这四步放进「重复」50/100 次。输入“退出”时用「如果」停止。',
