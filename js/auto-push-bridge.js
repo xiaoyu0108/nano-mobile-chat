@@ -65,6 +65,10 @@
     function peekToken() {
         try { return localStorage.getItem('nano_peek_token') || ''; } catch (e) { return ''; }
     }
+    // 主动消息是「按角色」开关的：即使服务端还残留旧配置，关掉的角色也不能再补发进来。
+    function autoMsgOn(chatId) {
+        try { return JSON.parse(localStorage.getItem('chat_setting_autoMsg_' + chatId)) === true; } catch (e) { return false; }
+    }
     function pushToken() {
         try { return localStorage.getItem('nano_push_token') || ''; } catch (e) { return ''; }
     }
@@ -275,6 +279,8 @@
             messages.forEach(function (m) {
                 if (!m || !m.id || !m.chatId) { if (m && m.id) handledMsgIds.push(m.id); return; }
                 if (charIds && !charIds[String(m.chatId)]) { handledMsgIds.push(m.id); return; }
+                // 这个角色已经关闭主动消息：丢弃并 ack，避免关掉后还继续收到旧 pending。
+                if (!autoMsgOn(m.chatId)) { handledMsgIds.push(m.id); return; }
                 var bubbles = Array.isArray(m.bubbles) ? m.bubbles.slice() : [];
                 if (!bubbles.length && m.text) bubbles = [m.text];
                 bubbles = splitBubbles(bubbles);

@@ -41,38 +41,11 @@
         });
     }
     function sweepBigStorage() {
-        try {
-            if (localStorage.getItem('nano_storage_swept_v3') === '1' && storageHasRoom()) return;
-            var keys = [];
-            for (var i = 0; i < localStorage.length; i++) keys.push(localStorage.key(i));
-            keys.forEach(function (k) {
-                if (!k) return;
-                try {
-                    // 这几类都有 IndexedDB 完整备份，去掉 localStorage 里的 base64 不会丢数据
-                    if (k.indexOf('chat_messages_') === 0 || k.indexOf('group_msgs_') === 0 || k.indexOf('nano_ins_chat_') === 0) {
-                        var arr = JSON.parse(localStorage.getItem(k) || 'null');
-                        if (Array.isArray(arr)) {
-                            var c = { n: 0 };
-                            deepStripDataUrls(arr, c);
-                            if (c.n) localStorage.setItem(k, JSON.stringify(arr));
-                        }
-                    } else if (k === 'nano_moments_data') {
-                        // 朋友圈图片只在 localStorage，保留最新 12 条的图片，其余清掉
-                        var posts = JSON.parse(localStorage.getItem(k) || 'null');
-                        if (Array.isArray(posts)) {
-                            var changed = false;
-                            posts.forEach(function (p, idx) {
-                                if (idx >= 12 && p && Array.isArray(p.images) && p.images.length) { p.images = []; changed = true; }
-                            });
-                            if (changed) localStorage.setItem(k, JSON.stringify(posts));
-                        }
-                    }
-                    // 注意：朋友圈封面（nanoMomentsCover_*）不再在这里删除。
-                    // 之前会删掉 data: 开头的封面，导致用户刚换的背景图刷新后就没了（“换了没反应”）。
-                } catch (e) {}
-            });
-            try { localStorage.setItem('nano_storage_swept_v3', '1'); } catch (e) {}
-        } catch (e) {}
+        // 早年的版本会在启动时把聊天/朋友圈 localStorage 副本里的 base64 图片清空，
+        // 理由是有 IndexedDB 备份；但部分页面/旧数据并没有备份，结果就是
+        // “大退一次 Nano，照片全没了”。现在不再删除任何图片数据：
+        // 配额不足交给 IndexedDB 和浏览器自己的清理策略，用户数据优先。
+        try { localStorage.setItem('nano_storage_swept_v3', '1'); } catch (e) {}
     }
     // 只在顶层窗口执行一次清理，且延后到首屏渲染之后再跑，避免打开/切换页面时长时间空白
     try {

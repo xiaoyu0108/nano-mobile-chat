@@ -571,6 +571,18 @@ function peekCharName(system) {
   return m ? String(m[1]).trim() : '';
 }
 
+// 中转站 / 模型下拉框经常把分组名放进模型 ID，例如「[Bu满血]gemini-3.8-flash-c」。
+// 真正的模型名是方括号后面的部分；直接把这个字符串发给上游会报
+// model_not_found（No available channel for model ...）。
+function normalizeModelName(raw) {
+  let s = String(raw == null ? '' : raw).trim();
+  try {
+    s = s.replace(/^[\[【][^\]】]{1,40}[\]】]\s*/, '').trim();
+    s = s.replace(/^[`'"]+|[`'"]+$/g, '').trim();
+  } catch (e) {}
+  return s;
+}
+
 function modelEndpoint(raw) {
   let s = String(raw || '').trim().replace(/\/+$/, '');
   if (!s) return '';
@@ -679,6 +691,10 @@ function sanitizeAutoConfig(body) {
       foreign: !!(c && c.foreign),
       forceTranslate: !!(c && c.forceTranslate),
       forceLang: String((c && c.forceLang) || '').slice(0, 40),
+      // 每个角色自己的主动消息 / 朋友圈开关。老版本没有这两个字段时默认允许，
+      // 避免升级后所有角色都收不到；新版本会显式传 true / false。
+      msgOn: c && c.msgOn === false ? false : true,
+      momentOn: c && c.momentOn === false ? false : true,
       // 最近聊天上下文：后台生成必须接得上你们刚聊过的话题，不能凭空发口水话
       recent: (Array.isArray(c && c.recent) ? c.recent.slice(-20) : []).map(function (r) {
         return {
@@ -723,9 +739,11 @@ function sanitizeAutoConfig(body) {
   };
 }
 async function autoChat(env, cfg, messages, maxTokens, temperature) {
-  const url = modelEndpoint(env.AUTO_API_URL || env.PEEK_API_URL || (cfg.api && cfg.api.url) || '');
-  const key = env.AUTO_API_KEY || env.PEEK_API_KEY || (cfg.api && cfg.api.key) || '';
-  const model = env.AUTO_MODEL || env.PEEK_MODEL || (cfg.api && cfg.api.model) || '';
+  // 优先用 App 同步上来的主 API：用户在 API 页选的模型才是 TA 真正有额度、
+  // 真正支持识图的模型。Worker 的 AUTO_* / PEEK_* 只作兜底，不能反过来覆盖用户配置。
+  const url = modelEndpoint((cfg.api && cfg.api.url) || env.AUTO_API_URL || env.PEEK_API_URL || '');
+  const key = (cfg.api && cfg.api.key) || env.AUTO_API_KEY || env.PEEK_API_KEY || '';
+  const model = normalizeModelName((cfg.api && cfg.api.model) || env.AUTO_MODEL || env.PEEK_MODEL || '');
   if (!url || !key || !model) return null;
   try {
     const resp = await fetch(url, {
@@ -964,8 +982,10 @@ function cycleBlock(c) {
   return s;
 }
 async function generateAutoMessages(env, cfg, busyChatId, avoidId) {
-  const pool = cfg.chars.filter(function (c) { return c.id !== busyChatId && !c.isNpc; });
-  let source = pool.length >= 2 ? pool : cfg.chars.filter(function (c) { return c.id !== busyChatId; });
+  // 只从「自己开启了主动消息」的角色里挑；关闭了某个角色就绝不能再让 TA 发。
+  const allowed = cfg.chars.filter(function (c) { return c && c.msgOn !== false; });
+  const pool = allowed.filter(function (c) { return c.id !== busyChatId && !c.isNpc; });
+  let source = pool.length >= 2 ? pool : allowed.filter(function (c) { return c.id !== busyChatId; });
   // 尽量不连续两轮都让同一个角色发，减少「怎么又是 TA」的重复感
   if (avoidId) {
     const fresh = source.filter(function (c) { return String(c.id) !== String(avoidId); });
@@ -1011,8 +1031,10 @@ async function generateAutoMessages(env, cfg, busyChatId, avoidId) {
   return out;
 }
 async function generateAutoMoments(env, cfg, busyChatId, maxChars) {
-  const pool = cfg.chars.filter(function (c) { return c.id !== busyChatId && !c.isNpc; });
-  const source = pool.length ? pool : cfg.chars.filter(function (c) { return c.id !== busyChatId; });
+  // 同样只从「自己开启了自动朋友圈」的角色里挑，不能把已关闭的角色动态也发出来。
+  const allowed = cfg.chars.filter(function (c) { return c && c.momentOn !== false; });
+  const pool = allowed.filter(function (c) { return c.id !== busyChatId && !c.isNpc; });
+  const source = pool.length ? pool : allowed.filter(function (c) { return c.id !== busyChatId; });
   if (!source.length) return [];
   // 后台一次最多让 3 个角色出现；和主动消息合计也由 runAutoPush 控制在 3 个以内
   const count = Math.max(1, Math.min(Number(maxChars) || 2, 3, source.length));
@@ -1298,12 +1320,34 @@ function peekBase64(buf) {
   return btoa(out);
 }
 
+// 先用 App 同步上来的主 API（用户自己选的、真正有额度的模型），失败再用 Worker 的
+// PEEK_* 兜底。公用模式仍然绝对不允许回退到站长的 PEEK_API_*。
 async function peekModel(env, system, text, image, history, apiCfg, context) {
-  // 公用模式绝对不回退到站长的 PEEK_API_*：别人来玩只能用他们自己同步上来的 Key。
-  const allowEnvApi = !peekPublic(env);
-  const rawUrl = (allowEnvApi ? env.PEEK_API_URL : '') || (apiCfg && apiCfg.url) || '';
-  const key = (allowEnvApi ? env.PEEK_API_KEY : '') || (apiCfg && apiCfg.key) || '';
-  const model = (allowEnvApi ? env.PEEK_MODEL : '') || (apiCfg && apiCfg.model) || '';
+  const list = [];
+  if (apiCfg && apiCfg.url && apiCfg.key && apiCfg.model) {
+    list.push({ url: apiCfg.url, key: apiCfg.key, model: apiCfg.model });
+  }
+  if (!peekPublic(env) && env.PEEK_API_URL && env.PEEK_API_KEY && env.PEEK_MODEL) {
+    const envCfg = { url: env.PEEK_API_URL, key: env.PEEK_API_KEY, model: env.PEEK_MODEL };
+    const dup = list.some(function (c) {
+      return String(c.url) === String(envCfg.url) && String(c.key) === String(envCfg.key) && String(c.model) === String(envCfg.model);
+    });
+    if (!dup) list.push(envCfg);
+  }
+  if (!list.length) return null;
+  let last = null;
+  for (let i = 0; i < list.length; i++) {
+    const out = await peekModelOnce(env, system, text, image, history, apiCfg, context, list[i]);
+    if (out && out.text) return out;
+    if (out && out.error) last = out;
+  }
+  return last;
+}
+
+async function peekModelOnce(env, system, text, image, history, apiCfg, context, forcedCfg) {
+  const rawUrl = (forcedCfg && forcedCfg.url) || '';
+  const key = (forcedCfg && forcedCfg.key) || '';
+  const model = normalizeModelName((forcedCfg && forcedCfg.model) || '');
   if (!rawUrl || !key || !model) return null;
 
   const provider = peekProvider(rawUrl);

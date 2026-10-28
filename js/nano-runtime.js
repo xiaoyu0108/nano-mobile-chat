@@ -146,6 +146,15 @@
   } catch (e) {}
   window.NANO_ROOT = root;
 
+  // 申请持久化存储：iOS/安卓在存储紧张时可能回收 IndexedDB，表现为“大退一次图片就没了”。
+  // 申请失败不影响使用，只是没拿到免回收保护。
+  try {
+    if (navigator.storage && navigator.storage.persist && !navigator.storage.__nanoPersistRequested) {
+      navigator.storage.__nanoPersistRequested = true;
+      navigator.storage.persist().catch(function () {});
+    }
+  } catch (e) {}
+
   // 锁脸参考统一读取：localStorage 优先，旧的大图只写进 IndexedDB 时回退到 localforage。
   // 所有生图入口（私聊 / 日程 / 朋友圈 / INS / 线下 / 群聊）共用这一份，避免各页面各读各的。
   function faceRefKey(id) { return 'chat_setting_faceRef_' + String(id || ''); }

@@ -389,9 +389,28 @@
         };
     }
 
+    // 中转站的模型下拉框偶尔会把分组名一起存进模型 ID（如「[Bu满血]gemini-3.8-flash-c」）。
+    // 上游真正认识的只有方括号后面的模型名；不清理就会报 model_not_found。
+    function normalizeModelName(raw) {
+        let s = String(raw == null ? '' : raw).trim();
+        try {
+            s = s.replace(/^[\[【][^\]】]{1,40}[\]】]\s*/, '').trim();
+            s = s.replace(/^[`'"]+|[`'"]+$/g, '').trim();
+        } catch (e) {}
+        return s;
+    }
+    function normalizeApiConfigModels(cfg) {
+        if (!cfg || typeof cfg !== 'object') return cfg;
+        ['mainModel', 'imgModel', 'subModel', 'ttsModel'].forEach(function (k) {
+            if (cfg[k]) cfg[k] = normalizeModelName(cfg[k]);
+        });
+        return cfg;
+    }
+
     function getApiConfig() {
         return new Promise(function(resolve) {
             var done = function(cfg) {
+                cfg = normalizeApiConfigModels(cfg);
                 if (cfg && cfg.mainUrl && cfg.mainKey && cfg.mainModel) {
                     resolve(cfg);
                 } else if (cfg) {
@@ -11101,8 +11120,6 @@
         autoPushSyncing = true;
         try {
             const globals = readAutoPushGlobals();
-            const msgEnabled = globals.msgEnabled;
-            const momentEnabled = globals.momentEnabled;
             let cfg = null;
             try { cfg = await getApiConfig(); } catch (e) { cfg = null; }
             let curUser = currentUser;
@@ -11173,7 +11190,19 @@
             try { activity = JSON.parse(localStorage.getItem('nano_chat_activity') || '{}') || {}; } catch (e) { activity = {}; }
             const cutoff = Date.now() - 24 * 3600 * 1000;
             const hasActivityData = Object.keys(activity).length > 0;
-            const recent = candidates.filter(function (c) { return Number(activity[c.id] || 0) >= cutoff; });
+            const autoFlagsOf = function (c) {
+                var m = false, mo = false;
+                try { m = JSON.parse(localStorage.getItem('chat_setting_autoMsg_' + c.id)) === true; } catch (e) {}
+                try { mo = JSON.parse(localStorage.getItem('chat_setting_autoMoment_' + c.id)) === true; } catch (e) {}
+                return { msg: m, moment: mo };
+            };
+            let recent = candidates.filter(function (c) { return Number(activity[c.id] || 0) >= cutoff; });
+            // 开启了主动消息/朋友圈的角色必须参与同步，哪怕最近 24 小时没聊天。
+            // 否则服务端会以为「有角色开着」，但 chars 里没有 TA，结果谁都不发 / 又停掉本机定时器。
+            candidates.forEach(function (c) {
+                var f = autoFlagsOf(c);
+                if ((f.msg || f.moment) && recent.indexOf(c) === -1) recent.push(c);
+            });
             const chosen = recent.length ? recent : (hasActivityData ? [] : candidates);
             const chars = (await Promise.all(chosen.map(async function (c) {
                 var cyc = null;
@@ -11190,6 +11219,10 @@
                 try { var __fr = localStorage.getItem('chat_setting_forceTranslate_' + c.id); __force = (__fr === 'true' || __fr === '1'); } catch (e) {}
                 try { __forceLang = String(JSON.parse(localStorage.getItem('chat_setting_forceTranslateLang_' + c.id) || '""') || '').trim(); } catch (e) {}
                 if (__force) { foreign = true; if (!__forceLang) __forceLang = '英文'; }
+                // 主动消息 / 朋友圈是「按角色」开关的：把每个角色自己的开关一起同步给 Worker，
+                // 否则只开了 A 的主动消息时，Worker 也会随机挑到已经关掉的 B。
+                var __flags = autoFlagsOf(c);
+                var msgOn = __flags.msg, momentOn = __flags.moment;
                 return {
                     id: String(c.id), name: String(c.name),
                     avatar: String(c.avatar || ''),
@@ -11200,6 +11233,8 @@
                     foreign: foreign,
                     forceTranslate: __force,
                     forceLang: __forceLang,
+                    msgOn: msgOn,
+                    momentOn: momentOn,
                     cycle: cyc || null,
                     recent: await recentForAsync(String(c.id))
                 };
@@ -11221,9 +11256,9 @@
                 appId: autoAppId(),
                 deviceId: autoDeviceId(),
                 userId: uid,
-                enabled: canSend && (msgEnabled || momentEnabled),
-                msgEnabled: canSend && msgEnabled,
-                momentEnabled: canSend && momentEnabled,
+                enabled: canSend && chars.some(function (c) { return c.msgOn || c.momentOn; }),
+                msgEnabled: canSend && chars.some(function (c) { return c.msgOn; }),
+                momentEnabled: canSend && chars.some(function (c) { return c.momentOn; }),
                 intervalMinutes: globals.intervalMinutes,
                 momentIntervalHours: globals.momentIntervalHours,
                 user: { id: uid, name: (curUser && curUser.name) || currentUserName || '我' },
@@ -11244,7 +11279,18 @@
             const data = await resp.json().catch(function () { return {}; });
             if (!resp.ok || !data.ok) throw new Error('auto config failed');
             lastAutoPushConfigAt = Date.now();
-            window.__serverAutoPushActive = !!data.enabled;
+            // 只有「Web Push 真的订阅成功」时才完全交给服务端。
+            // 否则服务端 enabled=true 会停掉本机定时器，但手机又收不到 Web Push，
+            // 结果就是前后台都没有任何主动消息通知（用户看到的“无后台推送”）。
+            var hasWebPush = false;
+            try {
+                var NP0 = window.NanoPush || (window.parent && window.parent.NanoPush);
+                if (NP0 && NP0.status) {
+                    var ps = await Promise.resolve(NP0.status());
+                    hasWebPush = !!(ps && ps.subscribed);
+                }
+            } catch (e) { hasWebPush = false; }
+            window.__serverAutoPushActive = !!(data.enabled && hasWebPush);
             // 当前面具/站点变了就立刻把订阅元数据同步过去，避免服务端还按旧 userId 推送。
             try {
                 var NP = window.NanoPush || (window.parent && window.parent.NanoPush);
@@ -11265,6 +11311,10 @@
                         NanoKeepAlive.cancel(autoMomentTaskId());
                     }
                 } catch (e) {}
+            } else {
+                // 没有可用的 Web Push：恢复本机定时器，至少挂后台时还能靠保活弹系统通知。
+                try { if (getChatSetting('autoMsg', false)) scheduleNextAutoMsg(); } catch (e) {}
+                try { if (getChatSetting('autoMoment', false)) scheduleNextAutoMoment(); } catch (e) {}
             }
         } catch (e) {
             // 刚刚还在由服务端定时发送（30 分钟内有成功记录）时，网络抖动不要立刻切回本机，

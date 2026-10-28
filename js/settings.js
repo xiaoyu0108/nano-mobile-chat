@@ -7,7 +7,8 @@
     { id: 'chat', name: '聊天', icon: 'chat' }, { id: 'api', name: 'API', icon: 'api' }, { id: 'couple', name: '情侣空间', icon: 'couple' },
     { id: 'halo', name: 'Halo', icon: 'halo' }, { id: 'instagram', name: 'Instagram', icon: 'instagram' }, { id: 'together', name: 'Books', icon: 'together' },
     { id: 'music', name: '音乐', icon: 'music' }, { id: 'memory', name: '记忆宫殿', icon: 'memory' }, { id: 'imessage', name: 'iMessage', icon: 'imessage' },
-    { id: 'qa', name: '问答邮箱', icon: 'qa' }, { id: 'peek', name: '窥屏', icon: 'peek' }, { id: 'market', name: '共享集市', icon: 'market' }, { id: 'shop', name: '商城', icon: 'shop' },
+    { id: 'qa', name: '问答邮箱', icon: 'qa' }, { id: 'pomodoro', name: '番茄钟', icon: 'pomodoro' }, { id: 'nano', name: 'Nano', icon: 'nano' },
+    { id: 'peek', name: '窥屏', icon: 'peek' }, { id: 'market', name: '共享集市', icon: 'market' }, { id: 'shop', name: '商城', icon: 'shop' },
     { id: 'schedule', name: '日程', icon: 'schedule' }, { id: 'mcp', name: 'MCP', icon: 'mcp' }, { id: 'tide', name: '月潮', icon: 'tide' },
     { id: 'fanfic', name: '同人文', icon: 'fanfic' }, { id: 'store', name: '应用商店', icon: 'store' }, { id: 'book', name: '世界书', icon: 'book' },
     { id: 'beauty', name: '美化', icon: 'beauty' }, { id: 'phone', name: '查手机', icon: 'phone' }, { id: 'settings', name: '设置', icon: 'settings' }
@@ -38,7 +39,9 @@ const APP_ICONS = {
  phone:'<path d="M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm0 3v13h10V5H7Zm4 15h2v1h-2v-1Z"/>',
  schedule:'<path fill-rule="evenodd" d="M7 2h2v2h6V2h2v2h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2V2ZM5 9v11h14V9H5Zm3 3h3v3H8Zm5 0h3v3h-3Z"/>',
  shop:'<path d="M18 6h-2a4 4 0 0 0-8 0H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2Zm-6-2a2 2 0 0 1 2 2h-4a2 2 0 0 1 2-2Zm6 16H6V8h2v2h2V8h4v2h2V8h2v12Z"/>',
- qa:'<path d="M11.6 3C7.96 3 5 5.96 5 9.6h3.2c0-1.88 1.52-3.4 3.4-3.4s3.4 1.52 3.4 3.4c0 1.3-.74 2.43-1.83 2.99-1.84.94-3.37 2.87-3.37 5.11V19h3.2v-1.3c0-.96.55-1.83 1.42-2.27 2.02-1.03 3.38-3.12 3.38-5.83C17.6 5.96 14.64 3 11.6 3ZM9.8 20.4h3.2V24H9.8z"/>'
+ qa:'<path d="M11.6 3C7.96 3 5 5.96 5 9.6h3.2c0-1.88 1.52-3.4 3.4-3.4s3.4 1.52 3.4 3.4c0 1.3-.74 2.43-1.83 2.99-1.84.94-3.37 2.87-3.37 5.11V19h3.2v-1.3c0-.96.55-1.83 1.42-2.27 2.02-1.03 3.38-3.12 3.38-5.83C17.6 5.96 14.64 3 11.6 3ZM9.8 20.4h3.2V24H9.8z"/>',
+ pomodoro:'<path d="M12 4a8 8 0 1 0 8 8 8 8 0 0 0-8-8Zm0 3a5 5 0 1 1-5 5 5 5 0 0 1 5-5Zm-1 1.5V13l3.5 2 1-1.7L13 12V8.5ZM9 1h6v2H9z"/>',
+ nano:'<path d="M12 1.8c.88 4.7 4.4 8.22 9.1 9.1-4.7.88-8.22 4.4-9.1 9.1-.88-4.7-4.4-8.22-9.1-9.1 4.7-.88 8.22-4.4 9.1-9.1Z"/><path d="M19.4 2.2c.18.96.82 1.6 1.78 1.78-.96.18-1.6.82-1.78 1.78-.18-.96-.82-1.6-1.78-1.78.96-.18 1.6-.82 1.78-1.78Z"/>'
 };
 
   function appIconHtml(name) {

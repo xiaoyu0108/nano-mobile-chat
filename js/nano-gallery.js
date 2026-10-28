@@ -1,16 +1,27 @@
 (function () {
     'use strict';
     var KEY = 'nano_gallery_v1';
-    var CHAT_SCAN_KEY = 'nano_gallery_chat_scan_v1';
-    var TOMB_KEY = 'nano_gallery_deleted_v1';
-    var EMOJI_PURGE_KEY = 'nano_gallery_emoji_purged_v2';
+    // 升到 v2：旧版可能因为 key 碰撞把照片误标成“已删除”，这里强制重新从聊天记录扫一次，
+    // 把还在聊天里的照片恢复回来；扫完写入 v2 标记，之后不再每次打开都全量扫。
+    var CHAT_SCAN_KEY = 'nano_gallery_chat_scan_v2';
+    // v2：旧版 urlKey 只取前 120 字符 + 长度，同尺寸/同编码的 dataURL 会得到相同的 key，
+    // 删一张图时会把别的图一起当成“已删除”过滤掉（用户看到的就是照片莫名其妙被销毁）。
+    var TOMB_KEY = 'nano_gallery_deleted_v2';
+    var EMOJI_PURGE_KEY = 'nano_gallery_emoji_purged_v3';
     var DB_NAME = 'nano_gallery_db';
     var DB_STORE = 'items';
     var _dbPromise = null;
 
     function urlKey(u) {
         u = String(u || '');
-        return u.slice(0, 120) + '#' + u.length;
+        // 对完整图片地址做双哈希，避免长 dataURL 前缀相同导致 key 碰撞。
+        var h1 = 2166136261, h2 = 5381;
+        for (var i = 0; i < u.length; i++) {
+            var c = u.charCodeAt(i);
+            h1 ^= c; h1 = (h1 + ((h1 << 1) + (h1 << 4) + (h1 << 7) + (h1 << 8) + (h1 << 24))) >>> 0;
+            h2 = (((h2 << 5) + h2) ^ c) >>> 0;
+        }
+        return 'u' + u.length.toString(36) + '_' + h1.toString(36) + h2.toString(36);
     }
 
     // 图库记录放 IndexedDB：localStorage 只有约 5MB，几张 base64 大图就会写失败，
@@ -33,15 +44,20 @@
         return _dbPromise;
     }
     function dbPut(rec) {
-        if (!rec || !rec.url) return;
-        openDb().then(function (db) {
-            if (!db) return;
-            try {
-                var tx = db.transaction(DB_STORE, 'readwrite');
-                var item = Object.assign({}, rec, { key: urlKey(rec.url) });
-                tx.objectStore(DB_STORE).put(item);
-            } catch (e) {}
-        }).catch(function () {});
+        if (!rec || !rec.url) return Promise.resolve(false);
+        return openDb().then(function (db) {
+            if (!db) return false;
+            return new Promise(function (resolve) {
+                try {
+                    var tx = db.transaction(DB_STORE, 'readwrite');
+                    var item = Object.assign({}, rec, { key: urlKey(rec.url) });
+                    tx.objectStore(DB_STORE).put(item);
+                    tx.oncomplete = function () { resolve(true); };
+                    tx.onerror = function () { resolve(false); };
+                    tx.onabort = function () { resolve(false); };
+                } catch (e) { resolve(false); }
+            });
+        }).catch(function () { return false; });
     }
     function dbAll() {
         return openDb().then(function (db) {
@@ -105,6 +121,29 @@
             add(copy);
         }).catch(function () {}).then(function () { delete _remotePending[k]; });
     }
+    // 表情包图片本身的 URL 不一定带任何 emoji 元数据，只看记录字段会漏掉，
+    // 结果就是它们被当成普通照片收进图库，而且“清理表情包”也清不掉。
+    var _emojiUrlCache = { raw: null, set: null };
+    function emojiUrlSet() {
+        try {
+            var raw = localStorage.getItem('nano_emoji_data') || localStorage.getItem('peach_home_data') || '';
+            if (!raw) return _emojiUrlCache.set || null;
+            if (_emojiUrlCache.raw === raw && _emojiUrlCache.set) return _emojiUrlCache.set;
+            var d = JSON.parse(raw);
+            var set = {};
+            ((d && d.emojiGroups) || []).forEach(function (g) {
+                ((g && g.emojis) || []).forEach(function (e) {
+                    if (e && e.url) set[String(e.url)] = 1;
+                });
+            });
+            _emojiUrlCache = { raw: raw, set: set };
+            return set;
+        } catch (e) { return _emojiUrlCache.set || null; }
+    }
+    function isEmojiUrl(u) {
+        var set = emojiUrlSet();
+        return !!(set && u && set[String(u)]);
+    }
     function isEmojiRecord(x) {
         if (!x || typeof x !== 'object') return false;
         if (x.isEmoji || x.emojiName || x.emoji) return true;
@@ -114,7 +153,46 @@
         var source = String(x.source || '');
         if (/表情/.test(source) || /^emoji/i.test(source)) return true;
         if (/^nano_emoji|^peach_emoji/i.test(String(x.from || x.storeKey || ''))) return true;
+        if (isEmojiUrl(x.url)) return true;
         return false;
+    }
+    // 表情包数据主要在 IndexedDB（localStorage 只是精简镜像），清理时再异步补读一次。
+    function emojiUrlSetFromDb() {
+        return new Promise(function (resolve) {
+            var local = emojiUrlSet();
+            if (local && Object.keys(local).length) { resolve(local); return; }
+            try {
+                var req = indexedDB.open('nano_api_db', 2);
+                req.onupgradeneeded = function (e) {
+                    try {
+                        var db = e.target.result;
+                        if (!db.objectStoreNames.contains('emoji_data')) db.createObjectStore('emoji_data', { keyPath: 'key' });
+                        if (!db.objectStoreNames.contains('api_data')) db.createObjectStore('api_data', { keyPath: 'key' });
+                    } catch (err) {}
+                };
+                req.onerror = function () { resolve(local || {}); };
+                req.onsuccess = function () {
+                    try {
+                        var db = req.result;
+                        if (!db.objectStoreNames.contains('emoji_data')) { try { db.close(); } catch (e) {} resolve(local || {}); return; }
+                        var r = db.transaction('emoji_data', 'readonly').objectStore('emoji_data').get('nano_emoji_data');
+                        r.onsuccess = function () {
+                            try {
+                                var d = r.result ? r.result.value : null;
+                                var set = {};
+                                ((d && d.emojiGroups) || []).forEach(function (g) {
+                                    ((g && g.emojis) || []).forEach(function (e) { if (e && e.url) set[String(e.url)] = 1; });
+                                });
+                                try { db.close(); } catch (e) {}
+                                resolve(set);
+                            } catch (e) { try { db.close(); } catch (e2) {} resolve(local || {}); }
+                        };
+                        r.onerror = function () { try { db.close(); } catch (e) {} resolve(local || {}); };
+                    } catch (e) { resolve(local || {}); }
+                };
+                req.onblocked = function () { resolve(local || {}); };
+            } catch (e) { resolve(local || {}); }
+        });
     }
     function readTombs() {
         try {
@@ -154,6 +232,13 @@
                 }
             }
             localStorage.setItem(EMOJI_PURGE_KEY, '1');
+            // 图库记录主要存在 IndexedDB：把里面混入的表情包也一并删掉。
+            try {
+                dbAll().then(function (items) {
+                    var keys = (items || []).filter(function (x) { return x && x.url && isEmojiRecord(x); }).map(function (x) { return urlKey(x.url); });
+                    if (keys.length) return dbDelete(keys);
+                }).catch(function () {});
+            } catch (e) {}
         } catch (e) {}
     }
 
@@ -346,7 +431,7 @@
         out.sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
         return out;
     }
-    function allAsync() {
+    function allAsyncCore() {
         var base = all();
         var dbP = dbAll().catch(function () { return []; });
         if (typeof localforage === 'undefined') {
@@ -357,11 +442,6 @@
         // 只迁移一次，之后直接读图库数据库；用户手动清理后新图仍由生成流程写入。
         var needScan = true;
         try { needScan = localStorage.getItem(CHAT_SCAN_KEY) !== '1'; } catch (e) {}
-        // 本地图库已有记录就不再扫聊天；只有真正空图库才需要旧数据迁移。
-        if (needScan && base.length) {
-            try { localStorage.setItem(CHAT_SCAN_KEY, '1'); } catch (e) {}
-            needScan = false;
-        }
         if (!needScan) {
             return dbP.then(function (dbItems) { return mergeWithDb(base, dbItems); });
         }
@@ -379,7 +459,9 @@
                         if (!m || !m.imageData || m.imageData.isEmoji || m.imageData.emojiName) return;
                         if (m.isEmoji || m.emojiName) return;
                         var mt = String(m.text || '') + ' ' + String(m.imageData.desc || m.imageData.prompt || '');
-                        if (/\[(emoji|sticker|表情包|表情)\s*:/i.test(mt) || /表情包/.test(mt)) return;
+                        // 只看明确的 [emoji:...] / [表情:...] 标记；不能因为照片配文里提到“表情包”
+                        // 就把正常照片排除掉（这是以前图库“照片变少”的原因之一）。
+                        if (/\[(emoji|sticker|表情包|表情)\s*:/i.test(mt)) return;
                         if (isEmojiRecord(m) || isEmojiRecord(m.imageData)) return;
                         var u = m.imageData && (m.imageData.url || (m.imageData.urls && m.imageData.urls[0]));
                         if (u && /^(data:image\/|https?:\/\/)/i.test(u)) {
@@ -402,19 +484,40 @@
                     if (x && x.url && !x.charName && scannedName[urlKey(x.url)]) x.charName = scannedName[urlKey(x.url)];
                 });
                 var seen = {};
+                var persist = [];
                 base.forEach(function (x) { if (x && x.url) seen[urlKey(x.url)] = 1; });
                 groups.forEach(function (g) {
                     (g || []).forEach(function (x) {
                         if (!x || !x.url || isEmojiRecord(x)) return;
                         var k = urlKey(x.url);
-                        if (!seen[k] && !tombs[k]) { seen[k] = 1; base.push(x); }
+                        if (!seen[k] && !tombs[k]) {
+                            seen[k] = 1;
+                            base.push(x);
+                            // 关键：扫描出来的照片必须真正写进 IndexedDB。
+                            // 以前只放进内存数组，大退后下次启动就“全没了”。
+                            persist.push(dbPut(x));
+                        }
                     });
                 });
                 base.sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
-                try { localStorage.setItem(CHAT_SCAN_KEY, '1'); } catch (e) {}
-                return base;
+                return Promise.all(persist).then(function () {
+                    try { localStorage.setItem(CHAT_SCAN_KEY, '1'); } catch (e) {}
+                    return base;
+                });
             });
         }).catch(function () { return base; });
+    }
+    function allAsync() {
+        return Promise.resolve(allAsyncCore()).then(function (list) {
+            return emojiUrlSetFromDb().then(function (set) {
+                return (list || []).filter(function (x) {
+                    if (!x || !x.url) return false;
+                    if (isEmojiUrl(x.url)) return false;
+                    if (set && set[String(x.url)]) return false;
+                    return true;
+                });
+            });
+        }).catch(function () { return all(); });
     }
     function remove(urls) {
         var list = Array.isArray(urls) ? urls : [urls];
@@ -435,6 +538,9 @@
         return keyList.length;
     }
     function clear() {
+        // 先标记“已扫描过”，否则下面的 allAsync 会重新扫描聊天并把照片写回数据库，
+        // 造成「点了清空，图片过一会儿又回来了」。
+        try { localStorage.setItem(CHAT_SCAN_KEY, '1'); } catch (e) {}
         all().forEach(function (x) { if (x && x.url) tomb(urlKey(x.url)); });
         write([]);
         dbClear();
@@ -455,10 +561,13 @@
         try { window.dispatchEvent(new CustomEvent('nano-gallery-updated')); } catch (e) {}
     }
     function removeEmoji() {
-        return Promise.resolve(allAsync()).then(function (list) {
-            var urls = (list || []).filter(function (x) {
+        return Promise.all([Promise.resolve(allAsyncCore()), emojiUrlSetFromDb()]).then(function (res) {
+            var list = res[0] || [];
+            var set = res[1] || {};
+            var urls = list.filter(function (x) {
                 if (!x || !x.url) return false;
                 if (isEmojiRecord(x)) return true;
+                if (set[String(x.url)]) return true;
                 return /\[(emoji|sticker|表情包|表情)\s*:/i.test(String(x.prompt || ''));
             }).map(function (x) { return x.url; });
             if (urls.length) remove(urls);
