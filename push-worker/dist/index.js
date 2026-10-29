@@ -1810,9 +1810,17 @@ async function peekModelOnce(env, system, text, image, history, apiCfg, context,
   });
   async function send(payload, headers) {
     try {
+      const hdrs = new Headers(Object.assign(
+        { "Content-Type": "application/json", "Accept": "application/json", "Accept-Language": "zh-CN,zh;q=0.9" },
+        headers || {}
+      ));
+      try {
+        hdrs.set("User-Agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1");
+      } catch (e) {
+      }
       const resp = await fetch(url, {
         method: "POST",
-        headers: Object.assign({ "Content-Type": "application/json" }, headers || {}),
+        headers: hdrs,
         body: JSON.stringify(payload)
       });
       if (!resp.ok) {
@@ -1821,7 +1829,8 @@ async function peekModelOnce(env, system, text, image, history, apiCfg, context,
           detail = (await resp.text()).slice(0, 240);
         } catch (e) {
         }
-        return { text: "", error: "HTTP " + resp.status + " " + detail };
+        const looksHtml = /<!doctype|<html|cloudflare|attention required|access denied|just a moment/i.test(detail);
+        return { text: "", error: "HTTP " + resp.status + (looksHtml ? " [\u4E0A\u6E38\u8FD4\u56DE\u7F51\u9875/\u98CE\u63A7\u9875] " : " ") + detail };
       }
       const data = await resp.json();
       return { text: peekModelText(data), error: "" };
@@ -3426,7 +3435,7 @@ var index_default = {
       return json({
         ok: true,
         service: "nano-peek",
-        build: "2026-10-28-imgpush2",
+        build: "2026-10-29-wafua",
         method: "POST /peek",
         publicMode,
         tokenConfigured: !!env.PEEK_TOKEN,
@@ -3600,6 +3609,7 @@ var index_default = {
       if (!reply) {
         const errDetail = String(peekErr || "").replace(/\s+/g, " ").slice(0, 180);
         const upstreamLimit = /quota|insufficient|balance|余额|额度|402|429|rate.?limit|too many/i.test(errDetail);
+        const upstreamBlockedPage = /403/.test(errDetail) && /<!doctype|<html|cloudflare|attention required|access denied|just a moment/i.test(errDetail);
         if (!apiCfg) {
           return json({
             ok: false,
@@ -3610,7 +3620,7 @@ var index_default = {
         return json({
           ok: false,
           error: "model",
-          reply: peekPublic(env) ? upstreamLimit ? "\u8FD9\u6B21\u8BC6\u56FE\u63A5\u53E3\u6CA1\u6709\u8FD4\u56DE\u5185\u5BB9\uFF08\u4E0A\u6E38\u9650\u6D41/\u989D\u5EA6\u6216\u4E34\u65F6\u9519\u8BEF\uFF09\u3002\u7A0D\u540E\u518D\u8BD5\uFF0C\u6216\u68C0\u67E5\u5F53\u524D\u4E3B API \u7684\u989D\u5EA6\u3002" : "\u8FD9\u6B21\u8BC6\u56FE\u63A5\u53E3\u6CA1\u6709\u8FD4\u56DE\u5185\u5BB9" + (errDetail ? "\uFF08\u4E0A\u6E38\uFF1A" + errDetail + "\uFF09" : "") + "\u3002\u8BF7\u68C0\u67E5\u5F53\u524D\u4E3B API \u7684\u6A21\u578B\u662F\u5426\u652F\u6301\u56FE\u7247\u8F93\u5165\u3001\u63A5\u53E3\u5730\u5740\u548C Key \u662F\u5426\u5BF9\u5E94\u3002" : upstreamLimit ? "\u5F53\u524D\u4E3B API \u8FD9\u6B21\u6CA1\u6709\u8FD4\u56DE\u5185\u5BB9\uFF08\u4E0A\u6E38\u9650\u6D41/\u989D\u5EA6\u6216\u4E34\u65F6\u9519\u8BEF\uFF09\uFF1B\u7A0D\u540E\u518D\u8BD5\u6216\u68C0\u67E5\u989D\u5EA6\u3002" : "\u5F53\u524D\u4E3B API \u6CA1\u6709\u8FD4\u56DE\u5185\u5BB9" + (errDetail ? "\uFF08\u4E0A\u6E38\uFF1A" + errDetail + "\uFF09" : "") + "\uFF1A\u8BF7\u68C0\u67E5\u4E3B API \u7684\u6A21\u578B\u662F\u5426\u652F\u6301\u8BC6\u56FE\uFF0C\u4EE5\u53CA\u5730\u5740 / Key \u662F\u5426\u6B63\u786E\u3002",
+          reply: peekPublic(env) ? upstreamBlockedPage ? "\u8FD9\u6B21\u8BF7\u6C42\u88AB\u4E0A\u6E38 API \u7AD9\u70B9\u62E6\u622A\u4E86\uFF1AHTTP 403 \u8FD4\u56DE\u7684\u662F\u7F51\u9875 / Cloudflare \u98CE\u63A7\u9875\uFF0C\u4E0D\u662F\u6A21\u578B\u56DE\u590D\u3002\u5E38\u89C1\u539F\u56E0\u662F\u4E2D\u8F6C\u7AD9\u5F00\u542F\u4E86 Cloudflare \u9632\u62A4\u3001Bot Fight Mode \u6216\u5730\u533A\u9650\u5236\uFF0C\u4E5F\u53EF\u80FD\u662F Key / \u4F59\u989D\u5F02\u5E38\u3002\u8BF7\u5230 API \u7AD9\u67E5\u770B\u65E5\u5FD7\uFF0C\u6216\u5728\u7535\u8111\u4E0A\u7528 curl \u8BF7\u6C42\u540C\u4E00\u4E2A\u5730\u5740\u6D4B\u8BD5\uFF1B\u4E5F\u53EF\u4EE5\u6362\u4E00\u4E2A\u5141\u8BB8 Cloudflare Worker \u8BBF\u95EE\u7684\u63A5\u53E3\u3002" : upstreamLimit ? "\u8FD9\u6B21\u8BC6\u56FE\u63A5\u53E3\u6CA1\u6709\u8FD4\u56DE\u5185\u5BB9\uFF08\u4E0A\u6E38\u9650\u6D41/\u989D\u5EA6\u6216\u4E34\u65F6\u9519\u8BEF\uFF09\u3002\u7A0D\u540E\u518D\u8BD5\uFF0C\u6216\u68C0\u67E5\u5F53\u524D\u4E3B API \u7684\u989D\u5EA6\u3002" : "\u8FD9\u6B21\u8BC6\u56FE\u63A5\u53E3\u6CA1\u6709\u8FD4\u56DE\u5185\u5BB9" + (errDetail ? "\uFF08\u4E0A\u6E38\uFF1A" + errDetail + "\uFF09" : "") + "\u3002\u8BF7\u68C0\u67E5\u5F53\u524D\u4E3B API \u7684\u6A21\u578B\u662F\u5426\u652F\u6301\u56FE\u7247\u8F93\u5165\u3001\u63A5\u53E3\u5730\u5740\u548C Key \u662F\u5426\u5BF9\u5E94\u3002" : upstreamBlockedPage ? "\u5F53\u524D\u4E3B API \u88AB\u4E0A\u6E38\u7AD9\u70B9\u62E6\u622A\u4E86\uFF08HTTP 403 \u8FD4\u56DE\u7F51\u9875 / Cloudflare \u98CE\u63A7\u9875\uFF0C\u4E0D\u662F\u6A21\u578B\u56DE\u590D\uFF09\u3002\u8BF7\u68C0\u67E5\u4E2D\u8F6C\u7AD9\u7684 Cloudflare \u9632\u62A4 / \u5730\u533A\u9650\u5236 / Key \u4E0E\u4F59\u989D\uFF0C\u6216\u6362\u4E00\u4E2A\u5141\u8BB8 Worker \u8BBF\u95EE\u7684\u63A5\u53E3\u3002" : upstreamLimit ? "\u5F53\u524D\u4E3B API \u8FD9\u6B21\u6CA1\u6709\u8FD4\u56DE\u5185\u5BB9\uFF08\u4E0A\u6E38\u9650\u6D41/\u989D\u5EA6\u6216\u4E34\u65F6\u9519\u8BEF\uFF09\uFF1B\u7A0D\u540E\u518D\u8BD5\u6216\u68C0\u67E5\u989D\u5EA6\u3002" : "\u5F53\u524D\u4E3B API \u6CA1\u6709\u8FD4\u56DE\u5185\u5BB9" + (errDetail ? "\uFF08\u4E0A\u6E38\uFF1A" + errDetail + "\uFF09" : "") + "\uFF1A\u8BF7\u68C0\u67E5\u4E3B API \u7684\u6A21\u578B\u662F\u5426\u652F\u6301\u8BC6\u56FE\uFF0C\u4EE5\u53CA\u5730\u5740 / Key \u662F\u5426\u6B63\u786E\u3002",
           detail: errDetail
         }, 502);
       }

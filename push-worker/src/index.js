@@ -1385,15 +1385,23 @@ async function peekModelOnce(env, system, text, image, history, apiCfg, context,
 
   async function send(payload, headers) {
     try {
+      // 部分中转站会按 User-Agent / Accept 做风控：Worker 默认请求没有浏览器头，
+      // 会被 Cloudflare 直接返回 HTML 403。补上常见浏览器头，纯 API 网关不受影响。
+      const hdrs = new Headers(Object.assign(
+        { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Accept-Language': 'zh-CN,zh;q=0.9' },
+        headers || {}
+      ));
+      try { hdrs.set('User-Agent', 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1'); } catch (e) {}
       const resp = await fetch(url, {
         method: 'POST',
-        headers: Object.assign({ 'Content-Type': 'application/json' }, headers || {}),
+        headers: hdrs,
         body: JSON.stringify(payload)
       });
       if (!resp.ok) {
         let detail = '';
         try { detail = (await resp.text()).slice(0, 240); } catch (e) {}
-        return { text: '', error: 'HTTP ' + resp.status + ' ' + detail };
+        const looksHtml = /<!doctype|<html|cloudflare|attention required|access denied|just a moment/i.test(detail);
+        return { text: '', error: 'HTTP ' + resp.status + (looksHtml ? ' [上游返回网页/风控页] ' : ' ') + detail };
       }
       const data = await resp.json();
       return { text: peekModelText(data), error: '' };
@@ -3016,7 +3024,7 @@ export default {
       return json({
         ok: true,
         service: 'nano-peek',
-        build: '2026-10-28-imgpush2',
+        build: '2026-10-29-wafua',
         method: 'POST /peek',
         publicMode: publicMode,
         tokenConfigured: !!env.PEEK_TOKEN,
@@ -3186,6 +3194,9 @@ export default {
       if (!reply) {
         const errDetail = String(peekErr || '').replace(/\s+/g, ' ').slice(0, 180);
         const upstreamLimit = /quota|insufficient|balance|余额|额度|402|429|rate.?limit|too many/i.test(errDetail);
+        // 403 + HTML 基本不是模型回复，而是中转站 / Cloudflare 的风控或地区拦截页。
+        // 这时提示“模型不支持图片”会误导，直接指出是上游站点拦截。
+        const upstreamBlockedPage = /403/.test(errDetail) && /<!doctype|<html|cloudflare|attention required|access denied|just a moment/i.test(errDetail);
         // 区分「没找到你这个令牌分区的 API」和「API 找到了但模型没返回」，不要再混成一句话。
         if (!apiCfg) {
           return json({
@@ -3200,12 +3211,16 @@ export default {
           ok: false,
           error: 'model',
           reply: peekPublic(env)
-            ? (upstreamLimit
-              ? '这次识图接口没有返回内容（上游限流/额度或临时错误）。稍后再试，或检查当前主 API 的额度。'
-              : ('这次识图接口没有返回内容' + (errDetail ? '（上游：' + errDetail + '）' : '') + '。请检查当前主 API 的模型是否支持图片输入、接口地址和 Key 是否对应。'))
-            : (upstreamLimit
-              ? '当前主 API 这次没有返回内容（上游限流/额度或临时错误）；稍后再试或检查额度。'
-              : ('当前主 API 没有返回内容' + (errDetail ? '（上游：' + errDetail + '）' : '') + '：请检查主 API 的模型是否支持识图，以及地址 / Key 是否正确。')),
+            ? (upstreamBlockedPage
+              ? '这次请求被上游 API 站点拦截了：HTTP 403 返回的是网页 / Cloudflare 风控页，不是模型回复。常见原因是中转站开启了 Cloudflare 防护、Bot Fight Mode 或地区限制，也可能是 Key / 余额异常。请到 API 站查看日志，或在电脑上用 curl 请求同一个地址测试；也可以换一个允许 Cloudflare Worker 访问的接口。'
+              : (upstreamLimit
+                ? '这次识图接口没有返回内容（上游限流/额度或临时错误）。稍后再试，或检查当前主 API 的额度。'
+                : ('这次识图接口没有返回内容' + (errDetail ? '（上游：' + errDetail + '）' : '') + '。请检查当前主 API 的模型是否支持图片输入、接口地址和 Key 是否对应。')))
+            : (upstreamBlockedPage
+              ? '当前主 API 被上游站点拦截了（HTTP 403 返回网页 / Cloudflare 风控页，不是模型回复）。请检查中转站的 Cloudflare 防护 / 地区限制 / Key 与余额，或换一个允许 Worker 访问的接口。'
+              : (upstreamLimit
+                ? '当前主 API 这次没有返回内容（上游限流/额度或临时错误）；稍后再试或检查额度。'
+                : ('当前主 API 没有返回内容' + (errDetail ? '（上游：' + errDetail + '）' : '') + '：请检查主 API 的模型是否支持识图，以及地址 / Key 是否正确。'))),
           detail: errDetail
         }, 502);
       }

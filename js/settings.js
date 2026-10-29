@@ -540,7 +540,10 @@ const APP_ICONS = {
                 refreshPush._reregistering = true;
                 Promise.resolve(NP.enable(false)).then(function () {
                   setTimeout(function () { refreshPush(); refreshPush._reregistering = false; }, 1500);
-                }).catch(function () { refreshPush._reregistering = false; });
+                }).catch(function (err) {
+                  refreshPush._reregistering = false;
+                  if (status) status.textContent = '补登记失败：' + ((err && err.message) || '未知错误') + '，请点「重新订阅」或在其他 → Web Push 重试';
+                });
               }
               return;
             }

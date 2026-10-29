@@ -10951,7 +10951,11 @@
             }
             var c = String(t.char || '').trim();
             if (c) {
-                splitPeekBubbles(c).forEach(function (part) {
+                // 分气泡只影响显示：任何异常都退回整段一条，保证窥屏内容一定进聊天。
+                var parts = [];
+                try { parts = splitPeekBubbles(c); } catch (e) { parts = [c]; }
+                if (!parts || !parts.length) parts = [c];
+                parts.forEach(function (part) {
                     try { addCharSaid(part); } catch (e) {}
                 });
             }

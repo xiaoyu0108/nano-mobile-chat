@@ -197,7 +197,14 @@
                 ua: navigator.userAgent,
                 platform: platform().android ? 'android' : (platform().ios ? 'ios' : 'other'),
                 ts: Date.now()
-            }).then(function () { return sub; });
+            }).then(function (r) {
+                // 以前不检查返回值：Worker 没保存成功也会显示“已开启”，
+                // 结果就是设置页一直提示“服务端没有订阅记录”。
+                if (r && r.ok === false) {
+                    throw new Error('服务端没有保存订阅：' + (r.error || '未知错误'));
+                }
+                return sub;
+            });
         }).catch(function (err) {
             var e = err && err.code === 'PUSH_SUBSCRIBE_FAILED' ? err : new Error(friendlyError(err));
             e.cause = e.cause || err;
