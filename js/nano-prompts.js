@@ -48,7 +48,7 @@
       '评论像随手打字，不要每条都礼貌完整、升华总结或写成小作文。默认不认识的 char 不要互相评论/接话；只有人设、世界书、角色关系或私聊记录里明确认识，才可以在同一条动态下互动。'
     ].join('\n'),
     imessage: '【iMessage / 短信】短句、可连发、像真人打字；允许“在”“嗯”“刚看到”这种短回复，不要每条都完整起承转合；偶尔只回一个表情也算正常。',
-    ins: '【Instagram】公开平台，但文案要像随手发：照片/短视频配一两句短文案，吃喝、旅行、日常、吐槽、提问、玩梗都可以；可以只有半句、emoji、定位，不写旅行博主腔、完美生活摆拍和长广告。评论像真粉丝/朋友随手写，可以玩梗、问细节、只回一句；不认识的 char 不要硬凑到同一条评论区。',
+    ins: '【Instagram · 公开平台】这是给所有人看的公开主页，不只是熟人：文案比朋友圈更短、更精致、更有展示感，像精心挑过的一张照片配一两句话；可以只有半句、emoji、定位或一个英文短语。少写私密的家庭/职场/感情细节，少写负能量长文，更多是生活方式、审美、旅行、美食、健身、作品和当下心情。允许陌生人留言、玩梗、搭讪、质疑，评论比朋友圈更开放；不认识的 char 不要硬凑到同一条评论区，熟人和陌生网友的互动要分得清。',
     halo: '【Halo】直播/粉丝交流平台：主播像真人闲聊，不是节目主持或念稿；会看弹幕、接梗、跑题、停顿、喝水，不必每句都回应。观众弹幕短、乱、复读、玩梗、夸/骂/提问都有，不要整齐礼貌。观众是匿名陌生人，不要随便把认识的 char 写成实名观众；只有世界书/人设明确写了 TA 在看且认识主播，才可以出现。',
     music: '【一起听】像两个人戴着耳机随口聊，不是电台主持或乐评：可以沉默、跟着唱、只发一句“这句好”，也可以聊到别的事再绕回来；不要报幕式解说，不要每首歌唱完都总结。',
     moments: '【朋友圈】只给熟人看：发生活碎片，吃饭、下班、堵车、加班、家人朋友、恋爱、吐槽、顺心和不顺心的事；允许负能量、碎碎念、只有一句话、错别字和表情，不要写成汇报/广告/正能量总结。日常用短句、口语、省略主语；偶尔也可以发一条认真一点的深夜小作文，但不要天天升华。评论像熟人随口接话，可以损、可以关心、可以只回“哈哈哈”或“？”，不要长评和客服腔；不认识的 char 不要在同一条动态下互相接话。',
@@ -78,9 +78,11 @@
   }
 
   function blankCat() {
-    return { active: 'builtin', custom: [] };
+    return { builtinOn: true, custom: [] };
   }
 
+  // 每个提示词（内置/自定义）都有独立的开关：开启＝读取，关闭＝不读取。
+  // 兼容旧数据：active:'builtin' / 某个自定义 id / null。
   function normalize(raw) {
     var d = raw && typeof raw === 'object' ? raw : {};
     if (!d.cats || typeof d.cats !== 'object') d.cats = {};
@@ -88,6 +90,8 @@
       var item = d.cats[c.id];
       if (!item || typeof item !== 'object') item = blankCat();
       if (!Array.isArray(item.custom)) item.custom = [];
+      var legacyActive = item.active;
+      var hasLegacy = Object.prototype.hasOwnProperty.call(item, 'active');
       item.custom = item.custom.filter(function (p) {
         return p && p.id && typeof p.content === 'string';
       }).map(function (p) {
@@ -96,16 +100,18 @@
           name: String(p.name || '未命名提示词').slice(0, 40),
           content: String(p.content || ''),
           icon: typeof p.icon === 'string' ? p.icon : '',
+          on: typeof p.on === 'boolean' ? p.on : (legacyActive === p.id),
           at: Number(p.at) || Date.now()
         };
       });
-      if (item.active === undefined) item.active = 'builtin';
-      if (item.active !== null && item.active !== 'builtin' && !item.custom.some(function (p) { return p.id === item.active; })) {
-        item.active = null;
-      }
-      d.cats[c.id] = { active: item.active, custom: item.custom };
+      var builtinOn;
+      if (typeof item.builtinOn === 'boolean') builtinOn = item.builtinOn;
+      else if (hasLegacy) builtinOn = legacyActive === 'builtin';
+      else builtinOn = true;
+      if (hasLegacy && legacyActive === null) builtinOn = false;
+      d.cats[c.id] = { builtinOn: builtinOn, custom: item.custom };
     });
-    d.v = 1;
+    d.v = 2;
     return d;
   }
 
@@ -135,11 +141,36 @@
   function activeText(catId) {
     var data = read();
     var cat = data.cats[catId];
-    if (!cat || !cat.active) return '';
-    if (cat.active === 'builtin') return builtinText(catId);
-    var found = null;
-    cat.custom.some(function (p) { if (p.id === cat.active) { found = p; return true; } return false; });
-    return found ? String(found.content || '').trim() : '';
+    if (!cat) return '';
+    var parts = [];
+    if (cat.builtinOn) {
+      var b = String(builtinText(catId) || '').trim();
+      if (b) parts.push(b);
+    }
+    (cat.custom || []).forEach(function (p) {
+      if (!p || !p.on) return;
+      var t = String(p.content || '').trim();
+      if (t) parts.push(t);
+    });
+    return parts.join('\n\n');
+  }
+
+  function enabledCount(catId) {
+    var data = read();
+    var cat = data.cats[catId];
+    if (!cat) return 0;
+    var n = cat.builtinOn ? 1 : 0;
+    (cat.custom || []).forEach(function (p) { if (p && p.on) n++; });
+    return n;
+  }
+
+  function setEnabled(catId, id, on) {
+    var data = read();
+    var cat = data.cats[catId];
+    if (!cat) return;
+    if (id === 'builtin') cat.builtinOn = !!on;
+    else (cat.custom || []).forEach(function (p) { if (p && p.id === id) p.on = !!on; });
+    write(data);
   }
 
   function buildBlock(catId) {
@@ -195,6 +226,8 @@
     write: write,
     builtinText: builtinText,
     activeText: activeText,
+    enabledCount: enabledCount,
+    setEnabled: setEnabled,
     styleRules: styleRules,
     buildBlock: buildBlock,
     appendTo: appendTo,

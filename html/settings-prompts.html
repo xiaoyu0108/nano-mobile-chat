@@ -9,7 +9,7 @@
 <script>window.__NANO_FONT_ONLY = true;</script>
 <script src="../js/appearance.js?v=20261026d"></script>
 <script src="../js/nano-idb.js"></script>
-<link rel="stylesheet" href="../css/settings.css?v=20261021a">
+<link rel="stylesheet" href="../css/settings.css?v=20261029d">
 <link rel="stylesheet" href="../css/account.css?v=20261025a">
 </head>
 <body data-page="prompts">
@@ -26,7 +26,7 @@
 
   <main class="scroll">
     <div id="promptSections"></div>
-    <p class="hint">每个板块只会启用一个提示词；社交 App 会额外继承「社交软件」里的通用补充。关闭全部开关后，该板块不再注入自己的提示词。内置提示词仅提供开关，不展示内容，也无法删除。</p>
+    <p class="hint">每条提示词都有自己的开关：开启＝读取这条，关闭＝不读取。内置和你自己添加的提示词可以同时开启多条，会按顺序一起生效；全部关闭则该板块不再读取这里的提示词；全场景的「表达红线」（反 AI 腔、去油腻等）仍会保留。社交 App 还会额外继承「社交软件」里的通用补充。内置提示词可以查看内容，但不可删除。</p>
   </main>
 </div>
 
@@ -43,9 +43,9 @@
 <div class="toast" id="toast"></div>
 <input type="file" id="promptIconFile" accept=".svg,image/svg+xml" class="hidden">
 
-<script src="../js/nano-prompts.js?v=20261027d"></script>
-<script src="../js/settings.js?v=20261029a"></script>
-<script src="../js/prompts-setting.js?v=20261025c"></script>
+<script src="../js/nano-prompts.js?v=20261029d"></script>
+<script src="../js/settings.js?v=20261029d"></script>
+<script src="../js/prompts-setting.js?v=20261029d"></script>
 <script src="../js/account.js?v=20261026f"></script>
 </body>
 </html>

@@ -1817,6 +1817,28 @@ function exitLiveFromMini(){
   endLive();
   return;
 }
+// 只退出直播间，不结束这场直播：房间仍留在直播列表里，之后还能点进去。
+function leaveLiveRoom(){
+  if(!S.currentRoom){openPage('liveHome',false);return;}
+  const mini=$('miniLive');if(mini)mini.classList.remove('show');
+  S.collapsed=false;
+  S.currentRoom=null;
+  S.roomLog=[];
+  S.hostCards=[];
+  S.audience=[];
+  S.isHost=false;
+  S.cohostPresent=false;
+  S.micState='idle';
+  S.liveQuote=null;
+  clearInterval(giftAmbientTimer);
+  S.history=['liveHome'];
+  openPage('liveHome',false);
+  document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.page==='liveHome'));
+  updateLiveHomeBackDot();
+  saveHaloState();
+  renderLive();
+  showToast('已退出直播间，直播还在继续');
+}
 function updateMiniLive(){
   if(!S.collapsed||!S.currentRoom) return;
   const r=S.currentRoom;
@@ -3219,17 +3241,35 @@ const HaloData = (() => {
       });
   }
 
-  /* 过滤：只保留 bindUser === 当前人设id 或 isNpc === true 的角色 */
+  /* 过滤：只保留 bindUser === 当前人设 id 的角色（NPC / 小号也一样）。
+     旧版本把 isNpc===true 的角色无条件放进每个 user，导致别人的 NPC 串进
+     Halo 的 char 选择框；现在 NPC 添加时就会写 bindUser，必须严格按 user 隔离。 */
   function filterCharacters(chars, maskId) {
-    return (chars || []).filter((c) =>
-      c && !c.nanoAssistant && (c.bindUser === maskId || c.isNpc === true)
+    return (chars || []).filter((c) => {
+      if (!c || c.nanoAssistant) return false;
+      if (maskId == null) return true; // 还没有任何 user 时不做隔离
+      return String(c.bindUser) === String(maskId);
+    });
+  }
+
+  function bindLegacyNpcs(chars, maskId) {
+    if (maskId == null) return Promise.resolve(chars);
+    const todo = (chars || []).filter((c) =>
+      c && c.id && !c.nanoAssistant && c.isNpc === true && (c.bindUser == null || c.bindUser === '')
     );
+    if (!todo.length) return Promise.resolve(chars);
+    return Promise.all(todo.map((c) => {
+      c.bindUser = maskId;
+      return idbPut('nano_characters_db', 'characters', c, 1).catch(() => {});
+    })).then(() => chars);
   }
 
   function visibleCharacters() {
     const mask = currentMask();
     const maskId = mask ? mask.id : null;
-    return readCharacters().then((chars) => filterCharacters(chars, maskId));
+    return readCharacters()
+      .then((chars) => bindLegacyNpcs(chars, maskId))
+      .then((chars) => filterCharacters(chars, maskId));
   }
 
   /* 世界书：localStorage nano_worldbook_data_v5 / IndexedDB nano_worldbook_db → worldbook_data */

@@ -172,7 +172,29 @@
                 ? '当前安卓浏览器不支持 Web Push：请用 Chrome / Edge 打开，并确认设备有 Google Play 服务'
                 : '当前环境不支持后台推送（iOS 需先把网页「添加到主屏幕」后用 PWA 打开）'));
         }
-        return Notification.requestPermission().then(function (perm) {
+        // 权限已经是 granted 时不要再调用 requestPermission：
+        // 在 iframe / 非用户手势（例如设置页自动补登记）里再次请求，部分浏览器会
+        // 直接返回 denied 或抛错，表现就是「系统里明明开了通知，这里却说没开」。
+        function notifyPermission() {
+            try {
+                if (typeof Notification === 'undefined') return 'unsupported';
+                // 设置页可能在 iframe 里：优先信任顶层窗口的真实权限，
+                // 避免 iframe 报 denied、系统/浏览器其实已经允许的情况。
+                var topPerm = '';
+                try {
+                    if (window.top && window.top !== window && window.top.Notification) {
+                        topPerm = window.top.Notification.permission;
+                    }
+                } catch (e) {}
+                if (topPerm === 'granted') return 'granted';
+                if (Notification.permission === 'granted' || Notification.permission === 'denied') return Notification.permission;
+                var p = Notification.requestPermission();
+                return (p && typeof p.then === 'function') ? p : Promise.resolve(p);
+            } catch (e) {
+                try { return (typeof Notification !== 'undefined' && Notification.permission) || 'denied'; } catch (e2) { return 'denied'; }
+            }
+        }
+        return Promise.resolve(notifyPermission()).then(function (perm) {
             if (perm !== 'granted') throw new Error('通知权限未授予：请在浏览器或系统设置里允许 Nano 的通知');
             return registerSW();
         }).then(function (reg) {
@@ -255,7 +277,13 @@
 
     function status() {
         var cfg = readConfig();
-        var out = { configured: !!(cfg.endpoint && cfg.vapid), endpoint: cfg.endpoint, permission: (typeof Notification !== 'undefined' ? Notification.permission : 'unsupported'), subscribed: false, appId: appId(), deviceId: autoDeviceId(), userId: currentAutoUserId() };
+        var permission = (typeof Notification !== 'undefined' ? Notification.permission : 'unsupported');
+        try {
+            if (permission !== 'granted' && window.top && window.top !== window && window.top.Notification && window.top.Notification.permission === 'granted') {
+                permission = 'granted';
+            }
+        } catch (e) {}
+        var out = { configured: !!(cfg.endpoint && cfg.vapid), endpoint: cfg.endpoint, permission: permission, subscribed: false, appId: appId(), deviceId: autoDeviceId(), userId: currentAutoUserId() };
         if (!swSupported()) return Promise.resolve(out);
         return navigator.serviceWorker.getRegistration().then(function (reg) {
             if (!reg) return out;
@@ -266,7 +294,12 @@
     // 已授权设备在启动时把 deviceId 补写到服务端；旧订阅也能自动升级成“按设备推送”
     function refreshSubscription() {
         try {
-            if (!swSupported() || Notification.permission !== 'granted') return Promise.resolve(false);
+            if (!swSupported()) return Promise.resolve(false);
+            var perm = Notification.permission;
+            try {
+                if (perm !== 'granted' && window.top && window.top !== window && window.top.Notification && window.top.Notification.permission === 'granted') perm = 'granted';
+            } catch (e) {}
+            if (perm !== 'granted') return Promise.resolve(false);
             var cfg = readConfig();
             if (!cfg.endpoint || !cfg.vapid) return Promise.resolve(false);
             // 服务端公钥变了：旧订阅已经无效，自动重建一次，否则后台推送会静默失败。

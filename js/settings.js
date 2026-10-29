@@ -533,9 +533,19 @@ const APP_ICONS = {
           .then(function (j) {
             if (!j || !j.ok) { status.textContent = '已开启 · 服务端未响应'; return; }
             if (!j.subs) {
+              // 浏览器里已有订阅、服务端却没有（换过 Worker/清过 KV/换过面具）时自动补登记。
+              // 但权限没真正授予时不要反复请求：非用户手势下会被浏览器判 denied，
+              // 反而错误地显示「通知权限未开启」。
+              var permNow = 'denied';
+              try { permNow = (typeof Notification !== 'undefined' ? Notification.permission : 'unsupported'); } catch (e0) {}
+              try {
+                if (permNow !== 'granted' && window.top && window.top !== window && window.top.Notification && window.top.Notification.permission === 'granted') permNow = 'granted';
+              } catch (e1) {}
+              if (permNow !== 'granted') {
+                status.textContent = '已开启 · 通知权限未生效，请点「重新订阅」';
+                return;
+              }
               status.textContent = '已开启 · 服务端没有订阅记录，正在自动补登记…';
-              // 浏览器里有订阅、服务端却没有（换过 Worker/清过 KV/换过面具）时，
-              // 直接把当前订阅重新 POST 一次，用户不用手动点。
               if (!refreshPush._reregistering && NP && NP.enable) {
                 refreshPush._reregistering = true;
                 Promise.resolve(NP.enable(false)).then(function () {

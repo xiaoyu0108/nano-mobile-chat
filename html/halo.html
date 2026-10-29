@@ -133,7 +133,10 @@
           <button class="live-head-btn" onclick="collapseLive()" aria-label="折叠">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 12h14"/><path d="M9 8l-4 4 4 4"/><path d="M15 8l4 4-4 4"/></svg>
           </button>
-          <button class="live-head-btn close" onclick="endLive()" aria-label="结束">
+          <button class="live-head-btn" onclick="leaveLiveRoom()" aria-label="退出直播间（不结束直播）" title="退出直播间（不结束直播）">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h4a1.5 1.5 0 0 1 1.5 1.5v13A1.5 1.5 0 0 1 18 20h-4"/><path d="M10 8l-4 4 4 4"/><path d="M6 12h9"/></svg>
+          </button>
+          <button class="live-head-btn close" onclick="endLive()" aria-label="结束直播">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 6l12 12M18 6L6 18"/></svg>
           </button>
         </div>
@@ -447,9 +450,9 @@
 
 <script src="../js/halo-data.js"></script>
 <script src="../js/mem-link.js?v=20261006a"></script>
-<script src="../js/nano-prompts.js?v=20261027d"></script>
+<script src="../js/nano-prompts.js?v=20261029d"></script>
 <script src="../js/social-graph.js?v=20261027k"></script>
-    <script src="../js/halo.js?v=20261029a"></script>
+    <script src="../js/halo.js?v=20261029d"></script>
 <script src="../js/api-float.js"></script>
 <script src="../js/nano-notify.js?v=20261028a"></script>
 <script src="../js/refresh-notify.js"></script>

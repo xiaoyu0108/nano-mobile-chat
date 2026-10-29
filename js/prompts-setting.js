@@ -71,35 +71,42 @@
     if (!host) return;
     var data = NP.read();
     host.innerHTML = NP.CATS.map(function (cat) {
-      var item = data.cats[cat.id] || { active: 'builtin', custom: [] };
-      var rows = '';
-      rows += '<div class="row prompt-row" data-cat="' + cat.id + '" data-builtin="1">' +
+      var item = data.cats[cat.id] || { builtinOn: true, custom: [] };
+      var builtin = String(NP.builtinText(cat.id) || '').trim();
+      var onCount = (item.builtinOn ? 1 : 0) + (item.custom || []).filter(function (p) { return p && p.on; }).length;
+      var rows = '<div class="row prompt-row" data-cat="' + cat.id + '" data-builtin="1" data-view="' + cat.id + '" role="button" tabindex="0">' +
         '<span class="prompt-icon">' + catIconSvg(cat.id) + '</span>' +
         '<span class="prompt-main"><span class="prompt-name">内置提示词</span>' +
-        '<span class="prompt-sub">官方内置 · 不可查看或删除</span></span>' +
-        '<span class="switch"><input type="checkbox" data-toggle="builtin" data-cat="' + cat.id + '"' + (item.active === 'builtin' ? ' checked' : '') + '><i></i></span>' +
-        '</div>';
+        '<span class="prompt-sub">官方内置 · 点开可查看 · 开关控制是否读取</span></span>' +
+        '<span class="switch"><input type="checkbox" data-toggle="builtin" data-cat="' + cat.id + '"' + (item.builtinOn ? ' checked' : '') + '><i></i></span>' +
+        '</div>' +
+        '<div class="prompt-preview">' + (builtin ? esc(builtin) : '（这个板块暂无内置提示词）') + '</div>';
       rows += item.custom.map(function (p) {
         return '<div class="row prompt-row" data-cat="' + cat.id + '" data-id="' + esc(p.id) + '" role="button" tabindex="0">' +
           iconHtml(p.icon) +
           '<span class="prompt-main"><span class="prompt-name">' + esc(p.name) + '</span>' +
-          '<span class="prompt-sub">' + esc(excerpt(p.content)) + '</span></span>' +
-          '<span class="switch"><input type="checkbox" data-toggle="' + esc(p.id) + '" data-cat="' + cat.id + '"' + (item.active === p.id ? ' checked' : '') + '><i></i></span>' +
-          '</div>';
+          '<span class="prompt-sub">' + (p.on ? '已开启 · 会读取' : '已关闭 · 不读取') + ' · 点开可编辑</span></span>' +
+          '<span class="switch"><input type="checkbox" data-toggle="' + esc(p.id) + '" data-cat="' + cat.id + '"' + (p.on ? ' checked' : '') + '><i></i></span>' +
+          '</div>' +
+          '<div class="prompt-preview">' + esc(String(p.content || '')) + '</div>';
       }).join('');
       rows += '<button class="row add-prompt-row" type="button" data-add="' + cat.id + '">' +
         '<span class="prompt-add-plus">' + catIconSvg(cat.id) + '</span><span>添加提示词</span></button>';
-      return '<div class="group-title"><span class="prompt-cat-icon">' + catIconSvg(cat.id) + '</span>' + esc(cat.name) + ' · ' + esc(cat.sub) + '</div>' +
+      return '<div class="group-title"><span class="prompt-cat-icon">' + catIconSvg(cat.id) + '</span>' + esc(cat.name) + ' · ' + esc(cat.sub) +
+        '<span class="prompt-on-count">已开启 ' + onCount + ' 条</span></div>' +
         '<section class="list prompt-card">' + rows + '</section>';
     }).join('');
   }
 
-  function setActive(catId, active) {
-    var data = NP.read();
-    if (!data.cats[catId]) return;
-    data.cats[catId].active = active;
-    NP.write(data);
-    render();
+  function openBuiltinDetail(catId) {
+    var cat = NP.catInfo(catId);
+    var text = String(NP.builtinText(catId) || '').trim();
+    openSheet('内置提示词',
+      '<div class="prompt-detail-head">' + iconSvg() +
+        '<span class="prompt-main"><span class="prompt-name">' + esc(cat ? cat.name : '') + ' · 内置</span>' +
+        '<span class="prompt-sub">只读 · 用开关控制是否读取</span></span></div>' +
+      '<div class="prompt-detail">' + (text ? esc(text) : '暂无内置提示词') + '</div>'
+    );
   }
 
   function openSheet(title, html) {
@@ -124,7 +131,7 @@
     openSheet('提示词详情',
       '<div class="prompt-detail-head">' + iconHtml(p.icon) +
         '<span class="prompt-main"><span class="prompt-name">' + esc(p.name) + '</span>' +
-        '<span class="prompt-sub">' + esc(NP.catInfo(catId) ? NP.catInfo(catId).name : '') + ' · ' + (item.active === id ? '已开启' : '未开启') + '</span></span></div>' +
+        '<span class="prompt-sub">' + esc(NP.catInfo(catId) ? NP.catInfo(catId).name : '') + ' · ' + (p.on ? '已开启 · 会读取' : '已关闭 · 不读取') + '</span></span></div>' +
       '<div class="prompt-detail">' + esc(p.content) + '</div>' +
       '<button class="sheet-btn" id="promptEditBtn">编辑提示词</button>' +
       '<button class="sheet-btn grey" id="promptDeleteBtn">删除提示词</button>'
@@ -135,7 +142,6 @@
       var d = NP.read();
       var c = d.cats[catId];
       c.custom = c.custom.filter(function (x) { return x.id !== id; });
-      if (c.active === id) c.active = null;
       NP.write(d);
       closeSheet();
       render();
@@ -333,7 +339,7 @@
           found.at = Date.now();
         }
       } else {
-        var item = { id: NP.newId(), name: name, content: content, icon: pendingIcon, at: Date.now() };
+        var item = { id: NP.newId(), name: name, content: content, icon: pendingIcon, on: true, at: Date.now() };
         c.custom.push(item);
       }
       NP.write(d);
@@ -368,12 +374,20 @@
         if (e.target.closest('.switch')) return;
         var add = e.target.closest('[data-add]');
         if (add) { openEditor(add.getAttribute('data-add'), ''); return; }
+        var builtinRow = e.target.closest('.prompt-row[data-builtin]');
+        if (builtinRow) { openBuiltinDetail(builtinRow.getAttribute('data-cat')); return; }
         var row = e.target.closest('.prompt-row[data-id]');
         if (row) openDetail(row.getAttribute('data-cat'), row.getAttribute('data-id'));
       });
       host.addEventListener('keydown', function (e) {
         if (e.key !== 'Enter' && e.key !== ' ') return;
         if (e.target.closest('.switch')) return;
+        var builtinRow = e.target.closest && e.target.closest('.prompt-row[data-builtin]');
+        if (builtinRow) {
+          e.preventDefault();
+          openBuiltinDetail(builtinRow.getAttribute('data-cat'));
+          return;
+        }
         var row = e.target.closest && e.target.closest('.prompt-row[data-id]');
         if (!row) return;
         e.preventDefault();
@@ -385,8 +399,8 @@
         var catId = input.getAttribute('data-cat');
         var toggle = input.getAttribute('data-toggle');
         if (!catId || !toggle) return;
-        if (toggle === 'builtin') setActive(catId, input.checked ? 'builtin' : null);
-        else setActive(catId, input.checked ? toggle : null);
+        NP.setEnabled(catId, toggle, input.checked);
+        render();
       });
     }
     var close = $('promptSheetClose');

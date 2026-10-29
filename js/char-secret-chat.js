@@ -556,6 +556,34 @@
         broadcast({ type: 'nanoSecretChatUpdated', record: rec });
         return rec;
     }
+    // 悄悄话写入记忆前先做「事后提炼」，不能把整段对话（尤其是外语原文）照抄进记忆库。
+    async function summarizeForMemory(a, b, lines) {
+        var transcript = (lines || []).map(function (l) {
+            var text = String(l.text || '').trim();
+            var tr = String(l.translation || '').trim();
+            return (l.name || '') + '：' + text + (tr ? ('（中文：' + tr + '）') : '');
+        }).join('\n');
+        if (!transcript) return '';
+        try {
+            var out = await callApi([
+                { role: 'system', content: '你是记忆整理助手。把下面两个角色的私下对话提炼成 1~3 条长期记忆，用于「' + (a.name || 'A') + '」和「' + (b.name || 'B') + '」各自的记忆库。\n'
+                    + '要求：\n'
+                    + '- 用简体中文写，第一人称「我」；要提炼关键事件、情绪、承诺、关系变化，不要逐句复述或照抄原文。\n'
+                    + '- 外语原话只保留少量关键词，并在后面用「（中文：……）」附上翻译；绝对不能只输出外语。\n'
+                    + '- 每条独立一行，直接写内容（不要类型/重要度前缀）；每条 50~120 字，最多 3 条。\n'
+                    + '- 只输出记忆条目，不要解释。' },
+                { role: 'user', content: transcript.slice(0, 6000) }
+            ], 900);
+            return String(out || '').trim().replace(/^【[^】]*】\s*/gm, '');
+        } catch (e) {
+            // 摘要失败时至少写成中文概述，绝不把外语原文整段塞进记忆。
+            var brief = (lines || []).slice(0, 4).map(function (l) {
+                return (l.name || '') + '：' + String(l.translation || '').trim();
+            }).filter(function (x) { return !/[：:]\s*$/.test(x); }).join('；');
+            return brief ? ('我和' + (b.name || 'B') + '私下聊过：' + brief.slice(0, 300)) : '';
+        }
+    }
+
     async function generate(aId, bId, opts) {
         opts = opts || {};
         var chars = await getBoundChars();
@@ -639,9 +667,15 @@
             all.push(rec);
             var saved = saveRecords(all);
 
-            var transcriptAll = lines.map(function (l) { return l.name + '：' + l.text; }).join(' / ');
-            await appendMemory(a.id, '你和' + (b.name || 'B') + '私下聊过：' + transcriptAll);
-            await appendMemory(b.id, '你和' + (a.name || 'A') + '私下聊过：' + transcriptAll);
+            // 记忆只写提炼后的中文摘要（外语附翻译），不再把整段对白照抄进记忆库。
+            var memA = '';
+            var memB = '';
+            try {
+                memA = await summarizeForMemory(a, b, lines);
+                memB = await summarizeForMemory(b, a, lines);
+            } catch (e) {}
+            if (memA) await appendMemory(a.id, memA);
+            if (memB) await appendMemory(b.id, memB);
             notifyMemory(a.id); notifyMemory(b.id);
 
             var now = Date.now();

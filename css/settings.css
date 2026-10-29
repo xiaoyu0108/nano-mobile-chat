@@ -638,6 +638,28 @@ label.row:active {
   text-overflow: ellipsis;
 }
 
+.prompt-on-count {
+  float: right;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+  opacity: .85;
+}
+
+.prompt-preview {
+  margin: -4px 14px 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #f7f7f8;
+  color: #5c5c62;
+  font-size: 12px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
 .add-prompt-row {
   gap: 10px;
   color: #6b6b70;

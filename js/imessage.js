@@ -622,7 +622,8 @@ async function maybeSummarize(charId, charName, history) {
     const convo = pending.map(m => (isMine(m) ? '用户：' : (charName + '：')) + (m.text || '')).join('\n').slice(0, 8000);
     const sys = '你是记忆整理助手。把下面这段对话中值得长期记住的信息，提炼成 1-6 条记忆，每条单独一行，'
       + '格式必须是【类型】内容。类型只能从这些里选：重要事件、用户偏好、情感、社交关系、地点、习惯、说话方式、禁忌、愿望、身世、秘密、其他。'
-      + '内容要具体、简短（30字内），只写事实，不要评价、不要解释、不要输出多余文字。';
+      + '内容要具体、简短（30字内），只写事实，不要评价、不要解释、不要输出多余文字；要提炼而不是照抄原对话。'
+      + '【语言】记忆正文必须用简体中文；外语原话只保留少量，并在后面用「（中文：……）」附上翻译，绝不能只输出外语。';
     const out = await callApi([{ role: 'system', content: sys }, { role: 'user', content: convo }], { maxTokens: 500, temperature: 0.3 });
     if (!out) { imMemNotify(lastApiError || '接口没有返回内容'); return; }
     const items = [];

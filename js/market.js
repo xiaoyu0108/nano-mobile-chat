@@ -1099,7 +1099,7 @@
     function push(name, content) {
       content = String(content == null ? '' : content).trim();
       if (!content) return;
-      list.push({ id: NanoPrompts.newId(), name: String(name || baseName).slice(0, 40), content: content, icon: '', at: Date.now() });
+      list.push({ id: NanoPrompts.newId(), name: String(name || baseName).slice(0, 40), content: content, icon: '', on: true, at: Date.now() });
     }
     var parsed = null;
     try { parsed = JSON.parse(text); } catch (e) {}

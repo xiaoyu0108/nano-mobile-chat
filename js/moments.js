@@ -333,31 +333,15 @@
         } catch (e) {}
     }
 
-    // AI 花名册生成失败时的兜底：真实感中文全名 + 与角色的现实关系。
-    // 只用来保证评论区不会只剩 char 互相说话，之后仍会被 AI 花名册替换。
-    function fallbackNpcRoster(chars) {
-        var pool = [
-            { name: '周予安', rel: '大学同学', gender: '女', setting: '大学同学，嘴甜但吐槽精准，爱吃火锅。' },
-            { name: '林知夏', rel: '同事', gender: '女', setting: '工作上的同事，做事利落，喜欢发猫片和咖啡。' },
-            { name: '沈叙白', rel: '朋友', gender: '男', setting: '认识多年的朋友，话不多，偶尔冷幽默。' },
-            { name: '陈晚晴', rel: '邻居', gender: '女', setting: '住在附近的邻居，常在楼下咖啡店碰到。' },
-            { name: '许知远', rel: '前同事', gender: '男', setting: '前同事，爱运动，喜欢发跑步和吃的。' },
-            { name: '顾清和', rel: '同学的朋友', gender: '男', setting: '朋友聚会认识的，慢热但很会接梗。' }
-        ];
-        var base = (chars && chars[0] && chars[0].name) || (currentUser && currentUser.name) || '朋友';
-        var block = {};
-        (chars || []).forEach(function (c) { if (c && c.name) block[normName(c.name)] = 1; });
-        if (currentUser && currentUser.name) block[normName(currentUser.name)] = 1;
-        return pool.filter(function (p) { return !block[normName(p.name)]; }).slice(0, 4).map(function (p) {
-            return {
-                id: 'npc_' + normName(p.name),
-                name: p.name,
-                avatar: generatedAvatar(p.name, p.gender),
-                relation: base + '的' + p.rel,
-                setting: p.setting,
-                gender: p.gender
-            };
-        });
+    // 旧版本在 AI 失败时会塞入固定名字（周予安 / 林知夏 / 沈叙白…），
+    // 导致每次生成都是同一批人。现在不再内置任何角色：NPC 必须由 AI 根据
+    // 人设、世界书、记忆库自己想名字；失败时宁可暂时没有 NPC 评论。
+    var LEGACY_FALLBACK_NPC_NAMES = { '周予安': 1, '林知夏': 1, '沈叙白': 1, '陈晚晴': 1, '许知远': 1, '顾清和': 1 };
+    function isLegacyFallbackNpc(name) {
+        return !!LEGACY_FALLBACK_NPC_NAMES[String(name == null ? '' : name).trim()];
+    }
+    function fallbackNpcRoster() {
+        return [];
     }
 
     // ===== 顶部生成中提示 =====
@@ -417,6 +401,44 @@
         return out.slice(0, 3).join('\n\n');
     }
 
+    // 读取角色长期记忆，供 AI 推断「记忆里真实出现过的人」，避免凭空造人
+    function loadCharMemoryText(chars) {
+        var ids = (chars || []).map(function(c) { return c && c.id; }).filter(Boolean);
+        if (!ids.length) return Promise.resolve('');
+        return new Promise(function(resolve) {
+            try {
+                var req = indexedDB.open('nano_vector_memory_db', 5);
+                req.onupgradeneeded = function(e) {
+                    try {
+                        var d = e.target.result;
+                        if (!d.objectStoreNames.contains('config')) d.createObjectStore('config', { keyPath: 'key' });
+                    } catch (e2) {}
+                };
+                req.onsuccess = function(e) {
+                    try {
+                        var db = e.target.result;
+                        var tx = db.transaction('config', 'readonly');
+                        var store = tx.objectStore('config');
+                        var out = [], pending = ids.length;
+                        ids.forEach(function(id) {
+                            var r = store.get('memlist_' + id);
+                            r.onsuccess = function() {
+                                var list = (r.result && Array.isArray(r.result.value)) ? r.result.value : [];
+                                var txt = list.slice(-12).map(function(m) {
+                                    return String((m && (m.content || m.text)) || '').trim();
+                                }).filter(Boolean).join('\n');
+                                if (txt) out.push('【' + ((chars || []).find(function(c) { return String(c.id) === String(id); }) || {}).name + ' 的记忆】\n' + txt);
+                                if (--pending <= 0) { try { db.close(); } catch (e3) {} resolve(out.join('\n\n')); }
+                            };
+                            r.onerror = function() { if (--pending <= 0) { try { db.close(); } catch (e3) {} resolve(out.join('\n\n')); } };
+                        });
+                    } catch (e2) { resolve(''); }
+                };
+                req.onerror = function() { resolve(''); };
+            } catch (e) { resolve(''); }
+        });
+    }
+
     function buildPersonaBlock(allChars) {
         var lines = [];
         lines.push('【可扮演的角色 / NPC · 必须严格贴人设、不得 OOC】');
@@ -431,9 +453,16 @@
         return lines.join('\n');
     }
 
-    // 生成朋友圈用的人设：char 与 NPC 必须分区，避免模型把两者当成同一个朋友圈子。
+    function charKnows(a, b) {
+        try {
+            if (window.NanoSocialGraph && NanoSocialGraph.knows) return NanoSocialGraph.knows(a, b);
+        } catch (e) {}
+        return nameMentionedIn(a, b && b.name) || nameMentionedIn(b, a && a.name);
+    }
+
+    // 生成朋友圈用的人设：char 与 NPC 必须分区；char 之间只有明确认识才能互动。
     function buildMomentsPersona(chars, npcs) {
-        var out = '【已选角色（char）· 他们彼此互不认识，绝对不能互相评论/回复/点赞】\n';
+        var out = '【已选角色（char）· 只有下列明确标注认识的角色之间才能互动，其余角色绝对不能互相评论/回复/点赞】\n';
         (chars || []).forEach(function (c) {
             if (!c || !c.name) return;
             out += '◇ ' + c.name + (c.gender && c.gender !== '未知' ? ('（' + c.gender + '）') : '') + '\n';
@@ -442,6 +471,14 @@
         var ids = (chars || []).map(function (c) { return c.id; }).filter(Boolean);
         var wb = loadWorldbookText(ids);
         if (wb) out += '\n【世界书】\n' + wb + '\n';
+        var pairs = [];
+        for (var i = 0; i < (chars || []).length; i++) {
+            for (var j = i + 1; j < (chars || []).length; j++) {
+                if (charKnows(chars[i], chars[j])) pairs.push(chars[i].name + ' ↔ ' + chars[j].name);
+            }
+        }
+        out += '\n【char 之间的明确关系（只有这些组合可以互相评论/回复/点赞）】\n' +
+            (pairs.length ? pairs.map(function (p) { return '· ' + p; }).join('\n') : '（本批角色之间没有任何明确关系：绝对不要让他们互动）') + '\n';
         out += '\n【NPC / 朋友圈朋友名单（只负责评论、点赞，不是上面这些 char）】\n';
         (npcs || []).forEach(function (n) {
             if (!n || !n.name) return;
@@ -633,7 +670,7 @@
 
     function rosterNpcs() {
         var list = loadNpcRoster() || [];
-        return list.filter(function(n) { return n && n.name && !isGenericNpcName(n.name); }).map(function(n) {
+        return list.filter(function(n) { return n && n.name && !isGenericNpcName(n.name) && !isLegacyFallbackNpc(n.name); }).map(function(n) {
             return {
                 id: n.id || ('npc_' + n.name),
                 name: n.name,
@@ -1678,24 +1715,34 @@
     // 清理历史数据里已经生成的 char↔char 互动：char 动态下删掉其它 char 的评论/点赞，
     // 用户动态下只拆掉 char 之间的回复关系，保留 char 对用户/NPC 的正常互动。
     function sanitizeCharInteractions() {
-        var set = {};
-        getUserBindChars().forEach(function (c) { if (c && c.name) set[normName(c.name)] = 1; });
-        if (!Object.keys(set).length) return;
+        var chars = getUserBindChars();
+        var byName = {};
+        chars.forEach(function (c) { if (c && c.name) byName[normName(c.name)] = c; });
+        if (!Object.keys(byName).length) return;
         var changed = false;
+        function knownCharPair(a, b) {
+            var ca = a && byName[normName(a)], cb = b && byName[normName(b)];
+            return !!(ca && cb && charKnows(ca, cb));
+        }
         (momentsData || []).forEach(function (m) {
             if (!m) return;
-            var authorIsChar = !!set[normName(m.author)];
+            var authorIsChar = !!byName[normName(m.author)];
             (m.comments || []).forEach(function (c) {
                 if (!c) return;
-                if (authorIsChar && c.user && set[normName(c.user)]) { c.__drop = true; changed = true; }
+                // 只有「双方都是 char 且明确不认识」才删除；明确认识的关系保留
+                if (authorIsChar && c.user && byName[normName(c.user)] && !knownCharPair(m.author, c.user)) {
+                    c.__drop = true; changed = true;
+                }
                 (c.replies || []).forEach(function (r) {
                     if (!r) return;
-                    var replyIsChar = !!(r.user && set[normName(r.user)]);
-                    if (authorIsChar && replyIsChar) { r.__drop = true; changed = true; }
-                    else if (replyIsChar && r.toUser && set[normName(r.toUser)]) { delete r.toUser; changed = true; }
+                    var replyIsChar = !!(r.user && byName[normName(r.user)]);
+                    if (authorIsChar && replyIsChar && !knownCharPair(m.author, r.user)) { r.__drop = true; changed = true; }
+                    else if (replyIsChar && r.toUser && byName[normName(r.toUser)] && !knownCharPair(r.user, r.toUser)) {
+                        delete r.toUser; changed = true;
+                    }
                 });
                 if (c.replies) c.replies = c.replies.filter(function (r) { return !r.__drop; });
-                if (!authorIsChar && c.user && set[normName(c.user)] && c.toUser && set[normName(c.toUser)]) {
+                if (!authorIsChar && c.user && byName[normName(c.user)] && c.toUser && byName[normName(c.toUser)] && !knownCharPair(c.user, c.toUser)) {
                     delete c.toUser; changed = true;
                 }
             });
@@ -1704,7 +1751,7 @@
             if (m.comments.length !== before) changed = true;
             if (authorIsChar && Array.isArray(m.likes)) {
                 var lb = m.likes.length;
-                m.likes = m.likes.filter(function (n) { return !set[normName(n)]; });
+                m.likes = m.likes.filter(function (n) { return !byName[normName(n)] || knownCharPair(m.author, n); });
                 if (m.likes.length !== lb) changed = true;
             }
         });
@@ -1731,9 +1778,12 @@
             if (authorName && normName(n.name) === normName(authorName)) return;
             add(n, 'npc');
         });
-        if (isUserPost) {
-            (bound || []).forEach(function(c) { add(c, 'char'); });
-        }
+        (bound || []).forEach(function(c) {
+            if (!c || !c.name) return;
+            if (authorName && normName(c.name) === normName(authorName)) return;
+            // 用户动态：所有绑定 char 都与用户认识；char 动态：只有明确认识作者的 char 才能出现。
+            if (isUserPost || (author && charKnows(author, c))) add(c, 'char');
+        });
         return pool;
     }
 
@@ -1775,8 +1825,11 @@
             var commenterNpc = (npcs || []).find(function(n) { return n && normName(n.name) === u; });
             if (commenterNpc) return true;   // NPC 可以评论任何动态
             var commenterChar = (bound || []).find(function(x) { return x && normName(x.name) === u; });
-            // char 只在用户本人的动态下出现；char 发的动态评论区不允许任何其他 char。
-            if (commenterChar || charNames.some(function(n) { return normName(n) === u; })) return !!isUserPost;
+            // 用户动态：所有绑定 char 都能评论；char 动态：只有明确认识作者的 char 才能评论，其余绝不互动。
+            if (commenterChar || charNames.some(function(n) { return normName(n) === u; })) {
+                if (isUserPost) return true;
+                return !!(author && commenterChar && charKnows(author, commenterChar));
+            }
             return false; // 不在花名册里的名字 → 路人甲，丢弃
         });
 
@@ -1794,9 +1847,18 @@
             var mentioned = inferAddressee(text, mentionPool);
             if (mentioned && normName(mentioned) !== normName(c.user)) {
                 var mentionedIsChar = charNames.some(function(n) { return normName(n) === normName(mentioned); });
-                // char 互相点名：把称呼清掉，绝不建立 char↔char 的回复关系
-                text = text.replace(new RegExp('^@?\\s*' + mentioned.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[\\s，,：:]?'), '');
-                if (targets[normName(mentioned)] && !(commenterIsChar && mentionedIsChar)) to = mentioned;
+                var pairOk = true;
+                if (commenterIsChar && mentionedIsChar) {
+                    var mFrom = (bound || []).find(function(x) { return x && normName(x.name) === normName(c.user); });
+                    var mTo = (bound || []).find(function(x) { return x && normName(x.name) === normName(mentioned); });
+                    pairOk = !!(mFrom && mTo && charKnows(mFrom, mTo));
+                }
+                // 不认识的 char 互相点名：把称呼清掉，绝不建立回复关系
+                if (!pairOk) {
+                    text = text.replace(new RegExp('^@?\\s*' + mentioned.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[\\s，,：:]?'), '');
+                } else if (targets[normName(mentioned)]) {
+                    to = mentioned;
+                }
             }
             var o = { user: c.user, text: text };
             var toAllowed = !!to && normName(to) !== normName(c.user);
@@ -1805,8 +1867,12 @@
                     o.toUser = currentUser.name; // 回复用户
                 } else if (charNames.some(function(n) { return normName(n) === normName(to); })) {
                     if (!targets[normName(to)]) toAllowed = false;
-                    // char↔char 永远不允许回复；NPC 回复 char 可以
-                    if (toAllowed && commenterIsChar) toAllowed = false;
+                    // char↔char 只有在明确认识时才允许回复；NPC 回复 char 不受限
+                    if (toAllowed && commenterIsChar) {
+                        var cFrom = (bound || []).find(function(x) { return x && normName(x.name) === normName(c.user); });
+                        var cTo = (bound || []).find(function(x) { return x && normName(x.name) === normName(to); });
+                        toAllowed = !!(cFrom && cTo && charKnows(cFrom, cTo));
+                    }
                     if (toAllowed) o.toUser = to;
                 } else if (npcNames.some(function(n) { return normName(n) === normName(to); })) {
                     if (targets[normName(to)]) o.toUser = to;
@@ -1819,12 +1885,18 @@
     // ===== 生成 NPC 花名册（依据 char / user 人设、世界书推断真实关系人物） =====
     async function generateNpcRoster(chars) {
         var persona = buildPersonaBlock(chars);
-        var system = '你是一个世界观设定助手，只负责根据角色人设与世界书，推断与该角色/用户有现实社会关系的具体人物（朋友、同学、同事、家人、邻居等）。必须给出真实感强的完整姓名，严禁使用「旅行者、咖啡店老板、新朋友、路人、X女士、阿明」这类通用占位称呼。';
+        var memText = await loadCharMemoryText(chars).catch(function() { return ''; });
+        if (memText) persona += '\n\n【角色长期记忆（优先从这里提到的真实人物取材）】\n' + memText.slice(0, 2400);
+        var userExtra = currentUser && (currentUser.persona || currentUser.desc || currentUser.bio || currentUser.setting);
+        if (currentUser && currentUser.name) {
+            persona += '\n\n【用户本人】' + currentUser.name + (userExtra ? ('：' + String(userExtra).slice(0, 600)) : '');
+        }
+        var system = '你是一个世界观设定助手，只负责根据角色人设、世界书与长期记忆，推断与该角色/用户有现实社会关系的具体人物（朋友、同学、同事、家人、邻居等）。必须给出真实感强的完整姓名，严禁使用「旅行者、咖啡店老板、新朋友、路人、X女士、阿明」这类通用占位称呼。';
         var userMsg = persona +
             '\n\n请列出 4~6 个与上面这些角色或用户本人真实相识的具体人物（他们可能是同事/同学/朋友/家人/邻居/合作方等），供朋友圈互动使用。\n' +
             '要求：\n' +
             '- 每个名字必须是现实中正常的完整姓名（如「李思雨」「刘媛」「陈子豪」），不要用职业或关系当名字；\n' +
-            '- 必须贴合上面的世界观与人设，说明 TA 与哪个角色、什么关系；\n' +
+            '- 必须贴合上面的世界观、人设与记忆，优先使用记忆/世界书里已经出现过的人；全新人物也要说明 TA 与哪个角色、什么关系；\n' +
             '- 不要与上面已有的角色重名。\n\n' +
             '严格输出 JSON 数组（不要 markdown、不要解释），格式：\n' +
             '[{"name":"李思雨","relation":"XX的大学同学","setting":"一句话性格与背景","gender":"女"}]';
@@ -1876,13 +1948,8 @@
             var npcs = (npcsOverride && npcsOverride.length) ? npcsOverride : generateContextNPCs();
             // 没有朋友（NPC）花名册时先生成一份，保证评论区能刷出 NPC 互动
             if (!npcs.length && !(npcsOverride && npcsOverride.length) && bound.length) {
+                // 不再使用固定名字兜底：NPC 必须由 AI 按人设/世界书/记忆自己想。
                 try { await generateNpcRoster(bound); npcs = generateContextNPCs(); } catch (e) {}
-                if (!npcs.length) {
-                    try {
-                        saveNpcRoster(fallbackNpcRoster(bound), bound.map(function(c) { return String(c.id || c.name); }));
-                        npcs = generateContextNPCs();
-                    } catch (e) {}
-                }
             }
             var isUserPost = normName(item.author) === normName(currentUser.name);
             var authorNpc = findNpcByName(npcs, item.author);
@@ -1912,22 +1979,22 @@
             var userComments = (item.comments || []).filter(function(c) { return normName(c.user) === normName(currentUser.name); });
             var hasUserComment = userComments.length > 0;
 
-            var system = '你是朋友圈里的真实人类。评论区只能使用给定名单里的 NPC 名字；已选角色（char）之间互不认识、绝不互相评论/回复/点赞，char 发的动态下不要出现任何其他 char。评论要短、口语、碎片化，像随手打字：可以只回“哈哈哈”“？”“好家伙”“这家我知道”，可以损、可以关心、可以只发一个表情；不要长评、客服腔、升华总结。';
+            var system = '你是朋友圈里的真实人类。评论区只能使用给定名单里的名字；已选角色（char）之间只有人设/世界书/角色关系明确写了认识，才可以互相评论/回复/点赞，其余 char 绝对不能出现在同一条评论区。评论要短、口语、碎片化，像随手打字：可以只回“哈哈哈”“？”“好家伙”“这家我知道”，可以损、可以关心、可以只发一个表情；不要长评、客服腔、升华总结。';
             var charNamesForPrompt = (bound || []).map(function(c) { return c && c.name; }).filter(Boolean).join('、');
             var userMsg = persona +
                 '\n\n【本动态可以出现的评论者（只能使用这些名字，不要创造新名字）】\n' + pool.map(function(c) { return '· ' + c.name; }).join('\n') +
                 '\n\n【这条朋友圈】\n作者：' + (item.author || '') + '\n内容：' + (item.text || '') +
                 (existing ? ('\n已有评论（可接着聊）：\n' + existing) : '') +
                 (hasUserComment ? ('\n【用户本人的评论（必须有人回复 TA）】\n' + userComments.map(function(c) { return '用户：' + c.text; }).join('\n')) : '') +
-                '\n\n请生成 4~5 条新的评论互动：\n' +
+                '\n\n请生成 5~8 条新的评论互动（既要回复已有评论，也要有新的人加入）：\n' +
                 '- 评论者只能从上面的名字里选，名字原样使用；\n' +
                 (isUserPost && charNamesForPrompt ? ('- 这条是用户本人发的动态，所有角色都认识用户：点赞名单里必须包含全部角色（' + charNamesForPrompt + '），并且至少 2 位角色要发表评论；\n') : '') +
-                (hasUserComment ? ('- 必须至少 1 条回复用户本人（回复对象写「' + (currentUser.name || '用户') + '」），自然接住 TA 说的话；\n') : '') +
+                (hasUserComment ? ('- 必须至少 1 条回复用户本人（回复对象写「' + (currentUser.name || '用户') + '」），自然接住 TA 说的话；同时至少 2 条是全新的评论者首次出现；\n') : '- 至少 2 条必须是此前没在这条评论区出现过的新评论者；\n') +
                 '- 回复对象必须是这条动态下真正发过言的人（动态作者或评论区里出现过的人），不要回复只点赞的人；\n' +
                 '- 每条评论的内容要和「回复对象」一致，不要张冠李戴；\n' +
                 (isUserPost
-                    ? '- 角色可以评论用户、NPC 可以评论任何参与者；但角色之间不要互相回复或接话；\n'
-                    : '- 这条是 char 的动态：评论者只能是 NPC 名单里的人（或用户本人），绝对不要出现其他 char 的名字；NPC 之间/NPC 回复作者可以自然接话；\n') +
+                    ? '- 角色可以评论用户；角色之间只有明确认识才能互相回复/接话，不认识的绝不互动；NPC 可以评论任何参与者；\n'
+                    : '- 这条是 char 的动态：评论者优先是 NPC 名单里的人（或用户本人）；只有和作者明确认识的其他 char 才能出现并与作者互动，其余 char 绝对不能出现；NPC 之间/NPC 回复作者可以自然接话；\n') +
                 '- 严禁以用户身份发言、点赞或评论；\n' +
                 '- 每条不超过 25 字，口语化，像真人。\n' +
                 '- 另外给出 3~6 个点赞者的名字，只能从上面的名单里选。\n\n' +
@@ -1946,7 +2013,19 @@
 
             var newLikes = parseLikesFromText(raw, pool);
             var rawForComments = String(raw || '').replace(/^\s*(?:LIKES|点赞)\s*[:：].*$/gim, '');
-            var parsed = filterCommentList(parseCommentLines(rawForComments), authorChar, bound, npcs, isUserPost, (item.comments || []).map(function(c) { return c.user; }));
+            var existingUsers = (item.comments || []).map(function(c) { return c.user; });
+            var parsed = filterCommentList(parseCommentLines(rawForComments), authorChar, bound, npcs, isUserPost, existingUsers);
+            // 单独刷新评论时至少 5 条：不够就再补一次（只补一次，避免刷出十几条）。
+            if (parsed.length < 5) {
+                try {
+                    var raw2 = await fetchAIResponse(userMsg + '\n\n上次只生成了 ' + parsed.length + ' 条，请再补齐到 5~8 条；不要重复已有评论。', false, { apiPref: 'sub', system: system, maxTokens: isUserPost ? 900 : 700, temperature: 0.92 });
+                    var parsed2 = filterCommentList(
+                        parseCommentLines(String(raw2 || '').replace(/^\s*(?:LIKES|点赞)\s*[:：].*$/gim, '')),
+                        authorChar, bound, npcs, isUserPost, existingUsers.concat(parsed.map(function(c) { return c.user; }))
+                    );
+                    if (parsed2.length) parsed = parsed.concat(parsed2);
+                } catch (e) {}
+            }
             if (!parsed.length && !newLikes.length) {
                 showApiError({
                     type: 'text', stage: 'parse',
@@ -1963,7 +2042,8 @@
                 if (normName(n) === normName(item.author)) return false; // 作者不给自己点赞
                 var c = (bound || []).find(function (x) { return x && normName(x.name) === normName(n); });
                 if (!c) return true;        // NPC 点赞不限制
-                return isUserPost;          // char 只在用户本人的动态下点赞；char 之间不互相点赞
+                // 用户动态所有 char 都可以赞；char 动态只有明确认识的 char 才能赞
+                return isUserPost || !!(authorChar && charKnows(authorChar, c));
             });
             newLikes.forEach(function(n) {
                 if (!item.likes.some(function(x) { return normName(x) === normName(n); })) item.likes.push(n);
@@ -1977,7 +2057,7 @@
             }
 
             if (!item.comments) item.comments = [];
-            parsed.slice(0, 6).forEach(function(c) { item.comments.push(c); });
+            parsed.slice(0, 8).forEach(function(c) { item.comments.push(c); });
             saveOneMoment(item);
             renderFeed();
             if (document.getElementById('viewDetail').classList.contains('active') && currentDetailId === id) openDetail(id);
@@ -2063,9 +2143,9 @@
         lines.push('- 一部分是「配图动态」：MEDIA 写 image，并写 IMAGE 描述这张照片拍的是什么（吃的 / 风景 / 宠物 / 牵手 / 自拍等日常照）；其余是纯文字，MEDIA 写 text；这 ' + total + ' 条里至少 1 条 image、至少 1 条 text（除非只要求 1 条）；');
         lines.push('- 每条动态必须配 2~4 个点赞（LIKES 写 2~4 个名字）和 2~4 条评论；不要只写点赞不写评论，也不要只写评论不写点赞；');
         lines.push('- 评论者/点赞者只能从上面的名字里选；' + (npcNames.length ? ('可用评论者/NPC：' + npcNames.join('、') + '；') : ''));
-        lines.push('- 【最高优先级】已选角色（char）之间互不认识、互不互动：无论人设/世界书里是否提到对方，都不得互相评论、回复、点赞，也不要在同一条动态的评论区同时出现。');
-        lines.push('- char 发的动态：评论者和点赞者只能来自 NPC 名单（或用户本人），绝对禁止出现其他 char 的名字；没有 NPC 名单时宁可少评论，也不要让 char 互相接话。');
-        lines.push('- 用户本人发的动态（如果出现）：char 可以评论用户，但 char 之间仍然不能互相回复；NPC 可以正常参与。');
+        lines.push('- 【最高优先级】已选角色（char）之间只有人设/世界书/角色关系明确写了认识，才可以互相评论、回复、点赞；没有明确关系的 char 绝对不能在同一个评论区出现，也不要点赞或接话。');
+        lines.push('- char 发的动态：评论者和点赞者主要来自 NPC 名单（或用户本人）；只有与作者明确认识的 char 才能出现，其余 char 的名字一个都不许写。没有 NPC 名单时宁可少评论，也不要让不认识的 char 互相接话。');
+        lines.push('- 用户本人发的动态（如果出现）：所有 char 都可以评论用户；char 之间只有明确认识才能互相回复，不认识的不互动；NPC 可以正常参与。');
         lines.push('- NPC 是真实的朋友/同学/同事/家人，评论要符合各自关系；NPC 可以回复 NPC，也可以回复 char 或用户。');
         lines.push('- 每条动态的 LIKES 都不能为空：char 的动态 LIKES 只能写 NPC 名字；不得包含用户；');
         lines.push('- 评论者回复别人时写成「评论者|回复对象|内容」，不是回复则写成「评论者||内容」；');
@@ -2079,7 +2159,7 @@
     }
 
     async function requestPosts(chars, npcs, wantNpcCount, recent, opts) {
-        var system = '你是朋友圈里的真实人类。请发布日常动态，并只让 NPC 朋友（或用户本人）在评论区接话。已选角色（char）之间互不认识、绝不互相评论/回复/点赞；不要把 char 放进别人的评论区。严格贴合各自人设、NPC 关系与世界书，保持活人感，绝不 OOC，禁止 AI 腔、解释和出戏。';
+        var system = '你是朋友圈里的真实人类。请发布日常动态，并只让 NPC 朋友（或用户本人）在评论区接话。已选角色（char）之间只有人设/世界书/角色关系明确写了认识，才可以互相评论/回复/点赞；不认识的 char 绝不互动，也不要放进别人的评论区。严格贴合各自人设、NPC 关系与世界书，保持活人感，绝不 OOC，禁止 AI 腔、解释和出戏。';
         var userMsg = buildPostsPrompt(chars, npcs, wantNpcCount, recent, opts);
         var raw = await fetchAIResponse(userMsg, true, { apiPref: 'main', system: system, maxTokens: 3400, temperature: 0.95 });
         return parseMomentBlocks(raw);
@@ -2133,14 +2213,7 @@
                 try { await generateNpcRoster(selected); } catch (e) { console.warn('NPC 花名册生成失败', e); }
                 npcs = generateContextNPCs();
             }
-            // 花名册为空（模型没按格式返回 / 全被过滤）时用本地兜底，保证评论区真的有 NPC。
-            if (!npcs.length) {
-                try {
-                    var fb = fallbackNpcRoster(selected);
-                    saveNpcRoster(fb, selected.map(function(c) { return String(c.id || c.name); }));
-                    npcs = generateContextNPCs();
-                } catch (e) {}
-            }
+            // 花名册为空时不再塞内置名字：宁可暂时没有 NPC 评论，也不让 AI 偷懒复用同一批人。
 
             var allChars = selected.concat(npcs);
             if (allChars.length === 0) {
@@ -2200,8 +2273,9 @@
                 }).filter(function(n) {
                     if (!n) return false;
                     if (normName(n) === normName(cn)) return false; // 作者不给自己点赞
-                    // char 发的动态：只允许 NPC 点赞，char 之间不互相点赞
-                    if (ch && findCharByName(selected, n)) return false;
+                    // char 发的动态：只有明确认识作者的 char 才能点赞，其余 char 不互相点赞
+                    var lc2 = findCharByName(selected, n);
+                    if (ch && lc2) return charKnows(ch, lc2);
                     return true;
                 }).slice(0, 4);
 
