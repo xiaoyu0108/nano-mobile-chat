@@ -2557,9 +2557,14 @@
     ((char && char.worldbookBindings) || []).forEach(function(w) { bindIds[w.id] = true; });
     var out = [];
     wb.files.forEach(function(f) {
-      var isGlobal = (f.scope || 'global') === 'global';
-      var isLocal = (f.scope === 'local') && ((Array.isArray(f.boundCharacters) && f.boundCharacters.indexOf(charId) !== -1) || bindIds[f.id]);
-      if (!isGlobal && !isLocal) return;
+      var scope = f.scope || 'global';
+      var isGlobal = scope === 'global';
+      var isLocal = (scope === 'local') && ((Array.isArray(f.boundCharacters) && f.boundCharacters.indexOf(charId) !== -1) || bindIds[f.id]);
+      var isOnline = (scope === 'online') && (
+        !Array.isArray(f.boundCharacters) || !f.boundCharacters.length ||
+        f.boundCharacters.indexOf(charId) !== -1 || bindIds[f.id]
+      );
+      if (!isGlobal && !isLocal && !isOnline) return;
       (f.entries || []).forEach(function(en) {
         if (!en || en.enabled === false) return;
         if (!en.content || !String(en.content).trim()) return;

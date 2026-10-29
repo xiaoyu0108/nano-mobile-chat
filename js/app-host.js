@@ -173,7 +173,8 @@
               return {
                 id: c.id, name: c.name || '角色', avatar: c.avatar || '',
                 gender: c.gender || '', nationality: c.nationality || '',
-                setting: c.setting || c.desc || c.persona || '', isNpc: !!c.isNpc
+                setting: c.setting || c.desc || c.persona || '', isNpc: !!c.isNpc,
+                worldbookBindings: Array.isArray(c.worldbookBindings) ? c.worldbookBindings : []
               };
             }));
           };
@@ -203,18 +204,30 @@
     }).catch(function () { return []; });
   }
 
-  function collectWorldbookText(charIds) {
-    return loadWorldbookFiles().then(function (files) {
+  function collectWorldbookText(charIds, charsById) {
+    var charMapPromise = charsById ? Promise.resolve(charsById) : listCharacters().then(function (list) {
+      var map = {};
+      (list || []).forEach(function (c) { if (c && c.id) map[c.id] = c; });
+      return map;
+    });
+    return Promise.all([loadWorldbookFiles(), charMapPromise]).then(function (res) {
+      var files = res[0] || [], charMap = res[1] || {};
+      var bindIds = {};
+      (charIds || []).forEach(function (id) {
+        var c = charMap[id];
+        ((c && c.worldbookBindings) || []).forEach(function (b) { if (b && b.id) bindIds[String(b.id)] = true; });
+      });
       var out = [];
-      (files || []).forEach(function (f) {
+      files.forEach(function (f) {
         if (!f) return;
         var scope = f.scope || 'global';
         var bound = Array.isArray(f.boundCharacters) ? f.boundCharacters : [];
+        var boundHit = !!bindIds[String(f.id)] ||
+          (charIds || []).some(function (id) { return bound.indexOf(id) > -1; });
         var applies = false;
         if (scope === 'global') applies = true;
-        else if (charIds && charIds.length) {
-          applies = charIds.some(function (id) { return bound.indexOf(id) > -1; });
-        }
+        else if (scope === 'online') applies = !bound.length || boundHit;
+        else applies = boundHit;
         if (!applies) return;
         var entries = Array.isArray(f.entries) ? f.entries : [];
         var lines = [];
@@ -527,7 +540,7 @@
 
     return (opts.useWorldbook || opts.useMemory)
       ? Promise.all([
-          opts.useWorldbook ? collectWorldbookText(ids) : Promise.resolve(''),
+          opts.useWorldbook ? collectWorldbookText(ids, charsById) : Promise.resolve(''),
           opts.useMemory ? collectMemory(ids) : Promise.resolve([])
         ]).then(function (r) {
           var all = sys;

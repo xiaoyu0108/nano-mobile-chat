@@ -8659,7 +8659,11 @@
             try {
                 const __wbd = getWorldbookText(chatId);
                 const __wbr = ((__wbd.front || '') + (__wbd.middle || '') + (__wbd.back || '')).trim();
-                if (__wbr) history.push({ role: 'system', content: '【世界书 · 关键设定（再次强调 · 优先级最高 · 每一轮都要遵守）】\n' + __wbr.slice(0, 4000) });
+                // 世界书已经在 system 开头完整注入；只有长对话/超长提示词时才再贴一次最近的强调块，
+                // 避免每轮都重复几千字，既拖慢请求也挤占模型上下文。
+                if (__wbr && (messages.length > 18 || __sys.length > 7000)) {
+                    history.push({ role: 'system', content: '【世界书 · 关键设定（再次强调 · 优先级最高 · 每一轮都要遵守）】\n' + __wbr.slice(0, 2600) });
+                }
             } catch (e) {}
 
             // 时间锚点（极简版·放在最新用户消息前）：长提示词容易把开头的时间感知挤掉，
@@ -11917,10 +11921,15 @@ if (callCard) {
             if (isNanoChat) nanoSendLockUntil = Date.now() + 350;
             sendMessage();
         }
-        // 深夜角色正在睡觉时，先问用户要不要叫醒；叫醒后角色会知道是用户叫醒的
+        // 深夜角色正在睡觉时，先问用户要不要叫醒；叫醒后角色会知道是用户叫醒的。
+        // 纳米助手不是剧情角色，不参与睡觉判断。
         try {
-            if (window.NanoScheduleBridge && NanoScheduleBridge.guardSend) {
-                NanoScheduleBridge.guardSend(proceed);
+            if (!isNanoChat && window.NanoScheduleBridge && NanoScheduleBridge.guardSend) {
+                NanoScheduleBridge.guardSend(proceed, {
+                    charId: chatId,
+                    charName: displayName,
+                    nationality: (characterData && (characterData.nationality || characterData.country)) || ''
+                });
                 return;
             }
         } catch (e) {}
@@ -11936,7 +11945,11 @@ if (callCard) {
         console.log('[Chat] 双击发送按钮，触发AI回复');
         try {
             if (window.NanoScheduleBridge && NanoScheduleBridge.guardSend) {
-                NanoScheduleBridge.guardSend(function () { triggerReply(); });
+                NanoScheduleBridge.guardSend(function () { triggerReply(); }, {
+                    charId: chatId,
+                    charName: displayName,
+                    nationality: (characterData && (characterData.nationality || characterData.country)) || ''
+                });
                 return;
             }
         } catch (err) {}

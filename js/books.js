@@ -1265,8 +1265,18 @@ function buildWorldbookText(){
   if(Array.isArray(wb)) return wb.map(w=>w&&(w.content||w.text)||'').filter(Boolean).join('\n');
   if(Array.isArray(wb.files)){
     const out=[];
+    const ch=currentChar||{};
+    const ids=[ch.id,ch.name].filter(Boolean).map(String);
+    const bindIds={};
+    try{ (ch.worldbookBindings||[]).forEach(b=>{ if(b&&b.id) bindIds[String(b.id)]=true; }); }catch(e){}
     wb.files.forEach(f=>{
       if(!f) return;
+      const scope=f.scope||'global';
+      const boundHit=!!bindIds[String(f.id)] ||
+        (f.boundCharacters||[]).some(b=>ids.indexOf(String(b))>-1);
+      if(scope==='local' && !boundHit) return;
+      if(scope==='online' && f.onlineTarget==='pick' &&
+         (f.boundCharacters||[]).length && !boundHit) return;
       (f.entries||[]).forEach(en=>{
         if(!en||en.enabled===false) return;
         const c=en.content||en.text;

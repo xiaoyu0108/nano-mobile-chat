@@ -126,6 +126,7 @@
             try { token = localStorage.getItem('nano_push_token') || localStorage.getItem('nano_peek_token') || ''; } catch (e) {}
             // 每次都向服务端确认当前公钥：Worker 换过密钥后，本地旧公钥会让订阅和新私钥对不上。
             setWebPushStatus('正在获取服务端公钥…');
+            var keyError = '';
             try {
                 var vctrl = new AbortController();
                 var vt = setTimeout(function () { try { vctrl.abort(); } catch (e) {} }, 6000);
@@ -133,10 +134,11 @@
                     var r = await fetch(endpoint + '/vapid', { cache: 'no-store', signal: vctrl.signal });
                     var d = await r.json();
                     var freshKey = (d && (d.key || d.publicKey || d.vapid)) || '';
+                    keyError = (d && d.error) || '';
                     if (freshKey) key = freshKey;
                 } finally { clearTimeout(vt); }
-            } catch (e) {}
-            if (!key) { setWebPushStatus('服务端暂时没返回 VAPID 公钥，请确认最新 Worker 已部署'); return; }
+            } catch (e) { keyError = (e && e.message) || ''; }
+            if (!key) { setWebPushStatus(keyError || '服务端暂时没返回 VAPID 公钥，请确认最新 Worker 已部署且绑定了 D1'); return; }
             NP.setup(endpoint, key, token);
             setWebPushStatus('正在订阅通知…');
             try {

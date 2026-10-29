@@ -42,10 +42,11 @@
         return 'app_' + h.toString(36);
     }
 
-    // 默认公共 Worker（与设置页保持一致）。VAPID 公钥是公开信息，只作为
-    // /vapid 请求超时时的兜底；syncVapid 仍会在后台校正成服务端最新公钥。
+    // 默认公共 Worker（与设置页保持一致）。
+    // 注意：这里不再内置 VAPID 公钥。Worker 换过密钥后，硬编码的旧公钥会让
+    // 浏览器订阅到一把服务端已经没有私钥的 key，表现就是“已订阅但永远收不到”。
+    // 所有订阅前都从 /vapid 取服务端当前公钥。
     var DEFAULT_ENDPOINT = 'https://nanopush.nano315.online';
-    var DEFAULT_VAPID = 'BDJ2_HvtDkwCutXGbhTp3MODRaRF2zhmhNV9XdrlqU66mWZtBM2AqfEwNNBsDBPoWsKFZH5ILiiJPGkJNqCeL8U';
     function readConfig() {
         var endpoint = '', vapid = '', token = '';
         try {
@@ -60,8 +61,31 @@
             try { localStorage.setItem('nano_push_endpoint', endpoint); } catch (e) {}
         }
         if (!endpoint) endpoint = DEFAULT_ENDPOINT;
-        if (!vapid && endpoint === DEFAULT_ENDPOINT) vapid = DEFAULT_VAPID;
         return { endpoint: endpoint, vapid: vapid, token: token };
+    }
+
+    // 取服务端当前 VAPID 公钥。订阅前必须调用：旧订阅/旧公钥在服务端换钥后会静默失效。
+    function fetchVapid(endpoint, timeoutMs) {
+        endpoint = String(endpoint || '').replace(/\/+$/, '');
+        if (!endpoint) return Promise.reject(new Error('未配置推送服务器'));
+        var ctrl = null, timer = null;
+        try {
+            ctrl = new AbortController();
+            timer = setTimeout(function () { try { ctrl.abort(); } catch (e) {} }, timeoutMs || 8000);
+        } catch (e) {}
+        function clear() { if (timer) { clearTimeout(timer); timer = null; } }
+        return fetch(endpoint + '/vapid', { cache: 'no-store', signal: ctrl ? ctrl.signal : undefined })
+            .then(function (r) { return r.json().catch(function () { return {}; }); })
+            .then(function (j) {
+                clear();
+                var key = (j && (j.key || j.publicKey || j.vapid)) || '';
+                if (!key) throw new Error((j && j.error) || '服务端没有返回 VAPID 公钥');
+                return key;
+            }, function (err) {
+                clear();
+                if (err && err.name === 'AbortError') throw new Error('获取 VAPID 公钥超时，请检查推送服务器 / 网络');
+                throw err;
+            });
     }
 
     function saveConfig(endpoint, vapid, token) {
@@ -118,7 +142,7 @@
             return '推送服务器要求令牌：请在「服务端地址」旁边填写与 Worker 一致的 PUSH_TOKEN。';
         }
         if (/HTTP 5\d\d/i.test(raw)) {
-            return '推送服务器内部错误：' + raw.slice(0, 200) + '（请检查 Worker 的 KV/D1 绑定和部署版本）';
+            return '推送服务器内部错误：' + raw.slice(0, 200) + '（请检查 Worker 的 D1 绑定和部署版本）';
         }
         return raw || '开启推送失败';
     }
@@ -222,8 +246,25 @@
 
     function enable(force) {
         var cfg = readConfig();
-        if (!cfg.endpoint || !cfg.vapid) {
+        if (!cfg.endpoint) {
             return Promise.reject(new Error('未配置推送服务器：请先 NanoPush.setup(服务器地址, VAPID公钥)'));
+        }
+        // 每次开启/重新订阅都先问服务端要当前公钥：本地缓存可能是换钥前的旧公钥，
+        // 用旧公钥 new 出来的订阅，服务端没有对应私钥，推送会静默失败。
+        return fetchVapid(cfg.endpoint, 8000).then(function (key) {
+            cfg.vapid = key;
+            saveConfig(cfg.endpoint, key, cfg.token);
+            return enableWithConfig(cfg, force);
+        }).catch(function (err) {
+            var e = new Error(friendlyError(err));
+            e.cause = err;
+            throw e;
+        });
+    }
+
+    function enableWithConfig(cfg, force) {
+        if (!cfg.vapid) {
+            return Promise.reject(new Error('服务端没有返回 VAPID 公钥，无法订阅'));
         }
         if (!swSupported()) {
             var p0 = platform();
@@ -316,7 +357,16 @@
                 var cfg = readConfig();
                 var endpoint = sub.endpoint;
                 return sub.unsubscribe().then(function () {
-                    if (cfg.endpoint) postJSON(cfg.endpoint + '/unsubscribe', { endpoint: endpoint }).catch(function () {});
+                    if (cfg.endpoint) {
+                        // 必须带上 appId/deviceId/userId：服务端订阅键是
+                        // sub2:<app>:<device>:<user>:<id>，只传 endpoint 删不掉。
+                        postJSON(cfg.endpoint + '/unsubscribe', {
+                            endpoint: endpoint,
+                            appId: appId(),
+                            deviceId: autoDeviceId(),
+                            userId: currentAutoUserId()
+                        }).catch(function () {});
+                    }
                     return true;
                 });
             });
@@ -356,7 +406,7 @@
                 permission = 'granted';
             }
         } catch (e) {}
-        var out = { configured: !!(cfg.endpoint && cfg.vapid), endpoint: cfg.endpoint, permission: permission, subscribed: false, appId: appId(), deviceId: autoDeviceId(), userId: currentAutoUserId() };
+        var out = { configured: !!cfg.endpoint, endpoint: cfg.endpoint, permission: permission, subscribed: false, appId: appId(), deviceId: autoDeviceId(), userId: currentAutoUserId() };
         if (!swSupported()) return Promise.resolve(out);
         return navigator.serviceWorker.getRegistration().then(function (reg) {
             if (!reg) return out;
@@ -374,7 +424,7 @@
             } catch (e) {}
             if (perm !== 'granted') return Promise.resolve(false);
             var cfg = readConfig();
-            if (!cfg.endpoint || !cfg.vapid) return Promise.resolve(false);
+            if (!cfg.endpoint) return Promise.resolve(false);
             // 服务端公钥变了：旧订阅已经无效，自动重建一次，否则后台推送会静默失败。
             var usedKey = '';
             try { usedKey = localStorage.getItem('nano_push_vapid_used') || ''; } catch (e) {}
@@ -401,7 +451,8 @@
                     ua: navigator.userAgent,
                     platform: platform().android ? 'android' : (platform().ios ? 'ios' : 'other'),
                     ts: Date.now()
-                }).then(function () {
+                }).then(function (r) {
+                    if (r && r.ok === false) throw new Error('服务端没有保存订阅：' + (r.error || '未知错误'));
                     try {
                         localStorage.setItem('nano_push_meta_sync_at', String(Date.now()));
                         localStorage.setItem('nano_push_meta_identity', identity);
@@ -433,7 +484,7 @@
         try {
             if (!swSupported()) return Promise.resolve(false);
             var cfg = readConfig();
-            if (!cfg.endpoint || !cfg.vapid) return Promise.resolve(false);
+            if (!cfg.endpoint) return Promise.resolve(false);
             return navigator.serviceWorker.getRegistration().then(function (reg) {
                 if (!reg) return null;
                 return reg.pushManager.getSubscription();

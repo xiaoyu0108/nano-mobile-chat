@@ -10,6 +10,9 @@
     store: null,
     charId: '',
     charName: '',
+    nationality: '',
+    tz: '',
+    wallNow: null,
     data: null,
     block: '',
     loading: null
@@ -166,23 +169,60 @@
     var h = (d instanceof Date ? d : new Date()).getHours();
     return h >= 22 || h < 8;
   }
+  // 没有日程、但开了时间感知的角色：23:00~07:00 视为大概率在睡觉。
+  function isNightSleepWindow(d) {
+    var h = (d instanceof Date ? d : new Date()).getHours();
+    return h >= 23 || h < 7;
+  }
 
   function wakeKey(id) { return 'nano_schedule_wake_' + (id || 'default'); }
 
-  function readWake(id, dayKey) {
+  // 同一个 key 记录「叫醒」或「没叫醒」：老数据没有 status 字段，按“叫醒”兼容。
+  function readSleepChoice(id, dayKey) {
     try {
       var o = JSON.parse(localStorage.getItem(wakeKey(id)) || 'null');
-      return o && o.date === (dayKey || today()) ? o : null;
+      if (!o) return null;
+      // 跨午夜也要记得：23:50 选择“让他睡”，00:20 再聊时仍然知道。
+      var recent = o.at && (Date.now() - Number(o.at) < 12 * 3600 * 1000);
+      if (o.date !== (dayKey || today()) && !recent) return null;
+      if (!o.status) o.status = 'woken';
+      return o;
     } catch (e) { return null; }
   }
 
   function markWoken(id, eventId) {
     try {
       localStorage.setItem(wakeKey(id), JSON.stringify({
-        date: today(), at: Date.now(), eventId: eventId || ''
+        date: dstr(wallNowFor(cache.nationality)), at: Date.now(), eventId: eventId || '', status: 'woken'
       }));
     } catch (e) {}
   }
+
+  function markSkipped(id, eventId) {
+    try {
+      localStorage.setItem(wakeKey(id), JSON.stringify({
+        date: dstr(wallNowFor(cache.nationality)), at: Date.now(), eventId: eventId || '', status: 'skipped'
+      }));
+    } catch (e) {}
+  }
+
+  function timeAwareFor(id) {
+    try {
+      var raw = localStorage.getItem('chat_setting_timeAware_' + (id || ''));
+      if (raw === null || raw === undefined || raw === '') return true;
+      try { return JSON.parse(raw) !== false; } catch (e) { return raw !== 'false'; }
+    } catch (e) { return true; }
+  }
+  function wallNowFor(nationality) {
+    try {
+      if (window.NanoHoliday && window.NanoHoliday.wallClock) {
+        var tz = window.NanoHoliday.tzForNationality(nationality || '');
+        return window.NanoHoliday.wallClock(new Date(), tz);
+      }
+    } catch (e) {}
+    return new Date();
+  }
+  function wallMin(d) { return d.getHours() * 60 + d.getMinutes(); }
 
   function eventLine(e, withId) {
     var s = e.start + '-' + e.end + ' ' + (e.title || '安排');
@@ -197,8 +237,9 @@
     return '- ' + s;
   }
 
-  function buildBlock(data, id, name, wallNow) {
+  function buildBlock(data, id, name, wallNow, opts) {
     if (!data) return '';
+    opts = opts || {};
     // wallNow：角色所在地的「墙上时间」（外国角色不能按设备时区判断作息）
     var wn = (wallNow instanceof Date) ? wallNow : new Date();
     var d = dstr(wn);
@@ -207,7 +248,11 @@
     var tomorrow = dstr(tm);
     var tomorrowEvents = eventsOf(data, tomorrow);
     var cur = currentEvent(data, d, wn.getHours() * 60 + wn.getMinutes());
-    var wake = readWake(id, d);
+    var choice = readSleepChoice(id, d);
+    var timeAware = (typeof opts.timeAware === 'boolean') ? opts.timeAware : timeAwareFor(id);
+    // 有睡眠日程时按日程；没有日程时，开了时间感知的角色在 23:00~07:00 默认在睡觉。
+    var asleep = !!(cur && isSleepEvent(cur) && isLateNight(wn)) ||
+      (!cur && timeAware && isNightSleepWindow(wn));
     var lines = [];
     lines.push('【你的真实日程 · 当前状态（重要）】');
     lines.push('现在时间：' + nowText(wn) + '。');
@@ -228,17 +273,21 @@
       tomorrowEvents.slice(0, 12).forEach(function (e) { lines.push(eventLine(e, true)); });
     }
     lines.push('以上是你本人真实的日程和此刻状态。聊天时不要与之矛盾：用户问你在做什么/在哪，就按当前安排自然回答；不要编造与日程冲突的事。');
-    if (wake) {
-      var wokeEvent = null;
-      for (var i = 0; i < todayEvents.length; i++) {
-        if (String(todayEvents[i].id) === String(wake.eventId)) { wokeEvent = todayEvents[i]; break; }
+    var choiceFresh = !!(choice && (Date.now() - (choice.at || 0) < 4 * 3600 * 1000));
+    var wokeEvent = null;
+    for (var i = 0; i < todayEvents.length; i++) {
+      if (choice && String(todayEvents[i].id) === String(choice.eventId)) { wokeEvent = todayEvents[i]; break; }
+    }
+    if (choiceFresh && choice.status !== 'skipped') {
+      lines.push('【你刚被用户叫醒】你本来在' + (wokeEvent ? ('「' + (wokeEvent.title || '睡觉') + '」') : '睡觉') +
+        '，是用户把你叫醒的。你知道是 TA 叫醒的你，可以自然表现出困倦、被打断、或者被吵醒后的真实反应，不要装作没发生过。');
+    } else {
+      if (asleep) {
+        lines.push('【你正在睡觉】现在是 ' + nowText(wn) + '（你的当地时间），你正在睡觉。若被消息吵到，你会是半睡半醒的状态；不要主动说自己被叫醒，除非用户确实叫了你。');
       }
-      if (Date.now() - (wake.at || 0) < 4 * 3600 * 1000) {
-        lines.push('【你刚被用户叫醒】你本来在' + (wokeEvent ? ('「' + (wokeEvent.title || '睡觉') + '」') : '睡觉') +
-          '，是用户把你叫醒的。你知道是 TA 叫醒的你，可以自然表现出困倦、被打断、或者被吵醒后的真实反应，不要装作没发生过。');
+      if (choiceFresh && choice.status === 'skipped') {
+        lines.push('【用户没有叫醒你】刚才用户看到你正在睡觉，选择了「让他睡」，没有把你叫醒。你知道这件事：你后来一直没被吵醒。现在如果 TA 来找你，你心里清楚 TA 之前没有叫醒你，可以自然带出“你昨晚没叫我”这类反应，但不要每轮都提，也不要质问。');
       }
-    } else if (cur && isSleepEvent(cur) && isLateNight(wn)) {
-      lines.push('【你正在睡觉】现在是深夜，你正在睡觉。若被消息吵到，你会是半睡半醒的状态；不要主动说自己被叫醒，除非用户确实叫了你。');
     }
     try {
       if (data.settings && data.settings.charId) {
@@ -260,20 +309,33 @@
     if (cache.loading) return cache.loading;
     cache.loading = readStore().then(function (store) {
       var data = findData(store, id, name);
-      // 过期的待办先本地划掉，再生成给模型的日程上下文；不调用 API。
-      if (autoClosePast(data)) { try { writeStore(store); } catch (e) {} }
       cache.store = store;
       cache.charId = id || (store.lastCharId || '');
       cache.charName = name;
+      cache.nationality = String(opts.nationality || '');
+      cache.tz = '';
+      try { if (window.NanoHoliday && window.NanoHoliday.tzForNationality) cache.tz = window.NanoHoliday.tzForNationality(cache.nationality) || ''; } catch (e) {}
+      cache.wallNow = wallNowFor(cache.nationality);
       cache.data = data;
-      // 角色当地时间（与系统提示词的时间块一致，避免日程说「现在 12:00」而角色那边是凌晨）
-      var wallNow = null;
-      try {
-        if (window.NanoHoliday && window.NanoHoliday.wallClock) {
-          wallNow = window.NanoHoliday.wallClock(new Date(), window.NanoHoliday.tzForNationality(opts.nationality || ''));
+      // 过期的待办按「角色当地时间」划掉，不能用设备时区。
+      if (autoClosePast(data, cache.wallNow)) { try { writeStore(store); } catch (e) {} }
+      var ta = (typeof opts.timeAware === 'boolean') ? opts.timeAware : timeAwareFor(cache.charId);
+      if (data) {
+        cache.block = buildBlock(data, cache.charId, name, cache.wallNow, { timeAware: ta });
+      } else {
+        // 没排日程，但仍要保留「睡眠 / 用户没叫醒我」这两件事。
+        var parts = [];
+        if (ta && isNightSleepWindow(cache.wallNow)) {
+          parts.push('【当前状态 · 睡眠】现在是 ' + nowText(cache.wallNow) + '（你的当地时间），你正在睡觉。' +
+            '若被消息吵到，你会是半睡半醒的状态；不要主动说自己被叫醒，除非用户确实叫了你。');
         }
-      } catch (e) {}
-      cache.block = data ? buildBlock(data, cache.charId, name, wallNow) : '';
+        var noScheduleChoice = readSleepChoice(cache.charId, dstr(cache.wallNow));
+        if (noScheduleChoice && noScheduleChoice.status === 'skipped' &&
+            (Date.now() - (noScheduleChoice.at || 0) < 4 * 3600 * 1000)) {
+          parts.push('【用户没有叫醒你】刚才用户看到你正在睡觉，选择了「让他睡」，没有把你叫醒。你知道这件事；现在 TA 来找你时，你心里清楚 TA 之前没有叫醒你，可以自然带出这类反应，但不要每轮都提，也不要质问。');
+        }
+        cache.block = parts.length ? (parts.join('\n') + '\n') : '';
+      }
       return cache.block;
     }).catch(function () {
       cache.block = '';
@@ -318,14 +380,28 @@
     pendingProceed = null;
   }
 
+  function wallEvent(data) {
+    var w = cache.wallNow || wallNowFor(cache.nationality);
+    return currentEvent(data, dstr(w), wallMin(w));
+  }
+
+  function refreshCached() {
+    return refreshContext({
+      charId: cache.charId || getCharId(),
+      charName: cache.charName,
+      nationality: cache.nationality
+    });
+  }
+
   function showSleepModal(proceed, data) {
     var el = ensureModal();
     var body = document.getElementById('nanoScheduleSleepBody');
     var name = (data && data.settings && data.settings.name) || cache.charName || 'TA';
-    var ev = currentEvent(data);
+    var ev = wallEvent(data);
     if (body) {
-      body.textContent = name + ' 正在' + ((ev && ev.title) ? ('「' + ev.title + '」') : '睡觉') +
-        '，确认要叫醒 TA 吗？';
+      body.textContent = (ev && ev.title)
+        ? (name + ' 正在「' + ev.title + '」，确认要叫醒 TA 吗？')
+        : (name + ' 现在可能已经睡了，确认要叫醒 TA 吗？');
     }
     pendingProceed = proceed || null;
     el.style.display = 'flex';
@@ -335,31 +411,48 @@
       yes.__nanoBound = true;
       yes.addEventListener('click', function () {
         var fn = pendingProceed;
-        var e = currentEvent(cache.data);
+        var e = wallEvent(cache.data);
         markWoken(cache.charId || getCharId(), e ? e.id : '');
         closeSleepModal();
-        refreshContext().then(function () {
+        refreshCached().then(function () {
           if (fn) { try { fn(); } catch (err) {} }
         });
       });
     }
     if (no && !no.__nanoBound) {
       no.__nanoBound = true;
-      no.addEventListener('click', function () { closeSleepModal(); });
+      no.addEventListener('click', function () {
+        var e = wallEvent(cache.data);
+        // 记下“用户选择不叫醒”：之后角色聊天时知道自己没被叫醒，也不会反复弹窗。
+        markSkipped(cache.charId || getCharId(), e ? e.id : '');
+        closeSleepModal();
+        refreshCached();
+      });
     }
   }
 
-  function sleepingNow(data) {
-    if (!data) return false;
-    var ev = currentEvent(data);
-    if (!ev || !isSleepEvent(ev) || !isLateNight()) return false;
-    return !readWake(cache.charId || getCharId());
+  function sleepingNow(data, opts) {
+    opts = opts || {};
+    var id = cache.charId || getCharId();
+    var w = cache.wallNow || wallNowFor(cache.nationality);
+    var day = dstr(w);
+    var choice = readSleepChoice(id, day);
+    if (choice && (Date.now() - (choice.at || 0) < 8 * 3600 * 1000)) {
+      // 叫醒或明确选择不叫醒后，本次夜里不再重复弹窗。
+      return false;
+    }
+    var ev = currentEvent(data, day, wallMin(w));
+    // 有睡眠日程：按日程；没有日程但开了时间感知：深夜默认在睡。
+    if (ev) return isSleepEvent(ev) && isLateNight(w);
+    var ta = (typeof opts.timeAware === 'boolean') ? opts.timeAware : timeAwareFor(id);
+    return !!(ta && isNightSleepWindow(w));
   }
 
-  function guardSend(proceed) {
+  function guardSend(proceed, opts) {
     var fn = typeof proceed === 'function' ? proceed : function () {};
-    refreshContext().then(function () {
-      if (!sleepingNow(cache.data)) { fn(); return; }
+    opts = opts || {};
+    refreshContext(opts).then(function () {
+      if (!sleepingNow(cache.data, opts)) { fn(); return; }
       showSleepModal(fn, cache.data);
     }).catch(function () { fn(); });
     return true;
@@ -371,9 +464,9 @@
 
   // 过期的待办自动划掉：只改本地状态，不调用任何 API。
   // 今天刚结束的留 2 小时给到点报备；超过 2 小时或日期已过就自动完成。
-  function autoClosePast(data) {
+  function autoClosePast(data, wallNow) {
     if (!data || !Array.isArray(data.events)) return false;
-    var now = new Date();
+    var now = (wallNow instanceof Date) ? wallNow : new Date();
     var d = dstr(now);
     var nm = now.getHours() * 60 + now.getMinutes();
     var changed = false;
@@ -386,7 +479,7 @@
         e.autoClosed = true;
         e.autoClosedAt = Date.now();
         e.log = e.log || [];
-        if (e.log.length < 30) e.log.push({ t: nowText().slice(11), m: '时间已过，自动划掉' });
+        if (e.log.length < 30) e.log.push({ t: nowText(now).slice(11), m: '时间已过，自动划掉' });
         changed = true;
       }
     });
@@ -912,12 +1005,17 @@
     applyMarkers: applyMarkers,
     parseMarkers: parseMarkers,
     applyChanges: applyChanges,
-    currentEvent: function () { return currentEvent(cache.data); },
+    currentEvent: function () { return wallEvent(cache.data); },
     isSleeping: function () { return sleepingNow(cache.data); },
     markWoken: function () {
-      var ev = currentEvent(cache.data);
+      var ev = wallEvent(cache.data);
       markWoken(cache.charId || getCharId(), ev ? ev.id : '');
-      return refreshContext();
+      return refreshCached();
+    },
+    markSkipped: function () {
+      var ev = wallEvent(cache.data);
+      markSkipped(cache.charId || getCharId(), ev ? ev.id : '');
+      return refreshCached();
     },
     getData: function () { return cache.data; }
   };

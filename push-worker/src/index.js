@@ -61,6 +61,19 @@ function kv(env) {
   const db = env && (env.DB || env.nano_db);
   return db ? d1Kv(db) : env.PUSH_KV;
 }
+// Web Push 专用存储：D1 唯一主存储（不使用 KV，避免免费额度）。
+// 仅当 Worker 完全没绑 D1、而自建部署又显式绑了 PUSH_KV 时，才兼容回退 KV。
+function pushKv(env) {
+  const db = env && (env.DB || env.nano_db);
+  if (db) return d1Kv(db);
+  if (env && env.PUSH_KV) return env.PUSH_KV;
+  return {
+    async get() { return null; },
+    async put() { return false; },
+    async delete() {},
+    async list() { return { keys: [], list_complete: true }; }
+  };
+}
 // 集市也优先走 D1；只有完全没绑 D1 的自建 Worker 才回退到 KV。
 // 生产 Worker 已绑 nano_db，这里不再直接读写 PUSH_KV，避免继续消耗 KV 额度。
 function marketKv(env) {
@@ -279,7 +292,11 @@ async function cleanupExpiredD1(env) {
 }
 
 const json = (o, s = 200) =>
-  new Response(JSON.stringify(o), { status: s, headers: { ...CORS, 'Content-Type': 'application/json' } });
+  new Response(JSON.stringify(o), {
+    status: s,
+    // 订阅状态 / VAPID / 主动消息自检不能被边缘缓存，否则用户会一直看到旧结果。
+    headers: { ...CORS, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }
+  });
 
 // ===== Supabase（共享集市）=====
 // 只配 SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY 时启用；service role key 只在服务端，
@@ -473,27 +490,95 @@ function b64urlDecode(str) {
   for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
   return out;
 }
-async function ensureVapid(env) {
+function vapidStores(env) {
+  const out = [];
+  // 生产只写 D1；PUSH_KV 仅在完全没绑 D1 的自建 Worker 上作为兼容回退。
+  const db = env && (env.DB || env.nano_db);
+  if (db) out.push(d1Kv(db));
+  else if (env && env.PUSH_KV) out.push(env.PUSH_KV);
+  return out;
+}
+// 读 VAPID 时把「没有密钥」和「存储暂时报错」区分开：
+// 存储报错时绝不重新生成，否则每次冷启动都会换公钥，浏览器里的旧订阅会全部静默失效。
+async function readVapidRaw(env) {
+  let hadError = false;
+  let anyStore = false;
+  for (const store of vapidStores(env)) {
+    anyStore = true;
+    try {
+      const raw = await store.get('vapid:keys');
+      if (raw) return { raw: raw, hadError: hadError, anyStore: anyStore };
+    } catch (e) { hadError = true; }
+  }
+  return { raw: null, hadError: hadError, anyStore: anyStore };
+}
+// D1 支持 INSERT OR IGNORE，可以做“只写入第一个密钥”的原子操作：
+// 两个 isolate 同时冷启动时不会各自生成一对、互相覆盖，导致一批订阅失效。
+async function saveVapidAtomic(env, text) {
+  const db = env && (env.DB || env.nano_db);
+  if (db) {
+    try {
+      await d1Ready(db);
+      await db.prepare(
+        'INSERT OR IGNORE INTO kv (key, value, expires_at, updated_at) VALUES (?, ?, 0, ?)'
+      ).bind('vapid:keys', String(text), Date.now()).run();
+      const row = await db.prepare('SELECT value FROM kv WHERE key = ?').bind('vapid:keys').first();
+      if (row && row.value) return row.value;
+    } catch (e) {}
+  }
+  // 完全没有 D1 的旧部署才回退 KV。
+  try { if (env.PUSH_KV) await env.PUSH_KV.put('vapid:keys', text); } catch (e) {}
+  return text;
+}
+function parseVapid(raw, env) {
+  try {
+    const o = JSON.parse(raw);
+    if (o && o.publicKey && o.privateKey) {
+      return {
+        subject: o.subject || env.VAPID_SUBJECT || 'https://nanopush.nano315.online',
+        publicKey: String(o.publicKey),
+        privateKey: String(o.privateKey)
+      };
+    }
+  } catch (e) {}
+  return null;
+}
+let VAPID_PENDING = null;
+let VAPID_CACHE = null;
+let VAPID_CACHE_AT = 0;
+function ensureVapid(env) {
   if (env.VAPID_PUBLIC && env.VAPID_PRIVATE) {
-    return {
+    return Promise.resolve({
       subject: env.VAPID_SUBJECT || 'https://nanopush.nano315.online',
       publicKey: String(env.VAPID_PUBLIC),
       privateKey: String(env.VAPID_PRIVATE)
-    };
+    });
   }
-  try {
-    const raw = await kv(env).get('vapid:keys');
-    if (raw) {
-      const o = JSON.parse(raw);
-      if (o && o.publicKey && o.privateKey) {
-        return {
-          subject: o.subject || env.VAPID_SUBJECT || 'https://nanopush.nano315.online',
-          publicKey: o.publicKey,
-          privateKey: o.privateKey
-        };
-      }
-    }
-  } catch (e) {}
+  // VAPID 很少变，isolate 内缓存 10 分钟：cron 批量推送时不再每条都读一次 D1。
+  if (VAPID_CACHE && Date.now() - VAPID_CACHE_AT < 10 * 60 * 1000) {
+    return Promise.resolve(VAPID_CACHE);
+  }
+  // 单 isolate 内并发请求只生成一次，避免 /vapid 与 /subscribe 同时冷启动时各生成一对。
+  if (!VAPID_PENDING) {
+    VAPID_PENDING = ensureVapidInner(env).then(function (v) {
+      VAPID_PENDING = null;
+      if (v) { VAPID_CACHE = v; VAPID_CACHE_AT = Date.now(); }
+      return v;
+    }, function () {
+      VAPID_PENDING = null;
+      return null;
+    });
+  }
+  return VAPID_PENDING;
+}
+async function ensureVapidInner(env) {
+  const read = await readVapidRaw(env);
+  if (read.raw) {
+    const saved = parseVapid(read.raw, env);
+    if (saved) return saved;
+  }
+  // 存储不可用/读取报错：不要生成新密钥，交给调用方返回明确错误。
+  if (read.hadError || !read.anyStore) return null;
   try {
     const pair = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
     const pub = await crypto.subtle.exportKey('jwk', pair.publicKey);
@@ -511,8 +596,9 @@ async function ensureVapid(env) {
       createdAt: Date.now()
     };
     if (!o.privateKey) return null;
-    await kv(env).put('vapid:keys', JSON.stringify(o));
-    return o;
+    const text = JSON.stringify(o);
+    const finalText = await saveVapidAtomic(env, text);
+    return parseVapid(finalText, env) || o;
   } catch (e) {
     return null;
   }
@@ -1929,7 +2015,7 @@ async function getHotTopics(source) {
 }
 
 // ===== 账号 / 设备会话 / 导入卡密 =====
-// 复用同一份 KV/D1：绑定了 D1 就写 D1 的 kv 表，否则回退 KV。
+// 复用同一份 D1：绑定 D1 就写 D1 的 kv 表；未绑定的旧部署才回退 KV。
 const ACC_SESSION_TTL = 30 * 24 * 60 * 60;
 const ACC_MAX_DEVICES = 3;
 const ACC_PBKDF2_ITER = 30000;
@@ -2884,7 +2970,13 @@ export default {
     // 没配置 VAPID_* secrets 时自动生成并存入 KV，用户不需要手动生成。
     if (pathname === '/vapid' && request.method === 'GET') {
       const v = await ensureVapid(env);
-      return json({ ok: !!v, key: v ? v.publicKey : '' });
+      return json({
+        ok: !!v,
+        key: v ? v.publicKey : '',
+        error: v ? '' : (vapidStores(env).length
+          ? 'VAPID 存储暂时不可用，请稍后重试（不要反复重新订阅）'
+          : '没有绑定 D1，且未配置 VAPID_PUBLIC / VAPID_PRIVATE')
+      });
     }
 
     // 1) 客户端订阅上报
@@ -2899,9 +2991,13 @@ export default {
       subscription.appId = cleanAppId(body.appId);
       subscription.ua = String(body.ua || '');
       subscription.platform = String(body.platform || '');
-      await kv(env).put(subKey(subscription.endpoint, subscription.appId, subscription.deviceId, subscription.userId), JSON.stringify(subscription));
+      let saved = true;
+      try {
+        saved = await pushKv(env).put(subKey(subscription.endpoint, subscription.appId, subscription.deviceId, subscription.userId), JSON.stringify(subscription));
+      } catch (e) { saved = false; }
+      if (saved === false) return json({ ok: false, error: '订阅保存失败：D1 不可用' }, 500);
       // 删除旧的全局订阅 key，避免升级后同一设备收到两遍推送。
-      try { await kv(env).delete(subId(subscription.endpoint)); } catch (e) {}
+      try { await pushKv(env).delete(subId(subscription.endpoint)); } catch (e) {}
       return json({ ok: true });
     }
 
@@ -2945,9 +3041,32 @@ export default {
     }
 
     // 3) 取消订阅
+    // 旧实现只删 sub:<endpoint>，但当前订阅实际存在 sub2:<app>:<device>:<user>:<id>，
+    // 结果浏览器已退订、服务端仍保留旧订阅并继续推送（用户看到“取消后还能收到”）。
     if (pathname === '/unsubscribe' && request.method === 'POST') {
-      const { endpoint } = await request.json();
-      if (endpoint) await kv(env).delete(subId(endpoint));
+      const body = await request.json().catch(function () { return {}; });
+      const endpoint = String(body.endpoint || '');
+      if (!endpoint) return json({ ok: true });
+      const store = pushKv(env);
+      const scopeKey = (body.appId && body.deviceId && body.userId)
+        ? subKey(endpoint, body.appId, body.deviceId, body.userId) : '';
+      if (scopeKey) {
+        try { await store.delete(scopeKey); } catch (e) {}
+      } else {
+        // 老客户端只传 endpoint：按订阅 id 后缀匹配并删除所有作用域下的同一条订阅。
+        const suffix = subId(endpoint).slice(4);
+        for (const prefix of ['sub2:', 'sub:']) {
+          try {
+            const r = await store.list({ prefix: prefix });
+            for (const k of (r.keys || [])) {
+              if (String(k.name).slice(-suffix.length) === suffix) {
+                try { await store.delete(k.name); } catch (e) {}
+              }
+            }
+          } catch (e) {}
+        }
+      }
+      try { await store.delete(subId(endpoint)); } catch (e) {}
       return json({ ok: true });
     }
 
@@ -3572,8 +3691,11 @@ export default {
       try { const raw = await kv(env).get(autoKey('state', appId, deviceId, userId)); state = raw ? JSON.parse(raw) : {}; } catch (e) {}
       let subs = [];
       try { subs = await getSubs(env, userId, deviceId, appId); } catch (e) {}
+      let vapidOk = false;
+      try { vapidOk = !!(await ensureVapid(env)); } catch (e) {}
       return json({
         ok: true,
+        vapidOk: vapidOk,
         serverNow: Date.now(),
         appId: appId,
         deviceId: deviceId,
@@ -3936,21 +4058,22 @@ async function getSubs(env, userId, deviceId, appId) {
   const wantUser = userId ? cleanUserId(userId) : '';
   const wantDevice = deviceId ? cleanDeviceId(deviceId) : '';
   let keys = [];
+  const store = pushKv(env);
   try {
     let prefix = 'sub2:';
     if (wantApp && wantDevice && wantUser) prefix = 'sub2:' + wantApp + ':' + wantDevice + ':' + wantUser + ':';
     else if (wantApp && wantDevice) prefix = 'sub2:' + wantApp + ':' + wantDevice + ':';
     else if (wantApp) prefix = 'sub2:' + wantApp + ':';
-    const r = await kv(env).list({ prefix: prefix });
+    const r = await store.list({ prefix: prefix });
     keys = r.keys || [];
     // 新 key 没有命中时，兼容升级前写入的全局 sub: key（用户打开 App 重新订阅后会自动迁移）。
     if (!keys.length) {
-      const legacy = await kv(env).list({ prefix: 'sub:' });
+      const legacy = await store.list({ prefix: 'sub:' });
       keys = legacy.keys || [];
     }
   } catch (e) { return out; }
   for (const k of keys) {
-    const v = await kv(env).get(k.name);
+    const v = await store.get(k.name);
     if (!v) continue;
     try {
       const s = JSON.parse(v);
@@ -3987,8 +4110,8 @@ async function pushAll(subs, payload, env) {
       if (resp && resp.ok) sent++;
       // 订阅已失效（卸载/清数据/换浏览器）：删除，避免每次都失败
       if (resp && (resp.status === 404 || resp.status === 410)) {
-        try { await kv(env).delete(subKey(sub.endpoint, sub.appId, sub.deviceId, sub.userId)); } catch (e) {}
-        try { await kv(env).delete(subId(sub.endpoint)); } catch (e) {}
+        try { await pushKv(env).delete(subKey(sub.endpoint, sub.appId, sub.deviceId, sub.userId)); } catch (e) {}
+        try { await pushKv(env).delete(subId(sub.endpoint)); } catch (e) {}
       }
     } catch (e) { /* 单个失败不影响其他 */ }
   }

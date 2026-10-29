@@ -55,11 +55,16 @@
         const bindIds = new Set(((char && char.worldbookBindings) || []).map(w => w.id));
         const out = [];
         wb.files.forEach(f => {
-            const isGlobal = (f.scope || 'global') === 'global';
-            const isLocalBound = (f.scope === 'local') && (
+            const scope = f.scope || 'global';
+            const isGlobal = scope === 'global';
+            const isLocalBound = scope === 'local' && (
                 (Array.isArray(f.boundCharacters) && f.boundCharacters.includes(charId)) || bindIds.has(f.id)
             );
-            if (!isGlobal && !isLocalBound) return;
+            const isOnline = scope === 'online' && (
+                !Array.isArray(f.boundCharacters) || !f.boundCharacters.length ||
+                f.boundCharacters.includes(charId) || bindIds.has(f.id)
+            );
+            if (!isGlobal && !isLocalBound && !isOnline) return;
             (f.entries || []).forEach(en => {
                 if (!en || en.enabled === false) return;
                 if (!en.content || !String(en.content).trim()) return;

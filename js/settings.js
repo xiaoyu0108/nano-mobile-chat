@@ -557,6 +557,10 @@ const APP_ICONS = {
               return;
             }
             if (!j || !j.ok) { status.textContent = '已开启 · 服务端未响应'; return; }
+            if (j.vapidOk === false) {
+              status.textContent = '已开启 · 服务端 VAPID 不可用，请检查 Worker 的 D1 绑定';
+              return;
+            }
             if (!j.subs) {
               // 浏览器里已有订阅、服务端却没有（换过 Worker/清过 KV/换过面具）时自动补登记。
               // 只补写已有订阅，绝不在非用户手势里申请权限或重建订阅——那才是
@@ -944,6 +948,7 @@ const APP_ICONS = {
     // 每次都向服务端确认当前 VAPID 公钥：Worker 换过密钥后，浏览器里旧的公钥
     // 会让订阅和新私钥对不上，推送服务直接拒绝，表现就是「一直开着但从来没推送」。
     var freshKey = '';
+    var keyError = '';
     try {
       var vctrl = new AbortController();
       var vt = setTimeout(function () { try { vctrl.abort(); } catch (e) {} }, 6000);
@@ -951,10 +956,11 @@ const APP_ICONS = {
         var r = await fetch(endpoint + '/vapid', { credentials: 'omit', cache: 'no-store', signal: vctrl.signal });
         var j = await r.json();
         freshKey = (j && (j.publicKey || j.vapid || j.key)) || '';
+        keyError = (j && j.error) || '';
       } finally { clearTimeout(vt); }
-    } catch (e) {}
+    } catch (e) { keyError = (e && e.message) || ''; }
     if (freshKey) key = freshKey;
-    if (!key) { toast('服务端未返回 VAPID 公钥'); return false; }
+    if (!key) { toast(keyError || '服务端未返回 VAPID 公钥（请检查 Worker 的 D1 绑定）'); return false; }
     try {
       localStorage.setItem('nano_push_vapid', key);
       NP.setup(endpoint, key, token);

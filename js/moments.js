@@ -378,18 +378,27 @@
         });
     }
 
-    function loadWorldbookText(boundIds) {
+    function loadWorldbookText(boundIds, chars) {
         var out = [];
         try {
             var raw = localStorage.getItem('nano_worldbook_data_v5');
             if (raw) {
                 var d = JSON.parse(raw); var files = (d && d.files) || [];
+                // 角色编辑页里挂的「单本世界书」写在 char.worldbookBindings，
+                // 不一定同步到 file.boundCharacters；以角色身上的绑定为准。
+                var bindIds = {};
+                (chars || []).forEach(function (c) {
+                    ((c && c.worldbookBindings) || []).forEach(function (b) { if (b && b.id) bindIds[String(b.id)] = true; });
+                });
                 files.forEach(function (f) {
                     if (!f) return;
                     var scope = f.scope || 'global';
+                    var boundHit = !!bindIds[String(f.id)] ||
+                        (f.boundCharacters || []).some(function (b) { return (boundIds || []).indexOf(b) > -1; });
                     if (scope === 'local') {
-                        var bound = f.boundCharacters || [];
-                        if (!bound.some(function (b) { return (boundIds || []).indexOf(b) > -1; })) return;
+                        if (!boundHit) return;
+                    } else if (scope === 'online' && f.onlineTarget === 'pick') {
+                        if ((f.boundCharacters || []).length && !boundHit) return;
                     }
                     var txt = '';
                     if (Array.isArray(f.entries)) txt = f.entries.map(function (en) { return en && en.content ? String(en.content) : ''; }).filter(Boolean).join('\n');
@@ -448,7 +457,7 @@
             lines.push((c.setting && String(c.setting).trim()) ? String(c.setting).trim().slice(0, 600) : '（暂无详细设定，按名字与语境自然扮演）');
         });
         var ids = (allChars || []).map(function (c) { return c.id; }).filter(Boolean);
-        var wb = loadWorldbookText(ids);
+        var wb = loadWorldbookText(ids, allChars);
         if (wb) lines.push('\n【世界书】\n' + wb);
         return lines.join('\n');
     }
@@ -469,7 +478,7 @@
             out += ((c.setting && String(c.setting).trim()) ? String(c.setting).trim().slice(0, 600) : '（暂无详细设定，按名字与语境自然扮演）') + '\n';
         });
         var ids = (chars || []).map(function (c) { return c.id; }).filter(Boolean);
-        var wb = loadWorldbookText(ids);
+        var wb = loadWorldbookText(ids, chars);
         if (wb) out += '\n【世界书】\n' + wb + '\n';
         var pairs = [];
         for (var i = 0; i < (chars || []).length; i++) {

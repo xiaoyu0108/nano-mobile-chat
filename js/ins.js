@@ -1166,18 +1166,34 @@ function fallbackNpcRoster() {
   return [];
 }
 
-function loadWorldbookText(boundIds) {
+function loadWorldbookText(boundIds, chars) {
   const out = [];
   try {
     const raw = localStorage.getItem('nano_worldbook_data_v5');
     if (raw) {
       const d = JSON.parse(raw); const files = (d && d.files) || [];
+      // 角色身上挂载的世界书（character.worldbookBindings）也要生效；
+      // 只传 id 的调用会从当前角色表里补出角色对象。
+      const list = Array.isArray(chars) ? chars.slice() : [];
+      (boundIds || []).forEach(id => {
+        try {
+          const c = (typeof currentUserChars !== 'undefined' ? currentUserChars : []).find(x => String(x.id) === String(id));
+          if (c) list.push(c);
+        } catch (e) {}
+      });
+      const bindIds = {};
+      list.forEach(c => {
+        ((c && c.worldbookBindings) || []).forEach(b => { if (b && b.id) bindIds[String(b.id)] = true; });
+      });
       files.forEach(f => {
         if (!f) return;
         const scope = f.scope || 'global';
+        const boundHit = !!bindIds[String(f.id)] ||
+          (f.boundCharacters || []).some(b => (boundIds || []).indexOf(b) > -1);
         if (scope === 'local') {
-          const bound = f.boundCharacters || [];
-          if (!bound.some(b => (boundIds || []).indexOf(b) > -1)) return;
+          if (!boundHit) return;
+        } else if (scope === 'online' && f.onlineTarget === 'pick') {
+          if ((f.boundCharacters || []).length && !boundHit) return;
         }
         let txt = '';
         if (Array.isArray(f.entries)) txt = f.entries.map(en => en && en.content ? String(en.content) : '').filter(Boolean).join('\n');
@@ -1255,7 +1271,7 @@ function buildPersonaBlock(allChars) {
     lines.push((c.setting && String(c.setting).trim()) ? String(c.setting).trim().slice(0, 600) : '（暂无详细设定，按名字与语境自然扮演）');
   });
   const ids = (allChars || []).map(c => c.id).filter(Boolean);
-  const wb = loadWorldbookText(ids);
+  const wb = loadWorldbookText(ids, allChars);
   if (wb) lines.push('\n【世界书】\n' + wb);
   return lines.join('\n');
 }

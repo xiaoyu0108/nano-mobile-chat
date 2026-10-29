@@ -2691,8 +2691,16 @@ async function send() {
     await requestReply();
   };
   try {
-    if (window.NanoScheduleBridge && window.NanoScheduleBridge.guardSend) {
-      window.NanoScheduleBridge.guardSend(proceed);
+    // 群聊 / 多人场景不按单个角色的作息弹“叫醒”窗。
+    var invitedCount = 0;
+    try { invitedCount = (offlineInvitedChars || []).length; } catch (e) {}
+    var singleScene = !offlineIsGroup && !invitedCount;
+    if (singleScene && window.NanoScheduleBridge && window.NanoScheduleBridge.guardSend) {
+      window.NanoScheduleBridge.guardSend(proceed, {
+        charId: offlineChatId,
+        charName: settings.charName,
+        nationality: (offlineCharRecord && (offlineCharRecord.nationality || offlineCharRecord.country)) || ''
+      });
       return;
     }
   } catch (e) {}
@@ -3042,6 +3050,11 @@ async function callMainAPI(history, opts) {
       }
       for (let j = history.length - 1; j >= 0; j--) {
         if (history[j] && history[j].role !== 'user' && history[j].ts) { __lastAiMs = history[j].ts; break; }
+      }
+      // 线下历史只有最近几轮：线上/上次线下最后一次开口的时间作为补足，
+      // 避免“隔了几天”被算成“刚刚”。
+      if (!__lastAiMs) {
+        try { __lastAiMs = parseInt(localStorage.getItem('nano_last_ai_' + (offlineChatId || '')) || '0', 10) || 0; } catch (e) {}
       }
     } catch (e) {}
     try {

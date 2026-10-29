@@ -2328,8 +2328,15 @@ async function send() {
     await requestReply();
   };
   try {
-    if (window.NanoScheduleBridge && window.NanoScheduleBridge.guardSend) {
-      window.NanoScheduleBridge.guardSend(proceed);
+    var invitedCount = 0;
+    try { invitedCount = (offlineInvitedChars || []).length; } catch (e) {}
+    var singleScene = !offlineIsGroup && !invitedCount;
+    if (singleScene && window.NanoScheduleBridge && window.NanoScheduleBridge.guardSend) {
+      window.NanoScheduleBridge.guardSend(proceed, {
+        charId: offlineChatId,
+        charName: settings.charName,
+        nationality: (offlineCharRecord && (offlineCharRecord.nationality || offlineCharRecord.country)) || ''
+      });
       return;
     }
   } catch (e) {}
@@ -2675,6 +2682,9 @@ async function callMainAPI(history, opts) {
       }
       for (let j = history.length - 1; j >= 0; j--) {
         if (history[j] && history[j].role !== 'user' && history[j].ts) { __lastAiMs = history[j].ts; break; }
+      }
+      if (!__lastAiMs) {
+        try { __lastAiMs = parseInt(localStorage.getItem('nano_last_ai_' + (offlineChatId || '')) || '0', 10) || 0; } catch (e) {}
       }
     } catch (e) {}
     try {

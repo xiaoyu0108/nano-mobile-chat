@@ -12,16 +12,14 @@ routes = [
 ]
 
 # ===== 存储 =====
-# 生产已改为 D1 优先（账号 / 窥屏 / 订阅 / 主动消息 / 集市都走 D1），不再使用 KV。
-# 如果还需要对照旧数据，可以临时取消下面两行注释再部署；确认 24h KV 曲线归零、
-# 旧数据不需要迁移后，直接在 Cloudflare Dashboard 删除 PUSH_KV 命名空间即可。
-# kv_namespaces = [
-#   { binding = "PUSH_KV", id = "2bd6299b03c442bd81cbf023ec6cfb92" }
-# ]
+# 全部走 D1（账号 / 窥屏 / 主动消息 / 集市 / Web Push 的 VAPID 与订阅）。
+# 不再使用 KV，避免 KV 免费额度（读/写/list）限制。代码里仍保留可选的
+# PUSH_KV 兼容分支，但这里不绑定，生产环境不会产生任何 KV 请求。
+# 注意：绑定 D1 后会自动使用 kv 表；首次部署请确保已执行 schema.sql。
 
 # ===== D1（已创建 nano-db）=====
-# 绑定后 Worker 会自动把所有 KV get/put/delete/list 切到 D1 的 kv 表；
-# 没绑定则继续回退到上面的 KV。
+# 生产唯一的存储：所有 KV 风格的 get/put/delete/list 都切到 D1 的 kv 表，
+# 包括 Web Push 的 VAPID、订阅键和预约任务。这里不绑定 PUSH_KV。
 # 注意：binding 名用 nano_db（与 wrangler d1 create 输出一致），代码同时兼容 DB / nano_db。
 [[d1_databases]]
 binding = "nano_db"

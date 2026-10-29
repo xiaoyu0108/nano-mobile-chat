@@ -1178,12 +1178,24 @@
     function buildGroupWorldbook(memberIds){
         var recentText = getRecentGroupText().toLowerCase();
         var front = [], middle = [], back = [];
+        // 角色编辑页里的「绑定世界书」只写在 character.worldbookBindings，
+        // 不一定同步到 file.boundCharacters；这里两边都认。
+        var bindIds = {};
+        try {
+            (group.members || []).forEach(function(m){
+                var c = groupCharMap[m.id] || groupCharMap[m.name] || null;
+                ((c && c.worldbookBindings) || []).forEach(function(b){ if (b && b.id) bindIds[String(b.id)] = true; });
+            });
+        } catch (e) {}
         groupWorldbooks.forEach(function(w){
             if (!w) return;
             var scope = w.scope || 'global';
+            var boundHit = !!bindIds[String(w.id)] ||
+                (w.boundCharacters || []).some(function(bid){ return memberIds.indexOf(bid) > -1; });
             if (scope === 'local') {
-                var bound = (w.boundCharacters || []).some(function(bid){ return memberIds.indexOf(bid) > -1; });
-                if (!bound) return;
+                if (!boundHit) return;
+            } else if (scope === 'online' && w.onlineTarget === 'pick') {
+                if ((w.boundCharacters || []).length && !boundHit) return;
             }
             w.entries.forEach(function(en){
                 if (en.enabled === false) return;
@@ -1457,6 +1469,27 @@
         } else if (window.NanoHoliday && window.NanoHoliday.buildVagueTimeBlock) {
             prompt += '\n' + window.NanoHoliday.buildVagueTimeBlock(new Date()) + '\n';
         }
+        // 外国成员：给出各自所在地的当地时间，避免美国角色按中国时间说早安/晚安。
+        try {
+            if (timeAware && window.NanoHoliday && window.NanoHoliday.tzForNationality) {
+                var __mt = [];
+                (group.members || []).forEach(function(m){
+                    var c = groupCharMap[m.id] || groupCharMap[m.name] || null;
+                    if (!c || !isGroupForeignMember(c)) return;
+                    var nat = c && (c.nationality || c.country);
+                    var tz = window.NanoHoliday.tzForNationality(nat || '');
+                    if (!tz) return;
+                    var w = window.NanoHoliday.wallClock(new Date(), tz);
+                    function p2(v){ return ('0' + v).slice(-2); }
+                    __mt.push('· ' + (m.nick || m.name || '成员') + '：' + w.getFullYear() + '年' + (w.getMonth() + 1) + '月' + w.getDate() + '日 ' +
+                        p2(w.getHours()) + ':' + p2(w.getMinutes()) + '（' + nat + '当地时间）');
+                });
+                if (__mt.length) {
+                    prompt += '\n【群成员各自当地时间 · 作息按各自时区】\n' + __mt.join('\n') +
+                        '\n每个成员只按自己的当地时间判断早晚、饭点和作息，不要用别人的时间。\n';
+                }
+            }
+        } catch (e) {}
         try {
             var __gbp = (window.NanoPrompts && NanoPrompts.buildBlock)
                 ? NanoPrompts.buildBlock('group')

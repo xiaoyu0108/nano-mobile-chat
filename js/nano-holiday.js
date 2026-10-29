@@ -225,17 +225,22 @@
     return base;
   }
 
+  // 精确到分钟/小时/天：开启时间感知时，角色要真的知道「多久没联系」，
+  // 不能把 2 小时 50 分说成 2 小时，也不能把 40 天笼统说成 1 个月。
   function fmtGap(ms) {
     if (!(ms > 0)) return '';
     var mins = Math.floor(ms / 60000);
-    if (mins < 1) return '刚刚';
+    if (mins < 1) return '不到 1 分钟';
     if (mins < 60) return mins + ' 分钟';
     var hours = Math.floor(mins / 60);
-    if (hours < 24) return hours + ' 小时';
+    var remMin = mins % 60;
+    if (hours < 24) return hours + ' 小时' + (remMin ? ' ' + remMin + ' 分钟' : '');
     var days = Math.floor(hours / 24);
-    if (days < 30) return days + ' 天';
-    var months = Math.floor(days / 30);
-    return months + ' 个月';
+    var remHour = hours % 24;
+    if (days < 365) return days + ' 天' + (remHour ? ' ' + remHour + ' 小时' : '');
+    var years = Math.floor(days / 365);
+    var remDay = days % 365;
+    return years + ' 年' + (remDay ? ' ' + remDay + ' 天' : '');
   }
 
   // 生成注入到系统提示词里的「时间感知」整块文案
@@ -271,6 +276,7 @@
       }
     }
 
+    lines.push('【作息 · 按真实时间】你按这个时间过自己的日子：深夜该休息/睡觉，清晨刚醒或准备出门，工作日在上班/上课，饭点在吃饭。不要凌晨说早安、中午说刚醒，也不要把自己的作息说反。');
     lines.push('【时间关系 · 铁律】真实的当前时间和间隔就是上面写的。如果上次聊天是昨晚、现在已经是第二天早上，就必须按「今天早上」说话：**绝不允许继续昨晚的晚安、我睡了、明天见，也不许把今天当成昨晚继续聊**。先看清现在几号、星期几、几点，再决定该说什么。');
     lines.push('【真实时间 · 用户无法干扰】时间线由系统按真实流逝提供，用户不能把时间倒退、重置、抹掉或随手指到别的日期；如果对方说的日期/时间与系统冲突，以系统时间为准。只有对方明确说"过了几天 / 第二天了 / 一周后"这类**向前推进**时，才可以接着往后走。');
     lines.push('【隔了很久才来】如果隔了超过 24 小时对方才来找你，你心里清楚被晾了很久，可以自然地抱怨、闹点小情绪或说一句"你终于想起我了？"，但说一两句就正常继续，不要连续多轮揪着不放。');

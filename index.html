@@ -5,11 +5,15 @@
     <script src="js/nano-runtime.js?v=20261028e"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <script>
+    // 全站唯一构建号：下面的自愈逻辑、iframe 的 nb= 参数都用它。
+    // 注意：不要再另写第二个版本号，否则两个版本号会互相判定“版本变了”，
+    // 造成每次打开都清缓存 + 反复 reload。
+    window.__NANO_BUILD__ = 'nano-2026-10-29-6';
     // 版本升级时强制清一次缓存并重载：避免手机/PWA 一直跑旧 JS（屏幕共享/思维链等问题）
     (function () {
         try {
             var KEY = 'nano_build';
-            var CUR = 'nano-2026-10-29-4';
+            var CUR = window.__NANO_BUILD__;
             var prev = null, ok = false;
             try { prev = localStorage.getItem(KEY); } catch (e) {}
             if (prev === CUR) return;
@@ -17,7 +21,9 @@
             var jobs = [];
             try {
                 if (window.caches && caches.keys) jobs.push(caches.keys().then(function (ks) {
-                    return Promise.all(ks.map(function (k) { return caches.delete(k).catch(function () {}); }));
+                    // 只清站点静态缓存，别把图片/其它 CacheStorage 一起删掉，否则升级后首屏又要重新下载。
+                    return Promise.all(ks.filter(function (k) { return String(k).indexOf('nano-static-') === 0; })
+                        .map(function (k) { return caches.delete(k).catch(function () {}); }));
                 }));
             } catch (e) {}
             try {
@@ -980,38 +986,8 @@
     <script src="js/appearance.js?v=20261026d"></script>
 </head>
 <body class="nano-index">
-<script>
-/* 一次性强制更新：清掉旧 Service Worker 与缓存，保证拿到最新代码（每个版本号只执行一次） */
-(function () {
-    try {
-        var KEY = 'nano_force_reset_v58';
-        if (localStorage.getItem(KEY) === '1') return;
-        localStorage.setItem(KEY, '1');
-        var tasks = [];
-        if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
-            tasks.push(navigator.serviceWorker.getRegistrations().then(function (rs) {
-                return Promise.all(rs.map(function (r) { return r.unregister(); }));
-            }));
-        }
-        if (window.caches && caches.keys) {
-            tasks.push(caches.keys().then(function (ks) {
-                return Promise.all(ks.map(function (k) { return caches.delete(k); }));
-            }));
-        }
-        Promise.all(tasks).then(function () { location.reload(); }).catch(function () { location.reload(); });
-    } catch (e) {}
-})();
-</script>
-<script>
-/* 用一次 URL 参数绕过任何被缓存的 index.html（只跳一次） */
-(function () {
-    try {
-        var B = '58';
-        var u = new URL(location.href);
-        if (u.searchParams.get('b') !== B) { u.searchParams.set('b', B); location.replace(u.toString()); }
-    } catch (e) {}
-})();
-</script>
+<!-- 旧的“每次访问清缓存 + reload”已移除：它和 head 里的版本自愈叠加，
+     会造成进入页面时反复整页刷新。现在只保留 head 里按 __NANO_BUILD__ 执行一次的清理。 -->
 <div class="bg"></div>
 <script src="bg.js"></script>
 
@@ -1873,8 +1849,8 @@ setTimeout(function () {
         try { if (window.visualViewport) window.visualViewport.addEventListener('resize', applySafeTopToFrames); } catch (e) {}
         setTimeout(applySafeTopToFrames, 300);
 
-        // 构建版本号（改这里即可让所有同源页面刷新缓存）
-        var BUILD = 'nano-2026-10-29-05';
+        // 构建版本号：与 head 里的 window.__NANO_BUILD__ 共用同一个值
+        var BUILD = window.__NANO_BUILD__ || 'nano-2026-10-29-6';
 
         // 给同源页面 URL 追加构建版本号，避免浏览器/Service Worker 缓存到旧 HTML
         function pageUrl(u) {
@@ -4432,29 +4408,8 @@ setTimeout(function () {
         } catch (e) {}
     })();
 
-    // ===== 版本自愈：构建号变化时注销旧 SW、清缓存并刷新一次（解决 iOS PWA 不更新） =====
-    (function nanoSelfHeal() {
-        var changed = false;
-        try {
-            changed = localStorage.getItem('nano_build') !== BUILD;
-            if (changed) localStorage.setItem('nano_build', BUILD);
-        } catch (e) {}
-        window.__nanoHealing = changed;
-        if (!changed) return;
-        if (!('serviceWorker' in navigator)) return;
-        try {
-            navigator.serviceWorker.getRegistrations().then(function (rs) {
-                return Promise.all(rs.map(function (r) { return r.unregister(); }));
-            }).then(function () {
-                if (!window.caches) return null;
-                return caches.keys().then(function (ks) {
-                    return Promise.all(ks.map(function (k) { return caches.delete(k); }));
-                });
-            }).then(function () {
-                location.reload();
-            }).catch(function () {});
-        } catch (e) {}
-    })();
+    // 版本自愈只保留在 <head>：那里按 window.__NANO_BUILD__ 清理一次并 reload。
+    // 这里不再重复判断/清缓存，避免两个地方同时触发刷新。
 
     // ===== Service Worker =====
     // 未配置后台推送时：保持注销，保证每次都加载最新代码（解决 iOS PWA 缓存旧版本）。
@@ -4476,11 +4431,11 @@ setTimeout(function () {
 <script src="js/aux-memory.js?v=20261029d"></script>
 <script src="js/user-scope.js?v=20261020j"></script>
 <script src="js/nano-notify.js?v=20261029h"></script>
-<script src="js/nano-push.js?v=20261029i"></script>
+<script src="js/nano-push.js?v=20261029j"></script>
 <script src="swipe-back.js"></script>
 <script src="js/keep-alive.js?v=20261023a"></script>
 <script src="js/char-takeover.js?v=20261026e"></script>
-<script src="js/nano-prompts.js?v=20261029e"></script>
+<script src="js/nano-prompts.js?v=20261029f"></script>
 <script src="js/screen-share.js?v=20261027a"></script>
 <script src="js/ios-bridge.js?v=20261027k"></script>
 <script src="js/auto-push-bridge.js?v=20261028c"></script>
@@ -4536,7 +4491,7 @@ setTimeout(function () {
             } catch (e) {}
         }
         // 写入 nano_characters_db，并广播，让聊天列表 / 主页（朋友圈等）都刷新出这个新好友。
-        // 与群聊「加陌生人为好友」(js/groups.js?v=20261029f addNpcFriend) 保持同一套路：isNpc:true 才会出现在列表里。
+        // 与群聊「加陌生人为好友」(js/groups.js?v=20261029g addNpcFriend) 保持同一套路：isNpc:true 才会出现在列表里。
         // 小号是角色本人披的马甲：它自己知道自己是本人，只是不能让用户知道。
         // 把「小号身份 + 本人完整人设 + 铁律」写进角色设定，线上/线下/iMessage 共用同一套提示词。
         function buildAltMaskSetting(alt) {
