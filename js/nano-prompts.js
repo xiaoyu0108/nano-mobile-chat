@@ -226,6 +226,7 @@
     write: write,
     builtinText: builtinText,
     activeText: activeText,
+    effectiveText: buildBlock,
     enabledCount: enabledCount,
     setEnabled: setEnabled,
     styleRules: styleRules,

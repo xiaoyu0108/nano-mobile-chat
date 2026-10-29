@@ -230,10 +230,23 @@
         document.addEventListener('click', _unlockOnce, true);
     } catch (e) {}
 
+    function notifyWindow() {
+        try {
+            if (window.top && window.top !== window && window.top.Notification) return window.top;
+        } catch (e) {}
+        return window;
+    }
+    function notifyPermission() {
+        try {
+            var w = notifyWindow();
+            return (w.Notification && w.Notification.permission) || '';
+        } catch (e) { return ''; }
+    }
     function ensurePermission() {
         try {
-            if ('Notification' in window && Notification.permission === 'default') {
-                Notification.requestPermission();
+            var w = notifyWindow();
+            if (w.Notification && w.Notification.permission === 'default') {
+                w.Notification.requestPermission();
             }
         } catch (e) {}
     }
@@ -367,7 +380,8 @@
             } catch (e) {}
         }
         try {
-            if (!('Notification' in window) || Notification.permission !== 'granted') return;
+            var __pw = notifyWindow();
+            if (!__pw.Notification || __pw.Notification.permission !== 'granted') return;
             // 优先走 Service Worker：应用退到后台/锁屏时也能稳定弹出，点击由 sw.js 带回 target
             if (navigator.serviceWorker && navigator.serviceWorker.ready) {
                 var settled = false;

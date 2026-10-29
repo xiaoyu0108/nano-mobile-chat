@@ -656,7 +656,7 @@ const IMG={};                       /* 图片：key = 组件id.槽名 */
 const v=(it,k)=>(it.d&&it.d[k]!=null)?it.d[k]:WD[it.t].d[k];
 const tx=(it,k,cls='')=>`<span class="${cls}" data-k="${k}">${esc(v(it,k))}</span>`;
 function slot(it,key,kind,max,cls=''){return `<div class="img-slot ${cls}" data-slot="${key}" data-max="${max}" data-iid="${it.id}">${slotInner(it.id,key,kind)}</div>`}
-function slotInner(id,key,kind){const u=IMG[id+'.'+key];return u?`<img src="${u}" alt="" draggable="false">`:ic(kind==='u'?'user':'image',40,1.6)}
+function slotInner(id,key,kind){const u=IMG[id+'.'+key];return u?`<img src="${u}" alt="" draggable="false" decoding="async" loading="lazy">`:ic(kind==='u'?'user':'image',40,1.6)}
 
 const WD={
  photo:{w:2,h:2,name:'照片',cls:'ph',d:{},inner:it=>slot(it,'img','i',900)},
@@ -736,7 +736,7 @@ Object.assign(WD,{
       else if(/<html[^>]*>/i.test(doc))doc=doc.replace(/<html[^>]*>/i,m=>m+bridge);
       else doc=bridge+doc;
     }
-    return `<iframe sandbox="allow-scripts allow-same-origin allow-forms allow-modals" srcdoc="${esc(doc)}"></iframe>`}}
+    return `<iframe loading="lazy" sandbox="allow-scripts allow-same-origin allow-forms allow-modals" srcdoc="${esc(doc)}"></iframe>`}}
 });
 WD.photo.fit=WD.photow.fit=true;WD.photo.sizes=WD.photow.sizes=PS;
 

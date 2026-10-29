@@ -12,9 +12,18 @@
 (function () {
     'use strict';
 
-    // 必须用当前页面所在目录：部署在 GitHub Pages 子路径（/nano-mobile-chat/）时，
-    // new URL('../') 会跑到站点根目录，SW 注册 404，安卓订阅就会失败。
-    var DEFAULT_SW = (window.NANO_ROOT || new URL('./', location.href).href) + 'sw.js';
+    // 必须指向站点根目录的 sw.js。设置页/通知页在 /html/ 子目录的 iframe 里，
+    // new URL('./') 会算成 /html/sw.js（404），这也是安卓订阅失败、控制台一直报错的常见原因。
+    var DEFAULT_SW = (function () {
+        try {
+            if (window.NANO_ROOT) return String(window.NANO_ROOT).replace(/\/?$/, '/') + 'sw.js';
+            var p = String(location.pathname || '/');
+            var idx = p.indexOf('/html/');
+            var base = idx >= 0 ? p.slice(0, idx + 1) : p.replace(/[^/]*$/, '');
+            if (!/\/$/.test(base)) base += '/';
+            return location.origin + base + 'sw.js';
+        } catch (e) { return new URL('./', location.href).href + 'sw.js'; }
+    })();
 
     // 站点身份：同一套 Worker 被 Nano / 纳米 / 其它部署共用时，用它隔离订阅与自动推送。
     // 算法必须和 sw.js 的 appIdFromRoot 完全一致，否则 SW 会丢弃自己的推送。
@@ -33,6 +42,10 @@
         return 'app_' + h.toString(36);
     }
 
+    // 默认公共 Worker（与设置页保持一致）。VAPID 公钥是公开信息，只作为
+    // /vapid 请求超时时的兜底；syncVapid 仍会在后台校正成服务端最新公钥。
+    var DEFAULT_ENDPOINT = 'https://nanopush.nano315.online';
+    var DEFAULT_VAPID = 'BDJ2_HvtDkwCutXGbhTp3MODRaRF2zhmhNV9XdrlqU66mWZtBM2AqfEwNNBsDBPoWsKFZH5ILiiJPGkJNqCeL8U';
     function readConfig() {
         var endpoint = '', vapid = '', token = '';
         try {
@@ -43,9 +56,11 @@
         endpoint = endpoint.replace(/\/+$/, '');
         // 旧测试 Worker 仍带 Bark / KV 逻辑，读到就自动迁回正式 Worker。
         if (endpoint && (/(^|\.)peek-test\.nano315\.online$/i.test(endpoint) || /nano-test-ceshi/i.test(endpoint))) {
-            endpoint = 'https://nanopush.nano315.online';
+            endpoint = DEFAULT_ENDPOINT;
             try { localStorage.setItem('nano_push_endpoint', endpoint); } catch (e) {}
         }
+        if (!endpoint) endpoint = DEFAULT_ENDPOINT;
+        if (!vapid && endpoint === DEFAULT_ENDPOINT) vapid = DEFAULT_VAPID;
         return { endpoint: endpoint, vapid: vapid, token: token };
     }
 
@@ -96,12 +111,31 @@
         if (/applicationServerKey|InvalidAccess|InvalidCharacter/i.test(raw)) {
             return 'VAPID 公钥无效或已过期，请重新获取服务端公钥后再开启。';
         }
+        if (/Failed to fetch|NetworkError|Load failed|Network request failed/i.test(raw)) {
+            return '连不上推送服务器：请检查服务端地址、网络，或服务端是否允许跨域（CORS）。';
+        }
+        if (/HTTP 401|unauthorized|X-Push-Token|token/i.test(raw)) {
+            return '推送服务器要求令牌：请在「服务端地址」旁边填写与 Worker 一致的 PUSH_TOKEN。';
+        }
+        if (/HTTP 5\d\d/i.test(raw)) {
+            return '推送服务器内部错误：' + raw.slice(0, 200) + '（请检查 Worker 的 KV/D1 绑定和部署版本）';
+        }
         return raw || '开启推送失败';
     }
 
     function registerSW() {
         return navigator.serviceWorker.register(DEFAULT_SW, { updateViaCache: 'none' })
-            .then(function () { return navigator.serviceWorker.ready; });
+            .then(function (reg) {
+                // ready 在注册异常时可能永远不 resolve，加超时避免设置页一直卡在“开启中”。
+                return Promise.race([
+                    navigator.serviceWorker.ready,
+                    new Promise(function (_, reject) {
+                        setTimeout(function () {
+                            reject(new Error('Service Worker 启动超时：请刷新页面后重试（或检查 sw.js 是否能正常访问）'));
+                        }, 12000);
+                    })
+                ]).then(function () { return reg; });
+            });
     }
 
     function subscribe(reg) {
@@ -153,12 +187,37 @@
     function postJSON(url, data) {
         var headers = { 'Content-Type': 'application/json' };
         var cfg = readConfig();
-        if (cfg.token) headers['X-Push-Token'] = cfg.token;
+        if (cfg.token) { headers['X-Push-Token'] = cfg.token; headers['X-Peek-Token'] = cfg.token; }
+        var ctrl = null, timer = null;
+        try {
+            ctrl = new AbortController();
+            timer = setTimeout(function () { try { ctrl.abort(); } catch (e) {} }, 15000);
+        } catch (e) {}
         return fetch(url, {
             method: 'POST',
             headers: headers,
-            body: JSON.stringify(data)
-        }).then(function (r) { return r.json().catch(function () { return {}; }); });
+            body: JSON.stringify(data),
+            signal: ctrl ? ctrl.signal : undefined
+        }).then(function (r) {
+            return r.text().then(function (txt) {
+                var j = {};
+                try { j = txt ? JSON.parse(txt) : {}; } catch (e) {}
+                if (!r.ok) {
+                    throw new Error((j && j.error) ? ('HTTP ' + r.status + '：' + j.error) : ('HTTP ' + r.status + '：' + String(txt || '服务端返回错误').slice(0, 160)));
+                }
+                if (!j || typeof j !== 'object') throw new Error('服务端返回格式异常（HTTP ' + r.status + '）');
+                return j;
+            });
+        }).catch(function (err) {
+            if (err && err.name === 'AbortError') throw new Error('连接推送服务器超时：请检查服务端地址 / 网络');
+            throw err;
+        }).then(function (j) {
+            if (timer) clearTimeout(timer);
+            return j;
+        }, function (err) {
+            if (timer) clearTimeout(timer);
+            throw err;
+        });
     }
 
     function enable(force) {
@@ -172,6 +231,14 @@
                 ? '当前安卓浏览器不支持 Web Push：请用 Chrome / Edge 打开，并确认设备有 Google Play 服务'
                 : '当前环境不支持后台推送（iOS 需先把网页「添加到主屏幕」后用 PWA 打开）'));
         }
+        var p1 = platform();
+        if (p1.ios) {
+            var standalone = false;
+            try { standalone = (window.navigator.standalone === true) || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches); } catch (e) {}
+            if (!standalone) {
+                return Promise.reject(new Error('iOS 需要先把 Nano「添加到主屏幕」，再从桌面图标打开；在 Safari 标签页里无法开启 Web Push'));
+            }
+        }
         // 权限已经是 granted 时不要再调用 requestPermission：
         // 在 iframe / 非用户手势（例如设置页自动补登记）里再次请求，部分浏览器会
         // 直接返回 denied 或抛错，表现就是「系统里明明开了通知，这里却说没开」。
@@ -184,9 +251,15 @@
                 try {
                     if (window.top && window.top !== window && window.top.Notification) {
                         topPerm = window.top.Notification.permission;
+                        if (topPerm === 'granted') return 'granted';
+                        // 设置页/通知页在 iframe 里：浏览器只认可顶层窗口的权限请求，
+                        // 在 iframe 里 requestPermission 很容易直接返回 denied。
+                        if (topPerm === 'default') {
+                            var tp = window.top.Notification.requestPermission();
+                            return (tp && typeof tp.then === 'function') ? tp : Promise.resolve(tp);
+                        }
                     }
                 } catch (e) {}
-                if (topPerm === 'granted') return 'granted';
                 if (Notification.permission === 'granted' || Notification.permission === 'denied') return Notification.permission;
                 var p = Notification.requestPermission();
                 return (p && typeof p.then === 'function') ? p : Promise.resolve(p);
@@ -339,14 +412,63 @@
         } catch (e) { return Promise.resolve(false); }
     }
 
+    function test() {
+        if (!swSupported()) return Promise.reject(new Error('当前环境不支持系统通知'));
+        return registerSW().then(function (reg) {
+            var opts = {
+                body: 'Web Push 已连接：关闭 App 后也能收到后台提醒。',
+                icon: (window.NANO_ROOT || './') + 'icons/icon-192.png',
+                badge: (window.NANO_ROOT || './') + 'icons/icon-192.png',
+                tag: 'nano-push-test',
+                renotify: true
+            };
+            return reg.showNotification('Nano 通知测试', opts).then(function () { return true; });
+        });
+    }
+
+    // 只把「浏览器里已有的订阅」重新登记到服务端：不申请权限、不重建订阅。
+    // 用于设置页发现服务端没有订阅记录时自动补登记，避免非用户手势下
+    // requestPermission / subscribe 被浏览器拒绝，最后显示成“补登记失败”。
+    function syncSubscription() {
+        try {
+            if (!swSupported()) return Promise.resolve(false);
+            var cfg = readConfig();
+            if (!cfg.endpoint || !cfg.vapid) return Promise.resolve(false);
+            return navigator.serviceWorker.getRegistration().then(function (reg) {
+                if (!reg) return null;
+                return reg.pushManager.getSubscription();
+            }).then(function (sub) {
+                if (!sub) return false;
+                return postJSON(cfg.endpoint + '/subscribe', {
+                    subscription: sub.toJSON ? sub.toJSON() : sub,
+                    userId: currentAutoUserId(),
+                    deviceId: autoDeviceId(),
+                    appId: appId(),
+                    ua: navigator.userAgent,
+                    platform: platform().android ? 'android' : (platform().ios ? 'ios' : 'other'),
+                    ts: Date.now()
+                }).then(function (r) {
+                    if (r && r.ok === false) throw new Error('服务端没有保存订阅：' + (r.error || '未知错误'));
+                    try {
+                        localStorage.setItem('nano_push_meta_sync_at', String(Date.now()));
+                        localStorage.setItem('nano_push_meta_identity', appId() + '|' + autoDeviceId() + '|' + currentAutoUserId());
+                    } catch (e) {}
+                    return true;
+                });
+            });
+        } catch (e) { return Promise.resolve(false); }
+    }
+
     // 服务端可能因为重新部署/清 KV 换掉 VAPID。旧订阅对新公钥无效时，
     // 浏览器不会报错但会静默收不到推送；启动时对一下公钥并自动重建订阅。
     function syncVapid() {
         try {
             var cfg = readConfig();
             if (!cfg.endpoint) return Promise.resolve(false);
-            return fetch(cfg.endpoint.replace(/\/+$/, '') + '/vapid', { cache: 'no-store' })
-                .then(function (r) { return r.json(); })
+            var ctrl = null, timer = null;
+            try { ctrl = new AbortController(); timer = setTimeout(function () { try { ctrl.abort(); } catch (e) {} }, 6000); } catch (e) {}
+            return fetch(cfg.endpoint.replace(/\/+$/, '') + '/vapid', { cache: 'no-store', signal: ctrl ? ctrl.signal : undefined })
+                .then(function (r) { if (timer) clearTimeout(timer); return r.json(); })
                 .then(function (j) {
                     var key = (j && (j.publicKey || j.vapid || j.key)) || '';
                     if (!key) return false;
@@ -359,7 +481,7 @@
                         return enable(true).then(function () { return true; }).catch(function () { return false; });
                     }
                     return true;
-                }).catch(function () { return false; });
+                }).catch(function () { if (timer) clearTimeout(timer); return false; });
         } catch (e) { return Promise.resolve(false); }
     }
 
@@ -367,6 +489,8 @@
         setup: function (endpoint, vapid, token) { saveConfig(endpoint, vapid, token); return readConfig(); },
         enable: enable,
         refreshSubscription: refreshSubscription,
+        syncSubscription: syncSubscription,
+        test: test,
         disable: disable,
         schedule: schedule,
         cancel: cancel,
@@ -376,5 +500,11 @@
         userId: currentAutoUserId,
         config: readConfig
     };
-    try { setTimeout(function () { syncVapid().then(function () { refreshSubscription(); }); }, 1600); } catch (e) {}
+    // 只让顶层窗口做后台自检；设置/通知等 iframe 里的这个实例不要重复注册 SW 或订阅，
+    // 否则会出现 /html/sw.js 404、重复 requestPermission 等假错误。
+    try {
+        if (window.top === window) {
+            setTimeout(function () { syncVapid().then(function () { refreshSubscription(); }); }, 1600);
+        }
+    } catch (e) {}
 })();

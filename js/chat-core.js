@@ -887,7 +887,7 @@
         prompt += '若对方把名字或某个词拆开打（例如“楚 闻声”），那就是“楚闻声”，字形顺序不能调换，更不许说成“声闻楚”。\n';
         prompt += '如果对话里出现以【系统补充资料】开头的长段网页内容、链接正文、代码或 JSON，那是程序自动抓取的资料，不是用户发的消息，也不是乱码；读懂其中和话题有关的信息即可，不要评价“你后面怎么一堆乱码”，也不要复述这些资料。\n';
         if (__memHints) {
-            prompt += '\n【长期记忆·你与对方共同经历或被告知过的事】\n' + __memHints + '\n';
+            prompt += '\n【长期记忆·你与对方共同经历或被告知过的事（按时间从新到旧，最上面最新）】\n' + __memHints + '\n';
             prompt += '以上长期记忆要当作你真正经历或被告知过的事，自然记住并沿用，不要当成新消息；不要否认，不要问“你什么时候告诉我的”。\n';
             prompt += '【长期记忆 · 主动调用】回复前先在记忆里扫一遍：本轮话题如果牵涉到某条记忆（某个地点、物品、约定、人物、称呼、习惯、说过的话），要主动提起或自然呼应（例如“上次你说的那个…”“你不是一直想…吗”），让记忆真正影响你的回应；但不要生硬地报流水账或复述整段记忆。\n';
         }
@@ -2029,12 +2029,12 @@
             const priv = list.filter(function(it){ return !(it && it.groupId); });
             const must = priv.filter(function(it){ return Number(it && it.importance) >= 4; });
             const rest = priv.filter(function(it){ return !(Number(it && it.importance) >= 4); });
-            // 选完之后再按时间正序排列，保证注入给模型的记忆线从旧到新。
-            const picked = must.concat(rest.slice(-40)).sort(function(a, b) { return __memTs(a) - __memTs(b); });
+            // 选完之后按时间倒序排列：最新总结排在最前，模型优先读到近期记忆。
+            const picked = must.concat(rest.slice(-40)).sort(function(a, b) { return __memTs(b) - __memTs(a); });
             __memHints = picked.length ? picked.map(function(it) { return '· ' + (it.content || it.text || ''); }).join('\n') : '';
-            // 群聊总结卡片（带 groupId 的记忆）：单聊里也读取，实现群聊↔单聊互通
+            // 群聊总结卡片（带 groupId 的记忆）：单聊里也读取，实现群聊↔单聊互通；同样最新在前
             const grp = list.filter(function(it){ return it && it.groupId; });
-            __groupMemHint = grp.length ? grp.slice().sort(function(a, b) { return __memTs(a) - __memTs(b); }).slice(-16)
+            __groupMemHint = grp.length ? grp.slice().sort(function(a, b) { return __memTs(b) - __memTs(a); }).slice(0, 16)
                 .map(function(it) { return '· ' + (it.content || it.text || ''); }).join('\n') : '';
         }).then(function () {
             // 小号：读取大号的最新 2 轮私聊，掌握 TA 的近况
@@ -6217,7 +6217,7 @@
         const timeStr = nowHHMM();
         let mem = '';
         try {
-            mem = String(__memHints || '').split('\n').filter(Boolean).slice(-8).join('\n');
+            mem = String(__memHints || '').split('\n').filter(Boolean).slice(0, 8).join('\n');
         } catch (e) {}
         let sys = '你是「' + (displayName || charName || '角色') + '」，一个真实的人。请发一条朋友圈动态。严格贴合你的人设与你们的关系，像真人发朋友圈一样自然，禁止 AI 腔、禁止解释、禁止出戏。\n' +
             '口语、短句、碎片化，经常省略主语；低信息密度、高生活感、松弛不端着。可以只有半句/一个词/一个 emoji，也可以偶尔发一条认真的深夜小作文。题材从吃喝玩乐、旅游、日常碎片、宠物、天气、开心、emo、吐槽、发疯、追星、避雷、攻略、测评、健身打卡、读书、职场、提问、投票、段子、恋爱日常、热点八卦里自然长出来。广告只做隐晦暗广，先讲真实体验和小缺点。\n' +
@@ -6312,7 +6312,7 @@
         const uName = (currentUser && currentUser.name) || currentUserName || '用户';
         const timeStr = nowHHMM();
         let mem = '';
-        try { mem = String(__memHints || '').split('\n').filter(Boolean).slice(-8).join('\n'); } catch (e) {}
+        try { mem = String(__memHints || '').split('\n').filter(Boolean).slice(0, 8).join('\n'); } catch (e) {}
         const authors = pickMomentAuthors(4);
         const authorNames = authors.map(function (a) { return a.name; }).join('、');
         const authorInfo = authors.map(function (a) {

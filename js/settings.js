@@ -71,8 +71,21 @@ const APP_ICONS = {
   // 优先用当前文档自己的 NanoNotify：试听发生在当前 iframe 的用户手势里，
   // 用父窗口的实例经常拿不到手势，AudioContext 一直 suspended，听起来就是没声音。
   try { NN = window.NanoNotify || (window.parent && window.parent.NanoNotify ? window.parent.NanoNotify : null); } catch (e) {}
+  function findNanoPush() {
+    var chain = [];
+    var w = window;
+    for (var i = 0; i < 8; i++) {
+      chain.push(w);
+      try { if (w.parent && w.parent !== w) w = w.parent; else break; } catch (e) { break; }
+    }
+    // 优先用最顶层窗口的实例：权限、SW 注册和 localStorage 身份都以顶层为准。
+    for (var j = chain.length - 1; j >= 0; j--) {
+      try { if (chain[j].NanoPush) return chain[j].NanoPush; } catch (e) {}
+    }
+    return null;
+  }
   var NP = null;
-  try { NP = window.parent && window.parent.NanoPush ? window.parent.NanoPush : window.NanoPush; } catch (e) {}
+  try { NP = findNanoPush(); } catch (e) {}
 
   function toast(msg) {
     var el = $('toast');
@@ -515,10 +528,12 @@ const APP_ICONS = {
       }
       if (toggle) toggle.checked = !!s.subscribed;
       if (status) {
-        if (s.permission === 'denied') status.textContent = '权限被拒绝';
+        if (s.permission === 'denied') status.textContent = '权限被拒绝（到系统设置允许 Nano 通知）';
+        else if (s.permission === 'unsupported') status.textContent = '此环境不支持系统通知';
+        else if (s.permission !== 'granted') status.textContent = '需要允许通知后开启';
         else if (s.subscribed) status.textContent = '已开启';
-        else if (s.configured) status.textContent = '已配置';
-        else status.textContent = '未配置';
+        else if (s.configured) status.textContent = '已配置，等待订阅';
+        else status.textContent = '未订阅';
       }
       if (btn) btn.textContent = s.subscribed ? '重新订阅' : '开启';
       // 浏览器显示「已订阅」不代表服务端真的会推：再问一次 Worker 有没有配置和订阅。
@@ -528,36 +543,45 @@ const APP_ICONS = {
           '&deviceId=' + encodeURIComponent(s.deviceId || '') +
           '&userId=' + encodeURIComponent(s.userId || '') +
           '&token=' + encodeURIComponent((localStorage.getItem('nano_peek_token') || localStorage.getItem('nano_push_token') || ''));
-        fetch(pushEndpoint() + '/auto/status' + qs, { cache: 'no-store' })
-          .then(function (r) { return r.json(); })
+        var sctrl = null, st = null;
+        try { sctrl = new AbortController(); st = setTimeout(function () { try { sctrl.abort(); } catch (e) {} }, 6000); } catch (e) {}
+        fetch(pushEndpoint() + '/auto/status' + qs, { cache: 'no-store', signal: sctrl ? sctrl.signal : undefined })
+          .then(function (r) {
+            if (r.status === 401) return { __unauthorized: true };
+            return r.json();
+          })
           .then(function (j) {
+            if (st) { clearTimeout(st); st = null; }
+            if (j && j.__unauthorized) {
+              status.textContent = '已开启 · 服务端设置了 PUSH_TOKEN，请先填写令牌';
+              return;
+            }
             if (!j || !j.ok) { status.textContent = '已开启 · 服务端未响应'; return; }
             if (!j.subs) {
               // 浏览器里已有订阅、服务端却没有（换过 Worker/清过 KV/换过面具）时自动补登记。
-              // 但权限没真正授予时不要反复请求：非用户手势下会被浏览器判 denied，
-              // 反而错误地显示「通知权限未开启」。
-              var permNow = 'denied';
-              try { permNow = (typeof Notification !== 'undefined' ? Notification.permission : 'unsupported'); } catch (e0) {}
-              try {
-                if (permNow !== 'granted' && window.top && window.top !== window && window.top.Notification && window.top.Notification.permission === 'granted') permNow = 'granted';
-              } catch (e1) {}
-              if (permNow !== 'granted') {
-                status.textContent = '已开启 · 通知权限未生效，请点「重新订阅」';
+              // 只补写已有订阅，绝不在非用户手势里申请权限或重建订阅——那才是
+              // 「补登记失败 / 通知权限未开启」反复出现的根因。
+              status.textContent = '已开启 · 服务端没有订阅记录，正在自动补登记…';
+              // 每次打开设置页只自动补登记一次，避免服务端异常时无限重试/一直刷错误。
+              if (refreshPush._autoSynced) {
+                status.textContent = '已开启 · 服务端没有订阅记录，请点「重新订阅」';
                 return;
               }
-              status.textContent = '已开启 · 服务端没有订阅记录，正在自动补登记…';
-              if (!refreshPush._reregistering && NP && NP.enable) {
+              if (!refreshPush._reregistering && NP && NP.syncSubscription) {
+                refreshPush._autoSynced = true;
                 refreshPush._reregistering = true;
-                Promise.resolve(NP.enable(false)).then(function () {
-                  setTimeout(function () { refreshPush(); refreshPush._reregistering = false; }, 1500);
+                Promise.resolve(NP.syncSubscription()).then(function (ok) {
+                  refreshPush._reregistering = false;
+                  if (ok) { setTimeout(refreshPush, 1200); }
+                  else if (status) status.textContent = '已开启 · 浏览器里没有可登记的通知订阅，请点「重新订阅」';
                 }).catch(function (err) {
                   refreshPush._reregistering = false;
-                  if (status) status.textContent = '补登记失败：' + ((err && err.message) || '未知错误') + '，请点「重新订阅」或在其他 → Web Push 重试';
+                  if (status) status.textContent = '自动补登记失败：' + ((err && err.message) || '未知错误') + '；请点「重新订阅」';
                 });
               }
               return;
             }
-            if (!j.configured || !j.enabled) { status.textContent = '已开启 · 服务端未同步主动消息（打开一次私聊）'; return; }
+            if (!j.configured || !j.enabled) { status.textContent = '已开启 · 主动消息尚未同步（打开一次私聊后生效）'; return; }
             var when = '';
             if (j.nextMsgAt) {
               var d = new Date(j.nextMsgAt);
@@ -565,7 +589,7 @@ const APP_ICONS = {
             }
             status.textContent = '已开启 · 后台运行中' + (when ? ('（下次 ' + when + '）') : '');
           })
-          .catch(function () { status.textContent = '已开启 · 服务端检查失败'; });
+          .catch(function () { if (st) clearTimeout(st); status.textContent = '已开启 · 服务端检查失败（超时或网络异常）'; });
       }
     }).catch(function () { if (status) status.textContent = '检查失败'; });
   }
@@ -903,9 +927,13 @@ const APP_ICONS = {
     if (!NP) { toast('推送模块未加载'); return false; }
     // 安卓 Chrome 必须在用户手势里请求通知权限；放到 fetch 之后会丢失手势，
     // 表现为订阅失败（registration failed / push service error）。
+    // 设置页在 iframe 里时，必须向顶层窗口请求，浏览器不认 iframe 的权限请求。
     try {
-      if ('Notification' in window && Notification.permission === 'default') {
-        await Notification.requestPermission();
+      var topWin = null;
+      try { topWin = (window.top && window.top !== window) ? window.top : null; } catch (e0) { topWin = null; }
+      var nWin = (topWin && topWin.Notification) ? topWin : (('Notification' in window) ? window : null);
+      if (nWin && nWin.Notification && nWin.Notification.permission === 'default') {
+        await nWin.Notification.requestPermission();
       }
     } catch (e) {}
     var endpoint = pushEndpoint();
@@ -917,9 +945,13 @@ const APP_ICONS = {
     // 会让订阅和新私钥对不上，推送服务直接拒绝，表现就是「一直开着但从来没推送」。
     var freshKey = '';
     try {
-      var r = await fetch(endpoint + '/vapid', { credentials: 'omit', cache: 'no-store' });
-      var j = await r.json();
-      freshKey = (j && (j.publicKey || j.vapid || j.key)) || '';
+      var vctrl = new AbortController();
+      var vt = setTimeout(function () { try { vctrl.abort(); } catch (e) {} }, 6000);
+      try {
+        var r = await fetch(endpoint + '/vapid', { credentials: 'omit', cache: 'no-store', signal: vctrl.signal });
+        var j = await r.json();
+        freshKey = (j && (j.publicKey || j.vapid || j.key)) || '';
+      } finally { clearTimeout(vt); }
     } catch (e) {}
     if (freshKey) key = freshKey;
     if (!key) { toast('服务端未返回 VAPID 公钥'); return false; }
@@ -929,9 +961,11 @@ const APP_ICONS = {
       // 强制重建订阅：旧订阅可能绑定着服务端已经换掉的 VAPID 私钥。
       await NP.enable(true);
       localStorage.setItem('nano_notify_enabled', '1');
+      var testOk = true;
+      try { if (NP.test) await NP.test(); } catch (e) { testOk = false; }
       refreshNotify();
       refreshPush();
-      toast('Web Push 已开启');
+      toast(testOk ? 'Web Push 已开启，已发送测试通知' : 'Web Push 已开启，但测试通知没弹出：请检查系统通知权限');
       return true;
     } catch (e) {
       toast(e && e.message ? e.message : '开启失败');

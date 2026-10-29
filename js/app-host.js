@@ -240,15 +240,36 @@
           var keys = (charIds || []).map(function (id) { return 'memlist_' + id; });
           if (!keys.length) { db.close(); resolve([]); return; }
           var done = 0; var out = [];
+          var tsOf = function (m) {
+            try {
+              var n = Number(m && (m.ts || m.at));
+              if (Number.isFinite(n) && n > 0) return n;
+              var d = Date.parse((m && (m.date || m.time)) || '');
+              return Number.isFinite(d) ? d : 0;
+            } catch (e) { return 0; }
+          };
           keys.forEach(function (k) {
             var r = store.get(k);
             r.onsuccess = function () {
               var v = r.result && (r.result.value || r.result);
               var arr = Array.isArray(v) ? v : [];
-              arr.forEach(function (m) { if (m) out.push(typeof m === 'string' ? m : (m.text || m.content || '')); });
-              if (++done === keys.length) { db.close(); resolve(out.filter(Boolean)); }
+              arr.forEach(function (m) {
+                if (!m) return;
+                out.push(typeof m === 'string' ? { text: m, ts: 0 } : { text: (m.text || m.content || ''), ts: tsOf(m) });
+              });
+              if (++done === keys.length) {
+                db.close();
+                out.sort(function (a, b) { return b.ts - a.ts; });
+                resolve(out.map(function (x) { return x.text; }).filter(Boolean));
+              }
             };
-            r.onerror = function () { if (++done === keys.length) { db.close(); resolve(out.filter(Boolean)); } };
+            r.onerror = function () {
+              if (++done === keys.length) {
+                db.close();
+                out.sort(function (a, b) { return b.ts - a.ts; });
+                resolve(out.map(function (x) { return x.text; }).filter(Boolean));
+              }
+            };
           });
         } catch (e) { resolve([]); }
       });

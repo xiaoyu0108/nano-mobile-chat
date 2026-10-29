@@ -285,7 +285,15 @@
                     var g = db.transaction('config', 'readonly').objectStore('config').get('memlist_' + charId);
                     g.onsuccess = function () {
                         var arr = (g.result && Array.isArray(g.result.value)) ? g.result.value : [];
-                        var out = arr.slice(-14).map(function (e) {
+                        var tsOf = function (e) {
+                            try {
+                                var n = Number(e && (e.ts || e.at));
+                                if (Number.isFinite(n) && n > 0) return n;
+                                var d = Date.parse((e && (e.date || e.time)) || '');
+                                return Number.isFinite(d) ? d : 0;
+                            } catch (err) { return 0; }
+                        };
+                        var out = arr.slice().sort(function (a, b) { return tsOf(b) - tsOf(a); }).slice(0, 14).map(function (e) {
                             return '- ' + (e && e.content ? String(e.content).replace(/\s+/g, ' ').slice(0, 260) : '');
                         }).filter(function (s) { return s.length > 2; }).join('\n');
                         resolve(out.slice(0, 2200));

@@ -9,7 +9,7 @@
     (function () {
         try {
             var KEY = 'nano_build';
-            var CUR = 'nano-2026-10-25-1';
+            var CUR = 'nano-2026-10-29-4';
             var prev = null, ok = false;
             try { prev = localStorage.getItem(KEY); } catch (e) {}
             if (prev === CUR) return;
@@ -42,9 +42,6 @@
     <link rel="apple-touch-icon" sizes="512x512" href="icons/icon-512.png">
     <link rel="manifest" href="manifest.json">
     <title>Nano</title>
-    <link rel="prefetch" href="html/chat.html">
-    <link rel="prefetch" href="html/nano.html">
-    <link rel="prefetch" href="html/nano-image.html">
     <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
     <!-- 聊天/通话/设置页会同步加载 localforage；在这里提前拉，避免它们卡在 CDN 往返上 -->
@@ -1019,7 +1016,7 @@
 <script src="bg.js"></script>
 
 <div class="home-shell pre-splash" id="homeShell">
-    <iframe id="homeFrame" src="html/home.html?v=20261028g" title="Nano桌面"></iframe>
+    <iframe id="homeFrame" src="html/home.html?v=20261029f" title="Nano桌面"></iframe>
 </div>
 <div class="app hidden-shell" id="legacyShell" aria-hidden="true">
   <div class="app-container">
@@ -1877,7 +1874,7 @@ setTimeout(function () {
         setTimeout(applySafeTopToFrames, 300);
 
         // 构建版本号（改这里即可让所有同源页面刷新缓存）
-        var BUILD = 'nano-2026-10-27-02';
+        var BUILD = 'nano-2026-10-29-05';
 
         // 给同源页面 URL 追加构建版本号，避免浏览器/Service Worker 缓存到旧 HTML
         function pageUrl(u) {
@@ -4478,18 +4475,18 @@ setTimeout(function () {
 <script src="js/mem-link.js?v=20261006a"></script>
 <script src="js/aux-memory.js?v=20261029d"></script>
 <script src="js/user-scope.js?v=20261020j"></script>
-<script src="js/nano-notify.js?v=20261028a"></script>
-<script src="js/nano-push.js?v=20261029d"></script>
+<script src="js/nano-notify.js?v=20261029h"></script>
+<script src="js/nano-push.js?v=20261029i"></script>
 <script src="swipe-back.js"></script>
 <script src="js/keep-alive.js?v=20261023a"></script>
 <script src="js/char-takeover.js?v=20261026e"></script>
-<script src="js/nano-prompts.js?v=20261029d"></script>
+<script src="js/nano-prompts.js?v=20261029e"></script>
 <script src="js/screen-share.js?v=20261027a"></script>
 <script src="js/ios-bridge.js?v=20261027k"></script>
 <script src="js/auto-push-bridge.js?v=20261028c"></script>
 <script src="js/online-catchup.js?v=20261027a"></script>
 <script src="js/whisper-store.js?v=20261026a"></script>
-<script src="js/char-secret-chat.js?v=20261029d"></script>
+<script src="js/char-secret-chat.js?v=20261029f"></script>
 </div>
     <!-- 小号试探：居中弹窗（不暴露是谁）-->
     <div class="alt-probe-overlay" id="altProbeOverlay">
@@ -4539,7 +4536,7 @@ setTimeout(function () {
             } catch (e) {}
         }
         // 写入 nano_characters_db，并广播，让聊天列表 / 主页（朋友圈等）都刷新出这个新好友。
-        // 与群聊「加陌生人为好友」(js/groups.js addNpcFriend) 保持同一套路：isNpc:true 才会出现在列表里。
+        // 与群聊「加陌生人为好友」(js/groups.js?v=20261029f addNpcFriend) 保持同一套路：isNpc:true 才会出现在列表里。
         // 小号是角色本人披的马甲：它自己知道自己是本人，只是不能让用户知道。
         // 把「小号身份 + 本人完整人设 + 铁律」写进角色设定，线上/线下/iMessage 共用同一套提示词。
         function buildAltMaskSetting(alt) {

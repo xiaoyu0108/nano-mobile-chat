@@ -203,9 +203,11 @@ function readCharMemoryList(charId){
 async function loadCharMemory(charId){
   if(charId && charMemoryCache[charId]) return charMemoryCache[charId];
   const list=await readCharMemoryList(charId);
+  const tsOf=it=>{try{const n=Number(it&&(it.ts||it.at));if(Number.isFinite(n)&&n>0)return n;const d=Date.parse((it&&(it.date||it.time))||'');return Number.isFinite(d)?d:0}catch(e){return 0}};
   const texts=(list||[])
     .filter(it=>it && !it.groupId && (it.content||it.text))
-    .slice(-40)
+    .sort((a,b)=>tsOf(b)-tsOf(a))
+    .slice(0,40)
     .map(it=>(it.type?('【'+it.type+'】'):'')+(it.content||it.text));
   if(charId) charMemoryCache[charId]=texts;
   return texts;

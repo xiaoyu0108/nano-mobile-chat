@@ -900,7 +900,8 @@
                     if (!it.groupId) return true;
                     return it.groupId === chatId;
                 });
-                groupMemoryMap[r.id] = list.slice(-12).map(function(it){ return it && (it.content || it.text) || ''; }).filter(Boolean);
+                var tsOf = function(it){ try { var n=Number(it&&(it.ts||it.at)); if(Number.isFinite(n)&&n>0)return n; var d=Date.parse((it&&(it.date||it.time))||''); return Number.isFinite(d)?d:0; } catch(e){ return 0; } };
+                groupMemoryMap[r.id] = list.slice().sort(function(a,b){ return tsOf(b)-tsOf(a); }).slice(0,12).map(function(it){ return it && (it.content || it.text) || ''; }).filter(Boolean);
             });
             return groupMemoryMap;
         }).catch(function(){ groupMemoryMap = {}; return groupMemoryMap; });

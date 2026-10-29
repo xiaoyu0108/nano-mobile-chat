@@ -72,7 +72,19 @@
     var webPushBtn = document.getElementById('webPushBtn');
     var webPushStatus = document.getElementById('webPushStatus');
     function getNanoPush() {
-        try { return window.parent && window.parent.NanoPush ? window.parent.NanoPush : window.NanoPush; } catch (e) { return window.NanoPush; }
+        try {
+            var chain = [];
+            var w = window;
+            for (var i = 0; i < 8; i++) {
+                chain.push(w);
+                if (w.parent && w.parent !== w) w = w.parent; else break;
+            }
+            // 从最顶层往下找：顶层实例才掌握真实通知权限与根目录 SW。
+            for (var j = chain.length - 1; j >= 0; j--) {
+                if (chain[j].NanoPush) return chain[j].NanoPush;
+            }
+        } catch (e) {}
+        try { return window.NanoPush; } catch (e) { return null; }
     }
     function setWebPushStatus(text) { if (webPushStatus) webPushStatus.textContent = text; }
     function refreshWebPushStatus() {
@@ -85,18 +97,23 @@
                 return;
             }
             if (s.subscribed) { setWebPushStatus('已开启 ✓ 关闭 App 也能收到'); if (webPushBtn) webPushBtn.textContent = '重新订阅'; }
+            else if (s.permission !== 'granted') { setWebPushStatus('需要先允许通知，再点开启订阅'); if (webPushBtn) webPushBtn.textContent = '开启'; }
             else if (s.configured) { setWebPushStatus('已配置，点右侧开启订阅'); if (webPushBtn) webPushBtn.textContent = '开启'; }
-            else { setWebPushStatus('未配置：点右侧自动获取 VAPID 并开启'); if (webPushBtn) webPushBtn.textContent = '开启'; }
+            else { setWebPushStatus('未订阅：点右侧自动获取 VAPID 并开启'); if (webPushBtn) webPushBtn.textContent = '开启'; }
         }).catch(function () { setWebPushStatus('检查失败，可直接点开启'); });
     }
     if (webPushBtn) {
         webPushBtn.addEventListener('click', async function () {
             var NP = getNanoPush();
             if (!NP) { setWebPushStatus('推送模块未加载'); return; }
-            // 先在点击手势里要权限：安卓上延迟到 fetch 之后会丢失用户手势
+            // 先在点击手势里要权限：安卓上延迟到 fetch 之后会丢失用户手势。
+            // 本页在 iframe 里，权限要交给顶层窗口请求；否则会一直显示“通知权限未开启”。
             try {
-                if ('Notification' in window && Notification.permission === 'default') {
-                    await Notification.requestPermission();
+                var topWin = null;
+                try { topWin = (window.top && window.top !== window) ? window.top : null; } catch (e0) { topWin = null; }
+                var nWin = (topWin && topWin.Notification) ? topWin : window;
+                if (nWin.Notification && nWin.Notification.permission === 'default') {
+                    await nWin.Notification.requestPermission();
                 }
             } catch (e) {}
             var endpoint = '';
@@ -107,25 +124,27 @@
             try { key = (localStorage.getItem('nano_push_vapid') || '').trim(); } catch (e) {}
             var token = '';
             try { token = localStorage.getItem('nano_push_token') || localStorage.getItem('nano_peek_token') || ''; } catch (e) {}
-            if (!key) {
-                setWebPushStatus('正在获取服务端公钥…');
+            // 每次都向服务端确认当前公钥：Worker 换过密钥后，本地旧公钥会让订阅和新私钥对不上。
+            setWebPushStatus('正在获取服务端公钥…');
+            try {
+                var vctrl = new AbortController();
+                var vt = setTimeout(function () { try { vctrl.abort(); } catch (e) {} }, 6000);
                 try {
-                    var r = await fetch(endpoint + '/vapid', { cache: 'no-store' });
+                    var r = await fetch(endpoint + '/vapid', { cache: 'no-store', signal: vctrl.signal });
                     var d = await r.json();
-                    key = (d && d.key) || '';
-                } catch (e) {}
-            }
+                    var freshKey = (d && (d.key || d.publicKey || d.vapid)) || '';
+                    if (freshKey) key = freshKey;
+                } finally { clearTimeout(vt); }
+            } catch (e) {}
             if (!key) { setWebPushStatus('服务端暂时没返回 VAPID 公钥，请确认最新 Worker 已部署'); return; }
             NP.setup(endpoint, key, token);
-            setWebPushStatus('等待通知权限…');
+            setWebPushStatus('正在订阅通知…');
             try {
-                if ('Notification' in window && Notification.permission !== 'granted') {
-                    setWebPushStatus('通知权限未开启：请在浏览器/系统设置里允许 Nano 的通知，然后重试');
-                    return;
-                }
                 await NP.enable(true);
                 try { localStorage.setItem('nano_notify_enabled', '1'); } catch (e) {}
-                setWebPushStatus('已开启 ✓ 关闭 App 也能收到');
+                var testOk = true;
+                try { if (NP.test) await NP.test(); } catch (e) { testOk = false; }
+                setWebPushStatus(testOk ? '已开启 ✓ 已发送测试通知；关闭 App 也能收到' : '已订阅，但测试通知没弹出：请检查系统通知权限');
                 if (webPushBtn) webPushBtn.textContent = '重新订阅';
             } catch (e) {
                 var msg = e && e.message ? e.message : '开启失败';

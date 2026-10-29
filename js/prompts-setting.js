@@ -72,15 +72,15 @@
     var data = NP.read();
     host.innerHTML = NP.CATS.map(function (cat) {
       var item = data.cats[cat.id] || { builtinOn: true, custom: [] };
-      var builtin = String(NP.builtinText(cat.id) || '').trim();
       var onCount = (item.builtinOn ? 1 : 0) + (item.custom || []).filter(function (p) { return p && p.on; }).length;
       var rows = '<div class="row prompt-row" data-cat="' + cat.id + '" data-builtin="1" data-view="' + cat.id + '" role="button" tabindex="0">' +
         '<span class="prompt-icon">' + catIconSvg(cat.id) + '</span>' +
         '<span class="prompt-main"><span class="prompt-name">内置提示词</span>' +
-        '<span class="prompt-sub">官方内置 · 点开可查看 · 开关控制是否读取</span></span>' +
+        '<span class="prompt-sub">实际追加 · 点开可查看 · 开关控制是否读取</span></span>' +
         '<span class="switch"><input type="checkbox" data-toggle="builtin" data-cat="' + cat.id + '"' + (item.builtinOn ? ' checked' : '') + '><i></i></span>' +
         '</div>' +
-        '<div class="prompt-preview">' + (builtin ? esc(builtin) : '（这个板块暂无内置提示词）') + '</div>';
+        '<details class="prompt-details" data-pfill="builtin" data-cat="' + cat.id + '"><summary>展开本板块实际注入的全部提示词（含全局/社交通用/已开启的自定义）</summary>' +
+        '<div class="prompt-preview" data-pbody></div></details>';
       rows += item.custom.map(function (p) {
         return '<div class="row prompt-row" data-cat="' + cat.id + '" data-id="' + esc(p.id) + '" role="button" tabindex="0">' +
           iconHtml(p.icon) +
@@ -88,7 +88,8 @@
           '<span class="prompt-sub">' + (p.on ? '已开启 · 会读取' : '已关闭 · 不读取') + ' · 点开可编辑</span></span>' +
           '<span class="switch"><input type="checkbox" data-toggle="' + esc(p.id) + '" data-cat="' + cat.id + '"' + (p.on ? ' checked' : '') + '><i></i></span>' +
           '</div>' +
-          '<div class="prompt-preview">' + esc(String(p.content || '')) + '</div>';
+          '<details class="prompt-details" data-pfill="custom" data-cat="' + cat.id + '" data-id="' + esc(p.id) + '"><summary>展开提示词内容</summary>' +
+          '<div class="prompt-preview" data-pbody></div></details>';
       }).join('');
       rows += '<button class="row add-prompt-row" type="button" data-add="' + cat.id + '">' +
         '<span class="prompt-add-plus">' + catIconSvg(cat.id) + '</span><span>添加提示词</span></button>';
@@ -96,14 +97,36 @@
         '<span class="prompt-on-count">已开启 ' + onCount + ' 条</span></div>' +
         '<section class="list prompt-card">' + rows + '</section>';
     }).join('');
+    // 折叠时完全不生成正文，展开才即时计算/注入，避免提示词页一次渲染大量长文本。
+    Array.prototype.forEach.call(host.querySelectorAll('details.prompt-details'), function (d) {
+      d.addEventListener('toggle', function () { fillPromptDetail(d); });
+    });
+  }
+
+  function fillPromptDetail(d) {
+    if (!d || !d.open) return;
+    var body = d.querySelector('[data-pbody]');
+    if (!body || body.getAttribute('data-filled') === '1') return;
+    var catId = d.getAttribute('data-cat');
+    if (d.getAttribute('data-pfill') === 'builtin') {
+      body.textContent = String(NP.effectiveText(catId) || '（这个板块暂无内置提示词）');
+    } else {
+      var data = NP.read();
+      var cat = data.cats[catId];
+      var id = d.getAttribute('data-id');
+      var found = null;
+      (cat && cat.custom || []).some(function (p) { if (p.id === id) { found = p; return true; } return false; });
+      body.textContent = found ? String(found.content || '') : '（提示词不存在）';
+    }
+    body.setAttribute('data-filled', '1');
   }
 
   function openBuiltinDetail(catId) {
     var cat = NP.catInfo(catId);
-    var text = String(NP.builtinText(catId) || '').trim();
-    openSheet('内置提示词',
+    var text = String(NP.effectiveText(catId) || '').trim();
+    openSheet('本板块实际注入的全部提示词',
       '<div class="prompt-detail-head">' + iconSvg() +
-        '<span class="prompt-main"><span class="prompt-name">' + esc(cat ? cat.name : '') + ' · 内置</span>' +
+        '<span class="prompt-main"><span class="prompt-name">' + esc(cat ? cat.name : '') + ' · 实际追加</span>' +
         '<span class="prompt-sub">只读 · 用开关控制是否读取</span></span></div>' +
       '<div class="prompt-detail">' + (text ? esc(text) : '暂无内置提示词') + '</div>'
     );

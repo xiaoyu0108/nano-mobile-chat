@@ -387,6 +387,19 @@ label.row:active {
   text-overflow: ellipsis;
 }
 
+/* Web Push 状态文字较长：允许换行并占满中间空间，避免被省略号截断 */
+#webPushStatus {
+  flex: 1 1 auto;
+  max-width: none;
+  min-width: 0;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  text-align: right;
+  line-height: 1.35;
+  font-size: 12px;
+}
+
 .chev {
   flex: none;
   color: #c7c7cc;
@@ -644,6 +657,43 @@ label.row:active {
   font-weight: 500;
   color: var(--muted);
   opacity: .85;
+}
+
+.prompt-details {
+  margin: -4px 14px 12px;
+}
+
+.prompt-details > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 4px 0 7px;
+  font-size: 12px;
+  color: #8a8a90;
+  user-select: none;
+}
+
+.prompt-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.prompt-details > summary::before {
+  content: '▸';
+  display: inline-block;
+  width: 14px;
+  transition: transform .16s ease;
+}
+
+.prompt-details[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.prompt-details > summary:active {
+  opacity: .65;
+}
+
+.prompt-details .prompt-preview {
+  margin: 0 0 10px;
+  max-height: 240px;
 }
 
 .prompt-preview {

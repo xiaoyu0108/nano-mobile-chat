@@ -89,7 +89,7 @@ const CSS_PRESETS_ID = 'css_presets';
 const COT_PRESETS_ID = 'cot_presets';
 const MESSAGES_STORE = 'messages';
 
-let settings = { id: SETTINGS_ID, style: '', cot: '', wordCount: '', person: 'auto', predictUser: 'forbid', customCSS: '', bgImage: '', autoSummary: true, memThreshold: 5, nsfw: false, maxTokens: '', timeAware: true, builtinBody: false, statusBars: [] };
+  let settings = { id: SETTINGS_ID, style: '', cot: '', wordCount: '', person: 'auto', predictUser: 'forbid', customCSS: '', bgImage: '', autoSummary: true, memThreshold: 5, nsfw: false, maxTokens: '', builtinBody: false, statusBars: [] };
 let ruleGroups = [];
 let stylePresets = [];
 let cssPresets = [];
@@ -1923,8 +1923,6 @@ function updateSummary() {
   { const mt = document.getElementById('maxTokens'); if (mt) mt.value = settings.maxTokens || ''; }
   const nsfwSwitch = document.getElementById('nsfwSwitch');
   if (nsfwSwitch) nsfwSwitch.classList.toggle('on', settings.nsfw === true);
-  const timeAwareSwitch = document.getElementById('timeAwareSwitch');
-  if (timeAwareSwitch) timeAwareSwitch.classList.toggle('on', settings.timeAware !== false);
   const builtinBodySwitch = document.getElementById('builtinBodySwitch');
   if (builtinBodySwitch) builtinBodySwitch.classList.toggle('on', settings.builtinBody === true);
   const sbVal = document.getElementById('statusBarsValue');
@@ -2281,17 +2279,6 @@ if (nsfwSwitch) {
     saveSettings();
     nsfwSwitch.classList.toggle('on', settings.nsfw);
     showToast(settings.nsfw ? 'NSFW 已开启' : 'NSFW 已关闭');
-  });
-}
-
-// ===== 时间感知（线下） =====
-const timeAwareSwitch = document.getElementById('timeAwareSwitch');
-if (timeAwareSwitch) {
-  timeAwareSwitch.addEventListener('click', function() {
-    settings.timeAware = !timeAwareSwitch.classList.contains('on');
-    saveSettings();
-    timeAwareSwitch.classList.toggle('on', settings.timeAware);
-    showToast(settings.timeAware ? '时间感知已开启' : '时间感知已关闭');
   });
 }
 

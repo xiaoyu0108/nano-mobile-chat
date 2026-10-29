@@ -722,24 +722,45 @@ async function readMemoryForChar(char){
   if (window.NanoMemLink && window.NanoMemLink.readList) {
     try { mergedList = await window.NanoMemLink.readList(id); } catch(e) { mergedList = null; }
   }
+  const tsOf = it => {
+    try {
+      const n = Number(it && (it.ts || it.at));
+      if (Number.isFinite(n) && n > 0) return n;
+      const d = Date.parse((it && (it.date || it.time)) || '');
+      return Number.isFinite(d) ? d : 0;
+    } catch (e) { return 0; }
+  };
+  const finish = list => {
+    const seen = {};
+    return (list || []).map(it => ({ text: String((it && (it.content || it.text)) || '').trim(), ts: tsOf(it) }))
+      .filter(x => x.text)
+      .sort((a, b) => b.ts - a.ts)
+      .filter(x => !seen[x.text] && (seen[x.text] = 1))
+      .slice(0, 16)
+      .map(x => x.text);
+  };
   const db = await openMemoryDB();
-  if(!db) return (mergedList||[]).map(it => String(it&&(it.content||it.text)||'').trim()).filter(Boolean).slice(-16);
+  if(!db) return finish(mergedList || []);
   return new Promise(resolve => {
     const out = [];
-    const push = t => { t = String(t || "").trim(); if(t && out.indexOf(t) < 0) out.push(t); };
+    const push = it => {
+      if (!it) return;
+      const t = String(it.content || it.text || '').trim();
+      if (t) out.push({ text: t, ts: tsOf(it) });
+    };
     try{
       const tx = db.transaction(["config","memories"], "readonly");
       const rc = tx.objectStore("config").get("memlist_" + id);
       rc.onsuccess = () => {
         const list = (mergedList != null) ? mergedList : ((rc.result && Array.isArray(rc.result.value)) ? rc.result.value : []);
-        list.forEach(it => push(it && (it.content || it.text)));
+        list.forEach(push);
       };
       try{
         const rm = tx.objectStore("memories").index("chatId").getAll(id);
-        rm.onsuccess = () => (rm.result || []).forEach(it => push(it && (it.content || it.text)));
+        rm.onsuccess = () => (rm.result || []).forEach(push);
       }catch(e){}
-      tx.oncomplete = () => { try{ db.close(); }catch(e){} resolve(out.slice(-16)); };
-      tx.onerror = () => { try{ db.close(); }catch(e){} resolve(out.slice(-16)); };
+      tx.oncomplete = () => { try{ db.close(); }catch(e){} resolve(finish(out)); };
+      tx.onerror = () => { try{ db.close(); }catch(e){} resolve(finish(out)); };
     }catch(e){ try{ db.close(); }catch(e2){} resolve([]); }
   });
 }

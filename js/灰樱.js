@@ -374,7 +374,7 @@ let groupMemberList = [];
 let groupMemberMap = {};
 let groupCharData = {};
 let offlineCharRecord = null;   // 线下单聊：当前角色的数据库记录（用于判断外国人/母语）
-let settings = { userName: 'user', charName: 'char', userAvatar: '', charAvatar: '', style: '', wordCount: '', person: 'auto', predictUser: 'forbid', customCSS: '', bgImage: '', memThreshold: 5, autoSummary: true, nsfw: false, builtinBody: false, timeAware: true, statusBars: [] };
+let settings = { userName: 'user', charName: 'char', userAvatar: '', charAvatar: '', style: '', wordCount: '', person: 'auto', predictUser: 'forbid', customCSS: '', bgImage: '', memThreshold: 5, autoSummary: true, nsfw: false, builtinBody: false, statusBars: [] };
 let selectMode = false;
 let deleteTarget = null;
 let isReplying = false;
@@ -808,10 +808,42 @@ function offShouldIncludeEntry(entry, recentText) {
   if (entry.keywordEnabled !== false) { if (!(entry.keywords || '').trim()) return true; return offEntryHit(entry, recentText); }
   return true;
 }
-function offGetWorldbookText() {
+function offGroupWorldbookIds() {
+  const ids = [];
+  try { (offlineInvitedChars || []).forEach(function (c) { if (c && c.id) ids.push(c.id); if (c && c.name) ids.push(c.name); }); } catch (e) {}
+  try {
+    Object.keys(groupCharData || {}).forEach(function (k) {
+      ids.push(k);
+      const c = groupCharData[k];
+      if (c && c.name) ids.push(c.name);
+      if (c && c.id) ids.push(c.id);
+    });
+  } catch (e) {}
+  return ids;
+}
+function offMemTs(it) {
+  try {
+    const n = Number(it && (it.ts || it.at));
+    if (Number.isFinite(n) && n > 0) return n;
+    const d = Date.parse((it && (it.date || it.time)) || '');
+    return Number.isFinite(d) ? d : 0;
+  } catch (e) { return 0; }
+}
+function offOnlineTimeAware() {
+  try {
+    const id = String(offlineChatId || '');
+    if (!id) return true;
+    const raw = localStorage.getItem('chat_setting_timeAware_' + id);
+    if (raw === null || raw === undefined || raw === '') return true;
+    try { return JSON.parse(raw) !== false; } catch (e) { return raw !== 'false'; }
+  } catch (e) { return true; }
+}
+function offGetWorldbookText(extraIds) {
   if (!offWorldbooks.length) return { front: '', middle: '', back: '' };
   const rec = charRecordCache || {};
-  const idCandidates = [offlineChatId, rec.id, rec.name, settings.charName].filter(Boolean).map(String);
+  const idCandidates = [offlineChatId, rec.id, rec.name, settings.charName]
+    .concat(extraIds || [])
+    .filter(Boolean).map(String);
   const bindIds = {};
   try { (rec.worldbookBindings || []).forEach(function (b) { if (b && b.id) bindIds[String(b.id)] = true; }); } catch (e) {}
   const recentText = offRecentChatText();
@@ -2602,8 +2634,9 @@ async function callMainAPI(history, opts) {
         list = (mem && Array.isArray(mem.value)) ? mem.value : [];
       }
       list = Array.isArray(list) ? list : [];
-      const lines = list.slice(-12).map(function (it) { return '· ' + String((it && it.content) || '').trim(); }).filter(function (s) { return s.length > 2; });
-      if (lines.length) memBlock = '【长期记忆 · 务必当作已知事实】\n' + lines.join('\n') + '\n\n';
+      const lines = list.slice().sort(function (a, b) { return offMemTs(b) - offMemTs(a); }).slice(0, 12)
+        .map(function (it) { return '· ' + String((it && it.content) || '').trim(); }).filter(function (s) { return s.length > 2; });
+      if (lines.length) memBlock = '【长期记忆 · 务必当作已知事实（按时间从新到旧）】\n' + lines.join('\n') + '\n\n';
     } catch (e) {}
     let onlineBlock = '';
     try {
@@ -2630,30 +2663,29 @@ async function callMainAPI(history, opts) {
     const openingBlock = leadingOpening ? ('【已发生的开场（角色已经说过的内容，请顺着它继续，不要重复）】\n' + leadingOpening + '\n\n') : '';
     // 时间感知（与线上共用 chat_setting_timeAware_<角色id>，默认开启）：让角色知道过了多久、今天是不是假期/周末
     let timeBlock = '';
+    const __taOn = offOnlineTimeAware();
+    const __nat = (offlineCharRecord && (offlineCharRecord.nationality || offlineCharRecord.country)) || '';
+    let __lastUserMs = 0, __lastAiMs = 0;
     try {
-      const taOn = settings.timeAware !== false;
-      const __nat = (offlineCharRecord && (offlineCharRecord.nationality || offlineCharRecord.country)) || '';
-      if (taOn && window.NanoHoliday && window.NanoHoliday.buildTimeBlock) {
-        let lastUserMs = 0, lastAiMs = 0;
-        try {
-          // 跳过本轮连续发来的用户消息，取更早的最后一条用户消息；角色上一次开口单独记录
-          let i = history.length - 1;
-          while (i >= 0 && (!history[i] || history[i].role !== 'user')) i--;
-          while (i >= 0 && history[i] && history[i].role === 'user') i--;
-          for (; i >= 0; i--) {
-            if (history[i] && history[i].role === 'user' && history[i].ts) { lastUserMs = history[i].ts; break; }
-          }
-          for (let j = history.length - 1; j >= 0; j--) {
-            if (history[j] && history[j].role !== 'user' && history[j].ts) { lastAiMs = history[j].ts; break; }
-          }
-        } catch (e) {}
-        timeBlock = window.NanoHoliday.buildTimeBlock(new Date(), { lastUserMs: lastUserMs, lastAiMs: lastAiMs, nationality: __nat }) + '\n\n';
-      } else if (!taOn && window.NanoHoliday && window.NanoHoliday.buildVagueTimeBlock) {
+      let i = history.length - 1;
+      while (i >= 0 && (!history[i] || history[i].role !== 'user')) i--;
+      while (i >= 0 && history[i] && history[i].role === 'user') i--;
+      for (; i >= 0; i--) {
+        if (history[i] && history[i].role === 'user' && history[i].ts) { __lastUserMs = history[i].ts; break; }
+      }
+      for (let j = history.length - 1; j >= 0; j--) {
+        if (history[j] && history[j].role !== 'user' && history[j].ts) { __lastAiMs = history[j].ts; break; }
+      }
+    } catch (e) {}
+    try {
+      if (__taOn && window.NanoHoliday && window.NanoHoliday.buildTimeBlock) {
+        timeBlock = window.NanoHoliday.buildTimeBlock(new Date(), { lastUserMs: __lastUserMs, lastAiMs: __lastAiMs, nationality: __nat }) + '\n\n';
+      } else if (!__taOn && window.NanoHoliday && window.NanoHoliday.buildVagueTimeBlock) {
         timeBlock = window.NanoHoliday.buildVagueTimeBlock(new Date(), { nationality: __nat }) + '\n\n';
       }
     } catch (e) {}
     let wb = { front: '', middle: '', back: '' };
-    try { if (!offlineIsGroup) wb = offGetWorldbookText(); } catch (e) {}
+    try { wb = offGetWorldbookText(offlineIsGroup ? offGroupWorldbookIds() : null); } catch (e) {}
     let scheduleBlock = '';
     try {
       if (!offlineIsGroup && window.NanoScheduleBridge && window.NanoScheduleBridge.refreshContext) {
@@ -2676,6 +2708,14 @@ async function callMainAPI(history, opts) {
         finalSystemPrompt = String(RP.build(systemPromptStr) || systemPromptStr)
           .replace(/\{\{char\}\}/g, settings.charName || '角色')
           .replace(/\{\{user\}\}/g, settings.userName || '对方');
+      }
+    } catch (e) {}
+    // 时间锚点放在系统提示末尾，防止长人设/长世界书把开头的时间感知冲淡。
+    try {
+      if (__taOn && window.NanoHoliday && window.NanoHoliday.nowAnchor) {
+        finalSystemPrompt += '\n\n【时间锚点 · 最新】' + window.NanoHoliday.nowAnchor(new Date(), {
+          lastUserMs: __lastUserMs, lastAiMs: __lastAiMs, nationality: __nat
+        }) + '。\n回复前先用这个时间核对日期、星期、时段和你们上次聊天的间隔；在合适的话里自然体现，不要每轮机械报时。';
       }
     } catch (e) {}
     // 重roll 纠正：只作用于这一轮，追加在系统提示最后

@@ -340,8 +340,18 @@ function fmtDate(d){
   }catch(e){return d;}
 }
 
+function memTime(m){
+  try{
+    const raw=(m&&m._raw)||{};
+    const n=Number(raw.ts||raw.at||raw.time);
+    if(Number.isFinite(n)&&n>0)return n;
+    const d=Date.parse((m&&m.date)||raw.date||raw.time||'');
+    return Number.isFinite(d)?d:0;
+  }catch(e){return 0}
+}
 function renderList(){
-  const list=filtered();
+  // 记忆宫殿最新总结置顶；时间相同的按原顺序稳定展示
+  const list=filtered().slice().sort((a,b)=>memTime(b)-memTime(a));
   if(!W.mems.length){
     $('#list').innerHTML='<div class="empty">这里还没有记忆。<br>点击下方“存入记忆”，写下第一条。</div>';return;
   }

@@ -586,7 +586,15 @@ async function loadMemHints(charId) {
   const priv = list.filter(it => it && !it.groupId);
   const must = priv.filter(it => Number(it.importance) >= 4);
   const rest = priv.filter(it => !(Number(it.importance) >= 4));
-  const picked = must.concat(rest.slice(-24));
+  const tsOf = it => {
+    try {
+      const n = Number(it && (it.ts || it.at));
+      if (Number.isFinite(n) && n > 0) return n;
+      const d = Date.parse((it && (it.date || it.time)) || '');
+      return Number.isFinite(d) ? d : 0;
+    } catch (e) { return 0; }
+  };
+  const picked = must.concat(rest.slice(-24)).sort((a, b) => tsOf(b) - tsOf(a));
   return picked.length ? picked.map(it => '· ' + (it.content || it.text || '')).join('\n') : '';
 }
 function notifyMemoryUpdated(charId) {
