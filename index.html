@@ -3622,7 +3622,9 @@ setTimeout(function () {
                 } catch (e) {}
             }
 
-            const innerSettingTypes = ['autoMsgChanged', 'autoMsgIntervalChanged', 'autoMomentChanged', 'autoMomentIntervalChanged', 'autoSocialChanged', 'timeAwareChanged', 'allowImageChanged', 'allowMomentImageChanged', 'remarkChanged', 'cotChanged', 'messagesCleared', 'nanoTransMode', 'nanoForceTranslate', 'nanoBlockChanged', 'nanoCharBlocked', 'nanoCharUnblocked'];
+            // 注意：nanoBlockChanged / nanoCharBlocked / nanoCharUnblocked 不放在这里，
+            // 下面会统一广播给所有 iframe。否则 chat_inner 会收到两次，重复写入系统提示。
+            const innerSettingTypes = ['autoMsgChanged', 'autoMsgIntervalChanged', 'autoMomentChanged', 'autoMomentIntervalChanged', 'autoSocialChanged', 'timeAwareChanged', 'allowImageChanged', 'allowMomentImageChanged', 'remarkChanged', 'cotChanged', 'messagesCleared', 'nanoTransMode', 'nanoForceTranslate'];
             if (innerSettingTypes.indexOf(data.type) !== -1) {
                 const c = chatInnerFrame;
                 if (c && frameBase(c) === 'chat_inner.html') {

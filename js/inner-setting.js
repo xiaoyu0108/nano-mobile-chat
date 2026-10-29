@@ -1132,6 +1132,7 @@
                     } catch(e){ resolve(null); }
                 };
                 req.onerror=function(){ resolve(null); };
+                req.onblocked=function(){ resolve(null); };
             } catch(e){ resolve(null); }
         }).then(function(cfg){
             if(cfg) return cfg;
@@ -1224,7 +1225,8 @@
                 fetch(payload.url,{method:'POST',headers:payload.headers,body:payload.body}).then(function(r){return r.json();}).then(finish).catch(function(){finish(null);});
                 return;
             }
-            var n=0; var iv=setInterval(function(){ n++; var v=null; try{v=localStorage.getItem(resultKey);}catch(e){} if(v){ clearInterval(iv); var o=null; try{o=JSON.parse(v);}catch(err){} finish(o); } else if(n>120){ clearInterval(iv); finish(null); } },250);
+            // 慢模型（推理模型）一次可能要 30s 以上，等够 60s 再判定失败，避免正常回复被当成失败
+            var n=0; var iv=setInterval(function(){ n++; var v=null; try{v=localStorage.getItem(resultKey);}catch(e){} if(v){ clearInterval(iv); var o=null; try{o=JSON.parse(v);}catch(err){} finish(o); } else if(n>240){ clearInterval(iv); finish(null); } },250);
         });
     }
     function pickContent(d){
@@ -1233,6 +1235,12 @@
         return (o&&o.choices&&o.choices[0]&&o.choices[0].message&&o.choices[0].message.content)||'';
     }
     var blockContacting=false;
+    // 拉黑后的 iMessage 联系是额外一次 API 请求，失败时不再静默，给出可排查的原因
+    function contactFailed(reason){
+        blockContacting=false;
+        try{ console.warn('[block] iMessage 联系失败：'+reason); }catch(e){}
+        try{ showCenterToast('iMessage 联系失败：'+reason); }catch(e){}
+    }
     // 拉黑后自动调用一次 API，让角色以 iMessage 短信联系用户（写进 iMessage 独立卡片）
     function contactCharViaIMessage(){
         var last=0;
@@ -1242,9 +1250,10 @@
         Promise.all([readApiConfig(), readCharRec()]).then(function(arr){
             var cfg=arr[0], rec=arr[1];
             lastCharRec=rec||lastCharRec;
-            if(!cfg||!cfg.mainUrl||!cfg.mainKey||!cfg.mainModel){ blockContacting=false; console.warn('[block] 未配置主 API，无法通过 iMessage 联系'); return; }
-            var base=String(cfg.mainUrl).trim();
-            if(base.slice(-3)!=='/v1') base=base+(base.slice(-1)==='/'?'v1':'/v1');
+            if(!cfg||!cfg.mainUrl||!cfg.mainKey||!cfg.mainModel){ contactFailed('未配置主 API（请到 API 页填写地址 / Key / 模型）'); return; }
+            // 和聊天页保持一致：先去掉结尾斜杠、忽略大小写补 /v1，避免出现 /v1/v1 直接 404
+            var base=String(cfg.mainUrl).trim().replace(/\/+$/,'');
+            if(!/\/v1$/i.test(base)) base=base+'/v1';
             var cName=(rec&&rec.name)||chatName||'角色';
             var setting=(rec&&(rec.setting||rec.desc||rec.persona))||'';
             var user=readUserName();
@@ -1264,13 +1273,17 @@
             var blkToken='blk'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
             imPendingAdd(blkToken);
             var handled=false;
-            function handleContactResult(d){
+            function handleContactResult(d, errMsg){
                 if(handled) return; handled=true;
                 blockContacting=false;
                 imPendingRemove(blkToken);
+                if(!errMsg && d && d.ok === false){
+                    errMsg='API '+(d.status||'')+(d.error?(' '+String(d.error).slice(0,60)):' 请求失败');
+                }
+                if(errMsg){ contactFailed(errMsg); return; }
                 var t=pickContent(d);
                 var lines=String(t).replace(/\[[^\]]*\]/g,'').split(/\n+/).map(function(s){return s.trim().replace(/^[-*•\d.、\s]+/,'');}).filter(Boolean).slice(0,4);
-                if(!lines.length){ console.warn('[block] 角色未生成 iMessage 内容'); return; }
+                if(!lines.length){ contactFailed('模型没有返回内容，请检查模型是否可用'); return; }
                 var now=new Date();
                 var time=String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
                 var msgs=lines.map(function(line,i){
@@ -1291,10 +1304,10 @@
                 if(d){ handleContactResult(d); return; }
                 // 代理失败时直接用 fetch 兜底
                 fetch(payload.url,{method:'POST',headers:payload.headers,body:payload.body})
-                    .then(function(r){return r.json();}).then(handleContactResult)
-                    .catch(function(){ handleContactResult(null); });
+                    .then(function(r){return r.json();}).then(function(d){ handleContactResult(d); })
+                    .catch(function(e){ handleContactResult(null, '网络请求失败'+(e&&e.message?('：'+e.message):'')); });
             });
-        }).catch(function(){ blockContacting=false; });
+        }).catch(function(e){ contactFailed('读取配置失败'); });
     }
     function notifyIMessageRefresh(){
         try{ if(window.parent!==window) window.parent.postMessage({type:'nanoIMessageUpdated',chatId:chatId},'*'); }catch(e){}
