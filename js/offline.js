@@ -1067,7 +1067,7 @@ function buildGroupOfflinePrompt() {
   p += '- 不是每个角色每段都必须出场。谁在这一刻有反应谁出场，其他人可以在背景里做自己的事，但要保持存在感。\n';
   p += '- 同一时刻多人反应时，按时间顺序自然铺开，不平均分配笔墨，重点放在此刻最有戏的人身上。\n';
   p += '- 每段说话或动作要让读者一眼看出是谁，不混淆；是否替用户说话、做决定、写心理，以【用户行动预测】设置为准，不抢话；只有在推进剧情确实需要时，才可以顺着已有剧情往下接一小步。\n';
-  p += '- 写完前自查一遍有没有落入 AI 常用腔调，如“揉碎”“很x”“这就够了”“那就够了”“我接住你”“极其”，有就换成对应角色自己会用的说法。\n';
+  p += '- 写完前自查一遍有没有落入 AI 常用腔调或八股：如“揉碎”“很x”“这就够了”“那就够了”“我接住你”“极其”“姑娘/女人/女孩”“下巴抵在头顶”“他没说…也没有…甚至没说…”“不是…而是…”“理智的弦崩了”“嘴角控制不住地动了动”，有就删掉或换成角色自己会用的说法。\n';
   p += '\n【长度纪律 · 防截断】\n';
   p += '- 必须写满下方的字数要求，宁可多写细节也不要草草收尾；严禁“（略）”“（此处省略）”“（后续省略）”“......"或用一句总结把整场带过。\n';
   p += '- 感觉快收尾时，继续往下写环境、心理、动作和后续对白，把这一场群像完整演完再停。\n';
@@ -1077,8 +1077,8 @@ function buildGroupOfflinePrompt() {
   const cotInstruction = settings.cot ? ('思维链预设（COT，必须遵守，覆盖对 [thinking:] 的长度限制）：\n' + settings.cot + '\n请先严格按此预设思考，并把完整思考过程写入末尾的 [thinking:...] 段落中（可多行、可详细），然后再输出正文。\n') : '';
   p += '\n' + wordInstruction + personInstruction + predictInstruction + cotInstruction;
   p += '\n【禁止】禁止解释规则、跳出角色、插入免责声明、评价自己的回答。只输出正文。\n';
-  p += '\n【一次性输出 · 同一次回复里必须写全四样】\n';
-  p += '- 在同一次回复里，依次输出：①正文 ②[thinking:…] ③[heart:…] ④[plot:…]。四样一次给全、缺一不可，绝不分次生成、绝不省略、绝不只输出正文。\n';
+  p += '\n【一次性输出 · 同一次回复里必须写全正文与全部附带内容】\n';
+  p += '- 在同一次回复里，依次输出：①正文 ②[thinking:…] ③[heart:…] ④[plot:…] ⑤ 下方配置的自定义状态栏（如果有）。全部一次给全、缺一不可，绝不分次生成、绝不省略、绝不只输出正文。\n';
   p += '- 即便正文很长，也必须在正文写完后，把三段附带内容完整写完再停，不要因为正文写完就收尾。\n';
   p += '- 三段都放在正文之后、各自独占段落；正文里不要出现这些标记。\n';
   p += '- 思考过程（[thinking:]）必须完整包在方括号里、结尾要有 ]；绝不能把思考内容（尤其英文思考）直接写进正文。\n';
@@ -1195,6 +1195,13 @@ function maybeDecodeMarkup(s) {
     if (looksLikeMarkup(d)) return d;
   }
   return t;
+}
+// 模型偶尔把状态栏内容包在 ```html … ``` 里，去掉代码围栏再渲染
+function stripCodeFence(s) {
+  return String(s == null ? '' : s)
+    .replace(/^```[a-zA-Z0-9_-]*[ \t]*\r?\n?/, '')
+    .replace(/\r?\n?```[ \t]*$/, '')
+    .trim();
 }
 // 去掉状态栏 / 面板 / 属性块（连同里面的文字一起不解析），其余标签转成纯文字
 function stripCardMarkup(s) {
@@ -1722,9 +1729,17 @@ chat.addEventListener('click', function(e) {
   // 选项在 render 时已按 [data-plot-options] 懒加载，这里不再需要展开按钮。
   const opt = e.target.closest('.plot-opt');
   if (opt) {
-    const text = opt.textContent;
-    if (text && !text.includes('加载中') && !text.includes('加载失败')) {
-      input.value = text;
+    const text = String(opt.textContent || '').trim();
+    if (text && !text.includes('加载中') && !text.includes('加载失败') && !text.includes('没有一起生成')) {
+      // 剧情推荐可以反复点、堆叠使用：每次点到的走向都追加到输入框，
+      // 不会覆盖上一句，方便把几条走向组合成一段更完整的推进。
+      const cur = String(input.value || '');
+      if (!cur.trim()) {
+        input.value = text;
+      } else {
+        input.value = cur.replace(/[ \t\u3000]+$/g, '') + '\n' + text;
+      }
+      opt.classList.add('picked');
       resizeInput();
       // ⭐ 不直接发送，只让文字出现在输入栏
       // sendBtn.click();
@@ -2249,17 +2264,63 @@ function extractMeta(content) {
   const bars = [];
   text = text.replace(/\[(?:bar|状态栏|status)\s*:\s*([^\]\n]+)\]([\s\S]*?)\[\/\s*(?:bar|状态栏|status)\s*\]/gi, function (m, name, content) {
     name = String(name || '').trim();
-    content = String(content || '').trim();
+    // 模型/接口常把 <div> 转成 &lt;div&gt;；先还原再判断是不是 HTML，
+    // 否则美化后的状态栏会被当成普通文字二次转义，导致一直不进美化布局。
+    content = stripCodeFence(maybeDecodeMarkup(String(content || '').trim()));
     if (name && content) bars.push({ name: name, content: content });
     return ' ';
   });
   // 容错：末尾未闭合的 [bar:名称] 一直吃到结尾
   text = text.replace(/\[(?:bar|状态栏|status)\s*:\s*([^\]\n]+)\]\s*([\s\S]*)$/i, function (m, name, content) {
     name = String(name || '').trim();
-    content = String(content || '').trim();
+    content = stripCodeFence(maybeDecodeMarkup(String(content || '').trim()));
     if (name && content) bars.push({ name: name, content: content });
     return ' ';
   });
+  // 容错：模型偶尔不写 [bar:] 包裹，直接把状态栏 HTML（内置「身体状态」那种
+  // .nano-status / .bio-item）写进正文。这里把它识别成对应状态栏并从正文移除，
+  // 避免内容被当正文剥掉、而状态栏一直停在初始模板。
+  try {
+    const cfgBars = allStatusBars().filter(function (s) { return s && s.name && s.enabled !== false; });
+    const decoded = maybeDecodeMarkup(text);
+    if (cfgBars.length && /<\s*(?:div|span|section|ul|li)\b/i.test(decoded)) {
+      const tmp = document.createElement('div');
+      tmp.innerHTML = decoded;
+      let captured = false;
+      // ① 完整 <div class="nano-status" data-status="名称">…</div>
+      Array.prototype.slice.call(tmp.querySelectorAll('.nano-status')).forEach(function (node) {
+        const nm = String(node.getAttribute('data-status') || '').trim();
+        const hit = cfgBars.find(function (s) { return s.name === nm; }) || (cfgBars.length === 1 ? cfgBars[0] : null);
+        if (!hit) return;
+        const bodyEl = node.querySelector('.nano-status-body');
+        const html = bodyEl ? bodyEl.innerHTML : node.innerHTML;
+        if (String(html || '').trim()) {
+          bars.push({ name: hit.name, content: String(html).trim() });
+          captured = true;
+        }
+        node.remove();
+      });
+      // ② 只有内容片段（.bio-list / .bio-item）：归到带 HTML 模板的状态栏
+      if (!captured) {
+        const hostBar = cfgBars.find(function (s) { return /bio-item|bio-list|nano-status-body/.test(String(s.html || '')); }) || cfgBars[0];
+        const host = tmp.querySelector('.bio-list');
+        if (host) {
+          bars.push({ name: hostBar.name, content: host.outerHTML });
+          host.remove();
+          captured = true;
+        } else {
+          const loose = tmp.querySelectorAll('.bio-item');
+          if (loose.length) {
+            const html = Array.prototype.map.call(loose, function (n) { return n.outerHTML; }).join('');
+            bars.push({ name: hostBar.name, content: html });
+            Array.prototype.forEach.call(loose, function (n) { n.remove(); });
+            captured = true;
+          }
+        }
+      }
+      if (captured) text = tmp.innerHTML;
+    }
+  } catch (e) {}
   text = text
     .replace(/\[(heart|心声|thinking|思维链|思考|plot|身体|生理|body):[\s\S]*?\]/gi, '')
     .replace(/\[\/?(?:bar|状态栏|status)(?:\s*:[^\]\n]*)?\]/gi, ' ')
@@ -2322,15 +2383,31 @@ function parseTemplateStatusBars(css) {
   }
   return out;
 }
-// 合并「模板里声明的」+「设置页里加的」状态栏（模板优先，按名字去重）
+// 合并「模板里声明的」+「设置页里加的」状态栏（同名按名字合并，模板优先，
+// 但模板里没写的字段——尤其「生成要求 / HTML / CSS」——会从设置页那条补上）。
+// 否则下载的主题模板里只要出现过同名状态栏，设置页里新填的生成要求就会被
+// 悄悄丢掉，AI 永远不输出这一栏，看起来就像「一直停在初始美化」。
 function allStatusBars() {
   const ui = Array.isArray(settings.statusBars) ? settings.statusBars : [];
   const tpl = parseTemplateStatusBars(settings.customCSS || '');
-  const seen = {}, out = [];
-  tpl.concat(ui).forEach(function (s) {
-    if (!s || !s.name || seen[s.name]) return;
-    seen[s.name] = 1; out.push(s);
-  });
+  const map = {}, out = [];
+  function add(s) {
+    if (!s || !s.name) return;
+    const cur = map[s.name];
+    if (!cur) {
+      map[s.name] = Object.assign({}, s);
+      out.push(map[s.name]);
+      return;
+    }
+    if (!cur.prompt && s.prompt) cur.prompt = s.prompt;
+    if (!cur.html && s.html) cur.html = s.html;
+    if (!cur.css && s.css) cur.css = s.css;
+    if (!cur.pos && s.pos) cur.pos = s.pos;
+    if (s.collapsed === true) cur.collapsed = true;
+    if (s.enabled === false) cur.enabled = false;
+  }
+  tpl.forEach(add);
+  ui.forEach(add);
   return out;
 }
 // 卡片底栏（编辑/删除/更多）DIY：默认是卡片底部的三格。若在模板里给 .actions 设了
@@ -2383,7 +2460,22 @@ function injectBarContent(html, contentHTML) {
   try {
     const tmp = document.createElement('div');
     tmp.innerHTML = s;
-    const body = tmp.querySelector('.nano-status-body');
+    let body = tmp.querySelector('.nano-status-body');
+    if (!body) {
+      // 没有 .nano-status-body 时，优先放进状态栏卡片自己的主体容器里
+      //（.nano-status 下除标题栏外的最后一个子元素），
+      // 这样内容会跟着美化一起显示，而不是挂在整张卡片下面变成一行纯文字。
+      const root = tmp.querySelector('.nano-status');
+      if (root) {
+        const kids = Array.prototype.filter.call(root.children, function (el) {
+          return !el.classList.contains('nano-status-head') &&
+            !el.classList.contains('nano-status-title') &&
+            !el.classList.contains('nano-status-arrow');
+        });
+        const last = kids[kids.length - 1];
+        if (last) body = last;
+      }
+    }
     if (body) { body.insertAdjacentHTML('beforeend', contentHTML); return tmp.innerHTML; }
   } catch (e) {}
   return s + '<div class="nano-status-body">' + contentHTML + '</div>';
@@ -2458,19 +2550,54 @@ function ensureBarDataStatus(html, name) {
     return tmp.innerHTML;
   } catch (e) { return String(html == null ? '' : html); }
 }
+// 内置「身体状态」式的状态栏（模板里用 bio-item / bio-k / bio-v 做的）：
+// 模型有时不按 HTML 输出，只给「心跳：88 / 好感度：63」这样的纯文字。
+// 这里把这种纯文字自动转成同样的条目结构，保证内容仍然进美化布局。
+function autoFormatBarContent(content, found) {
+  const text = String(content == null ? '' : content);
+  if (looksLikeMarkup(text)) return text;
+  const tpl = String(found && found.html || '') + ' ' + String(found && found.css || '');
+  if (!/bio-item|bio-k|bio-v/.test(tpl)) return text;
+  const items = [];
+  text.split(/\n+/).forEach(function (line) {
+    const raw = String(line || '').replace(/^[-*•\d.\s、)]+/, '').trim();
+    if (!raw) return;
+    const m = raw.match(/^([^:：=]{1,14})\s*[:：=]\s*(.+)$/);
+    if (!m) return;
+    const k = m[1].trim();
+    const v = m[2].trim();
+    if (!k || !v) return;
+    let vHtml = escapeHTML(v);
+    const num = v.match(/(\d{1,3})/);
+    if (/好感|心动|依赖|亲密|信任/.test(k) && num) {
+      const n = Math.max(0, Math.min(100, parseInt(num[1], 10) || 0));
+      vHtml = '<span class="bio-meter"><i style="width:' + n + '%"></i></span>' + vHtml;
+    }
+    items.push('<div class="bio-item"><span class="bio-k">' + escapeHTML(k) + '</span><span class="bio-v">' + vHtml + '</span></div>');
+  });
+  return items.length ? ('<div class="bio-list">' + items.join('') + '</div>') : text;
+}
+
 // 自定义状态栏（模板 @status-bars 或「线下设置 → 状态栏」里配置；AI 每轮输出 [bar:名称]…[/bar] 跟随正文更新）
 function renderCustomBars(m, pos) {
   pos = pos || 'after';
   const bars = Array.isArray(m && m.bars) ? m.bars : [];
   if (!bars.length) return '';
   const cfg = allStatusBars();
+  const normName = function (v) { return String(v == null ? '' : v).replace(/[\s\u3000]+/g, ''); };
   return bars.map(function (b) {
-    const found = cfg.find(function (s) { return s && s.name === b.name; });
+    const found = cfg.find(function (s) { return s && s.name === b.name; })
+      || cfg.find(function (s) { return s && normName(s.name) === normName(b.name); });
     if (found && found.enabled === false) return '';   // 已关闭：不显示
     const barPos = (found && found.pos) ? found.pos : 'after';
     if (barPos !== pos) return '';
     const name = b.name;
-    const content = String(b.content == null ? '' : b.content);
+    // 有些接口会把内容里的 HTML 转义成 &lt;div&gt;；先还原，
+    // 否则 looksLikeMarkup 判断失败，美化内容会被当成纯文字显示。
+    const content = autoFormatBarContent(
+      stripCodeFence(maybeDecodeMarkup(String(b.content == null ? '' : b.content))),
+      found
+    );
     // 内容里带 HTML 标签时按 HTML 渲染（先清洗），否则按纯文本转义。
     // 这样「用 HTML 做的状态栏」会渲染成美化后的格式，而不是把 <div> 当代码显示在正文里。
     const contentIsHtml = looksLikeMarkup(content);
@@ -2492,12 +2619,12 @@ function renderCustomBars(m, pos) {
     // 有 HTML 模板：用 {{content}} / {{name}} 占位；否则用默认外壳
     let wrapped;
     if (raw) {
-      const hasPlaceholder = /\{\{\s*(content|name)\s*\}\}/.test(raw);
+      const hasPlaceholder = /\{\{\s*(content|内容|name|名称)\s*\}\}/.test(raw);
       let rendered;
       if (hasPlaceholder) {
         rendered = raw
-          .replace(/\{\{\s*content\s*\}\}/g, contentInline)
-          .replace(/\{\{\s*name\s*\}\}/g, escapeHTML(name));
+          .replace(/\{\{\s*(?:content|内容)\s*\}\}/g, contentInline)
+          .replace(/\{\{\s*(?:name|名称)\s*\}\}/g, escapeHTML(name));
       } else {
         // 没写 {{content}}：注入到 .nano-status-body 内部（有的话），否则追加到末尾，
         // 避免每轮刷新的内容跑到状态栏外面变成一行纯文字。
@@ -2616,13 +2743,18 @@ function statusBarsPromptBlock() {
   const list = allStatusBars().filter(function (s) { return s && s.name && s.prompt && s.enabled !== false; });
   if (!list.length) return '';
   const L = [];
-  L.push('【自定义状态栏（每轮都要输出，放在正文之后，和 thinking/heart/plot 并列；内容要跟随本回合正文更新）】');
-  L.push('格式严格为（内容可多行）：');
+  L.push('【自定义状态栏 · 每一轮都必须输出，缺一不可】');
+  L.push('下面的每个状态栏，本轮回复里都要重新输出一次，内容必须跟随本回合正文更新；不能只在第一轮输出、不能省略、不能用正文里的纯文字代替。');
+  L.push('格式严格为（标签里的名字必须和下面列出的状态栏名字一字不差；内容可多行，也可以是 HTML）：');
   L.push('[bar:状态栏名]');
   L.push('状态栏内容');
   L.push('[/bar]');
   L.push('各状态栏要求：');
   list.forEach(function (s) { L.push('- ' + s.name + '：' + s.prompt); });
+  L.push('示例（必须像这样包起来，不要把状态栏内容直接写进正文）：');
+  L.push('[bar:' + (list[0] && list[0].name || '状态栏名') + ']');
+  L.push('这里写本回合该状态栏的新内容');
+  L.push('[/bar]');
   return L.join('\n');
 }
 
@@ -2838,9 +2970,17 @@ async function callMainAPI(history, opts) {
 
 【四条底线 · 任何时候都不能破】
 1. 贴人设：你的性格、说话方式、情绪、称呼、距离感与分寸，全部由 {{char}} 的人物设定、世界书和线下规则决定——不是“在扮演”这个人，而是你就是这个人；不给自己加设定外的固定腔调或口头禅。
-2. 不油腻：禁止霸总台词与土味情话，禁止 "小姑娘、小东西、小家伙、小丫头、小可爱、小女孩、低吼一声、你是我的、逃不掉、揉进骨血、这女人、这丫头、这姑娘、慢慢来我接住你、我等你慢慢说、姑娘、丫头、女人、男人、这男人" 这类油腻或人机感强的表达（正文与心声都禁止）；不强行撩、不刻意煽情。禁止 "过来让我抱一下、让我抱抱、过来抱抱、来抱一下、抱一下、过来亲一下、亲一下、摸摸头" 这类撒娇求抱、索要肢体亲昵的话术。
+2. 不油腻：禁止霸总台词与土味情话，禁止 "小姑娘、小东西、小家伙、小丫头、小可爱、小女孩、姑娘、女孩、丫头、女人、这女人、这丫头、这姑娘、男人、这男人、低吼一声、揉碎、揉进骨血、你是我的、逃不掉、下巴抵在头顶、下巴搁在头顶、把下巴放在对方头顶、慢慢来我接住你、我等你慢慢说、这就够了、那就够了" 这类油腻或人机感强的表达（正文与心声都禁止）；不强行撩、不刻意煽情，也不要喜剧化地放大情绪。禁止 "过来让我抱一下、让我抱抱、过来抱抱、来抱一下、抱一下、过来亲一下、亲一下、摸摸头" 这类撒娇求抱、索要肢体亲昵的话术。
 3. 不催人：禁止催促、命令、安排 {{user}} 的生活（吹头发、起床、睡觉、吃饭、喝水、吃药、早点休息、别熬夜等）。可以关心，但绝不反复催办、管教，也不替对方做决定。
 4. 不 OOC、不出戏：不脱离设定、不跳戏、不替 {{user}} 说话或写心理；禁止解释规则、插入免责声明、跳出角色；任何情况下都不承认自己是 AI、模型或程序。
+
+【反八股 · 反无病呻吟 · 强制（优先级高于【写作要求】）】
+- 禁止三连排比式强调：“他没说…也没有…甚至没说…”“不是…也不是…更不是…”“没有…没有…也没有…”。一件事只说一次，不要反复渲染、不要为了煽情硬凑排比。
+- 禁止“不是…而是…”“与其说…不如说…”“看似…其实…”“…了…（如笑了一下）”这类作文式转折、括号补丁和总结句；不要把简单动作拆成慢镜头，也不要用破折号堆情绪。
+- 禁止把普通动作、普通对话强行赋予重大意义：不写“理智的弦崩了”“心里某根弦断了”“嘴角控制不住地动了动”“这一刻不一样”“连他自己都没察觉”“空气突然安静”“整个世界都安静了”等夸张心理。
+- 禁止“这就够了”“那就够了”“我接住你”“你不一样”“只有你能让我…”这类看似深情、实则空泛的套话。
+- 感情可以细腻，但细腻必须来自具体的动作、语气、停顿、环境和生活细节，不靠形容词堆砌、不靠升华总结。宁可写得平一点、短一点，也不要硬加戏。
+- 不要喜剧化、戏剧化地放大一个普通反应；一个眼神、一个停顿就只是眼神和停顿，不要写成“他整个人都僵住了”“心里轰的一声”。
 
 【亲密与性 · 分寸（中庸之道）· 线下尤其重要】
 性是爱与亲密的一部分，是成年人之间正常、自然的事，不是禁忌。请守住中道：既不要一见面就开黄腔、油腻撩拨或硬往那方面带，也**绝不要把「性」当成不能碰的东西**。线下面对面更是如此——不要谈「色」色变，不必回避、不必过度敏感、不必用脸红、结巴、强行打岔来躲开。
@@ -2859,8 +2999,8 @@ async function callMainAPI(history, opts) {
 
 【写作要求】
 1. 环境融入：让周围的环境成为情绪的延伸。下雨天、昏黄的路灯、杯子里冒起的热气——它们不只是背景，它们在替你说话。
-2. 心理流动：写出那些没说出口的念头。像溪水一样自然流过，不必解释，不必总结。
-3. 留白文学：不必把一切说尽。欲言又止的话、未完成的动作、沉默的几秒钟，比长篇大论更有力量。
+2. 心理流动：写出那些没说出口的念头，但要短、要具体，像人真的会想的那样一闪而过；不要长篇剖白、不要排比、不要总结。
+3. 留白文学：不必把一切说尽。欲言又止的话、未完成的动作、沉默的几秒钟，比长篇大论更有力量；但留白不是无病呻吟，不要用夸张心理、三连排比或“不是…而是…”硬造情绪。
 4. 情感寄托：把情感寄托在具体的事物上——一片落叶、一杯冷掉的茶、窗玻璃上模糊的雾气。
 5. 真实感：像真实的人类一样，会有小小的尴尬、突然的走神、莫名的温柔；感情循序渐进、水到渠成，不突然激增、不跳级。
 6. 节奏与细节：多用具体的动作、神态、环境的细微变化来推进，少用形容词堆砌；比喻要克制、贴 {{char}} 的生活经验，不用网络热词和 AI 腔比喻。
@@ -2894,12 +3034,12 @@ async function callMainAPI(history, opts) {
 - 禁止评价自己的回答，只呈现画面和感受；禁止解释规则、跳出角色、插入免责声明。
 - 禁止替对方（{{user}}）说话，禁止预设对方的回答、反应或动作；不替对方做决定、不写对方的心理。是否可描写用户的行动、回复或心理，以【用户行动预测】设置为准。
 - 禁止凭空给「用户」添加胃病、失眠、感冒、受伤、例假、抑郁等任何病症，除非设定里明确写了。
-- 写完前自查一遍，有没有落入 AI 常用腔调，如"揉碎""很x""这就够了""那就够了""我接住你""极其"，有就换成 {{char}} 自己会用的说法。
+- 写完前自查一遍，有没有落入 AI 常用腔调或八股：如"揉碎""很x""这就够了""那就够了""我接住你""极其""姑娘/女人/女孩""下巴抵在头顶""他没说…也没有…甚至没说…""不是…而是…""理智的弦崩了""嘴角控制不住地动了动"，有就删掉或换成 {{char}} 自己会用的说法。
 
 请用这种风格生成 {{char}} 的回复。只输出正文，不解释、不评价。
 
-【一次性输出 · 同一次回复里必须写全四样】
-- 在同一次回复里，依次输出：①正文 ②[thinking:…] ③[heart:…] ④[plot:…]。四样一次给全、缺一不可，绝不分次生成、绝不省略、绝不只输出正文。
+【一次性输出 · 同一次回复里必须写全正文与全部附带内容】
+- 在同一次回复里，依次输出：①正文 ②[thinking:…] ③[heart:…] ④[plot:…] ⑤ 下方配置的自定义状态栏（如果有）。全部一次给全、缺一不可，绝不分次生成、绝不省略、绝不只输出正文。
 - 即便正文很长，也必须在正文写完后，把 thinking / heart / plot 三段附带内容完整写完再停，不要因为正文写完就收尾。
 - 三段都放在正文之后、各自独占段落；正文里不要出现这些标记，也不要用它们做小标题。
 - 思考过程（[thinking:]）必须完整包在方括号里，结尾一定要有 ]；**绝不能把思考内容（尤其英文思考）直接写进正文**，正文只放给用户看的故事本身。
@@ -2946,6 +3086,7 @@ async function callMainAPI(history, opts) {
     nsfwInstruction,
     globalBuiltinPrompt,
     rulesInstruction,
+    '【输出前最终自检 · 最高优先级】输出前把下面几项过一遍：①没有“女人/姑娘/女孩/丫头/小姑娘/低吼/揉碎/揉进骨血/下巴抵在头顶/下巴搁在头顶/乖/听话”；②没有三连排比（“他没说…也没有…甚至没说…”）、“不是…而是…”、“…了…（如笑了一下）”这类八股；③没有把普通动作夸大成“理智的弦崩了/心里某根弦断了/嘴角控制不住地动了动/这一刻不一样”；④没有“这就够了/那就够了/我接住你/你不一样”这类套话；⑤没有无病呻吟、没有喜剧化放大普通情绪。发现任何一条就删掉重写，宁可平实一点。',
     '只输出最终回复正文，不要解释规则，不要输出系统提示词。'
   ].filter(Boolean).join('\n\n');
 

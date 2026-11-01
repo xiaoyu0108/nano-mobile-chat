@@ -8,7 +8,7 @@
     // 全站唯一构建号：下面的自愈逻辑、iframe 的 nb= 参数都用它。
     // 注意：不要再另写第二个版本号，否则两个版本号会互相判定“版本变了”，
     // 造成每次打开都清缓存 + 反复 reload。
-    window.__NANO_BUILD__ = 'nano-2026-10-29-6';
+    window.__NANO_BUILD__ = 'nano-2026-11-07-1';
     // 版本升级时强制清一次缓存并重载：避免手机/PWA 一直跑旧 JS（屏幕共享/思维链等问题）
     (function () {
         try {
@@ -50,6 +50,16 @@
     <title>Nano</title>
     <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+    <link rel="preconnect" href="https://nanopush.nano315.online" crossorigin>
+    <link rel="preconnect" href="https://music.nano315.online" crossorigin>
+    <link rel="dns-prefetch" href="https://nanopush.nano315.online">
+    <link rel="dns-prefetch" href="https://music.nano315.online">
+    <!-- 底部脚本很多，提前并行下载，避免解析到底部才开始请求 -->
+    <link rel="preload" as="script" href="js/nano-push.js?v=20261029j">
+    <link rel="preload" as="script" href="js/keep-alive.js?v=20261023a">
+    <link rel="preload" as="script" href="js/char-takeover.js?v=20261107a">
+    <link rel="preload" as="script" href="js/online-catchup.js?v=20261027a">
+    <link rel="preload" as="script" href="js/auto-push-bridge.js?v=20261028c">
     <!-- 聊天/通话/设置页会同步加载 localforage；在这里提前拉，避免它们卡在 CDN 往返上 -->
     <link rel="preload" as="script" href="js/localforage.min.js">
     <link rel="dns-prefetch" href="https://unpkg.com">
@@ -983,7 +993,7 @@
     </style>
 
 
-    <script src="js/appearance.js?v=20261026d"></script>
+    <script defer src="js/appearance.js?v=20261026d"></script>
 </head>
 <body class="nano-index">
 <!-- 旧的“每次访问清缓存 + reload”已移除：它和 head 里的版本自愈叠加，
@@ -1804,9 +1814,9 @@ setTimeout(function () {
             'music.html', 'voice-call.html', 'video-call.html', 'storage.html', 'backup.html', 'cloud-backup.html', 'char-relations.html', 'char-chats.html', 'other.html',
             'discover.html', 'api.html', 'moments.html', 'ins.html', 'inner-setting.html', 'beautify.html',
             'books.html', 'couple-spaces.html', 'halo.html', 'offline.html', 'offline-setting.html',
-            'heart-setting.html', 'market.html', 'mcp.html', 'settings.html', 'settings-logs.html', 'gallery.html', 'settings-desktop.html', 'settings-notifications.html', 'settings-prompts.html', 'settings-other.html', 'settings-account.html', 'schedule.html',
+            'heart-setting.html', 'market.html', 'mcp.html', 'settings.html', 'settings-logs.html', 'gallery.html', 'settings-desktop.html', 'settings-notifications.html', 'settings-prompts.html', 'settings-other.html', 'settings-account.html', 'schedule.html', 'travel.html', 'travel-chat.html',
             'phone.html', 'assistant.html', 'nano-setting.html', 'family-card.html', 'wallet.html', 'appstore.html',
-            'cycle.html', 'fanfic.html', 'fanfic-create.html', 'fanfic-read.html', 'imessage.html', 'memory palace.html', 'app-host.html', 'meet.html', 'mall.html', 'qa.html', 'pomodoro.html', 'nano.html', 'nano-image.html', 'nano-image-settings.html', 'nano-files.html', 'ios-setting.html'];
+            'cycle.html', 'fanfic.html', 'fanfic-create.html', 'fanfic-read.html', 'imessage.html', 'memory palace.html', 'app-host.html', 'meet.html', 'mall.html', 'qa.html', 'pomodoro.html', 'nano.html', 'nano-image.html', 'nano-image-settings.html', 'nano-files.html', 'nano-card-template.html', 'ios-setting.html'];
         // 其余页面（发现/更多/API/moments/ins/…）兜底：内容整体让到灵动岛下面
         function applySafeFallback(f) {
             try {
@@ -1972,7 +1982,7 @@ setTimeout(function () {
                 showOverlayFrame();
                 // 同一个页面且已加载过 → 直接复用（切换更快）；正在后台生成 → 也必须复用（否则中断生成）
                 reuseOrLoadOverlayFrame(url);
-                const ownNavPages = ['chat.html', 'api.html', 'settings.html', 'settings-logs.html', 'gallery.html', 'settings-desktop.html', 'settings-notifications.html', 'settings-prompts.html', 'settings-other.html', 'settings-account.html', 'beautify.html', 'schedule.html', 'worldbook.html', 'emoji.html', 'favorite.html', 'offline.html', 'offline-setting.html', 'moments.html', 'groups.html', 'group-setting.html', 'other.html', 'storage.html', 'backup.html', 'cloud-backup.html', 'char-relations.html', 'char-chats.html', 'phone.html', 'ins.html', 'couple-spaces.html', 'halo.html', 'books.html', 'mask.html', 'character.html', 'inner-setting.html', 'nano-setting.html', 'nano-files.html', 'ios-setting.html', 'assistant.html', 'family-card.html', 'wallet.html', 'appstore.html', 'cycle.html', 'fanfic.html', 'fanfic-create.html', 'fanfic-read.html', 'market.html', 'mcp.html', 'heart-setting.html', 'imessage.html', 'memory palace.html', 'app-host.html', 'meet.html', 'mall.html', 'qa.html', 'pomodoro.html', 'nano.html', 'nano-image.html', 'nano-image-settings.html'];
+                const ownNavPages = ['chat.html', 'api.html', 'settings.html', 'settings-logs.html', 'gallery.html', 'settings-desktop.html', 'settings-notifications.html', 'settings-prompts.html', 'settings-other.html', 'settings-account.html', 'beautify.html', 'schedule.html', 'travel.html', 'travel-chat.html', 'worldbook.html', 'emoji.html', 'favorite.html', 'offline.html', 'offline-setting.html', 'moments.html', 'groups.html', 'group-setting.html', 'other.html', 'storage.html', 'backup.html', 'cloud-backup.html', 'char-relations.html', 'char-chats.html', 'phone.html', 'ins.html', 'couple-spaces.html', 'halo.html', 'books.html', 'mask.html', 'character.html', 'inner-setting.html', 'nano-setting.html', 'nano-files.html', 'ios-setting.html', 'assistant.html', 'family-card.html', 'wallet.html', 'appstore.html', 'cycle.html', 'fanfic.html', 'fanfic-create.html', 'fanfic-read.html', 'market.html', 'mcp.html', 'heart-setting.html', 'imessage.html', 'memory palace.html', 'app-host.html', 'meet.html', 'mall.html', 'qa.html', 'pomodoro.html', 'nano.html', 'nano-image.html', 'nano-image-settings.html', 'nano-card-template.html'];
                 const hasOwnNav = ownNavPages.indexOf(pageName) !== -1;
                 const noOuterHeader = hasOwnNav || pageName === 'mall.html' || (showBack === false && !(title || ''));
                 if (noOuterHeader) {
@@ -3447,7 +3457,7 @@ setTimeout(function () {
             chat: 'chat.html', api: 'api.html', couple: 'couple-spaces.html', halo: 'halo.html',
             instagram: 'ins.html', together: 'books.html', music: 'music.html', memory: 'memory palace.html',
             imessage: 'imessage.html', peek: 'ios-setting.html', market: 'market.html', shop: 'mall.html',
-            schedule: 'schedule.html', mcp: 'mcp.html', tide: 'cycle.html', fanfic: 'fanfic.html',
+            schedule: 'schedule.html', travel: 'travel.html', mcp: 'mcp.html', tide: 'cycle.html', fanfic: 'fanfic.html',
             store: 'appstore.html', book: 'worldbook.html', beauty: 'beautify.html', phone: 'phone.html',
             settings: 'settings.html', friend: 'character.html', album: 'moments.html',
             editprofile: 'mask.html', send: 'chat.html', qa: 'qa.html', pomodoro: 'pomodoro.html', nano: 'nano.html',
@@ -3502,7 +3512,7 @@ setTimeout(function () {
                 return;
             }
 
-            if (data.type === 'nanoScheduleReport' || data.type === 'nanoScheduleUpdated' || data.type === 'studyCardAdded' || data.type === 'nanoAppInstalled') {
+            if (data.type === 'nanoScheduleReport' || data.type === 'nanoScheduleUpdated' || data.type === 'studyCardAdded' || data.type === 'nanoAppInstalled' || data.type === 'nanoTravelCardAdded' || data.type === 'nanoTravelUpdated' || data.type === 'nanoTravelReportPending') {
                 try {
                     const frames = document.querySelectorAll('iframe');
                     for (let i = 0; i < frames.length; i++) {
@@ -3925,6 +3935,34 @@ setTimeout(function () {
                 return;
             }
 
+            // 一起去 → 直接退出：回到聊天 App 的好友区域，但保留继续旅行的入口
+            if (data.type === 'nanoTravelExitToChat') {
+                try { sessionStorage.setItem('nano_chat_active_page', JSON.stringify({ page: 'chat', tab: 'friends', at: Date.now() })); } catch (e) {}
+                try { isChatInnerActive = false; } catch (e) {}
+                try { currentOverlaySource = 'main'; } catch (e) {}
+                try { openFullscreen('chat.html', '', false, 'main'); } catch (e) {}
+                var goTravelChatFriends = function () {
+                    try {
+                        var cands = [overlayFrame, overlayFrameA, overlayFrameB];
+                        try {
+                            var c = document.getElementById('iframeChat');
+                            var f = c ? c.querySelector('iframe') : null;
+                            if (f) cands.push(f);
+                        } catch (e) {}
+                        for (var i = 0; i < cands.length; i++) {
+                            var fr = cands[i];
+                            if (fr && frameBase(fr) === 'chat.html' && fr.contentWindow) {
+                                fr.contentWindow.postMessage({ type: 'nanoChatGoHome', tab: 'friends' }, '*');
+                                break;
+                            }
+                        }
+                    } catch (e) {}
+                };
+                setTimeout(goTravelChatFriends, 120);
+                setTimeout(goTravelChatFriends, 600);
+                return;
+            }
+
             // 线下 → 返回线上：提示「已结束线下」并把线下最近几轮带回线上作衔接
             if (data.type === 'nanoOfflineReturnOnline') {
                 const chatId = data.chatId || '';
@@ -4029,6 +4067,32 @@ setTimeout(function () {
                 try {
                     sessionStorage.setItem('last_chat_info', JSON.stringify({ chatId, chatName, chatAvatar }));
                 } catch(e) {}
+                // 上次从「一起去」直接退出：再点开这个角色，继续那趟旅行
+                let activeTravel = null;
+                try { activeTravel = JSON.parse(localStorage.getItem('nano_travel_active_' + chatId) || 'null'); } catch(e) { activeTravel = null; }
+                if (activeTravel && activeTravel.savedAt && Date.now() - Number(activeTravel.savedAt) > 7 * 24 * 3600 * 1000) {
+                    try { localStorage.removeItem('nano_travel_active_' + chatId); } catch(e) {}
+                    activeTravel = null;
+                }
+                if (activeTravel && String(activeTravel.charId || chatId) === String(chatId)) {
+                    const av = activeTravel.invite || {};
+                    const params = new URLSearchParams();
+                    params.set('char', chatId);
+                    params.set('chatId', chatId);
+                    params.set('name', chatName);
+                    params.set('userId', activeTravel.userId || '');
+                    params.set('resume', '1');
+                    params.set('tripId', activeTravel.tripId || '');
+                    params.set('dest', activeTravel.dest || '');
+                    params.set('date', av.date || '');
+                    params.set('time', av.time || '');
+                    params.set('days', av.days || '1');
+                    params.set('note', av.note || '');
+                    isChatInnerActive = false;
+                    currentOverlaySource = 'main';
+                    openFullscreen('travel-chat.html?' + params.toString(), '一起去', false, 'main');
+                    return;
+                }
                 // 上次从线下「直接退出」的角色：再点开直接进线下，不进线上
                 let chatMode = 'online';
                 try { chatMode = localStorage.getItem('nano_chat_mode_' + (chatId || 'default')) || 'online'; } catch (e) {}
@@ -4367,7 +4431,8 @@ setTimeout(function () {
                 'moments.html', 'halo.html', 'books.html', 'character.html', 'mask.html', 'favorite.html',
                 'emoji.html', 'worldbook.html', 'memory.html', 'phone.html', 'offline.html',
                 'offline-setting.html', 'couple-spaces.html', 'voice-call.html', 'video-call.html', 'api.html', 'cycle.html', 'fanfic.html', 'fanfic-create.html', 'fanfic-read.html',
-                'discover.html', 'qa.html', 'pomodoro.html', 'nano.html', 'nano-image.html'];
+                'discover.html', 'qa.html', 'pomodoro.html', 'nano.html', 'nano-image.html',
+                'travel.html', 'travel-chat.html', 'nano-card-template.html'];
             var i = 0;
             function next() {
                 if (i >= pages.length) return;
@@ -4430,12 +4495,12 @@ setTimeout(function () {
 <script src="js/mem-link.js?v=20261006a"></script>
 <script src="js/aux-memory.js?v=20261029d"></script>
 <script src="js/user-scope.js?v=20261020j"></script>
-<script src="js/nano-notify.js?v=20261029h"></script>
+<script src="js/nano-notify.js?v=20261102a"></script>
 <script src="js/nano-push.js?v=20261029j"></script>
 <script src="swipe-back.js"></script>
 <script src="js/keep-alive.js?v=20261023a"></script>
-<script src="js/char-takeover.js?v=20261026e"></script>
-<script src="js/nano-prompts.js?v=20261029f"></script>
+<script src="js/char-takeover.js?v=20261107a"></script>
+<script src="js/nano-prompts.js?v=20261102a"></script>
 <script src="js/screen-share.js?v=20261027a"></script>
 <script src="js/ios-bridge.js?v=20261027k"></script>
 <script src="js/auto-push-bridge.js?v=20261028c"></script>

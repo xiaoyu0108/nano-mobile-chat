@@ -274,13 +274,35 @@
     } catch (e) {}
     function isForeground() {
         try {
-            if (document.hidden) return false;
-            if (!_pageFocused) return false;
+            // 子页面（聊天/朋友圈等 iframe）不能只看自己的焦点：它们经常被
+            // display:none 藏在后台，自己从没拿过焦点，但用户其实正在用 Nano。
+            // 这种 iframe 的 _pageFocused 永远是 false，之前就会把前台通知全部
+            // 误判成「后台」，于是只弹系统通知。这里以顶层窗口的真实状态为准。
             if (window.top && window.top !== window) {
                 try {
-                    if (window.top.document && window.top.document.hidden) return false;
+                    var tw = window.top;
+                    if (tw.document && tw.document.hidden) return false;
+                    if (tw.__nanoPageFocused === true) return true;
+                    if (tw.__nanoPageFocused === false) {
+                        // 焦点进入 iframe 时某些 WebView 会误触发顶层 blur；
+                        // 只要窗口本身仍有焦点，就仍然算前台，走内置通知栏。
+                        try {
+                            if (tw.document && typeof tw.document.hasFocus === 'function' && tw.document.hasFocus()) return true;
+                        } catch (e) {}
+                        return false;
+                    }
+                    if (tw.document && typeof tw.document.hasFocus === 'function') {
+                        return !!tw.document.hasFocus();
+                    }
                 } catch (e) {}
-                if (window.top.__nanoPageFocused === false) return false;
+                // 跨域 iframe 读不到顶层状态时，退回自己的可见性
+                return !document.hidden;
+            }
+            if (document.hidden) return false;
+            if (!_pageFocused) {
+                // 极少数 WebView 会漏掉 focus 事件；以实际焦点为准补一次
+                try { if (document.hasFocus()) { _pageFocused = true; return true; } } catch (e) {}
+                return false;
             }
             return true;
         } catch (e) { return !document.hidden; }

@@ -47,6 +47,12 @@
             color: '#0A84FF'
         },
         {
+            id: 'travel',
+            label: '一起去',
+            icon: '<path d="M12 21s7-5.5 7-11a7 7 0 1 0-14 0c0 5.5 7 11 7 11z"/><circle cx="12" cy="10" r="2.6"/><path d="M8.5 3.8C9.4 2.7 10.6 2 12 2s2.6.7 3.5 1.8"/>',
+            color: '#FF9F0A'
+        },
+        {
             id: 'memory',
             label: '记忆',
             fa: 'fa-brain',
@@ -68,7 +74,7 @@
         },
         {
             id: 'takeout',
-            label: '外卖',
+            label: '外卖 / 跑腿',
             icon: '<path d="M3 11h18"/><path d="M12 3a8 8 0 0 0-8 8h16a8 8 0 0 0-8-8z"/><path d="M4 15h16l-1 5H5z"/>',
             color: '#FF8A00'
         },
@@ -203,6 +209,7 @@
                 { id: 'reroll', label: '重roll', icon: '<path d="M21 12a9 9 0 1 1-9-9m0 0v6m0-6h-6"/>', color: '#007AFF' },
                 { id: 'image', label: '图片', icon: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5-5 5-3-3-5 5"/>', color: '#FF9500' },
                 { id: 'file', label: '文件', icon: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6"/><path d="M9 17h6"/>', color: '#FF4D94' },
+                { id: 'cardtemplate', label: '制卡模板', icon: '<path d="M3 9V7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2a3 3 0 0 0 0 6v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2a3 3 0 0 0 0-6z"/><path d="M13 5v2M13 11v2M13 17v2"/>', color: '#58585D' },
                 { id: 'clearlive', label: '清空线上', icon: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8"/><path d="M12 16v4"/>', color: '#007AFF' },
                 { id: 'clearoffline', label: '清空线下', icon: '<path d="M12 21s7-5.5 7-11a7 7 0 1 0-14 0c0 5.5 7 11 7 11z"/><circle cx="12" cy="10" r="2.6"/>', color: '#34C759' },
                 { id: 'clearheart', label: '清空心声', icon: '<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21.2l7.8-7.8 1-1a5.5 5.5 0 0 0 0-7.8z"/>', color: '#FF2D55' }
@@ -376,6 +383,18 @@
             case 'file':
                 pickFileForNano();
                 break;
+            case 'cardtemplate':
+                if (window.parent !== window) {
+                    window.parent.postMessage({
+                        type: 'openFullscreen',
+                        url: 'nano-card-template.html',
+                        title: '制卡模板',
+                        source: 'chat_inner'
+                    }, '*');
+                } else {
+                    window.location.href = 'nano-card-template.html';
+                }
+                break;
             case 'clearlive':
                 clearLiveBeautify();
                 break;
@@ -417,6 +436,13 @@
                 (function () { var th = document.getElementById('imageThumbs'); if (th) th.innerHTML = ''; })();
                 (function () { var t = document.getElementById('imgTabText'); if (t) t.click(); })();
                 document.getElementById('imagePopup').classList.add('active');
+                break;
+            case 'travel':
+                if (window.NanoTravelBridge && window.NanoTravelBridge.openInviteComposer) {
+                    window.NanoTravelBridge.openInviteComposer();
+                } else if (window.__chat && window.__chat.showAlert) {
+                    window.__chat.showAlert('旅途', '旅途模块还没加载好，请刷新后重试。');
+                }
                 break;
             case 'voicecall':
             case 'videocall': {
@@ -500,6 +526,7 @@
                 }
                 break;
             case 'takeout':
+                if (window.__takeoutReset) { try { window.__takeoutReset(); } catch (e) {} }
                 document.getElementById('takeoutFood').value = '';
                 document.getElementById('takeoutShop').value = '';
                 document.getElementById('takeoutPrice').value = '';

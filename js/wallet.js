@@ -630,14 +630,12 @@
     function syncRechargeBtn() {
         var rb = document.getElementById('rechargeBtn');
         if (rb) rb.style.display = ((_cards[_activeCard] || {}).kind === 'family') ? 'none' : '';
-        var eb = document.getElementById('editCardBtn');
-        if (eb) eb.style.display = ((_cards[_activeCard] || {}).kind === 'family') ? 'none' : '';
-        var ab = document.getElementById('addCardBtn');
-        if (ab) ab.style.display = '';
+        var mb = document.getElementById('manageCardsBtn');
+        if (mb) mb.style.display = '';
     }
 
-    // ===== 更换银行卡：选择归属银行（决定颜色）+ 卡号 =====
-    function openBankEditor(isNew) {
+    // ===== 添加银行卡：选择归属银行（决定颜色）+ 卡号 =====
+    function openBankEditor(isNew, onSaved) {
         var own = isNew ? { id: '', bankId: 'gray', bankName: '', cardNumber: '', balance: 0 } : _cards[_activeCard];
         if (!own || own.kind === 'family') own = _cards.filter(function (c) { return c.kind === 'own'; })[0];
         if (!own) return;
@@ -663,7 +661,7 @@
             '</div>';
         document.body.appendChild(ov);
         var titleEl = ov.querySelector('b');
-        if (titleEl) titleEl.textContent = isNew ? '添加银行卡' : '更换银行卡';
+        if (titleEl) titleEl.textContent = isNew ? '添加银行卡' : '编辑银行卡';
         var sel = cur;
         Array.prototype.forEach.call(ov.querySelectorAll('.bk-opt'), function (btn) {
             btn.addEventListener('click', function () {
@@ -682,12 +680,14 @@
             if (window.NanoPay && isNew) {
                 NanoPay.addCard({ bankId: sel, bankName: bankName, cardNumber: num, balance: 0 }).then(function () {
                     close(); renderWallet(); showToast('银行卡已添加');
+                    try { if (onSaved) onSaved(); } catch (e) {}
                 }).catch(function (e) { showToast((e && e.message) || '添加失败'); });
                 return;
             }
             if (window.NanoPay && own.id) {
                 NanoPay.updateCard(own.id, { bankId: sel, bankName: bankName, cardNumber: num }).then(function () {
                     close(); renderWallet(); showToast('银行卡已更新');
+                    try { if (onSaved) onSaved(); } catch (e) {}
                 }).catch(function (e) { showToast((e && e.message) || '更新失败'); });
                 return;
             }
@@ -699,10 +699,85 @@
             }).then(function () { close(); renderWallet(); showToast('银行卡已更新'); });
         });
     }
-    var editCardBtn = document.getElementById('editCardBtn');
-    if (editCardBtn) editCardBtn.addEventListener('click', function (e) { e.stopPropagation(); openBankEditor(false); });
-    var addCardBtn = document.getElementById('addCardBtn');
-    if (addCardBtn) addCardBtn.addEventListener('click', function (e) { e.stopPropagation(); openBankEditor(true); });
+    // ===== 管理银行卡：半屏弹窗，可添加 / 删除 =====
+    function maskCardNumber(num) {
+        var raw = String(num || '').replace(/\s/g, '');
+        return raw.length >= 4 ? ('**** **** **** ' + raw.slice(-4)) : '**** **** **** ****';
+    }
+    function openManageCards() {
+        var old = document.getElementById('bankManageSheet');
+        if (old) old.remove();
+        var ov = document.createElement('div');
+        ov.id = 'bankManageSheet';
+        ov.className = 'bank-manage-overlay';
+        ov.innerHTML =
+            '<div class="bank-manage-sheet" role="dialog" aria-label="管理银行卡">' +
+                '<div class="bank-manage-head">' +
+                    '<div><div class="bank-manage-title">管理银行卡</div><div class="bank-manage-sub">可以添加新卡，也可以删除不再使用的卡</div></div>' +
+                    '<button class="bank-manage-close" type="button" aria-label="关闭">&times;</button>' +
+                '</div>' +
+                '<div class="bank-manage-list" id="bankManageList"></div>' +
+                '<button class="bank-manage-add" id="bankManageAdd" type="button">＋ 添加新银行卡</button>' +
+            '</div>';
+        document.body.appendChild(ov);
+        var listEl = ov.querySelector('#bankManageList');
+
+        function close() { try { ov.remove(); } catch (e) {} }
+        function renderList() {
+            var p = (window.NanoPay && NanoPay.getCards)
+                ? NanoPay.getCards()
+                : getWalletData().then(function (d) { return { cards: d.cards || [], activeCardId: d.activeCardId }; });
+            Promise.resolve(p).then(function (info) {
+                var cards = (info && info.cards) || [];
+                if (!cards.length) {
+                    listEl.innerHTML = '<div class="bank-manage-empty">还没有银行卡，点下面添加一张。</div>';
+                    return;
+                }
+                listEl.innerHTML = cards.map(function (c) {
+                    var bank = (window.NanoBank && NanoBank.get(c.bankId)) || { name: c.bankName || '我的银行卡', bg: 'linear-gradient(135deg,#3d434a,#22262b)' };
+                    var active = String(c.id) === String(info.activeCardId);
+                    return '<div class="bank-manage-item' + (active ? ' active' : '') + '">' +
+                        '<span class="bank-manage-thumb" style="background:' + bank.bg + '"></span>' +
+                        '<span class="bank-manage-info">' +
+                            '<b>' + escHtml(bank.name || c.bankName || '我的银行卡') + (active ? '<em>当前</em>' : '') + '</b>' +
+                            '<small>' + maskCardNumber(c.cardNumber) + ' · ' + formatMoney(c.balance) + '</small>' +
+                        '</span>' +
+                        '<button class="bank-manage-del" type="button" data-del="' + escAttr(c.id) + '">删除</button>' +
+                    '</div>';
+                }).join('');
+                Array.prototype.forEach.call(listEl.querySelectorAll('[data-del]'), function (btn) {
+                    btn.addEventListener('click', function () {
+                        var id = btn.getAttribute('data-del');
+                        var target = cards.filter(function (c) { return String(c.id) === String(id); })[0];
+                        var tip = '删除这张银行卡？' + (target ? ('卡内余额 ' + formatMoney(target.balance) + ' 会一起删除。') : '');
+                        if (!window.confirm(tip)) return;
+                        btn.disabled = true;
+                        Promise.resolve(window.NanoPay ? NanoPay.removeCard(id) : Promise.reject(new Error('支付模块未加载')))
+                            .then(function () {
+                                showToast('银行卡已删除');
+                                return renderWallet();
+                            })
+                            .then(function () { renderList(); })
+                            .catch(function (e) {
+                                btn.disabled = false;
+                                showToast((e && e.message) || '删除失败');
+                            });
+                    });
+                });
+            }).catch(function () {
+                listEl.innerHTML = '<div class="bank-manage-empty">读取银行卡失败，请重试。</div>';
+            });
+        }
+
+        ov.querySelector('.bank-manage-close').addEventListener('click', close);
+        ov.addEventListener('click', function (e) { if (e.target === ov) close(); });
+        ov.querySelector('#bankManageAdd').addEventListener('click', function () {
+            openBankEditor(true, renderList);
+        });
+        renderList();
+    }
+    var manageCardsBtn = document.getElementById('manageCardsBtn');
+    if (manageCardsBtn) manageCardsBtn.addEventListener('click', function (e) { e.stopPropagation(); openManageCards(); });
 
     // 上下滑动切换银行卡
     var _swipeStartY = 0;

@@ -2069,6 +2069,9 @@ function renderStatusBars() {
     html.style.fontFamily = 'ui-monospace,Menlo,monospace';
     html.placeholder = 'HTML 结构（{{content}} = 每轮内容位置，{{name}} = 名字；不写 {{content}} 会自动放进 .nano-status-body）。';
     html.value = bar.html || '';
+    const htmlHint = document.createElement('div');
+    htmlHint.style.cssText = 'font-size:11px;color:var(--sub);line-height:1.5;margin-top:-2px';
+    htmlHint.textContent = '提示：把示例内容换成 {{content}}，每轮生成的内容就会替换到那里；没有占位符时，内容会自动追加到状态栏主体里。生成要求里要写「每轮更新什么」。';
     const css = document.createElement('textarea');
     css.className = 'textarea';
     css.style.minHeight = '96px';
@@ -2079,7 +2082,7 @@ function renderStatusBars() {
     const prompt = document.createElement('textarea');
     prompt.className = 'textarea';
     prompt.style.minHeight = '52px';
-    prompt.placeholder = '生成要求：写什么、怎么更新';
+    prompt.placeholder = '生成要求：写什么、每轮怎么更新（例如：每轮写角色此刻的着装，随剧情变化）';
     prompt.value = bar.prompt || '';
     const posRow = document.createElement('div');
     posRow.style.cssText = 'display:flex;align-items:center;gap:8px';
@@ -2092,7 +2095,7 @@ function renderStatusBars() {
       posSel.appendChild(opt);
     });
     posSel.value = bar.pos || 'after';
-    posSel.onchange = function () { bar.pos = posSel.value; saveSettings(); };
+    posSel.onchange = function () { bar.pos = posSel.value; saveSettings(); notifyOfflineChanged(); };
     posRow.appendChild(miniLabel('位置')); posRow.appendChild(posSel);
     const row = document.createElement('div');
     row.style.cssText = 'display:flex;align-items:center;gap:14px;flex-wrap:wrap';
@@ -2103,12 +2106,12 @@ function renderStatusBars() {
     del.type = 'button';
     del.textContent = '删除';
     del.style.alignSelf = 'flex-end';
-    del.onclick = function () { list.splice(idx, 1); saveSettings(); renderStatusBars(); updateSummary(); };
-    name.addEventListener('input', function () { bar.name = name.value.trim(); saveSettings(); updateSummary(); title.textContent = bar.name || ('状态栏 ' + (idx + 1)); });
-    html.addEventListener('input', function () { bar.html = html.value; saveSettings(); });
-    css.addEventListener('input', function () { bar.css = css.value; saveSettings(); });
-    prompt.addEventListener('input', function () { bar.prompt = prompt.value.trim(); saveSettings(); });
-    body.appendChild(name); body.appendChild(html); body.appendChild(css); body.appendChild(prompt); body.appendChild(posRow); body.appendChild(row); body.appendChild(del);
+    del.onclick = function () { list.splice(idx, 1); saveSettings(); notifyOfflineChanged(); renderStatusBars(); updateSummary(); };
+    name.addEventListener('input', function () { bar.name = name.value.trim(); saveSettings(); updateSummary(); notifyOfflineChanged(); title.textContent = bar.name || ('状态栏 ' + (idx + 1)); });
+    html.addEventListener('input', function () { bar.html = html.value; saveSettings(); notifyOfflineChanged(); });
+    css.addEventListener('input', function () { bar.css = css.value; saveSettings(); notifyOfflineChanged(); });
+    prompt.addEventListener('input', function () { bar.prompt = prompt.value.trim(); saveSettings(); notifyOfflineChanged(); });
+    body.appendChild(name); body.appendChild(html); body.appendChild(htmlHint); body.appendChild(css); body.appendChild(prompt); body.appendChild(posRow); body.appendChild(row); body.appendChild(del);
     item.appendChild(head); item.appendChild(body);
     wrap.appendChild(item);
   });
@@ -2123,6 +2126,7 @@ document.getElementById('statusBarAddBtn').onclick = function() {
   if (!Array.isArray(settings.statusBars)) settings.statusBars = [];
   settings.statusBars.push({ id: generateId(), name: '', html: '', css: '', prompt: '', collapsed: false, pos: 'after', enabled: true });
   saveSettings();
+  notifyOfflineChanged();
   renderStatusBars();
   updateSummary();
   const wrap = document.getElementById('statusBarList');
@@ -2167,6 +2171,7 @@ document.getElementById('statusBarFile').addEventListener('change', async functi
         });
       });
       saveSettings();
+      notifyOfflineChanged();
       renderStatusBars();
       updateSummary();
       showToast('已导入 ' + arr.length + ' 条状态栏');
@@ -2208,7 +2213,7 @@ const BODY_BAR_CSS = `/* 白底波点 + 报纸标题风；只会作用在这一�
 .bio-v{flex:1;min-width:0;font-size:12.5px;line-height:1.5}
 .bio-meter{display:inline-block;width:64px;height:6px;border-radius:999px;background:#efe8e6;vertical-align:middle;margin-right:6px;overflow:hidden}
 .bio-meter i{display:block;height:100%;background:linear-gradient(90deg,#e7a9b6,#c9607a);border-radius:999px}`;
-const BODY_BAR_PROMPT = '每轮输出本回合的身体状态：①心跳（给出具体频率，如 88 次/分，随情绪变化）②好感度（0~100 的整数，可带一句短评）③再随机挑 1~3 个最相关的身体部位（手/眼睛/脸/呼吸/心脏/肩/腿/私密处…）写细微状态。用 HTML 行输出，每行一个部位：<div class="bio-item"><span class="bio-k">部位</span><span class="bio-v">状态</span></div>；好感度那行可加进度条：<div class="bio-item"><span class="bio-k">好感度</span><span class="bio-v"><span class="bio-meter"><i style="width:63%"></i></span>63 还在嘴硬</span></div>';
+const BODY_BAR_PROMPT = '每轮输出本回合的身体状态：①心跳（给出具体频率，如 88 次/分，随情绪变化）②好感度（0~100 的整数，可带一句短评）③再随机挑 1~3 个最相关的身体部位（手/眼睛/脸/呼吸/心脏/肩/腿/私密处…）写细微状态。用 HTML 行输出，每行一个部位：<div class="bio-item"><span class="bio-k">部位</span><span class="bio-v">状态</span></div>；如果不想写 HTML，也可以每行写「部位：状态」，系统会自动转成同样的条目。好感度那行可加进度条：<div class="bio-item"><span class="bio-k">好感度</span><span class="bio-v"><span class="bio-meter"><i style="width:63%"></i></span>63 还在嘴硬</span></div>';
 (function bindBuiltinBodyCode() {
   const htmlEl = document.getElementById('builtinBodyHtml');
   const cssEl = document.getElementById('builtinBodyCss');
@@ -2244,6 +2249,7 @@ const BODY_BAR_PROMPT = '每轮输出本回合的身体状态：①心跳（给�
       expanded: true
     });
     saveSettings();
+    notifyOfflineChanged();
     renderStatusBars();
     updateSummary();
     showToast('已新建一条自定义状态栏，去下面改名字 / 样式');

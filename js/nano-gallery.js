@@ -198,20 +198,61 @@
     }
     // 表情包图片本身的 URL 不一定带任何 emoji 元数据，只看记录字段会漏掉，
     // 结果就是它们被当成普通照片收进图库，而且“清理表情包”也清不掉。
-    var _emojiUrlCache = { raw: null, set: null };
+    // 这里额外维护一份「曾经出现过的表情包 URL」历史：即使用户后来把表情删了，
+    // 图库里残留的那些图依然能被认出来、清掉。
+    var EMOJI_HISTORY_KEY = 'nano_emoji_url_history';
+    var _emojiUrlCache = { raw: null, historyRaw: null, set: null };
+
+    function readEmojiHistory() {
+        try {
+            var arr = JSON.parse(localStorage.getItem(EMOJI_HISTORY_KEY) || '[]');
+            return Array.isArray(arr) ? arr.filter(Boolean).map(String) : [];
+        } catch (e) { return []; }
+    }
+    function rememberEmojiUrls(urls) {
+        var list = (Array.isArray(urls) ? urls : [urls]).filter(Boolean).map(String);
+        if (!list.length) return;
+        try {
+            var arr = readEmojiHistory();
+            var seen = {};
+            arr.forEach(function (u) { seen[u] = 1; });
+            var changed = false;
+            list.forEach(function (u) { if (!seen[u]) { seen[u] = 1; arr.push(u); changed = true; } });
+            if (changed) {
+                if (arr.length > 4000) arr = arr.slice(-4000);
+                localStorage.setItem(EMOJI_HISTORY_KEY, JSON.stringify(arr));
+                _emojiUrlCache = { raw: null, historyRaw: null, set: null };
+            }
+        } catch (e) {}
+    }
+    function emojiUrlsFromData(d) {
+        var list = [];
+        ((d && d.emojiGroups) || []).forEach(function (g) {
+            ((g && g.emojis) || []).forEach(function (e) {
+                if (e && e.url) list.push(String(e.url));
+            });
+        });
+        return list;
+    }
     function emojiUrlSet() {
         try {
             var raw = localStorage.getItem('nano_emoji_data') || localStorage.getItem('peach_home_data') || '';
-            if (!raw) return _emojiUrlCache.set || null;
-            if (_emojiUrlCache.raw === raw && _emojiUrlCache.set) return _emojiUrlCache.set;
-            var d = JSON.parse(raw);
+            var historyRaw = localStorage.getItem(EMOJI_HISTORY_KEY) || '';
+            if (_emojiUrlCache.raw === raw && _emojiUrlCache.historyRaw === historyRaw && _emojiUrlCache.set) {
+                return _emojiUrlCache.set;
+            }
             var set = {};
-            ((d && d.emojiGroups) || []).forEach(function (g) {
-                ((g && g.emojis) || []).forEach(function (e) {
-                    if (e && e.url) set[String(e.url)] = 1;
-                });
-            });
-            _emojiUrlCache = { raw: raw, set: set };
+            readEmojiHistory().forEach(function (u) { set[u] = 1; });
+            var current = [];
+            if (raw) {
+                try {
+                    var d = JSON.parse(raw);
+                    current = emojiUrlsFromData(d);
+                    current.forEach(function (u) { set[u] = 1; });
+                } catch (e) {}
+            }
+            _emojiUrlCache = { raw: raw, historyRaw: historyRaw, set: set };
+            if (current.length) rememberEmojiUrls(current);
             return set;
         } catch (e) { return _emojiUrlCache.set || null; }
     }
@@ -265,9 +306,9 @@
                             try {
                                 var d = r.result ? r.result.value : null;
                                 var set = {};
-                                ((d && d.emojiGroups) || []).forEach(function (g) {
-                                    ((g && g.emojis) || []).forEach(function (e) { if (e && e.url) set[String(e.url)] = 1; });
-                                });
+                                var urls = emojiUrlsFromData(d);
+                                urls.forEach(function (u) { set[u] = 1; });
+                                if (urls.length) rememberEmojiUrls(urls);
                                 try { db.close(); } catch (e) {}
                                 finish(set);
                             } catch (e) { try { db.close(); } catch (e2) {} finish(local); }
@@ -380,6 +421,14 @@
     }
     function add(rec) {
         if (!rec || !rec.url || isEmojiRecord(rec)) return;
+        // 表情包可能只存在 IndexedDB 的表情库里（localStorage 镜像不全）：
+        // 写入后再异步核对一次，命中就立刻从图库移除并打墓碑。
+        try {
+            var checkUrl = String(rec.url);
+            emojiUrlSetFromDb().then(function (set) {
+                if (set && set[checkUrl]) remove([checkUrl]);
+            }).catch(function () {});
+        } catch (e) {}
         // 图库只收「生图 API 生成」的图片。用户自己发的图、表情包、截图一律不进。
         // 生成流程必须显式传 generated:true，避免以后的调用点又把杂图混进来。
         if (rec.generated !== true) return;
@@ -438,10 +487,11 @@
             if (!isGen && k !== 'genImage') return;
             var v = obj[k];
             if (typeof v === 'string' && /^(data:image\/|https?:\/\/)/i.test(v)) {
+                if (isEmojiUrl(v)) return;
                 out.push({ url: v, source: source, charName: charName, prompt: obj.genPrompt || '', generated: true, createdAt: obj.time ? (Date.parse(obj.time) || Date.now()) : Date.now() });
             } else if (Array.isArray(v)) {
                 v.forEach(function (u) {
-                    if (typeof u === 'string' && /^(data:image\/|https?:\/\/)/i.test(u)) {
+                    if (typeof u === 'string' && /^(data:image\/|https?:\/\/)/i.test(u) && !isEmojiUrl(u)) {
                         out.push({ url: u, source: source, charName: charName, prompt: obj.genPrompt || '', generated: true, createdAt: obj.time ? (Date.parse(obj.time) || Date.now()) : Date.now() });
                     }
                 });
@@ -576,14 +626,21 @@
                 });
             } catch (e) {}
             chatKeys = chatKeys.slice(0, 40);
+            var chatEmojiUrls = [];
             return Promise.all(chatKeys.map(function (k) {
                 var cid = String(k).replace(/^chat_messages_/, '');
                 var cname = charNames[cid] || '';
                 return localforage.getItem(k).then(function (msgs) {
                     var out = [];
                     (Array.isArray(msgs) ? msgs : []).forEach(function (m) {
-                        if (!m || !m.imageData || m.imageData.isEmoji || m.imageData.emojiName) return;
-                        if (m.isEmoji || m.emojiName) return;
+                        if (!m) return;
+                        var mid = m.imageData || {};
+                        if (m.isEmoji || m.emojiName || mid.isEmoji || mid.emojiName) {
+                            var eu = mid.url || (Array.isArray(mid.urls) ? mid.urls[0] : '');
+                            if (eu && /^(data:image\/|https?:\/\/)/i.test(eu)) chatEmojiUrls.push(String(eu));
+                            return;
+                        }
+                        if (!m.imageData) return;
                         // 只补扫「生图 API 生成」的消息：必须带 genPrompt，且不是自己发的图。
                         // 这样表情包、用户发的照片、链接卡片封面都不会再进图库。
                         if (m.type === 'right' || !m.imageData.genPrompt) return;
@@ -627,6 +684,7 @@
                     });
                 });
                 base.sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
+                if (chatEmojiUrls.length) rememberEmojiUrls(chatEmojiUrls);
                 return Promise.all(persist).then(function () {
                     try { localStorage.setItem(CHAT_SCAN_KEY, '1'); } catch (e) {}
                     return base;
@@ -689,10 +747,44 @@
         purgeEmojiOnce();
         try { window.dispatchEvent(new CustomEvent('nano-gallery-updated')); } catch (e) {}
     }
+    // 从聊天记录里再捞一次「表情包消息」的图片地址。
+    // 用户可能已经把表情从表情库删掉，只看表情库会认不出来；聊天记录里还留着图。
+    function collectChatEmojiUrls() {
+        if (typeof localforage === 'undefined') return Promise.resolve([]);
+        return localforage.keys().then(function (keys) {
+            var chatKeys = (keys || []).filter(function (k) { return /^chat_messages_/.test(k); }).slice(0, 80);
+            return Promise.all(chatKeys.map(function (k) {
+                return localforage.getItem(k).then(function (msgs) {
+                    var out = [];
+                    (Array.isArray(msgs) ? msgs : []).forEach(function (m) {
+                        if (!m) return;
+                        var id = m.imageData || {};
+                        var isEmojiMsg = !!(m.isEmoji || m.emojiName || id.isEmoji || id.emojiName);
+                        if (!isEmojiMsg) return;
+                        var u = id.url || (Array.isArray(id.urls) ? id.urls[0] : '');
+                        if (u && /^(data:image\/|https?:\/\/)/i.test(u)) out.push(String(u));
+                    });
+                    return out;
+                }).catch(function () { return []; });
+            }));
+        }).then(function (groups) {
+            var out = [];
+            var seen = {};
+            (groups || []).forEach(function (g) {
+                (g || []).forEach(function (u) { if (u && !seen[u]) { seen[u] = 1; out.push(u); } });
+            });
+            return out;
+        }).catch(function () { return []; });
+    }
     function removeEmoji() {
-        return Promise.all([Promise.resolve(allAsyncCore()), emojiUrlSetFromDb()]).then(function (res) {
+        return Promise.all([Promise.resolve(allAsyncCore()), emojiUrlSetFromDb(), collectChatEmojiUrls()]).then(function (res) {
             var list = res[0] || [];
             var set = res[1] || {};
+            var chatEmojiUrls = res[2] || [];
+            if (chatEmojiUrls.length) {
+                rememberEmojiUrls(chatEmojiUrls);
+                chatEmojiUrls.forEach(function (u) { set[u] = 1; });
+            }
             var urls = list.filter(function (x) {
                 if (!x || !x.url) return false;
                 if (isEmojiRecord(x)) return true;
@@ -706,6 +798,7 @@
 
     window.NanoGallery = {
         add: add, all: all, allAsync: allAsync, remove: remove, clear: clear,
-        purgeEmoji: purgeEmoji, removeEmoji: removeEmoji
+        purgeEmoji: purgeEmoji, removeEmoji: removeEmoji,
+        rememberEmojiUrls: rememberEmojiUrls, isEmojiUrl: isEmojiUrl
     };
 })();

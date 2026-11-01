@@ -228,8 +228,9 @@
     function isInitialAvatar(url) {
         if (!url) return true;
         var s = String(url);
-        if (s.indexOf('data:image/svg+xml') !== 0) return false;
-        return s.indexOf('nano-generated-avatar') < 0;
+        // 内置生成的 SVG 头像（包括旧版彩色 NPC 头像）统一按灰色占位处理
+        if (s.indexOf('data:image/svg+xml') === 0) return true;
+        return false;
     }
     function itemAvatarSrc(item) {
         if (!item) return initialAvatar('?');
@@ -266,28 +267,9 @@
             'font-family="-apple-system,BlinkMacSystemFont,PingFang SC,sans-serif">' + escapeXmlText(ch) + '</text></svg>';
         return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
     }
-    // 自动生成的 NPC 头像：按名字固定配色，避免朋友圈里全是同一张默认头像
-    function generatedAvatar(name, gender) {
-        var n = String(name || '?').trim() || '?';
-        var h = 0;
-        for (var i = 0; i < n.length; i++) h = (h * 31 + n.charCodeAt(i)) >>> 0;
-        var palettes = [
-            ['#ffb8d2', '#ff6fa5'], ['#b8d8ff', '#6f9cff'], ['#c8f0d8', '#51c98b'],
-            ['#ffe1a8', '#ffb340'], ['#d9c8ff', '#9b7bff'], ['#ffd0b8', '#ff8a5c'],
-            ['#b8f0ef', '#4ec8ce'], ['#ffc8e8', '#d96fd6']
-        ];
-        var p = palettes[h % palettes.length];
-        var ch = n.charAt(0) || '?';
-        var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">' +
-            '<desc>nano-generated-avatar</desc>' +
-            '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">' +
-            '<stop offset="0" stop-color="' + p[0] + '"/><stop offset="1" stop-color="' + p[1] + '"/></linearGradient></defs>' +
-            '<rect width="120" height="120" rx="26" fill="url(#g)"/>' +
-            '<circle cx="91" cy="29" r="18" fill="#ffffff" opacity="0.18"/>' +
-            '<circle cx="24" cy="100" r="26" fill="#ffffff" opacity="0.12"/>' +
-            '<text x="60" y="62" dy="0.36em" text-anchor="middle" font-size="50" fill="#ffffff" ' +
-            'font-weight="600" font-family="-apple-system,BlinkMacSystemFont,PingFang SC,sans-serif">' + escapeXmlText(ch) + '</text></svg>';
-        return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+    // NPC 没有真实头像时统一用灰底首字，不再按名字生成彩色头像
+    function generatedAvatar(name) {
+        return initialAvatar(name);
     }
     function avatarSrcFor(name, avatar) {
         return (avatar && String(avatar).trim()) ? avatar : initialAvatar(name);
@@ -318,7 +300,16 @@
     function loadNpcRoster() {
         try {
             var raw = localStorage.getItem(rosterKey());
-            if (raw) { var arr = JSON.parse(raw); if (Array.isArray(arr)) return arr; }
+            if (raw) {
+                var arr = JSON.parse(raw);
+                if (Array.isArray(arr)) {
+                    // 旧版存的是彩色 NPC 头像：加载时统一换成灰底首字
+                    return arr.map(function (n) {
+                        if (n && /nano-generated-avatar/.test(String(n.avatar || ''))) n.avatar = generatedAvatar(n.name);
+                        return n;
+                    });
+                }
+            }
         } catch (e) {}
         return null;
     }
@@ -1197,7 +1188,7 @@
         }
 
         var systemContent = opts.system || (isContext
-            ? '你是一个真实的人类，正在刷朋友圈。像随手发动态一样：口语、短句、碎片化，经常省略主语；低信息密度、高生活感、松弛不端着。写具体的日常/情绪/吐槽/小事，可以只有半句、一个词、一个 emoji；不要写成汇报、硬广、旅行博主腔或正能量总结。广告只能是隐晦暗广。不超过30个字。不要加引号，不要解释，直接输出文案内容。'
+            ? '你是一个真实的人类，正在刷朋友圈。像随手发动态一样：口语、短句、碎片化，经常省略主语；低信息密度、高生活感、松弛不端着。写具体的日常/情绪/吐槽/小事，大多数时候只是一句很短的吐槽、半句、一个词或一个 emoji，偶尔情绪真的上来、事情值得讲时才写成一段较长的吐槽或小作文；长度完全跟着角色当下的情绪、事情大小和人设走，不要每条都固定长度。不要写成汇报、硬广、旅行博主腔或正能量总结。广告只能是隐晦暗广。不要加引号，不要解释，直接输出文案内容。'
             : '你是一个真实的人类，正在朋友圈评论区互动。像熟人随手打字：可以只回一句、一个表情、损一句或问一句，不要客服腔、不要总结、不要小作文。不超过20个字。不要加引号，不要解释，直接输出评论内容。');
         try {
             if (window.NanoPrompts && NanoPrompts.appendTo) systemContent = NanoPrompts.appendTo(systemContent, 'moments', { keepFormat: true });
@@ -1358,7 +1349,7 @@
             var author = document.createElement('div');
             author.className = 'feed-author';
             author.textContent = item.author || '未知';
-            author.onclick = function() { openProfile(item.author, item.avatar || ''); };
+            author.onclick = function() { openProfile(item.author, itemAvatarSrc(item)); };
             contentBox.appendChild(author);
 
             if (item.text) {
@@ -2146,8 +2137,9 @@
                 lines.push('- 已选角色数量足够，' + total + ' 条全部由已选角色发，挑 ' + total + ' 位不同的人，作者不要重复；');
             }
         }
-        lines.push('- 内容是活人发的日常，别一板一眼：会有吐槽、碎碎念、吃到好吃的、遇到无语的人、和谁一起的瞬间、路边看到的风景……可以有 emoji、口语、网络用语；长度不一，有的就一句话，有的三五句，20~60 字为主；');
-        lines.push('- 禁止写成汇报/小作文/广告/正能量总结；允许只发一句、半句话、错别字、重复词、没头没尾的情绪；朋友圈是给熟人看的，不是公开发言；');
+        lines.push('- 内容是活人发的日常，别一板一眼：会有吐槽、碎碎念、吃到好吃的、遇到无语的人、和谁一起的瞬间、路边看到的风景……可以有 emoji、口语、网络用语；');
+        lines.push('- 【文案长度必须有变化，不要固定字数】长度完全由角色当下的情绪、事情大小和人设决定，而且大多数时候偏短：可以只写半句、一个词、一个标点或一个 emoji（如「无语。」「老子服了。」），也可以是一两句碎片吐槽；只有情绪真的上来、事情值得讲时，才写成有起承转合的长吐槽/小作文（100~200 字甚至更长）。不要每条都一个长度，也不要为了凑字硬写；');
+        lines.push('- 禁止写成汇报/小作文/广告/正能量总结；允许错别字、重复词、没头没尾的情绪；朋友圈是给熟人看的，不是公开发言；');
         lines.push('- 评论像熟人随口接话：可以损、可以关心、可以只发“哈哈哈”“？”或一个表情，不要每条都礼貌完整、不要总结对方的话；');
         lines.push('- 一部分是「配图动态」：MEDIA 写 image，并写 IMAGE 描述这张照片拍的是什么（吃的 / 风景 / 宠物 / 牵手 / 自拍等日常照）；其余是纯文字，MEDIA 写 text；这 ' + total + ' 条里至少 1 条 image、至少 1 条 text（除非只要求 1 条）；');
         lines.push('- 每条动态必须配 2~4 个点赞（LIKES 写 2~4 个名字）和 2~4 条评论；不要只写点赞不写评论，也不要只写评论不写点赞；');

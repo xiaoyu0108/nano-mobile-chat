@@ -34,12 +34,13 @@
     lines.push('【不限于美化 · 你还能做的装修】');
     lines.push('· 线下美化：apply_beautify（scope:"offline"），写入线下 customCSS，重新打开线下即生效。');
     lines.push('· 线下菜单 JS 插件：add_menu_plugin（args:{name,js}），给线下输入框头像菜单加自定义按钮，js 里用 api.addItem({label,icon,run}) 注册，可用 api.toast/getMessages/scrollToFloor/reroll 等。');
+    lines.push('· 制卡模板：加号菜单里可以打开「制卡模板」，编辑角色基础信息/设定/多条开场白，也可以让纳米生成酒馆式开场白，并打印 Nano 票根 PNG（内含完整设定、世界书与开场白，可导入角色页还原）。');
     lines.push('· 给线下「规则 / 文风 / 思维链 / 美化」加预设：add_offline_rule（规则，可指定已有组名或新建组）；save_preset（scope:"offline-style|offline-cot|offline-css"，name+content）。');
     lines.push('· 生成文件：用户要把代码、文本、CSS、HTML、JSON 等保存/导出成文件时，用 create_file（args:{name,content,ext}）。文件会永久保存在「Nano 文件」页，即使删除聊天消息也不会丢；同时会在聊天里出现文件卡片。');
     lines.push('· 读取/修改用户已存的预设：先用 list_presets / read_preset 读取（系统会把结果读给你，你再继续），再用 save_preset 覆盖、delete_preset 删除。scope：global/chat/chat-avatar/offline/heart/offline-style/offline-cot/offline-css/offline-rules/menu-plugin。');
     lines.push('· 读取角色与世界书：list_characters / read_character / list_worldbooks / read_worldbook；修改人设用 edit_persona（会自动保留旧版本，可 restore_persona_version 回退）。用户说「当前角色/这个角色」但没给名字时，先用 list_characters 找到 id，再 read_character。');
     lines.push('· 人设体检：用户说「看看我的人设有什么问题 / 帮我改好」时，先 list_characters → read_character 读取完整人设，指出具体问题后再用 edit_persona 写入完整新版；旧版会自动保留，不要覆盖历史。');
-    lines.push('· 新建角色 / 写角色人设：用 create_character（args:{name,setting,...}），它会把角色写进角色库并自动归档成文件；edit_persona 找不到角色时也会自动新建。只把内容放进 create_file 不会出现在角色库里。');
+    lines.push('· 新建角色 / 写角色人设：用 create_character（args:{name,gender,nationality,setting,greetings:[...] }），它会把角色写进角色库并自动归档成文件；greetings 里可以一次放 1~5 条开场白，保存后进入线下就能直接选择。用户说「做一张卡 / 建一个角色 / 人设卡」时，除了设定，必须一起给 2~3 条 greetings，不要只给设定。edit_persona 找不到角色时也会自动新建。只把内容放进 create_file 不会出现在角色库里。');
     lines.push('· user 面具（人设）与绑定：新建/修改 user 面具用 create_mask / edit_mask（args:{name,setting,gender,wechat,current}）；把角色绑到某个面具用 bind_character（args:{name:角色名或id,mask:面具名或id}）。用户说「给 user 写面具 / 换个马甲 / 绑定角色」时用这些，不要只生成文件。');
     lines.push('· 读取美化：read_beautify（scope:global/chat/chat-avatar/offline/heart），会同时列出该范围已保存的预设。');
     lines.push('· 线下规则与状态栏：list_offline_rules / read_offline_rules 读取；add_offline_status 写入/覆盖自定义状态栏；add_offline_rule 写入规则。');
@@ -344,6 +345,17 @@
       return { name: String((e && e.name) || '').trim(), url: String((e && (e.url || e.src || e.image)) || '').trim() };
     }).filter(function (e) { return e.url; });
     if (!list.length) throw new Error('没有可添加的表情（缺少图片地址）');
+    // 记住这些表情 URL：以后即使从表情库删除，图库也不会再把它们当成普通照片收录
+    try {
+      var hk = 'nano_emoji_url_history';
+      var hist = JSON.parse(localStorage.getItem(hk) || '[]');
+      if (!Array.isArray(hist)) hist = [];
+      var seenHist = {};
+      hist.forEach(function (u) { seenHist[String(u)] = 1; });
+      list.forEach(function (e) { if (!seenHist[e.url]) { seenHist[e.url] = 1; hist.push(e.url); } });
+      if (hist.length > 4000) hist = hist.slice(-4000);
+      localStorage.setItem(hk, JSON.stringify(hist));
+    } catch (e) {}
     var name = String(groupName || '').replace(/[\r\n\t]+/g, ' ').trim().slice(0, 24) || '纳米表情';
     var group = data.emojiGroups.find(function (g) { return g && g.name === name; });
     if (!group) {
@@ -657,6 +669,22 @@
     if (v == null) v = args.description;
     return v == null ? '' : String(v);
   }
+  // 开场白参数名也不统一：greetings / openings / alternate_greetings / first_mes 都收
+  function greetingsOf(args) {
+    args = args || {};
+    var arr = [];
+    function push(v) {
+      if (Array.isArray(v)) v.forEach(push);
+      else if (typeof v === 'string' && v.trim()) arr.push(v.trim());
+    }
+    push(args.greetings);
+    push(args.openings);
+    push(args.alternate_greetings);
+    push(args.first_mes);
+    push(args.firstMessage);
+    push(args.opening);
+    return arr.filter(function (s, i) { return s && arr.indexOf(s) === i; }).slice(0, 12);
+  }
   function notifyCharsChanged() {
     try { if (window.parent !== window) window.parent.postMessage({ type: 'contactsDataUpdated' }, '*'); } catch (e) {}
     try { if (window.parent !== window) window.parent.postMessage({ type: 'homeDataUpdated' }, '*'); } catch (e) {}
@@ -751,6 +779,8 @@
       if (args.gender) existing.gender = String(args.gender);
       if (args.nationality) existing.nationality = String(args.nationality);
       if (args.avatar) existing.avatar = String(args.avatar);
+      var incomingGreetings = greetingsOf(args);
+      if (incomingGreetings.length) existing.greetings = incomingGreetings;
       if (args.bindUser || args.mask) existing.bindUser = await resolveMaskId(args.bindUser || args.mask, true);
       await putCharacter(existing);
       notifyCharsChanged();
@@ -769,7 +799,7 @@
       bindUser: bindUser,
       isNpc: false,
       nanoAssistant: false,
-      greetings: Array.isArray(args.greetings) ? args.greetings.map(String) : [],
+      greetings: greetingsOf(args),
       worldbookBindings: []
     };
     await putCharacter(rec);

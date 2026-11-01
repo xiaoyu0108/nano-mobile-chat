@@ -238,10 +238,13 @@
                 canvas.width = w;
                 canvas.height = h;
                 const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0, w, h);
-                resolve(canvas.toDataURL('image/jpeg', quality || 0.8));
+                try {
+                    ctx.drawImage(img, 0, 0, w, h);
+                    resolve(canvas.toDataURL('image/jpeg', quality || 0.8));
+                } catch (e) { resolve(''); }
             };
-            img.src = dataUrl;
+            img.onerror = function () { resolve(''); };
+            try { img.src = dataUrl; } catch (e) { resolve(''); }
         });
     }
 
@@ -270,7 +273,9 @@
     const inputName = document.getElementById('inputName');
     const inputWechat = document.getElementById('inputWechat');
     const inputGender = document.getElementById('inputGender');
+    const inputNationality = document.getElementById('inputNationality');
     const inputSetting = document.getElementById('inputSetting');
+    const exportTicketBtn = document.getElementById('exportTicketBtn');
     const importBtn = document.getElementById('importBtn');
     const editCancel = document.getElementById('editCancel');
     const editSave = document.getElementById('editSave');
@@ -298,6 +303,8 @@
     const deleteConfirmOk = document.getElementById('deleteConfirmOk');
 
     const importFileInput = document.getElementById('importFileInput');
+    const importPngBtn = document.getElementById('importPngBtn');
+    const importPngFileInput = document.getElementById('importPngFileInput');
 
     // 旧版本/多端同步可能把同一个人设写成两条；渲染前按 id + 内容去重。
     function dedupeMasks(list, currentId) {
@@ -504,6 +511,7 @@
             inputName.value = item.name || '';
             inputWechat.value = item.wechat || '';
             inputGender.value = item.gender || '女';
+            if (inputNationality) inputNationality.value = item.nationality || '中国';
             inputSetting.value = item.setting || '';
             editSave.textContent = '保存';
             getAvatarFromDB(item.id).then(function(dataUrl) {
@@ -520,6 +528,7 @@
             inputName.value = '';
             inputWechat.value = '';
             inputGender.value = '女';
+            if (inputNationality) inputNationality.value = '中国';
             inputSetting.value = '';
             editSave.textContent = '添加';
             updateAvatarPreview();
@@ -625,6 +634,7 @@
         const name = inputName.value.trim() || '未命名';
         const wechat = inputWechat.value.trim() || '未设置';
         const gender = inputGender.value;
+        const nationality = (inputNationality && inputNationality.value.trim()) || '中国';
         const setting = inputSetting.value.trim() || '';
 
         let maskId = editingId;
@@ -632,11 +642,11 @@
         if (maskId) {
             const idx = data.masks.findIndex(m => m.id === maskId);
             if (idx > -1) {
-                data.masks[idx] = { ...data.masks[idx], name, wechat, gender, setting };
+                data.masks[idx] = { ...data.masks[idx], name, wechat, gender, nationality, setting };
             }
         } else {
             maskId = 'm' + Date.now();
-            data.masks.push({ id: maskId, name, wechat, gender, setting });
+            data.masks.push({ id: maskId, name, wechat, gender, nationality, setting });
             if (!data.currentMaskId) data.currentMaskId = maskId;
         }
 
@@ -702,6 +712,69 @@
         if (isEditMode) exitEditMode();
         openEditModal(null);
     };
+
+    // ===== 导入 Nano 人设票根 PNG =====
+    if (importPngBtn) {
+        importPngBtn.onclick = function (e) {
+            e.stopPropagation();
+            if (isEditMode) exitEditMode();
+            if (importPngFileInput) importPngFileInput.click();
+        };
+    }
+    if (importPngFileInput) {
+        importPngFileInput.onchange = async function () {
+            const file = this.files[0];
+            this.value = '';
+            if (!file) return;
+            if (!window.NanoPngJson || !NanoPngJson.extractNanoCard) {
+                showInfo('导入失败', 'PNG 数据模块没有加载完成，请刷新后重试。');
+                return;
+            }
+            try {
+                const buf = await file.arrayBuffer();
+                const card = await NanoPngJson.extractNanoCard(buf);
+                if (!card) {
+                    showInfo('导入失败', '这张 PNG 里没有可读取的 Nano 票根数据。');
+                    return;
+                }
+                const dataObj = card.data || card;
+                const nanoExt = (dataObj.extensions && dataObj.extensions.nano) || {};
+                const nanoRaw = dataObj.nano || {};
+                const nano = (Object.keys(nanoRaw).length || Object.keys(nanoExt).length)
+                    ? Object.assign({}, nanoExt, nanoRaw) : null;
+                if (!nano) {
+                    showInfo('导入失败', '票根里没有可读取的 Nano 人设数据。');
+                    return;
+                }
+                if (nano.kind !== 'user') {
+                    showInfo('这是角色票根', '这张票根是角色卡，请到「角色」页面导入。');
+                    return;
+                }
+                const id = 'm' + Date.now();
+                const mask = {
+                    id: id,
+                    name: nano.name || '未命名',
+                    wechat: '未设置',
+                    gender: nano.gender || '其他',
+                    nationality: nano.nationality || '中国',
+                    setting: nano.setting || ''
+                };
+                data.masks.push(mask);
+                if (!data.currentMaskId) data.currentMaskId = id;
+                saveData(data);
+                if (nano.avatar) {
+                    try {
+                        const compressed = await compressImage(nano.avatar, 180, 180, 0.8);
+                        if (compressed) await saveAvatarToDB(id, compressed);
+                    } catch (e) {}
+                }
+                renderAll();
+                showInfo('导入成功', '已导入用户人设「' + mask.name + '」。');
+            } catch (err) {
+                showInfo('导入失败', (err && err.message) || '票根解析失败');
+            }
+        };
+    }
 
     editModeBtn.onclick = function() {
         if (isEditMode) {
@@ -805,6 +878,36 @@
 
     editSave.onclick = saveMask;
     editCancel.onclick = closeEditModal;
+
+    // ===== 导出 Nano 人设票根 PNG =====
+    if (exportTicketBtn) {
+        exportTicketBtn.addEventListener('click', async function () {
+            if (!window.NanoCardTicket) {
+                showInfo('暂时不可用', '票根模块没有加载完成，请刷新页面后重试。');
+                return;
+            }
+            const mask = {
+                id: editingId || ('draft_' + Date.now()),
+                name: inputName.value.trim() || '未命名',
+                gender: inputGender.value || '',
+                nationality: (inputNationality && inputNationality.value.trim()) || '中国',
+                avatar: tempAvatar || '',
+                setting: inputSetting.value.trim() || '',
+                greetings: []
+            };
+            const old = exportTicketBtn.innerHTML;
+            exportTicketBtn.disabled = true;
+            exportTicketBtn.textContent = '正在排版票根…';
+            try {
+                await NanoCardTicket.printPayload(NanoCardTicket.fromUser(mask));
+            } catch (e) {
+                showInfo('导出失败', (e && e.message) || '票根生成失败，请重试');
+            } finally {
+                exportTicketBtn.disabled = false;
+                exportTicketBtn.innerHTML = old;
+            }
+        });
+    }
     if (useMaskBtn) useMaskBtn.onclick = function () {
         if (!editingId) return;
         var id = editingId;

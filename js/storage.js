@@ -134,6 +134,11 @@ const APP_CATEGORIES = [
         idb: []
     },
     {
+        id: 'travel', label: '旅途', color: '#4a9d8f',
+        ls: ['nano_travel_', 'tv_rec', 'tv_styles'],
+        idb: [{ db: 'nano_app_storage', store: 'kv', key: ['nano_travel_v1'] }]
+    },
+    {
         id: 'friend', label: '好友申请', color: '#2f9e8f',
         ls: ['nano_friend_requests', 'nano_meet_', 'nano_chat_inject_'],
         idb: []

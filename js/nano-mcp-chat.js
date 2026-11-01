@@ -109,7 +109,21 @@
         }
       }
 
-      if (typeof continueFn === 'function') {
+      // 纳米助手写卡：只调用一次 API。工具结果已经在本地写入角色库，
+      // 不再为了“再回一句话”额外请求一次模型；用已有文字或本地结果直接收尾。
+      var onlyWriteCardTools = !!opts.nano && blocks.length > 0 && blocks.every(function (b) {
+        return /^(create_character|edit_persona|write_persona|create_mask|edit_mask|bind_character)$/.test(String(b && b.name || ''));
+      }) && used.every(function (t) { return t && t.ok; });
+      if (onlyWriteCardTools) {
+        if (!text.trim()) {
+          var doneNames = used.map(function (t) {
+            var r = t && t.result;
+            if (r && typeof r === 'object') return r.name || r.id || '';
+            return String(r || '').replace(/^[\s\S]*?[：:]\s*/, '').slice(0, 40);
+          }).filter(Boolean);
+          text = doneNames.length ? ('已经写好了：' + doneNames.join('、') + '。') : '已经按你的要求写好了。';
+        }
+      } else if (typeof continueFn === 'function') {
         var ctx = '【工具返回的结果】\n' + results.join('\n\n') + '\n\n'
           + '请直接根据上面的结果，用你（当前角色）的语气自然地对对方说话。硬性要求：'
           + '① 用你平时与对方交流的语言和说话习惯，不要因为本说明改成中文；'

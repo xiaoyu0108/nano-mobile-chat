@@ -78,10 +78,56 @@
   var currentTab = 'mine';
   var partnerInfo = null;
   var duoActive = false;
+  var listenStartedAt = 0;
+  var listenDurationTimer = null;
   var isPlaying = false;
   var currentSongIndex = -1;
   var songs = [];
   var audio = null;
+  var audioUnlocked = false;
+  var pendingAutoPlay = null;
+  // 浏览器要求「用户手势」才允许有声播放。角色自动切歌发生在异步请求之后，
+  // 很容易被判成无手势而静默失败。这里在第一次触摸/点击时用一个极短的静音音频
+  // 解锁同一个 audio 元素，之后角色异步切歌就能直接复用。
+  function unlockAudioOnce() {
+    if (audioUnlocked) return;
+    if (audio) { audioUnlocked = true; return; }
+    try {
+      var a = new Audio();
+      a.preload = 'auto';
+      a.volume = 0.001;
+      a.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=';
+      var p = a.play();
+      if (p && typeof p.then === 'function') {
+        p.then(function () {
+          audioUnlocked = true;
+          try { a.pause(); a.removeAttribute('src'); a.load(); } catch (e) {}
+          if (!audio) audio = a;
+        }).catch(function () {});
+      } else {
+        audioUnlocked = true;
+        if (!audio) audio = a;
+      }
+    } catch (e) {}
+  }
+  document.addEventListener('pointerdown', unlockAudioOnce, true);
+  document.addEventListener('touchstart', unlockAudioOnce, true);
+  function retryOnGesture() {
+    if (pendingAutoPlay) return;
+    pendingAutoPlay = function () {
+      var a = audio;
+      if (!a) { pendingAutoPlay = null; return; }
+      a.play().then(function () {
+        pendingAutoPlay = null;
+        isPlaying = true;
+        updatePlayBtn();
+      }).catch(function () { pendingAutoPlay = null; });
+    };
+    showToast('点一下屏幕继续播放');
+    document.addEventListener('pointerdown', function () {
+      if (pendingAutoPlay) { try { pendingAutoPlay(); } catch (e) {} }
+    }, { once: true, capture: true });
+  }
   var netEaseToken = 0;
   var netEaseOpts = null;
   var progressTimer = null;
@@ -143,10 +189,12 @@
   var listenEmpty = $('listenEmpty');
   var listenActive = $('listenActive');
   var listenEmptyBtn = $('listenEmptyBtn');
-  var heartWrap = $('heartWrap');
+  var listenWave = $('listenWave');
+  var listenDuration = $('listenDuration');
   var myAvatarImg = $('myAvatarImg');
   var myAvatarPlaceholder = $('myAvatarPlaceholder');
   var myName = $('myName');
+  var partnerAvatar = $('partnerAvatar');
   var partnerAvatarImg = $('partnerAvatarImg');
   var partnerAvatarPlaceholder = $('partnerAvatarPlaceholder');
   var partnerName = $('partnerName');
@@ -1055,7 +1103,7 @@
       outside: true,
       onEnded: opts.onEnded,
       onError: fallback
-    }, false, myToken);
+    }, true, myToken);
   }
 
   function netEasePlaybackErrorText(opts, code) {
@@ -1451,7 +1499,8 @@
   // ============================================================
   function stopPlayback() {
     netEaseToken++;
-    if (audio) { audio.pause(); audio = null; }
+    // 保留 audio 元素，下一次（包括角色自动切歌）继续复用它，避免重新触发自动播放限制。
+    if (audio) { try { audio.pause(); } catch (e) {} }
     if (progressTimer) { clearInterval(progressTimer); progressTimer = null; }
     isPlaying = false;
     updatePlayBtn();
@@ -1731,12 +1780,21 @@
     }
 
     var startPlay = function(url) {
-      if (audio) { audio.pause(); audio = null; }
-      audio = new Audio(url);
-      audio.addEventListener('timeupdate', updateProgress);
-      audio.addEventListener('loadedmetadata', updateProgress);
-      audio.addEventListener('ended', onSongEnd);
+      // 切到本地歌曲时让还在路上的网易云请求/外链超时失效，避免它稍后把本地播放顶掉。
+      netEaseToken++;
+      // 复用同一个 audio 元素：保持用户手势解锁状态，角色自动切到本地歌曲时也能播放。
+      if (!audio) audio = new Audio();
+      else {
+        try { audio.pause(); } catch (e) {}
+        try { audio.removeAttribute('src'); audio.load(); } catch (e) {}
+      }
+      audio.ontimeupdate = updateProgress;
+      audio.onloadedmetadata = updateProgress;
+      audio.onended = onSongEnd;
+      audio.onerror = null;
+      audio.src = url;
       audio.play().catch(function(err) {
+        if (err && err.name === 'NotAllowedError') { retryOnGesture(); return; }
         console.warn('播放失败:', err);
         showToast('播放失败');
       });
@@ -1856,6 +1914,14 @@
       playPromise.catch(function (err) {
         if (token && token !== netEaseToken) return;
         clearStall();
+        // 角色自动切歌常常不是用户手势触发的：被浏览器拦下时不要报「没有音源」，
+        // 保留当前地址，等用户下一次点屏幕立刻继续播放。
+        if (err && err.name === 'NotAllowedError') {
+          isPlaying = false;
+          updatePlayBtn();
+          retryOnGesture();
+          return;
+        }
         if (!(err && err.name === 'AbortError')) console.error('网易云代理播放失败:', err);
         if (opts.onError && !opts._triedFallback) {
           opts._triedFallback = true;
@@ -1946,7 +2012,7 @@
     discInner.classList.toggle('playing', isPlaying);
     soloDiscInner.classList.toggle('playing', isPlaying);
     musicFloatBall.classList.toggle('playing', isPlaying);
-    heartWrap.classList.toggle('playing', isPlaying);
+    if (listenWave) listenWave.classList.toggle('playing', isPlaying);
     postMusicBallState();
   }
 
@@ -2599,6 +2665,8 @@
       }
     } catch (e) {}
     parts.push('【点歌能力】你可以用 [播放:歌名] 点播任意歌曲，系统会自动联网搜索并播放；也可以用 [切歌] 切到下一首。');
+    parts.push('【禁止思考链】本轮不要输出任何思维链/思考内容，严禁 [think]、[/think]、<think>、【思考】等标记，直接写聊天内容。');
+    parts.push('【心声 · 每次回复必须附带】在聊天正文最后单独占一行输出 [heart:此刻印象||心声独白]。此刻印象用一句话写你此刻对用户/这首歌的感觉；心声独白用第一人称"我"，50~120 字，写你发这条消息时真实的心理活动，口语、平实、可以跳跃或自嘲，不煽情、不升华、不写霸总腔。这一行不会显示在聊天里，用户点你的头像才会看到，所以不要把它写进正文。');
     parts.push(
       '【铁律】\n' +
       '1. 你就是「' + (char.name || '这个角色') + '」本人，严格遵循上面的人设与世界观，绝不 OOC：不做设定里不会做的事，不说设定里不会说的话。\n' +
@@ -2836,11 +2904,11 @@
     return segs.length ? segs : [t];
   }
   var duoRoundSeq = 0;
-  async function sendDuoBubbles(text) {
+  async function sendDuoBubbles(text, heart) {
     var segs = splitDuoText(text);
     var rid = ++duoRoundSeq;
     for (var i = 0; i < segs.length; i++) {
-      var el = addListenChatMessage(segs[i], false);
+      var el = addListenChatMessage(segs[i], false, i === 0 ? heart : '');
       if (el && el.setAttribute) el.setAttribute('data-ai-round', String(rid));
       if (i < segs.length - 1) await new Promise(function (r) { setTimeout(r, 420); });
     }
@@ -2865,10 +2933,24 @@
         if (window.NanoPrompts && NanoPrompts.inject) msgs = NanoPrompts.inject(msgs, 'music');
       } catch (e) {}
       var raw = await callDuoAi(msgs);
-      var directive = handleDuoDirectives(raw);
+      var rawText = String(raw || '');
+      // 音乐一起听不展示思考链；如果模型仍输出了，直接删掉，避免漏进气泡。
+      rawText = rawText
+        .replace(/\[(?:think|thinking|thought|reasoning|analysis|cot|思考|思维链)\][\s\S]*?\[\/(?:think|thinking|thought|reasoning|analysis|cot|思考|思维链)\]/gi, '')
+        .replace(/<(?:think|thinking|thought|reasoning|analysis|cot)>[\s\S]*?<\/(?:think|thinking|thought|reasoning|analysis|cot)>/gi, '')
+        .replace(/\[\/?(?:think|thinking|thought|reasoning|analysis|cot|思考|思维链)[^\]]*\]/gi, '')
+        .replace(/<\/?(?:think|thinking|thought|reasoning|analysis|cot)[^>]*>/gi, '');
+      // 心声：单独抽出来，挂到这一轮角色消息上，点头像查看，不显示在气泡里。
+      var heart = '';
+      var hm = rawText.match(/\[(?:heart|心声)\s*:\s*([\s\S]*?)\]/i);
+      if (hm) {
+        heart = String(hm[1] || '').trim();
+        rawText = rawText.replace(hm[0], '').trim();
+      }
+      var directive = handleDuoDirectives(rawText);
       var reply = String(directive.text || '').trim().replace(/^["「]|["」]$/g, '') || '……';
       duoHistory.push({ role: 'assistant', content: reply });
-      await sendDuoBubbles(reply);
+      await sendDuoBubbles(reply, heart);
       try {
         if (window.AuxMemory && partnerInfo) {
           var cid = partnerInfo.id || partnerInfo.name;
@@ -2888,6 +2970,33 @@
     }
   }
 
+  function listenClockKey() {
+    var cid = partnerInfo && (partnerInfo.id || partnerInfo.name) ? String(partnerInfo.id || partnerInfo.name) : '';
+    return 'nano_music_listen_start_' + cid;
+  }
+  function updateListenDuration() {
+    if (!listenDuration) return;
+    if (!listenStartedAt) { listenDuration.textContent = '一起听了 0 分钟'; return; }
+    var mins = Math.floor((Date.now() - listenStartedAt) / 60000);
+    listenDuration.textContent = mins < 1 ? '一起听了不到 1 分钟' : ('一起听了 ' + mins + ' 分钟');
+  }
+  function startListenClock(char) {
+    var key = 'nano_music_listen_start_' + String((char && (char.id || char.name)) || '');
+    var saved = 0;
+    try { saved = Number(localStorage.getItem(key) || 0) || 0; } catch (e) {}
+    listenStartedAt = (saved && Date.now() - saved < 12 * 3600 * 1000) ? saved : Date.now();
+    try { localStorage.setItem(key, String(listenStartedAt)); } catch (e) {}
+    updateListenDuration();
+    if (listenDurationTimer) clearInterval(listenDurationTimer);
+    listenDurationTimer = setInterval(updateListenDuration, 30 * 1000);
+  }
+  function stopListenClock() {
+    if (listenDurationTimer) { clearInterval(listenDurationTimer); listenDurationTimer = null; }
+    try { localStorage.removeItem(listenClockKey()); } catch (e) {}
+    listenStartedAt = 0;
+    if (listenDuration) listenDuration.textContent = '一起听了 0 分钟';
+  }
+
   function enterDuoMode(char, skipInvite) {
     partnerInfo = char;
     duoActive = true;
@@ -2898,6 +3007,7 @@
       }
     } catch (e) {}
     duoPending = false;
+    startListenClock(char);
     partnerName.textContent = char.name || '伙伴';
     if (char.avatar && char.avatar.length > 50) {
       partnerAvatarImg.src = char.avatar;
@@ -2929,6 +3039,13 @@
     addListenStatusLine('和 ' + (char.name || '对方') + ' 一起听开始～');
   }
 
+  if (partnerAvatar) {
+    partnerAvatar.style.cursor = 'pointer';
+    partnerAvatar.title = '点击查看 TA 的心声';
+    partnerAvatar.addEventListener('click', function () {
+      showListenHeart(lastPartnerHeart);
+    });
+  }
   listenEmptyBtn.addEventListener('click', openPickChar);
   pickCharCancel.addEventListener('click', function() { pickCharOverlay.classList.remove('show'); });
   pickCharOverlay.addEventListener('click', function(e) {
@@ -2938,9 +3055,35 @@
   // ============================================================
   // 一起听：聊天
   // ============================================================
-  function addListenChatMessage(text, isMe) {
+  var lastPartnerHeart = '';
+  function showListenHeart(text) {
+    var body = String(text || '').trim();
+    if (!body) body = '这一轮没有留下心声。';
+    var old = document.getElementById('listenHeartModal');
+    if (old) old.remove();
+    var wrap = document.createElement('div');
+    wrap.id = 'listenHeartModal';
+    wrap.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.36);display:flex;align-items:flex-end;justify-content:center;';
+    var html = '<div style="width:100%;max-width:430px;margin:0 auto;background:#fff;border-radius:22px 22px 0 0;padding:20px 20px calc(22px + env(safe-area-inset-bottom,0px));box-sizing:border-box;max-height:72vh;overflow:auto;">'
+      + '<div style="width:38px;height:4px;border-radius:4px;background:#e4e4e7;margin:0 auto 16px;"></div>'
+      + '<div style="font-size:12px;color:#8e8e93;letter-spacing:.4px;margin-bottom:8px;">'
+      + escHtml(partnerInfo && partnerInfo.name ? partnerInfo.name : 'TA') + ' 的心声</div>'
+      + '<div style="font-size:14.5px;line-height:1.8;color:#2c2c2e;white-space:pre-wrap;">' + escHtml(body) + '</div>'
+      + '</div>';
+    wrap.innerHTML = html;
+    wrap.addEventListener('click', function (e) { if (e.target === wrap) wrap.remove(); });
+    document.body.appendChild(wrap);
+  }
+  function escHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function addListenChatMessage(text, isMe, heart) {
     var msg = document.createElement('div');
     msg.className = 'chat-msg ' + (isMe ? 'me' : 'partner');
+    var heartText = String(heart || '').trim();
+    if (heartText) msg.dataset.heart = heartText;
     var avatar = document.createElement('div');
     avatar.className = 'chat-avatar';
     if (isMe) {
@@ -2963,6 +3106,15 @@
     var bubble = document.createElement('div');
     bubble.className = 'chat-bubble';
     bubble.textContent = text;
+    if (!isMe && heartText) {
+      lastPartnerHeart = heartText;
+      avatar.style.cursor = 'pointer';
+      avatar.title = '点击查看心声';
+      avatar.addEventListener('click', function (e) {
+        e.stopPropagation();
+        showListenHeart(heartText);
+      });
+    }
     msg.appendChild(avatar);
     msg.appendChild(bubble);
     listenChatBody.appendChild(msg);
@@ -3293,6 +3445,7 @@
     var prevPartner = partnerInfo;
     var wasActive = duoActive;
     duoActive = false;
+    stopListenClock();
     // 结束一起听：把这段对话收尾进 char 的长期记忆
     if (wasActive && prevPartner) {
       try {

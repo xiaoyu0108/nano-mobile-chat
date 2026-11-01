@@ -49,6 +49,7 @@
         { id: 'fanfic',    name: '同人文',     w: 2, url: 'fanfic.html' },
         { id: 'beautify',  name: '美化 / 字体', w: 2, url: 'beautify.html' },
         { id: 'schedule',  name: '日程',       w: 2, url: 'schedule.html' },
+        { id: 'travel',    name: '旅途',       w: 2, url: 'travel.html', withChar: true },
         { id: 'memory',    name: '记忆宫殿',   w: 2, url: 'memory.html' },
         { id: 'tide',      name: '月潮',       w: 2, url: 'cycle.html' },
         { id: 'market',    name: '共享集市',   w: 2, url: 'market.html' },
@@ -67,6 +68,7 @@
         favorite: '<path d="m12 3 2.6 5.6L20 9.5l-4 3.9 1 5.6-5-2.9-5 2.9 1-5.6-4-3.9 5.4-.9L12 3Z"/>',
         discover: '<circle cx="12" cy="12" r="9"/><path d="m15 9-2 6-4 1 2-6 4-1Z"/>',
         music: '<path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/>',
+        travel: '<path d="M3 9a2 2 0 0 0 0 6v3a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-3a2 2 0 0 1 0-6V6a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1z"/><path d="M14 5v14" stroke-dasharray="2 2.5"/>',
         couple: '<path d="M12 20s-7-4.4-9.3-9A5 5 0 0 1 12 6a5 5 0 0 1 9.3 5C19 15.6 12 20 12 20Z"/>',
         familycard: '<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18"/><path d="M7 14h4"/>',
         phone: '<rect x="6" y="2" width="12" height="20" rx="3"/><path d="M11 18h2"/>',
@@ -177,7 +179,7 @@
     }
     function buildTargets(ctx) {
         var list = [];
-        APPS.forEach(function (a) { list.push({ id: a.id, name: a.name, w: a.w, url: a.url || null, selfWith: !!a.selfWith }); });
+        APPS.forEach(function (a) { list.push({ id: a.id, name: a.name, w: a.w, url: a.url || null, selfWith: !!a.selfWith, withChar: !!a.withChar }); });
         (ctx && ctx.chats || []).slice(0, 12).forEach(function (c, i) {
             if (!c || !c.id) return;
             list.push({ id: 'chat:' + c.id, name: '聊天·' + (c.name || c.id), kind: 'chat', cid: c.id, cname: c.name || '', w: i < 5 ? 4 : 2 });
@@ -200,6 +202,13 @@
                 var id = me.id || (TK.info && TK.info.id) || '';
                 var nm = me.name || (TK.info && TK.info.name) || '';
                 u += (u.indexOf('?') === -1 ? '?' : '&') + 'chat=' + enc(id) + '&name=' + enc(nm);
+            }
+            // 旅途页用 ?char=<角色id> 进入该角色自己的行程，不能落到角色选择页
+            if (t.withChar) {
+                var me2 = (TK.ctx && TK.ctx.self) || {};
+                var cid2 = me2.id || (TK.info && TK.info.id) || '';
+                var cnm2 = me2.name || (TK.info && TK.info.name) || '';
+                u += (u.indexOf('?') === -1 ? '?' : '&') + 'char=' + enc(cid2) + '&name=' + enc(cnm2);
             }
             s.open(u, t.name, 'takeover'); return;
         }

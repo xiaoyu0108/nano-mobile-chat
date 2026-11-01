@@ -2179,43 +2179,64 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 
 /* 注释已清理（原文件编码损坏） */
 
-/* 外卖小地图（所有主题通用底样式，灰粉主题会覆盖成灰粉配色） */
+/* 外卖 / 跑腿小地图（干净的城市路线底图，所有主题通用；灰粉主题会覆盖配色） */
 .bubble-card.takeout .takeout-map {
     position: relative;
-    height: 84px;
+    height: 86px;
     margin: 0 12px 10px;
-    border-radius: 13px;
+    border-radius: 14px;
     overflow: hidden;
     background:
-        repeating-linear-gradient(0deg, rgba(120,120,128,.08) 0 1px, transparent 1px 18px),
-        repeating-linear-gradient(90deg, rgba(120,120,128,.08) 0 1px, transparent 1px 18px),
-        linear-gradient(135deg, #eef3ef, #e8f0f5 55%, #f3f1ee);
-    border: 1px solid rgba(80,90,100,.08);
+        radial-gradient(120% 90% at 8% 0%, #fdf4e8 0%, rgba(253,244,232,0) 55%),
+        radial-gradient(120% 90% at 100% 110%, #edf4ef 0%, rgba(237,244,239,0) 60%),
+        linear-gradient(180deg, #fbf7f1, #f4efe7);
+    border: 1px solid #efe2d2;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.75);
 }
-.bubble-card.takeout .tm-route {
+.bubble-card.takeout .tm-route-svg {
     position: absolute;
-    left: 16%;
-    top: 62%;
-    width: 58%;
-    height: 2px;
-    border-radius: 2px;
-    background: linear-gradient(90deg, rgba(180,120,80,.15), rgba(180,120,80,.65));
-    transform: rotate(-18deg);
-    transform-origin: left center;
+    inset: 0;
+    width: 100%;
+    height: 100%;
 }
-.bubble-card.takeout .tm-route::after {
-    content: "";
+.bubble-card.takeout .tm-block { fill: rgba(222,208,188,.32); }
+.bubble-card.takeout .tm-road {
+    fill: none;
+    stroke: #eadfce;
+    stroke-width: 1.4;
+    stroke-linecap: round;
+}
+.bubble-card.takeout .tm-road-b { stroke: #efe6d8; stroke-width: 1.2; }
+.bubble-card.takeout .tm-path {
+    fill: none;
+    stroke: #c58a4c;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-dasharray: 4 5;
+    opacity: .9;
+}
+.bubble-card.takeout .tm-route { display: none; }
+.bubble-card.takeout .tm-rider {
     position: absolute;
-    right: -4px; top: -3px;
-    width: 8px; height: 8px;
+    left: 14px;
+    bottom: 12px;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     border-radius: 50%;
-    background: #b1743f;
-    box-shadow: 0 0 0 3px rgba(177,116,63,.18);
+    background: #fff;
+    color: #b1743f;
+    box-shadow: 0 3px 8px rgba(140,100,60,.18);
 }
+.bubble-card.takeout .tm-rider svg { width: 15px; height: 15px; }
 .bubble-card.takeout .tm-pin {
     position: absolute;
-    left: 68%; top: 22%;
-    width: 10px; height: 10px;
+    left: 78%;
+    top: 22%;
+    width: 11px;
+    height: 11px;
     border-radius: 50% 50% 50% 0;
     background: #b1743f;
     transform: rotate(-45deg);
@@ -2223,19 +2244,87 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 }
 .bubble-card.takeout .tm-eta {
     position: absolute;
-    left: 10px; bottom: 8px;
-    font-size: 12px;
+    left: 46px;
+    bottom: 9px;
+    font-size: 11.5px;
     font-weight: 700;
     color: #6d4b32;
 }
 .bubble-card.takeout .tm-status {
     position: absolute;
-    right: 10px; bottom: 8px;
+    right: 10px;
+    bottom: 8px;
     font-size: 10.5px;
     font-weight: 600;
     color: #8a6d5a;
-    background: rgba(255,255,255,.68);
+    background: rgba(255,255,255,.74);
     border-radius: 8px;
     padding: 2px 6px;
 }
+
+/* 外卖 / 跑腿切换 */
+.tk-mode-tabs {
+    display: flex;
+    gap: 8px;
+    margin: 0 0 12px;
+    padding: 3px;
+    border-radius: 12px;
+    background: #f4f4f6;
+}
+.tk-mode-tab {
+    flex: 1;
+    height: 34px;
+    border-radius: 9px;
+    font-size: 12.5px;
+    font-weight: 650;
+    color: #8e8e93;
+    background: transparent;
+}
+.tk-mode-tab.active {
+    background: #fff;
+    color: #1c1c1e;
+    box-shadow: 0 1px 4px rgba(0,0,0,.08);
+}
+
+/* 礼物清单 / 物流进度（礼物卡片、商城订单共用） */
+.bubble-card .gift-items {
+    margin: 0 14px 10px;
+    padding: 8px 10px;
+    border-radius: 10px;
+    background: #faf8f6;
+    border: 1px solid #efe9e3;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+.bubble-card .gift-item {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: 12px;
+    line-height: 1.4;
+    color: #5c554f;
+}
+.bubble-card .gift-item-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bubble-card .gift-item-price { flex: none; font-size: 11px; color: #9a8068; }
+.bubble-card .card-ship {
+    margin: 0 14px 10px;
+    padding: 8px 10px 9px;
+    border-radius: 10px;
+    background: #faf7f3;
+    border: 1px solid #f0e4d6;
+}
+.bubble-card .card-ship-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 10.5px;
+    line-height: 1.4;
+    color: #9a8068;
+}
+.bubble-card .card-ship-track { display: flex; align-items: center; margin-top: 7px; }
+.bubble-card .ship-dot { width: 7px; height: 7px; border-radius: 50%; background: #e6dbcd; flex: none; }
+.bubble-card .ship-dot.on { background: #c58a4c; }
+.bubble-card .ship-line { flex: 1; height: 2px; margin: 0 3px; background: #ece3d7; }
+.bubble-card .ship-line.on { background: #c58a4c; }
 

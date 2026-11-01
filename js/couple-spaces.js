@@ -592,6 +592,17 @@ let apiInFlight = false;
 let resumePoll = null;
 let activePageType = null;
 
+function lastCharKey() {
+  return 'nano_couple_last_char__' + String((currentMask && currentMask.id) || currentMaskId || 'default');
+}
+function readLastCharId() {
+  try { return String(localStorage.getItem(lastCharKey()) || ''); } catch (e) { return ''; }
+}
+function rememberLastChar(id) {
+  if (!id) return;
+  try { localStorage.setItem(lastCharKey(), String(id)); } catch (e) {}
+}
+
 const defaultState = () => ({
   version: 17,
   char: null,
@@ -716,23 +727,62 @@ function idb() {
     req.onerror = () => reject(req.error);
   });
 }
-async function dbGet() {
+// 一个 char 一条记录：key 里同时带上当前 User 和 char，切 char 不会再串记录。
+function stateRecordKey(char) {
+  const mid = String((currentMask && currentMask.id) || currentMaskId || 'default');
+  const c = char || (state && state.char);
+  const cid = String((c && (c.id || c.name)) || '_');
+  return 'state::' + mid + '::' + cid;
+}
+async function dbGetRaw(key) {
   const d = await idb();
   return new Promise((res, rej) => {
     const t = d.transaction(STORE, 'readonly');
-    const r = t.objectStore(STORE).get('main');
+    const r = t.objectStore(STORE).get(key);
     r.onsuccess = () => res(r.result);
     r.onerror = () => rej(r.error);
   });
+}
+async function dbGet(char) {
+  return dbGetRaw(stateRecordKey(char));
 }
 async function dbPut(v) {
   const d = await idb();
   return new Promise((res, rej) => {
     const t = d.transaction(STORE, 'readwrite');
-    t.objectStore(STORE).put(v, 'main');
+    t.objectStore(STORE).put(v, stateRecordKey(v && v.char));
     t.oncomplete = res;
     t.onerror = () => rej(t.error);
   });
+}
+
+function normalizeLoadedState(s, c) {
+  if (!s) return null;
+  s.char = c || s.char || null;
+  if (!s.letters || !s.letters.current) {
+    s.letters = { current: { user: '', char: '', userLocked: false, charLocked: false, unlocked: false }, history: [] };
+  }
+  if (!s.diaries || !s.diaries.current) {
+    s.diaries = { current: { user: '', char: '', userLocked: false, charLocked: false, unlocked: false }, history: [] };
+  }
+  if (!Array.isArray(s.letters.history)) s.letters.history = [];
+  if (!Array.isArray(s.diaries.history)) s.diaries.history = [];
+  if (!Array.isArray(s.anniversaries)) s.anniversaries = [];
+  return s;
+}
+async function loadStateForChar(c, allowLegacy) {
+  let s = await dbGet(c);
+  if (!s && allowLegacy) {
+    // 旧版本所有 char 共用 'main'：只在第一次初始化时迁移给当前 char，不复制给其他人
+    const legacy = await dbGetRaw('main');
+    if (legacy) s = legacy;
+  }
+  s = normalizeLoadedState(s, c);
+  if (!s) {
+    s = defaultState();
+    s.char = c || null;
+  }
+  return s;
 }
 
 /* ---------- 工具 ---------- */
@@ -1024,9 +1074,13 @@ function chooseCharByIndex(i) {
 }
 
 async function enterSpace() {
-  if (!selectedChar) selectedChar = state.char || charList[0] || null;
+  if (!selectedChar) selectedChar = (state && state.char) || charList[0] || null;
   if (!selectedChar) { toast('请选择一个 Char'); return; }
-  state.char = selectedChar;
+  // 每个 char 各自一份记录：进入时读取这个 char 自己的存档，绝不沿用上一个 char 的 state
+  const nextState = await loadStateForChar(selectedChar, false);
+  nextState.char = selectedChar;
+  state = nextState;
+  rememberLastChar(selectedChar.id || selectedChar.name);
   ensureAnnivBase();
   entered = true;
   try { await loadUserProfile(); } catch (e) {}
@@ -2410,12 +2464,14 @@ function resumePendingApi() {
   try { await loadWorldbooks(); } catch (e) {}
 
   const allChars = await DB.getCharacters();
+  const maskId = String((currentMask && currentMask.id) || currentMaskId || '');
+  // 严格按当前 User 隔离：普通角色、NPC、小号都必须绑定到当前 User 才能出现。
+  // 之前 isNpc 直接放行，会把别人 User 的 NPC / 小号也带进情侣空间。
   charList = allChars.filter((c) => {
     if (!c) return false;
     if (c.nanoAssistant === true) return false;   // 纳米是助手，不是可互动角色
-    if (c.isNpc === true) return true;
-    if (currentMask && c.bindUser === currentMask.id) return true;
-    return false;
+    if (!maskId) return false;
+    return String(c.bindUser || '') === maskId;
   }).map((c) => ({
     id: c.id,
     name: c.name || '未命名',
@@ -2430,27 +2486,11 @@ function resumePendingApi() {
     createdAt: c.createdAt || c.created || c.addedAt || c.time || c.ts || ''
   }));
 
-  state = await dbGet();
-  if (!state) {
-    state = defaultState();
-    if (charList.length) state.char = charList[0];
-    await dbPut(state);
-  } else {
-    if (!state.letters || !state.letters.current) {
-      state.letters = { current: { user: '', char: '', userLocked: false, charLocked: false, unlocked: false }, history: [] };
-    }
-    if (!state.diaries || !state.diaries.current) {
-      state.diaries = { current: { user: '', char: '', userLocked: false, charLocked: false, unlocked: false }, history: [] };
-    }
-    if (!state.letters.history) state.letters.history = [];
-    if (!state.diaries.history) state.diaries.history = [];
-    if (state.char && charList.length && !charList.find((c) => c.id === state.char.id)) {
-      state.char = charList[0];
-    }
-    await dbPut(state);
-  }
-
-  if (!Array.isArray(state.anniversaries)) state.anniversaries = [];
+  const lastCharId = readLastCharId();
+  const lastChar = lastCharId && charList.find((c) => String(c.id) === lastCharId);
+  const initialChar = lastChar || charList[0] || null;
+  state = await loadStateForChar(initialChar, true);
+  if (!state.char && initialChar) state.char = initialChar;
   ensureAnnivBase();
   await dbPut(state);
 

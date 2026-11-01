@@ -202,6 +202,54 @@
         return '<div class="card-hint">' + esc(text) + '</div>';
     }
 
+    // 物流进度：按「下单时间 + 预计天数」推算，礼物 / 商城订单共用
+    function shipState(cd) {
+        var eta = Math.max(1, Number(cd && cd.etaDays) || 3);
+        var steps = ['已下单', '已发货', '运输中', '派送中', '已签收'];
+        var sentAt = Number(cd && cd.sentAt) || 0;
+        // 旧卡片没有 sentAt：只展示预计到达，不伪造进度
+        if (!sentAt) return { idx: 0, steps: steps, remaining: eta, eta: eta, arrived: false, stale: true };
+        var d = Math.max(0, (Date.now() - sentAt) / 86400000);
+        var idx;
+        if (d >= eta) idx = 4;
+        else if (d >= eta * 0.66) idx = 3;
+        else if (d >= eta * 0.33) idx = 2;
+        else if (d >= 0.04) idx = 1;
+        else idx = 0;
+        return { idx: idx, steps: steps, remaining: Math.max(0, Math.ceil(eta - d)), eta: eta, arrived: idx >= 4, stale: false };
+    }
+
+    function shipProgress(cd) {
+        if (cd && (cd.status === 'returned' || cd.status === 'rejected' || cd.status === 'declined')) return '';
+        var s = shipState(cd);
+        if (!s) return '';
+        var dots = s.steps.map(function (label, i) {
+            var line = i ? '<i class="ship-line' + (i <= s.idx ? ' on' : '') + '"></i>' : '';
+            return line + '<b class="ship-dot' + (i <= s.idx ? ' on' : '') + '" title="' + esc(label) + '"></b>';
+        }).join('');
+        var head = s.arrived ? '物流 · 已送达' : ('物流 · ' + s.steps[s.idx]);
+        var eta = s.arrived ? '已签收' : ('预计 ' + s.remaining + ' 天后送达');
+        return '<div class="card-ship">' +
+            '<div class="card-ship-head"><span>' + esc(head) + '</span><span>' + esc(eta) + '</span></div>' +
+            '<div class="card-ship-track">' + dots + '</div>' +
+            '</div>';
+    }
+
+    // 礼物清单：送了几样东西时逐件显示，而不是只显示「N 件」
+    function itemList(cd) {
+        var list = Array.isArray(cd && cd.items) ? cd.items : [];
+        if (!list.length) return '';
+        return '<div class="gift-items">' + list.map(function (it) {
+            if (!it) return '';
+            var qty = Math.max(1, Number(it.qty) || 1);
+            var price = Number(it.price) || 0;
+            return '<div class="gift-item">' +
+                '<span class="gift-item-name">' + esc(it.name || '商品') + (qty > 1 ? (' × ' + qty) : '') + '</span>' +
+                (price > 0 ? '<span class="gift-item-price">¥' + (price * qty).toFixed(2) + '</span>' : '') +
+                '</div>';
+        }).join('') + '</div>';
+    }
+
     function build(cardData, opts) {
         var cd = Object.assign({}, cardData || {});
         currentCard = cd;
@@ -250,17 +298,17 @@
                 ], cd) + foot;
         } else if (type === 'gift') {
             var gHead = st === 'received' ? (side === 'right' && !cd.response ? '对方已查收' : '礼物已查收')
-                : (st === 'returned' ? (side === 'right' && !cd.response ? '对方已退还' : '礼物已退还')
+                : (st === 'returned' ? (side === 'right' && !cd.response ? '对方已拒收' : '礼物已拒收')
                     : (side === 'left' ? '礼物待查收' : '礼物已送出'));
-            if (st === 'received' && cd.response) gHead = side === 'right' ? '你已查收' : '对方已查收';
-            if (st === 'returned' && cd.response) gHead = side === 'right' ? '你已退还' : '对方已退还';
+            if (st === 'received' && cd.response) gHead = side === 'right' ? '你已收下' : '对方已收下';
+            if (st === 'returned' && cd.response) gHead = side === 'right' ? '你已拒收' : '对方已拒收';
             var gIcon = st === 'pending' ? (side === 'left' ? 'gift' : 'clock') : 'checkCircle';
             if (st === 'returned') gIcon = 'x';
             var gFoot = '';
-            if (st === 'received') gFoot = statusFoot(side === 'left' && cd.response ? '你已查收这份礼物' : (side === 'right' && cd.response ? '对方已查收这份礼物' : '这份礼物已查收'));
-            else if (st === 'returned') gFoot = statusFoot(side === 'left' && cd.response ? '你已退还这份礼物' : (side === 'right' && cd.response ? '对方已退还这份礼物' : '这份礼物已退还'));
-            else if (side === 'right') gFoot = statusFoot('等待对方查收');
-            else gFoot = actions([['退还', 'return', false], ['接受', 'receive', true]]);
+            if (st === 'received') gFoot = statusFoot(side === 'left' && cd.response ? '你已收下这份礼物' : (side === 'right' && cd.response ? '对方已收下这份礼物' : '这份礼物已收下'));
+            else if (st === 'returned') gFoot = statusFoot(side === 'left' && cd.response ? '你已拒收这份礼物' : (side === 'right' && cd.response ? '对方已拒收这份礼物' : '这份礼物已拒收'));
+            else if (side === 'right') gFoot = statusFoot('等待对方收下或拒收');
+            else gFoot = actions([['拒收', 'return', false], ['收下', 'receive', true]]);
             var giftSub = cd.amount
                 ? ('价值 ' + String(cd.amount) + (cd.sub ? ' · ' + cd.sub : ''))
                 : (cd.sub || '');
@@ -268,13 +316,17 @@
             if (giftNote && String(giftSub).indexOf(giftNote) === -1) {
                 giftSub = [giftSub, giftNote].filter(Boolean).join(' · ');
             }
+            var giftItems = Array.isArray(cd.items) ? cd.items : [];
+            var giftCount = giftItems.reduce(function (n, it) { return n + Math.max(1, Number(it && it.qty) || 1); }, 0);
             html = header(gIcon, gHead, time) +
                 mainTitle('gift', side === 'left' ? '收到一份礼物' : '送出一份礼物', cd.title || '礼物', giftSub, cd) +
+                itemList(cd) +
+                shipProgress(cd) +
                 info([
                     ['送礼人', roles.sender, 'user'],
                     ['收礼人', roles.recipient, 'user'],
                     ['礼物价值', cd.amount || '未标价', 'wallet'],
-                    ['礼物类型', cd.giftType || '心意礼物', 'gift']
+                    ['礼物件数', giftItems.length ? (giftCount + ' 件') : '1 件', 'gift']
                 ], cd) + gFoot;
         } else if (type === 'store') {
             var kind = cd.storeKind || 'pay_request';
@@ -332,28 +384,40 @@
             var price = Number(cd.price || 0);
             var eta = Number(cd.eta || 0);
             var tDir = cd.direction === 'char' ? 'char' : 'user';
-            var tHead = st === 'accepted' ? '外卖已确认' : (st === 'rejected' ? '外卖已取消' : '外卖订单');
+            var isErrand = cd.mode === 'errand' || cd.errand === true;
+            var kindLabel = isErrand ? '跑腿' : '外卖';
+            var tHead = st === 'accepted'
+                ? (isErrand ? '跑腿已接单' : '外卖已确认')
+                : (st === 'rejected' ? (isErrand ? '跑腿已取消' : '外卖已取消') : (isErrand ? '同城跑腿' : '外卖订单'));
             var tIcon = st === 'accepted' ? 'checkCircle' : (st === 'rejected' ? 'x' : 'truck');
             var tFoot = '';
-            if (st === 'accepted') tFoot = statusFoot('已确认，等待送达');
-            else if (st === 'rejected') tFoot = statusFoot('已取消');
-            else if (tDir === 'char') tFoot = actions([['取消', 'takeout-reject', false], ['确认外卖', 'takeout-accept', true]]);
-            else tFoot = statusFoot('等待对方确认');
+            if (st === 'accepted') tFoot = statusFoot(isErrand ? '已接单，正在为你跑腿' : '已确认，等待送达');
+            else if (st === 'rejected') tFoot = statusFoot(isErrand ? '已拒收，跑腿取消' : '已拒收，外卖取消');
+            else if (tDir === 'char') tFoot = actions([['拒收', 'takeout-reject', false], [isErrand ? '确认接单' : '确认外卖', 'takeout-accept', true]]);
+            else tFoot = statusFoot('等待对方接单或拒收');
             var priceText = price > 0 ? ('¥' + price.toFixed(2)) : '';
-            var tSub = [cd.shop || '外卖', priceText].filter(Boolean).join(' · ');
-            var tMain = mainTitle('utensil', '外卖订单', cd.food || '外卖', tSub, cd);
-            var etaText = eta > 0 ? (eta + ' 分钟') : '配送中';
-            var tStatus = st === 'accepted' ? '已确认' : (st === 'rejected' ? '已取消' : '待确认');
+            var tSub = [cd.shop || kindLabel, priceText].filter(Boolean).join(' · ');
+            var tMain = mainTitle(isErrand ? 'truck' : 'utensil', isErrand ? '跑腿订单' : '外卖订单', cd.food || kindLabel, tSub, cd);
+            var etaText = eta > 0 ? (eta + ' 分钟') : (isErrand ? '正在前往' : '配送中');
+            var tStatus = st === 'accepted' ? (isErrand ? '已接单' : '已确认') : (st === 'rejected' ? '已取消' : '待接单');
+            // 干净的城市路线底图：浅色街区 + 一条虚线路径 + 骑手/终点标记
             var tMap = '<div class="takeout-map">' +
-                '<span class="tm-route"></span><span class="tm-pin"></span>' +
-                '<span class="tm-eta">' + etaText + ' 到达</span>' +
+                '<svg class="tm-route-svg" viewBox="0 0 220 84" preserveAspectRatio="none" aria-hidden="true">' +
+                    '<path class="tm-block" d="M-2 62h52v24H-2zM156 0h68v22h-68zM96 62h36v24H96z"/>' +
+                    '<path class="tm-road" d="M-6 56 C42 50 66 52 98 56 S170 62 226 44"/>' +
+                    '<path class="tm-road tm-road-b" d="M28 -4 C42 20 56 34 80 44 S126 52 140 88"/>' +
+                    '<path class="tm-path" d="M30 62 C62 62 58 34 98 34 S148 48 180 26"/>' +
+                '</svg>' +
+                '<span class="tm-rider">' + icon(isErrand ? 'truck' : 'truck') + '</span>' +
+                '<span class="tm-pin"></span>' +
+                '<span class="tm-eta">' + etaText + (eta > 0 ? ' 到达' : '') + '</span>' +
                 '<span class="tm-status">' + tStatus + '</span></div>';
             html = header(tIcon, tHead, time) + tMain + tMap +
                 info([
-                    ['店铺', cd.shop || '外卖', 'store'],
-                    ['餐品', cd.food || '外卖', 'utensil'],
-                    ['预计送达', etaText, 'clock'],
-                    ['订单状态', tStatus, 'receipt']
+                    ['类型', kindLabel, isErrand ? 'truck' : 'utensil'],
+                    [isErrand ? '取货 / 购买地' : '店铺', cd.shop || kindLabel, 'store'],
+                    [isErrand ? '物品 / 任务' : '餐品', cd.food || kindLabel, isErrand ? 'box' : 'utensil'],
+                    ['预计' + (isErrand ? '完成' : '送达'), etaText, 'clock']
                 ]) + note(cd.note || '') + tFoot;
         } else if (type === 'location') {
             var dist = Number(cd.distance || 0);
@@ -603,6 +667,51 @@
                     ['记录时间', time || '刚刚', 'clock']
                 ]) +
                 (secretPreview ? note(secretPreview) : '') + statusFoot('');
+        } else if (type === 'travelInvite') {
+            var tDest = String(cd.dest || cd.place || cd.title || '一起去');
+            var tDir = cd.direction || (side === 'right' ? 'user' : 'char');
+            var tSt = st || 'pending';
+            var tHead = tSt === 'accepted' ? '一起去 · 已同意'
+                : (tSt === 'rejected' ? '一起去 · 已婉拒' : '一起去邀请');
+            var tIcon = tSt === 'accepted' ? 'checkCircle' : (tSt === 'rejected' ? 'x' : 'pin');
+            var tFoot = '';
+            if (tSt === 'accepted') tFoot = '<div class="card-footer"><span class="card-actions"><button type="button" class="btn btn-primary primary card-btn" data-act="travel-open">进入旅程</button></span></div>';
+            else if (tSt === 'rejected') tFoot = statusFoot(tDir === 'char' ? '你婉拒了这次邀请' : 'TA 婉拒了这次邀请');
+            else if (tDir === 'char') tFoot = actions([['婉拒', 'travel-reject', false], ['同意', 'travel-accept', true]]);
+            var tWhen = [cd.date, cd.time].filter(Boolean).join(' · ');
+            var tDays = cd.days ? (String(cd.days) + ' 天') : '';
+            html = header(tIcon, tHead, time) +
+                mainTitle('pin', '一起去', tDest, [tWhen, tDays].filter(Boolean).join(' · ')) +
+                info([
+                    ['目的地', tDest, 'pin'],
+                    ['日期', tWhen || '待定', 'calendar'],
+                    ['天数', tDays || '1 天', 'clock'],
+                    ['发起人', tDir === 'char' ? other : me, 'user']
+                ], cd) + note(cd.note || '') + tFoot;
+        } else if (type === 'travelReport' || type === 'travelShare') {
+            var isReport = type === 'travelReport';
+            var isTogether = isReport && cd.travelKind === 'together';
+            var trImg = String(cd.img || '');
+            var trImgHtml = trImg ? '<div class="card-image"><img src="' + esc(trImg) + '" alt=""></div>' : '';
+            var trTitle = String(cd.title || cd.place || (isReport ? '旅途报备' : '旅途分享'));
+            var trSub = [cd.place, cd.date, cd.days ? (cd.days + ' 天') : ''].filter(Boolean).join(' · ');
+            var trFoot = statusFoot(isTogether ? '这次旅行已同步到「旅途 · 我们」' : (isReport ? 'TA 的旅途已同步到「旅途」' : '这段旅程已同步到「旅途」'));
+            var trHead = isTogether ? '我们的旅行' : (isReport ? '旅途报备' : '旅途分享');
+            var trRows = isTogether ? [
+                ['目的地', cd.place || trTitle, 'pin'],
+                ['日期', cd.date || '—', 'calendar'],
+                ['天数', (cd.days || '1') + ' 天', 'clock'],
+                ['票号', cd.ticketNo || '—', 'box']
+            ] : [
+                ['地点', cd.place || trTitle, 'pin'],
+                ['日期', cd.date || '—', 'calendar'],
+                [isReport ? '记录人' : '分享人', isReport ? (side === 'left' ? other : me) : (cd.fromName || (side === 'right' ? me : other)), 'user'],
+                ['状态', isReport ? '已同步' : '已分享', 'checkCircle']
+            ];
+            html = header(isReport ? 'pin' : 'image', trHead, time) +
+                trImgHtml +
+                mainTitle(isReport ? 'pin' : 'image', trHead, trTitle, trSub) +
+                info(trRows, cd) + note(cd.thought || cd.note || '') + trFoot;
         } else if (type === 'cycle') {
             html = header('calendar', cd.title || '经期提醒', time) +
                 mainTitle('calendar', '经期提醒', cd.sub || '', cd.date || '', cd) +

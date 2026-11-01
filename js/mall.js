@@ -382,6 +382,39 @@
         $('checkoutBar').style.display = (state.tab === 'cart' && items.length) ? 'flex' : 'none';
     }
 
+    // 快递进度：只对已经付款的订单展示，按「下单时间 + 预计天数」推进
+    function shippingStateOf(order) {
+        if (!order) return null;
+        var status = String(order.status || '');
+        if (!/(已支付|已完成|已发货|已签收|已送达)/.test(status)) return null;
+        var eta = Math.max(1, Number(order.shippingDays) || 3);
+        var t = Number(order.paidAt) || Date.parse(order.time || '') || Number(order.shippingStart) || 0;
+        var d = t ? Math.max(0, (Date.now() - t) / 86400000) : 0;
+        var steps = ['已下单', '已发货', '运输中', '派送中', '已签收'];
+        var idx;
+        if (d >= eta) idx = 4;
+        else if (d >= eta * 0.66) idx = 3;
+        else if (d >= eta * 0.33) idx = 2;
+        else if (d >= 0.04) idx = 1;
+        else idx = 0;
+        return { idx: idx, steps: steps, remaining: Math.max(0, Math.ceil(eta - d)), arrived: idx >= 4 };
+    }
+    function shippingHTML(order) {
+        var s = shippingStateOf(order);
+        if (!s) return '';
+        var track = s.steps.map(function (label, i) {
+            var line = i ? '<i class="order-ship-line' + (i <= s.idx ? ' on' : '') + '"></i>' : '';
+            return line + '<b class="order-ship-dot' + (i <= s.idx ? ' on' : '') + '"></b>';
+        }).join('');
+        var stage = s.arrived ? '已签收' : s.steps[s.idx];
+        var eta = s.arrived ? '已送达' : ('预计 ' + s.remaining + ' 天后送达');
+        return '<div class="order-ship">' +
+            '<div class="order-ship-head"><span>快递 · ' + esc(stage) + '</span><span>' + esc(eta) + '</span></div>' +
+            '<div class="order-ship-track">' + track + '</div>' +
+            '<div class="order-ship-labels">' + s.steps.map(function (x) { return '<span>' + esc(x) + '</span>'; }).join('') + '</div>' +
+            '</div>';
+    }
+
     function renderOrders() {
         $('ordersEmpty').style.display = state.orders.length ? 'none' : 'flex';
         $('orderList').innerHTML = state.orders.map(function (o) {
@@ -393,6 +426,7 @@
                 '<div class="order-top"><span class="order-id">' + esc(o.id) + ' · ' + esc((o.time || '').slice(0, 16).replace('T', ' ')) + '</span><span class="order-status">' + esc(o.status || '已支付') + '</span>' +
                 '<button class="order-del" data-order-del="' + esc(o.id) + '" type="button" aria-label="删除订单"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M7 7l1 14h8l1-14"/></svg></button></div>' +
                 '<div class="order-items">' + lines + '</div>' +
+                shippingHTML(o) +
                 '<div class="order-foot"><span class="order-pay">' + esc(o.payment || '') + extra + '</span><span class="order-total">' + money(o.total) + '</span></div>' +
             '</div>';
         }).join('');
@@ -782,6 +816,7 @@
                 queueCard(ctx.recipient, {
                     card: {
                         cardType: 'takeout',
+                        mode: 'food',
                         food: foodName || '外卖',
                         shop: 'Nano Store · 外卖',
                         price: Math.round(foodTotal * 100) / 100,
@@ -812,6 +847,9 @@
                     items: giftItems.map(function (it) {
                         return { name: it.product.name, price: Number(it.product.price || 0), qty: Number(it.qty || 1), image: it.product.image || '', cat: it.product.cat || 'gift' };
                     }),
+                    // 快递：下单即开始计时，卡片上显示预计几天到达与物流进度
+                    sentAt: Date.now(),
+                    etaDays: 2 + Math.floor(Math.random() * 3),
                     footer: '',
                     status: 'pending'
                 };
@@ -980,8 +1018,11 @@
             status: status,
             payment: payment,
             recipient: userName(),
-            gift: false
+            gift: false,
+            // 快递进度：下单后按预计天数逐步推进（每个订单固定，不会每次刷新乱跳）
+            shippingDays: 2 + Math.floor(Math.random() * 3)
         };
+        if (/已支付|已完成/.test(String(status || ''))) o.paidAt = Date.now();
         return Object.assign(o, extra || {});
     }
 
@@ -1031,6 +1072,9 @@
                     title: item.name,
                     sub: '来自 ' + userName() + ' 的礼物',
                     amount: money(item.price),
+                    items: [{ name: item.name, price: Number(item.price) || 0, qty: 1, image: item.image || '', cat: item.cat || 'gift' }],
+                    sentAt: Date.now(),
+                    etaDays: 2 + Math.floor(Math.random() * 3),
                     footer: '',
                     status: 'pending'
                 },

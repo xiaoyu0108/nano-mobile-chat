@@ -1185,9 +1185,18 @@ body.nano-chat-inner .bubble-card.takeout .takeout-map {
   border-radius: 14px;
   border: 1px solid #ecdde3;
   background:
-    repeating-linear-gradient(0deg, rgba(189, 131, 149, 0.08) 0 1px, transparent 1px 15px),
-    repeating-linear-gradient(90deg, rgba(189, 131, 149, 0.08) 0 1px, transparent 1px 15px),
-    linear-gradient(145deg, #fdf5f8, #f4e7ec 60%, #f9f0f3);
+    radial-gradient(120% 90% at 8% 0%, #fdf5f8 0%, rgba(253, 245, 248, 0) 55%),
+    radial-gradient(120% 90% at 100% 110%, #f7edf1 0%, rgba(247, 237, 241, 0) 60%),
+    linear-gradient(180deg, #fdf8fa, #f6ecf0);
+}
+body.nano-chat-inner .bubble-card.takeout .tm-block { fill: rgba(189, 131, 149, 0.10); }
+body.nano-chat-inner .bubble-card.takeout .tm-road { stroke: #ecd9e0; }
+body.nano-chat-inner .bubble-card.takeout .tm-road-b { stroke: #f1e3e8; }
+body.nano-chat-inner .bubble-card.takeout .tm-path { stroke: #b97e91; }
+body.nano-chat-inner .bubble-card.takeout .tm-rider {
+  background: #fff;
+  color: #b97e91;
+  box-shadow: 0 3px 8px rgba(150, 90, 110, 0.18);
 }
 body.nano-chat-inner .bubble-card.takeout .tm-route {
   left: 14%;
@@ -1228,6 +1237,23 @@ body.nano-chat-inner .bubble-card.takeout .message-box {
 }
 body.nano-chat-inner .bubble-card.takeout .card-footer { order: 4; padding: 0 10px 9px !important; }
 body.nano-chat-inner .bubble-card.takeout .card-footer-text { color: #a1838e !important; font-size: 10px !important; }
+
+/* 礼物清单 / 物流进度：跟着灰粉主题走 */
+body.nano-chat-inner .bubble-card .gift-items {
+  background: #fdf7f9;
+  border-color: #f0e2e8;
+}
+body.nano-chat-inner .bubble-card .gift-item { color: #5a5054; }
+body.nano-chat-inner .bubble-card .gift-item-price { color: #b97e91; }
+body.nano-chat-inner .bubble-card .card-ship {
+  background: #fdf8fa;
+  border-color: #f0e2e8;
+}
+body.nano-chat-inner .bubble-card .card-ship-head { color: #a1838e; }
+body.nano-chat-inner .bubble-card .ship-dot { background: #efdfe5; }
+body.nano-chat-inner .bubble-card .ship-dot.on { background: #b97e91; }
+body.nano-chat-inner .bubble-card .ship-line { background: #f1e4e9; }
+body.nano-chat-inner .bubble-card .ship-line.on { background: #b97e91; }
 body.nano-chat-inner .bubble-card.location {
   width: var(--card-width, 258px);
   background: linear-gradient(180deg, #f9fcfd, #edf5fa);

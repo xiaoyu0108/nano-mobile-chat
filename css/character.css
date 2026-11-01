@@ -673,6 +673,31 @@ svg {
     appearance: none;
 }
 
+/* Nano 票根导出 */
+.ticket-export-btn {
+    width: 100%;
+    height: 46px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    border: 1px solid var(--ink);
+    border-radius: 14px;
+    background: var(--ink);
+    color: #fff;
+    font-size: 13.5px;
+    font-weight: 650;
+    letter-spacing: 0.02em;
+}
+.ticket-export-btn svg { width: 19px; height: 19px; flex: none; }
+.ticket-export-btn:active { transform: scale(0.98); opacity: 0.9; }
+.ticket-export-hint {
+    margin-top: 7px;
+    font-size: 11px;
+    line-height: 1.55;
+    color: var(--gray);
+}
+
 /* ===== 头像选择器 ===== */
 .avatar-center {
     display: flex;

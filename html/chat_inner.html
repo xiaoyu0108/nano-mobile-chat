@@ -12,14 +12,14 @@
     <link rel="dns-prefetch" href="https://unpkg.com">
     <script defer src="../js/localforage.min.js?v=20261027a"></script>
     <script defer src="../js/appearance.js?v=20261026d"></script>
-<script defer src="../js/nano-notify.js?v=20261029h"></script>
+<script defer src="../js/nano-notify.js?v=20261102a"></script>
 <script defer src="../js/reroll-reason.js?v=20261022a"></script>
 <script defer src="../js/cycle-store.js?v=20261021b"></script>
 <script defer src="../js/nano-badge.js?v=20261023a"></script>
     <script defer src="../js/keep-alive.js?v=20261023a"></script>
 <script defer src="../js/nano-call-audio.js?v=20261024e"></script>
 <script defer src="../js/group-store.js?v=20261021a"></script>
-    <script defer src="../js/nano-gallery.js?v=20261028e"></script>
+    <script defer src="../js/nano-gallery.js?v=20261102a"></script>
     <script>
     (function () {
         try {
@@ -210,17 +210,21 @@
     <div class="ios-popup-overlay" id="takeoutPopup">
         <div class="ios-popup-card">
             <div class="ios-popup-header">
-                <div class="ios-popup-title">点外卖</div>
-                <div class="ios-popup-subtitle">填写外卖信息，发送给对方</div>
+                <div class="ios-popup-title" id="takeoutTitle">点外卖</div>
+                <div class="ios-popup-subtitle" id="takeoutSubtitle">填写外卖信息，发送给对方</div>
             </div>
             <div class="ios-popup-body">
+                <div class="tk-mode-tabs">
+                    <button class="tk-mode-tab active" type="button" data-tk-mode="food">外卖</button>
+                    <button class="tk-mode-tab" type="button" data-tk-mode="errand">同城跑腿</button>
+                </div>
                 <div class="ios-popup-input-group">
                     <div class="ios-popup-row">
-                        <span class="ios-popup-label">食品</span>
+                        <span class="ios-popup-label" id="takeoutLabelFood">食品</span>
                         <input type="text" class="ios-popup-input" id="takeoutFood" placeholder="例如 麻辣烫、奶茶..." maxlength="30" />
                     </div>
                     <div class="ios-popup-row">
-                        <span class="ios-popup-label">店铺</span>
+                        <span class="ios-popup-label" id="takeoutLabelShop">店铺</span>
                         <input type="text" class="ios-popup-input" id="takeoutShop" placeholder="店铺名称..." maxlength="30" />
                     </div>
                     <div class="ios-popup-row">
@@ -229,7 +233,7 @@
                     </div>
                     <div class="ios-popup-row">
                         <span class="ios-popup-label">备注</span>
-                        <input type="text" class="ios-popup-input" id="takeoutNote" placeholder="口味 / 留言..." maxlength="40" />
+                        <input type="text" class="ios-popup-input" id="takeoutNote" placeholder="口味 / 地址 / 留言..." maxlength="40" />
                     </div>
                 </div>
             </div>
@@ -482,25 +486,28 @@
     <script defer src="../js/nano-tts.js?v=20261024e"></script>
 <script defer src="../js/nano-assistant-knowledge.js?v=20261025b"></script>
 <script defer src="../js/nano-files.js?v=20261023a"></script>
-<script defer src="../js/nano-assistant-tools.js?v=20261025b"></script>
+<script defer src="../js/nano-assistant-tools.js?v=20261102a"></script>
 <script defer src="../js/family-card-store.js?v=20261006a"></script>
 <script defer src="../js/nano-pay.js?v=20261020j"></script>
     <script defer src="../js/mem-link.js?v=20261006a"></script>
     <script defer src="../js/nano-holiday.js?v=20261029a"></script>
 <script defer src="../js/builtin-worldbook.js?v=20261013a"></script>
 <script defer src="../js/nano-mcp-runtime.js?v=20261021d"></script>
-<script defer src="../js/nano-mcp-chat.js?v=20261016c"></script>
+<script defer src="../js/nano-mcp-chat.js?v=20261102a"></script>
 <script defer src="../js/schedule-bridge.js?v=20261029a"></script>
-        <script defer src="../js/nano-card-ui.js?v=20261027f"></script>
-    <script defer src="../js/nano-prompts.js?v=20261029f"></script>
+        <script defer src="../js/nano-card-ui.js?v=20261106a"></script>
+    <script defer src="../js/nano-prompts.js?v=20261102a"></script>
 <script defer src="../js/social-graph.js?v=20261027k"></script>
     <script defer src="../js/nano-translate.js?v=20261026d"></script>
-    <script defer src="../js/chat-core.js?v=20261029g"></script>
+    <script defer src="../js/chat-core.js?v=20261107a"></script>
+    <script defer src="../js/travel-store.js?v=20261106a"></script>
+    <script defer src="../js/travel-api.js?v=20261106a"></script>
+    <script defer src="../js/travel-bridge.js?v=20261107a"></script>
     <script defer src="../js/roleplay-prompt.js?v=20261023a"></script>
 <script defer src="../js/chat-transfer.js?v=20261020j"></script>
 <script defer src="../js/chat-gift.js"></script>
     <script defer src="../js/chat-image.js?v=20261024a"></script>
-    <script defer src="../js/chat-more.js?v=20261024i"></script>
+    <script defer src="../js/chat-more.js?v=20261106a"></script>
 <script defer src="../js/chat-place.js"></script>
 <script defer src="../js/chat-voice.js"></script>
     <script defer src="../js/nano-export.js?v=20261015a"></script>

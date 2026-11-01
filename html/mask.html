@@ -52,12 +52,20 @@
                 <path d="M17.8 3.7a1.8 1.8 0 0 1 2.5 2.5L12 14.5l-3.4.9.9-3.4z"/>
             </svg>
         </button>
+        <button class="action-btn import-btn" id="importPngBtn" type="button" title="导入 Nano 人设票根" aria-label="导入 PNG">
+            <svg viewBox="0 0 24 24">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+        </button>
         <button class="action-btn add-btn" id="addBtn" type="button" title="新增人设" aria-label="新增人设">
             <svg viewBox="0 0 24 24">
                 <path d="M12 5v14M5 12h14"/>
             </svg>
         </button>
     </nav>
+    <input type="file" class="file-input-hidden" id="importPngFileInput" accept=".png,image/png">
 
     <!-- 编辑弹窗（整页：顶栏返回 + 标题 + 保存） -->
     <div class="modal-overlay" id="editModal">
@@ -98,6 +106,11 @@
                 </div>
 
                 <div class="form-group">
+                    <label>国籍</label>
+                    <input type="text" id="inputNationality" placeholder="输入国籍" value="中国">
+                </div>
+
+                <div class="form-group">
                     <label>
                         <span>设定</span>
                         <span class="import-icon" id="importBtn" title="导入设定文件">
@@ -109,6 +122,14 @@
                         </span>
                     </label>
                     <textarea id="inputSetting" placeholder="输入设定..."></textarea>
+                </div>
+
+                <div class="form-group">
+                    <button class="ticket-export-btn" id="exportTicketBtn" type="button">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9V7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2a3 3 0 0 0 0 6v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2a3 3 0 0 0 0-6z"/><path d="M13 5v2M13 11v2M13 17v2"/></svg>
+                        打印 Nano 人设票根
+                    </button>
+                    <div class="ticket-export-hint">票根内含头像、姓名、性别、国籍与完整设定，导入 Nano 人设页即可还原。分享时请发原图 / 原文件，截图会丢失数据。</div>
                 </div>
 
                 <button class="mask-use-main" id="useMaskBtn" type="button" style="display:none;">切换到此 User</button>
@@ -189,7 +210,9 @@
 </div>
 
 <script src="../js/avatar-crop.js?v=20261025b"></script>
-<script src="../js/mask.js?v=20261025d"></script>
+<script src="../js/nano-png-json.js?v=20261101a"></script>
+<script src="../js/nano-card-ticket.js?v=20261102a"></script>
+<script src="../js/mask.js?v=20261101a"></script>
 
 <script src="../js/api-float.js"></script>
 <script src="../swipe-back.js"></script>

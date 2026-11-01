@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <script src="../js/nano-runtime.js?v=20261028e"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>制卡模板</title>
+    <link rel="stylesheet" href="../css/nano-card-template.css?v=20261102a">
+    <script src="../js/appearance.js?v=20261026d"></script>
+</head>
+<body>
+<div class="nct-app" id="nctApp">
+    <header class="nct-topbar">
+        <button class="nct-back" id="backBtn" type="button" aria-label="返回">
+            <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <div class="nct-heading">
+            <div class="nct-heading-main">制卡模板</div>
+            <div class="nct-heading-sub">NANO CARD STUDIO</div>
+        </div>
+    </header>
+
+    <main class="nct-scroll">
+        <div class="nct-tabs">
+            <button class="nct-tab active" type="button" data-tab="char">角色卡</button>
+            <button class="nct-tab" type="button" data-tab="user">我的人设</button>
+        </div>
+
+        <!-- ===== 角色卡 ===== -->
+        <section class="nct-pane" id="charPane">
+            <div class="nct-source-row">
+                <select class="nct-select" id="charSelect"></select>
+                <button class="nct-mini" id="newCharBtn" type="button">新建</button>
+            </div>
+
+            <div class="nct-card">
+                <div class="nct-avatar-row">
+                    <button class="nct-avatar" id="charAvatarBtn" type="button" aria-label="上传头像">
+                        <img id="charAvatarImg" alt="角色头像" hidden>
+                        <span class="nct-avatar-placeholder" id="charAvatarPlaceholder"></span>
+                    </button>
+                    <div class="nct-avatar-meta">
+                        <div class="nct-avatar-title" id="charAvatarTitle">角色头像</div>
+                        <div class="nct-avatar-desc">点击上传；不传就用灰色占位</div>
+                    </div>
+                    <input type="file" id="charAvatarFile" accept="image/*" hidden>
+                </div>
+
+                <label class="nct-field">
+                    <span>名字</span>
+                    <input id="charName" type="text" placeholder="输入角色名" maxlength="40">
+                </label>
+                <div class="nct-grid2">
+                    <label class="nct-field">
+                        <span>性别</span>
+                        <select id="charGender">
+                            <option value="男">男</option>
+                            <option value="女">女</option>
+                            <option value="其他">其他</option>
+                        </select>
+                    </label>
+                    <label class="nct-field">
+                        <span>国籍</span>
+                        <input id="charNationality" type="text" placeholder="中国" maxlength="24">
+                    </label>
+                </div>
+                <label class="nct-field">
+                    <span>角色设定</span>
+                    <textarea id="charSetting" rows="7" placeholder="写外貌、性格、经历、说话方式、与用户的关系……"></textarea>
+                </label>
+            </div>
+
+            <div class="nct-nano-card">
+                <div class="nct-nano-card-head">
+                    <div>
+                        <div class="nct-section-title">让 Nano 直接完成整张卡</div>
+                        <div class="nct-section-desc">写一句想法就行，名字、性别、国籍、完整设定和开场白一起补全（条数用下面的「生成条数」）。</div>
+                    </div>
+                </div>
+                <textarea class="nct-brief" id="nanoBrief" rows="3" placeholder="例如：一个在巴黎开旧书店的法国女人，慢热、嘴硬心软，和用户是多年网友……"></textarea>
+                <button class="nct-nano-full" id="nanoFullCardBtn" type="button">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="m19 15 .8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>
+                    <span>让 Nano 完成整张卡</span>
+                </button>
+            </div>
+
+            <div class="nct-section-head">
+                <div>
+                    <div class="nct-section-title">开场白</div>
+                    <div class="nct-section-desc">线下进入剧情时可以选择任意一条开场；导出票根会一起带走。</div>
+                </div>
+                <button class="nct-add-opening" id="addOpeningBtn" type="button">+ 添加</button>
+            </div>
+            <div class="nct-openings" id="openingsList"></div>
+
+            <div class="nct-opening-count-row">
+                <label class="nct-opening-count" for="openingCount">生成条数</label>
+                <input class="nct-opening-count-input" id="openingCount" type="number" min="1" max="10" step="1" value="3" inputmode="numeric">
+            </div>
+
+            <button class="nct-ai-btn" id="generateOpeningsBtn" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="m19 15 .8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>
+                <span>让纳米写 3 条开场白</span>
+            </button>
+
+            <button class="nct-save-main" id="saveCardBtn" type="button">保存到角色库</button>
+            <button class="nct-print-btn" id="charPrintBtn" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9V7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2a3 3 0 0 0 0 6v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2a3 3 0 0 0 0-6z"/><path d="M13 5v2M13 11v2M13 17v2"/></svg>
+                打印角色票根 PNG
+            </button>
+            <div class="nct-print-hint">票根内含头像、姓名、性别、国籍、完整设定、绑定世界书与全部开场白。分享时请发原图 / 原文件，截图或平台压缩会丢失票根里的数据。</div>
+        </section>
+
+        <!-- ===== 我的人设 ===== -->
+        <section class="nct-pane" id="userPane" hidden>
+            <div class="nct-source-row">
+                <select class="nct-select" id="userSelect"></select>
+            </div>
+            <div class="nct-user-preview">
+                <div class="nct-user-avatar"><img id="userAvatarImg" alt="用户头像" hidden><span id="userAvatarPlaceholder"></span></div>
+                <div class="nct-user-name" id="userName">未选择人设</div>
+                <div class="nct-user-meta" id="userMeta">—</div>
+            </div>
+            <div class="nct-readonly" id="userSetting">选择一个人设后，这里会显示完整设定。</div>
+            <div class="nct-user-tip">用户票根只包含头像、姓名、性别、国籍和设定；导入时请到「Mask / 人设」页面。</div>
+            <button class="nct-print-btn" id="userPrintBtn" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9V7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2a3 3 0 0 0 0 6v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2a3 3 0 0 0 0-6z"/><path d="M13 5v2M13 11v2M13 17v2"/></svg>
+                打印人设票根 PNG
+            </button>
+        </section>
+    </main>
+</div>
+
+<div class="nct-toast" id="nctToast" hidden></div>
+<div class="nct-alert" id="nctAlert" hidden>
+    <div class="nct-alert-card">
+        <div class="nct-alert-title" id="nctAlertTitle">提示</div>
+        <div class="nct-alert-body" id="nctAlertBody"></div>
+        <button class="nct-alert-btn" id="nctAlertOk" type="button">好</button>
+    </div>
+</div>
+
+<script src="../js/nano-png-json.js?v=20261101a"></script>
+<script src="../js/nano-card-ticket.js?v=20261102a"></script>
+<script src="../js/nano-card-template.js?v=20261102a"></script>
+</body>
+</html>

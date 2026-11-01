@@ -28,6 +28,9 @@
             title: name,
             sub: '来自 ' + window.__chat.currentUserName + (amount > 0 ? ' · ¥' + amount.toFixed(2) : '') + (note ? ' · ' + note : ''),
             amount: amount > 0 ? ('¥' + amount.toFixed(2)) : '',
+            items: [{ name: name, price: amount, qty: 1 }],
+            sentAt: Date.now(),
+            etaDays: 2 + Math.floor(Math.random() * 3),
             footer: '',
             status: 'pending'
         };

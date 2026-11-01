@@ -18,9 +18,34 @@
     }
     function randomEta() { return 15 + Math.floor(Math.random() * 31); } // 15~45 分钟
 
-    // ===== 外卖 =====
+    // ===== 外卖 / 同城跑腿 =====
     var takeoutPopup = $('takeoutPopup');
     if (takeoutPopup) {
+        var takeoutMode = 'food';
+        function setTakeoutMode(mode) {
+            takeoutMode = mode === 'errand' ? 'errand' : 'food';
+            var isErrand = takeoutMode === 'errand';
+            var tabs = takeoutPopup.querySelectorAll('.tk-mode-tab');
+            Array.prototype.forEach.call(tabs, function (t) {
+                t.classList.toggle('active', t.getAttribute('data-tk-mode') === takeoutMode);
+            });
+            var title = $('takeoutTitle'), sub = $('takeoutSubtitle');
+            var lf = $('takeoutLabelFood'), ls = $('takeoutLabelShop');
+            var foodEl = $('takeoutFood'), shopEl = $('takeoutShop'), noteEl = $('takeoutNote');
+            if (title) title.textContent = isErrand ? '同城跑腿' : '点外卖';
+            if (sub) sub.textContent = isErrand ? '填写跑腿需求，发送给对方' : '填写外卖信息，发送给对方';
+            if (lf) lf.textContent = isErrand ? '物品 / 任务' : '食品';
+            if (ls) ls.textContent = isErrand ? '取货 / 购买地' : '店铺';
+            if (foodEl) foodEl.placeholder = isErrand ? '例如 取一份文件、买一杯咖啡...' : '例如 麻辣烫、奶茶...';
+            if (shopEl) shopEl.placeholder = isErrand ? '取货点 / 要去的店...' : '店铺名称...';
+            if (noteEl) noteEl.placeholder = isErrand ? '送达地址 / 具体要求...' : '口味 / 地址 / 留言...';
+        }
+        window.__takeoutReset = function () { setTakeoutMode('food'); };
+        Array.prototype.forEach.call(takeoutPopup.querySelectorAll('.tk-mode-tab'), function (t) {
+            t.addEventListener('click', function () { setTakeoutMode(t.getAttribute('data-tk-mode')); });
+        });
+        setTakeoutMode('food');
+
         var cancel = $('takeoutCancel');
         if (cancel) cancel.addEventListener('click', function () { takeoutPopup.classList.remove('active'); });
         takeoutPopup.addEventListener('click', function (e) { if (e.target === takeoutPopup) takeoutPopup.classList.remove('active'); });
@@ -30,10 +55,13 @@
             var shop = ($('takeoutShop').value || '').trim();
             var price = parseFloat($('takeoutPrice').value) || 0;
             var note = ($('takeoutNote').value || '').trim();
-            if (!food) { window.__chat.showAlert('提示', '请输入外卖食品'); return; }
+            var isErrand = takeoutMode === 'errand';
+            if (!food) { window.__chat.showAlert('提示', isErrand ? '请输入跑腿内容' : '请输入外卖食品'); return; }
             send({
-                cardType: 'takeout', food: food, shop: shop, price: Math.round(price * 100) / 100,
-                note: note, eta: randomEta(), direction: 'user', status: 'pending', footer: '等待对方确认'
+                cardType: 'takeout', mode: isErrand ? 'errand' : 'food',
+                food: food, shop: shop, price: Math.round(price * 100) / 100,
+                note: note, eta: randomEta(), direction: 'user', status: 'pending',
+                footer: isErrand ? '等待对方接单' : '等待对方确认'
             });
             takeoutPopup.classList.remove('active');
             $('takeoutFood').value = ''; $('takeoutShop').value = ''; $('takeoutPrice').value = ''; $('takeoutNote').value = '';

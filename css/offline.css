@@ -275,6 +275,7 @@ button:active{opacity:.55}
   word-break:break-word;
 }
 .plot-opt:active{background:#f0e8e8;transform:scale(.97)}
+.plot-opt.picked{border-color:var(--pink-deep,#e6b3bb);box-shadow:inset 0 0 0 1px var(--pink-deep,#e6b3bb)}
 
 /* 注释已清理（原文件编码损坏） */
 .actions{

@@ -1,0 +1,1054 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>一起去 · 旅途</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500&display=swap">
+<style>
+:root{--ink:#111;--g1:#f5f5f5;--g2:#e8e8e8;--g3:#9a9a9a;--pk:#f8e1e6;--pk2:#c85d7a;--bk:#2e2e2e}
+*{box-sizing:border-box;margin:0}
+html,body{height:100%}
+body{background:#fff;color:var(--ink);font:300 15px/2 "Noto Sans SC","PingFang SC","Helvetica Neue",sans-serif;overflow:hidden}
+button,input,select,textarea{font:inherit;color:inherit}
+button{background:none;border:0;cursor:pointer}
+svg{display:block}
+:focus-visible{outline:1.5px solid var(--ink);outline-offset:2px}
+#app{position:absolute;inset:0;display:flex;flex-direction:column;max-width:600px;margin:0 auto;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);overflow:hidden}
+.pt{position:absolute;top:-20px;width:9px;height:9px;background:var(--pk);border-radius:50% 0 50% 0;opacity:.8;animation:fall linear infinite;pointer-events:none}
+@keyframes fall{to{transform:translate(60px,110vh) rotate(540deg)}}
+header,.route,#scroll,.chips,.bar{position:relative}
+header{display:flex;align-items:center;gap:2px;padding:8px 12px 8px 8px}
+header .t{flex:1;min-width:0;line-height:1.4;padding-left:4px}
+header b{font-weight:500;font-size:16px;letter-spacing:.08em}
+header small{display:block;color:var(--g3);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ib{width:34px;height:34px;display:grid;place-items:center;border-radius:50%;color:var(--g3);transition:.2s}
+.ib:hover{color:var(--ink);background:var(--g1)}
+#fp{display:flex;align-items:center;gap:3px;font-size:12px;color:var(--pk2);background:var(--pk);border-radius:99px;padding:0 10px;line-height:24px;margin-right:4px}
+#fp.bump{animation:bump .5s}
+@keyframes bump{40%{transform:scale(1.3)}}
+.route{display:flex;padding:6px 22px 14px;border-bottom:1px solid var(--g2)}
+.st{flex:1;text-align:center;position:relative;font-size:11px;color:var(--g3);line-height:1.3}
+.st::before{content:"";position:absolute;top:5px;left:-50%;right:50%;height:1px;background:var(--g2)}
+.st:first-child::before{display:none}
+.st i{display:block;width:11px;height:11px;border-radius:50%;background:#fff;border:1px solid var(--g3);margin:0 auto 6px;position:relative;transition:.3s}
+.st.p i{background:var(--ink);border-color:var(--ink)}
+.st.c i{background:var(--pk2);border-color:var(--pk2);box-shadow:0 0 0 4px var(--pk);animation:pulse 2.4s infinite}
+@keyframes pulse{50%{box-shadow:0 0 0 7px #f8e1e655}}
+/* 隐藏滚动条（右侧下滑与横向选择栏） */
+html,body,#scroll,.cards,.chips,.sheet{scrollbar-width:none;-ms-overflow-style:none}
+html::-webkit-scrollbar,body::-webkit-scrollbar,#scroll::-webkit-scrollbar,.cards::-webkit-scrollbar,.chips::-webkit-scrollbar,.sheet::-webkit-scrollbar{display:none;width:0;height:0}
+.st.c{color:var(--ink)}
+#scroll{flex:1;overflow-y:auto;padding:6px 22px 20px}
+.m{margin:22px 0}
+.who{font-size:12px;color:var(--g3);letter-spacing:.12em}
+.char p{margin-bottom:.5em;text-align:justify}
+.m .trans{margin-top:6px;font-size:12.5px;line-height:1.75;color:var(--g3);letter-spacing:.01em;border-left:2px solid var(--g2);padding-left:10px;white-space:pre-wrap}
+.user{display:flex;flex-direction:column;align-items:flex-end;margin:14px 0}
+.bub{max-width:80%;background:var(--bk);color:#fff;border-radius:20px;padding:3px 16px;font-size:13.5px;line-height:1.8;animation:bin .35s cubic-bezier(.3,1.4,.5,1);transform-origin:right bottom}
+@keyframes bin{from{transform:scale(.7);opacity:0}}
+.sys{text-align:center;font-size:12px;color:var(--g3);letter-spacing:.2em}
+.sys::before,.sys::after{content:"";display:inline-block;width:28px;height:1px;background:var(--g2);vertical-align:middle;margin:0 10px}
+.acts{display:flex;gap:2px;margin-top:2px;margin-left:-6px}
+.user .acts{margin:2px -6px 0 0}.sys .acts{justify-content:center;margin:0}
+.acts .ib{width:28px;height:28px}
+.ed{width:100%;min-height:80px;border:1px solid var(--g2);border-radius:14px;padding:8px 12px;background:#fff;resize:vertical}
+.cards{display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;margin:8px -22px 0;padding:6px 22px}
+.card{flex:0 0 150px;scroll-snap-align:start;border:1px solid var(--g2);border-radius:18px;padding:12px;position:relative;background:#fff;transition:.35s}
+.cards.in .card{animation:ci .55s backwards}.cards.in .card:nth-child(2){animation-delay:.12s}.cards.in .card:nth-child(3){animation-delay:.24s}
+@keyframes ci{from{opacity:0;transform:translateY(16px) rotate(2deg)}}
+.card .ic{width:34px;height:34px;border-radius:50%;background:var(--pk);display:grid;place-items:center;color:var(--pk2)}
+.card h4{font-weight:500;font-size:15px;margin-top:8px;line-height:1.4}
+.card p{font-size:12px;color:var(--g3);line-height:1.5;min-height:36px;margin-top:2px}
+.card .b{display:flex;gap:6px;margin-top:8px}
+.card .b button{flex:1;border:1px solid var(--g2);border-radius:99px;line-height:24px;font-size:12px;transition:.2s}
+.card .b button:hover{border-color:var(--ink)}
+.card.go{border-color:var(--pk2);background:#fffafb}
+.card.go::after{content:"去";position:absolute;right:10px;top:10px;width:26px;height:26px;border:1.5px solid var(--pk2);color:var(--pk2);border-radius:50%;display:grid;place-items:center;font-size:12px;transform:rotate(-12deg)}
+.card.go.pop::after{animation:st .45s cubic-bezier(.3,1.8,.5,1)}
+@keyframes st{from{transform:scale(2.4) rotate(-40deg);opacity:0}}
+.card.no{opacity:.45;transform:scale(.96)}.card.no h4{text-decoration:line-through}
+.bp{position:fixed;width:7px;height:7px;border-radius:50%;background:var(--pk2);pointer-events:none;z-index:20;animation:bp .75s ease-out forwards}
+.bp:nth-child(2n){background:var(--pk)}
+@keyframes bp{to{transform:translate(var(--x),var(--y)) scale(.2);opacity:0}}
+.ty i{display:inline-block;width:5px;height:5px;margin-right:5px;border-radius:50%;background:var(--g3);animation:b 1s infinite}
+.ty i:nth-child(2){animation-delay:.15s}.ty i:nth-child(3){animation-delay:.3s}
+@keyframes b{50%{opacity:.2;transform:translateY(-4px)}}
+.chips{display:flex;gap:8px;padding:8px 18px 0;overflow-x:auto}
+.chips button{display:flex;align-items:center;gap:5px;border:1px solid var(--g2);border-radius:99px;padding:0 12px;font-size:12px;line-height:26px;color:#555;white-space:nowrap;background:#fff;transition:.2s}
+.chips button:hover{border-color:var(--pk2);color:var(--pk2)}.chips button:active{transform:scale(.92)}
+.bar{display:flex;gap:8px;align-items:flex-end;padding:8px 18px 14px}
+#inp{flex:1;resize:none;max-height:120px;border:1px solid var(--g2);border-radius:20px;padding:8px 16px;line-height:1.6;background:#fff}
+#send{height:40px;min-width:64px;padding:0 18px;border-radius:99px;background:var(--ink);color:#fff;font-size:14px;transition:.25s}
+#send.re{background:var(--pk);color:var(--ink)}
+#send:disabled{opacity:.4}
+#mask{position:fixed;inset:0;background:#0000002e;opacity:0;pointer-events:none;transition:.25s;z-index:5}
+#mask.on{opacity:1;pointer-events:auto}
+.sheet{position:fixed;left:50%;bottom:0;width:100%;max-width:600px;max-height:84%;overflow:auto;background:#fff;border-radius:22px 22px 0 0;padding:20px 22px calc(26px + env(safe-area-inset-bottom,0px));transform:translate(-50%,105%);transition:transform .35s;z-index:6}
+.sheet.on{transform:translate(-50%,0)}
+.sheet h3{font-weight:500;font-size:16px;margin-bottom:6px}
+.sheet label{display:block;font-size:12px;color:var(--g3);margin:16px 0 6px}
+.sheet input[type=number],.sheet input[type=text],.sheet select,.sheet textarea,.sheet input:not([type]){width:100%;border:1px solid var(--g2);border-radius:10px;padding:8px 12px;background:#fff;line-height:1.6}
+.hint{font-size:12px;color:var(--pk2);margin-top:4px;line-height:1.6}
+.r2{display:flex;gap:8px;margin-top:8px}.r2 input{flex:1}
+.pl{border:1px solid var(--g2);border-radius:99px;padding:0 16px;font-size:13px;white-space:nowrap;line-height:34px}
+.pl.k{background:var(--ink);color:#fff;border-color:var(--ink)}
+.tabs{display:flex;gap:20px;margin-bottom:8px}
+.tabs button{font-size:15px;color:var(--g3);padding:2px 0;border-bottom:1.5px solid transparent}
+.tabs .on{color:var(--ink);border-color:var(--pk2)}
+.it{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--g1)}
+.it .d{font-size:11px;color:var(--pk2);width:30px;flex:none}
+.it .n{flex:1}
+.tx{background:linear-gradient(var(--g3),var(--g3)) no-repeat 0 55%/0 1px;transition:background-size .7s,color .7s}
+.it em{font-style:normal;font-size:11px;color:var(--pk2);margin-left:8px;opacity:0;transition:opacity .5s .5s}
+.it.done .tx{background-size:100% 1px;color:var(--g3)}.it.done em{opacity:1}
+.it .ib{width:28px;height:28px}
+.empty{color:var(--g3);font-size:13px;padding:10px 0}
+.rc{display:block;width:100%;text-align:left;border:1px solid var(--g2);border-radius:16px;padding:10px 14px;margin-top:10px;line-height:1.6}
+.rc small{display:block;color:var(--g3);font-size:12px}
+.dlg{position:fixed;left:50%;top:50%;width:min(320px,88%);background:#fff;border-radius:20px;padding:24px;z-index:7;transform:translate(-50%,-48%) scale(.96);opacity:0;pointer-events:none;transition:.25s}
+.dlg.on{transform:translate(-50%,-50%);opacity:1;pointer-events:auto}
+.dlg .sw{display:flex;justify-content:space-between;align-items:center;margin:14px 0}
+.dlg .sw input{width:20px;height:20px;accent-color:var(--ink)}
+.dlg .bt{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+.dlg .bt button{padding:6px;border-radius:99px;border:1px solid var(--g2)}
+.dlg .bt .k{background:var(--ink);color:#fff;border-color:var(--ink)}
+#cover{position:fixed;inset:0;background:#fff;z-index:4;display:none;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px}
+#cover.on{display:flex}
+#cover .big{width:56px;height:56px;border-radius:50%;background:var(--pk);color:var(--pk2);display:grid;place-items:center;animation:pulse 2.4s infinite}
+#cover .bt{display:flex;gap:10px;margin-top:10px}
+#ov{position:fixed;inset:0;background:#fffffff2;z-index:9;display:none;flex-direction:column;align-items:center;justify-content:center;cursor:pointer}
+#ov.on{display:flex}
+#ov svg{width:min(340px,86%);overflow:visible}
+.dr{stroke-dasharray:1;stroke-dashoffset:1;animation:dr 2.2s ease-in-out forwards}
+@keyframes dr{to{stroke-dashoffset:0}}
+.fi{opacity:0;animation:fi .6s 1.8s forwards}.f0{opacity:0;animation:fi .5s .1s forwards}
+@keyframes fi{to{opacity:1}}
+#ov p{margin-top:18px;font-size:13px;color:var(--g3);letter-spacing:.2em}
+#toast{position:fixed;left:50%;bottom:110px;transform:translate(-50%,20px);background:var(--bk);color:#fff;border-radius:99px;padding:0 16px;line-height:34px;font-size:13px;display:flex;gap:6px;align-items:center;opacity:0;pointer-events:none;transition:.35s;z-index:12}
+#toast.on{opacity:1;transform:translate(-50%,0)}
+/* 拍照消息 */
+.m.photo{display:flex;flex-direction:column;align-items:flex-start;margin:18px 0}
+.m.photo .ph{max-width:86%;background:#fff;padding:7px 7px 22px;box-shadow:0 0 0 1px rgba(0,0,0,.07),0 10px 24px rgba(0,0,0,.12);transform:rotate(-1.6deg)}
+.m.photo .ph img{display:block;width:100%;max-height:52vh;object-fit:cover}
+.m.photo .ph .cap{padding:7px 4px 0;font-size:11px;color:var(--g3);letter-spacing:.05em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.m.photo .phacts{display:flex;gap:4px;margin-top:3px;margin-left:-6px}
+.m.photo .phacts .ib{width:28px;height:28px}
+.m.photo .ph .loading{width:230px;height:230px;display:grid;place-items:center;background:linear-gradient(100deg,#eee 30%,#fafafa 50%,#eee 70%) 0 0/300% 100%;animation:sh 1.2s linear infinite;color:var(--g3);font-size:12px}
+@keyframes sh{to{background-position:-300% 0}}
+.m.photo .ph.fail{box-shadow:0 0 0 1px #f3c6cf;background:#fff7f9}
+.m.photo .ph.fail .loading{background:#fff7f9;color:var(--pk2)}
+@media(prefers-reduced-motion:reduce){.pt{display:none}*{animation-duration:.01s!important;transition:none!important}}
+</style></head><body>
+<div id="app">
+  <header>
+    <button class="ib" id="back" data-i="chev" aria-label="返回"></button>
+    <div class="t"><b id="tTitle">一起去</b><small id="sub"></small></div>
+    <div id="fp"></div>
+    <button class="ib" id="bRec" data-i="book" aria-label="旅行记录"></button>
+    <button class="ib" id="bPlan" data-i="list" aria-label="行程"></button>
+    <button class="ib" id="bSet" data-i="sliders" aria-label="设置"></button>
+  </header>
+  <div class="route" id="route"></div>
+  <div id="scroll"><div id="log"></div></div>
+  <div class="chips" id="chips"></div>
+  <div class="bar">
+    <textarea id="inp" rows="1" placeholder="写点什么…（留空点“回复”才会调用）"></textarea>
+    <button id="send" class="re">回复</button>
+  </div>
+</div>
+<div id="mask"></div>
+<div id="cover"><div class="big" id="cbig"></div><p id="ctxt" style="font-size:15px"></p>
+  <div class="bt"><button class="pl k" id="again">再次出发</button><button class="pl" id="cRec">旅行记录</button></div></div>
+
+<div class="sheet" id="shPlan">
+  <div class="tabs"><button class="on" data-t="plan">行程</button><button data-t="guide">攻略</button></div>
+  <div id="tPlan"></div><div id="tGuide" hidden></div>
+</div>
+<div class="sheet" id="shRec"><h3>旅行记录</h3><div id="recList"></div><div id="recView" hidden></div></div>
+<div class="sheet" id="shSet">
+  <h3>叙事设置</h3>
+  <label>每次回复字数（每次回复前读取）</label>
+  <input type="number" id="len" min="50" max="5000" step="50" value="500">
+  <label>人称</label>
+  <select id="person"><option value="first">第一人称（我）</option><option value="second">第二人称（你）</option><option value="third">第三人称（他/她）</option></select>
+  <label>描写 user</label>
+  <select id="umode"><option value="off">关闭</option><option value="low">低</option><option value="mid" selected>中</option><option value="high">高</option></select>
+  <div class="hint" id="uhint"></div>
+  <label>文风</label>
+  <select id="ssel"></select>
+  <textarea id="styleTxt" rows="3" style="margin-top:8px" placeholder="文风描述，可直接 DIY…"></textarea>
+  <div class="r2"><input id="sname" placeholder="预设名称" maxlength="12"><button class="pl k" id="ssave">保存</button><button class="pl" id="sdel">删除</button></div>
+</div>
+<div class="dlg" id="dlg">
+  <h3 style="font-weight:500">离开旅行？</h3>
+  <p style="font-size:13px;color:var(--g3);line-height:1.7">「回到线上」会自动总结本次旅行、写进「旅途」并生成卡片回到私聊；「直接退出」回到好友页，下次点开这个角色会继续这趟旅行。</p>
+  <div class="sw"><span style="font-size:14px">直接退出时也总结这段旅行的记忆（向量）</span><input type="checkbox" id="sum"></div>
+  <div class="bt"><button class="k" id="online">回到线上</button><button id="leave">直接退出</button><button id="stay" style="border:0;color:var(--g3)">继续旅行</button></div>
+</div>
+<div class="dlg" id="cf">
+  <h3 style="font-weight:500">确认删除？</h3>
+  <p id="cft" style="font-size:13px;color:var(--g3);line-height:1.7"></p>
+  <div class="bt"><button class="k" id="cfy">删除</button><button id="cfn">取消</button></div>
+</div>
+<div id="ov"></div>
+<div id="toast"></div>
+
+<script src="../js/nano-runtime.js?v=20261106a"></script>
+<script>window.__NANO_FONT_ONLY = true;</script>
+<script src="../js/appearance.js?v=20261106a"></script>
+<script src="../js/nano-gallery.js?v=20261106a"></script>
+<script src="../js/localforage.min.js?v=20261106a"></script>
+<script src="../js/mem-link.js?v=20261106a"></script>
+<script src="../js/builtin-worldbook.js?v=20261025b"></script>
+<script src="../js/travel-store.js?v=20261106a"></script>
+<script src="../js/travel-api.js?v=20261106a"></script>
+<script>
+/* ===== API 接入点 =====
+   window.TravelAPI.generate(payload) -> {text, choices:[{type:'地点'|'美食',name,desc}]}
+   payload: {char,user,dest,stop,day,time,settings:{len,person,userMode,userModeDesc,style},
+             history,decisions,plan,records,vectorMemories,invite}
+   window.TravelAPI.onExit({mode,summarize,history,plan,records}) 可 async，返回字符串作为本次记录的总结 */
+const QS2 = new URLSearchParams(location.search || '');
+const CHAR_ID = String(QS2.get('char') || '');
+const USER_ID = String(QS2.get('userId') || '');
+const CHAT_ID = String(QS2.get('chatId') || CHAR_ID);
+const INVITE = {
+  dest: String(QS2.get('dest') || '').trim(),
+  date: String(QS2.get('date') || '').trim(),
+  time: String(QS2.get('time') || '').trim(),
+  days: String(QS2.get('days') || '1').trim(),
+  note: String(QS2.get('note') || '').trim()
+};
+let CHAR = String(QS2.get('name') || '').trim() || 'TA';
+let CHAR_RECORD = null;
+let USER = '你';
+let DEST = INVITE.dest || '附近走走';
+let TRIP_ID = 'trip_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,5);
+const RESUME = QS2.get('resume') === '1';
+const ACTIVE_KEY = 'nano_travel_active_' + CHAR_ID;
+let ACTIVE_LAST_PHOTO = null;
+const TIMES=['清晨','午后','黄昏','夜里'];
+function buildGuide(dest){
+  const d = dest || '附近';
+  const custom = String(QS2.get('stops') || '').split(',').map(s=>s.trim()).filter(Boolean);
+  if(custom.length) return custom.map(s=>[s,'慢慢走，慢慢看']);
+  return [[d+' · 老街','先随便走走'],[d+' · 河边','看看水'],[d+' · 市集','找点吃的'],[d+' · 小巷','避开人群'],[d+' · 高处','等一场日落'],[d+' · 车站','准备回去']];
+}
+let GUIDE=buildGuide(INVITE.dest);
+const UM={off:'完全不描写 user，只写环境与 char',low:'少量描写，偶尔穿插一点 user 的决定视角',mid:'适当描写，重要决定交给 user',high:'完全小说式，直接写双方视角，包含 user 的动作与心理'};
+const ACT=[['camera','拍照','举起相机，拍下了眼前的这一幕。'],['food','尝一口','忍不住凑过去尝了一口。'],['walk','走小路','指了指旁边的窄巷：“我们走这边吧。”'],['cup','歇会儿','找了个地方坐下来，什么都不想，歇一会儿。']];
+const P={chev:'<path d="M15 5l-7 7 7 7"/>',edit:'<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',trash:'<path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12M10 11v5M14 11v5"/>',redo:'<path d="M20 11a8 8 0 10-2.3 5.7M20 5v6h-6"/>',pin:'<path d="M12 21s7-6.2 7-11a7 7 0 10-14 0c0 4.8 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/>',food:'<path d="M4 12h16a8 8 0 01-16 0z"/><path d="M9 4c-1 1 1 2 0 3M13 4c-1 1 1 2 0 3"/>',list:'<path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/>',sliders:'<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>',book:'<path d="M5 4h11a3 3 0 013 3v13H8a3 3 0 01-3-3z"/><path d="M5 17a3 3 0 013-3h11"/>',camera:'<path d="M4 8h3l2-2h6l2 2h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',walk:'<path d="M5 19c4-1 3-6 7-7s3-6 7-7"/><circle cx="5" cy="19" r="1"/><circle cx="19" cy="5" r="1"/>',cup:'<path d="M5 9h11v5a4 4 0 01-4 4H9a4 4 0 01-4-4zM16 10h2a2 2 0 010 4h-2M8 4v2M12 4v2"/>',ok:'<path d="M5 12l5 5 9-10"/>',x:'<path d="M6 6l12 12M18 6L6 18"/>'};
+const I=(k,s=18)=>`<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[k]}</svg>`;
+const $=s=>document.querySelector(s);
+const E=(t,c,x)=>{const e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e};
+const ib=(k,label,fn,s=16)=>{const b=E('button','ib');b.innerHTML=I(k,s);b.title=b.ariaLabel=label;b.onclick=fn;return b};
+const S={msgs:[],plan:[],gi:0,n:0,uid:0,busy:false};
+const log=$('#log'),scr=$('#scroll'),inp=$('#inp');
+const down=()=>scr.scrollTop=scr.scrollHeight;
+const day=()=>1+Math.floor(S.n/4),tm=()=>TIMES[S.n%4];
+document.querySelectorAll('[data-i]').forEach(b=>b.innerHTML=I(b.dataset.i,20));
+let REC=[];try{REC=JSON.parse(localStorage.getItem('tv_rec'))||[]}catch(e){}
+const saveRec=()=>{try{localStorage.setItem('tv_rec',JSON.stringify(REC.slice(-40)))}catch(e){}};
+const recSum=()=>REC.map(r=>({title:r.title,date:r.date,summary:r.summary,stops:r.stops}));
+
+/* ===== 场景 / 世界书 / 记忆 ===== */
+function openMemDB(){
+  return new Promise(resolve=>{
+    try{
+      const req=indexedDB.open('nano_vector_memory_db');
+      req.onsuccess=()=>resolve(req.result); req.onerror=()=>resolve(null);
+    }catch(e){resolve(null)}
+  });
+}
+async function readCharRecord(id){
+  try{
+    return await new Promise(resolve=>{
+      const req=indexedDB.open('nano_characters_db');
+      req.onupgradeneeded=e=>{try{const db=e.target.result;if(!db.objectStoreNames.contains('characters'))db.createObjectStore('characters',{keyPath:'id'})}catch(e){}};
+      req.onsuccess=e=>{const db=e.target.result;try{const r=db.transaction('characters','readonly').objectStore('characters').get(id);r.onsuccess=()=>resolve(r.result||null);r.onerror=()=>resolve(null)}catch(e){resolve(null)}};
+      req.onerror=()=>resolve(null);req.onblocked=()=>resolve(null);
+      setTimeout(()=>resolve(null),8000);
+    });
+  }catch(e){return null}
+}
+let MASK_INFO=null, MASK_LOADED=false;
+function maskInfoFrom(d){
+  if(!d||!Array.isArray(d.masks)||!d.masks.length)return {id:'',name:'你',setting:''};
+  const m=d.masks.find(x=>String(x.id)===USER_ID)||d.masks.find(x=>String(x.id)===String(d.currentMaskId))||d.masks[0]||{};
+  return {id:m.id==null?'':String(m.id),name:m.name||'你',setting:String(m.setting||''),gender:String(m.gender||''),nationality:String(m.nationality||'')};
+}
+function readMaskLocal(){
+  try{
+    const d=JSON.parse(localStorage.getItem('nano_mask_data')||'null');
+    if(d&&Array.isArray(d.masks)&&d.masks.length)return d;
+  }catch(e){}
+  return null;
+}
+function readMaskIdb(){
+  return new Promise(resolve=>{
+    try{
+      const req=indexedDB.open('nano_mask_db');
+      req.onupgradeneeded=e=>{try{const db=e.target.result;if(!db.objectStoreNames.contains('mask_data'))db.createObjectStore('mask_data',{keyPath:'key'})}catch(e){}};
+      req.onsuccess=e=>{
+        const db=e.target.result;
+        try{
+          if(!db.objectStoreNames.contains('mask_data')){resolve(null);try{db.close()}catch(e){};return}
+          const r=db.transaction('mask_data','readonly').objectStore('mask_data').get('data');
+          r.onsuccess=()=>{resolve(r.result?r.result.value:null);try{db.close()}catch(e){}};
+          r.onerror=()=>{resolve(null);try{db.close()}catch(e){}};
+        }catch(e){resolve(null);try{db.close()}catch(e2){}}
+      };
+      req.onerror=()=>resolve(null);req.onblocked=()=>resolve(null);
+    }catch(e){resolve(null)}
+  });
+}
+function mergeMaskData(local,idb){
+  const l=(local&&Array.isArray(local.masks))?local:null;
+  const i=(idb&&Array.isArray(idb.masks))?idb:null;
+  if(!l||!l.masks.length)return (i&&i.masks.length)?i:null;
+  if(!i||!i.masks.length)return l;
+  const iNewer=Number(i.updatedAt||0)>Number(l.updatedAt||0)||(Number(i.updatedAt||0)===Number(l.updatedAt||0)&&i.masks.length>l.masks.length);
+  const newer=iNewer?i:l, older=iNewer?l:i;
+  const list=newer.masks.slice();
+  older.masks.forEach(m=>{if(m&&!list.some(x=>String(x.id)===String(m.id)))list.push(m)});
+  return Object.assign({},newer,{masks:list,currentMaskId:newer.currentMaskId||older.currentMaskId||(list[0]&&list[0].id)});
+}
+async function loadMaskInfo(force){
+  if(MASK_LOADED&&!force)return MASK_INFO;
+  const local=readMaskLocal();
+  const idb=await readMaskIdb();
+  let chosen=mergeMaskData(local,idb)||{masks:[],currentMaskId:null};
+  MASK_INFO=maskInfoFrom(chosen);MASK_LOADED=true;
+  try{localStorage.setItem('nano_mask_data',JSON.stringify(chosen))}catch(e){}
+  return MASK_INFO;
+}
+function readMask(){return MASK_INFO||maskInfoFrom(readMaskLocal())}
+function normalizeWb(f){
+  if(!f)return null;
+  const entries=Array.isArray(f.entries)?f.entries:[];
+  let list=entries.filter(e=>e&&e.content&&String(e.content).trim());
+  if(!list.length&&f.content&&String(f.content).trim())list=[{title:f.name||'',keywords:'',keywordEnabled:false,permanent:true,content:String(f.content),position:'after_char'}];
+  if(!list.length)return null;
+  return {id:f.id,name:f.name||'世界书',scope:f.scope||'global',boundCharacters:Array.isArray(f.boundCharacters)?f.boundCharacters:[],entries:list};
+}
+async function loadWorldbooks(){
+  let out=[];
+  try{
+    const raw=localStorage.getItem('nano_worldbook_data_v5');
+    if(raw){const d=JSON.parse(raw);if(d&&Array.isArray(d.files))out=d.files.map(normalizeWb).filter(Boolean)}
+  }catch(e){}
+  if(!out.length){
+    try{
+      const wb=await new Promise(resolve=>{
+        const req=indexedDB.open('nano_worldbook_db');
+        req.onupgradeneeded=e=>{try{const d=e.target.result;if(!d.objectStoreNames.contains('worldbook_data'))d.createObjectStore('worldbook_data',{keyPath:'key'})}catch(e){}};
+        req.onsuccess=e=>{const d=e.target.result;try{const r=d.transaction('worldbook_data','readonly').objectStore('worldbook_data').get('data');r.onsuccess=()=>resolve(r.result?r.result.value:null);r.onerror=()=>resolve(null)}catch(e){resolve(null)}};
+        req.onerror=()=>resolve(null);
+      });
+      if(wb&&Array.isArray(wb.files))out=wb.files.map(normalizeWb).filter(Boolean);
+    }catch(e){}
+  }
+  try{
+    var builtin=window.NanoBuiltinWorldbook;
+    if(builtin){
+      var bn=normalizeWb(builtin);
+      if(bn&&!out.some(x=>String(x.id)===String(bn.id)))out=[bn].concat(out);
+    }
+  }catch(e){}
+  return out;
+}
+function wbText(books,char,userText){
+  const ids=[CHAR_ID,char&&char.name,char&&char.id].filter(Boolean).map(String);
+  const lower=String(userText||'').toLowerCase();
+  const parts=[];
+  (books||[]).forEach(w=>{
+    if(!w)return;
+    const sc=w.scope||'global';
+    const bound=(w.boundCharacters||[]).some(b=>ids.indexOf(String(b))!==-1);
+    if(sc==='local'&&!bound)return;
+    if(sc==='online'&&(w.boundCharacters||[]).length&&!bound)return;
+    w.entries.forEach(en=>{
+      if(!en||!en.content)return;
+      if(en.enabled===false)return;
+      if(en.permanent!==true){
+        const kw=String(en.keywords||'').trim();
+        if(kw && !kw.split(/[,，、；\s]+/).filter(Boolean).some(k=>lower.indexOf(k.toLowerCase())!==-1))return;
+      }
+      parts.push((en.title?('【'+en.title+'】\n'):'')+String(en.content).trim());
+    });
+  });
+  return parts.join('\n\n').slice(0,6000);
+}
+async function readRecentChat(){
+  try{
+    if(window.NanoTravelStore) return await NanoTravelStore.readChatMessages(CHAT_ID);
+    if(window.NanoMemLink) return await NanoMemLink.readMessages(CHAT_ID);
+  }catch(e){}
+  return [];
+}
+async function readTravelMemories(){
+  if(!window.NanoTravelStore)return [];
+  try{return await NanoTravelStore.readTravelMemories(CHAR_ID)}catch(e){return[]}
+}
+async function readCharMemories(){
+  if(!window.NanoTravelStore)return [];
+  try{return await NanoTravelStore.readMemories(CHAR_ID)}catch(e){return[]}
+}
+function cosine(a,b){
+  if(!Array.isArray(a)||!Array.isArray(b)||a.length!==b.length)return 0;
+  let s=0,na=0,nb=0;
+  for(let i=0;i<a.length;i++){s+=a[i]*b[i];na+=a[i]*a[i];nb+=b[i]*b[i]}
+  return na&&nb?s/Math.sqrt(na*nb):0;
+}
+const LANG_MAP={'美国':'English','美國':'English','英国':'English','英國':'English','加拿大':'English','澳大利亚':'English','澳洲':'English','新西兰':'English','新加坡':'English','菲律宾':'English','印度':'English','爱尔兰':'English','日本':'日本語','韩国':'한국어','韓國':'한국어','朝鲜':'한국어','法國':'Français','法国':'Français','德国':'Deutsch','德國':'Deutsch','意大利':'Italiano','西班牙':'Español','葡萄牙':'Português','俄罗斯':'Русский','俄羅斯':'Русский','泰国':'ไทย','泰國':'ไทย','越南':'Tiếng Việt','荷兰':'Nederlands','荷蘭':'Nederlands','土耳其':'Türkçe','波兰':'Polski','波蘭':'Polski','瑞典':'Svenska','挪威':'Norsk','丹麦':'Dansk','丹麥':'Dansk','芬兰':'Suomi','芬蘭':'Suomi','希腊':'Ελληνικά','希臘':'Ελληνικά','阿拉伯':'العربية','埃及':'العربية','沙特':'العربية','以色列':'עברית','巴西':'Português','墨西哥':'Español','阿根廷':'Español'};
+function charIsForeign(){
+  const rec=CHAR_RECORD||{};
+  const n=String(rec.nationality||rec.country||'').trim();
+  const lang=String(rec.language||rec.lang||'').trim();
+  const unknown=/^(未知|未填|不详|不詳|unknown|n\/a|-)?$/i.test(n);
+  const cn=/中国|中國|台湾|台灣|香港|澳门|澳門|chinese|china/i.test(n);
+  if(lang&&!/中文|汉语|漢語|普通话|國語|chinese|mandarin|cantonese|粤语|粵語/i.test(lang))return true;
+  if(!unknown&&n&&!cn)return true;
+  return false;
+}
+function charLanguageName(){
+  const rec=CHAR_RECORD||{};
+  const given=String(rec.language||rec.lang||'').trim();
+  if(given&&!/中文|汉语|漢語|普通话|國語|chinese|mandarin|cantonese|粤语|粵語/i.test(given))return given;
+  const n=String(rec.nationality||rec.country||'').trim();
+  for(const k of Object.keys(LANG_MAP)){if(n.indexOf(k)!==-1)return LANG_MAP[k]}
+  return 'English';
+}
+async function translateToZh(text){
+  const raw=String(text||'').trim();
+  if(!raw)return '';
+  try{
+    const out=await TravelAPI.callChat({
+      messages:[{role:'system',content:'你是翻译引擎。把用户给的文本翻译成自然、口语化的简体中文，只输出译文本身，不要解释、不要引号、不要前缀。'},
+                {role:'user',content:raw}],
+      temperature:0.2,maxTokens:4000
+    });
+    return String(out||'').trim().replace(/^["“]|["”]$/g,'');
+  }catch(e){return ''}
+}
+async function retrieveVector(query,list){
+  if(!list||!list.length)return [];
+  let qv=null;
+  try{qv=await TravelAPI.embed(query)}catch(e){}
+  if(qv){
+    const scored=list.map(x=>({x,s:cosine(qv,x.embedding||[])}));
+    if(scored.some(o=>o.s>0))return scored.sort((a,b)=>b.s-a.s).filter(o=>o.s>0).slice(0,4).map(o=>o.x);
+  }
+  const q=String(query||'').toLowerCase();
+  const words=q.split(/[\s,，。！？、]+/).filter(w=>w.length>=2);
+  const scored=list.map(x=>{
+    let s=0; const c=String(x.content||'').toLowerCase();
+    words.forEach(w=>{if(c.indexOf(w)!==-1)s+=2});
+    const meta=x.travelMeta||{};
+    const mts=Date.parse(meta.date||'');
+    if(!isNaN(mts))s+=Math.max(0,1-(Date.now()-mts)/(365*86400000));
+    if((meta.places||[]).some(p=>p&&q.indexOf(String(p).toLowerCase())!==-1))s+=3;
+    return {x,s};
+  });
+  return scored.sort((a,b)=>b.s-a.s).slice(0,4).map(o=>o.x);
+}
+window.TravelAPI = Object.assign({}, window.NanoTravelAPI || {}, window.TravelAPI || {});
+TravelAPI.generate = async function(p){ return await travelGenerate(p); };
+TravelAPI.onExit = async function(i){ return await travelExit(i); };
+
+/* ---------- effects ---------- */
+function toast(t){const e=$('#toast');e.innerHTML=I('ok',15)+'<span></span>';e.lastChild.textContent=t;e.classList.add('on');clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.remove('on'),1900)}
+function burst(el){const r=el.getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2;
+  for(let i=0;i<14;i++){const a=Math.random()*6.28,d=40+Math.random()*50,p=E('span','bp');p.style.cssText=`left:${x}px;top:${y}px;--x:${Math.cos(a)*d}px;--y:${Math.sin(a)*d}px`;document.body.append(p);setTimeout(()=>p.remove(),800)}}
+for(let i=0;i<8;i++){const p=E('span','pt');p.style.cssText=`left:${i*13+Math.random()*8}%;animation-duration:${15+Math.random()*12}s;animation-delay:${-Math.random()*20}s;opacity:${.4+Math.random()*.4}`;$('#app').prepend(p)}
+let confirmFn;
+function ask(t,fn){$('#cft').textContent=t;confirmFn=fn;$('#mask').classList.add('on');$('#cf').classList.add('on')}
+function closeCf(){$('#cf').classList.remove('on');if(!document.querySelector('.sheet.on,#dlg.on'))$('#mask').classList.remove('on')}
+$('#cfn').onclick=closeCf;$('#cfy').onclick=()=>{closeCf();confirmFn&&confirmFn()};
+
+/* ---------- messages ---------- */
+function photoNode(m,ro){
+  const d=E('div','m photo');d.dataset.id=m.id;
+  const ph=E('div','ph'+(m.fail?' fail':''));
+  if(m.loading){
+    ph.append(E('div','loading','正在显影…'));
+  }else if(m.fail){
+    ph.append(E('div','loading','没有拍成功'));
+    const again=E('button','ib');again.innerHTML=I('camera',16);again.title='重试';
+    again.onclick=()=>takePhoto(m);
+    ph.append(again);
+  }else if(!m.url){
+    ph.append(E('div','loading','这张照片已随旅程保存'));
+    ph.append(E('div','cap',m.caption||(DEST+' · '+tm())));
+  }else{
+    const img=E('img');img.src=m.url;img.alt=m.caption||'拍立得';ph.append(img);
+    const cap=E('div','cap',m.caption||(DEST+' · '+tm()));
+    ph.append(cap);
+  }
+  d.append(ph);
+  if(!ro){
+    const a=E('div','phacts');
+    if(!m.loading){
+      a.append(ib('redo','重拍',()=>takePhoto(m)));
+      a.append(ib('trash','删除',()=>ask('删除这张照片？',()=>{S.msgs=S.msgs.filter(x=>x!==m);render()})));
+    }
+    d.append(a);
+  }
+  return d;
+}
+function node(m,ro){
+  if(m.role==='photo')return photoNode(m,ro);
+  const d=E('div','m '+m.role);d.dataset.id=m.id;
+  if(m.role==='sys'){d.append(E('span','',m.text));if(!ro)d.append(acts(m,['trash']));return d}
+  if(m.role==='char')d.append(E('div','who',CHAR));
+  if(m.edit){
+    const t=E('textarea','ed');t.value=m.text;d.append(t);
+    const a=E('div','acts');
+    a.append(ib('ok','保存',()=>{m.text=t.value.trim()||m.text;m.edit=false;refresh(m)}),ib('x','取消',()=>{m.edit=false;refresh(m)}));
+    d.append(a);return d;
+  }
+  if(m.role==='user')d.append(E('div','bub',m.text));
+  else{
+    (m.typing?m.view:m.text).split('\n').forEach(t=>d.append(E('p','',t)));
+    if(!m.typing&&m.translation)d.append(E('div','trans','（'+m.translation+'）'));
+  }
+  if(!ro&&m.choices&&m.choices.length&&!m.typing){const f=m.fresh;m.fresh=false;const b=E('div','cards'+(f?' in':''));m.choices.forEach(c=>b.append(card(c)));d.append(b)}
+  if(!ro&&!m.typing)d.append(acts(m,m.role==='char'?['edit','redo','trash']:['edit','trash']));
+  return d;
+}
+function acts(m,list){
+  const a=E('div','acts'),L={edit:'编辑',redo:'重写',trash:'删除'};
+  list.forEach(k=>a.append(ib(k,L[k],()=>{
+    if(k==='edit'){m.edit=true;refresh(m)}
+    else if(k==='trash')ask(m.role==='sys'?'删除这条记录？':'这条消息删除后无法恢复。',()=>{S.msgs=S.msgs.filter(x=>x!==m);render()});
+    else reply(m)})));
+  return a;
+}
+function card(c){
+  const d=E('div','card'),ic=E('div','ic'),b=E('div','b');
+  ic.innerHTML=I(c.type==='美食'?'food':'pin',17);
+  d.append(ic,E('h4','',c.name),E('p','',c.desc),b);
+  const set=(s,pop)=>{c.s=s;draw(pop)};
+  function draw(pop){
+    d.className='card'+(c.s?' '+c.s:'')+(pop&&c.s==='go'?' pop':'');b.innerHTML='';
+    if(c.s){const u=E('button','','撤销');u.onclick=()=>{set(null);unplan(c.name)};b.append(u)}
+    else{const y=E('button','','去'),n=E('button','','不去');
+      y.onclick=()=>{set('go',1);plan(c.name,'推荐');burst(d)};n.onclick=()=>{set('no');unplan(c.name)};b.append(y,n)}
+  }
+  draw();return d;
+}
+function refresh(m){const o=log.querySelector('[data-id="'+m.id+'"]');if(o)o.replaceWith(node(m))}
+function render(){log.innerHTML='';S.msgs.forEach(m=>log.append(node(m)))}
+
+/* ---------- send / reply (reply = the only API call) ---------- */
+const syncBtn=()=>{const h=inp.value.trim();$('#send').textContent=h?'发送':'回复';$('#send').classList.toggle('re',!h)};
+inp.oninput=()=>{inp.style.height='auto';inp.style.height=inp.scrollHeight+'px';syncBtn()};
+inp.onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing&&inp.value.trim()){e.preventDefault();$('#send').click()}};
+function say(t){const m={id:++S.uid,role:'user',text:t};S.msgs.push(m);log.append(node(m));down()}
+$('#send').onclick=()=>{const t=inp.value.trim();if(t){say(t);inp.value='';inp.style.height='auto';syncBtn()}else reply()};
+ACT.forEach(a=>{const b=E('button');b.innerHTML=I(a[0],14)+a[1];b.onclick=()=>{if(a[0]==='camera')takePhoto();else say(a[2])};$('#chips').append(b)});
+const setSub=()=>$('#sub').textContent='Day '+day()+' · '+tm()+' · '+GUIDE[S.gi][0];
+const macro=s=>String(s==null?'':s).replace(/\{\{char\}\}/g,CHAR).replace(/\{\{user\}\}/g,USER);
+
+/* ---------- photo = image API only ---------- */
+async function takePhoto(existing){
+  if(S.photoBusy||S.busy)return;
+  let m=existing;
+  if(!m){m={id:++S.uid,role:'photo',loading:true,url:'',caption:''};S.msgs.push(m);log.append(node(m))}
+  else{m.loading=true;m.fail=false;refresh(m)}
+  S.photoBusy=true;down();
+  try{
+    const rec=await readCharRecord(CHAR_ID);
+    const persona=rec&&rec.setting?String(rec.setting):'';
+    const person=$('#person').value,um=$('#umode').value;
+    const last=[...S.msgs].reverse().find(x=>x.role==='char'&&x.text&&!x.typing);
+    const scene=last?String(last.text).replace(/\s+/g,' ').slice(-500):'';
+    const showUser=um!=='off';
+    const prompt='拍立得旅行摄影，真实自然光，柔和胶片颗粒，生活纪实感，画面干净。'
+      +'角色：'+CHAR+(persona?('（'+persona.slice(0,800)+'）'):'')+'。'
+      +'地点：'+DEST+' · '+GUIDE[S.gi][0]+'；时段：'+tm()+'。'
+      +(scene?('刚刚发生的场景：'+scene+'。'):'')
+      +(showUser?('画面里可以有'+USER+'的手、背影或侧影，作为同行者出现，但不要抢主体；'):('画面里不要出现'+USER+'；'))
+      +'不要文字、水印、边框、多余人物。';
+    const out=await TravelAPI.generateImage({prompt,charId:CHAR_ID,charName:CHAR});
+    if(!out||!out.src)throw new Error('没有返回图片');
+    m.loading=false;m.fail=false;m.url=out.src;m.caption=m.caption||(DEST+' · '+tm());m.prompt=prompt;m.at=Date.now();
+    refresh(m);down();toast('照片已生成');
+  }catch(e){
+    m.loading=false;m.fail=true;refresh(m);
+    toast('拍照失败：'+((e&&e.message)||'请检查生图 API'));
+  }finally{S.photoBusy=false}
+}
+
+/* ---------- prompt assembly ---------- */
+function fallbackChoices(){
+  return [
+    {type:'地点',name:DEST+'的老街',desc:'慢慢走，看看路边的旧房子'},
+    {type:'美食',name:'街角的小店',desc:'本地人常去的那一种味道'},
+    {type:'地点',name:GUIDE[(S.gi+1)%GUIDE.length][0],desc:'再往前一点，换个方向'}
+  ];
+}
+function normalizeChoices(list){
+  if(!Array.isArray(list))return[];
+  return list.filter(x=>x&&x.name).slice(0,3).map(x=>({
+    type:x.type==='美食'?'美食':'地点',
+    name:String(x.name).slice(0,24),
+    desc:String(x.desc||'').slice(0,60)
+  }));
+}
+async function buildContext(p,hist,decisions){
+  const charRec=await readCharRecord(CHAR_ID);
+  if(charRec&&charRec.name)CHAR=charRec.name;
+  const mask=await loadMaskInfo(false);USER=mask.name||USER;
+  CHAR_RECORD=charRec||CHAR_RECORD;
+  const persona=(charRec&&(charRec.setting||charRec.desc||charRec.persona))||'';
+  const books=await loadWorldbooks();
+  const lastUser=[...hist].reverse().find(x=>x.role==='user');
+  const query=[DEST,p.stop,lastUser?lastUser.text:''].join(' ');
+  const wb=wbText(books,charRec,query);
+  const charMems=await readCharMemories();
+  const online=await readRecentChat();
+  const travelMems=await retrieveVector(query,await readTravelMemories());
+  const settings=Object.assign({userModeDesc:UM[$('#umode').value]},p.settings);
+  const memText=(charMems||[]).filter(x=>x&&x.content).slice(0,24).map(x=>'- '+String(x.content)).join('\n');
+  const onlineText=(online||[]).filter(x=>x&&(x.text||x.cardData)).slice(-14).map(x=>{
+    const who=x.type==='right'?'{{user}}':'{{char}}';
+    const t=x.cardData?('[卡片] '+(x.cardData.title||x.cardData.place||x.cardData.cardType||'')):String(x.text||'').replace(/\s+/g,' ');
+    return who+'：'+t.slice(0,160);
+  }).join('\n');
+  const vecText=(travelMems||[]).map(x=>'- '+String(x.content||'').slice(0,400)).join('\n');
+  const personLine={first:'第一人称，以 {{char}} 的「我」来写',second:'第二人称，叙述里把 {{user}} 称作「你」',third:'第三人称，写 {{char}} 和 {{user}} 两个人'}[settings.person]||'第一人称';
+  const rules='你正在和 {{user}} 一起旅行。严格扮演 {{char}}，不要跳出角色，不要提到 AI、模型、提示词或系统。\n'
+    +'- 说话方式、称呼、价值观、与 {{user}} 的关系阶段必须和线上聊天一致，不得突然变得过分亲密或疏远。\n'
+    +'- 严禁 OOC：不得使用与人设不符的网络腔、霸总腔、油腻情话、爹味说教；不得用命令、强迫、贬低、过度占有欲的方式对待 {{user}}；亲密感只能来自关系本身，不能靠套路化撩拨。\n'
+    +'- 不替 {{user}} 做重大决定。描写 {{user}} 的程度严格按档位执行：关闭=完全不写 user；低=偶尔写 user 的决定视角；中=适当描写，重要决定留给 user；高=小说式双方视角。\n'
+    +'- 不编造设定里没有的人物、关系或过去。\n'
+    +'- 用户的选择（去/不去）必须在叙事里被尊重并自然体现。\n'
+    +'- 文风自然，像真实的旅行日常，不要写成攻略或总结。\n'
+    +'- 只输出合法 JSON，不要代码块，不要多余解释。格式：{"text":"叙事正文（用\\n分段）","translation":"中文译文；中文角色留空","choices":[{"type":"地点|美食","name":"","desc":""}]}。choices 必须 3 个，贴合当前所在地和当前站点，名称用简体中文。';
+  const foreign=charIsForeign();
+  const langName=charLanguageName();
+  const langBlock=foreign
+    ? ('【语言】你的国籍是'+String((CHAR_RECORD&&(CHAR_RECORD.nationality||CHAR_RECORD.country))||'外国')+'，母语是'+langName+'。'
+      +'本次 text 必须全程用'+langName+'书写，不能把中文当正文；translation 必须是对应的简体中文译文，保持同样语气和分段。choices 仍用简体中文。'
+      +'不要声称自己只会中文。')
+    : '';
+  const sys=[rules,langBlock,
+    wb?('【世界书】\n'+wb):'',
+    '【{{char}} 人设】\n'+(persona?String(persona).slice(0,4000):'（没有额外设定，按线上聊天保持一致）'),
+    '【{{user}} 人设】\n'+(mask.setting||'（没有额外设定）'),
+    memText?('【{{char}} 的记忆库】\n'+memText):'',
+    onlineText?('【线上聊天最近记录（只读，作为关系与情绪背景）】\n'+onlineText):'',
+    vecText?('【过去的旅行总结 · 仅供回忆，不是当前旅程】\n'+vecText):'',
+    '【本趟旅行设置】\n字数约 '+settings.len+' 字；人称：'+personLine+'；描写 user 档位：'+settings.userMode+'（'+settings.userModeDesc+'）；文风：'+(settings.style||'自然、克制、有细节'),
+    '【本次旅行】\n目的地：'+DEST+'；传入邀请：'+JSON.stringify(INVITE)+'；当前站点：'+p.stop+'；Day '+p.day+' · '+p.time
+  ].filter(Boolean).join('\n\n');
+  const histText=(hist||[]).map(x=>{
+    if(x.role==='photo')return '{{char}}：（拍了一张拍立得）'+(x.caption||'');
+    if(x.role==='sys')return '（系统）'+x.text;
+    return (x.role==='user'?'{{user}}':'{{char}}')+'：'+String(x.text||'')+(x.translation?('（中文：'+String(x.translation)+'）'):'');
+  }).join('\n');
+  const decText=(decisions||[]).map(d=>'- '+d.name+'：'+(d.choice==='go'?'去':'不去')).join('\n');
+  const planText=(p.plan||[]).map(x=>'- '+x.name+(x.done?'（已到过）':'')).join('\n');
+  const usr='【本次 tripId】'+TRIP_ID+'\n【只属于这趟旅行的历史】\n'+(histText||'（刚刚开始）')
+    +'\n\n【当前站点与时段】'+p.stop+' · Day '+p.day+' · '+p.time
+    +'\n【行程】\n'+(planText||'（还没有安排）')
+    +'\n【用户对推荐卡的选择】\n'+(decText||'（还没有选择）')
+    +'\n【最近一条用户输入】\n'+(lastUser?lastUser.text:'（没有，继续自然推进）')
+    +'\n\n请只续写下一段旅行叙事，长度约 '+settings.len+' 字，并给 3 个推荐。只输出 JSON。';
+  return {messages:[{role:'system',content:macro(sys)},{role:'user',content:macro(usr)}],settings};
+}
+async function travelGenerate(p){
+  const hist=p.history||[],decisions=p.decisions||[];
+  const built=await buildContext(p,hist,decisions);
+  const maxTokens=Math.max(600,Math.min(8000,Math.round((built.settings.len||500)*1.8)));
+  const raw=await TravelAPI.callChat({messages:built.messages,temperature:0.9,maxTokens,json:true});
+  let data=null;
+  try{data=TravelAPI.looseJson(raw)}catch(e){}
+  const foreign=charIsForeign();
+  if(!data||typeof data!=='object'){
+    const txt=String(raw||'').trim();
+    if(!txt)throw new Error('主 API 没有返回内容');
+    const tr=foreign?await translateToZh(txt):'';
+    return {text:txt,translation:tr,choices:fallbackChoices()};
+  }
+  let text=String(data.text||data.reply||'').trim();
+  if(!text){text=String(data.narrative||'').trim()}
+  if(!text)throw new Error('主 API 没有返回叙事');
+  let translation=foreign?String(data.translation||data.zh||'').trim():'';
+  if(foreign&&!translation)translation=await translateToZh(text);
+  let choices=normalizeChoices(data.choices);
+  if(choices.length<3){const f=fallbackChoices();choices=choices.concat(f).slice(0,3)}
+  return {text:macro(text),translation:macro(translation),choices};
+}
+
+async function reply(old){
+  if(S.busy)return;S.busy=true;$('#send').disabled=true;
+  let at=S.msgs.length;
+  if(old){at=S.msgs.indexOf(old);S.msgs.splice(at,1);render()}
+  const hist=S.msgs.slice(0,at);
+  const decisions=hist.flatMap(x=>(x.choices||[]).filter(c=>c.s&&!c.sent).map(c=>({type:c.type,name:c.name,choice:c.s})));
+  const settings={len:Math.max(50,+$('#len').value||500),person:$('#person').value,userMode:$('#umode').value,userModeDesc:UM[$('#umode').value],style:$('#styleTxt').value.trim()};
+  const ty=E('div','m ty');ty.innerHTML='<i></i><i></i><i></i>';log.append(ty);down();
+  let res;
+  try{
+    res=await window.TravelAPI.generate({
+      char:CHAR,user:USER,dest:DEST,stop:GUIDE[S.gi][0],day:day(),time:tm(),settings,decisions,plan:S.plan,
+      records:recSum(),invite:INVITE,
+      history:hist.map(x=>({role:x.role,text:x.role==='photo'?(''):x.text,translation:x.translation||'',caption:x.caption||''}))
+    });
+  }catch(e){
+    ty.remove();S.busy=false;$('#send').disabled=false;
+    S.msgs.splice(at,0,{id:++S.uid,role:'sys',text:'连接失败：'+((e&&e.message)||'请检查主 API')});render();return;
+  }
+  ty.remove();
+  hist.forEach(x=>(x.choices||[]).forEach(c=>{if(c.s)c.sent=true}));
+  const m={id:++S.uid,role:'char',text:res.text,translation:res.translation||'',choices:(res.choices||[]).map(c=>({...c})),typing:true,view:''};
+  S.msgs.splice(at,0,m);render();
+  for(let i=0;i<m.text.length;i+=4){m.view=m.text.slice(0,i+4);refresh(m);if(at===S.msgs.length-1)down();await new Promise(r=>setTimeout(r,16))}
+  m.typing=false;m.fresh=true;refresh(m);S.n++;setSub();drawRoute();
+  S.busy=false;$('#send').disabled=false;if(at===S.msgs.length-1)down();
+  decisions.filter(d=>d.choice==='go').forEach((d,i)=>setTimeout(()=>markDone(d.name),700*(i+1)));
+}
+
+/* ---------- route + landmark animation ---------- */
+function drawRoute(){
+  const r=$('#route');r.innerHTML='';
+  GUIDE.forEach((g,i)=>{const s=E('button','st'+(i<S.gi?' p':i===S.gi?' c':''));s.innerHTML='<i></i>'+g[0];s.onclick=()=>go(i);r.append(s)});
+}
+function go(t){
+  if(t===S.gi||S.busy)return;
+  const a=GUIDE[S.gi][0],b=GUIDE[t][0],Q='M70 50C70 150 250 110 250 220',ov=$('#ov');
+  ov.innerHTML=`<svg viewBox="0 0 320 270" aria-hidden="true"><path d="${Q}" fill="none" stroke="#e8e8e8" stroke-width="1.5" stroke-dasharray="3 6"/>
+  <path d="${Q}" class="dr" pathLength="1" fill="none" stroke="#111" stroke-width="1.5"/>
+  <circle cx="70" cy="50" r="5" fill="#111"/><text class="f0" x="82" y="46" font-size="14" fill="#111">${a}</text>
+  <circle r="6" fill="#c85d7a"><animateMotion dur="2.2s" fill="freeze" keyPoints="0;1" keyTimes="0;1" calcMode="spline" keySplines=".45 0 .55 1" path="${Q}"/></circle>
+  <circle class="fi" cx="250" cy="220" r="9" fill="#f8e1e6" stroke="#c85d7a"/><text class="fi" x="250" y="252" font-size="15" text-anchor="middle" fill="#111">${b}</text></svg><p>前往 · ${b}</p>`;
+  ov.classList.add('on');
+  let done=false;
+  const fin=()=>{if(done)return;done=true;ov.classList.remove('on');
+    plan(a,'攻略');S.gi=t;drawRoute();setSub();plan(b,'攻略');
+    const m={id:++S.uid,role:'sys',text:'抵达 · '+b};S.msgs.push(m);log.append(node(m));down();
+    setTimeout(()=>markDone(a),500)};
+  ov.onclick=fin;setTimeout(fin,3000);
+}
+
+/* ---------- plan (visited places get crossed off) ---------- */
+function plan(name,tag){if(!S.plan.find(p=>p.name===name))S.plan.push({name,day:day(),tag,done:false});drawPlan()}
+function unplan(name){S.plan=S.plan.filter(p=>p.name!==name);drawPlan();fp()}
+function markDone(name){const p=S.plan.find(x=>x.name===name);if(!p||p.done)return;p.done=true;p.fresh=true;toast('划掉 · '+name);fp(1);drawPlan()}
+function fp(bump){const n=S.plan.filter(p=>p.done).length;$('#fp').innerHTML=I('pin',13)+n;if(bump){$('#fp').classList.remove('bump');void $('#fp').offsetWidth;$('#fp').classList.add('bump')}}
+function drawPlan(){
+  const b=$('#tPlan');b.innerHTML='';
+  if(!S.plan.length)b.append(E('div','empty','还没有安排。选“去”的推荐、攻略站点都会出现在这里；去过的地方会被划掉。'));
+  S.plan.forEach((p,i)=>{
+    const r=E('div','it'+(p.done&&!p.fresh?' done':'')),n=E('span','n'),tx=E('span','tx',p.name);
+    n.append(tx,E('em','','已到过'));r.append(E('span','d','D'+p.day),n);
+    r.append(ib('ok','划掉/恢复',()=>{p.done=!p.done;p.fresh=false;drawPlan();fp(p.done)}),ib('x','移除',()=>{S.plan.splice(i,1);drawPlan();fp()}));
+    b.append(r);
+    if(p.fresh){p.fresh=false;setTimeout(()=>r.classList.add('done'),350)}
+  });
+  const a=E('div','r2');a.innerHTML='<input placeholder="添加一站，如：寒山寺" maxlength="20"><button class="pl k">添加</button>';
+  const i=a.querySelector('input');a.querySelector('button').onclick=()=>{if(i.value.trim()){plan(i.value.trim(),'手动');i.value=''}};
+  b.append(a);
+}
+function drawGuide(){
+  const b=$('#tGuide');b.innerHTML='';
+  GUIDE.forEach((g,i)=>{
+    const r=E('div','it'),n=E('span','n',g[0]+'  ');n.append(E('small','',g[1]));n.lastChild.style.color='var(--g3)';
+    const gb=E('button','pl','前往');gb.onclick=()=>{closeAll();go(i)};
+    r.append(E('span','d',i===S.gi?'当前':''),n,gb,ib('pin','加入行程',e=>{plan(g[0],'攻略');toast('已加入 · '+g[0])}));b.append(r);
+  });
+}
+
+/* ---------- sheets ---------- */
+const closeAll=()=>{$('#mask').classList.remove('on');document.querySelectorAll('.sheet,.dlg').forEach(e=>e.classList.remove('on'))};
+const open_=id=>{closeAll();$('#mask').classList.add('on');$(id).classList.add('on')};
+$('#mask').onclick=()=>{$('#cf').classList.contains('on')?closeCf():closeAll()};
+$('#bPlan').onclick=()=>{drawPlan();drawGuide();open_('#shPlan')};
+$('#bSet').onclick=()=>open_('#shSet');
+document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on',x===b));
+  $('#tPlan').hidden=b.dataset.t!=='plan';$('#tGuide').hidden=b.dataset.t!=='guide'});
+
+/* ---------- records ---------- */
+async function loadRecords(){
+  try{
+    if(window.NanoTravelStore){
+      await NanoTravelStore.load();
+      const mask=readMask();
+      const uid=(mask&&mask.id)||USER_ID;
+      const list=NanoTravelStore.listTogether(uid,CHAR_ID);
+      if(list&&list.length){
+        REC=list.slice().reverse().map(p=>({
+          id:p.id,title:p.place||DEST,date:p.date||'',summary:p.summary||p.noteChar||'',
+          stops:Array.isArray(p.places)?p.places:(Array.isArray(p.stops)?p.stops:[]),msgs:[]
+        }));
+        saveRec();return;
+      }
+    }
+  }catch(e){}
+}
+function drawRec(){
+  const l=$('#recList');$('#recView').hidden=true;l.hidden=false;l.innerHTML='';
+  if(!REC.length)l.append(E('div','empty','还没有旅行记录。离开旅行时会自动保存在这里。'));
+  REC.slice().reverse().forEach(r=>{
+    const d=E('button','rc');d.append(E('b','',r.title||DEST),E('small','',r.summary||(r.stops&&r.stops.length?'到过：'+r.stops.join('、'):'未记录地点')));
+    d.onclick=()=>viewRec(r);l.append(d);
+  });
+}
+function viewRec(r){
+  const v=$('#recView');$('#recList').hidden=true;v.hidden=false;v.innerHTML='';
+  const h=E('div','');h.style.cssText='display:flex;align-items:center;justify-content:space-between';
+  h.append(ib('chev','返回列表',drawRec,20),E('span','',r.title||DEST),ib('trash','删除记录',()=>ask('删除这条旅行记录？',()=>{
+    REC=REC.filter(x=>x!==r);saveRec();
+    try{if(window.NanoTravelStore&&r.id)NanoTravelStore.deleteTrip(r.id)}catch(e){}
+    drawRec();
+  }),18));
+  v.append(h);
+  if(Array.isArray(r.msgs)&&r.msgs.length){r.msgs.forEach((m,i)=>v.append(node({...m,id:'r'+i,edit:false,typing:false},true)))}
+  else{v.append(E('div','empty',r.summary||'这一段只保留了总结。'))}
+}
+const openRec=()=>{drawRec();open_('#shRec')};
+$('#bRec').onclick=openRec;$('#cRec').onclick=openRec;
+
+/* ---------- settings: style presets ---------- */
+const uh=()=>$('#uhint').textContent=UM[$('#umode').value];$('#umode').onchange=uh;uh();
+const DEF=[
+  {n:'轻快游记',t:'轻快、口语化，像朋友一路边走边聊：多用短句、动作和小意外，少用大段抒情；可以俏皮，但不油、不抢话，笑点来自当下的细节。'},
+  {n:'清新日常',t:'克制、干净的生活流白描：重视光线、气味、声音、温度和手上的小动作；形容词要少而准，情绪藏在细节里，不刻意煽情。'},
+  {n:'诗意旅途',t:'含蓄、有意境，句子舒缓有留白；善用光、风、街道、水汽、旧墙等意象，但每段只点一两笔，避免堆砌辞藻和空泛抒情。'},
+  {n:'电影长镜头',t:'像电影长镜头：先写空间与光线，再写人物走位、停顿和没说出口的话；少解释心理，多用画面和动作推进，节奏慢但不拖沓。'},
+  {n:'手账随记',t:'像旅行手账：有具体的时间、票据、店名、天气和花费感，句子长短交错；可以插入很小的私人念头，但保持叙事连贯，不写成清单。'},
+  {n:'克制文学',t:'冷静、克制、有潜台词：不直接说“很感动”，而写指尖、呼吸、视线和沉默；情绪压在日常动作下面，结尾留一点余味。'},
+  {n:'复古胶片',t:'暖色、颗粒感、旧物与慢节奏：写褪色的招牌、磁带、老式相机、午后灰尘；怀旧但不矫情，不把过去浪漫化过头。'},
+  {n:'俏皮对白',t:'对话驱动，机锋和生活笑点来自两个人的默契；对白要符合各自说话习惯，不强行撩、不油腔滑调，关系推进自然。'},
+  {n:'温柔夜谈',t:'低声、近距离、有停顿：适合夜里、回程或安静的地方；照顾情绪但不爹味说教，不用套路情话，温柔落在具体行动上。'}
+];
+let ST_SAVED=null;try{ST_SAVED=JSON.parse(localStorage.getItem('tv_styles'))}catch(e){}
+let ST=DEF.concat((Array.isArray(ST_SAVED)?ST_SAVED:[]).filter(x=>x&&x.n&&x.t&&!DEF.some(d=>d.n===x.n)));
+const saveST=()=>{try{localStorage.setItem('tv_styles',JSON.stringify(ST))}catch(e){}};
+function drawStyles(sel){const s=$('#ssel');s.innerHTML='<option value="">自定义（当前内容）</option>';ST.forEach((x,i)=>{const o=E('option','',x.n);o.value=i;s.append(o)});s.value=sel??''}
+$('#ssel').onchange=e=>{if(e.target.value!=='')$('#styleTxt').value=ST[+e.target.value].t};
+$('#styleTxt').oninput=()=>$('#ssel').value='';
+$('#ssave').onclick=()=>{const n=$('#sname').value.trim(),t=$('#styleTxt').value.trim();if(!n||!t)return;
+  const i=ST.findIndex(x=>x.n===n);if(i>=0)ST[i].t=t;else ST.push({n,t});saveST();drawStyles(ST.findIndex(x=>x.n===n));$('#sname').value='';toast('已保存预设')};
+$('#sdel').onclick=()=>{const v=$('#ssel').value;if(v==='')return;ask('删除预设“'+ST[+v].n+'”？',()=>{ST.splice(+v,1);saveST();drawStyles('')})};
+drawStyles(ST[0]?0:'');$('#styleTxt').value=ST[0]?ST[0].t:'';
+
+/* ---------- exit: summarize, write memory, sync travel app ---------- */
+$('#back').onclick=()=>open_('#dlg');
+$('#stay').onclick=closeAll;
+function fresh(){
+  S.msgs=[];S.plan=[];S.gi=0;S.n=0;S.busy=false;S.photoBusy=false;S.exiting=false;$('#send').disabled=false;
+  ACTIVE_LAST_PHOTO=null;$('#sum').checked=true;
+  $('#tTitle').textContent=CHAR;
+  S.msgs.push({id:++S.uid,role:'sys',text:DEST+' · '+(INVITE.days||'1')+'日同行'});
+  render();drawRoute();setSub();fp();drawPlan();
+}
+function hasProgress(){
+  return S.msgs.some(m=>m&&(m.role==='user'||m.role==='char'||m.role==='photo'))||S.plan.length>0;
+}
+function saveActiveSession(){
+  const lastPhoto=[...S.msgs].reverse().find(m=>m.role==='photo'&&m.url);
+  const msgs=S.msgs.map(m=>{
+    if(!m)return m;
+    if(m.typing)return Object.assign({},m,{typing:false,view:''});
+    if(m.role!=='photo')return m;
+    if(m.loading)return Object.assign({},m,{loading:false,fail:true,url:''});
+    if(m.url&&/^https?:/i.test(m.url))return m;
+    return Object.assign({},m,{url:''});
+  });
+  const sess={
+    version:1,
+    charId:CHAR_ID,userId:(readMask().id||USER_ID),chatId:CHAT_ID||CHAR_ID,
+    charName:CHAR,userName:USER,dest:DEST,invite:Object.assign({},INVITE),
+    tripId:TRIP_ID,msgs:msgs,plan:S.plan,gi:S.gi,n:S.n,uid:S.uid,
+    settings:{len:$('#len').value,person:$('#person').value,userMode:$('#umode').value,style:$('#styleTxt').value},
+    lastPhoto:lastPhoto?{url:lastPhoto.url,caption:lastPhoto.caption||''}:null,
+    savedAt:Date.now()
+  };
+  try{localStorage.setItem(ACTIVE_KEY,JSON.stringify(sess))}
+  catch(e){
+    try{ if(sess.lastPhoto){sess.lastPhoto=null;localStorage.setItem(ACTIVE_KEY,JSON.stringify(sess))} }catch(e2){}
+  }
+  return sess;
+}
+function restoreActiveSession(){
+  let sess=null;
+  try{sess=JSON.parse(localStorage.getItem(ACTIVE_KEY)||'null')}catch(e){sess=null}
+  if(!sess||String(sess.charId||'')!==String(CHAR_ID))return false;
+  if(sess.savedAt&&Date.now()-Number(sess.savedAt)>7*24*3600*1000)return false;
+  DEST=sess.dest||DEST;Object.assign(INVITE,sess.invite||{});GUIDE=buildGuide(DEST);
+  TRIP_ID=sess.tripId||TRIP_ID;
+  S.msgs=Array.isArray(sess.msgs)?sess.msgs.slice():[];
+  if(!S.msgs.length)return false;
+  S.plan=Array.isArray(sess.plan)?sess.plan.slice():[];
+  if(!hasProgress())return false;
+  S.gi=Math.max(0,Math.min(GUIDE.length-1,Number(sess.gi)||0));
+  S.n=Number(sess.n)||0;
+  S.uid=Math.max(Number(sess.uid)||0,...S.msgs.map(m=>Number(m&&m.id)||0));
+  S.exiting=false;S.busy=false;S.photoBusy=false;
+  $('#send').disabled=false;
+  $('#tTitle').textContent=CHAR;
+  if(sess.settings){
+    if(sess.settings.len!=null)$('#len').value=sess.settings.len;
+    if(sess.settings.person)$('#person').value=sess.settings.person;
+    if(sess.settings.userMode)$('#umode').value=sess.settings.userMode;
+    if(sess.settings.style!=null)$('#styleTxt').value=sess.settings.style;
+  }
+  ACTIVE_LAST_PHOTO=sess.lastPhoto||null;
+  if(ACTIVE_LAST_PHOTO){
+    const last=[...S.msgs].reverse().find(m=>m.role==='photo');
+    if(last){last.url=ACTIVE_LAST_PHOTO.url;last.caption=ACTIVE_LAST_PHOTO.caption||last.caption;last.loading=false;last.fail=false;}
+  }
+  render();drawRoute();setSub();fp();drawPlan();syncBtn();down();
+  return true;
+}
+function localSummary(){
+  const visited=S.plan.filter(p=>p.done).map(p=>p.name);
+  const lastChar=[...S.msgs].reverse().find(m=>m.role==='char'&&(m.text||m.translation));
+  const lastUser=[...S.msgs].reverse().find(m=>m.role==='user'&&m.text);
+  let s='和'+CHAR+'一起去了'+DEST+'。';
+  if(visited.length)s+='走过'+visited.join('、')+'。';
+  if(lastUser)s+='你说“'+String(lastUser.text).slice(0,42)+'”。';
+  if(lastChar)s+=' '+CHAR+'说：“'+String(lastChar.translation||lastChar.text).replace(/\s+/g,' ').slice(0,60)+'”。';
+  return s.slice(0,400);
+}
+async function summarizeTrip(hist){
+  const lines=(hist||[]).filter(x=>x&&x.role!=='sys'&&(x.text||x.role==='photo')).map(x=>{
+    if(x.role==='photo')return '（拍立得）'+(x.caption||'');
+    const raw=String(x.text||'').replace(/\s+/g,' ');
+    const tr=x.translation?('（中文：'+String(x.translation).replace(/\s+/g,' ')+'）'):'';
+    return (x.role==='user'?USER:CHAR)+'：'+raw+tr;
+  }).join('\n').slice(-9000);
+  const visited=S.plan.filter(p=>p.done).map(p=>p.name);
+  const sys='请把这次旅行总结成一段记忆，供角色以后回忆。必须包含：去过的地点、吃过的东西、关键互动与情绪、'+CHAR+'与'+USER+'的关系变化。'
+    +'语气像角色自己的回忆，不要分点，不要提 AI 或提示词，不要编造没有发生的事。大约 250-450 字，只输出总结正文。';
+  const usr='这次旅行的目的地：'+DEST+'；日期：'+(INVITE.date||'')+'；同行：'+CHAR+' 和 '+USER+'；已到过：'+(visited.join('、')||'未记录')
+    +'；行程：'+JSON.stringify(S.plan)+'\n对话与场景：\n'+lines;
+  const txt=await TravelAPI.callChat({messages:[{role:'system',content:sys},{role:'user',content:usr}],temperature:0.75,maxTokens:1000});
+  return String(txt||'').trim();
+}
+async function travelExit(i){
+  i=i||{};
+  const final=i.final!==false;
+  // 回到线上时自动总结这一趟，不再依赖用户手动勾选；手动勾选只影响「直接退出」时是否也总结。
+  const summarize=!!(i.summarize || final);
+  const hasContent=S.msgs.some(m=>m.role!=='sys')||S.plan.length>0;
+  const hist=(i.history&&i.history.length)?i.history:S.msgs.map(x=>({role:x.role,text:x.text||'',translation:x.translation||'',caption:x.caption||'',choices:x.choices||[]}));
+  let brief='';
+  if(summarize && hasContent){
+    try{brief=await summarizeTrip(hist)}catch(e){brief=''}
+  }
+  if(!brief)brief=localSummary();
+  const visited=[...new Set(S.plan.filter(p=>p.done).map(p=>p.name))];
+  if(!visited.length&&GUIDE[S.gi])visited.push(GUIDE[S.gi][0]);
+  const lastPhotoMsg=[...S.msgs].reverse().find(m=>m.role==='photo'&&m.url);
+  const lastPhoto=lastPhotoMsg?{url:lastPhotoMsg.url,caption:lastPhotoMsg.caption||''}:ACTIVE_LAST_PHOTO;
+  const mask=readMask();
+  const uid=mask.id||USER_ID||'default';
+  const dm=String(INVITE.date||'').match(/\d{4}[-/]\d{1,2}[-/]\d{1,2}/);
+  const date=dm?dm[0].replace(/\//g,'-'):new Date().toISOString().slice(0,10);
+  try{
+    if(window.NanoTravelStore&&hasContent){
+      await NanoTravelStore.load(true);
+      if(summarize){
+        let emb=null;
+        try{emb=await TravelAPI.embed(brief)}catch(e){}
+        await NanoTravelStore.addTravelMemory({
+          charId:CHAR_ID,userId:uid,summary:brief,embedding:emb,charName:CHAR,tripId:TRIP_ID,
+          date,places:visited,meta:{dest:DEST,days:INVITE.days||'1',note:INVITE.note||'',source:'travel-chat'}
+        });
+      }
+      if(final){
+        const ticketNo='TRV-'+String(TRIP_ID).replace(/[^a-z0-9]/gi,'').slice(-8).toUpperCase();
+        const saved=await NanoTravelStore.addTogether(uid,CHAR_ID,{
+          tripId:TRIP_ID,place:DEST,date,cost:null,legs:[],noteMe:'',noteChar:brief,summary:brief,
+          polaroid:lastPhoto?lastPhoto.url:'',caption:lastPhoto?lastPhoto.caption:'',
+          shared:false,source:'travel-chat',places:visited,days:INVITE.days||'1',ticketNo:ticketNo,
+          charId:CHAR_ID,userId:uid
+        });
+        const tid=(saved&&saved.id)||TRIP_ID;
+        const card={
+          cardType:'travelReport',travelKind:'together',direction:'char',
+          tripId:tid,title:'我们 · '+DEST,place:DEST,date,days:INVITE.days||'1',
+          ticketNo:ticketNo,thought:brief,img:lastPhoto?lastPhoto.url:'',
+          caption:lastPhoto?lastPhoto.caption:'',fromName:CHAR,userName:USER,
+          places:visited,createdAt:Date.now()
+        };
+        const msg=NanoTravelStore.baseMessage({type:'left',cardData:card,text:''});
+        await NanoTravelStore.appendChatMessage(CHAT_ID||CHAR_ID,msg);
+      }
+    }
+  }catch(e){}
+  try{
+    if(final&&hasContent){
+      REC.push({id:Date.now(),title:DEST,date,summary:brief,stops:visited,msgs:[]});
+      REC=REC.slice(-40);saveRec();
+    }
+  }catch(e){}
+  return brief;
+}
+async function exit(mode){
+  if(S.exiting)return;
+  S.exiting=true;
+  const final=mode==='online';
+  if(!final&&hasProgress())saveActiveSession();
+  closeAll();
+  toast(final?'正在整理这次旅行…':'正在保存行程…');
+  try{
+    await window.TravelAPI.onExit({
+      mode,final,summarize:final ? true : $('#sum').checked,
+      history:S.msgs.map(x=>({role:x.role,text:x.text||'',translation:x.translation||'',caption:x.caption||'',choices:(x.choices||[]).map(c=>({type:c.type,name:c.name,desc:c.desc,s:c.s}))})),
+      plan:S.plan,records:recSum()
+    });
+  }catch(e){}
+  if(window.parent&&window.parent!==window){
+    try{
+      if(final){
+        try{localStorage.removeItem(ACTIVE_KEY)}catch(e){}
+        try{localStorage.setItem('nano_chat_mode_'+(CHAT_ID||CHAR_ID),'online')}catch(e){}
+        window.parent.postMessage({type:'openChat',chatId:CHAT_ID||CHAR_ID,chatName:CHAR,name:CHAR},'*');
+      }else{
+        window.parent.postMessage({type:'nanoTravelExitToChat',chatId:CHAT_ID||CHAR_ID},'*');
+      }
+    }catch(e){}
+    return;
+  }
+  if(final){
+    try{localStorage.removeItem(ACTIVE_KEY)}catch(e){}
+    location.href='chat_inner.html?chat='+encodeURIComponent(CHAT_ID||CHAR_ID)+'&name='+encodeURIComponent(CHAR);
+  }else{
+    location.href='chat.html';
+  }
+}
+$('#online').onclick=()=>exit('online');$('#leave').onclick=()=>exit('leave');
+$('#again').onclick=()=>{$('#cover').classList.remove('on');fresh()};
+
+window.addEventListener('pagehide', function(){
+  if(S.exiting||!hasProgress())return;
+  try{saveActiveSession()}catch(e){}
+});
+document.addEventListener('visibilitychange', function(){
+  if(document.visibilityState==='hidden'&&!S.exiting&&hasProgress()){
+    try{saveActiveSession()}catch(e){}
+  }
+});
+
+(async function initPage(){
+  let restored=false;
+  try{
+    const rec=await readCharRecord(CHAR_ID);
+    CHAR_RECORD=rec||null;
+    if(rec&&rec.name)CHAR=rec.name;
+    const mask=await loadMaskInfo(true);USER=mask.name||'你';
+    await loadRecords();
+    if(RESUME)restored=restoreActiveSession();
+  }catch(e){}
+  if(!restored)fresh();
+  syncBtn();
+})();
+</script>
+</body></html>

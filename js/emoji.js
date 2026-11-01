@@ -8,6 +8,37 @@
     const API_STORE = 'api_data';
     const EMOJI_KEY = 'nano_emoji_data';
     const EMOJI_LEGACY_KEY = 'peach_home_data'; // 仅用于一次性迁移旧数据
+    const EMOJI_HISTORY_KEY = 'nano_emoji_url_history';
+
+    function collectEmojiUrls(d) {
+        var out = [];
+        ((d && d.emojiGroups) || []).forEach(function (g) {
+            ((g && g.emojis) || []).forEach(function (e) { if (e && e.url) out.push(String(e.url)); });
+        });
+        return out;
+    }
+    function rememberEmojiUrls(urls) {
+        var list = (Array.isArray(urls) ? urls : [urls]).filter(Boolean).map(String);
+        if (!list.length) return;
+        try {
+            var arr = [];
+            try { arr = JSON.parse(localStorage.getItem(EMOJI_HISTORY_KEY) || '[]'); } catch (e) {}
+            if (!Array.isArray(arr)) arr = [];
+            var seen = {};
+            arr.forEach(function (u) { seen[u] = 1; });
+            var changed = false;
+            list.forEach(function (u) { if (!seen[u]) { seen[u] = 1; arr.push(u); changed = true; } });
+            if (changed) {
+                if (arr.length > 4000) arr = arr.slice(-4000);
+                localStorage.setItem(EMOJI_HISTORY_KEY, JSON.stringify(arr));
+            }
+        } catch (e) {}
+        try { if (window.NanoGallery && NanoGallery.rememberEmojiUrls) NanoGallery.rememberEmojiUrls(list); } catch (e) {}
+    }
+    function purgeGalleryEmoji(urls) {
+        if (!urls || !urls.length) return;
+        try { if (window.NanoGallery && NanoGallery.remove) NanoGallery.remove(urls); } catch (e) {}
+    }
 
     // ===== DOCX 解析库按需加载（本地优先，失败回退 CDN）→ 不影响页面加载速度 =====
     const MAMMOTH_SOURCES = [
@@ -165,6 +196,7 @@
     }
 
     function saveData(data) {
+        rememberEmojiUrls(collectEmojiUrls(data));
         // 先保存到 localStorage（备份）
         try {
             localStorage.setItem(EMOJI_KEY, JSON.stringify(data));
@@ -571,9 +603,11 @@
                 }
                 showConfirm('删除确认', '确定删除选中的 ' + selectedIds.size + ' 个表情包吗？', function(confirmed) {
                     if (confirmed) {
+                        var removedUrls = group.emojis.filter(function(e) { return selectedIds.has(e.id); }).map(function(e) { return e.url; }).filter(Boolean);
                         group.emojis = group.emojis.filter(function(e) { return !selectedIds.has(e.id); });
                         selectedIds.clear();
                         saveData(data).then(function() {
+                            purgeGalleryEmoji(removedUrls);
                             renderDetail(group);
                             renderHome();
                             showToast('已删除');
@@ -664,8 +698,10 @@
                     if (confirmed) {
                         var idx = data.emojiGroups.findIndex(function(g) { return g.id === currentGroupId; });
                         if (idx > -1) {
+                            var removedUrls = (group.emojis || []).map(function(e) { return e && e.url; }).filter(Boolean);
                             data.emojiGroups.splice(idx, 1);
                             saveData(data).then(function() {
+                                purgeGalleryEmoji(removedUrls);
                                 closeDetail();
                                 renderHome();
                                 showToast('分组已删除');

@@ -39,9 +39,13 @@ function d1Kv(db) {
       await d1Ready(db);
       const prefix = String((opts && opts.prefix) || '');
       const limit = Math.max(1, Math.min(1000, Number((opts && opts.limit) || 1000)));
+      // 不再用 LIKE 'prefix%'：D1/SQLite 对较长的前缀会报
+      // "LIKE or GLOB pattern too complex"，导致订阅明明存在却 list 不到。
+      // 用 key 的范围比较既等价、能走主键索引，也不会触发这个限制。
+      const upper = prefix + '\uffff';
       const rows = await db.prepare(
-        'SELECT key FROM kv WHERE key LIKE ? AND (expires_at = 0 OR expires_at > ?) ORDER BY key LIMIT ?'
-      ).bind(prefix + '%', Date.now(), limit).all();
+        'SELECT key FROM kv WHERE key >= ? AND key < ? AND (expires_at = 0 OR expires_at > ?) ORDER BY key LIMIT ?'
+      ).bind(prefix, upper, Date.now(), limit).all();
       return { keys: (rows.results || []).map(function (r) { return { name: r.key }; }), list_complete: true };
     }
   };
@@ -1150,13 +1154,14 @@ async function generateAutoMoments(env, cfg, busyChatId, maxChars) {
   const sys = '你们是彼此认识的朋友，在同一个朋友圈里。请让以下角色各发一条朋友圈动态：' + names.join('、') + '。\n'
     + '【角色人设与最近聊天】\n' + profiles + '\n'
     + '要求：像真人随手发的日常，具体、有细节，最好和 TA 最近聊过的事有一点关联；不要流水账，不要对任何人说话，不要提问，禁止 AI 腔。\n'
+    + '文案长度完全跟着角色当下的情绪、事情大小和人设走，不要固定字数，而且大多数时候偏短：可以只写半句、一个词、一个标点或一个 emoji（如「无语。」「老子服了。」），也可以是一两句碎片吐槽；只有情绪真的上来、事情值得讲时，才写成有起承转合的长吐槽/小作文（100~200 字甚至更长）。不要每条都一个长度，也不要为了凑字硬写。\n'
     + '每人只发 1 条，不要重复作者；最多 ' + count + ' 条。\n'
     + '每条动态都要带 1~3 个点赞和 1~3 条评论；点赞/评论者只能从这些名字里选：' + names.join('、') + '，不能是动态作者本人，也不能出现「' + cfg.user.name + '」。\n'
     + '只输出 JSON 数组：[{"author":"名字","text":"动态文案","location":"地点或空","likes":["名字"],"comments":[{"user":"名字","toUser":"","text":"评论"}]}]';
   const content = await autoChat(env, cfg, [
     { role: 'system', content: sys },
     { role: 'user', content: '生成 ' + picked.length + ' 条朋友圈动态。' }
-  ], 1400, 1.0);
+  ], 2400, 1.0);
   if (!content) return [];
   let arr = null;
   const a = content.indexOf('['), b = content.lastIndexOf(']');
@@ -3810,7 +3815,7 @@ export default {
               if (x && x.id && !seen[x.id]) items.push(mergeMarketCounts(Object.assign({}, x), counts));
             });
           }
-          return json({ ok: true, items: items });
+          return json({ ok: true, backend: 'supabase', items: items });
         } catch (e) {
           console.warn('[market] supabase list failed, fallback KV:', e && e.message);
         }
@@ -3819,7 +3824,7 @@ export default {
       try { const raw = await marketKv(env).get('market:index'); items = raw ? JSON.parse(raw) : []; } catch (e) { items = []; }
       const counts = await readMarketCounts();
       items = (Array.isArray(items) ? items : []).map(function (x) { return mergeMarketCounts(x, counts); });
-      return json({ ok: true, items: items });
+      return json({ ok: true, backend: 'kv', items: items });
     }
 
     // GET  /market/item?id=xxx   取单条完整资源（含图片/文件 dataURL）
