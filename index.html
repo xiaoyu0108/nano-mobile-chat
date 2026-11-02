@@ -8,7 +8,7 @@
     // 全站唯一构建号：下面的自愈逻辑、iframe 的 nb= 参数都用它。
     // 注意：不要再另写第二个版本号，否则两个版本号会互相判定“版本变了”，
     // 造成每次打开都清缓存 + 反复 reload。
-    window.__NANO_BUILD__ = 'nano-2026-11-08-1';
+    window.__NANO_BUILD__ = 'nano-2026-11-08-4';
     // 版本升级时强制清一次缓存并重载：避免手机/PWA 一直跑旧 JS（屏幕共享/思维链等问题）
     (function () {
         try {
@@ -2015,6 +2015,65 @@ setTimeout(function () {
             pumpSafeTop();
         }
 
+        // 群聊返回：固定回到 chat.html 的「群聊」tab，而不是桌面/私聊列表。
+        function closeGroupToChat() {
+            hidePageLoading();
+            try { sessionStorage.setItem('nano_chat_active_page', JSON.stringify({ page: 'chat', tab: 'groups', at: Date.now() })); } catch (e) {}
+            const chatUrl = withBuild('chat.html');
+            const isChat = function (f) { return !!f && frameBase(f) === 'chat.html'; };
+            const groupFrame = overlayFrame;
+            let chatFrame = isChat(overlayFrameA) ? overlayFrameA : (isChat(overlayFrameB) ? overlayFrameB : null);
+            const activateGroupsTab = function (frame, tries) {
+                if (!frame) return;
+                let n = 0, timer = null;
+                const tick = function () {
+                    n++;
+                    try { frame.contentWindow.postMessage({ type: 'nanoChatGoHome', tab: 'groups' }, '*'); } catch (e) {}
+                    if (n >= (tries || 12) && timer) clearInterval(timer);
+                };
+                tick();
+                timer = setInterval(tick, 250);
+            };
+            if (chatFrame) {
+                overlayFrame = chatFrame;
+                overlayFrame.setAttribute('data-loaded-url', chatUrl);
+                overlayFrame.style.display = 'block';
+                hideOtherGenericFrame();
+                chatInnerFrame.style.display = 'none';
+                voiceCallFrame.style.display = 'none';
+                musicFrame.style.display = 'none';
+                momentsFrame.style.display = 'none';
+                insFrame.style.display = 'none';
+                activateGroupsTab(chatFrame, 4);
+            } else {
+                const target = groupFrame || overlayFrameA;
+                if (target) {
+                    overlayFrame = target;
+                    overlayFrame.setAttribute('data-loaded-url', chatUrl);
+                    overlayFrame.src = chatUrl;
+                    overlayFrame.style.display = 'block';
+                    hideOtherGenericFrame();
+                    chatInnerFrame.style.display = 'none';
+                    voiceCallFrame.style.display = 'none';
+                    musicFrame.style.display = 'none';
+                    momentsFrame.style.display = 'none';
+                    insFrame.style.display = 'none';
+                    activateGroupsTab(overlayFrame, 16);
+                }
+            }
+            overlay.classList.add('active');
+            overlay.classList.add('no-header');
+            overlayActive = true;
+            currentOverlaySource = 'main';
+            overlayTitle.textContent = '';
+            overlayBack.classList.add('hidden');
+            topBar.classList.add('hidden');
+            bottomBar.classList.add('hidden');
+            appContent.style.paddingTop = '0';
+            appContent.style.paddingBottom = '0';
+            try { pumpSafeTop(); } catch (e) {}
+        }
+
         function closeFullscreen() {
             hidePageLoading();
             const wasOverlaySource = currentOverlaySource;
@@ -2166,10 +2225,11 @@ setTimeout(function () {
                     groupFrame.style.display = 'none';
                     const chatFrame = (groupFrame === overlayFrameA) ? overlayFrameB : overlayFrameA;
                     const chatUrl = withBuild('chat.html');
+                    try { sessionStorage.setItem('nano_chat_active_page', JSON.stringify({ page: 'chat', tab: 'groups', at: Date.now() })); } catch (e) {}
                     if (chatFrame) {
                         overlayFrame = chatFrame;
                         if (frameBase(chatFrame) === 'chat.html') {
-                            try { chatFrame.contentWindow.postMessage({ type: 'nanoChatGoHome' }, '*'); } catch (e) {}
+                            try { chatFrame.contentWindow.postMessage({ type: 'nanoChatGoHome', tab: 'groups' }, '*'); } catch (e) {}
                             chatFrame.setAttribute('data-loaded-url', chatUrl);
                         } else {
                             chatFrame.setAttribute('data-loaded-url', chatUrl);
@@ -2177,6 +2237,7 @@ setTimeout(function () {
                         }
                         showOverlayFrame();
                     } else {
+                        groupFrame.setAttribute('data-loaded-url', chatUrl);
                         groupFrame.src = chatUrl;
                         showOverlayFrame();
                     }
@@ -3606,7 +3667,7 @@ setTimeout(function () {
                 }
             }
 
-            if (data.type === 'currentMaskChanged' || data.type === 'homeDataUpdated' || data.type === 'contactsDataUpdated' || data.type === 'nanoEmojiUpdated' || data.type === 'emojiDataUpdated') {
+            if (data.type === 'currentMaskChanged' || data.type === 'homeDataUpdated' || data.type === 'contactsDataUpdated' || data.type === 'nanoEmojiUpdated' || data.type === 'emojiDataUpdated' || data.type === 'nanoMusicUpdated' || data.type === 'nanoPromptsUpdated' || data.type === 'nanoWorldbookUpdated') {
                 document.querySelectorAll('iframe').forEach(function(t) {
                     if (t && t.contentWindow) {
                         try { t.contentWindow.postMessage(data, '*'); } catch(e) {}
@@ -3905,6 +3966,10 @@ setTimeout(function () {
                 }
                 const showBack = data.showBack !== undefined ? data.showBack : true;
                 openFullscreen(data.url, data.title, showBack, source);
+            }
+
+            if (data.type === 'closeGroupToChat') {
+                closeGroupToChat();
             }
 
             if (data.type === 'closeFullscreen') {

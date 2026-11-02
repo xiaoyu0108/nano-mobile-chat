@@ -777,3 +777,68 @@ input[data-masked-key="0"] {
     -webkit-text-security: none;
     text-security: none;
 }
+
+/* 生图提示词预设：名称输入框 + 保存/修改按钮必须在同一行、底部对齐 */
+.prompt-preset-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    width: 100%;
+}
+.prompt-preset-row .prompt-preset-name {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+}
+.prompt-preset-row .prompt-preset-actions {
+    flex: none;
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+}
+.prompt-preset-row .prompt-preset-actions .btn {
+    height: 34px !important;
+    min-width: 56px;
+    margin: 0 !important;
+    padding: 0 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    white-space: nowrap;
+}
+.prompt-preset-row .form-control {
+    height: 34px;
+}
+
+/* 兼容旧缓存里的 .form-row 结构：即使 HTML 还是旧版，保存/修改也必须和输入框同底对齐 */
+#promptContent .form-row {
+    display: flex !important;
+    align-items: flex-end !important;
+    gap: 8px !important;
+}
+#promptContent .form-row > .form-group {
+    margin-bottom: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: flex-end !important;
+}
+#promptContent .form-row > .form-group > .form-label[style*="opacity"] {
+    display: none !important;
+    margin: 0 !important;
+    height: 0 !important;
+    overflow: hidden !important;
+}
+#promptContent .form-row > .form-group > .btn {
+    margin: 0 !important;
+    height: 34px !important;
+    min-width: 56px;
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    align-self: stretch;
+}

@@ -337,19 +337,56 @@
         if (avatarTemp) el.innerHTML = '<img src="' + avatarTemp + '">';
         else el.textContent = '群';
     }
+    // 群头像压缩：原图 dataURL 太大会让 group_data / nano_groups_data 超出 localStorage 配额。
+    function readGroupAvatar(file, cb){
+        var r = new FileReader();
+        r.onload = function(ev){
+            var src = String(ev.target.result || '');
+            var img = new Image();
+            img.onload = function(){
+                try {
+                    var max = 320;
+                    var scale = Math.min(1, max / Math.max(img.width || 1, img.height || 1));
+                    var w = Math.max(1, Math.round((img.width || max) * scale));
+                    var h = Math.max(1, Math.round((img.height || max) * scale));
+                    var cv = document.createElement('canvas');
+                    cv.width = w; cv.height = h;
+                    var ctx = cv.getContext('2d');
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(0, 0, w, h);
+                    ctx.drawImage(img, 0, 0, w, h);
+                    var out = cv.toDataURL('image/jpeg', 0.82);
+                    cb(out && out.length < src.length ? out : src);
+                } catch(e){ cb(src); }
+            };
+            img.onerror = function(){ cb(src); };
+            img.src = src;
+        };
+        r.onerror = function(){ cb(''); };
+        r.readAsDataURL(file);
+    }
     $('avatarFileInput').addEventListener('change', function(){
         var f = this.files[0];
         if (!f) return;
-        var r = new FileReader();
-        r.onload = function(ev){ avatarTemp = ev.target.result; renderAvatarPreview(); };
-        r.readAsDataURL(f);
+        readGroupAvatar(f, function(dataUrl){ avatarTemp = dataUrl || null; renderAvatarPreview(); });
     });
     $('avatarResetBtn').addEventListener('click', function(){ avatarTemp = null; renderAvatarPreview(); });
     $('avatarCancel').addEventListener('click', function(){ $('avatarModal').classList.remove('active'); });
     $('avatarConfirm').addEventListener('click', function(){
+        var old = group.avatar;
         group.avatar = avatarTemp || '';
         saveGroup(group);
         syncToRegistry();
+        var saved = false;
+        try {
+            var chk = JSON.parse(localStorage.getItem(GROUP_KEY) || 'null');
+            saved = !!(chk && String(chk.avatar || '') === String(group.avatar || ''));
+        } catch(e) { saved = false; }
+        if (!saved) {
+            group.avatar = old;
+            alert('群头像保存失败：本地存储空间不足，请换一张更小的图片。');
+            return;
+        }
         pushPendingChange('用户更换了群头像');
         renderAll();
         $('avatarModal').classList.remove('active');

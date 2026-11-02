@@ -370,10 +370,15 @@ async function generateInsImage(prompt, opts) {
     if (bits.length) subject = '画面主角是「' + (ch.name || '角色') + '」（' + bits.join('，') + '）。必须严格按此国籍/人种与性别特征绘制，禁止画成其他国籍或西方人。';
   }
 
-  let pos = '';
+  let pos = '', neg = '';
   try {
     const pr = await apiGet('nano_api_prompts');
-    if (pr && Array.isArray(pr.positive)) pos = pr.positive.join('，');
+    if (pr) {
+      if (Array.isArray(pr.positive)) pos = pr.positive.filter(Boolean).join('，');
+      else if (typeof pr.positive === 'string') pos = pr.positive.trim();
+      if (Array.isArray(pr.negative)) neg = pr.negative.filter(Boolean).join('，');
+      else if (typeof pr.negative === 'string') neg = pr.negative.trim();
+    }
   } catch (e) {}
 
   // 有锁脸参考优先走图生图 /images/edits（multipart），失败再退回文生图
@@ -386,7 +391,7 @@ async function generateInsImage(prompt, opts) {
       const fmime = (faceRef.slice(5, fc).split(';')[0]) || 'image/png';
       const ffd = new FormData();
       ffd.append('model', imgModel);
-      ffd.append('prompt', [pos, prompt, subject].filter(Boolean).join('，'));
+      ffd.append('prompt', [pos, prompt, subject].filter(Boolean).join('，') + (neg ? ('，避免：' + neg) : ''));
       ffd.append('n', '1');
       ffd.append('size', '1024x1024');
       ffd.append('image', new Blob([fu8], { type: fmime }), 'face.png');
@@ -406,7 +411,7 @@ async function generateInsImage(prompt, opts) {
     } catch (e) { console.warn('[INS生图] 锁脸图生图失败，改用普通生图:', e && e.message); }
   }
 
-  const full = (pos ? pos + '，' : '') + (subject ? subject + '，' : '') + prompt;
+  const full = (pos ? pos + '，' : '') + (subject ? subject + '，' : '') + prompt + (neg ? ('，避免：' + neg) : '');
   const body = { model: imgModel, prompt: full, n: 1, size: '1024x1024' };
   if (faceRef) { body.image = faceRef; body.reference_image = [faceRef]; body.input_reference_image = [faceRef]; }
   const resp = await fetch(endpoint, {
@@ -1393,9 +1398,9 @@ function pickStrangers(n, exclude) {
   return pickRandom(pool, n);
 }
 
-// 可选择的角色：普通 char + 小号（isAltProbe）。纯 NPC 走 NPC 花名册，不算 char。
+// 可选择的角色：当前 user 绑定的普通 char、NPC、小号都出现在生成选择弹窗里。
 function getSelectableChars() {
-  return (currentUserChars || []).filter(c => c && c.name && !c.nanoAssistant && (!c.isNpc || c.isAltProbe));
+  return (currentUserChars || []).filter(c => c && c.name && !c.nanoAssistant);
 }
 
 function parseNpcRoster(raw, chars) {
@@ -3694,8 +3699,19 @@ async function loadInsData() {
 
   const allChars = await getCharacters();
   if (mask) {
-    // 用户隔离：只取当前人设绑定的角色（含已绑定的小号/NPC），不再把别人的 NPC 也算进来
-    currentUserChars = allChars.filter(c => String(c.bindUser) === String(mask.id));
+    // 用户隔离：当前 user 绑定的普通角色、NPC、小号都可用；小号也可沿大号归属。
+    currentUserChars = allChars.filter(c => {
+      if (!c || c.nanoAssistant) return false;
+      if (c.bindUser != null && String(c.bindUser) !== '') return String(c.bindUser) === String(mask.id);
+      if (c.isAltProbe) {
+        if (c.altOriginId) {
+          const origin = allChars.find(x => x && String(x.id) === String(c.altOriginId));
+          if (origin && origin.bindUser != null && String(origin.bindUser) !== '') return String(origin.bindUser) === String(mask.id);
+        }
+        return true;
+      }
+      return true;
+    });
   } else {
     currentUserChars = allChars;
   }

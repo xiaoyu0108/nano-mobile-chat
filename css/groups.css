@@ -1343,3 +1343,56 @@ html.keyboard-open body.nano-groups .bottom-bar {
 .bubble-card .ship-line { flex: 1; height: 2px; margin: 0 3px; background: #ece3d7; }
 .bubble-card .ship-line.on { background: #c58a4c; }
 
+/* ============================================================
+   群聊在灰粉美化下：右上角保持和私聊一致的摄像头按钮，
+   同时保留群成员头像和群聊自己的发送按钮。
+   旧模板已存进 beautify_chat_v2，这里不依赖重新应用主题。
+   ============================================================ */
+body.nano-gp-chat.nano-groups.nano-chat-inner .topbar-avatar {
+    font-size: 0 !important;
+    color: transparent !important;
+    overflow: hidden;
+}
+body.nano-gp-chat.nano-groups.nano-chat-inner .topbar-avatar > img,
+body.nano-gp-chat.nano-groups.nano-chat-inner .topbar-avatar > span {
+    display: none !important;
+}
+body.nano-gp-chat.nano-groups.nano-chat-inner .topbar-avatar::before {
+    content: "" !important;
+    display: block !important;
+    width: 20px !important;
+    height: 20px !important;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23111111' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2.8' y='6.2' width='13.2' height='11.6' rx='1.5'/%3E%3Cpath d='M16 10.4 21.2 7.4v9.2L16 13.6z'/%3E%3C/svg%3E") center / contain no-repeat !important;
+}
+body.nano-groups.nano-chat-inner .message-avatar {
+    display: flex !important;
+}
+body.nano-groups.nano-chat-inner .message-row.tip-row-wrap .message-avatar,
+body.nano-groups.nano-chat-inner .message-row.centered .message-avatar,
+body.nano-groups.nano-chat-inner .message-row.recalled .message-avatar,
+body.nano-groups.nano-chat-inner .message-row.sys-notice .message-avatar {
+    display: none !important;
+}
+body.nano-groups.nano-chat-inner .bottom-bar .send-btn {
+    width: 42px !important;
+    height: 42px !important;
+    min-width: 42px !important;
+    border-radius: 50% !important;
+    background: #2c2c2e !important;
+    color: #fff !important;
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 8px rgba(44, 44, 46, .3) !important;
+}
+body.nano-groups.nano-chat-inner .bottom-bar .send-btn i,
+body.nano-groups.nano-chat-inner .bottom-bar .send-btn svg {
+    display: block !important;
+    color: #fff !important;
+    stroke: #fff !important;
+    font-size: 16px !important;
+}
+body.nano-groups.nano-chat-inner .bottom-bar .send-btn.reply-mode::after {
+    display: none !important;
+}
+

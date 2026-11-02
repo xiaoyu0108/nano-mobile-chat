@@ -794,6 +794,15 @@ body.nano-groups .msg-tool-res {
 }
 
 /* ============================================================
+   6.2 群聊专属修正：右上角保持摄像头按钮，保留成员头像/发送按钮
+   ============================================================ */
+body.nano-groups .message-avatar { display: flex !important; }
+body.nano-groups .message-row.tip-row-wrap .message-avatar,
+body.nano-groups .message-row.centered .message-avatar,
+body.nano-groups .message-row.recalled .message-avatar,
+body.nano-groups .message-row.sys-notice .message-avatar { display: none !important; }
+
+/* ============================================================
    7. 卡片 —— 长方形：左 SVG / 右文字 / 底部接收·退还
    ============================================================ */
 body.nano-chat-inner .bubble-card {
@@ -895,6 +904,23 @@ body.nano-chat-inner .bubble-card .message-box {
   max-height: 64px;
 }
 body.nano-chat-inner .bubble-card .card-image { display: none !important; }
+/* 旅途 / 日程卡片必须能看到照片：灰粉美化不能把这些卡片图一起藏掉 */
+body.nano-chat-inner .bubble-card.travelReport .card-image,
+body.nano-chat-inner .bubble-card.travelShare .card-image,
+body.nano-chat-inner .bubble-card.scheduleReport .card-image {
+  display: block !important;
+  padding: 0 !important;
+  border-bottom: 1px solid #f6ebef !important;
+  background: #f7f4f5 !important;
+}
+body.nano-chat-inner .bubble-card.travelReport .card-image img,
+body.nano-chat-inner .bubble-card.travelShare .card-image img,
+body.nano-chat-inner .bubble-card.scheduleReport .card-image img {
+  display: block !important;
+  width: 100% !important;
+  max-height: 190px !important;
+  object-fit: cover !important;
+}
 body.nano-chat-inner .bubble-card .card-footer {
   padding: 7px 10px !important;
   gap: 6px !important;
@@ -1271,12 +1297,37 @@ body.nano-chat-inner .bubble-card.location .loc-bubble-map {
   border: 1px solid rgba(70, 100, 120, 0.08);
 }
 
+/* ============================================================
+   9.1 群聊底栏：恢复群聊自己的深色发送按钮，保证能正常发送
+   ============================================================ */
+body.nano-groups .bottom-bar > .send-btn {
+  width: 42px;
+  height: 42px;
+  min-width: 42px;
+  margin-left: 0;
+  border-radius: 50%;
+  background: #2c2c2e !important;
+  color: #ffffff !important;
+  box-shadow: 0 2px 8px rgba(44, 44, 46, 0.3) !important;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+}
+body.nano-groups .bottom-bar > .send-btn i {
+  display: block !important;
+  color: #ffffff !important;
+  font-size: 16px !important;
+}
+body.nano-groups .bottom-bar > .send-btn.reply-mode::after { display: none !important; }
+body.nano-groups .bottom-bar > .send-btn:active { transform: scale(0.9); background: #1c1c1e !important; }
+
 /* @js
 (function () {
   // 灰粉固定采用「外文气泡 + 下方独立译文」结构；显式声明一次，
   // 避免某些页面读不到 :root 的 --nano-trans-separate 时退回合并样式。
   try { window.NANO_TRANSLATION_SEPARATE = 1; } catch (e) {}
-  var isPrivate = document.body && document.body.classList.contains('nano-chat-inner');
+  var isGroup = document.body && document.body.classList.contains('nano-groups');
+  var isPrivate = document.body && document.body.classList.contains('nano-chat-inner') && !isGroup;
   var isNewNanoUI = document.body && document.body.classList.contains('nano-ai-ui');
   var title = document.getElementById('chatTitle');
   var img = document.getElementById('avatarImage');
@@ -1296,6 +1347,10 @@ body.nano-chat-inner .bubble-card.location .loc-bubble-map {
     if (!title) return;
     title.classList.add('gp-ready');
     var src = img && img.getAttribute('src');
+    if (!src && isGroup) {
+      var gimg = document.querySelector('#topbarAvatar img');
+      src = gimg && gimg.getAttribute('src');
+    }
     if (src) {
       title.style.setProperty('--gp-avatar', 'url("' + String(src).replace(/"/g, '%22') + '")');
       title.classList.add('gp-has-avatar');
@@ -1303,7 +1358,13 @@ body.nano-chat-inner .bubble-card.location .loc-bubble-map {
       title.style.removeProperty('--gp-avatar');
       title.classList.remove('gp-has-avatar');
     }
-    var name = (title.textContent || '').trim();
+    var name = '';
+    try {
+      for (var n = 0; n < title.childNodes.length; n++) {
+        if (title.childNodes[n] && title.childNodes[n].nodeType === 3) name += title.childNodes[n].nodeValue;
+      }
+    } catch (e) {}
+    name = String(name || '').trim() || (title.textContent || '').trim();
     title.setAttribute('data-gp-name', name);
     var ch = ((ph && ph.textContent) || '').trim() || name;
     title.setAttribute('data-gp-initial', ch ? ch.slice(0, 1).toUpperCase() : '');

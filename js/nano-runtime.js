@@ -201,6 +201,79 @@
   }
   window.NanoFaceRef = { key: faceRefKey, sync: faceRefSync, get: faceRefGet };
 
+  // ============================================================
+  // 生图提示词预设（正面 / 反面 / 画师串）
+  // ------------------------------------------------------------
+  // 之前只有 NAI 和生图室会读取 API 里的提示词预设，普通生图（私聊、群聊、
+  // 朋友圈、INS、日程、旅途、自定义 App）经常只发画面描述，画风串和反面词全丢。
+  // 这里做一份公共读取器，所有生图入口都能用同一套预设。
+  // ============================================================
+  function promptJoinValue(v) {
+    if (Array.isArray(v)) return v.map(function (x) { return String(x == null ? '' : x).trim(); }).filter(Boolean).join(', ');
+    return String(v == null ? '' : v).trim();
+  }
+  function readPromptPresetsLocal() {
+    try {
+      var raw = localStorage.getItem('nano_api_prompts');
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) { return null; }
+  }
+  function readPromptPresets() {
+    var local = readPromptPresetsLocal();
+    return new Promise(function (resolve) {
+      var done = false;
+      function finish(v) { if (done) return; done = true; resolve(v || local || {}); }
+      if (typeof indexedDB === 'undefined') { finish(local); return; }
+      function openExisting() {
+        try {
+          // 不要用固定版本号创建库：其他模块（表情包等）也用 nano_api_db，
+          // 这里只读；库不存在就让 onupgradeneeded 回滚，绝不建一个缺 store 的库。
+          var req = indexedDB.open('nano_api_db');
+          req.onupgradeneeded = function (e) { try { e.target.transaction.abort(); } catch (err) {} finish(local); };
+          req.onerror = function () { finish(local); };
+          req.onblocked = function () { finish(local); };
+          req.onsuccess = function (e) {
+            var db = e.target.result;
+            try {
+              if (!db.objectStoreNames.contains('api_data')) { finish(local); return; }
+              var g = db.transaction('api_data', 'readonly').objectStore('api_data').get('nano_api_prompts');
+              g.onsuccess = function () { finish(g.result ? (g.result.value || g.result) : local); };
+              g.onerror = function () { finish(local); };
+            } catch (err) { finish(local); }
+          };
+        } catch (e) { finish(local); }
+      }
+      try {
+        if (indexedDB.databases) {
+          indexedDB.databases().then(function (list) {
+            var has = (list || []).some(function (d) { return d && d.name === 'nano_api_db'; });
+            if (has) openExisting(); else finish(local);
+          }).catch(openExisting);
+        } else {
+          openExisting();
+        }
+      } catch (e) { finish(local); }
+    });
+  }
+  function augmentImagePrompt(prompt, opts) {
+    opts = opts || {};
+    return readPromptPresets().then(function (p) {
+      var positive = promptJoinValue(p && p.positive);
+      var negative = promptJoinValue(p && p.negative);
+      var out = String(prompt == null ? '' : prompt).trim();
+      if (positive && out.indexOf(positive) < 0) out = positive + (opts.separator || ', ') + out;
+      // 普通生图模型大多没有 negative_prompt 参数；把反面词写进正面提示词里才真的生效。
+      if (negative && opts.appendNegative) {
+        var marker = opts.negativeLabel || '避免：';
+        if (out.indexOf(negative) < 0 && out.indexOf(marker) < 0) out += '\n' + marker + negative;
+      }
+      return { prompt: out, positive: positive, negative: negative };
+    }).catch(function () {
+      return { prompt: String(prompt == null ? '' : prompt), positive: '', negative: '' };
+    });
+  }
+  window.NanoImagePrompt = { read: readPromptPresets, augment: augmentImagePrompt, join: promptJoinValue };
+
   // 生图接口经常返回会过期的临时 URL。消息里如果只存这个 URL，过几天就会变成问号；
   // 所以在入库前尽量抓成 dataURL（直连 → wsrv 图片代理），失败才保留原地址。
   var imageCache = {};

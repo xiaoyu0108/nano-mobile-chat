@@ -232,8 +232,8 @@ html::-webkit-scrollbar,body::-webkit-scrollbar,#scroll::-webkit-scrollbar,.card
 <script src="../js/localforage.min.js?v=20261106a"></script>
 <script src="../js/mem-link.js?v=20261106a"></script>
 <script src="../js/builtin-worldbook.js?v=20261025b"></script>
-<script src="../js/travel-store.js?v=20261106a"></script>
-<script src="../js/travel-api.js?v=20261106a"></script>
+<script src="../js/travel-store.js?v=20261102b"></script>
+<script src="../js/travel-api.js?v=20261102a"></script>
 <script>
 /* ===== API 接入点 =====
    window.TravelAPI.generate(payload) -> {text, choices:[{type:'地点'|'美食',name,desc}]}
@@ -258,6 +258,54 @@ let DEST = INVITE.dest || '附近走走';
 let TRIP_ID = 'trip_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,5);
 const RESUME = QS2.get('resume') === '1';
 const ACTIVE_KEY = 'nano_travel_active_' + CHAR_ID;
+/* 旅途中的照片要持久保存：localStorage 只做快速兜底，完整会话（含 dataURL 图片）
+   同步写一份到 IndexedDB，避免退出再回来看到照片被“销毁”。 */
+const ACTIVE_DB = 'nano_travel_chat_db';
+const ACTIVE_STORE = 'sessions';
+let _activeDbPromise = null;
+function activeDbOpen(){
+  if (typeof indexedDB === 'undefined') return Promise.resolve(null);
+  if (_activeDbPromise) return _activeDbPromise;
+  _activeDbPromise = new Promise(resolve=>{
+    try{
+      const req = indexedDB.open(ACTIVE_DB, 1);
+      req.onupgradeneeded = e=>{
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains(ACTIVE_STORE)) db.createObjectStore(ACTIVE_STORE);
+      };
+      req.onsuccess = ()=>resolve(req.result);
+      req.onerror = ()=>resolve(null);
+      req.onblocked = ()=>resolve(null);
+    }catch(e){ resolve(null); }
+  });
+  return _activeDbPromise;
+}
+function activeDbSet(key, value){
+  return activeDbOpen().then(db=>{
+    if (!db) return false;
+    return new Promise(resolve=>{
+      try{
+        const tx = db.transaction(ACTIVE_STORE, 'readwrite');
+        tx.objectStore(ACTIVE_STORE).put(value, key);
+        tx.oncomplete = ()=>resolve(true);
+        tx.onerror = ()=>resolve(false);
+        tx.onabort = ()=>resolve(false);
+      }catch(e){ resolve(false); }
+    });
+  }).catch(()=>false);
+}
+function activeDbGet(key){
+  return activeDbOpen().then(db=>{
+    if (!db) return null;
+    return new Promise(resolve=>{
+      try{
+        const req = db.transaction(ACTIVE_STORE, 'readonly').objectStore(ACTIVE_STORE).get(key);
+        req.onsuccess = ()=>resolve(req.result || null);
+        req.onerror = ()=>resolve(null);
+      }catch(e){ resolve(null); }
+    });
+  }).catch(()=>null);
+}
 let ACTIVE_LAST_PHOTO = null;
 const TIMES=['清晨','午后','黄昏','夜里'];
 function buildGuide(dest){
@@ -958,7 +1006,8 @@ async function loadRecords(){
       if(list&&list.length){
         REC=list.slice().reverse().map(p=>({
           id:p.id,title:p.place||DEST,date:p.date||'',summary:p.summary||p.noteChar||'',
-          stops:Array.isArray(p.places)?p.places:(Array.isArray(p.stops)?p.stops:[]),msgs:[]
+          stops:Array.isArray(p.places)?p.places:(Array.isArray(p.stops)?p.stops:[]),
+          msgs:Array.isArray(p.journey)?p.journey:[]
         }));
         saveRec();return;
       }
@@ -985,7 +1034,13 @@ function viewRec(r){
   if(Array.isArray(r.msgs)&&r.msgs.length){r.msgs.forEach((m,i)=>v.append(node({...m,id:'r'+i,edit:false,typing:false},true)))}
   else{v.append(E('div','empty',r.summary||'这一段只保留了总结。'))}
 }
-const openRec=()=>{drawRec();open_('#shRec')};
+// 点「旅行记录」直接进入最近一次回顾；用户能在回顾里看到完整流程（对话/旁白/拍立得）。
+const openRec=async()=>{
+  try{ await loadRecords(); }catch(e){}
+  if(REC&&REC.length) viewRec(REC[REC.length-1]);
+  else drawRec();
+  open_('#shRec');
+};
 $('#bRec').onclick=openRec;$('#cRec').onclick=openRec;
 
 /* ---------- settings: style presets ---------- */
@@ -1036,8 +1091,8 @@ function saveActiveSession(){
     if(m.typing)return Object.assign({},m,{typing:false,view:''});
     if(m.role!=='photo')return m;
     if(m.loading)return Object.assign({},m,{loading:false,fail:true,url:''});
-    if(m.url&&/^https?:/i.test(m.url))return m;
-    return Object.assign({},m,{url:''});
+    // 图片一律保留（localStorage 装不下时交给 IndexedDB），不再按大小清空。
+    return m;
   });
   const sess={
     version:1,
@@ -1048,15 +1103,27 @@ function saveActiveSession(){
     lastPhoto:lastPhoto?{url:lastPhoto.url,caption:lastPhoto.caption||''}:null,
     savedAt:Date.now()
   };
+  // 完整会话写 IndexedDB；localStorage 再存一份（配额不够时自动放弃，不影响 IDB）。
+  try{activeDbSet(ACTIVE_KEY,sess)}catch(e){}
   try{localStorage.setItem(ACTIVE_KEY,JSON.stringify(sess))}
   catch(e){
-    try{ if(sess.lastPhoto){sess.lastPhoto=null;localStorage.setItem(ACTIVE_KEY,JSON.stringify(sess))} }catch(e2){}
+    try{
+      const light=Object.assign({},sess,{
+        msgs:msgs.map(m=>m&&m.role==='photo'?Object.assign({},m,{url:''}):m),
+        lastPhoto:null
+      });
+      localStorage.setItem(ACTIVE_KEY,JSON.stringify(light));
+    }catch(e2){}
   }
   return sess;
 }
-function restoreActiveSession(){
+async function restoreActiveSession(){
   let sess=null;
-  try{sess=JSON.parse(localStorage.getItem(ACTIVE_KEY)||'null')}catch(e){sess=null}
+  try{sess=await activeDbGet(ACTIVE_KEY)}catch(e){sess=null}
+  let local=null;
+  try{local=JSON.parse(localStorage.getItem(ACTIVE_KEY)||'null')}catch(e){local=null}
+  // 两份都有时取更新的那份；IDB 通常带完整图片。
+  if(local&&(!sess||Number(local.savedAt||0)>Number(sess.savedAt||0)))sess=local;
   if(!sess||String(sess.charId||'')!==String(CHAR_ID))return false;
   if(sess.savedAt&&Date.now()-Number(sess.savedAt)>7*24*3600*1000)return false;
   DEST=sess.dest||DEST;Object.assign(INVITE,sess.invite||{});GUIDE=buildGuide(DEST);
@@ -1129,7 +1196,7 @@ async function travelExit(i){
   // 回到线上时自动总结这一趟，不再依赖用户手动勾选；手动勾选只影响「直接退出」时是否也总结。
   const summarize=!!(i.summarize || final);
   const hasContent=S.msgs.some(m=>m.role!=='sys')||S.plan.length>0;
-  const hist=(i.history&&i.history.length)?i.history:S.msgs.map(x=>({role:x.role,text:x.text||'',translation:x.translation||'',caption:x.caption||'',choices:x.choices||[]}));
+  const hist=(i.history&&i.history.length)?i.history:S.msgs.map(x=>({role:x.role,text:x.text||'',translation:x.translation||'',caption:x.caption||'',url:x.url||'',choices:x.choices||[]}));
   let brief='';
   if(summarize && hasContent){
     try{brief=await summarizeTrip(hist)}catch(e){brief=''}
@@ -1152,43 +1219,83 @@ async function travelExit(i){
   const cardThought=String((cardMeta&&cardMeta.thought)||brief||'').trim();
   const cardCaption=String((cardMeta&&cardMeta.caption)||(lastPhoto&&lastPhoto.caption)||'').trim();
 
-  // 每一步单独兜底，避免某一步失败导致卡片和旅途记录都写不进去
+  // 完整回顾：保留这次旅行的叙事流程（限制长度，避免撑爆本地存储）
+  const journey=(hist||[]).filter(x=>x&&x.role!=='sys').slice(-200).map(x=>{
+    // 照片保留完整 dataURL，写进旅途（IndexedDB），不再按大小丢弃。
+    return {
+      role:x.role,text:String(x.text||'').slice(0,2000),
+      translation:String(x.translation||'').slice(0,2000),
+      caption:String(x.caption||'').slice(0,300),url:String(x.url||'')
+    };
+  });
+  // 每一步单独兜底，避免某一步失败导致卡片和旅途记录都写不进去。
+  // 只要这次行程有内容并做过总结（回到线上，或直接退出时勾选了总结），都要同步。
+  const shouldSync=!!(hasContent&&(final||summarize));
   try{ if(window.NanoTravelStore&&hasContent) await NanoTravelStore.load(true); }catch(e){}
   if(summarize&&hasContent){
     try{
       let emb=null;
       try{emb=await TravelAPI.embed(brief)}catch(e){}
-      await NanoTravelStore.addTravelMemory({
-        charId:CHAR_ID,userId:uid,summary:brief,embedding:emb,charName:CHAR,tripId:TRIP_ID,
-        date,places:visited,meta:{dest:DEST,days:INVITE.days||'1',note:INVITE.note||'',source:'travel-chat'}
-      });
+      let already=false;
+      try{
+        const old=await NanoTravelStore.readTravelMemories(CHAR_ID);
+        already=(old||[]).some(m=>m&&m.travelMeta&&String(m.travelMeta.tripId||'')===String(TRIP_ID));
+      }catch(e){}
+      if(!already){
+        await NanoTravelStore.addTravelMemory({
+          charId:CHAR_ID,userId:uid,summary:brief,embedding:emb,charName:CHAR,tripId:TRIP_ID,
+          date,places:visited,meta:{dest:DEST,days:INVITE.days||'1',note:INVITE.note||'',source:'travel-chat'}
+        });
+      }
     }catch(e){try{console.warn('[travel] 记忆写入失败',e)}catch(e2){}}
   }
-  if(final&&hasContent){
+  if(shouldSync){
     try{
       const ticketNo='TRV-'+String(TRIP_ID).replace(/[^a-z0-9]/gi,'').slice(-8).toUpperCase();
-      const saved=await NanoTravelStore.addTogether(uid,CHAR_ID,{
+      const patch={
         tripId:TRIP_ID,place:DEST,date,cost:null,legs:[],noteMe:'',noteChar:cardThought,summary:brief||cardThought,
         polaroid:lastPhoto?lastPhoto.url:'',caption:cardCaption,
         shared:false,source:'travel-chat',places:visited,days:INVITE.days||'1',ticketNo:ticketNo,
-        charId:CHAR_ID,userId:uid,title:cardTitle,thought:cardThought
-      });
+        charId:CHAR_ID,userId:uid,title:cardTitle,thought:cardThought,journey:journey,
+        plan:S.plan||[],settings:{person:$('#person').value,userMode:$('#umode').value,style:$('#styleTxt').value},
+        userName:USER,charName:CHAR
+      };
+      let saved=null;
+      try{
+        const existed=(NanoTravelStore.listTogether(uid,CHAR_ID)||[]).find(p=>p&&(String(p.tripId||'')===String(TRIP_ID)||String(p.id)===String(TRIP_ID)));
+        if(existed) saved=await NanoTravelStore.updateTrip(existed.id,Object.assign({},patch,{id:existed.id}));
+        else saved=await NanoTravelStore.addTogether(uid,CHAR_ID,patch);
+      }catch(e){try{console.warn('[travel] 旅途记录写入失败',e)}catch(e2){}}
       const tid=(saved&&saved.id)||TRIP_ID;
       const card={
         cardType:'travelReport',travelKind:'together',direction:'char',
         tripId:tid,title:cardTitle,place:DEST,date,days:INVITE.days||'1',
         ticketNo:ticketNo,thought:cardThought,img:lastPhoto?lastPhoto.url:'',
         caption:cardCaption,fromName:CHAR,userName:USER,
-        places:visited,createdAt:Date.now()
+        places:visited,createdAt:Date.now(),journeyId:TRIP_ID
       };
-      const msg=NanoTravelStore.baseMessage({type:'left',cardData:card,text:''});
-      await NanoTravelStore.appendChatMessage(CHAT_ID||CHAR_ID,msg);
+      try{
+        const chatKey=CHAT_ID||CHAR_ID;
+        const msgs=await NanoTravelStore.readChatMessages(chatKey);
+        const old=(msgs||[]).find(m=>m&&m.cardData&&m.cardData.cardType==='travelReport'&&String(m.cardData.journeyId||m.cardData.tripId||'')===String(TRIP_ID));
+        if(old) await NanoTravelStore.updateChatCard(chatKey,old.id,card);
+        else{
+          // 先说一句为什么发这张卡，再发卡片；不能只丢一张行程卡过来。
+          const lead=String(cardCaption||'').trim()||('刚从'+DEST+'回来，这趟整理好了，给你看看。');
+          const leadMsg=NanoTravelStore.baseMessage({type:'left',text:lead.slice(0,120),isCard:false,cardData:{}});
+          await NanoTravelStore.appendChatMessage(chatKey,leadMsg);
+          const msg=NanoTravelStore.baseMessage({type:'left',cardData:card,text:''});
+          await NanoTravelStore.appendChatMessage(chatKey,msg);
+        }
+      }catch(e){try{console.warn('[travel] 旅程卡片写入失败',e)}catch(e2){}}
       try{await NanoTravelStore.appendSystemNotice(CHAT_ID||CHAR_ID,'已结束「'+DEST+'」出行');}catch(e){}
-    }catch(e){try{console.warn('[travel] 旅程卡片写入失败',e)}catch(e2){}}
+    }catch(e){try{console.warn('[travel] 旅程同步失败',e)}catch(e2){}}
   }
   try{
-    if(final&&hasContent){
-      REC.push({id:Date.now(),title:DEST,date,summary:brief,stops:visited,msgs:[]});
+    if(shouldSync){
+      // REC 只是本地行程列表，localStorage 放不下大图；完整旅程已写进旅途（IDB）。
+      const recMsgs=journey.map(x=>x&&x.url&&x.url.length>180000?Object.assign({},x,{url:''}):x);
+      REC.push({id:Date.now(),title:DEST,date,summary:brief,stops:visited,msgs:recMsgs});
       REC=REC.slice(-40);saveRec();
     }
   }catch(e){}
@@ -1204,7 +1311,7 @@ async function exit(mode){
   try{
     await window.TravelAPI.onExit({
       mode,final,summarize:final ? true : $('#sum').checked,
-      history:S.msgs.map(x=>({role:x.role,text:x.text||'',translation:x.translation||'',caption:x.caption||'',choices:(x.choices||[]).map(c=>({type:c.type,name:c.name,desc:c.desc,s:c.s}))})),
+      history:S.msgs.map(x=>({role:x.role,text:x.text||'',translation:x.translation||'',caption:x.caption||'',url:x.url||'',choices:(x.choices||[]).map(c=>({type:c.type,name:c.name,desc:c.desc,s:c.s}))})),
       plan:S.plan,records:recSum()
     });
   }catch(e){}
@@ -1248,7 +1355,7 @@ document.addEventListener('visibilitychange', function(){
     if(rec&&rec.name)CHAR=rec.name;
     const mask=await loadMaskInfo(true);USER=mask.name||'你';
     await loadRecords();
-    if(RESUME)restored=restoreActiveSession();
+    if(RESUME)restored=await restoreActiveSession();
   }catch(e){}
   if(!restored)fresh();
   syncBtn();

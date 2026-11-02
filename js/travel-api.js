@@ -339,6 +339,12 @@
         var local = await NanoImageCache.toDataUrl(src);
         if (local) src = local;
       }
+      // 旅行照片会被长期保存：先压到 1280 长边，避免原图几 MB 写爆 IndexedDB，
+      // 写入失败后只剩 localStorage 兜底，用户就会看到照片“被销毁”。
+      if (src && /^data:image\//i.test(src) && src.length > 500000 && window.NanoImageCache && NanoImageCache.shrinkDataUrl) {
+        var small = await NanoImageCache.shrinkDataUrl(src, 1280, 0.82);
+        if (small) src = small;
+      }
     } catch (e) {}
     out.src = src;
     try {
@@ -362,6 +368,14 @@
     var size = opts.size || cfg.imgSize || '1024x1024';
     var prompt = String(opts.prompt || '').trim();
     if (!prompt) throw new Error('生图提示词为空');
+    // 普通生图也要带上 API 的正面 / 反面提示词，而不是只依赖 AI 写的那句场景描述。
+    var imagePresets = { prompt: prompt, negative: '' };
+    try {
+      if (window.NanoImagePrompt && NanoImagePrompt.augment) {
+        imagePresets = await NanoImagePrompt.augment(prompt, { appendNegative: true });
+        prompt = imagePresets.prompt;
+      }
+    } catch (e) {}
     var faceRef = '';
     try { faceRef = await faceRefFor(opts.charId || ''); } catch (e) { faceRef = ''; }
     var note = faceRef

@@ -49,15 +49,15 @@
     music: '<svg viewBox="0 0 24 24"><path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/></svg>',
     widget: '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="5" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="10" width="8" height="11" rx="2"/></svg>',
     prompt: '<svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z"/><path d="M8 8h8M8 12h5"/></svg>',
-    other: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>'
+    other: '<svg viewBox="0 0 24 24"><path d="M3 7.5 12 3l9 4.5v9L12 21l-9-4.5v-9Z"/><path d="M3 7.5 12 12l9-4.5M12 12v9"/><path d="M7.5 5.2 16.5 9.7"/></svg>'
   };
 
   var ICONS = {
     like: '<svg viewBox="0 0 24 24"><path d="M7 10v10H4V10h3Z"/><path d="M7 10l4-7c1.5 0 2.5 1.5 1.5 3.5L11 10h6a2 2 0 0 1 2 2l-1 6a2 2 0 0 1-2 2H7"/></svg>',
     // 下载：向下箭头 + 托盘
     download: '<svg viewBox="0 0 24 24"><path d="M12 4v10"/><path d="m8 11 4 3.5 4-3.5"/><path d="M5 19.5h14"/></svg>',
-    // 导入：向右箭头进入区域（和下载明显不同）
-    import: '<svg viewBox="0 0 24 24"><path d="M13 4.5H6.5A1.5 1.5 0 0 0 5 6v12a1.5 1.5 0 0 0 1.5 1.5H13"/><path d="M20 12H9.5"/><path d="m13 8.5 3.5 3.5L13 15.5"/></svg>',
+    // 导入：箭头进入一个 App 方块（横向进入 + 内部加号），和下载的竖向箭头明显区分
+    import: '<svg viewBox="0 0 24 24"><rect x="10.5" y="4.5" width="9.5" height="15" rx="2.5"/><path d="M2.8 12h6.9"/><path d="m6.5 8.8 3.2 3.2-3.2 3.2"/><path d="M15.25 9.8v4.4M13.05 12h4.4"/></svg>',
     back: '<svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>',
     search: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m16.5 16.5 4 4"/></svg>',
     image: '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>',
@@ -406,7 +406,7 @@
           + '<div class="detail-file-info"><strong>' + esc(f.name) + '</strong>'
           + '<small>' + esc(fileSize(f.size)) + ' · ' + esc(f.mime || '未知类型') + '</small></div>'
           + '<div class="detail-file-actions">'
-          + '<button class="file-action-btn primary" data-import="' + i + '" title="导入到功能区">' + ICONS.import + '</button>'
+          + '<button class="file-action-btn primary" data-import="' + i + '" title="导入到对应 App">' + ICONS.import + '</button>'
           + '<button class="file-action-btn" data-download="' + i + '" title="下载文件">' + ICONS.download + '</button>'
           + '</div></div>';
       }).join('') + '</div>' : '';
@@ -733,7 +733,7 @@
             st.put({ key: 'data', value: val });
             try { localStorage.setItem('nano_worldbook_data_v5', JSON.stringify(val)); } catch (e) {}
           };
-          tx.oncomplete = function () { d.close(); res(); };
+          tx.oncomplete = function () { d.close(); postToShell({ type: 'nanoWorldbookUpdated' }); res(); };
           tx.onerror = function () { d.close(); rej(tx.error); };
         };
         req.onerror = function () { rej(req.error); };

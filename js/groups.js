@@ -116,6 +116,36 @@
     var messages = loadMsgs();
     var userLeft = !!group.userLeft;
     var msgIdCounter = 0;
+
+    // 标记当前是否套用了灰粉聊天模板：只有灰粉下才把右上角强制成摄像头按钮。
+    function markGrayPinkTheme() {
+        try {
+            var css = localStorage.getItem('beautify_chat_v2') || '';
+            if (/--gp-|灰粉|gray-pink|#f9d5e0|topbar-avatar::before/i.test(css)) document.body.classList.add('nano-gp-chat');
+        } catch (e) {}
+    }
+    markGrayPinkTheme();
+    window.addEventListener('nano-chat-theme-applied', markGrayPinkTheme);
+
+    // 旧版灰粉模板存进 beautify_chat_v2 后，仍会把群聊发送按钮当成私聊按钮移到输入框里，
+    // 也会让顶栏保留摄像头样式。这里在主题应用后把发送按钮放回群聊底栏。
+    function enforceGroupGrayPinkDom() {
+        try {
+            var bar = document.querySelector('.bottom-bar');
+            var btn = document.getElementById('sendBtn');
+            if (bar && btn && btn.parentNode !== bar) bar.appendChild(btn);
+        } catch (e) {}
+    }
+    [0, 120, 500, 1500].forEach(function (ms) { setTimeout(enforceGroupGrayPinkDom, ms); });
+    window.addEventListener('nano-chat-theme-applied', function () {
+        setTimeout(enforceGroupGrayPinkDom, 80);
+    });
+    try {
+        var _barWatch = document.querySelector('.bottom-bar');
+        if (_barWatch && window.MutationObserver) {
+            new MutationObserver(enforceGroupGrayPinkDom).observe(_barWatch, { childList: true, subtree: true });
+        }
+    } catch (e) {}
     messages.forEach(function(m){ var n = parseInt((m.id||'').replace('msg_','')); if (n > msgIdCounter) msgIdCounter = n; });
 
     function recalcLevels(){
@@ -1221,6 +1251,22 @@
         };
     }
 
+    function recentGroupImageContext(member, limit) {
+        var arr = [];
+        try {
+            for (var i = messages.length - 1; i >= 0 && arr.length < (limit || 6); i--) {
+                var m = messages[i];
+                if (!m || m.recalled || m.isImage || m.isCard) continue;
+                var t = String(m.text || '').trim();
+                if (!t) continue;
+                var who = (member && m.senderId === member.id) ? (member.name || '角色')
+                    : (m.senderName || (m.type === 'right' ? '用户' : '成员'));
+                arr.push(who + '：' + t.replace(/\s+/g, ' ').slice(0, 150));
+            }
+        } catch (e) {}
+        return arr.reverse().join('\n');
+    }
+
     function requestGroupImage(member, desc, opts){
         opts = opts || {};
         var fallback = function(){
@@ -1231,15 +1277,20 @@
         var faceRefP = (window.NanoFaceRef && NanoFaceRef.get)
             ? Promise.resolve(NanoFaceRef.get(member.id)).catch(function(){ return ''; })
             : Promise.resolve('');
-        Promise.all([getGroupApiConfig(), faceRefP]).then(function(pair){
-            var config = pair[0], faceRef = pair[1] || '';
+        var promptP = (window.NanoImagePrompt && NanoImagePrompt.augment)
+            ? NanoImagePrompt.augment(desc, { appendNegative: true }).catch(function(){ return { prompt: desc, negative: '' }; })
+            : Promise.resolve({ prompt: desc, negative: '' });
+        Promise.all([getGroupApiConfig(), faceRefP, promptP]).then(function(pair){
+            var config = pair[0], faceRef = pair[1] || '', aug = pair[2] || {};
             var imgUrl = config && (config.imgUrl || '').trim();
             var imgKey = config && (config.imgKey || '').trim();
             var imgModel = config && (config.imgModel || '').trim();
             if (!imgUrl || !imgKey || !imgModel) { fallback(); return; }
             var baseUrl = toV1Base(resolveApiHost(imgUrl));
-            var fullDesc = desc;
-            if (faceRef) fullDesc = '【锁脸说明】人物参考图只用于保持长相（五官、脸型、肤色、发色）一致；请完全忽略参考图的姿势、角度、表情、背景与构图，按当前场景重新构图。\n' + desc;
+            var fullDesc = (aug && aug.prompt) || desc;
+            var groupCtx = recentGroupImageContext(member, 6);
+            if (groupCtx) fullDesc += '\n【最近群聊上下文，用于保持场景和人物一致】\n' + groupCtx;
+            if (faceRef) fullDesc = '【锁脸说明】人物参考图只用于保持长相（五官、脸型、肤色、发色）一致；请完全忽略参考图的姿势、角度、表情、背景与构图，按当前场景重新构图。\n' + fullDesc;
             var body = { model:imgModel, prompt:fullDesc, n:1, size:'1024x1024' };
             if (faceRef) { body.image = faceRef; body.reference_image = [faceRef]; body.input_reference_image = [faceRef]; }
             fetch(baseUrl + '/images/generations', {
@@ -3128,8 +3179,19 @@ messageContainer.addEventListener('click', function(e){
 
     // ========== 返回 / 设置页跳转 ==========
     $('backBtn').addEventListener('click', function(){
-        if (window.parent !== window) window.parent.postMessage({ type:'closeFullscreen' }, '*');
-        else history.back();
+        // 群聊是从 chat.html 的群聊 tab 进来的，返回时必须回到这个 tab，
+        // 不能退到桌面/首页，也不能退到私聊列表。
+        if (window.parent === window) { history.back(); return; }
+        try { sessionStorage.setItem('nano_chat_active_page', JSON.stringify({ page:'chat', tab:'groups', at:Date.now() })); } catch(e) {}
+        window.parent.postMessage({ type:'closeGroupToChat' }, '*');
+        // 外壳版本较旧/没收到消息时兜底：直接把当前群聊帧换成 chat.html 群聊 tab。
+        setTimeout(function(){
+            try {
+                var fe = window.frameElement;
+                if (fe && window.getComputedStyle(fe).display === 'none') return;
+                location.href = 'chat.html?tab=groups';
+            } catch(e) {}
+        }, 450);
     });
     function openGroupSetting(){
         var url = 'group-setting.html?chat=' + encodeURIComponent(chatId);

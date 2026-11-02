@@ -576,6 +576,20 @@ function applyImgResult(job,res){
   if(!ev)return false;
   ev.img=res;
   ev.report={at:Date.now(),note:String(ev.mood||ev.note||'').trim().slice(0,80),delivered:false};
+  // 后台任务从父页面拿到的常常是临时 URL：先落库显示，再在后台转成永久 dataURL 回写，
+  // 避免过几天链接失效后日程图片变成空白（看起来像被自动销毁）。
+  if(window.NanoImageCache&&/^https?:\/\//i.test(String(res.src||''))){
+    NanoImageCache.toDataUrl(res.src).then(function(local){
+      if(!local||!/^data:image\//i.test(local))return;
+      // save() 会重建 STORE，旧的 ev 引用会失效；重新按 id 找到当前对象再回写。
+      const fresh=byId(job.eventId);
+      if(!fresh)return;
+      fresh.img=Object.assign({},res,{src:local});
+      save();render();
+      if(sheetOpen()&&cur===fresh.id)detail(fresh.id,'view',true);
+      try{if(window.NanoGallery)NanoGallery.add({url:local,source:'日程',charName:(CHAR&&CHAR.name)||S.settings.name||'',prompt:res.prompt||'',generated:true})}catch(e){}
+    }).catch(function(){});
+  }
   logEv(ev,'生成画面');
   save();render();
   if(sheetOpen()&&cur===ev.id)detail(ev.id,'view',true);
@@ -837,11 +851,18 @@ async function finalizeImageResult(out,prompt){
       if(local)out.src=local;
     }
   }catch(e){}
-  try{if(window.NanoGallery)NanoGallery.add({url:out.src,source:'日程',charName:(CHAR&&CHAR.name)||S.settings.name||'',prompt:prompt||''})}catch(e){}
+  try{if(window.NanoGallery)NanoGallery.add({url:out.src,source:'日程',charName:(CHAR&&CHAR.name)||S.settings.name||'',prompt:prompt||'',generated:true})}catch(e){}
   return out;
 }
 async function genImage(ev,custom){
-  const st=S.settings,prompt=(custom||'').trim()||buildPrompt(ev);
+  const st=S.settings;
+  let prompt=(custom||'').trim()||buildPrompt(ev);
+  try{
+    if(window.NanoImagePrompt&&NanoImagePrompt.augment){
+      const aug=await NanoImagePrompt.augment(prompt,{appendNegative:true});
+      prompt=aug.prompt||prompt;
+    }
+  }catch(e){}
   try{
     if(hooks.generateImage){const src=await hooks.generateImage({prompt,event:ev});return finalizeImageResult({src,kind:'api',prompt},prompt)}
     const cfg=await getMainConfig();
@@ -913,7 +934,7 @@ async function repairScheduleImages(){
       if(changed>=4)break;
       if(!e||!e.img||!e.img.src||!/^https?:\/\//i.test(e.img.src))continue;
       const d=await NanoImageCache.toDataUrl(e.img.src);
-      if(d){e.img.src=d;changed++;try{if(window.NanoGallery)NanoGallery.add({url:d,source:'日程',charName:ch.settings&&ch.settings.name||'',prompt:e.img.prompt||''})}catch(err){}}
+      if(d){e.img.src=d;changed++;try{if(window.NanoGallery)NanoGallery.add({url:d,source:'日程',charName:ch.settings&&ch.settings.name||'',prompt:e.img.prompt||'',generated:true})}catch(err){}}
     }
   }
   if(changed)persistStore();

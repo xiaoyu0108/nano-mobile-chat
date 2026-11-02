@@ -59,13 +59,32 @@
     });
   }
 
+  function originOwnerId(c, all) {
+    if (!c || !c.isAltProbe || !c.altOriginId) return '';
+    var origin = (all || []).find(function (x) { return x && String(x.id) === String(c.altOriginId); });
+    return origin && origin.bindUser != null ? String(origin.bindUser) : '';
+  }
+
+  // 当前 user 可见的角色：未绑定 + 绑定到当前 user 的角色。
+  // 小号即使自己的 bindUser 丢了，只要大号绑定当前 user，也仍属于当前 user。
+  function belongsToUser(c, uid, all) {
+    if (!c || c.nanoAssistant) return false;
+    if (!uid) return true;
+    if (c.bindUser != null && String(c.bindUser) !== '') return String(c.bindUser) === uid;
+    if (c.isAltProbe) {
+      var owner = originOwnerId(c, all);
+      if (owner) return owner === uid;
+      return !!(c.altOriginId && String(c.altOriginId) === uid);
+    }
+    return true;
+  }
+
   function filterForCurrentUser(list) {
     var uid = currentUserId();
     var arr = Array.isArray(list) ? list : [];
     return arr.filter(function (c) {
-      if (!c || !c.id || !c.name || c.nanoAssistant) return false;
-      if (!uid) return true;
-      return !c.bindUser || String(c.bindUser) === uid;
+      if (!c || !c.id || !c.name) return false;
+      return belongsToUser(c, uid, arr);
     });
   }
 
@@ -78,6 +97,7 @@
     currentUserId: currentUserId,
     currentUserName: currentUserName,
     loadChars: loadChars,
-    filterForCurrentUser: filterForCurrentUser
+    filterForCurrentUser: filterForCurrentUser,
+    belongsToUser: belongsToUser
   };
 })();

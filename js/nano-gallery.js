@@ -187,12 +187,9 @@
             var arr = read().filter(function (x) { return urlKey(x && x.url) !== oldKey; });
             write(arr);
             dbDelete([oldKey]);
-            var copy = Object.assign({}, rec, { url: data });
-            // 老记录没有 generated 字段：有生图提示词的按生图补标，没提示词的不再回收。
-            if (copy.generated !== true) {
-                if (String(copy.prompt || '').trim()) copy.generated = true;
-                else return;
-            }
+            // 能进图库的记录本来就是生成图；老记录可能缺 generated 字段，
+            // 这里补标后照样写回，绝不能因为字段缺失就把转存好的图丢掉（会像“自动销毁”）。
+            var copy = Object.assign({}, rec, { url: data, generated: true });
             add(copy);
         }).catch(function () {}).then(function () { delete _remotePending[k]; });
     }

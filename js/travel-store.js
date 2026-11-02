@@ -40,12 +40,14 @@
     o.version = 1;
     return o;
   }
-  function light(o) {
+  function light(o, stripHeavy) {
     try {
       return JSON.parse(JSON.stringify(o, function (k, v) {
         if (k === 'embedding') return undefined;
-        if ((k === 'polaroid' || k === 'img' || k === 'imageUrl' || k === 'avatar') &&
-            typeof v === 'string' && v.indexOf('data:') === 0 && v.length > 80000) return '';
+        // 只有 localStorage 兜底写不下时才丢弃大图；IndexedDB 正常时始终保留完整图片。
+        // 旧逻辑无条件丢掉 >80k 的 dataURL，导致 IDB 写入失败后旅途照片“凭空消失”。
+        if (stripHeavy && (k === 'polaroid' || k === 'img' || k === 'imageUrl' || k === 'avatar' || k === 'url') &&
+            typeof v === 'string' && v.indexOf('data:') === 0 && v.length > 700000) return '';
         return v;
       }));
     } catch (e) { return empty(); }
@@ -123,7 +125,8 @@
       else p = kvSet(KEY, d).then(function () { return d; });
     } catch (e) { p = Promise.resolve(d); }
     try {
-      var txt = JSON.stringify(light(d));
+      var txt = JSON.stringify(light(d, false));
+      if (txt.length >= 4300000) txt = JSON.stringify(light(d, true));
       if (txt.length < 4300000) localStorage.setItem(LS_KEY, txt);
     } catch (e) {}
     return p;
@@ -249,8 +252,18 @@
         var list = (all || []).filter(function (c) {
           if (!c || c.id == null || !c.name || c.nanoAssistant) return false;
           if (!mask || !mask.id) return true;
-          var b = String(c.bindUser || ''), mid = String(mask.id || '');
-          return !b || b === mid || b.replace(/^m/i, '') === mid.replace(/^m/i, '');
+          var mid = String(mask.id || '');
+          if (c.bindUser != null && String(c.bindUser) !== '') {
+            return String(c.bindUser) === mid || String(c.bindUser).replace(/^m/i, '') === mid.replace(/^m/i, '');
+          }
+          if (c.isAltProbe) {
+            var origin = (all || []).find(function (x) { return x && String(x.id) === String(c.altOriginId); });
+            if (origin && origin.bindUser != null && String(origin.bindUser) !== '') {
+              return String(origin.bindUser) === mid || String(origin.bindUser).replace(/^m/i, '') === mid.replace(/^m/i, '');
+            }
+            return true;
+          }
+          return true;
         });
         return list.sort(function (a, b) { return String(a.name).localeCompare(String(b.name), 'zh'); });
       });
@@ -262,13 +275,14 @@
     if (!d.chars[id]) {
       d.chars[id] = {
         settings: { charId: id, name: '', avatar: '', persona: '', bindUser: '' },
-        trips: [], pendingReports: [], lastPolaroidAt: 0, lastReportAt: 0, lastChatAt: 0
+        trips: [], pendingReports: [], lastPolaroidAt: 0, lastReportAt: 0, lastInviteAt: 0, lastChatAt: 0
       };
     }
     var c = d.chars[id];
     if (!Array.isArray(c.trips)) c.trips = [];
     if (!Array.isArray(c.pendingReports)) c.pendingReports = [];
     if (!c.settings) c.settings = { charId: id };
+    if (typeof c.lastInviteAt !== 'number') c.lastInviteAt = 0;
     return c;
   }
   function loadCachedSync() { return cache || readLocal() || empty(); }
@@ -669,24 +683,39 @@
     if (!cid || !opts.trip) return Promise.resolve(false);
     var trip = opts.trip || {};
     var mask = getMask();
-    var card = {
-      cardType: 'travelShare',
-      travelKind: 'share',
-      direction: 'user',
-      status: 'sent',
-      tripId: String(trip.tripId || trip.id || ''),
-      title: String(trip.place || trip.to || trip.title || '一段旅程'),
-      place: String(trip.place || trip.to || ''),
-      date: String(trip.date || ''),
-      thought: String(opts.thought || trip.noteMe || trip.noteChar || trip.thought || trip.note || ''),
-      caption: String(trip.caption || ''),
-      img: String(trip.polaroid || ''),
-      note: String(opts.message || '').trim(),
-      fromName: String(opts.fromName || mask.name || '我'),
-      sharedAt: now()
-    };
-    var msg = baseMessage({ type: 'right', cardData: card, text: '' });
-    return appendChatMessage(cid, msg).then(function () { return msg; });
+    var place = String(trip.place || trip.to || trip.title || '');
+    var note = String(opts.message || '').trim();
+    // 分享旅程前一定先说一句“为什么发”，不能只孤零零甩一张卡片。
+    var say = note || (place
+      ? ('刚从' + place + '回来，给你看看这趟的记录。')
+      : '把最近这趟旅程整理好了，给你看看。');
+    var imageSrc = String(trip.polaroid || '');
+    var imageReady = (imageSrc && /^https?:\/\//i.test(imageSrc) && window.NanoImageCache && NanoImageCache.toDataUrl)
+      ? NanoImageCache.toDataUrl(imageSrc).catch(function () { return imageSrc; })
+      : Promise.resolve(imageSrc);
+    return imageReady.then(function (img) {
+      var card = {
+        cardType: 'travelShare',
+        travelKind: 'share',
+        direction: 'user',
+        status: 'sent',
+        tripId: String(trip.tripId || trip.id || ''),
+        title: place || '一段旅程',
+        place: place,
+        date: String(trip.date || ''),
+        thought: String(opts.thought || trip.noteMe || trip.noteChar || trip.thought || trip.note || ''),
+        caption: String(trip.caption || ''),
+        img: String(img || ''),
+        note: note,
+        fromName: String(opts.fromName || mask.name || '我'),
+        sharedAt: now()
+      };
+      var textMsg = baseMessage({ type: 'right', text: say, isCard: false, cardData: {} });
+      var msg = baseMessage({ type: 'right', cardData: card, text: '' });
+      return appendChatMessage(cid, textMsg)
+        .then(function () { return appendChatMessage(cid, msg); })
+        .then(function () { return msg; });
+    });
   }
   function sendInvite(opts) {
     opts = opts || {};
@@ -694,24 +723,31 @@
     if (!cid) return Promise.resolve(false);
     var mask = getMask();
     var t = now();
+    var dest = String(opts.dest || '').trim();
+    var note = String(opts.note || '').trim();
     var card = {
       cardType: 'travelInvite',
       travelKind: 'invite',
       direction: 'user',
       status: 'pending',
       inviteId: uid('invite'),
-      dest: String(opts.dest || '').trim(),
+      dest: dest,
       date: String(opts.date || dstr(t)),
       time: String(opts.time || ''),
       days: String(opts.days || '1'),
-      note: String(opts.note || '').trim(),
+      note: note,
       fromName: String(opts.fromName || mask.name || '我'),
       toName: String(opts.toName || ''),
       tripId: '',
       createdAt: t
     };
+    // 邀请也要先说话再发卡片：一句话说明想去哪、为什么想一起去。
+    var say = note || (dest ? ('想不想一起去' + dest + '？') : '想和你一起出去走走。');
+    var textMsg = baseMessage({ type: 'right', text: say, isCard: false, cardData: {} });
     var msg = baseMessage({ type: 'right', cardData: card, text: '' });
-    return appendChatMessage(cid, msg).then(function () { return msg; });
+    return appendChatMessage(cid, textMsg)
+      .then(function () { return appendChatMessage(cid, msg); })
+      .then(function () { return msg; });
   }
   function updateChatCard(charId, cardId, patch) {
     return readChatMessages(charId).then(function (list) {

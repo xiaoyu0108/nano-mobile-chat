@@ -1970,6 +1970,36 @@
     else el.textContent = '群';
   }
 
+  // 群头像必须压到很小再进 localStorage：原图 dataURL 经常几 MB，
+  // 会把 nano_groups_data 撑爆，表现就是「设了头像就建不了群」。
+  function readGroupAvatarFile(file, cb) {
+    const reader = new FileReader();
+    reader.onload = function (ev) {
+      const src = String(ev.target.result || '');
+      const img = new Image();
+      img.onload = function () {
+        try {
+          const max = 320;
+          const scale = Math.min(1, max / Math.max(img.width || 1, img.height || 1));
+          const w = Math.max(1, Math.round((img.width || max) * scale));
+          const h = Math.max(1, Math.round((img.height || max) * scale));
+          const cv = document.createElement('canvas');
+          cv.width = w; cv.height = h;
+          const ctx = cv.getContext('2d');
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, w, h);
+          ctx.drawImage(img, 0, 0, w, h);
+          const out = cv.toDataURL('image/jpeg', 0.82);
+          cb(out && out.length < src.length ? out : src);
+        } catch (e) { cb(src); }
+      };
+      img.onerror = function () { cb(src); };
+      img.src = src;
+    };
+    reader.onerror = function () { cb(''); };
+    reader.readAsDataURL(file);
+  }
+
   function resetGroupAvatar() {
     groupAvatarTemp = '';
     const file = $('groupAvatarInput');
@@ -2047,7 +2077,10 @@
       raw.groups = Array.isArray(raw.groups) ? raw.groups : [];
       raw.groups.push(group);
       localStorage.setItem(GROUP_KEY, JSON.stringify(raw));
-    } catch (e) {}
+    } catch (e) {
+      alert('群聊保存失败：本地存储空间不足。请换一张更小的群头像，或清理部分聊天图片后重试。');
+      return;
+    }
 
     try {
       const memberObjects = selected.map(function (id, i) {
@@ -2073,7 +2106,15 @@
         ownerId: 'me',
         members: memberObjects
       }));
-    } catch (e) {}
+    } catch (e) {
+      try {
+        const raw = JSON.parse(localStorage.getItem(GROUP_KEY) || '{}');
+        raw.groups = (raw.groups || []).filter(function (g) { return String(g.id) !== String(group.id); });
+        localStorage.setItem(GROUP_KEY, JSON.stringify(raw));
+      } catch (e2) {}
+      alert('群聊资料保存失败：本地存储空间不足。请换一张更小的群头像后重试。');
+      return;
+    }
 
     closeGroupModal();
     loadGroups();
@@ -2133,12 +2174,10 @@
       groupAvatarInput.addEventListener('change', function () {
         const file = this.files && this.files[0];
         if (!file) return;
-        const reader = new FileReader();
-        reader.onload = function (ev) {
-          groupAvatarTemp = ev.target.result || '';
+        readGroupAvatarFile(file, function (dataUrl) {
+          groupAvatarTemp = dataUrl || '';
           renderGroupAvatarPreview();
-        };
-        reader.readAsDataURL(file);
+        });
       });
     }
     const groupAvatarReset = $('groupAvatarReset');

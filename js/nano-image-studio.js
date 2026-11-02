@@ -877,6 +877,21 @@
     return String(fallback || state.size || '768x1344');
   }
 
+  // 普通生图也要参照最近几轮生图上下文，保持人物、服装和场景连续，而不是每次从零画。
+  function recentStudioContext(excludeText) {
+    var arr = [];
+    var items = session.items || [];
+    var ex = String(excludeText || '').trim();
+    for (var i = items.length - 1; i >= 0 && arr.length < 4; i--) {
+      var it = items[i];
+      if (!it || it.status === 'loading') continue;
+      var t = String(it.text || it.fullPrompt || it.prompt || '').trim();
+      if (!t || (ex && t === ex)) continue;
+      arr.push((it.role === 'user' ? '用户' : '你') + '：' + t.replace(/\s+/g, ' ').slice(0, 180));
+    }
+    return arr.reverse().join('\n');
+  }
+
   async function generateImage(text, image, opts) {
     if (generating) return;
     if (!window.NanoImage || !NanoImage.generate) { toast('生图模块没有加载，请重开页面'); return; }
@@ -907,7 +922,9 @@
     scrollBottom();
     setGenerating(true);
     try {
-      var promptText = (quote ? ('引用内容：' + quote.text + '\n') : '') + text;
+      var ctx = recentStudioContext(text);
+      var promptText = (ctx ? ('【最近生图上下文，用于保持人物/场景一致】\n' + ctx + '\n') : '')
+        + (quote ? ('引用内容：' + quote.text + '\n') : '') + text;
       var full = await buildPrompt(promptText);
       if (image) {
         full = '参考上传图片的画风、配色、构图与光线，但不要照搬具体内容。\n' + full;

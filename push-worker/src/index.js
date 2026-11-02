@@ -1140,10 +1140,18 @@ async function generateAutoMoments(env, cfg, busyChatId, maxChars) {
   const pool = allowed.filter(function (c) { return c.id !== busyChatId && !c.isNpc; });
   const source = pool.length ? pool : allowed.filter(function (c) { return c.id !== busyChatId; });
   if (!source.length) return [];
-  // 后台一次最多让 3 个角色出现；和主动消息合计也由 runAutoPush 控制在 3 个以内
-  const count = Math.max(1, Math.min(Number(maxChars) || 2, 3, source.length));
-  const picked = pickRandom(source, count);
+  // 一次生成 3~5 条动态；角色不够时由可能认识的 NPC 补足发帖。
+  const count = Math.max(3, Math.min(Number(maxChars) || 3, 5));
+  const picked = pickRandom(source, Math.min(source.length, count));
   const names = picked.map(function (c) { return c.name; });
+  // 普通 char 集合：char 之间绝对不互动；NPC/小号可以发帖和互动。
+  const plainChars = {};
+  (cfg.chars || []).forEach(function (c) {
+    if (c && c.name && !c.isNpc && !c.isAltProbe) plainChars[String(c.name).replace(/\s+/g, '')] = String(c.name);
+  });
+  const npcPool = (cfg.chars || []).filter(function (c) {
+    return c && c.name && (c.isNpc || c.isAltProbe);
+  }).map(function (c) { return c.name; });
   const profiles = picked.map(function (c) {
     const recent = (c.recent || []).slice(-8).map(function (r) {
       return (r.who === 'user' ? '用户：' : 'TA：') + r.text;
@@ -1151,57 +1159,97 @@ async function generateAutoMoments(env, cfg, busyChatId, maxChars) {
     return '· ' + c.name + '：' + String(c.setting || '').slice(0, 500)
       + (recent ? ('\n  最近聊天：' + recent) : '');
   }).join('\n');
-  const sys = '你们是彼此认识的朋友，在同一个朋友圈里。请让以下角色各发一条朋友圈动态：' + names.join('、') + '。\n'
+  const sys = '你们是彼此认识的朋友，在同一个朋友圈里。请一次性生成 ' + count + ' 条朋友圈动态（3~5 条）。\n'
     + '【角色人设与最近聊天】\n' + profiles + '\n'
+    + '【最高优先级】任何 char 之间都绝对不允许互相评论、回复、点赞或接话；char 发的动态下评论区只能出现 NPC，即使人设写了认识也不行。\n'
+    + '【发帖人】优先让以下角色发，每人只发 1 条：' + names.join('、') + '；数量不够 ' + count + ' 条时，由他们可能认识的 NPC 发帖补足，作者不要重复。\n'
     + '要求：像真人随手发的日常，具体、有细节，最好和 TA 最近聊过的事有一点关联；不要流水账，不要对任何人说话，不要提问，禁止 AI 腔。\n'
     + '大多数动态字数控制在 30~50 字（一两句话讲清一件具体的事或一个情绪，带一点细节）；偶尔可以只写半句、一个词、一个标点或一个 emoji（如「无语。」「老子服了。」），偶尔情绪真的上来、事情值得讲时再写成有起承转合的小作文（100~200 字甚至更长）。长度跟着角色当下的情绪、事情大小和人设走，不要每条都一个长度，也不要为了凑字硬写。\n'
-    + '每人只发 1 条，不要重复作者；最多 ' + count + ' 条。\n'
-    + '每条动态都要带 1~3 个点赞和 1~3 条评论；点赞/评论者只能从这些名字里选：' + names.join('、') + '，不能是动态作者本人，也不能出现「' + cfg.user.name + '」。\n'
+    + '每条动态都必须带 2~4 个点赞和 2~4 条评论，不能只发一条光秃秃的动态。点赞/评论者只能是作者生活里的同学、朋友、同事、家人、邻居等 NPC（可以虚构真实完整姓名），不能是作者本人，绝对不能出现用户「' + cfg.user.name + '」，也不能是任何普通 char。\n'
     + '只输出 JSON 数组：[{"author":"名字","text":"动态文案","location":"地点或空","likes":["名字"],"comments":[{"user":"名字","toUser":"","text":"评论"}]}]';
   const content = await autoChat(env, cfg, [
     { role: 'system', content: sys },
-    { role: 'user', content: '生成 ' + picked.length + ' 条朋友圈动态。' }
-  ], 2400, 1.0);
+    { role: 'user', content: '生成 ' + count + ' 条朋友圈动态，每条都带 2~4 个点赞和 2~4 条评论。' }
+  ], 3800, 1.0);
   if (!content) return [];
   let arr = null;
   const a = content.indexOf('['), b = content.lastIndexOf(']');
   if (a > -1 && b > a) { try { arr = JSON.parse(content.slice(a, b + 1)); } catch (e) {} }
   if (!Array.isArray(arr)) return [];
-  const nameSet = {};
-  names.forEach(function (n) { nameSet[n] = true; });
-  const pickName = function (raw) {
+  const userName = String((cfg.user && cfg.user.name) || '用户');
+  const userKey = userName.replace(/\s+/g, '');
+  const keyOf = function (n) { return String(n == null ? '' : n).replace(/^@/, '').replace(/\s+/g, '').trim(); };
+  const canonical = function (raw) {
     const n = String(raw == null ? '' : raw).trim();
     if (!n) return '';
-    if (nameSet[n]) return n;
-    return names.find(function (x) { return x && (x.indexOf(n) > -1 || n.indexOf(x) > -1); }) || '';
+    return names.find(function (x) { return keyOf(x) === keyOf(n) || x.indexOf(n) > -1 || n.indexOf(x) > -1; }) || n;
+  };
+  const pickNpc = function (raw, authorName) {
+    const n = canonical(raw);
+    const k = keyOf(n);
+    if (!k || k === userKey || k === keyOf(authorName)) return '';
+    if (plainChars[k]) return '';   // 普通 char 绝不参与互动
+    return n;
+  };
+  const pickTarget = function (raw, authorName) {
+    const n = canonical(raw);
+    const k = keyOf(n);
+    if (!k || k === userKey) return '';
+    if (plainChars[k] && k !== keyOf(authorName)) return '';
+    return n;
   };
   const out = [];
   const now = Date.now();
   const canned = ['这条也太真实了', '哈哈哈哈', '我也想去', '注意休息呀', '好看', '下次带我'];
   const usedAuthors = {};
+  // 先把整批里出现过的 NPC 名字收集起来，任何一条动态缺互动时都能用它们补齐。
+  const npcExtra = [];
+  arr.slice(0, count).forEach(function (o) {
+    if (!o) return;
+    [o.author].concat(Array.isArray(o.likes) ? o.likes : []).concat((Array.isArray(o.comments) ? o.comments : []).map(function (c) { return c && (c.user || c.name || c.author); })).forEach(function (raw) {
+      const n = canonical(raw), k = keyOf(n);
+      if (!k || k === userKey || plainChars[k] || npcExtra.indexOf(n) > -1) return;
+      npcExtra.push(n);
+    });
+  });
   arr.slice(0, count).forEach(function (o, i) {
     if (!o || !o.text) return;
-    const au = pickName(o.author) || names[Math.min(i, names.length - 1)];
-    if (!au || usedAuthors[au]) return;
+    // 先匹配名单内角色；名单外作者视为 NPC 补位，不能强行算到第一个 char 头上。
+    const knownAuthor = canonical(o.author);
+    let au = names.find(function (x) { return keyOf(x) === keyOf(knownAuthor); }) || '';
+    if (!au) {
+      const k = keyOf(knownAuthor);
+      if (knownAuthor && k !== userKey && !plainChars[k]) au = knownAuthor;
+    }
+    if (!au) au = names[Math.min(i, names.length - 1)];
+    if (!au || keyOf(au) === userKey || usedAuthors[au]) return;
     usedAuthors[au] = true;
     const likes = [];
     (Array.isArray(o.likes) ? o.likes : []).forEach(function (raw) {
-      const n = pickName(raw);
-      if (n && n !== au && likes.indexOf(n) < 0) likes.push(n);
+      const n = pickNpc(raw, au);
+      if (n && likes.indexOf(n) < 0) likes.push(n);
     });
-    if (!likes.length) names.forEach(function (n) { if (n !== au && likes.length < 2) likes.push(n); });
+    // 点赞不够时从 NPC 补，绝不让其他 char 来点赞。
+    const likePool = npcPool.concat(npcExtra).concat(out.map(function (x) { return x.author; })).filter(function (n, idx, a) {
+      return n && a.indexOf(n) === idx && keyOf(n) !== keyOf(au) && !plainChars[keyOf(n)] && keyOf(n) !== userKey;
+    });
+    for (let li = 0; li < likePool.length && likes.length < 2; li++) {
+      if (likes.indexOf(likePool[li]) < 0) likes.push(likePool[li]);
+    }
     const comments = [];
     (Array.isArray(o.comments) ? o.comments : []).forEach(function (c) {
       if (!c || typeof c !== 'object') return;
-      const u = pickName(c.user || c.name || c.author);
+      const u = pickNpc(c.user || c.name || c.author, au);
       const txt = String(c.text || c.content || '').trim();
       if (!u || !txt) return;
-      comments.push({ user: u, toUser: pickName(c.toUser || c.replyTo || c.to), text: txt.slice(0, 120) });
+      comments.push({ user: u, toUser: pickTarget(c.toUser || c.replyTo || c.to, au), text: txt.slice(0, 120) });
     });
     // 模型漏写评论时也要有互动，不能只发一条光秃秃的动态。
-    if (!comments.length) {
-      const other = names.find(function (n) { return n !== au; });
-      if (other) comments.push({ user: other, toUser: '', text: canned[(i + au.length) % canned.length] });
+    const commentPool = likePool.filter(function (n) {
+      return !comments.some(function (c) { return keyOf(c.user) === keyOf(n); });
+    });
+    for (let ci = 0; ci < commentPool.length && comments.length < 2; ci++) {
+      comments.push({ user: commentPool[(i + ci) % commentPool.length], toUser: '', text: canned[(i + ci + au.length) % canned.length] });
     }
     const char = picked.find(function (c) { return c.name === au; }) || {};
     out.push({
@@ -1304,8 +1352,8 @@ async function runAutoPush(env, appId, deviceId, userId) {
     state.nextMomentAt = now + cfg.momentIntervalHours * 3600 * 1000;
     state.momentHours = cfg.momentIntervalHours;
     dirty = true;
-    // 主动消息 + 朋友圈合计最多 3 个角色
-    const remain = Math.max(0, 3 - usedChars);
+    // 主动消息 + 朋友圈合计最多 5 个角色/动态
+    const remain = Math.max(0, 5 - usedChars);
     if (remain > 0) {
       let posts = [];
       try { posts = await generateAutoMoments(env, cfg, busyChatId, remain); } catch (e) { posts = []; }

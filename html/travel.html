@@ -285,6 +285,18 @@ textarea.ta:focus,.inp:focus{border-color:var(--ink)}
 .f2>*{flex:1;min-width:0}
 .fl{font-size:11.5px;color:var(--ink3);margin:14px 0 6px}
 
+/* 完整旅程回顾 */
+.journey{display:flex;flex-direction:column;gap:10px;max-height:52vh;overflow:auto;padding:2px 2px 4px}
+.jr{display:flex;gap:10px;align-items:flex-start;font-size:13px;line-height:1.65}
+.jr .jr-who{flex:none;width:54px;text-align:right;font-size:11.5px;color:var(--ink3);padding-top:2px}
+.jr .jr-bubble{flex:1;min-width:0;padding:9px 12px;border-radius:14px;background:#f6f6f7;color:var(--ink);white-space:pre-wrap;word-break:break-word}
+.jr.char .jr-bubble{background:#eef4ff}
+.jr.me .jr-bubble{background:#fdf0f4}
+.jr.narr .jr-bubble{background:transparent;padding:2px 0;color:var(--ink3);font-style:italic;text-align:center}
+.jr.photo .jr-bubble{padding:6px;background:#fff;border:1px solid var(--line2)}
+.jr.photo img{width:100%;max-height:240px;object-fit:cover;border-radius:10px;display:block}
+.jr.photo .jr-cap{font-size:11.5px;color:var(--ink3);margin-top:6px;text-align:center}
+
 .toast{position:fixed;left:50%;bottom:112px;transform:translate(-50%,10px);background:rgba(27,27,29,.92);color:#fff;font-size:12.5px;padding:9px 18px;border-radius:99px;opacity:0;pointer-events:none;transition:.25s;z-index:99;white-space:nowrap}
 .toast.show{opacity:1;transform:translate(-50%,0)}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
@@ -345,8 +357,8 @@ textarea.ta:focus,.inp:focus{border-color:var(--ink)}
 <script src="../js/nano-gallery.js?v=20261106a"></script>
 <script src="../js/localforage.min.js?v=20261106a"></script>
 <script src="../js/mem-link.js?v=20261106a"></script>
-<script src="../js/travel-store.js?v=20261106a"></script>
-<script src="../js/travel-api.js?v=20261106a"></script>
+<script src="../js/travel-store.js?v=20261102b"></script>
+<script src="../js/travel-api.js?v=20261102a"></script>
 <script>
 /* ================= 配置 / 对接口子 ================= */
 const TravelAPI = window.NanoTravelAPI || window.TravelAPI || {};
@@ -654,6 +666,7 @@ function openUs(id){
       <div id="taNote"></div>
     </div>
     ${legs.length?`<div class="sec"><h4>${ic('i-ticket')}这一路的票根<em>${legs.length} 段</em></h4>${legs.map(t=>{const T=TYPES[t.type];return `<div class="leg"><span class="tc s" style="--tc:${T.bg};--td:${T.fg};width:34px;height:34px">${ic(T.icon)}</span><div class="ln">${esc(t.from)} 到 ${esc(t.to)}<small>${fmtD(t.date)}  ${T.n}</small></div><span class="lp">¥${fmtP(t.price)}</span></div>`;}).join('')}</div>`:''}
+    ${journeyHtml(p)}
   `);
   renderBoxes(); renderPanel();
 }
@@ -709,8 +722,28 @@ function mapTogether(p){
     noteMe: p.noteMe || '',
     noteChar: p.noteChar || p.summary || p.thought || '',
     polaroid: p.polaroid || '',
-    shared: !!p.shared
+    shared: !!p.shared,
+    journey: Array.isArray(p.journey) ? p.journey : []
   });
+}
+function journeyHtml(p){
+  const list=(p && Array.isArray(p.journey) ? p.journey : []).filter(Boolean);
+  if(!list.length) return '';
+  const rows=list.map(m=>{
+    const role=m.role;
+    if(role==='photo'){
+      const img=m.url?`<img src="${esc(m.url)}" alt="">`:(m.text?`<div>${esc(m.text)}</div>`:'');
+      return `<div class="jr photo"><div class="jr-who">拍立得</div><div class="jr-bubble">${img}${m.caption?`<div class="jr-cap">${esc(m.caption)}</div>`:''}</div></div>`;
+    }
+    if(role==='narr'){
+      return `<div class="jr narr"><div class="jr-who"></div><div class="jr-bubble">${esc(m.text||m.translation||'')}</div></div>`;
+    }
+    const isMe=role==='user';
+    const txt=String(m.translation||m.text||'').trim();
+    if(!txt) return '';
+    return `<div class="jr ${isMe?'me':'char'}"><div class="jr-who">${isMe?'我':esc(CHAR_NAME)}</div><div class="jr-bubble">${esc(txt)}</div></div>`;
+  }).join('');
+  return `<div class="sec"><h4>${ic('i-heart')}完整回顾 <em>${list.length} 段</em></h4><div class="journey">${rows}</div></div>`;
 }
 function syncArrays(){
   trips.length = 0;
@@ -726,7 +759,34 @@ async function refreshTravelFromStore(){
     await TravelStore.load(true);
     syncArrays();
     render();
+    setTimeout(()=>{ recoverTravelImages().catch(()=>{}); }, 300);
   }catch(e){}
+}
+// 旧记录里可能还是生图站返回的临时 URL：只要还能访问，就转成本地 dataURL，
+// 避免链接过期后旅途里的照片变成空白/被“销毁”。
+let recoveringTravelImages = false;
+async function recoverTravelImages(){
+  if(recoveringTravelImages || !window.NanoImageCache || !NanoImageCache.toDataUrl) return;
+  recoveringTravelImages = true;
+  let changed = false;
+  const all = (trips||[]).concat(together||[]);
+  for (const p of all) {
+    if (!p || !p.polaroid || !/^https?:\/\//i.test(p.polaroid)) continue;
+    try {
+      let local = await NanoImageCache.toDataUrl(p.polaroid);
+      if (local && /^data:image\//i.test(local)) {
+        if (local.length > 500000 && NanoImageCache.shrinkDataUrl) {
+          const small = await NanoImageCache.shrinkDataUrl(local, 1280, 0.82);
+          if (small) local = small;
+        }
+        p.polaroid = local;
+        await TravelStore.updateTrip(p.id, { polaroid: local });
+        changed = true;
+      }
+    } catch (e) {}
+  }
+  recoveringTravelImages = false;
+  if (changed) { try { render(); if(CUR) renderBoxes(); } catch(e) {} }
 }
 window.addEventListener('message', function(e){
   var d=e&&e.data;
@@ -740,6 +800,8 @@ document.addEventListener('visibilitychange', function(){
 async function selectChar(c, silent){
   if(!c) return;
   CHAR = c; CHAR_NAME = c.name || 'TA'; ME_NAME = (MASK && MASK.name) || '我';
+  // 记住当前 user 上一次选择的角色；切换 user 后用另一把 key，自然重新选择。
+  try { localStorage.setItem('nano_travel_last_char_' + String((MASK && MASK.id) || 'default'), String(c.id)); } catch(e) {}
   await TravelStore.load(true);
   TravelStore.ensureChar(c);
   await TravelStore.save();
@@ -1027,8 +1089,18 @@ async function loadApp(){
     if(cid){ const c = CHARS.find(x=>String(x.id)===String(cid)); if(c) await selectChar(c, true); }
   }
   if(S.view !== 'main' && want){
-    const c = CHARS.find(x=>String(x.id)===want);
+    const c = CHARS.find(x=>String(x.id)===String(want));
     if(c) await selectChar(c, true);
+  }
+  // 同一个 user 再次进入旅途时，保持上一次选择的角色；手动切换也记住。
+  // 切换 user 面具后 key 不同，所以不会沿用上一个 user 的选择。
+  if(S.view !== 'main' && !PENDING_TRIP && !want){
+    let lastId = '';
+    try { lastId = localStorage.getItem('nano_travel_last_char_' + String(MASK.id || 'default')) || ''; } catch(e) {}
+    if(lastId){
+      const last = CHARS.find(x=>String(x.id)===String(lastId));
+      if(last) await selectChar(last, true);
+    }
   }
   if(S.view !== 'main') S.view = 'pick';
   render();
@@ -1095,6 +1167,7 @@ document.addEventListener('click', async e=>{
 /* 先渲染一次选择页，避免角色/面具读取较慢时整页空白 */
 try{ render(); }catch(e){}
 loadApp().catch(()=>{ render(); toast('旅途加载失败，请重试'); });
+setTimeout(()=>{ recoverTravelImages().catch(()=>{}); }, 900);
 setTimeout(()=>{ try{ const v=$('#view'); if(v && !v.innerHTML.trim()) render(); }catch(e){} }, 1600);
 </script>
 </body>

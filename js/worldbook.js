@@ -1901,6 +1901,21 @@
         render();
     });
 
+    // 共享集市导入世界书后，已打开的世界书页立即重读并渲染，不用手动刷新。
+    window.addEventListener('message', function(e) {
+        var d = (e && e.data) || {};
+        if (d.type !== 'nanoWorldbookUpdated' && !(d.type === 'marketResourceImported' && d.category === 'lore')) return;
+        wbIdbGet().then(function(fresh) {
+            fresh = fresh || loadDataSync();
+            if (!fresh || !fresh.groups || !Array.isArray(fresh.files)) return;
+            data = fresh;
+            normalizeWorldbookFiles(data);
+            ensureBuiltinWB();
+            try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch (err) {}
+            try { render(); } catch (err) {}
+        }).catch(function() {});
+    });
+
     window.closeAlert = closeAlert;
     console.log('✅ worldbook.js 加载完成');
 

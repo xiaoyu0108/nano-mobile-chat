@@ -433,6 +433,13 @@
     var file = $('promptIconFile');
     if (file) file.addEventListener('change', onIconFile);
     window.addEventListener('storage', function (e) { if (e.key === NP.KEY) render(); });
+    // 共享集市导入提示词后，已打开的提示词页立即刷新列表。
+    window.addEventListener('message', function (e) {
+      var d = (e && e.data) || {};
+      if (d.type === 'nanoPromptsUpdated' || (d.type === 'marketResourceImported' && d.category === 'prompt')) {
+        try { render(); } catch (err) {}
+      }
+    });
   }
 
   bind();

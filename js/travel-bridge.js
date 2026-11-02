@@ -23,6 +23,12 @@
   function store() { return window.NanoTravelStore; }
   function api() { return window.NanoTravelAPI; }
   function chat() { return window.__chat; }
+  // 生图站常给临时 URL：写进聊天卡片前先转成永久 dataURL，避免几天后卡片图失效。
+  function persistentImg(src) {
+    var u = String(src || '');
+    if (!u || !/^https?:\/\//i.test(u) || !window.NanoImageCache || !NanoImageCache.toDataUrl) return Promise.resolve(u);
+    return NanoImageCache.toDataUrl(u).then(function (d) { return d || u; }).catch(function () { return u; });
+  }
   function messages() {
     var c = chat();
     return c && Array.isArray(c.messages) ? c.messages : [];
@@ -203,10 +209,10 @@
         chat().saveMessages();
       } catch (e) {}
     }
-    // 正常聊天后偶尔让角色主动报备一段自己的旅程（受冷却限制，不会频繁打扰）
+    // 正常聊天后检查是否到了该角色主动报备的时间（每个 char 每 2 天最多一次）
     try {
       setTimeout(function () {
-        if (Math.random() < 0.12) maybeGenerateReport().catch(function () {});
+        maybeGenerateReport().catch(function () {});
       }, 5000 + Math.random() * 6000);
     } catch (e) {}
     return { body: body, changed: changed };
@@ -222,12 +228,18 @@
     reportBusy = true;
     return s.load().then(function () {
       return s.takePendingReports(chatId);
-    }).then(function (list) {
+    }).then(async function (list) {
       if (!Array.isArray(list) || !list.length) return 0;
       var added = 0;
-      list.forEach(function (r) {
-        if (!r) return;
+      for (var i = 0; i < list.length; i++) {
+        var r = list[i];
+        if (!r) continue;
         try {
+          // 先发一句话说明为什么分享，再发卡片；不要只甩一张卡片。
+          var lead = String(r.thought || r.note || r.caption || '').trim();
+          if (!lead) lead = '刚到' + (r.place || r.title || '') + '，给你看看这边。';
+          chat().addMessage('left', lead, nowTime(), null, false, false, null);
+          var img = await persistentImg(r.img);
           chat().addMessage('left', '', nowTime(), null, false, true, {
             cardType: 'travelReport',
             travelKind: 'report',
@@ -237,14 +249,14 @@
             date: r.date || today(),
             thought: r.thought || r.note || '',
             caption: r.caption || '',
-            img: r.img || '',
+            img: img || '',
             note: r.note || '',
             fromName: displayName(),
             reportedAt: r.at || Date.now()
           });
           added++;
         } catch (e) {}
-      });
+      }
       return added;
     }).catch(function () { return 0; }).then(function (n) {
       reportBusy = false;
@@ -254,21 +266,30 @@
 
   /* ---------- 随机报备 ---------- */
   function reportLockKey() { return 'nano_travel_report_lock_' + chatId; }
+  function reportGlobalKey() {
+    var m = store() && store().getMask ? store().getMask() : {};
+    return 'nano_travel_report_global_' + ((m && m.id) || 'default');
+  }
+  var REPORT_EVERY = 48 * 3600 * 1000;   // 每 2 天由一位 char 主动报备一次
   function canReport() {
     var s = store();
     if (!s) return false;
-    var last = s.lastChatAt(chatId);
-    if (!last || Date.now() - last > 24 * 3600 * 1000) return false;
+    // 没有真实聊天记录时先不打扰；有聊天记录后按每 2 天的节奏主动报备。
+    var hasChat = messages().some(function (m) { return m && !m.isCard && (m.text || m.transcript); }) || !!s.lastChatAt(chatId);
+    if (!hasChat) return false;
     try {
+      var globalLock = JSON.parse(localStorage.getItem(reportGlobalKey()) || 'null');
+      if (globalLock && Date.now() - Number(globalLock.at || 0) < REPORT_EVERY) return false;
       var lock = JSON.parse(localStorage.getItem(reportLockKey()) || 'null');
-      if (lock && Date.now() - Number(lock.at || 0) < 20 * 3600 * 1000) return false;
+      if (lock && Date.now() - Number(lock.at || 0) < REPORT_EVERY) return false;
     } catch (e) {}
     var cd = s.getCharData(chatId);
-    if (cd && cd.lastReportAt && Date.now() - Number(cd.lastReportAt) < 20 * 3600 * 1000) return false;
+    if (cd && cd.lastReportAt && Date.now() - Number(cd.lastReportAt) < REPORT_EVERY) return false;
     return true;
   }
   function markReport() {
     try { localStorage.setItem(reportLockKey(), JSON.stringify({ at: Date.now() })); } catch (e) {}
+    try { localStorage.setItem(reportGlobalKey(), JSON.stringify({ at: Date.now(), charId: chatId })); } catch (e) {}
     var cd = store().getCharData(chatId);
     cd.lastReportAt = Date.now();
     store().save();
@@ -313,14 +334,13 @@
   async function maybeGenerateReport() {
     if (reportBusy || inviteBusy || !store() || !api()) return false;
     if (!canReport()) return false;
-    // 进聊天后不立刻打扰，先等一会儿；每次进入的尝试频率也做节流
+    // 到期就生成；只做 1 小时失败节流，避免 API 异常时反复重试。
     try {
       var tryKey = 'nano_travel_report_try_' + chatId;
       var tried = Number(localStorage.getItem(tryKey) || 0);
-      if (Date.now() - tried < 3 * 3600 * 1000) return false;
+      if (Date.now() - tried < 3600 * 1000) return false;
       localStorage.setItem(tryKey, String(Date.now()));
     } catch (e) {}
-    if (Math.random() > 0.35) return false;
     reportBusy = true;
     try {
       await store().load();
@@ -377,28 +397,19 @@
     var m = store() && store().getMask ? store().getMask() : {};
     return 'nano_travel_invite_global_' + ((m && m.id) || 'default');
   }
+  var INVITE_EVERY = 72 * 3600 * 1000;   // 每 3 天由一位 char 主动邀请一次
   function canInvite() {
     if (hasPendingInvite()) return false;
-    var recentTravel = messages().slice(-8).some(function (m) {
-      return m && m.cardData && (m.cardData.cardType === 'travelReport' || m.cardData.cardType === 'travelInvite');
-    });
-    if (recentTravel) return false;
     try {
       var globalLock = JSON.parse(localStorage.getItem(inviteGlobalKey()) || 'null');
-      if (globalLock && Date.now() - Number(globalLock.at || 0) < 72 * 3600 * 1000) return false;
+      if (globalLock && Date.now() - Number(globalLock.at || 0) < INVITE_EVERY) return false;
       var lock = JSON.parse(localStorage.getItem(inviteLockKey()) || 'null');
-      if (lock && Date.now() - Number(lock.at || 0) < 72 * 3600 * 1000) return false;
+      if (lock && Date.now() - Number(lock.at || 0) < INVITE_EVERY) return false;
       var tried = Number(localStorage.getItem(inviteTryKey()) || 0);
-      if (Date.now() - tried < 6 * 3600 * 1000) return false;
+      if (Date.now() - tried < 3600 * 1000) return false;
     } catch (e) {}
-    // 近 24h 聊过天，才允许随机邀请
-    var last = store() && store().lastChatAt ? store().lastChatAt(chatId) : 0;
-    if (!last) {
-      var recent = messages().filter(function (m) { return m && (m.ts || m.time); }).slice(-1)[0];
-      last = recent ? Number(recent.ts || 0) : 0;
-    }
-    if (!last && messages().some(function (m) { return m && !m.isCard && (m.text || m.transcript); })) last = Date.now();
-    if (!last || Date.now() - last > 24 * 3600 * 1000) return false;
+    var cd = store() && store().getCharData ? store().getCharData(chatId) : null;
+    if (cd && cd.lastInviteAt && Date.now() - Number(cd.lastInviteAt) < INVITE_EVERY) return false;
     // 至少有过一轮真实聊天，避免刚打开就弹邀请
     return messages().some(function (m) { return m && !m.isCard && (m.text || m.transcript); });
   }
@@ -420,23 +431,27 @@
     return { system: sys, user: usr };
   }
   function addInviteCard(cd) {
+    var dest = String(cd.dest || '').trim() || '附近走走';
+    var note = String(cd.note || '').trim();
     var card = {
       cardType: 'travelInvite', travelKind: 'invite', direction: 'char',
       status: 'pending', inviteId: 'invite_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
-      dest: String(cd.dest || '').trim() || '附近走走',
+      dest: dest,
       date: String(cd.date || today()),
       time: String(cd.time || ''),
       days: String(cd.days || '1').replace(/[^\d]/g, '') || '1',
-      note: String(cd.note || '').trim(),
+      note: note,
       fromName: displayName(), toName: userName(), tripId: '', createdAt: Date.now()
     };
+    // 邀请前先说一句，卡片才有来由，不是凭空弹出来。
+    var say = note || ('想不想一起去' + dest + '？');
+    chat().addMessage('left', say, nowTime(), null, false, false, null);
     chat().addMessage('left', '', nowTime(), null, false, true, card);
     try { chat().saveMessages(); } catch (e) {}
   }
   async function maybeInvite() {
     if (inviteBusy || reportBusy || !store() || !api()) return false;
     if (!canInvite()) return false;
-    if (Math.random() > 0.18) return false;
     try { localStorage.setItem(inviteTryKey(), String(Date.now())); } catch (e) {}
     inviteBusy = true;
     try {
@@ -454,6 +469,7 @@
       addInviteCard(j || {});
       try { localStorage.setItem(inviteLockKey(), JSON.stringify({ at: Date.now(), dest: j && j.dest })); } catch (e) {}
       try { localStorage.setItem(inviteGlobalKey(), JSON.stringify({ at: Date.now(), charId: chatId, dest: j && j.dest })); } catch (e) {}
+      try { var cd = store().getCharData(chatId); cd.lastInviteAt = Date.now(); store().save(); } catch (e) {}
       return true;
     } catch (e) {
       return false;
@@ -651,15 +667,14 @@
   whenReady(function () {
     try { if (store()) store().load(); } catch (e) {}
     setTimeout(function () { deliver().catch(function () {}); }, 2600);
-    setTimeout(function () { maybeInvite().catch(function () {}); }, 20000);
     setTimeout(function () { maybeGenerateReport().catch(function () {}); }, 9000);
+    setTimeout(function () { maybeInvite().catch(function () {}); }, 22000);
     setInterval(function () { deliver().catch(function () {}); }, 45 * 1000);
+    // 到期检查：每个 char 报备 2 天一次、邀请 3 天一次，由各自的时间戳决定。
     setInterval(function () {
-      if (Math.random() < 0.12) maybeGenerateReport().catch(function () {});
+      maybeGenerateReport().catch(function () {});
+      maybeInvite().catch(function () {});
     }, 30 * 60 * 1000);
-    setInterval(function () {
-      if (Math.random() < 0.08) maybeInvite().catch(function () {});
-    }, 60 * 60 * 1000);
   });
 
   window.NanoTravelBridge = {

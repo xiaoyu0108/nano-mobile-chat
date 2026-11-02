@@ -4086,15 +4086,83 @@ function setGenStatus(on) {
     genImageBtn.style.opacity = on ? '.5' : '';
   }
 }
+// 读取主 API 配置（用于把中文剧情转成 NAI/SD 能识别的英文 tag）
+async function readMainApiConfigForImage() {
+  const candidates = [];
+  try {
+    candidates.push(await new Promise((resolve) => {
+      const req = indexedDB.open('nano_api_db', 2);
+      req.onupgradeneeded = function (e) {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains('api_data')) db.createObjectStore('api_data', { keyPath: 'key' });
+      };
+      req.onsuccess = function (e) {
+        const db = e.target.result;
+        try {
+          const g = db.transaction('api_data', 'readonly').objectStore('api_data').get('nano_api_config');
+          g.onsuccess = () => resolve(g.result ? (g.result.value || g.result) : null);
+          g.onerror = () => resolve(null);
+        } catch (e) { resolve(null); }
+      };
+      req.onerror = () => resolve(null);
+    }));
+  } catch (e) {}
+  try {
+    const raw = localStorage.getItem('nano_api_config');
+    candidates.push(raw ? JSON.parse(raw) : null);
+  } catch (e) {}
+  return candidates.find(c => c && typeof c.mainUrl === 'string' && c.mainUrl.trim() !== '') || null;
+}
+
+// NAI 是动漫模型，对中文长句理解很差。先把剧情改写成英文 Danbooru tag，
+// 再叠加 API 里的画师串/负面词，才能真正按线下描述出图。
+async function buildOfflineImageTags(recent, charName) {
+  try {
+    const cfg = await readMainApiConfigForImage();
+    if (!cfg) return '';
+    let base = String(cfg.mainUrl || '').trim().replace(/\/+$/, '');
+    base = base.replace(/\/chat\/completions$/i, '');
+    if (!/\/v1$/i.test(base)) base += '/v1';
+    const nsfw = settings.nsfw === true;
+    const sys = '你是 NovelAI / Stable Diffusion 图像提示词工程师。把用户给的中文剧情改写成一行英文 Danbooru tag 串，用逗号分隔，只输出 tag 本身，不要解释、不要换行、不要中文。\n'
+      + '必须综合最近整段剧情的场景、人物状态和氛围，而不是只画最后一句话；保留最近几轮里仍然有效的地点、服装、动作和情绪。\n'
+      + '必须包含：角色人数、外貌特征、发型、服装、动作、表情、具体场景地点、时间与光线、镜头构图（如 close-up, full body, from behind）。\n'
+      + '不要出现文字、字幕、水印、logo、边框。\n'
+      + (nsfw
+        ? '本次允许成人向内容：如果剧情适合，加入对应的 NSFW 标签（如 nude, topless, lingerie, bed, sweat, explicit），但必须贴合剧情，不低俗、不夸张。'
+        : '本次禁止任何裸露或性暗示标签。');
+    const usr = '角色：' + charName + '\nNSFW：' + (nsfw ? 'ON' : 'OFF') + '\n最近线下剧情：\n' + (recent || '两人安静地待在一起');
+    const resp = await fetch(base + '/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + String(cfg.mainKey || '') },
+      body: JSON.stringify({
+        model: cfg.mainModel || 'gpt-4o-mini',
+        messages: [{ role: 'system', content: sys }, { role: 'user', content: usr }],
+        max_tokens: 260,
+        temperature: 0.75,
+        stream: false
+      })
+    });
+    if (!resp.ok) return '';
+    const data = await resp.json();
+    let text = (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || '';
+    text = String(text).replace(/```[a-zA-Z]*/g, '').replace(/^["“”'\s]+|["“”'\s]+$/g, '').replace(/\s*\n+\s*/g, ', ').trim();
+    return text.slice(0, 1200);
+  } catch (e) { return ''; }
+}
+
 async function generateSceneImage() {
   if (window.__offlineGenBusy) return;
   if (!window.NanoImage) { showToast('生图模块未加载'); return; }
   window.__offlineGenBusy = true;
-  const recent = (messages || []).slice(-8).map(function (m) {
-    return (m.role === 'user' ? '用户' : (settings.charName || '角色')) + '：' + String(m.content || '').slice(0, 300);
+  const recent = (messages || []).slice(-12).map(function (m) {
+    return (m.role === 'user' ? '用户' : (settings.charName || '角色')) + '：' + String(m.content || '').slice(0, 400);
   }).join('\n');
   const charName = settings.charName || '角色';
-  const prompt = '根据下面的线下剧情，生成一张电影感的画面。画面里如果有角色，要符合角色人设和当前场景；不要出现文字、字幕、水印。\n角色：' + charName + '\n最近剧情：\n' + (recent || '两人安静地待在一起') + '\n\n画面要求：自然光、真实质感、构图完整，情绪贴合当前对话。';
+  const fallbackPrompt = '根据下面的线下剧情，生成一张电影感的画面。画面里如果有角色，要符合角色人设和当前场景；不要出现文字、字幕、水印。\n角色：' + charName + '\n最近剧情：\n' + (recent || '两人安静地待在一起') + '\n\n画面要求：自然光、真实质感、构图完整，情绪贴合当前对话。';
+  setGenStatus(true);
+  const tagPrompt = await buildOfflineImageTags(recent, charName);
+  const prompt = tagPrompt || fallbackPrompt;
   let faceRef = '';
   try {
     if (window.NanoFaceRef && NanoFaceRef.get) faceRef = await NanoFaceRef.get(offlineChatId || '');
@@ -4103,10 +4171,12 @@ async function generateSceneImage() {
       if (fr) { try { faceRef = JSON.parse(fr); } catch (e) { faceRef = fr; } }
     }
   } catch (e) {}
-  setGenStatus(true);
   try {
-    const url = await window.NanoImage.generate(prompt, { faceRef: faceRef });
-    try { if (window.NanoGallery) window.NanoGallery.add({ url: url, source: '线下', charName: charName, prompt: prompt, generated: true }); } catch (e) {}
+    const url = await window.NanoImage.generate(prompt, { faceRef: faceRef, nsfw: settings.nsfw === true });
+    try {
+      const fullPrompt = (window.NanoImage && window.NanoImage.lastPrompt) || prompt;
+      if (window.NanoGallery) window.NanoGallery.add({ url: url, source: '线下', charName: charName, prompt: fullPrompt, generated: true });
+    } catch (e) {}
     showOfflineImageViewer(url, charName);
   } catch (e) {
     showErrorModal('生图失败：' + (e && e.message ? e.message : e));

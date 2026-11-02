@@ -3345,6 +3345,11 @@
 
   window.addEventListener('message', function (e) {
     var d = e.data || {};
+    // 共享集市导入音乐后，已打开的音乐 App 立即重读歌曲列表。
+    if (d.type === 'nanoMusicUpdated' || (d.type === 'marketResourceImported' && d.category === 'music')) {
+      try { songs = loadSongsFromStorage(); renderSongs(); } catch (err) {}
+      return;
+    }
     if (d.type === 'musicBallToggle') { try { togglePlay(); } catch (err) {} return; }
     if (d.type === 'startDuo') { startDuoFromOutside(d.charId, d.charName); return; }
     if (d.type === 'endDuo') { try { endDuoMode(); } catch (err) {} return; }

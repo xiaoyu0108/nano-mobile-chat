@@ -667,7 +667,15 @@
     return '【锁脸说明】提供的人物参考图只用于保持长相（五官、脸型、肤色、发色）一致；请完全忽略参考图的姿势、角度、表情、背景与构图，按当前场景重新构图。';
   }
   // 有锁脸参考先走 /images/edits（multipart），失败再退回带 reference 字段的普通生图。
-  function requestImage(cfg, prompt, faceRef, relay) {
+  async function requestImage(cfg, prompt, faceRef, relay) {
+    // 普通生图也读取 API 的正面 / 反面提示词，并参考日程本身的场景上下文。
+    var aug = { prompt: prompt, negative: '' };
+    try {
+      if (window.NanoImagePrompt && NanoImagePrompt.augment) {
+        aug = await NanoImagePrompt.augment(prompt, { appendNegative: true });
+      }
+    } catch (e) {}
+    prompt = aug.prompt;
     var url = imageEndpoint(cfg.imgUrl, 'gen');
     var headers = { 'Content-Type': 'application/json' };
     if (cfg.imgKey) headers.Authorization = 'Bearer ' + cfg.imgKey;
@@ -691,7 +699,8 @@
       });
     }
     function viaJson() {
-      var body = JSON.stringify(Object.assign({ model: cfg.imgModel || undefined, prompt: fullPrompt, n: 1, size: '1024x1024' },
+      var payload = { model: cfg.imgModel || undefined, prompt: fullPrompt, n: 1, size: '1024x1024' };
+      var body = JSON.stringify(Object.assign(payload,
         faceRef ? { image: faceRef, reference_image: [faceRef], input_reference_image: [faceRef] } : {}));
       return fetch(url, { method: 'POST', headers: headers, body: body }).then(function (r) {
         if (!r.ok) throw new Error('生图接口返回 HTTP ' + r.status);

@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <title>API · 配置</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" media="print" onload="this.media='all'" />
-    <link rel="stylesheet" href="../css/api.css" />
+    <link rel="stylesheet" href="../css/api.css?v=20261102b" />
     <script src="../js/appearance.js?v=20261026d"></script>
 </head>
 <body class="nano-api">
@@ -252,17 +252,13 @@
                                             <button class="prompt-clear-btn" id="clearNegative" title="清空"><i class="fas fa-times"></i></button>
                                         </div>
                                     </div>
-                                    <div class="form-row">
-                                        <div class="form-group" style="flex:2;">
+                                    <div class="prompt-preset-row">
+                                        <div class="prompt-preset-name">
                                             <label class="form-label">预设名称</label>
                                             <input class="form-control" id="promptPresetName" placeholder="输入预设名称..." />
                                         </div>
-                                        <div class="form-group" style="flex:1;max-width:56px;">
-                                            <label class="form-label" style="opacity:0;">&nbsp;</label>
+                                        <div class="prompt-preset-actions">
                                             <button class="btn btn-sm btn-success" id="savePromptPreset" type="button" title="另存为新预设">保存</button>
-                                        </div>
-                                        <div class="form-group" style="flex:1;max-width:56px;">
-                                            <label class="form-label" style="opacity:0;">&nbsp;</label>
                                             <button class="btn btn-sm btn-primary" id="editPromptPreset" type="button" title="修改选中预设">修改</button>
                                         </div>
                                     </div>

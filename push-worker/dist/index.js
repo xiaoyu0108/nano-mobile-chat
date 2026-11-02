@@ -336,9 +336,10 @@ function d1Kv(db) {
       await d1Ready(db);
       const prefix = String(opts && opts.prefix || "");
       const limit = Math.max(1, Math.min(1e3, Number(opts && opts.limit || 1e3)));
+      const upper = prefix + "\uFFFF";
       const rows = await db.prepare(
-        "SELECT key FROM kv WHERE key LIKE ? AND (expires_at = 0 OR expires_at > ?) ORDER BY key LIMIT ?"
-      ).bind(prefix + "%", Date.now(), limit).all();
+        "SELECT key FROM kv WHERE key >= ? AND key < ? AND (expires_at = 0 OR expires_at > ?) ORDER BY key LIMIT ?"
+      ).bind(prefix, upper, Date.now(), limit).all();
       return { keys: (rows.results || []).map(function(r) {
         return { name: r.key };
       }), list_complete: true };
@@ -360,6 +361,24 @@ function d1Ready(db) {
 function kv(env) {
   const db = env && (env.DB || env.nano_db);
   return db ? d1Kv(db) : env.PUSH_KV;
+}
+function pushKv(env) {
+  const db = env && (env.DB || env.nano_db);
+  if (db) return d1Kv(db);
+  if (env && env.PUSH_KV) return env.PUSH_KV;
+  return {
+    async get() {
+      return null;
+    },
+    async put() {
+      return false;
+    },
+    async delete() {
+    },
+    async list() {
+      return { keys: [], list_complete: true };
+    }
+  };
 }
 function marketKv(env) {
   return kv(env);
@@ -597,7 +616,11 @@ async function cleanupExpiredD1(env) {
   } catch (e) {
   }
 }
-var json = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { ...CORS, "Content-Type": "application/json" } });
+var json = (o, s = 200) => new Response(JSON.stringify(o), {
+  status: s,
+  // 订阅状态 / VAPID / 主动消息自检不能被边缘缓存，否则用户会一直看到旧结果。
+  headers: { ...CORS, "Content-Type": "application/json", "Cache-Control": "no-store" }
+});
 function supabaseConf(env) {
   const url = String(env && env.SUPABASE_URL || "").replace(/\/+$/, "");
   const key = String(env && env.SUPABASE_SERVICE_ROLE_KEY || "");
@@ -803,28 +826,96 @@ function b64urlDecode(str) {
   for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
   return out;
 }
-async function ensureVapid(env) {
-  if (env.VAPID_PUBLIC && env.VAPID_PRIVATE) {
-    return {
-      subject: env.VAPID_SUBJECT || "https://nanopush.nano315.online",
-      publicKey: String(env.VAPID_PUBLIC),
-      privateKey: String(env.VAPID_PRIVATE)
-    };
+function vapidStores(env) {
+  const out = [];
+  const db = env && (env.DB || env.nano_db);
+  if (db) out.push(d1Kv(db));
+  else if (env && env.PUSH_KV) out.push(env.PUSH_KV);
+  return out;
+}
+async function readVapidRaw(env) {
+  let hadError = false;
+  let anyStore = false;
+  for (const store of vapidStores(env)) {
+    anyStore = true;
+    try {
+      const raw = await store.get("vapid:keys");
+      if (raw) return { raw, hadError, anyStore };
+    } catch (e) {
+      hadError = true;
+    }
+  }
+  return { raw: null, hadError, anyStore };
+}
+async function saveVapidAtomic(env, text) {
+  const db = env && (env.DB || env.nano_db);
+  if (db) {
+    try {
+      await d1Ready(db);
+      await db.prepare(
+        "INSERT OR IGNORE INTO kv (key, value, expires_at, updated_at) VALUES (?, ?, 0, ?)"
+      ).bind("vapid:keys", String(text), Date.now()).run();
+      const row = await db.prepare("SELECT value FROM kv WHERE key = ?").bind("vapid:keys").first();
+      if (row && row.value) return row.value;
+    } catch (e) {
+    }
   }
   try {
-    const raw = await kv(env).get("vapid:keys");
-    if (raw) {
-      const o = JSON.parse(raw);
-      if (o && o.publicKey && o.privateKey) {
-        return {
-          subject: o.subject || env.VAPID_SUBJECT || "https://nanopush.nano315.online",
-          publicKey: o.publicKey,
-          privateKey: o.privateKey
-        };
-      }
+    if (env.PUSH_KV) await env.PUSH_KV.put("vapid:keys", text);
+  } catch (e) {
+  }
+  return text;
+}
+function parseVapid(raw, env) {
+  try {
+    const o = JSON.parse(raw);
+    if (o && o.publicKey && o.privateKey) {
+      return {
+        subject: o.subject || env.VAPID_SUBJECT || "https://nanopush.nano315.online",
+        publicKey: String(o.publicKey),
+        privateKey: String(o.privateKey)
+      };
     }
   } catch (e) {
   }
+  return null;
+}
+var VAPID_PENDING = null;
+var VAPID_CACHE = null;
+var VAPID_CACHE_AT = 0;
+function ensureVapid(env) {
+  if (env.VAPID_PUBLIC && env.VAPID_PRIVATE) {
+    return Promise.resolve({
+      subject: env.VAPID_SUBJECT || "https://nanopush.nano315.online",
+      publicKey: String(env.VAPID_PUBLIC),
+      privateKey: String(env.VAPID_PRIVATE)
+    });
+  }
+  if (VAPID_CACHE && Date.now() - VAPID_CACHE_AT < 10 * 60 * 1e3) {
+    return Promise.resolve(VAPID_CACHE);
+  }
+  if (!VAPID_PENDING) {
+    VAPID_PENDING = ensureVapidInner(env).then(function(v) {
+      VAPID_PENDING = null;
+      if (v) {
+        VAPID_CACHE = v;
+        VAPID_CACHE_AT = Date.now();
+      }
+      return v;
+    }, function() {
+      VAPID_PENDING = null;
+      return null;
+    });
+  }
+  return VAPID_PENDING;
+}
+async function ensureVapidInner(env) {
+  const read = await readVapidRaw(env);
+  if (read.raw) {
+    const saved = parseVapid(read.raw, env);
+    if (saved) return saved;
+  }
+  if (read.hadError || !read.anyStore) return null;
   try {
     const pair = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
     const pub = await crypto.subtle.exportKey("jwk", pair.publicKey);
@@ -842,8 +933,9 @@ async function ensureVapid(env) {
       createdAt: Date.now()
     };
     if (!o.privateKey) return null;
-    await kv(env).put("vapid:keys", JSON.stringify(o));
-    return o;
+    const text = JSON.stringify(o);
+    const finalText = await saveVapidAtomic(env, text);
+    return parseVapid(finalText, env) || o;
   } catch (e) {
     return null;
   }
@@ -1454,9 +1546,18 @@ async function generateAutoMoments(env, cfg, busyChatId, maxChars) {
     return c.id !== busyChatId;
   });
   if (!source.length) return [];
-  const count = Math.max(1, Math.min(Number(maxChars) || 2, 3, source.length));
-  const picked = pickRandom(source, count);
+  const count = Math.max(3, Math.min(Number(maxChars) || 3, 5));
+  const picked = pickRandom(source, Math.min(source.length, count));
   const names = picked.map(function(c) {
+    return c.name;
+  });
+  const plainChars = {};
+  (cfg.chars || []).forEach(function(c) {
+    if (c && c.name && !c.isNpc && !c.isAltProbe) plainChars[String(c.name).replace(/\s+/g, "")] = String(c.name);
+  });
+  const npcPool = (cfg.chars || []).filter(function(c) {
+    return c && c.name && (c.isNpc || c.isAltProbe);
+  }).map(function(c) {
     return c.name;
   });
   const profiles = picked.map(function(c) {
@@ -1465,11 +1566,11 @@ async function generateAutoMoments(env, cfg, busyChatId, maxChars) {
     }).join("\uFF1B");
     return "\xB7 " + c.name + "\uFF1A" + String(c.setting || "").slice(0, 500) + (recent ? "\n  \u6700\u8FD1\u804A\u5929\uFF1A" + recent : "");
   }).join("\n");
-  const sys = "\u4F60\u4EEC\u662F\u5F7C\u6B64\u8BA4\u8BC6\u7684\u670B\u53CB\uFF0C\u5728\u540C\u4E00\u4E2A\u670B\u53CB\u5708\u91CC\u3002\u8BF7\u8BA9\u4EE5\u4E0B\u89D2\u8272\u5404\u53D1\u4E00\u6761\u670B\u53CB\u5708\u52A8\u6001\uFF1A" + names.join("\u3001") + "\u3002\n\u3010\u89D2\u8272\u4EBA\u8BBE\u4E0E\u6700\u8FD1\u804A\u5929\u3011\n" + profiles + "\n\u8981\u6C42\uFF1A\u50CF\u771F\u4EBA\u968F\u624B\u53D1\u7684\u65E5\u5E38\uFF0C\u5177\u4F53\u3001\u6709\u7EC6\u8282\uFF0C\u6700\u597D\u548C TA \u6700\u8FD1\u804A\u8FC7\u7684\u4E8B\u6709\u4E00\u70B9\u5173\u8054\uFF1B\u4E0D\u8981\u6D41\u6C34\u8D26\uFF0C\u4E0D\u8981\u5BF9\u4EFB\u4F55\u4EBA\u8BF4\u8BDD\uFF0C\u4E0D\u8981\u63D0\u95EE\uFF0C\u7981\u6B62 AI \u8154\u3002\n\u6BCF\u4EBA\u53EA\u53D1 1 \u6761\uFF0C\u4E0D\u8981\u91CD\u590D\u4F5C\u8005\uFF1B\u6700\u591A " + count + " \u6761\u3002\n\u6BCF\u6761\u52A8\u6001\u90FD\u8981\u5E26 1~3 \u4E2A\u70B9\u8D5E\u548C 1~3 \u6761\u8BC4\u8BBA\uFF1B\u70B9\u8D5E/\u8BC4\u8BBA\u8005\u53EA\u80FD\u4ECE\u8FD9\u4E9B\u540D\u5B57\u91CC\u9009\uFF1A" + names.join("\u3001") + "\uFF0C\u4E0D\u80FD\u662F\u52A8\u6001\u4F5C\u8005\u672C\u4EBA\uFF0C\u4E5F\u4E0D\u80FD\u51FA\u73B0\u300C" + cfg.user.name + '\u300D\u3002\n\u53EA\u8F93\u51FA JSON \u6570\u7EC4\uFF1A[{"author":"\u540D\u5B57","text":"\u52A8\u6001\u6587\u6848","location":"\u5730\u70B9\u6216\u7A7A","likes":["\u540D\u5B57"],"comments":[{"user":"\u540D\u5B57","toUser":"","text":"\u8BC4\u8BBA"}]}]';
+  const sys = "\u4F60\u4EEC\u662F\u5F7C\u6B64\u8BA4\u8BC6\u7684\u670B\u53CB\uFF0C\u5728\u540C\u4E00\u4E2A\u670B\u53CB\u5708\u91CC\u3002\u8BF7\u4E00\u6B21\u6027\u751F\u6210 " + count + " \u6761\u670B\u53CB\u5708\u52A8\u6001\uFF083~5 \u6761\uFF09\u3002\n\u3010\u89D2\u8272\u4EBA\u8BBE\u4E0E\u6700\u8FD1\u804A\u5929\u3011\n" + profiles + "\n\u3010\u6700\u9AD8\u4F18\u5148\u7EA7\u3011\u4EFB\u4F55 char \u4E4B\u95F4\u90FD\u7EDD\u5BF9\u4E0D\u5141\u8BB8\u4E92\u76F8\u8BC4\u8BBA\u3001\u56DE\u590D\u3001\u70B9\u8D5E\u6216\u63A5\u8BDD\uFF1Bchar \u53D1\u7684\u52A8\u6001\u4E0B\u8BC4\u8BBA\u533A\u53EA\u80FD\u51FA\u73B0 NPC\uFF0C\u5373\u4F7F\u4EBA\u8BBE\u5199\u4E86\u8BA4\u8BC6\u4E5F\u4E0D\u884C\u3002\n\u3010\u53D1\u5E16\u4EBA\u3011\u4F18\u5148\u8BA9\u4EE5\u4E0B\u89D2\u8272\u53D1\uFF0C\u6BCF\u4EBA\u53EA\u53D1 1 \u6761\uFF1A" + names.join("\u3001") + "\uFF1B\u6570\u91CF\u4E0D\u591F " + count + " \u6761\u65F6\uFF0C\u7531\u4ED6\u4EEC\u53EF\u80FD\u8BA4\u8BC6\u7684 NPC \u53D1\u5E16\u8865\u8DB3\uFF0C\u4F5C\u8005\u4E0D\u8981\u91CD\u590D\u3002\n\u8981\u6C42\uFF1A\u50CF\u771F\u4EBA\u968F\u624B\u53D1\u7684\u65E5\u5E38\uFF0C\u5177\u4F53\u3001\u6709\u7EC6\u8282\uFF0C\u6700\u597D\u548C TA \u6700\u8FD1\u804A\u8FC7\u7684\u4E8B\u6709\u4E00\u70B9\u5173\u8054\uFF1B\u4E0D\u8981\u6D41\u6C34\u8D26\uFF0C\u4E0D\u8981\u5BF9\u4EFB\u4F55\u4EBA\u8BF4\u8BDD\uFF0C\u4E0D\u8981\u63D0\u95EE\uFF0C\u7981\u6B62 AI \u8154\u3002\n\u5927\u591A\u6570\u52A8\u6001\u5B57\u6570\u63A7\u5236\u5728 30~50 \u5B57\uFF08\u4E00\u4E24\u53E5\u8BDD\u8BB2\u6E05\u4E00\u4EF6\u5177\u4F53\u7684\u4E8B\u6216\u4E00\u4E2A\u60C5\u7EEA\uFF0C\u5E26\u4E00\u70B9\u7EC6\u8282\uFF09\uFF1B\u5076\u5C14\u53EF\u4EE5\u53EA\u5199\u534A\u53E5\u3001\u4E00\u4E2A\u8BCD\u3001\u4E00\u4E2A\u6807\u70B9\u6216\u4E00\u4E2A emoji\uFF08\u5982\u300C\u65E0\u8BED\u3002\u300D\u300C\u8001\u5B50\u670D\u4E86\u3002\u300D\uFF09\uFF0C\u5076\u5C14\u60C5\u7EEA\u771F\u7684\u4E0A\u6765\u3001\u4E8B\u60C5\u503C\u5F97\u8BB2\u65F6\u518D\u5199\u6210\u6709\u8D77\u627F\u8F6C\u5408\u7684\u5C0F\u4F5C\u6587\uFF08100~200 \u5B57\u751A\u81F3\u66F4\u957F\uFF09\u3002\u957F\u5EA6\u8DDF\u7740\u89D2\u8272\u5F53\u4E0B\u7684\u60C5\u7EEA\u3001\u4E8B\u60C5\u5927\u5C0F\u548C\u4EBA\u8BBE\u8D70\uFF0C\u4E0D\u8981\u6BCF\u6761\u90FD\u4E00\u4E2A\u957F\u5EA6\uFF0C\u4E5F\u4E0D\u8981\u4E3A\u4E86\u51D1\u5B57\u786C\u5199\u3002\n\u6BCF\u6761\u52A8\u6001\u90FD\u5FC5\u987B\u5E26 2~4 \u4E2A\u70B9\u8D5E\u548C 2~4 \u6761\u8BC4\u8BBA\uFF0C\u4E0D\u80FD\u53EA\u53D1\u4E00\u6761\u5149\u79C3\u79C3\u7684\u52A8\u6001\u3002\u70B9\u8D5E/\u8BC4\u8BBA\u8005\u53EA\u80FD\u662F\u4F5C\u8005\u751F\u6D3B\u91CC\u7684\u540C\u5B66\u3001\u670B\u53CB\u3001\u540C\u4E8B\u3001\u5BB6\u4EBA\u3001\u90BB\u5C45\u7B49 NPC\uFF08\u53EF\u4EE5\u865A\u6784\u771F\u5B9E\u5B8C\u6574\u59D3\u540D\uFF09\uFF0C\u4E0D\u80FD\u662F\u4F5C\u8005\u672C\u4EBA\uFF0C\u7EDD\u5BF9\u4E0D\u80FD\u51FA\u73B0\u7528\u6237\u300C" + cfg.user.name + '\u300D\uFF0C\u4E5F\u4E0D\u80FD\u662F\u4EFB\u4F55\u666E\u901A char\u3002\n\u53EA\u8F93\u51FA JSON \u6570\u7EC4\uFF1A[{"author":"\u540D\u5B57","text":"\u52A8\u6001\u6587\u6848","location":"\u5730\u70B9\u6216\u7A7A","likes":["\u540D\u5B57"],"comments":[{"user":"\u540D\u5B57","toUser":"","text":"\u8BC4\u8BBA"}]}]';
   const content = await autoChat(env, cfg, [
     { role: "system", content: sys },
-    { role: "user", content: "\u751F\u6210 " + picked.length + " \u6761\u670B\u53CB\u5708\u52A8\u6001\u3002" }
-  ], 1400, 1);
+    { role: "user", content: "\u751F\u6210 " + count + " \u6761\u670B\u53CB\u5708\u52A8\u6001\uFF0C\u6BCF\u6761\u90FD\u5E26 2~4 \u4E2A\u70B9\u8D5E\u548C 2~4 \u6761\u8BC4\u8BBA\u3002" }
+  ], 3800, 1);
   if (!content) return [];
   let arr = null;
   const a = content.indexOf("["), b = content.lastIndexOf("]");
@@ -1480,48 +1581,88 @@ async function generateAutoMoments(env, cfg, busyChatId, maxChars) {
     }
   }
   if (!Array.isArray(arr)) return [];
-  const nameSet = {};
-  names.forEach(function(n) {
-    nameSet[n] = true;
-  });
-  const pickName = function(raw) {
+  const userName = String(cfg.user && cfg.user.name || "\u7528\u6237");
+  const userKey = userName.replace(/\s+/g, "");
+  const keyOf = function(n) {
+    return String(n == null ? "" : n).replace(/^@/, "").replace(/\s+/g, "").trim();
+  };
+  const canonical = function(raw) {
     const n = String(raw == null ? "" : raw).trim();
     if (!n) return "";
-    if (nameSet[n]) return n;
     return names.find(function(x) {
-      return x && (x.indexOf(n) > -1 || n.indexOf(x) > -1);
-    }) || "";
+      return keyOf(x) === keyOf(n) || x.indexOf(n) > -1 || n.indexOf(x) > -1;
+    }) || n;
+  };
+  const pickNpc = function(raw, authorName) {
+    const n = canonical(raw);
+    const k = keyOf(n);
+    if (!k || k === userKey || k === keyOf(authorName)) return "";
+    if (plainChars[k]) return "";
+    return n;
+  };
+  const pickTarget = function(raw, authorName) {
+    const n = canonical(raw);
+    const k = keyOf(n);
+    if (!k || k === userKey) return "";
+    if (plainChars[k] && k !== keyOf(authorName)) return "";
+    return n;
   };
   const out = [];
   const now = Date.now();
   const canned = ["\u8FD9\u6761\u4E5F\u592A\u771F\u5B9E\u4E86", "\u54C8\u54C8\u54C8\u54C8", "\u6211\u4E5F\u60F3\u53BB", "\u6CE8\u610F\u4F11\u606F\u5440", "\u597D\u770B", "\u4E0B\u6B21\u5E26\u6211"];
   const usedAuthors = {};
+  const npcExtra = [];
+  arr.slice(0, count).forEach(function(o) {
+    if (!o) return;
+    [o.author].concat(Array.isArray(o.likes) ? o.likes : []).concat((Array.isArray(o.comments) ? o.comments : []).map(function(c) {
+      return c && (c.user || c.name || c.author);
+    })).forEach(function(raw) {
+      const n = canonical(raw), k = keyOf(n);
+      if (!k || k === userKey || plainChars[k] || npcExtra.indexOf(n) > -1) return;
+      npcExtra.push(n);
+    });
+  });
   arr.slice(0, count).forEach(function(o, i) {
     if (!o || !o.text) return;
-    const au = pickName(o.author) || names[Math.min(i, names.length - 1)];
-    if (!au || usedAuthors[au]) return;
+    const knownAuthor = canonical(o.author);
+    let au = names.find(function(x) {
+      return keyOf(x) === keyOf(knownAuthor);
+    }) || "";
+    if (!au) {
+      const k = keyOf(knownAuthor);
+      if (knownAuthor && k !== userKey && !plainChars[k]) au = knownAuthor;
+    }
+    if (!au) au = names[Math.min(i, names.length - 1)];
+    if (!au || keyOf(au) === userKey || usedAuthors[au]) return;
     usedAuthors[au] = true;
     const likes = [];
     (Array.isArray(o.likes) ? o.likes : []).forEach(function(raw) {
-      const n = pickName(raw);
-      if (n && n !== au && likes.indexOf(n) < 0) likes.push(n);
+      const n = pickNpc(raw, au);
+      if (n && likes.indexOf(n) < 0) likes.push(n);
     });
-    if (!likes.length) names.forEach(function(n) {
-      if (n !== au && likes.length < 2) likes.push(n);
+    const likePool = npcPool.concat(npcExtra).concat(out.map(function(x) {
+      return x.author;
+    })).filter(function(n, idx, a2) {
+      return n && a2.indexOf(n) === idx && keyOf(n) !== keyOf(au) && !plainChars[keyOf(n)] && keyOf(n) !== userKey;
     });
+    for (let li = 0; li < likePool.length && likes.length < 2; li++) {
+      if (likes.indexOf(likePool[li]) < 0) likes.push(likePool[li]);
+    }
     const comments = [];
     (Array.isArray(o.comments) ? o.comments : []).forEach(function(c) {
       if (!c || typeof c !== "object") return;
-      const u = pickName(c.user || c.name || c.author);
+      const u = pickNpc(c.user || c.name || c.author, au);
       const txt = String(c.text || c.content || "").trim();
       if (!u || !txt) return;
-      comments.push({ user: u, toUser: pickName(c.toUser || c.replyTo || c.to), text: txt.slice(0, 120) });
+      comments.push({ user: u, toUser: pickTarget(c.toUser || c.replyTo || c.to, au), text: txt.slice(0, 120) });
     });
-    if (!comments.length) {
-      const other = names.find(function(n) {
-        return n !== au;
+    const commentPool = likePool.filter(function(n) {
+      return !comments.some(function(c) {
+        return keyOf(c.user) === keyOf(n);
       });
-      if (other) comments.push({ user: other, toUser: "", text: canned[(i + au.length) % canned.length] });
+    });
+    for (let ci = 0; ci < commentPool.length && comments.length < 2; ci++) {
+      comments.push({ user: commentPool[(i + ci) % commentPool.length], toUser: "", text: canned[(i + ci + au.length) % canned.length] });
     }
     const char = picked.find(function(c) {
       return c.name === au;
@@ -1653,7 +1794,7 @@ async function runAutoPush(env, appId, deviceId2, userId2) {
     state.nextMomentAt = now + cfg.momentIntervalHours * 3600 * 1e3;
     state.momentHours = cfg.momentIntervalHours;
     dirty = true;
-    const remain = Math.max(0, 3 - usedChars);
+    const remain = Math.max(0, 5 - usedChars);
     if (remain > 0) {
       let posts = [];
       try {
@@ -3293,7 +3434,11 @@ var index_default = {
     }
     if (pathname === "/vapid" && request.method === "GET") {
       const v = await ensureVapid(env);
-      return json({ ok: !!v, key: v ? v.publicKey : "" });
+      return json({
+        ok: !!v,
+        key: v ? v.publicKey : "",
+        error: v ? "" : vapidStores(env).length ? "VAPID \u5B58\u50A8\u6682\u65F6\u4E0D\u53EF\u7528\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5\uFF08\u4E0D\u8981\u53CD\u590D\u91CD\u65B0\u8BA2\u9605\uFF09" : "\u6CA1\u6709\u7ED1\u5B9A D1\uFF0C\u4E14\u672A\u914D\u7F6E VAPID_PUBLIC / VAPID_PRIVATE"
+      });
     }
     if (pathname === "/subscribe" && request.method === "POST") {
       const body = await request.json().catch(function() {
@@ -3306,9 +3451,15 @@ var index_default = {
       subscription.appId = cleanAppId(body.appId);
       subscription.ua = String(body.ua || "");
       subscription.platform = String(body.platform || "");
-      await kv(env).put(subKey(subscription.endpoint, subscription.appId, subscription.deviceId, subscription.userId), JSON.stringify(subscription));
+      let saved = true;
       try {
-        await kv(env).delete(subId(subscription.endpoint));
+        saved = await pushKv(env).put(subKey(subscription.endpoint, subscription.appId, subscription.deviceId, subscription.userId), JSON.stringify(subscription));
+      } catch (e) {
+        saved = false;
+      }
+      if (saved === false) return json({ ok: false, error: "\u8BA2\u9605\u4FDD\u5B58\u5931\u8D25\uFF1AD1 \u4E0D\u53EF\u7528" }, 500);
+      try {
+        await pushKv(env).delete(subId(subscription.endpoint));
       } catch (e) {
       }
       return json({ ok: true });
@@ -3358,8 +3509,39 @@ var index_default = {
       return json({ ok: true, count });
     }
     if (pathname === "/unsubscribe" && request.method === "POST") {
-      const { endpoint } = await request.json();
-      if (endpoint) await kv(env).delete(subId(endpoint));
+      const body = await request.json().catch(function() {
+        return {};
+      });
+      const endpoint = String(body.endpoint || "");
+      if (!endpoint) return json({ ok: true });
+      const store = pushKv(env);
+      const scopeKey = body.appId && body.deviceId && body.userId ? subKey(endpoint, body.appId, body.deviceId, body.userId) : "";
+      if (scopeKey) {
+        try {
+          await store.delete(scopeKey);
+        } catch (e) {
+        }
+      } else {
+        const suffix = subId(endpoint).slice(4);
+        for (const prefix of ["sub2:", "sub:"]) {
+          try {
+            const r = await store.list({ prefix });
+            for (const k of r.keys || []) {
+              if (String(k.name).slice(-suffix.length) === suffix) {
+                try {
+                  await store.delete(k.name);
+                } catch (e) {
+                }
+              }
+            }
+          } catch (e) {
+          }
+        }
+      }
+      try {
+        await store.delete(subId(endpoint));
+      } catch (e) {
+      }
       return json({ ok: true });
     }
     if (pathname === "/send" && request.method === "POST") {
@@ -4015,8 +4197,14 @@ var index_default = {
         subs = await getSubs(env, userId2, deviceId2, appId);
       } catch (e) {
       }
+      let vapidOk = false;
+      try {
+        vapidOk = !!await ensureVapid(env);
+      } catch (e) {
+      }
       return json({
         ok: true,
+        vapidOk,
         serverNow: Date.now(),
         appId,
         deviceId: deviceId2,
@@ -4142,7 +4330,7 @@ var index_default = {
               if (x && x.id && !seen[x.id]) items2.push(mergeMarketCounts(Object.assign({}, x), counts2));
             });
           }
-          return json({ ok: true, items: items2 });
+          return json({ ok: true, backend: "supabase", items: items2 });
         } catch (e) {
           console.warn("[market] supabase list failed, fallback KV:", e && e.message);
         }
@@ -4158,7 +4346,7 @@ var index_default = {
       items = (Array.isArray(items) ? items : []).map(function(x) {
         return mergeMarketCounts(x, counts);
       });
-      return json({ ok: true, items });
+      return json({ ok: true, backend: "kv", items });
     }
     if (pathname === "/market/item" && request.method === "GET") {
       const id = new URL(request.url).searchParams.get("id") || "";
@@ -4456,22 +4644,23 @@ async function getSubs(env, userId2, deviceId2, appId) {
   const wantUser = userId2 ? cleanUserId(userId2) : "";
   const wantDevice = deviceId2 ? cleanDeviceId(deviceId2) : "";
   let keys = [];
+  const store = pushKv(env);
   try {
     let prefix = "sub2:";
     if (wantApp && wantDevice && wantUser) prefix = "sub2:" + wantApp + ":" + wantDevice + ":" + wantUser + ":";
     else if (wantApp && wantDevice) prefix = "sub2:" + wantApp + ":" + wantDevice + ":";
     else if (wantApp) prefix = "sub2:" + wantApp + ":";
-    const r = await kv(env).list({ prefix });
+    const r = await store.list({ prefix });
     keys = r.keys || [];
     if (!keys.length) {
-      const legacy = await kv(env).list({ prefix: "sub:" });
+      const legacy = await store.list({ prefix: "sub:" });
       keys = legacy.keys || [];
     }
   } catch (e) {
     return out;
   }
   for (const k of keys) {
-    const v = await kv(env).get(k.name);
+    const v = await store.get(k.name);
     if (!v) continue;
     try {
       const s = JSON.parse(v);
@@ -4504,11 +4693,11 @@ async function pushAll(subs, payload, env) {
       if (resp && resp.ok) sent++;
       if (resp && (resp.status === 404 || resp.status === 410)) {
         try {
-          await kv(env).delete(subKey(sub.endpoint, sub.appId, sub.deviceId, sub.userId));
+          await pushKv(env).delete(subKey(sub.endpoint, sub.appId, sub.deviceId, sub.userId));
         } catch (e) {
         }
         try {
-          await kv(env).delete(subId(sub.endpoint));
+          await pushKv(env).delete(subId(sub.endpoint));
         } catch (e) {
         }
       }

@@ -778,6 +778,54 @@
         } catch (e) { return ''; }
     }
 
+    // ===== 深度对话判定（用于本轮语气 & 主动发图拦截）=====
+    function recentUserTexts(n) {
+        const out = [];
+        try {
+            for (let i = messages.length - 1; i >= 0 && out.length < (n || 1); i--) {
+                const m = messages[i];
+                if (!m || m.recalled || m.type !== 'right') continue;
+                if (m.isCard || (m.cardData && m.cardData.systemNotice)) continue;
+                const t = String(m.text || m.transcript || '').trim();
+                if (t) out.push(t);
+            }
+        } catch (e) {}
+        return out;
+    }
+    function isExplicitPhotoRequest(t) {
+        const s = String(t || '');
+        return /(发|拍|来|给|想看|看看).{0,8}(自拍|照片|图片|你现在的样子|你在干嘛|你在做什么)/.test(s)
+            || /(自拍|照片|图片).{0,6}(发|拍|来|给我|看看)/.test(s);
+    }
+    function looksLikeDeepTalk(t) {
+        const s = String(t || '').trim();
+        if (!s || isExplicitPhotoRequest(s)) return false;
+        if (/(我好?伤心|好难过|很难过|难受|想哭|哭了|眼泪|失恋|分手|孤独|寂寞|焦虑|压力|崩溃|委屈|心累|活着|人生|意义|长大|成熟|值不值|有用吗|该不该|为什么我|我是不是|害怕|恐惧|失眠|睡不着|抑郁|emo|心事|离开|失去|放不下|走了|去世|死亡|依赖|爱是什么|什么是爱|爱情|喜欢一个人|什么是喜欢|遗憾|后悔|放手|告别|存在|自由|归属|成长)/.test(s)) return true;
+        if (s.length >= 8 && /(吗|呢|么|为什么|怎么|是不是|该不该|值不值|有没有)/.test(s)
+            && /(感情|爱|喜欢|关系|朋友|家人|父母|哥哥|姐姐|弟弟|妹妹|自己|心里|情绪|感觉|哭|笑|痛|累|孤单|以后|未来|选择|决定)/.test(s)) return true;
+        // 认真征询观点的问句（“你怎么看…”“你觉得…是什么”）也算深度对话。
+        if (/^(你觉得|你认为|你说|我想知道|我想问|你怎么看|你怎么想)/.test(s)
+            && /(是什么|为什么|算不算|有没有用|该不该|值不值|怎么看待|怎么看|怎么想)/.test(s)) return true;
+        return false;
+    }
+    function isDeepTalkNow() {
+        const list = recentUserTexts(2);
+        return !!(list.length && looksLikeDeepTalk(list[0]));
+    }
+    function deepTalkPromptBlock() {
+        if (!isDeepTalkNow()) return '';
+        return [
+            '【本轮 · 深度对话（动态判定，优先级高于上面的短句和回复长度规则）】',
+            '对方这一句不是随口闲聊，而是带着情绪或认真在问你。你必须先回答/回应对方问的那件事，用你这个人的人设、经历、立场和你们的关系给出有内容的判断；不能只共情、不能只安慰、不能把问题原样抛回去。',
+            '严禁这些八股敷衍：“你遇到什么事了吗，说来我听听 / 没事，我慢慢听 / 我在听 / 说来听听 / 你怎么了 / 想开点 / 别难过 / 抱抱你 / 我会一直陪着你”。',
+            '对方问“眼泪有用吗 / 不再依赖哥哥算长大吗 / 我好伤心”这类话时：先给出你自己的答案或真实反应（可以反驳、可以举自己的经历、可以说一个只有你会说的判断），再自然接一句具体的话。',
+            '答案要落到具体的对象、场景或你自己的做法上（对谁、在什么情况下、你会怎么接），不要停在“看情况”“都会过去”“想开点”这种空话。',
+            '如果对方只是说“我好伤心”，不要把“怎么了”当开场；先说你此刻的反应、判断或打算怎么做，再看有没有必要问一个具体的问题。',
+            '本轮允许 1~4 条气泡，每条最多 60 字；不要为了凑短句把话说空，也不要写成排比或升华总结。',
+            '照片/自拍本轮默认不发；除非对方明确要，或你正在一个和话题直接相关的具体场景里，才允许发一张，并且必须先说清楚为什么发。'
+        ].join('\n');
+    }
+
     function buildSystemPrompt() {
         // 纳米助手：使用专属系统提示词（前端知识库 + 动作协议）
         if (isNanoChat && window.NanoAssistant) {
@@ -961,7 +1009,7 @@
         prompt += '- [call:来电]（给对方打电话，接通后即语音通话）\n';
         prompt += '- [call:视频]（给对方打视频电话）\n';
         prompt += '- [image:图片描述] 例如 [image:一张夕阳]\n';
-        prompt += '- 生图不一定是自拍：也可以主动发夕阳、咖啡、电脑桌面、街角、食物、小狗小猫、窗边等日常随拍；发自拍时镜头角度要随机（仰拍/俯拍/侧拍/回头/过肩/对镜/半身/全身），不要每次都同一张正面自拍。\n';
+        prompt += '- 发图必须有理由：只分享你此刻真实看到/正在做的事，先自然说清“为什么发”，再发图；不要为了发图而发图。生图不一定是自拍：也可以主动发夕阳、咖啡、电脑桌面、街角、食物、小狗小猫、窗边等日常随拍；发自拍时镜头角度要随机（仰拍/俯拍/侧拍/回头/过肩/对镜/半身/全身），不要每次都同一张正面自拍。对方在说情绪、认真话题时，绝对不要用自拍或无关照片回应；除非对方明确要，否则本轮不发图。\n';
         const __emojiNames = getEmojiNamesForPrompt();
         if (__emojiNames.length) {
             const __emojiExample = __emojiNames[Math.floor(Math.random() * Math.min(__emojiNames.length, 40))] || __emojiNames[0];
@@ -6366,46 +6414,92 @@
         }
         return null;
     }
+    function momentNameKey(name) { return String(name == null ? '' : name).replace(/^@/, '').replace(/\s+/g, '').trim(); }
+    // 普通 char 集合：NPC/小号不算 char。自动朋友圈里 char 之间绝对不能互动。
+    function momentPlainCharMap() {
+        const map = {};
+        (allCharacters || []).forEach(function (c) {
+            if (!c || !c.name || c.nanoAssistant || c.isNpc || c.isAltProbe) return;
+            map[momentNameKey(c.name)] = String(c.name);
+        });
+        return map;
+    }
+    function momentCurrentUserName() {
+        return String((currentUser && currentUser.name) || currentUserName || '用户').trim();
+    }
     function filterMomentInteractionsByGraph(items, authors) {
-        var SG = window.NanoSocialGraph;
         if (!Array.isArray(items)) return items;
-        if (!SG) { items.forEach(function (o) { if (o) { o.likes = []; o.comments = []; } }); return items; }
-        var all = (authors || []).concat(allCharacters || []);
+        const plain = momentPlainCharMap();
+        const userKey = momentNameKey(momentCurrentUserName());
         items.forEach(function (o) {
             if (!o) return;
-            // 作者可能是名单外的 NPC（同学/朋友），保留它的互动；但真实 char 之间仍按关系过滤。
-            var author = socialCharByName(o.author, all) || { name: o.author };
-            o.likes = (Array.isArray(o.likes) ? o.likes : []).filter(function (n) {
-                if (!n || n === o.author) return false;
-                var c = socialCharByName(n, all);
-                // 名单外的同学/朋友/NPC 可以互动；名单里的已绑定 char 必须明确认识。
-                if (!c || c.isNpc || c.isNPC) return true;
-                return (SG.knowsStrict || SG.knows)(author, c);
-            });
+            const authorKey = momentNameKey(o.author);
+            // 点赞：不允许作者自己、用户、任何普通 char；NPC/小号可以点赞。
+            o.likes = (Array.isArray(o.likes) ? o.likes : []).filter(function (raw) {
+                const key = momentNameKey(raw);
+                if (!key || key === authorKey || key === userKey) return false;
+                if (plain[key]) return false;   // char 之间绝不互相点赞
+                return true;
+            }).map(function (n) { return String(n).trim(); });
+            // 评论：只保留 NPC/小号；普通 char 一律不出现。NPC 可以回复作者 char。
             o.comments = (Array.isArray(o.comments) ? o.comments : []).filter(function (c) {
-                if (!c || !c.user || String(c.user) === String(o.author)) return false;
-                var u = socialCharByName(c.user, all);
-                if (!u || u.isNpc || u.isNPC) return true;
-                if (!(SG.knowsStrict || SG.knows)(author, u)) return false;
+                if (!c || !c.user) return false;
+                const uKey = momentNameKey(c.user);
+                if (!uKey || uKey === authorKey || uKey === userKey) return false;
+                if (plain[uKey]) return false;  // char 之间绝不互相评论/回复
                 if (c.toUser) {
-                    var t = socialCharByName(c.toUser, all);
-                    if (t && !SG.knows(u, t)) delete c.toUser;
+                    const tKey = momentNameKey(c.toUser);
+                    if (!tKey || tKey === uKey || tKey === userKey) delete c.toUser;
+                    // NPC 只能回复作者、其他 NPC；不能回复无关 char
+                    else if (plain[tKey] && tKey !== authorKey) delete c.toUser;
+                    else c.toUser = String(c.toUser).trim();
                 }
+                c.user = String(c.user).trim();
                 return true;
             });
         });
         return items;
+    }
+    function collectMomentNpcNames(posts, authors) {
+        const plain = momentPlainCharMap();
+        const userKey = momentNameKey(momentCurrentUserName());
+        const out = [], seen = {};
+        function add(raw) {
+            const n = String(raw == null ? '' : raw).trim();
+            const k = momentNameKey(n);
+            if (!k || k === userKey || plain[k] || seen[k]) return;
+            // 已绑定的 NPC / 小号优先
+            seen[k] = 1; out.push(n);
+        }
+        (allCharacters || []).forEach(function (c) {
+            if (!c || !c.name || c.nanoAssistant) return;
+            if (!(c.isNpc || c.isAltProbe)) return;
+            if (currentUser && c.bindUser && String(c.bindUser) !== String(currentUser.id)) return;
+            add(c.name);
+        });
+        (posts || []).forEach(function (p) {
+            if (!p) return;
+            add(p.author);
+            (p.likes || []).forEach(add);
+            (p.comments || []).forEach(function (c) { if (c) add(c.user); });
+        });
+        return out.slice(0, 24);
     }
     function momentAuthorByName(name, authors) {
         const n = String(name || '').trim();
         if (!n) return authors[0];
         let hit = authors.find(function (a) { return a.name === n; });
         if (hit) return hit;
-        const nn = n.replace(/\s+/g, '');
-        hit = authors.find(function (a) { return String(a.name).replace(/\s+/g, '') === nn || String(a.name).indexOf(n) > -1 || n.indexOf(String(a.name)) > -1; });
-        return hit || authors[0];
+        const nn = momentNameKey(n);
+        hit = authors.find(function (a) { return momentNameKey(a.name) === nn || String(a.name).indexOf(n) > -1 || n.indexOf(String(a.name)) > -1; });
+        if (hit) return hit;
+        // 已知角色（即使没被随机选中发帖）仍按本人归属，避免把 char 的动态算成 NPC。
+        const known = socialCharByName(n, allCharacters);
+        if (known && known.name) return known;
+        // 名单外作者：当作可能认识的 NPC 补足剩余动态，不能强行算到第一个 char 头上。
+        return { id: 'auto_npc_' + nn, name: n, avatar: '', isNpc: true };
     }
-    // 一次 API 调用：让 3~4 位角色/NPC 各写一条朋友圈
+    // 一次 API 调用：让 3~5 条朋友圈（角色 + NPC）带点赞和评论
     async function generateAutoMomentBatch() {
         const config = await getApiConfig();
         if (!config || !config.mainUrl || !config.mainKey || !config.mainModel) return null;
@@ -6413,7 +6507,7 @@
         const timeStr = nowHHMM();
         let mem = '';
         try { mem = String(__memHints || '').split('\n').filter(Boolean).slice(0, 8).join('\n'); } catch (e) {}
-        const authors = pickMomentAuthors(4);
+        const authors = pickMomentAuthors(5);
         const authorNames = authors.map(function (a) { return a.name; }).join('、');
         const authorInfo = authors.map(function (a) {
             let st = '';
@@ -6423,27 +6517,25 @@
             } catch (e) {}
             return '· ' + a.name + (st ? ('：' + st) : '');
         }).join('\n');
+        const totalPosts = 3 + Math.floor(Math.random() * 3); // 3~5 条
         let sys = '下面这几位是用户的好友，他们的动态会出现在同一个朋友圈里：' + authorNames + '。\n'
-            + '注意：他们不一定互相认识。已绑定的 char 之间，只有角色关系/悄悄话记录里明确认识，才可以在评论区互动或互相回复；不认识的 char 不要出现在同一条动态的评论区，也不要互相点赞。'
-            + '但作者现实里的同学、朋友、同事、邻居等 NPC 可以正常点赞/评论，不要因为不在名单里就全部删掉。\n'
-            + '请为其中 2~3 个人各写一条朋友圈动态（可以是同一天的不同时间段：早晨/午后/傍晚/深夜），每个人只写一条，'
-            + '内容贴合各自的人设、身份和当天心情，彼此不要重复、不要互相复述。\n'
+            + '请一次性生成 ' + totalPosts + ' 条朋友圈动态（3~5 条），每条动态必须自带 2~4 个点赞和 2~4 条评论，不能只写文案。\n'
+            + '【最高优先级】任何 char 之间都绝对不允许互相评论、回复、点赞或接话，即使角色关系/悄悄话记录写了认识也不行。char 只能和 NPC 互动；char 的动态下评论区只能出现 NPC。\n'
+            + '【发帖人】优先让「' + (authors[0] && authors[0].name) + '」至少发 1 条；其余动态由名单里的其他角色发，数量不够时由作者可能认识的 NPC 发帖补足到 ' + totalPosts + ' 条。作者不要重复太多，内容贴合各自人设、身份和当天心情。\n'
             + '【拒绝流水账】严禁把动态写成日程记录或流水账：不要“早上…中午…晚上…”地罗列作息，也不要“今天天气不错 / 吃了三明治 / 上班好累 / 晚安”这种谁都能发的空话。每条都要落到一件具体的事或一个具体的细节（一个地点、一个人、一句话、刚发生的一个小插曲，或一种有来由的情绪），要有只有这个人此刻才会发的东西。宁少勿滥。\n'
             + '【文案长度】大多数动态控制在 30~50 字（一两句话讲完一件小事或一个情绪，带具体细节）；偶尔可以只写半句、一个词、一个标点或一个 emoji（如「无语。」「老子服了。」），偶尔情绪真的上来、事情值得讲时再写成有起承转合的小作文（100~200 字甚至更长）。长度跟着角色当下的情绪、事情大小和人设走，不要每条都一个长度，也不要为了凑字硬写。\n'
-            + '【重要 · 朋友圈不是聊天】这是发在朋友圈的动态，不是私聊：不要对任何人说话，不要提问，不要出现「你要不要/你去吗/在吗/一起吃吗」这类约人或聊天的语气；'
-            + '只分享自己的日常与心情，像真人随手发的一条动态。禁止 AI 腔、禁止解释、禁止出戏。\n'
-            + '【互动规则】可以写 1~3 个点赞、1~3 条评论。点赞者/评论者可以是名单里明确认识的 char，也可以是名单外但合理的同学、朋友、同事、邻居等 NPC（他们本来就存在于作者的生活里）。'
-            + '名单里的已绑定 char 如果和作者不认识，绝对不要出现在互动里；不能是作者本人，也绝对不能是用户本人。'
-            + '如果实在没有任何合理的人可以互动，likes/comments 留空，不要硬凑。\n'
-            + '只输出一个 JSON 数组，不要多余内容：[{"author":"发动态的人名（必须是：' + authorNames + '之一）","text":"动态文案","wantImage":true 或 false,"imagePrompt":"若想配图，描述这张照片的画面；不配图则留空","location":"地点或空字符串","likes":["点赞者名字"],"comments":[{"user":"评论者名字","toUser":"回复对象名字，没有就留空","text":"评论内容"}]}]';
+            + '【重要 · 朋友圈不是聊天】这是发在朋友圈的动态，不是私聊：不要对任何人说话，不要提问，不要出现「你要不要/你去吗/在吗/一起吃吗」这类约人或聊天的语气；只分享自己的日常与心情。禁止 AI 腔、禁止解释、禁止出戏。\n'
+            + '【互动规则】每条必须写 2~4 个点赞、2~4 条评论。点赞者/评论者只能是作者生活里真实存在的同学、朋友、同事、家人、邻居等 NPC（可以虚构真实完整姓名），可以是动态作者/评论区里的人。'
+            + '绝对不能是作者本人，也不能是用户本人；绝对不能让任何普通 char 点赞或评论另一个 char。\n'
+            + '只输出一个 JSON 数组，不要多余内容：[{"author":"发动态的人名（优先使用名单里的名字，不足时可是合理 NPC）","text":"动态文案","wantImage":true 或 false,"imagePrompt":"若想配图，描述这张照片的画面；不配图则留空","location":"地点或空字符串","likes":["点赞者名字"],"comments":[{"user":"评论者名字","toUser":"回复对象名字，没有就留空","text":"评论内容"}]}]';
         try { if (window.NanoPrompts && NanoPrompts.appendTo) sys = NanoPrompts.appendTo(sys, 'moments', { keepFormat: true }); } catch (e) {}
         const userMsg = '【朋友圈成员与人设】\n' + authorInfo + '\n\n'
             + (mem ? ('【最近发生的事】\n' + mem + '\n\n') : '')
             + '【现在】' + timeStr + '（' + uName + '在他们的好友里，但朋友圈动态不是说给 ' + uName + ' 听的，只是他们各自的日常分享）。'
-            + '请在同一个 JSON 数组里，为其中 2~3 个人各输出一条自然、具体、不流水账的朋友圈动态。';
+            + '请输出 ' + totalPosts + ' 条自然、具体、不流水账的朋友圈动态，每条都带点赞和评论互动。';
         suppressApiAlerts = true;
         let content = null;
-        try { content = await callMainApiRaw([{ role: 'system', content: sys }, { role: 'user', content: userMsg }], 2200, 0.95); }
+        try { content = await callMainApiRaw([{ role: 'system', content: sys }, { role: 'user', content: userMsg }], 3600, 0.95); }
         catch (e) {} finally { suppressApiAlerts = false; }
         if (!content) return null;
         let arr = null;
@@ -6454,7 +6546,7 @@
             if (oi > -1 && oj > oi) { try { arr = [JSON.parse(content.slice(oi, oj + 1))]; } catch (e) {} }
         }
         if (!Array.isArray(arr)) return null;
-        arr = filterMomentInteractionsByGraph(arr.filter(function (o) { return o && o.text; }).slice(0, 4), authors);
+        arr = filterMomentInteractionsByGraph(arr.filter(function (o) { return o && o.text; }).slice(0, 5), authors);
         return arr.length ? { items: arr, authors: authors } : null;
     }
     // 兜底：如果模型没在朋友圈 JSON 里写互动，再单独补一次点赞/评论。
@@ -6462,31 +6554,42 @@
     async function fillAutoMomentInteractions(posts, authors) {
         try {
             if (!posts || !posts.length) return;
-            if (posts.every(function (p) { return p.comments && p.comments.length; })) return;
+            // 每条动态都要有点赞和评论；缺任意一项就补生成。
+            if (posts.every(function (p) { return p.comments && p.comments.length && p.likes && p.likes.length; })) return;
             const names = authors.map(function (a) { return a.name; }).filter(Boolean);
-            if (!names.length) return;
             const sys = '你是朋友圈互动生成器。根据每条动态的作者和内容，生成像真人一样的点赞和评论。评论要短、口语、碎片化，像随手打字：可以只回“哈哈哈”“？”“好家伙”、玩梗、损一句或问一个具体细节；不要长评、客服腔和升华总结。\n'
-                + '只输出一个 JSON 数组，不要多余内容：[{"index":0,"likes":["点赞者名字"],"comments":[{"user":"评论者名字","toUser":"回复对象名字，没有就留空","text":"评论内容"}]}]\n'
-                + '评论者/点赞者优先从这些名字里选：' + names.join('、') + '；也可以写名单外合理的同学/朋友/同事 NPC。不要用动态作者本人点赞，绝对不能出现用户本人。\n'
-                + '名单里的已绑定 char，只有和作者明确认识（角色关系/悄悄话记录）才能点赞或评论；不认识的 char 直接跳过。'
-                + '如果某条动态没有任何合理的人，likes/comments 留空，不要硬凑。';
+                + '【最高优先级】任何 char 之间都绝对不允许互相评论、回复、点赞；char 动态的评论区只能出现 NPC。\n'
+                + '每条动态必须生成 2~4 个点赞和 2~4 条评论，不能留空。点赞者/评论者只能是作者生活里的同学、朋友、同事、家人、邻居等 NPC，可以虚构真实完整姓名；不能是作者本人，绝对不能出现用户本人。\n'
+                + '只输出一个 JSON 数组，不要多余内容：[{"index":0,"likes":["点赞者名字"],"comments":[{"user":"评论者名字","toUser":"回复对象名字，没有就留空","text":"评论内容"}]}]';
             const userMsg = posts.map(function (p, i) {
                 return (i + 1) + '. 作者：' + p.author + '\n内容：' + String(p.text || '').slice(0, 220);
-            }).join('\n\n') + '\n\n请为每一段生成互动（index 从 0 开始）。';
+            }).join('\n\n') + '\n\n请为每一段生成 2~4 个点赞和 2~4 条评论（index 从 0 开始）。';
             suppressApiAlerts = true;
             let content = null;
-            try { content = await callMainApiRaw([{ role: 'system', content: sys }, { role: 'user', content: userMsg }], 900, 0.9); }
+            try { content = await callMainApiRaw([{ role: 'system', content: sys }, { role: 'user', content: userMsg }], 1800, 0.9); }
             catch (e) {} finally { suppressApiAlerts = false; }
             if (!content) return;
             let arr = null;
             const ai = content.indexOf('['), aj = content.lastIndexOf(']');
             if (ai > -1 && aj > ai) { try { arr = JSON.parse(content.slice(ai, aj + 1)); } catch (e) {} }
             if (!Array.isArray(arr)) return;
-            const pick = function (raw) {
-                const n = String(raw == null ? '' : raw).trim();
-                if (!n) return '';
-                if (names.indexOf(n) > -1) return n;
-                return names.find(function (x) { return x && (x.indexOf(n) > -1 || n.indexOf(x) > -1); }) || '';
+            const userName = momentCurrentUserName();
+            const pick = function (raw, authorName) {
+                let n = String(raw == null ? '' : raw).trim().replace(/^@/, '');
+                if (!n || n === '用户' || n === '我') return '';
+                if (momentNameKey(n) === momentNameKey(userName)) return '';
+                if (authorName && momentNameKey(n) === momentNameKey(authorName)) return '';
+                // 名单里的角色名做一次模糊匹配；名单外的 NPC/小号名字原样保留。
+                const exact = names.find(function (x) { return momentNameKey(x) === momentNameKey(n); });
+                if (exact) return exact;
+                return n;
+            };
+            const pickTarget = function (raw) {
+                const n = String(raw == null ? '' : raw).trim().replace(/^@/, '');
+                if (!n || n === '用户' || n === '我') return '';
+                if (momentNameKey(n) === momentNameKey(userName)) return '';
+                const exact = names.find(function (x) { return momentNameKey(x) === momentNameKey(n); });
+                return exact || n;
             };
             const changed = [];
             arr.forEach(function (o, fallbackIndex) {
@@ -6495,16 +6598,16 @@
                 if (!p || !o) return;
                 const likes = [];
                 (Array.isArray(o.likes) ? o.likes : []).forEach(function (raw) {
-                    const n = pick(raw);
-                    if (n && n !== p.author && likes.indexOf(n) < 0) likes.push(n);
+                    const n = pick(raw, p.author);
+                    if (n && likes.indexOf(n) < 0) likes.push(n);
                 });
                 const comments = [];
                 (Array.isArray(o.comments) ? o.comments : []).forEach(function (c) {
                     if (!c || typeof c !== 'object') return;
-                    const u = pick(c.user || c.name || c.author);
+                    const u = pick(c.user || c.name || c.author, p.author);
                     const txt = String(c.text || c.content || '').trim();
                     if (!u || !txt) return;
-                    comments.push({ user: u, toUser: pick(c.toUser || c.replyTo || c.to), text: txt.slice(0, 120) });
+                    comments.push({ user: u, toUser: pickTarget(c.toUser || c.replyTo || c.to), text: txt.slice(0, 120) });
                 });
                 if (likes.length) p.likes = likes;
                 if (comments.length) p.comments = comments.slice(0, 8);
@@ -6519,64 +6622,89 @@
 
     async function ensureAutoInteractions(posts, names) {
         const fallbackComments = ['这条也太真实了', '哈哈哈哈', '我也想去', '注意休息呀', '好看', '下次带我'];
+        const pool = (names || []).map(function (n) { return String(n || '').trim(); }).filter(Boolean);
         for (let pi = 0; pi < (posts || []).length; pi++) {
             const p = posts[pi];
             if (!p) continue;
-            const SG = window.NanoSocialGraph;
-            const authorObj = socialCharByName(p.author, allCharacters);
-            const others = (names || []).filter(function (n) {
-                if (!n || n === p.author || !SG || !authorObj) return false;
-                const c = socialCharByName(n, allCharacters);
-                return !!(c && (SG.knowsStrict || SG.knows)(authorObj, c));
-            });
+            const others = pool.filter(function (n) { return momentNameKey(n) !== momentNameKey(p.author); });
             let touched = false;
-            if ((!p.likes || !p.likes.length) && others.length) {
-                p.likes = others.slice(0, Math.min(2, others.length));
-                touched = true;
+            if (!Array.isArray(p.likes)) p.likes = [];
+            for (let li = 0; li < others.length && p.likes.length < 2; li++) {
+                if (!p.likes.some(function (x) { return momentNameKey(x) === momentNameKey(others[li]); })) {
+                    p.likes.push(others[li]); touched = true;
+                }
             }
-            if ((!p.comments || !p.comments.length) && others.length) {
-                p.comments = [{
-                    user: others[0], toUser: '',
-                    text: fallbackComments[(pi + String(p.author || '').length) % fallbackComments.length]
-                }];
+            if (!Array.isArray(p.comments)) p.comments = [];
+            for (let ci = 0; ci < others.length && p.comments.length < 2; ci++) {
+                const who = others[(pi + ci) % others.length];
+                if (!who) continue;
+                if (p.comments.some(function (c) { return c && momentNameKey(c.user) === momentNameKey(who); })) continue;
+                p.comments.push({
+                    user: who, toUser: '',
+                    text: fallbackComments[(pi + ci + String(p.author || '').length) % fallbackComments.length]
+                });
                 touched = true;
             }
             if (touched) { try { await saveMomentPost(p); } catch (e) {} }
         }
     }
 
-    // 批量写入朋友圈：一次 API 调用让 3~4 位角色/NPC 各发一条，时间错开
+    // 单条动态也要补齐点赞/评论（主动单发、照片动态都走这里）
+    async function completeAutoMoment(post, authors) {
+        try { await fillAutoMomentInteractions([post], authors); } catch (e) {}
+        try {
+            const npcNames = collectMomentNpcNames([post], authors);
+            await ensureAutoInteractions([post], npcNames);
+        } catch (e) {}
+    }
+
+    // 批量写入朋友圈：一次 API 调用让 3~5 位角色/NPC 各发一条，时间错开
     async function postAutoMomentBatch() {
         if (isProcessingApi) return;
         isProcessingApi = true;
         try {
             const batch = await generateAutoMomentBatch();
             if (!batch || !batch.items || !batch.items.length) return;
-            // 后台一次最多 3 个角色发动态，避免刷屏
-            const arr = batch.items.slice(0, 3), authors = batch.authors;
+            // 一次最多 5 条动态，避免刷屏
+            const arr = batch.items.slice(0, 5), authors = batch.authors;
             const allowMomentImage = getChatSetting('allowMomentImage', false);
             const nowMs = Date.now();
-            const authorNames = authors.map(function (a) { return a.name; });
-            const authorSet = {};
-            authorNames.forEach(function (n) { authorSet[n] = true; });
-            const pickName = function (raw) {
-                var n = String(raw == null ? '' : raw).trim();
-                if (!n) return '';
-                if (authorSet[n]) return n;
-                return authorNames.find(function (x) { return x && (x.indexOf(n) > -1 || n.indexOf(x) > -1); }) || '';
+            const uName = momentCurrentUserName();
+            const plainChars = momentPlainCharMap();
+            const canonicalName = function (n) {
+                const c = socialCharByName(n, allCharacters);
+                return c && c.name ? c.name : n;
+            };
+            const pickName = function (raw, authorName) {
+                let n = String(raw == null ? '' : raw).trim().replace(/^@/, '');
+                if (!n || n === '用户' || n === '我') return '';
+                const key = momentNameKey(n);
+                if (key === momentNameKey(uName)) return '';
+                if (authorName && key === momentNameKey(authorName)) return '';
+                if (plainChars[key]) return '';        // 普通 char 绝不参与互动
+                return canonicalName(n);
+            };
+            const pickTarget = function (raw, authorName) {
+                let n = String(raw == null ? '' : raw).trim().replace(/^@/, '');
+                if (!n || n === '用户' || n === '我') return '';
+                const key = momentNameKey(n);
+                if (key === momentNameKey(uName)) return '';
+                if (plainChars[key] && key !== momentNameKey(authorName)) return '';
+                return canonicalName(n);
             };
             const created = [];
             for (let k = 0; k < arr.length; k++) {
                 const obj = arr[k];
                 const au = momentAuthorByName(obj.author, authors);
+                if (!au || momentNameKey(au.name) === momentNameKey(uName)) continue;
                 const wantImage = !!obj.wantImage;
                 const imgPrompt = String(obj.imagePrompt || obj.text || '').trim();
-                // 点赞 / 评论：只接受本次朋友圈成员，绝不把用户本人写进互动。
+                // 点赞 / 评论：只接受 NPC 名字，绝不把用户/其他 char 写进互动。
                 const likes = [];
                 const rawLikes = Array.isArray(obj.likes) ? obj.likes : (Array.isArray(obj.likedBy) ? obj.likedBy : String(obj.likes || obj.likedBy || '').split(/[,，、;；\/]/));
                 rawLikes.forEach(function (raw) {
-                    var n = pickName(raw);
-                    if (n && n !== au.name && likes.indexOf(n) < 0) likes.push(n);
+                    var n = pickName(raw, au.name);
+                    if (n && likes.indexOf(n) < 0) likes.push(n);
                 });
                 const comments = [];
                 const rawComments = Array.isArray(obj.comments) ? obj.comments : (Array.isArray(obj.commentList) ? obj.commentList : []);
@@ -6586,17 +6714,12 @@
                         var parts = c.split(/[|｜]/);
                         if (parts.length >= 2) c = { user: parts[0], toUser: parts.length >= 3 ? parts[1] : '', text: parts.length >= 3 ? parts.slice(2).join('|') : parts[1] };
                     }
-                    var u = pickName(c.user || c.name || c.author);
+                    var u = pickName(c.user || c.name || c.author, au.name);
                     var txt = c.text || c.content || c.comment || c.message || '';
                     if (!u || !String(txt).trim()) return;
-                    var to = pickName(c.toUser || c.replyTo || c.to || c.target);
+                    var to = pickTarget(c.toUser || c.replyTo || c.to || c.target, au.name);
                     comments.push({ user: u, toUser: to, text: String(txt).trim().slice(0, 120) });
                 });
-                // 模型偶尔漏写点赞：用其他成员补 1~2 个，保证动态至少有点赞。
-                if (!likes.length) {
-                    var pool = authorNames.filter(function (n) { return n !== au.name; });
-                    for (var li = 0; li < Math.min(2, pool.length); li++) likes.push(pool[li]);
-                }
                 const post = {
                     id: 'auto_' + (nowMs + k) + '_' + Math.random().toString(36).slice(2, 5),
                     author: au.name,
@@ -6622,10 +6745,14 @@
                 await saveMomentPost(post);
                 created.push(post);
             }
-            // 模型没给评论时，补一次互动生成，保证主动朋友圈有点赞/评论；
-            // 如果补生成也失败，再用同批角色补一个兜底互动，绝不留空评论区。
+            if (!created.length) return;
+            // 模型没给评论/点赞时，补一次互动生成；仍然缺失就用本批出现的 NPC 补齐。
+            // 绝不使用其他 char 来补互动。
             try { await fillAutoMomentInteractions(created, authors); } catch (e) {}
-            try { await ensureAutoInteractions(created, authors.map(function (a) { return a.name; })); } catch (e) {}
+            try {
+                const npcNames = collectMomentNpcNames(created, authors);
+                await ensureAutoInteractions(created, npcNames);
+            } catch (e) {}
             recordAutoMomentTime();
             try { if (window.parent !== window) window.parent.postMessage({ type: 'momentsDataUpdated' }, '*'); } catch (e) {}
             // 通知只弹一条
@@ -6671,6 +6798,7 @@
             if (wantImage && (!post.images || !post.images.length)) post.imageText = imgPrompt;
             post.maskId = getCurrentMaskId();
             await saveMomentPost(post);
+            await completeAutoMoment(post, [{ id: chatId, name: post.author, avatar: post.avatar || '' }]);
             recordAutoMomentTime();
             try { if (window.parent !== window) window.parent.postMessage({ type: 'momentsDataUpdated' }, '*'); } catch (e) {}
             // 通知统一走 NANO_GEN_NOTIFY（前台=应用内粉色横幅，后台=系统通知），
@@ -6713,6 +6841,7 @@
             if (!post.images || !post.images.length) post.imageText = prompt;
             post.maskId = getCurrentMaskId();
             await saveMomentPost(post);
+            await completeAutoMoment(post, [{ id: chatId, name: post.author, avatar: post.avatar || '' }]);
             recordAutoMomentTime();
             try { if (window.parent !== window) window.parent.postMessage({ type: 'momentsDataUpdated' }, '*'); } catch (e) {}
             try { if (window.parent !== window) window.parent.postMessage({ type: 'NANO_GEN_NOTIFY', title: '新照片', body: (displayName || '') + '：' + cap.slice(0, 40), avatar: String(post.avatar || avatarSrc || ''), name: displayName || '朋友圈', target: 'moments' }, '*'); } catch (e) {}
@@ -6793,6 +6922,8 @@
     // ===== 聊天中偶尔主动发一张照片（像现实情侣随手分享，不用对方开口要）=====
     let proactivePhotoTimer = null;
     async function generateChatPhotoIdea() {
+        // 深度/情绪对话里不主动发图：这时任何自拍都像敷衍或跑题。
+        if (isDeepTalkNow()) return null;
         const setting = characterData ? (characterData.setting || characterData.desc || characterData.persona || '') : '';
         const uName = (currentUser && currentUser.name) || currentUserName || '用户';
         let recent = '';
@@ -6813,6 +6944,7 @@
         const sys = '你是「' + (displayName || charName || '角色') + '」，一个真实的人，正在过自己的生活。'
             + '只有当你此刻真的在做某件值得分享的事（例如在看电影、在外面吃饭、和朋友玩、在逛街、在家做饭、看到好看的风景或有趣的东西…），才顺手拍一张发给对方分享，像现实里的情侣/好朋友那样。'
             + '照片必须和你正在做的事、你们最近的聊天以及此刻的时间情境强相关；绝不能凭空发一张和上下文无关、没有信息量的图。'
+            + '对方正在和你聊认真、情绪化或很私人的事时，绝对不要发自拍、人像或无关照片来回应；这种时候照片只会打断对话。'
             + '重要：大多数普通的聊天（对方只是随口找你说句话、你也没在做什么特别的事）就不要发照片。只有少数情况下，你确实身处一个具体场景、并且真的很想分享时，才发。把 imagePrompt 留空也没关系——**绝对不要为了发图而发图**（系统看到 imagePrompt 为空就不会发送）。'
             + 'message 要像真人发微信：拆成 1~3 条很短的句子，每条独占一行（先说你正在做什么/看到了什么，再自然带出照片），不要堆成一大段。'
             + 'confidence 必须是 0~1 的小数；低于 0.7 说明这张图和上下文不够相关，就不要发图。'
@@ -6837,6 +6969,9 @@
         const ai = content.indexOf('{'), aj = content.lastIndexOf('}');
         if (ai > -1 && aj > ai) { try { obj = JSON.parse(content.slice(ai, aj + 1)); } catch (e) {} }
         if (!obj || !obj.imagePrompt || /^(null|none|空|无)$/i.test(String(obj.imagePrompt).trim())) return null;
+        // 情绪对话中拒绝自拍/人像：哪怕模型硬生成，也不发。
+        const __imgDesc = String(obj.imagePrompt || '');
+        if (isDeepTalkNow() && /(自拍|人像|肖像|正脸|侧脸|全身照|半身照|写真|对镜|selfie|portrait)/i.test(__imgDesc)) return null;
         // 必须能指回最近聊天里的具体一句话；否则就是“凭空生图”，直接放弃。
         const anchor = String(obj.anchor || '').trim().replace(/^[「“"]|[」”"]$/g, '');
         const conf = Number(obj.confidence);
@@ -6891,6 +7026,8 @@
     function maybeScheduleProactivePhoto() {
         try {
             if (isNanoChat || proactivePhotoTimer) return;
+            // 情绪/深度对话中不打断，不主动发自拍。
+            if (isDeepTalkNow()) return;
             const ai = getChatSetting('allowImage', false);
             if (!(ai === true || ai === 'true' || ai === 1 || ai === '1')) return;
             const soc = getChatSetting('autoSocial', false);
@@ -7832,6 +7969,24 @@
     }
 
     // ===== 组合生图提示词 =====
+    // 普通生图也要参照最近几轮对话，而不是只画最后一句话。
+    function recentImageContext(excludeText) {
+        try {
+            const arr = [];
+            const ex = String(excludeText || '').trim();
+            for (let i = messages.length - 1; i >= 0 && arr.length < 6; i--) {
+                const m = messages[i];
+                if (!m || m.recalled || m.isCard || m.isImage || m.type === 'system') continue;
+                if (m.cardData && m.cardData.systemNotice) continue;
+                const t = String(m.text || m.transcript || '').trim();
+                if (!t || (ex && t === ex)) continue;
+                const who = m.type === 'right' ? '对方' : (m.name || chatName || '我');
+                arr.push(who + '：' + t.replace(/\s+/g, ' ').slice(0, 160));
+            }
+            return arr.reverse().join('\n');
+        } catch (e) { return ''; }
+    }
+
     function buildImagePrompt(desc) {
         const basePrompt = getChatSetting('imagePrompt', '') || '';
         const descText = String(desc || '').trim();
@@ -7872,6 +8027,8 @@
         if (faceNote) parts.push(faceNote);
         if (!sceneOnly) parts.push(angleNote);
         if (sceneOnly) parts.push(sceneNote);
+        const ctx = recentImageContext(descText);
+        if (ctx) parts.push('【最近的对话上下文，只用于画面参考】\n' + ctx);
         if (descText) parts.push(descText);
         return parts.join('\n');
     }
@@ -7955,6 +8112,16 @@
         if (!imgModel) {
             throw new Error('未配置生图模型');
         }
+        // 普通生图也读取 API 里的正面 / 反面提示词（画师串）。NAI 的反面词单独传，
+        // 普通模型多数忽略 negative_prompt，所以把反面词并进正面提示词。
+        let imagePresets = { prompt: prompt, positive: '', negative: '' };
+        const isNaiImageModel = /(?:^|[^a-z])(?:nai|novelai)/i.test(imgModel) || /novelai/i.test(imgUrl);
+        try {
+            if (window.NanoImagePrompt && NanoImagePrompt.augment) {
+                imagePresets = await NanoImagePrompt.augment(prompt, { appendNegative: !isNaiImageModel });
+                prompt = imagePresets.prompt;
+            }
+        } catch (e) {}
         const registerImage = async function (u) {
             // 临时 URL 先抓成本地 dataURL，避免几天后过期变问号/被系统清掉。
             try {
@@ -7972,6 +8139,8 @@
             try { faceRef = (await localforage.getItem('chat_setting_faceRef_' + chatId)) || ''; } catch (e) {}
         }
         let body = { model: imgModel, prompt: prompt, n: 1, size: '1024x1024' };
+        // 普通模型的反面词已经并进 prompt；negative_prompt 只给 NAI，避免严格 OpenAI 站拒绝未知字段。
+        if (imagePresets.negative && isNaiImageModel) body.negative_prompt = imagePresets.negative;
         // 合照锁脸：只对「合照 / 合影 / 同框 / 双人」生效，普通单人图完全不碰。
         const coupleMode = String(getChatSetting('coupleFaceMode', 'none') || 'none');
         if (coupleMode !== 'none' && isCouplePhotoPrompt(prompt)) {
@@ -8046,6 +8215,7 @@
                 fd.append('prompt', prompt);
                 fd.append('n', '1');
                 fd.append('size', '1024x1024');
+                if (imagePresets.negative && isNaiImageModel) fd.append('negative_prompt', imagePresets.negative);
                 fd.append('image', new Blob([u8], { type: mime }), 'face.png');
                 const editResp = await fetch(baseUrl + '/images/edits', {
                     method: 'POST',
@@ -8710,6 +8880,11 @@
                         .replace(/\{\{char\}\}/g, displayName || chatName || '角色')
                         .replace(/\{\{user\}\}/g, currentUserName || '用户');
                 }
+            } catch (e) {}
+            // 深度对话动态块：放在角色扮演模板之后，确保不被后续大段规则稀释。
+            try {
+                const __deepTalk = deepTalkPromptBlock();
+                if (__deepTalk) __sys += '\n\n' + __deepTalk;
             } catch (e) {}
             // 重roll 纠正：本轮只生效一次，直接追加在系统提示最后，确保模型优先读到
             try {
@@ -9973,21 +10148,24 @@
                             addMessage('left', '', timeStr, null, false, false, null, null, null,
                                 null, false, null, true, { textImage: true, desc: tag.payload || '' });
                         } else if (tag.kind === 'image') {
-                            const imgPrompt = buildImagePrompt(tag.payload || '一张图片');
-                            const allowImage = getChatSetting('allowImage', false);
-                            if (allowImage) {
-                                try {
-                                    const realUrl = await generateImage(imgPrompt);
-                                    addMessage('left', '', timeStr, null, false, false, null, null, null,
-                                        null, false, null, true, { url: realUrl, desc: tag.payload || '', genPrompt: tag.payload || '' });
-                                } catch (imgErr) {
-                                    // 生图失败：自动退化成文字图，别让角色「发不出图」
+                            // 情绪/深度对话中模型仍偶尔硬塞自拍：这里直接丢弃，避免答非所问。
+                            if (!isDeepTalkNow()) {
+                                const imgPrompt = buildImagePrompt(tag.payload || '一张图片');
+                                const allowImage = getChatSetting('allowImage', false);
+                                if (allowImage) {
+                                    try {
+                                        const realUrl = await generateImage(imgPrompt);
+                                        addMessage('left', '', timeStr, null, false, false, null, null, null,
+                                            null, false, null, true, { url: realUrl, desc: tag.payload || '', genPrompt: tag.payload || '' });
+                                    } catch (imgErr) {
+                                        // 生图失败：自动退化成文字图，别让角色「发不出图」
+                                        addMessage('left', '', timeStr, null, false, false, null, null, null,
+                                            null, false, null, true, { textImage: true, desc: tag.payload || '' });
+                                    }
+                                } else {
                                     addMessage('left', '', timeStr, null, false, false, null, null, null,
                                         null, false, null, true, { textImage: true, desc: tag.payload || '' });
                                 }
-                            } else {
-                                addMessage('left', '', timeStr, null, false, false, null, null, null,
-                                    null, false, null, true, { textImage: true, desc: tag.payload || '' });
                             }
                         } else if (tag.kind === 'creategroup') {
                             createGroupFromTag(tag.payload);
@@ -11470,6 +11648,7 @@
                     avatar: String(c.avatar || ''),
                     setting: String(c.setting || c.desc || c.persona || ''),
                     isNpc: !!c.isNpc,
+                    isAltProbe: !!c.isAltProbe,
                     nationality: nat,
                     language: String(c.language || ''),
                     foreign: foreign,

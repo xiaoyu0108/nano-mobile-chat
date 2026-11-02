@@ -341,7 +341,13 @@
 
   function generateImage(prompt, opts) {
     opts = opts || {};
-    return getApiConfig().then(function (cfg) {
+    // 普通生图也读取 API 的正面 / 反面提示词（画师串），不只 NAI 才用。
+    var presetP = (window.NanoImagePrompt && NanoImagePrompt.augment)
+      ? NanoImagePrompt.augment(prompt, { appendNegative: true }).catch(function () { return { prompt: prompt, negative: '' }; })
+      : Promise.resolve({ prompt: prompt, negative: '' });
+    return presetP.then(function (presets) {
+      prompt = presets.prompt;
+      return getApiConfig().then(function (cfg) {
       if (!cfg) throw new Error('未配置 API');
       var rawUrl = String(cfg.imgUrl || '').trim();
       var key = String(cfg.imgKey || '').trim();
@@ -375,6 +381,7 @@
         } catch (e) {}
       }
       return generateImageJson(base, key, model, prompt, size, faceRef);
+      });
     });
   }
   function generateImageJson(base, key, model, prompt, size, faceRef) {

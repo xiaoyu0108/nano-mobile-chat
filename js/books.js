@@ -119,7 +119,22 @@ async function loadRuntimeData(){
   // ---- 2. 角色 ----
   const allChars = await nanoGetAll('nano_characters_db','characters');
   const maskId = runtime.mask ? runtime.mask.id : null;
-  runtime.characters = allChars.filter(c => (c.bindUser===maskId || c.isNpc===true) && !c.nanoAssistant);
+  // 严格按当前 user 隔离：绑定了当前 user 的普通角色 / NPC / 小号都可用，
+  // 绑定其他 user 的 NPC 不能因为 isNpc 被放进来。
+  function belongs(c){
+    if(!c || c.nanoAssistant) return false;
+    if(maskId == null) return true;
+    if(c.bindUser != null && String(c.bindUser) !== '') return String(c.bindUser) === String(maskId);
+    if(c.isAltProbe){
+      if(c.altOriginId){
+        const origin = allChars.find(x => x && String(x.id) === String(c.altOriginId));
+        if(origin && origin.bindUser != null && String(origin.bindUser) !== '') return String(origin.bindUser) === String(maskId);
+      }
+      return true;
+    }
+    return true;
+  }
+  runtime.characters = allChars.filter(belongs);
 
   // ---- 3. 世界书 ----
   try{

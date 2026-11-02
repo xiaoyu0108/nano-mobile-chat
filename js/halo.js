@@ -3248,7 +3248,15 @@ const HaloData = (() => {
     return (chars || []).filter((c) => {
       if (!c || c.nanoAssistant) return false;
       if (maskId == null) return true; // 还没有任何 user 时不做隔离
-      return String(c.bindUser) === String(maskId);
+      if (c.bindUser != null && String(c.bindUser) !== '') return String(c.bindUser) === String(maskId);
+      if (c.isAltProbe) {
+        if (c.altOriginId) {
+          const origin = (chars || []).find((x) => x && String(x.id) === String(c.altOriginId));
+          if (origin && origin.bindUser != null && String(origin.bindUser) !== '') return String(origin.bindUser) === String(maskId);
+        }
+        return true;
+      }
+      return true;
     });
   }
 
