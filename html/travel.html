@@ -154,10 +154,10 @@ svg{display:block}
 .quick button .ico{width:16px;height:16px}
 .quick button:active{background:#f7f7f8}
 .invite-box{border:1px solid var(--line2);border-radius:18px;padding:14px 14px 4px;margin-bottom:12px}
-.invite-box .rowline{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
+.invite-box .rowline{display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--line)}
 .invite-box .rowline:first-child{border-top:0}
 .invite-box label{font-size:12px;color:var(--ink3);flex:none;width:56px}
-.invite-box .inp{border:0;padding:4px 0;border-radius:0}
+.invite-box .inp{border:0;padding:4px 0;border-radius:0;flex:1;min-width:0;width:auto;background:transparent}
 .share-char{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
 .share-char::-webkit-scrollbar{display:none}
 .share-char button{flex:none;display:flex;flex-direction:column;align-items:center;gap:5px;min-width:58px;font-size:10.5px;color:var(--ink3);background:none;border:0;padding:0}
@@ -721,6 +721,22 @@ function syncArrays(){
   TravelStore.listUserTrips(uidv).forEach(t=>trips.push(mapTrip(t,'me')));
   TravelStore.listTogether(uidv, CHAR.id).forEach(p=>together.push(mapTogether(p)));
 }
+async function refreshTravelFromStore(){
+  try{
+    await TravelStore.load(true);
+    syncArrays();
+    render();
+  }catch(e){}
+}
+window.addEventListener('message', function(e){
+  var d=e&&e.data;
+  if(d&&(d.type==='nanoTravelCardAdded'||d.type==='nanoTravelUpdated'||d.type==='nanoTravelReportPending')){
+    refreshTravelFromStore();
+  }
+});
+document.addEventListener('visibilitychange', function(){
+  if(document.visibilityState==='visible') refreshTravelFromStore();
+});
 async function selectChar(c, silent){
   if(!c) return;
   CHAR = c; CHAR_NAME = c.name || 'TA'; ME_NAME = (MASK && MASK.name) || '我';
@@ -1076,7 +1092,10 @@ document.addEventListener('click', async e=>{
   }
 });
 
+/* 先渲染一次选择页，避免角色/面具读取较慢时整页空白 */
+try{ render(); }catch(e){}
 loadApp().catch(()=>{ render(); toast('旅途加载失败，请重试'); });
+setTimeout(()=>{ try{ const v=$('#view'); if(v && !v.innerHTML.trim()) render(); }catch(e){} }, 1600);
 </script>
 </body>
 </html>

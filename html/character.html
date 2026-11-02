@@ -49,7 +49,7 @@
 
     </div>
 
-    <!-- ===== 点击右上角 @ 展开的三个操作按钮 ===== -->
+    <!-- ===== 点击右上角 @ 展开的操作按钮 ===== -->
     <div class="scrim" id="railScrim"></div>
     <nav class="rail" id="bottomActions" aria-label="操作">
         <span class="lens" id="railLens"></span>
@@ -59,11 +59,17 @@
                 <path d="M17.8 3.7a1.8 1.8 0 0 1 2.5 2.5L12 14.5l-3.4.9.9-3.4z"/>
             </svg>
         </button>
-        <button class="action-btn import-btn" id="importPngBtn" title="导入酒馆PNG" aria-label="导入 PNG">
+        <button class="action-btn import-btn" id="importPngBtn" title="导入酒馆 PNG" aria-label="导入酒馆 PNG">
             <svg viewBox="0 0 24 24">
                 <path d="M12 15V4"/>
                 <path d="M7.5 8.5 12 4l4.5 4.5"/>
                 <path d="M4.5 14v4.5a1.5 1.5 0 0 0 1.5 1.5h12a1.5 1.5 0 0 0 1.5-1.5V14"/>
+            </svg>
+        </button>
+        <button class="action-btn import-nano-btn" id="importNanoPngBtn" title="导入 Nano 票根" aria-label="导入 Nano 票根">
+            <svg viewBox="0 0 24 24">
+                <path d="M3 9a2 2 0 0 0 0 6v3a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-3a2 2 0 0 1 0-6V6a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1z"/>
+                <path d="M14 5v14" stroke-dasharray="2 2.5"/>
             </svg>
         </button>
         <button class="action-btn add-btn" id="addBtn" title="新增角色" aria-label="新增角色">
@@ -195,6 +201,7 @@
     <!-- 隐藏 input -->
     <input type="file" class="file-input-hidden" id="fileInput" accept=".txt,.doc,.docx">
     <input type="file" class="file-input-hidden" id="importPngFileInput" accept=".png,image/png">
+    <input type="file" class="file-input-hidden" id="importNanoPngFileInput" accept=".png,image/png">
 </div>
 
 <script src="../js/avatar-crop.js?v=20261025b"></script>

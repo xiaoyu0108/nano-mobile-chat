@@ -811,6 +811,8 @@
     const importBtn = document.getElementById('importBtn');
     const importPngBtn = document.getElementById('importPngBtn');
     const importPngFileInput = document.getElementById('importPngFileInput');
+    const importNanoPngBtn = document.getElementById('importNanoPngBtn');
+    const importNanoPngFileInput = document.getElementById('importNanoPngFileInput');
     const exportTicketBtn = document.getElementById('exportTicketBtn');
 
     // ===== 头像弹窗 DOM =====
@@ -1391,6 +1393,91 @@
         if (e.target === avatarModal) closeAvatarModal();
     });
 
+    // ===== 角色卡 PNG：酒馆 / Nano 两种格式隔离 =====
+    const TAVERN_PNG_KEYS = ['ccv3', 'character_card_v3', 'chara', 'character', 'card', 'data', 'json', 'chub', 'character_card'];
+    const NANO_PNG_KEYS = ['nano_card', 'nano_character', 'nano_user'];
+
+    function readPngCardKind(chunks) {
+        const hasNano = NANO_PNG_KEYS.some(function(k) { return !!(chunks && chunks[k]); });
+        const hasTavern = TAVERN_PNG_KEYS.some(function(k) { return !!(chunks && chunks[k]); });
+        if (hasNano && !hasTavern) return 'nano';
+        if (hasTavern) return 'tavern';
+        return hasNano ? 'nano' : '';
+    }
+
+    function parseNanoPngCard(chunks) {
+        for (const k of NANO_PNG_KEYS) {
+            if (!chunks || !chunks[k]) continue;
+            const parsed = parseLooseJson(chunks[k]);
+            if (!parsed) continue;
+            const dataObj = parsed.data || parsed;
+            const nano = dataObj.nano || (dataObj.extensions && dataObj.extensions.nano) ||
+                parsed.nano || (parsed.extensions && parsed.extensions.nano) || null;
+            if (!nano || (nano.format && nano.format !== 'nano_card_v1')) continue;
+            return parsed;
+        }
+        return null;
+    }
+
+    async function applyImportedCharacter(parsed, arrayBuffer, fileType) {
+        if (parsed.nanoKind === 'user') {
+            showInfo('这是用户人设票根', '这张票根是「用户人设」，请到人设页面用「导入 PNG」来导入。');
+            return;
+        }
+        const blob = new Blob([arrayBuffer], { type: fileType || 'image/png' });
+        const tempImgUrl = URL.createObjectURL(blob);
+        let compressedAvatar = '';
+        try {
+            compressedAvatar = await compressImage(parsed.avatar || tempImgUrl, 180, 180, 0.7);
+            if (!compressedAvatar && parsed.avatar) {
+                compressedAvatar = await compressImage(tempImgUrl, 180, 180, 0.7);
+            }
+        } catch (e) {
+            try { compressedAvatar = await compressImage(tempImgUrl, 180, 180, 0.7); } catch (e2) { compressedAvatar = ''; }
+        }
+        URL.revokeObjectURL(tempImgUrl);
+
+        if (isEditMode) exitEditMode();
+        openEditModal(null);
+        if (parsed.name) inputName.value = parsed.name;
+        if (parsed.gender) inputGender.value = parsed.gender;
+        if (parsed.nationality) inputNationality.value = parsed.nationality;
+        if (parsed.setting) inputSetting.value = parsed.setting;
+        tempGreetings = Array.isArray(parsed.greetings) ? parsed.greetings.slice() : [];
+        tempAvatar = compressedAvatar;
+        updateAvatarPreview();
+
+        // ⭐ 角色卡自带世界书：自动导入世界书页 + 绑定到当前角色
+        if (Array.isArray(parsed.nanoWorldbooks) && parsed.nanoWorldbooks.length) {
+            for (const nb of parsed.nanoWorldbooks) {
+                if (!nb || !Array.isArray(nb.entries) || !nb.entries.length) continue;
+                const wb = await importEmbeddedWorldbook({
+                    name: nb.name || parsed.name,
+                    entries: nb.entries,
+                    scope: nb.scope,
+                    group: nb.group
+                });
+                if (wb && !worldbookBindings.some(w => String(w.id) === String(wb.id))) {
+                    worldbookBindings.push({ id: wb.id, group: wb.group || '' });
+                }
+            }
+            renderWorldbookList();
+        } else if (parsed.embeddedWorldbook && parsed.embeddedWorldbook.entries && parsed.embeddedWorldbook.entries.length) {
+            const wb = await importEmbeddedWorldbook(parsed.embeddedWorldbook);
+            if (wb && !worldbookBindings.some(w => w.id === wb.id)) {
+                worldbookBindings.push({ id: wb.id, group: wb.group || '' });
+            }
+            renderWorldbookList();
+        } else if (parsed.matchedWorldbooks && parsed.matchedWorldbooks.length > 0) {
+            parsed.matchedWorldbooks.forEach(wb => {
+                if (!worldbookBindings.some(w => w.id === wb.id)) {
+                    worldbookBindings.push({ id: wb.id, group: wb.group });
+                }
+            });
+            renderWorldbookList();
+        }
+    }
+
     // ===== 事件绑定 =====
     addBtn.addEventListener('click', function(e) {
         e.stopPropagation();
@@ -1448,7 +1535,7 @@
     });
 
     importPngBtn.addEventListener('click', async function() {
-        // 点击导入按钮就先检查设备激活；未激活直接弹激活窗，不打开文件选择
+        // 酒馆 PNG：保留设备激活校验
         let gate = null;
         try { gate = (window.parent && window.parent.NanoImportGate) || window.NanoImportGate; } catch (e) { gate = window.NanoImportGate; }
         if (gate && gate.ensure) {
@@ -1467,75 +1554,28 @@
             showInfo('不支持 JSON', '角色导入只接受 PNG 角色卡。请导入酒馆 PNG，或把设定作为 TXT / DOCX 文本导入。');
             return;
         }
-        // ⭐ pako 按需加载（原为 <head> 阻塞脚本，现改为用到时再加载）
         ensurePako().then(function() {
             const reader = new FileReader();
             reader.onload = async function(ev) {
                 try {
                     const arrayBuffer = ev.target.result;
                     const chunks = readPNGTextChunks(arrayBuffer);
+                    const kind = readPngCardKind(chunks);
+                    if (kind === 'nano') {
+                        showInfo('这是 Nano 票根', '检测到 Nano 专属票根。请使用「导入 Nano 票根」入口，无需审核，可直接导入。');
+                        return;
+                    }
+                    if (kind !== 'tavern') {
+                        showInfo('导入失败', '无法解析此 PNG 图片的数据。请确保它是标准的酒馆角色卡。');
+                        return;
+                    }
                     const cardData = parseCardDataFromChunks(chunks);
                     if (!cardData) {
                         showInfo('导入失败', '无法解析此 PNG 图片的数据。请确保它是标准的酒馆角色卡。');
                         return;
                     }
                     const parsed = parseCardData(cardData);
-                    if (parsed.nanoKind === 'user') {
-                        showInfo('这是用户人设票根', '这张票根是「用户人设」，请到人设页面用「导入 PNG」来导入。');
-                        return;
-                    }
-                    const blob = new Blob([arrayBuffer], { type: file.type });
-                    const tempImgUrl = URL.createObjectURL(blob);
-                    let compressedAvatar = '';
-                    try {
-                        compressedAvatar = await compressImage(parsed.avatar || tempImgUrl, 180, 180, 0.7);
-                        if (!compressedAvatar && parsed.avatar) {
-                            compressedAvatar = await compressImage(tempImgUrl, 180, 180, 0.7);
-                        }
-                    } catch (e) {
-                        try { compressedAvatar = await compressImage(tempImgUrl, 180, 180, 0.7); } catch (e2) { compressedAvatar = ''; }
-                    }
-                    URL.revokeObjectURL(tempImgUrl);
-
-                    if (isEditMode) exitEditMode();
-                    openEditModal(null);
-                    if (parsed.name) inputName.value = parsed.name;
-                    if (parsed.gender) inputGender.value = parsed.gender;
-                    if (parsed.nationality) inputNationality.value = parsed.nationality;
-                    if (parsed.setting) inputSetting.value = parsed.setting;
-                    tempGreetings = Array.isArray(parsed.greetings) ? parsed.greetings.slice() : [];
-                    tempAvatar = compressedAvatar;
-                    updateAvatarPreview();
-
-                    // ⭐ 角色卡自带世界书：自动导入世界书页 + 绑定到当前角色
-                    if (Array.isArray(parsed.nanoWorldbooks) && parsed.nanoWorldbooks.length) {
-                        for (const nb of parsed.nanoWorldbooks) {
-                            if (!nb || !Array.isArray(nb.entries) || !nb.entries.length) continue;
-                            const wb = await importEmbeddedWorldbook({
-                                name: nb.name || parsed.name,
-                                entries: nb.entries,
-                                scope: nb.scope,
-                                group: nb.group
-                            });
-                            if (wb && !worldbookBindings.some(w => String(w.id) === String(wb.id))) {
-                                worldbookBindings.push({ id: wb.id, group: wb.group || '' });
-                            }
-                        }
-                        renderWorldbookList();
-                    } else if (parsed.embeddedWorldbook && parsed.embeddedWorldbook.entries && parsed.embeddedWorldbook.entries.length) {
-                        const wb = await importEmbeddedWorldbook(parsed.embeddedWorldbook);
-                        if (wb && !worldbookBindings.some(w => w.id === wb.id)) {
-                            worldbookBindings.push({ id: wb.id, group: wb.group || '' });
-                        }
-                        renderWorldbookList();
-                    } else if (parsed.matchedWorldbooks && parsed.matchedWorldbooks.length > 0) {
-                        parsed.matchedWorldbooks.forEach(wb => {
-                            if (!worldbookBindings.some(w => w.id === wb.id)) {
-                                worldbookBindings.push({ id: wb.id, group: wb.group });
-                            }
-                        });
-                        renderWorldbookList();
-                    }
+                    await applyImportedCharacter(parsed, arrayBuffer, file.type);
                 } catch(err) {
                     console.error('PNG导入失败:', err);
                     showInfo('导入失败', '解析 PNG 遇到错误: ' + err.message);
@@ -1544,6 +1584,44 @@
             reader.readAsArrayBuffer(file);
         }).catch(function() {
             showInfo('导入失败', 'PNG 解压库加载失败，无法导入酒馆 PNG');
+        });
+    });
+
+    // Nano 票根：不经过酒馆格式解析，也不做设备审核，直接读取 nano_card 数据块
+    importNanoPngBtn.addEventListener('click', function() {
+        importNanoPngFileInput.click();
+    });
+
+    importNanoPngFileInput.addEventListener('change', async function(e) {
+        const file = this.files[0];
+        if (!file) return;
+        importNanoPngFileInput.value = '';
+        ensurePako().then(function() {
+            const reader = new FileReader();
+            reader.onload = async function(ev) {
+                try {
+                    const arrayBuffer = ev.target.result;
+                    const chunks = readPNGTextChunks(arrayBuffer);
+                    const kind = readPngCardKind(chunks);
+                    if (kind !== 'nano') {
+                        showInfo('不是 Nano 票根', '没有检测到 Nano 票根数据。酒馆角色卡请使用「导入酒馆 PNG」入口。');
+                        return;
+                    }
+                    const cardData = parseNanoPngCard(chunks);
+                    if (!cardData) {
+                        showInfo('导入失败', '无法读取 Nano 票根中的角色数据，请重新导出后再试。');
+                        return;
+                    }
+                    const parsed = parseCardData(cardData);
+                    await applyImportedCharacter(parsed, arrayBuffer, file.type);
+                } catch(err) {
+                    console.error('Nano 票根导入失败:', err);
+                    showInfo('导入失败', '解析 Nano 票根遇到错误: ' + err.message);
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }).catch(function() {
+            showInfo('导入失败', 'PNG 解压库加载失败，无法导入 Nano 票根');
         });
     });
 

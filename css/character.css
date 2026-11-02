@@ -529,8 +529,9 @@ svg {
     transform: none;
 }
 .rail.open .action-btn:nth-of-type(1) { transition-delay: 0.07s; }
-.rail.open .action-btn:nth-of-type(2) { transition-delay: 0.13s; }
-.rail.open .action-btn:nth-of-type(3) { transition-delay: 0.19s; }
+.rail.open .action-btn:nth-of-type(2) { transition-delay: 0.11s; }
+.rail.open .action-btn:nth-of-type(3) { transition-delay: 0.15s; }
+.rail.open .action-btn:nth-of-type(4) { transition-delay: 0.19s; }
 .rail .action-btn.hot {
     color: #fff;
     transition-delay: 0s;

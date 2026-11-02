@@ -288,6 +288,7 @@ async function loadSettingsFromDB() {
           style: data.style || '',
           cot: data.cot || '',
           wordCount: data.wordCount || '',
+          maxTokens: data.maxTokens || '',
           person: data.person || 'auto',
           predictUser: data.predictUser || 'forbid',
           customCSS: data.customCSS || '',
@@ -299,9 +300,9 @@ async function loadSettingsFromDB() {
           statusBars: Array.isArray(data.statusBars) ? data.statusBars : []
         });
       };
-      req.onerror = () => resolve({ userName: 'user', charName: 'char', userAvatar: '', charAvatar: '', style: '', cot: '', wordCount: '', person: 'auto', predictUser: 'forbid', customCSS: '', bgImage: '', memThreshold: 5, autoSummary: true, nsfw: false, builtinBody: false, statusBars: [] });
+      req.onerror = () => resolve({ userName: 'user', charName: 'char', userAvatar: '', charAvatar: '', style: '', cot: '', wordCount: '', maxTokens: '', person: 'auto', predictUser: 'forbid', customCSS: '', bgImage: '', memThreshold: 5, autoSummary: true, nsfw: false, builtinBody: false, statusBars: [] });
     });
-  } catch { return { userName: 'user', charName: 'char', userAvatar: '', charAvatar: '', style: '', cot: '', wordCount: '', person: 'auto', predictUser: 'forbid', customCSS: '', bgImage: '', memThreshold: 5, autoSummary: true, nsfw: false, builtinBody: false }; }
+  } catch { return { userName: 'user', charName: 'char', userAvatar: '', charAvatar: '', style: '', cot: '', wordCount: '', maxTokens: '', person: 'auto', predictUser: 'forbid', customCSS: '', bgImage: '', memThreshold: 5, autoSummary: true, nsfw: false, builtinBody: false }; }
 }
 
 // ============================================================
@@ -2841,8 +2842,53 @@ async function send() {
 
 const PENDING_KEY = 'offline_reply_pending_v1_' + (offlineChatId || 'none') + '_' + offlineScene;
 
+// 当前这一版正文（去掉思维链/心声/剧情/状态栏）的字数
+function visibleCharCount(content) {
+  try { return String(extractMeta(content).text || '').replace(/\s+/g, '').length; }
+  catch (e) { return String(content || '').replace(/\s+/g, '').length; }
+}
+// 字数硬性兜底：不足就接着往下写，直到达到设置里的最低字数（最多补 3 段）
+async function ensureOfflineLength(reply, history, continueMode) {
+  const target = parseInt(settings.wordCount, 10) || 0;
+  if (!target) return reply;
+  let text = String(reply || '');
+  let n = visibleCharCount(text);
+  let tries = 0;
+  while (n < target && tries < 3) {
+    const need = target - n;
+    let raw = '';
+    try {
+      raw = await callMainAPI(history.concat([{ role: 'assistant', content: text }]), { continue: true, minExtra: need });
+    } catch (e) { break; }
+    const extra = extractMeta(raw);
+    const add = String(extra.text || '').replace(/\s+$/g, '').trim();
+    if (visibleCharCount(add) < 20) break;
+    // 补写内容插到正文末尾、元标签之前，避免被当成 [plot]/[thinking] 的内容
+    const metaHit = text.search(/\[\s*(?:thinking|思维链|思考|think|heart|心声|plot|身体|生理|body|bar|状态栏|status)\s*[:：]/i);
+    const next = metaHit >= 0
+      ? (text.slice(0, metaHit).replace(/\s+$/g, '') + '\n\n' + add + '\n\n' + text.slice(metaHit))
+      : (text.replace(/\s+$/g, '') + '\n\n' + add);
+    const nn = visibleCharCount(next);
+    if (nn <= n) break;
+    text = next; n = nn; tries++;
+  }
+  return text;
+}
 async function requestReply(opts) {
   const continueMode = !!(opts && opts.continue);
+  // 每次生成前重新读取线下设置，保证字数 / 人称 / 文风等要求是最新的
+  try {
+    const fresh = await loadSettingsFromDB();
+    settings.wordCount = fresh.wordCount;
+    settings.maxTokens = fresh.maxTokens;
+    settings.person = fresh.person;
+    settings.predictUser = fresh.predictUser;
+    settings.style = fresh.style;
+    settings.cot = fresh.cot;
+    settings.nsfw = fresh.nsfw;
+    settings.builtinBody = fresh.builtinBody;
+    settings.statusBars = fresh.statusBars || [];
+  } catch (e) {}
   sendBtn.disabled = true;
   isReplying = true;
   render();
@@ -2866,6 +2912,7 @@ async function requestReply(opts) {
       result = await callMainAPI(history, { continue: continueMode });
     }
     let reply = typeof result === 'string' ? result : (result?.reply ?? result?.content ?? result?.message ?? '');
+    try { reply = await ensureOfflineLength(reply, history, continueMode); } catch (e) {}
     try {
       if (!offlineIsGroup && !offlineInvitedChars.length && reply && window.NanoScheduleBridge && window.NanoScheduleBridge.applyMarkers) {
         reply = await window.NanoScheduleBridge.applyMarkers(reply, { charId: offlineChatId, charName: settings.charName });
@@ -3259,6 +3306,7 @@ async function callMainAPI(history, opts) {
         + '- 从上次停下的地方自然接续；不要重新开头、不要复述上一段、不要总结前文、不要更换场景或时间线。\n'
         + '- 保持同一人称、视角、文风和尺度；如果上一段停在动作、对白或半句话，就顺着写下去。\n'
         + '- 不要在正文里回应「继续」这个指令，不要写“好的/我继续”之类的话，不要问用户问题。\n'
+        + (opts && opts.minExtra ? ('- 本次续写至少还要再写 ' + Number(opts.minExtra) + ' 字，写满再停，不要提前收尾。\n') : '')
         + '- 结尾照常输出 [thinking:…] [heart:…] [plot:…] 三段。';
     }
     const promptStr = finalSystemPrompt + '\n\n' + chatText;

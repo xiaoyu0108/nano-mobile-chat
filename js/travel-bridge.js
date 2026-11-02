@@ -104,6 +104,10 @@
             + (c.img ? '（有拍立得）' : ''));
         });
         var hasUserShare = shared.some(function (m) { return m.cardData && m.cardData.cardType === 'travelShare'; });
+        var hasTogether = shared.some(function (m) { return m.cardData && m.cardData.cardType === 'travelReport' && m.cardData.travelKind === 'together'; });
+        if (hasTogether) {
+          out.push('你们刚一起旅行回来，这趟出行已经结束了。不要再把行程当成还没发生、不要再问“什么时候出发/要不要去”，把它当作已经共同经历过的回忆；需要时用过去时自然提起。');
+        }
         out.push(hasUserShare
           ? '对方刚把这段旅程分享给你。这一轮必须自然回应这张卡片：可以惊讶、追问、评价或想起某个细节；不要无视，也不要机械复述卡片内容。'
           : '如果氛围合适，可以自然提起这段旅途；不要机械复述卡片内容。');
@@ -199,6 +203,12 @@
         chat().saveMessages();
       } catch (e) {}
     }
+    // 正常聊天后偶尔让角色主动报备一段自己的旅程（受冷却限制，不会频繁打扰）
+    try {
+      setTimeout(function () {
+        if (Math.random() < 0.12) maybeGenerateReport().catch(function () {});
+      }, 5000 + Math.random() * 6000);
+    } catch (e) {}
     return { body: body, changed: changed };
   }
 
@@ -326,6 +336,16 @@
       });
       var rec = normalizeRecord(j, charData);
       rec.tripId = newTripId();
+      // 随机报备尽量带一张旅途拍立得，让卡片更像 TA 真的在路上
+      try {
+        if (rec.photoPrompt && api() && api().generateImage) {
+          var img = await api().generateImage({
+            prompt: String(rec.photoPrompt).slice(0, 800),
+            charId: chatId, charName: rec.charName || name
+          });
+          if (img && img.src) rec.polaroid = img.src;
+        }
+      } catch (e) {}
       await store().addCharTrip(chatId, rec);
       await store().addPendingReport(chatId, {
         tripId: rec.tripId, title: rec.place, place: rec.place, date: rec.date,
@@ -514,9 +534,9 @@
         '<div style="font-size:12px;color:#8c8c8c;margin-bottom:14px;">发送一张「一起去」卡片。对方回应前不会调用 API。</div>' +
         '<label style="display:block;font-size:12px;color:#8c8c8c;margin:12px 0 6px;">目的地</label>' +
         '<input id="ntvDest" type="text" placeholder="例如：苏州 · 平江路" style="width:100%;box-sizing:border-box;border:1px solid #e4e4e7;border-radius:12px;padding:11px 12px;font-size:15px;outline:none;">' +
-        '<div style="display:flex;gap:10px;">' +
-          '<div style="flex:1;"><label style="display:block;font-size:12px;color:#8c8c8c;margin:12px 0 6px;">日期</label><input id="ntvDate" type="date" style="width:100%;box-sizing:border-box;border:1px solid #e4e4e7;border-radius:12px;padding:11px 12px;font-size:15px;outline:none;"></div>' +
-          '<div style="width:92px;"><label style="display:block;font-size:12px;color:#8c8c8c;margin:12px 0 6px;">天数</label><input id="ntvDays" type="number" min="1" max="30" value="1" style="width:100%;box-sizing:border-box;border:1px solid #e4e4e7;border-radius:12px;padding:11px 12px;font-size:15px;outline:none;"></div>' +
+        '<div style="display:flex;gap:12px;align-items:flex-end;">' +
+          '<div style="flex:1 1 0;min-width:0;"><label style="display:block;font-size:12px;color:#8c8c8c;margin:12px 0 6px;">日期</label><input id="ntvDate" type="date" style="width:100%;min-width:0;box-sizing:border-box;border:1px solid #e4e4e7;border-radius:12px;padding:11px 12px;font-size:15px;outline:none;"></div>' +
+          '<div style="width:92px;flex:none;"><label style="display:block;font-size:12px;color:#8c8c8c;margin:12px 0 6px;">天数</label><input id="ntvDays" type="number" min="1" max="30" value="1" style="width:100%;box-sizing:border-box;border:1px solid #e4e4e7;border-radius:12px;padding:11px 12px;font-size:15px;outline:none;"></div>' +
         '</div>' +
         '<label style="display:block;font-size:12px;color:#8c8c8c;margin:12px 0 6px;">时间（选填）</label>' +
         '<input id="ntvTime" type="text" placeholder="例如：上午十点 / 周六傍晚" style="width:100%;box-sizing:border-box;border:1px solid #e4e4e7;border-radius:12px;padding:11px 12px;font-size:15px;outline:none;">' +

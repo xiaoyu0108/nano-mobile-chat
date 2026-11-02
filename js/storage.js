@@ -854,13 +854,39 @@ function compressDataUrl(dataUrl, maxDim, quality) {
                 const ch = Math.max(1, Math.round(h * scale));
                 const canvas = document.createElement('canvas');
                 canvas.width = cw; canvas.height = ch;
-                canvas.getContext('2d').drawImage(img, 0, 0, cw, ch);
-                resolve(canvas.toDataURL('image/jpeg', quality));
+                const ctx = canvas.getContext('2d');
+                ctx.clearRect(0, 0, cw, ch);
+                ctx.drawImage(img, 0, 0, cw, ch);
+                // 透明 PNG / 异形图标必须继续输出 PNG，转 JPEG 会把透明区域压成黑色。
+                if (imageHasAlpha(img, w, h) || /^data:image\/(png|webp)/i.test(dataUrl)) {
+                    resolve(canvas.toDataURL('image/png'));
+                } else {
+                    resolve(canvas.toDataURL('image/jpeg', quality));
+                }
             } catch (e) { resolve(null); }
         };
         img.onerror = () => resolve(null);
         img.src = dataUrl;
     });
+}
+
+function imageHasAlpha(img, w, h) {
+    try {
+        const size = 48;
+        const scale = Math.min(1, size / Math.max(w, h));
+        const cw = Math.max(1, Math.round(w * scale));
+        const ch = Math.max(1, Math.round(h * scale));
+        const c = document.createElement('canvas');
+        c.width = cw; c.height = ch;
+        const cx = c.getContext('2d');
+        cx.clearRect(0, 0, cw, ch);
+        cx.drawImage(img, 0, 0, cw, ch);
+        const data = cx.getImageData(0, 0, cw, ch).data;
+        for (let i = 3; i < data.length; i += 4) {
+            if (data[i] < 250) return true;
+        }
+    } catch (e) {}
+    return false;
 }
 
 async function compressInPlace(str, maxDim, quality) {

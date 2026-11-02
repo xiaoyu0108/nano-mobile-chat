@@ -138,6 +138,24 @@ html::-webkit-scrollbar,body::-webkit-scrollbar,#scroll::-webkit-scrollbar,.card
 @keyframes sh{to{background-position:-300% 0}}
 .m.photo .ph.fail{box-shadow:0 0 0 1px #f3c6cf;background:#fff7f9}
 .m.photo .ph.fail .loading{background:#fff7f9;color:var(--pk2)}
+/* 旁白：特殊字体 / 颜色 / 版式 */
+.m.narr{display:flex;flex-direction:column;align-items:center;gap:6px;margin:20px 0;padding:0 10px}
+.m.narr .nlab{font-size:10px;letter-spacing:.34em;color:var(--pk2);opacity:.75;text-indent:.34em}
+.m.narr .nt{position:relative;max-width:92%;text-align:center;white-space:pre-wrap;color:#a34c66;
+  font-family:"Noto Serif SC","Songti SC",Georgia,"Times New Roman",serif;font-style:italic;
+  font-size:14px;line-height:2.05;letter-spacing:.06em}
+.m.narr .nt::before,.m.narr .nt::after{content:"";display:block;width:34px;height:1px;background:var(--pk);margin:8px auto}
+.m.narr .acts{justify-content:center}
+/* 大图查看 */
+#pv{position:fixed;inset:0;z-index:30;background:#0b0b0cf0;display:none;align-items:center;justify-content:center;padding:18px}
+#pv.on{display:flex}
+#pv img{max-width:100%;max-height:88vh;object-fit:contain;border-radius:10px;box-shadow:0 20px 60px #0008;animation:pvin .25s}
+@keyframes pvin{from{opacity:0;transform:scale(.96)}}
+#pv .ib{position:absolute;right:14px;top:calc(14px + env(safe-area-inset-top,0px));color:#fff;background:#ffffff22}
+#pv .ib:hover{background:#ffffff33;color:#fff}
+/* 提示词 / 旁白输入 */
+#narrDlg textarea{width:100%;min-height:96px;border:1px solid var(--g2);border-radius:12px;padding:10px 12px;line-height:1.7;resize:vertical}
+#shPrompt textarea{min-height:180px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12.5px;line-height:1.7;color:#444}
 @media(prefers-reduced-motion:reduce){.pt{display:none}*{animation-duration:.01s!important;transition:none!important}}
 </style></head><body>
 <div id="app">
@@ -191,6 +209,19 @@ html::-webkit-scrollbar,body::-webkit-scrollbar,#scroll::-webkit-scrollbar,.card
   <p id="cft" style="font-size:13px;color:var(--g3);line-height:1.7"></p>
   <div class="bt"><button class="k" id="cfy">删除</button><button id="cfn">取消</button></div>
 </div>
+<div class="dlg" id="narrDlg">
+  <h3 style="font-weight:500">写一段旁白</h3>
+  <p style="font-size:12px;color:var(--g3);line-height:1.6;margin-bottom:10px">旁白会用特殊字体与颜色显示，并作为这趟旅行的叙事上下文。</p>
+  <textarea id="narrTxt" placeholder="例如：风把巷子里的灯笼吹得轻轻晃动，谁都没有先开口。"></textarea>
+  <div class="bt"><button class="k" id="narrOk">发送旁白</button><button id="narrCancel">取消</button></div>
+</div>
+<div class="sheet" id="shPrompt">
+  <h3>照片提示词</h3>
+  <p style="font-size:12px;color:var(--g3);line-height:1.6;margin-bottom:10px">这是这张照片的完整提示词。可以直接修改后重roll。</p>
+  <textarea id="promptView" rows="9" spellcheck="false"></textarea>
+  <div class="r2" style="margin-top:12px"><button class="pl k" id="promptReroll">重roll</button><button class="pl" id="promptClose">关闭</button></div>
+</div>
+<div id="pv"><img id="pvImg" alt="拍立得"><button class="ib" id="pvClose" aria-label="关闭"></button></div>
 <div id="ov"></div>
 <div id="toast"></div>
 
@@ -237,8 +268,14 @@ function buildGuide(dest){
 }
 let GUIDE=buildGuide(INVITE.dest);
 const UM={off:'完全不描写 user，只写环境与 char',low:'少量描写，偶尔穿插一点 user 的决定视角',mid:'适当描写，重要决定交给 user',high:'完全小说式，直接写双方视角，包含 user 的动作与心理'};
-const ACT=[['camera','拍照','举起相机，拍下了眼前的这一幕。'],['food','尝一口','忍不住凑过去尝了一口。'],['walk','走小路','指了指旁边的窄巷：“我们走这边吧。”'],['cup','歇会儿','找了个地方坐下来，什么都不想，歇一会儿。']];
-const P={chev:'<path d="M15 5l-7 7 7 7"/>',edit:'<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',trash:'<path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12M10 11v5M14 11v5"/>',redo:'<path d="M20 11a8 8 0 10-2.3 5.7M20 5v6h-6"/>',pin:'<path d="M12 21s7-6.2 7-11a7 7 0 10-14 0c0 4.8 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/>',food:'<path d="M4 12h16a8 8 0 01-16 0z"/><path d="M9 4c-1 1 1 2 0 3M13 4c-1 1 1 2 0 3"/>',list:'<path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/>',sliders:'<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>',book:'<path d="M5 4h11a3 3 0 013 3v13H8a3 3 0 01-3-3z"/><path d="M5 17a3 3 0 013-3h11"/>',camera:'<path d="M4 8h3l2-2h6l2 2h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',walk:'<path d="M5 19c4-1 3-6 7-7s3-6 7-7"/><circle cx="5" cy="19" r="1"/><circle cx="19" cy="5" r="1"/>',cup:'<path d="M5 9h11v5a4 4 0 01-4 4H9a4 4 0 01-4-4zM16 10h2a2 2 0 010 4h-2M8 4v2M12 4v2"/>',ok:'<path d="M5 12l5 5 9-10"/>',x:'<path d="M6 6l12 12M18 6L6 18"/>'};
+const ACT=[
+  ['camera','拍照',()=>takePhoto()],
+  ['narr','旁白',()=>openNarr()],
+  ['redo','续写',()=>reply(null,{continue:true})],
+  ['up','回本轮顶',()=>scrollRoundTop()],
+  ['down','回底',()=>scrollBottom()]
+];
+const P={chev:'<path d="M15 5l-7 7 7 7"/>',edit:'<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',trash:'<path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12M10 11v5M14 11v5"/>',redo:'<path d="M20 11a8 8 0 10-2.3 5.7M20 5v6h-6"/>',pin:'<path d="M12 21s7-6.2 7-11a7 7 0 10-14 0c0 4.8 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/>',food:'<path d="M4 12h16a8 8 0 01-16 0z"/><path d="M9 4c-1 1 1 2 0 3M13 4c-1 1 1 2 0 3"/>',list:'<path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/>',sliders:'<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>',book:'<path d="M5 4h11a3 3 0 013 3v13H8a3 3 0 01-3-3z"/><path d="M5 17a3 3 0 013-3h11"/>',camera:'<path d="M4 8h3l2-2h6l2 2h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',narr:'<path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/>',up:'<path d="M12 19V6"/><path d="M6 12l6-6 6 6"/>',down:'<path d="M12 5v13"/><path d="M18 12l-6 6-6-6"/>',download:'<path d="M12 4v10"/><path d="M8 10l4 4 4-4"/><path d="M5 19h14"/>',eye:'<path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="2.6"/>',ok:'<path d="M5 12l5 5 9-10"/>',x:'<path d="M6 6l12 12M18 6L6 18"/>'};
 const I=(k,s=18)=>`<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[k]}</svg>`;
 const $=s=>document.querySelector(s);
 const E=(t,c,x)=>{const e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e};
@@ -246,8 +283,18 @@ const ib=(k,label,fn,s=16)=>{const b=E('button','ib');b.innerHTML=I(k,s);b.title
 const S={msgs:[],plan:[],gi:0,n:0,uid:0,busy:false};
 const log=$('#log'),scr=$('#scroll'),inp=$('#inp');
 const down=()=>scr.scrollTop=scr.scrollHeight;
+const scrollBottom=()=>scr.scrollTo({top:scr.scrollHeight,behavior:'smooth'});
+function scrollRoundTop(){
+  const arr=[...log.querySelectorAll('.m')];
+  let el=null;
+  for(let i=arr.length-1;i>=0;i--){ if(arr[i].classList.contains('char')){ el=arr[i]; break; } }
+  if(!el) el=arr[arr.length-1];
+  if(!el) return;
+  scr.scrollTo({top:Math.max(0,el.offsetTop-10),behavior:'smooth'});
+}
 const day=()=>1+Math.floor(S.n/4),tm=()=>TIMES[S.n%4];
 document.querySelectorAll('[data-i]').forEach(b=>b.innerHTML=I(b.dataset.i,20));
+$('#pvClose').innerHTML=I('x',18);
 let REC=[];try{REC=JSON.parse(localStorage.getItem('tv_rec'))||[]}catch(e){}
 const saveRec=()=>{try{localStorage.setItem('tv_rec',JSON.stringify(REC.slice(-40)))}catch(e){}};
 const recSum=()=>REC.map(r=>({title:r.title,date:r.date,summary:r.summary,stops:r.stops}));
@@ -287,6 +334,7 @@ function readMaskLocal(){
 }
 function readMaskIdb(){
   return new Promise(resolve=>{
+    setTimeout(()=>resolve(null),1800);
     try{
       const req=indexedDB.open('nano_mask_db');
       req.onupgradeneeded=e=>{try{const db=e.target.result;if(!db.objectStoreNames.contains('mask_data'))db.createObjectStore('mask_data',{keyPath:'key'})}catch(e){}};
@@ -482,7 +530,9 @@ function photoNode(m,ro){
     ph.append(E('div','loading','这张照片已随旅程保存'));
     ph.append(E('div','cap',m.caption||(DEST+' · '+tm())));
   }else{
-    const img=E('img');img.src=m.url;img.alt=m.caption||'拍立得';ph.append(img);
+    const img=E('img');img.src=m.url;img.alt=m.caption||'拍立得';img.style.cursor='zoom-in';
+    img.onclick=()=>viewPhoto(m.url);
+    ph.append(img);
     const cap=E('div','cap',m.caption||(DEST+' · '+tm()));
     ph.append(cap);
   }
@@ -490,7 +540,9 @@ function photoNode(m,ro){
   if(!ro){
     const a=E('div','phacts');
     if(!m.loading){
-      a.append(ib('redo','重拍',()=>takePhoto(m)));
+      if(m.url)a.append(ib('download','下载照片',()=>downloadPhoto(m)));
+      a.append(ib('eye','查看提示词',()=>showPrompt(m)));
+      a.append(ib('redo','重roll',()=>takePhoto(m,m.prompt||'')));
       a.append(ib('trash','删除',()=>ask('删除这张照片？',()=>{S.msgs=S.msgs.filter(x=>x!==m);render()})));
     }
     d.append(a);
@@ -500,6 +552,18 @@ function photoNode(m,ro){
 function node(m,ro){
   if(m.role==='photo')return photoNode(m,ro);
   const d=E('div','m '+m.role);d.dataset.id=m.id;
+  if(m.role==='narr'){
+    if(m.edit){
+      const t=E('textarea','ed');t.value=m.text;d.append(t);
+      const a=E('div','acts');
+      a.append(ib('ok','保存',()=>{m.text=t.value.trim()||m.text;m.edit=false;refresh(m)}),ib('x','取消',()=>{m.edit=false;refresh(m)}));
+      d.append(a);return d;
+    }
+    d.className='m narr';
+    d.append(E('div','nlab','旁白'),E('div','nt',m.text));
+    if(!ro)d.append(acts(m,['edit','trash']));
+    return d;
+  }
   if(m.role==='sys'){d.append(E('span','',m.text));if(!ro)d.append(acts(m,['trash']));return d}
   if(m.role==='char')d.append(E('div','who',CHAR));
   if(m.edit){
@@ -547,30 +611,89 @@ inp.oninput=()=>{inp.style.height='auto';inp.style.height=inp.scrollHeight+'px';
 inp.onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing&&inp.value.trim()){e.preventDefault();$('#send').click()}};
 function say(t){const m={id:++S.uid,role:'user',text:t};S.msgs.push(m);log.append(node(m));down()}
 $('#send').onclick=()=>{const t=inp.value.trim();if(t){say(t);inp.value='';inp.style.height='auto';syncBtn()}else reply()};
-ACT.forEach(a=>{const b=E('button');b.innerHTML=I(a[0],14)+a[1];b.onclick=()=>{if(a[0]==='camera')takePhoto();else say(a[2])};$('#chips').append(b)});
+ACT.forEach(a=>{const b=E('button');b.innerHTML=I(a[0],14)+a[1];b.onclick=a[2];$('#chips').append(b)});
+function addNarr(text){
+  const t=String(text||'').trim();if(!t)return;
+  const m={id:++S.uid,role:'narr',text:t};S.msgs.push(m);log.append(node(m));down();
+}
+function openNarr(){
+  $('#narrTxt').value='';
+  $('#mask').classList.add('on');$('#narrDlg').classList.add('on');
+  setTimeout(()=>{try{$('#narrTxt').focus()}catch(e){}},80);
+}
+function closeNarr(){
+  $('#narrDlg').classList.remove('on');
+  if(!document.querySelector('.sheet.on,.dlg.on'))$('#mask').classList.remove('on');
+}
+$('#narrCancel').onclick=closeNarr;
+$('#narrOk').onclick=()=>{const t=$('#narrTxt').value.trim();if(!t)return;addNarr(t);closeNarr()};
+$('#narrTxt').addEventListener('keydown',e=>{
+  if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();$('#narrOk').click()}
+});
 const setSub=()=>$('#sub').textContent='Day '+day()+' · '+tm()+' · '+GUIDE[S.gi][0];
 const macro=s=>String(s==null?'':s).replace(/\{\{char\}\}/g,CHAR).replace(/\{\{user\}\}/g,USER);
 
 /* ---------- photo = image API only ---------- */
-async function takePhoto(existing){
+function buildPhotoPrompt(){
+  const rec=CHAR_RECORD;
+  const persona=rec&&(rec.setting||rec.desc)?String(rec.setting||rec.desc):'';
+  const um=$('#umode').value;
+  const last=[...S.msgs].reverse().find(x=>['char','narr'].includes(x.role)&&x.text&&!x.typing);
+  const scene=last?String(last.text).replace(/\s+/g,' ').slice(-500):'';
+  const showUser=um!=='off';
+  return '拍立得旅行摄影，真实自然光，柔和胶片颗粒，生活纪实感，画面干净。'
+    +'角色：'+CHAR+(persona?('（'+persona.slice(0,800)+'）'):'')+'。'
+    +'地点：'+DEST+' · '+GUIDE[S.gi][0]+'；时段：'+tm()+'。'
+    +(scene?('刚刚发生的场景：'+scene+'。'):'')
+    +(showUser?('画面里可以有'+USER+'的手、背影或侧影，作为同行者出现，但不要抢主体；'):('画面里不要出现'+USER+'；'))
+    +'不要文字、水印、边框、多余人物。';
+}
+function viewPhoto(url){
+  if(!url)return;
+  $('#pvImg').src=url;$('#pv').classList.add('on');
+}
+function closePhotoView(){$('#pv').classList.remove('on');$('#pvImg').removeAttribute('src')}
+async function downloadPhoto(m){
+  const url=m&&m.url;if(!url)return;
+  let href=url,revoke=false;
+  try{
+    if(!/^data:/i.test(url)){
+      const r=await fetch(url);
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      href=URL.createObjectURL(await r.blob());revoke=true;
+    }
+    const a=document.createElement('a');
+    a.href=href;
+    a.download='拍立得_'+String(CHAR||'TA').replace(/[\\/:*?"<>|]/g,'_')+'_'+Date.now()+'.jpg';
+    document.body.append(a);a.click();a.remove();
+    toast('已开始下载');
+  }catch(e){
+    try{window.open(url,'_blank')}catch(err){toast('下载失败，请长按图片保存')}
+  }finally{
+    if(revoke)setTimeout(()=>{try{URL.revokeObjectURL(href)}catch(e){}},4000);
+  }
+}
+let PROMPT_MSG=null;
+function showPrompt(m){
+  PROMPT_MSG=m;
+  $('#promptView').value=m.prompt||buildPhotoPrompt();
+  open_('#shPrompt');
+}
+$('#promptClose').onclick=()=>closeAll();
+$('#promptReroll').onclick=()=>{
+  const m=PROMPT_MSG;if(!m)return;
+  const p=$('#promptView').value.trim();
+  closeAll();
+  takePhoto(m,p);
+};
+async function takePhoto(existing,forcedPrompt){
   if(S.photoBusy||S.busy)return;
   let m=existing;
   if(!m){m={id:++S.uid,role:'photo',loading:true,url:'',caption:''};S.msgs.push(m);log.append(node(m))}
   else{m.loading=true;m.fail=false;refresh(m)}
   S.photoBusy=true;down();
   try{
-    const rec=await readCharRecord(CHAR_ID);
-    const persona=rec&&rec.setting?String(rec.setting):'';
-    const person=$('#person').value,um=$('#umode').value;
-    const last=[...S.msgs].reverse().find(x=>x.role==='char'&&x.text&&!x.typing);
-    const scene=last?String(last.text).replace(/\s+/g,' ').slice(-500):'';
-    const showUser=um!=='off';
-    const prompt='拍立得旅行摄影，真实自然光，柔和胶片颗粒，生活纪实感，画面干净。'
-      +'角色：'+CHAR+(persona?('（'+persona.slice(0,800)+'）'):'')+'。'
-      +'地点：'+DEST+' · '+GUIDE[S.gi][0]+'；时段：'+tm()+'。'
-      +(scene?('刚刚发生的场景：'+scene+'。'):'')
-      +(showUser?('画面里可以有'+USER+'的手、背影或侧影，作为同行者出现，但不要抢主体；'):('画面里不要出现'+USER+'；'))
-      +'不要文字、水印、边框、多余人物。';
+    const prompt=String(forcedPrompt||m.prompt||'').trim()||buildPhotoPrompt();
     const out=await TravelAPI.generateImage({prompt,charId:CHAR_ID,charName:CHAR});
     if(!out||!out.src)throw new Error('没有返回图片');
     m.loading=false;m.fail=false;m.url=out.src;m.caption=m.caption||(DEST+' · '+tm());m.prompt=prompt;m.at=Date.now();
@@ -580,6 +703,8 @@ async function takePhoto(existing){
     toast('拍照失败：'+((e&&e.message)||'请检查生图 API'));
   }finally{S.photoBusy=false}
 }
+$('#pvClose').onclick=closePhotoView;
+$('#pv').onclick=e=>{if(e.target.id==='pv'||e.target.id==='pvImg')closePhotoView()};
 
 /* ---------- prompt assembly ---------- */
 function fallbackChoices(){
@@ -611,6 +736,11 @@ async function buildContext(p,hist,decisions){
   const online=await readRecentChat();
   const travelMems=await retrieveVector(query,await readTravelMemories());
   const settings=Object.assign({userModeDesc:UM[$('#umode').value]},p.settings);
+  // 每次生成前都以设置面板当前值为准（字数等硬性要求不能沿用旧值）
+  settings.len=Math.max(50,Number(settings.len||$('#len').value)||500);
+  settings.person=settings.person||$('#person').value||'first';
+  settings.userMode=settings.userMode||$('#umode').value||'mid';
+  settings.style=settings.style||$('#styleTxt').value.trim();
   const memText=(charMems||[]).filter(x=>x&&x.content).slice(0,24).map(x=>'- '+String(x.content)).join('\n');
   const onlineText=(online||[]).filter(x=>x&&(x.text||x.cardData)).slice(-14).map(x=>{
     const who=x.type==='right'?'{{user}}':'{{char}}';
@@ -641,11 +771,12 @@ async function buildContext(p,hist,decisions){
     memText?('【{{char}} 的记忆库】\n'+memText):'',
     onlineText?('【线上聊天最近记录（只读，作为关系与情绪背景）】\n'+onlineText):'',
     vecText?('【过去的旅行总结 · 仅供回忆，不是当前旅程】\n'+vecText):'',
-    '【本趟旅行设置】\n字数约 '+settings.len+' 字；人称：'+personLine+'；描写 user 档位：'+settings.userMode+'（'+settings.userModeDesc+'）；文风：'+(settings.style||'自然、克制、有细节'),
+    '【本趟旅行设置】\n正文必须不少于 '+settings.len+' 字（按中文字符计，宁多勿少，低于此长度视为不合格）；人称：'+personLine+'；描写 user 档位：'+settings.userMode+'（'+settings.userModeDesc+'）；文风：'+(settings.style||'自然、克制、有细节'),
     '【本次旅行】\n目的地：'+DEST+'；传入邀请：'+JSON.stringify(INVITE)+'；当前站点：'+p.stop+'；Day '+p.day+' · '+p.time
   ].filter(Boolean).join('\n\n');
   const histText=(hist||[]).map(x=>{
     if(x.role==='photo')return '{{char}}：（拍了一张拍立得）'+(x.caption||'');
+    if(x.role==='narr')return '（旁白）'+String(x.text||'');
     if(x.role==='sys')return '（系统）'+x.text;
     return (x.role==='user'?'{{user}}':'{{char}}')+'：'+String(x.text||'')+(x.translation?('（中文：'+String(x.translation)+'）'):'');
   }).join('\n');
@@ -656,13 +787,51 @@ async function buildContext(p,hist,decisions){
     +'\n【行程】\n'+(planText||'（还没有安排）')
     +'\n【用户对推荐卡的选择】\n'+(decText||'（还没有选择）')
     +'\n【最近一条用户输入】\n'+(lastUser?lastUser.text:'（没有，继续自然推进）')
-    +'\n\n请只续写下一段旅行叙事，长度约 '+settings.len+' 字，并给 3 个推荐。只输出 JSON。';
+    +(p.continue?'\n\n【续写模式】用户点了「续写」：请紧接上一段结尾继续往下写，不要重新开局、不要复述、不要总结前文；场景、时间线和情绪保持连续。':'')
+    +'\n\n请只续写下一段旅行叙事，正文不少于 '+settings.len+' 字，并给 3 个推荐。只输出 JSON。';
   return {messages:[{role:'system',content:macro(sys)},{role:'user',content:macro(usr)}],settings};
+}
+const charCount=s=>String(s==null?'':s).replace(/\s+/g,'').length;
+async function ensureTravelLength(text,desired,built){
+  const target=Math.max(0,Number(desired)||0);
+  if(!target)return {text,extended:false};
+  let out=String(text||'').trim(),n=charCount(out),tries=0,extended=false;
+  while(n<target&&tries<3){
+    const need=target-n;
+    let raw='';
+    try{
+      raw=await TravelAPI.callChat({
+        messages:built.messages.concat([
+          {role:'assistant',content:out},
+          {role:'user',content:'【续写补足 · 只输出正文】上一段正文只写了 '+n+' 字，还没有达到 '+target+' 字的要求。'
+            +'请从最后一句自然接着往下写，至少再写 '+Math.max(need,120)+' 字；不要重复已经写过的内容，不要总结，不要提前收尾，不要输出 JSON、标题或解释。'}
+        ]),
+        temperature:0.85,maxTokens:Math.max(900,Math.min(8000,Math.round(Math.max(need,120)*2.4)))
+      });
+    }catch(e){break}
+    let add=String(raw||'').trim();
+    try{
+      const j=TravelAPI.looseJson(raw);
+      if(j&&typeof j==='object'&&!Array.isArray(j)){
+        const picked=String(j.text||j.narrative||j.reply||j.content||'').trim();
+        if(picked)add=picked;
+      }
+    }catch(e){}
+    if(/^[\s]*[\[{]/.test(add)&&/"(?:text|narrative|choices)"\s*:/.test(add))add='';
+    add=add.replace(/^```[\w-]*\s*/,'').replace(/\s*```$/,'').trim();
+    if(charCount(add)<20)break;
+    const next=out.replace(/\s+$/,'')+'\n\n'+add;
+    const nn=charCount(next);
+    if(nn<=n)break;
+    out=next;n=nn;tries++;extended=true;
+  }
+  return {text:out,extended};
 }
 async function travelGenerate(p){
   const hist=p.history||[],decisions=p.decisions||[];
   const built=await buildContext(p,hist,decisions);
-  const maxTokens=Math.max(600,Math.min(8000,Math.round((built.settings.len||500)*1.8)));
+  const targetLen=Math.max(0,Number(built.settings.len)||0);
+  const maxTokens=Math.max(900,Math.min(8000,Math.round((targetLen||500)*2.4)));
   const raw=await TravelAPI.callChat({messages:built.messages,temperature:0.9,maxTokens,json:true});
   let data=null;
   try{data=TravelAPI.looseJson(raw)}catch(e){}
@@ -670,21 +839,26 @@ async function travelGenerate(p){
   if(!data||typeof data!=='object'){
     const txt=String(raw||'').trim();
     if(!txt)throw new Error('主 API 没有返回内容');
-    const tr=foreign?await translateToZh(txt):'';
-    return {text:txt,translation:tr,choices:fallbackChoices()};
+    const fixed=await ensureTravelLength(txt,targetLen,built);
+    const tr=foreign?await translateToZh(fixed.text):'';
+    return {text:fixed.text,translation:tr,choices:fallbackChoices()};
   }
   let text=String(data.text||data.reply||'').trim();
   if(!text){text=String(data.narrative||'').trim()}
   if(!text)throw new Error('主 API 没有返回叙事');
   let translation=foreign?String(data.translation||data.zh||'').trim():'';
   if(foreign&&!translation)translation=await translateToZh(text);
+  const fixed=await ensureTravelLength(text,targetLen,built);
+  text=fixed.text;
+  if(foreign&&fixed.extended)translation=await translateToZh(text);
   let choices=normalizeChoices(data.choices);
   if(choices.length<3){const f=fallbackChoices();choices=choices.concat(f).slice(0,3)}
   return {text:macro(text),translation:macro(translation),choices};
 }
 
-async function reply(old){
+async function reply(old,opt){
   if(S.busy)return;S.busy=true;$('#send').disabled=true;
+  const cont=!!(opt&&opt.continue);
   let at=S.msgs.length;
   if(old){at=S.msgs.indexOf(old);S.msgs.splice(at,1);render()}
   const hist=S.msgs.slice(0,at);
@@ -695,7 +869,7 @@ async function reply(old){
   try{
     res=await window.TravelAPI.generate({
       char:CHAR,user:USER,dest:DEST,stop:GUIDE[S.gi][0],day:day(),time:tm(),settings,decisions,plan:S.plan,
-      records:recSum(),invite:INVITE,
+      records:recSum(),invite:INVITE,continue:cont,
       history:hist.map(x=>({role:x.role,text:x.role==='photo'?(''):x.text,translation:x.translation||'',caption:x.caption||''}))
     });
   }catch(e){
@@ -707,7 +881,8 @@ async function reply(old){
   const m={id:++S.uid,role:'char',text:res.text,translation:res.translation||'',choices:(res.choices||[]).map(c=>({...c})),typing:true,view:''};
   S.msgs.splice(at,0,m);render();
   for(let i=0;i<m.text.length;i+=4){m.view=m.text.slice(0,i+4);refresh(m);if(at===S.msgs.length-1)down();await new Promise(r=>setTimeout(r,16))}
-  m.typing=false;m.fresh=true;refresh(m);S.n++;setSub();drawRoute();
+  m.typing=false;m.fresh=true;refresh(m);
+  if(!cont){S.n++;setSub();drawRoute();}
   S.busy=false;$('#send').disabled=false;if(at===S.msgs.length-1)down();
   decisions.filter(d=>d.choice==='go').forEach((d,i)=>setTimeout(()=>markDone(d.name),700*(i+1)));
 }
@@ -846,6 +1021,10 @@ function fresh(){
   $('#tTitle').textContent=CHAR;
   S.msgs.push({id:++S.uid,role:'sys',text:DEST+' · '+(INVITE.days||'1')+'日同行'});
   render();drawRoute();setSub();fp();drawPlan();
+  // 进入页面就自动生成开场场景，避免只停留在一条系统文字
+  setTimeout(function(){
+    if(!S.busy && !S.msgs.some(m=>m.role==='char')){ try{ reply(); }catch(e){} }
+  }, 420);
 }
 function hasProgress(){
   return S.msgs.some(m=>m&&(m.role==='user'||m.role==='char'||m.role==='photo'))||S.plan.length>0;
@@ -921,6 +1100,7 @@ async function summarizeTrip(hist){
     if(x.role==='photo')return '（拍立得）'+(x.caption||'');
     const raw=String(x.text||'').replace(/\s+/g,' ');
     const tr=x.translation?('（中文：'+String(x.translation).replace(/\s+/g,' ')+'）'):'';
+    if(x.role==='narr')return '（旁白）'+raw;
     return (x.role==='user'?USER:CHAR)+'：'+raw+tr;
   }).join('\n').slice(-9000);
   const visited=S.plan.filter(p=>p.done).map(p=>p.name);
@@ -930,6 +1110,18 @@ async function summarizeTrip(hist){
     +'；行程：'+JSON.stringify(S.plan)+'\n对话与场景：\n'+lines;
   const txt=await TravelAPI.callChat({messages:[{role:'system',content:sys},{role:'user',content:usr}],temperature:0.75,maxTokens:1000});
   return String(txt||'').trim();
+}
+async function generateTripCardMeta(brief,visited){
+  try{
+    const sys='你是角色「'+CHAR+'」。你和「'+USER+'」刚刚结束一趟真实的旅行。请为这次旅行生成一张可以放进「旅途」App 的旅程卡片。'
+      +'必须严格保持人设，严禁 OOC、霸总腔、油腻情话；不要编造没有发生的事。'
+      +'只输出合法 JSON，不要解释。格式：{"title":"一句话标题，不超过18字","thought":"你作为角色写下的旅程心得，80-160字，第一人称","caption":"拍立得的一句话说明，不超过24字"}';
+    const usr='目的地：'+DEST+'；天数：'+(INVITE.days||'1')+'；到过：'+(visited.join('、')||'未记录')
+      +'；同行：'+CHAR+' 和 '+USER+'。\n旅程总结：\n'+String(brief||'').slice(0,1800)
+      +'\n\n请生成这张旅程卡片。';
+    const j=await TravelAPI.callJson({messages:[{role:'system',content:sys},{role:'user',content:usr}],temperature:0.8,maxTokens:800});
+    return j&&typeof j==='object'?j:null;
+  }catch(e){return null}
 }
 async function travelExit(i){
   i=i||{};
@@ -948,41 +1140,52 @@ async function travelExit(i){
   const lastPhotoMsg=[...S.msgs].reverse().find(m=>m.role==='photo'&&m.url);
   const lastPhoto=lastPhotoMsg?{url:lastPhotoMsg.url,caption:lastPhotoMsg.caption||''}:ACTIVE_LAST_PHOTO;
   const mask=readMask();
-  const uid=mask.id||USER_ID||'default';
+  const uid=USER_ID||mask.id||'default';
   const dm=String(INVITE.date||'').match(/\d{4}[-/]\d{1,2}[-/]\d{1,2}/);
   const date=dm?dm[0].replace(/\//g,'-'):new Date().toISOString().slice(0,10);
-  try{
-    if(window.NanoTravelStore&&hasContent){
-      await NanoTravelStore.load(true);
-      if(summarize){
-        let emb=null;
-        try{emb=await TravelAPI.embed(brief)}catch(e){}
-        await NanoTravelStore.addTravelMemory({
-          charId:CHAR_ID,userId:uid,summary:brief,embedding:emb,charName:CHAR,tripId:TRIP_ID,
-          date,places:visited,meta:{dest:DEST,days:INVITE.days||'1',note:INVITE.note||'',source:'travel-chat'}
-        });
-      }
-      if(final){
-        const ticketNo='TRV-'+String(TRIP_ID).replace(/[^a-z0-9]/gi,'').slice(-8).toUpperCase();
-        const saved=await NanoTravelStore.addTogether(uid,CHAR_ID,{
-          tripId:TRIP_ID,place:DEST,date,cost:null,legs:[],noteMe:'',noteChar:brief,summary:brief,
-          polaroid:lastPhoto?lastPhoto.url:'',caption:lastPhoto?lastPhoto.caption:'',
-          shared:false,source:'travel-chat',places:visited,days:INVITE.days||'1',ticketNo:ticketNo,
-          charId:CHAR_ID,userId:uid
-        });
-        const tid=(saved&&saved.id)||TRIP_ID;
-        const card={
-          cardType:'travelReport',travelKind:'together',direction:'char',
-          tripId:tid,title:'我们 · '+DEST,place:DEST,date,days:INVITE.days||'1',
-          ticketNo:ticketNo,thought:brief,img:lastPhoto?lastPhoto.url:'',
-          caption:lastPhoto?lastPhoto.caption:'',fromName:CHAR,userName:USER,
-          places:visited,createdAt:Date.now()
-        };
-        const msg=NanoTravelStore.baseMessage({type:'left',cardData:card,text:''});
-        await NanoTravelStore.appendChatMessage(CHAT_ID||CHAR_ID,msg);
-      }
-    }
-  }catch(e){}
+  // 结束这趟旅程时，用 API 把总结加工成一张真正的旅程卡片
+  let cardMeta=null;
+  if(final&&hasContent){
+    try{cardMeta=await generateTripCardMeta(brief,visited)}catch(e){cardMeta=null}
+  }
+  const cardTitle=String((cardMeta&&cardMeta.title)||('我们 · '+DEST)).trim();
+  const cardThought=String((cardMeta&&cardMeta.thought)||brief||'').trim();
+  const cardCaption=String((cardMeta&&cardMeta.caption)||(lastPhoto&&lastPhoto.caption)||'').trim();
+
+  // 每一步单独兜底，避免某一步失败导致卡片和旅途记录都写不进去
+  try{ if(window.NanoTravelStore&&hasContent) await NanoTravelStore.load(true); }catch(e){}
+  if(summarize&&hasContent){
+    try{
+      let emb=null;
+      try{emb=await TravelAPI.embed(brief)}catch(e){}
+      await NanoTravelStore.addTravelMemory({
+        charId:CHAR_ID,userId:uid,summary:brief,embedding:emb,charName:CHAR,tripId:TRIP_ID,
+        date,places:visited,meta:{dest:DEST,days:INVITE.days||'1',note:INVITE.note||'',source:'travel-chat'}
+      });
+    }catch(e){try{console.warn('[travel] 记忆写入失败',e)}catch(e2){}}
+  }
+  if(final&&hasContent){
+    try{
+      const ticketNo='TRV-'+String(TRIP_ID).replace(/[^a-z0-9]/gi,'').slice(-8).toUpperCase();
+      const saved=await NanoTravelStore.addTogether(uid,CHAR_ID,{
+        tripId:TRIP_ID,place:DEST,date,cost:null,legs:[],noteMe:'',noteChar:cardThought,summary:brief||cardThought,
+        polaroid:lastPhoto?lastPhoto.url:'',caption:cardCaption,
+        shared:false,source:'travel-chat',places:visited,days:INVITE.days||'1',ticketNo:ticketNo,
+        charId:CHAR_ID,userId:uid,title:cardTitle,thought:cardThought
+      });
+      const tid=(saved&&saved.id)||TRIP_ID;
+      const card={
+        cardType:'travelReport',travelKind:'together',direction:'char',
+        tripId:tid,title:cardTitle,place:DEST,date,days:INVITE.days||'1',
+        ticketNo:ticketNo,thought:cardThought,img:lastPhoto?lastPhoto.url:'',
+        caption:cardCaption,fromName:CHAR,userName:USER,
+        places:visited,createdAt:Date.now()
+      };
+      const msg=NanoTravelStore.baseMessage({type:'left',cardData:card,text:''});
+      await NanoTravelStore.appendChatMessage(CHAT_ID||CHAR_ID,msg);
+      try{await NanoTravelStore.appendSystemNotice(CHAT_ID||CHAR_ID,'已结束「'+DEST+'」出行');}catch(e){}
+    }catch(e){try{console.warn('[travel] 旅程卡片写入失败',e)}catch(e2){}}
+  }
   try{
     if(final&&hasContent){
       REC.push({id:Date.now(),title:DEST,date,summary:brief,stops:visited,msgs:[]});
@@ -1010,7 +1213,7 @@ async function exit(mode){
       if(final){
         try{localStorage.removeItem(ACTIVE_KEY)}catch(e){}
         try{localStorage.setItem('nano_chat_mode_'+(CHAT_ID||CHAR_ID),'online')}catch(e){}
-        window.parent.postMessage({type:'openChat',chatId:CHAT_ID||CHAR_ID,chatName:CHAR,name:CHAR},'*');
+        window.parent.postMessage({type:'openChat',chatId:CHAT_ID||CHAR_ID,chatName:CHAR,name:CHAR,reload:true},'*');
       }else{
         window.parent.postMessage({type:'nanoTravelExitToChat',chatId:CHAT_ID||CHAR_ID},'*');
       }

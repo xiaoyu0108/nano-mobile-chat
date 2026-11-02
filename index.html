@@ -8,7 +8,7 @@
     // 全站唯一构建号：下面的自愈逻辑、iframe 的 nb= 参数都用它。
     // 注意：不要再另写第二个版本号，否则两个版本号会互相判定“版本变了”，
     // 造成每次打开都清缓存 + 反复 reload。
-    window.__NANO_BUILD__ = 'nano-2026-11-07-1';
+    window.__NANO_BUILD__ = 'nano-2026-11-08-1';
     // 版本升级时强制清一次缓存并重载：避免手机/PWA 一直跑旧 JS（屏幕共享/思维链等问题）
     (function () {
         try {
@@ -2620,6 +2620,7 @@ setTimeout(function () {
                 el.id = 'appNotify';
                 el.className = 'app-notify';
                 el.addEventListener('click', function () {
+                    if (el._suppressClick) { el._suppressClick = false; return; }
                     // 点通知后立刻补拉服务端 pending：保证进去就能看到通知里说的那条消息/动态
                     var pullSoon = function () {
                         setTimeout(function () {
@@ -2633,6 +2634,47 @@ setTimeout(function () {
                     pullSoon();
                 });
                 document.body.appendChild(el);
+
+                // 上滑隐藏本条通知（像真实状态栏/通知中心）
+                el.style.touchAction = 'none';
+                let nStartY = 0, nDy = 0, nDragging = false;
+                const nReset = function (animate) {
+                    el.style.transition = animate ? 'transform .24s cubic-bezier(.18,.9,.22,1), opacity .2s' : 'none';
+                    el.style.transform = '';
+                    el.style.opacity = '';
+                    setTimeout(function () { el.style.transition = ''; }, animate ? 280 : 40);
+                };
+                el.addEventListener('pointerdown', function (e) {
+                    if (!el.classList.contains('show')) return;
+                    nStartY = e.clientY; nDy = 0; nDragging = true;
+                    el._suppressClick = false;
+                    el.style.transition = 'none';
+                    try { el.setPointerCapture(e.pointerId); } catch (err) {}
+                });
+                el.addEventListener('pointermove', function (e) {
+                    if (!nDragging) return;
+                    nDy = Math.min(0, e.clientY - nStartY);
+                    if (nDy < -4) {
+                        el._suppressClick = true;
+                        el.style.transform = 'translate(-50%, ' + nDy + 'px) scale(1)';
+                        el.style.opacity = String(Math.max(0, 1 + nDy / 90));
+                    }
+                });
+                const nEnd = function () {
+                    if (!nDragging) return;
+                    nDragging = false;
+                    if (nDy < -28) {
+                        el._suppressClick = true;
+                        hideAppNotify();
+                        setTimeout(function () { nReset(false); el._suppressClick = false; }, 320);
+                    } else {
+                        nReset(true);
+                        if (nDy > -4) el._suppressClick = false;
+                    }
+                    nDy = 0;
+                };
+                el.addEventListener('pointerup', nEnd);
+                el.addEventListener('pointercancel', nEnd);
             }
             // 短时间内同一条通知只弹一次，避免多个通道重复触发
             const notifyName = String(opts.name || title || app || '通知').trim();
@@ -4109,8 +4151,17 @@ setTimeout(function () {
                 try {
                     setTimeout(function () {
                         const fr = chatInnerFrame;
-                        if (fr && fr.contentWindow) fr.contentWindow.postMessage({ type: 'nanoOverlayOpen', chatId: chatId }, '*');
+                        if (!fr || !fr.contentWindow) return;
+                        fr.contentWindow.postMessage({ type: 'nanoOverlayOpen', chatId: chatId }, '*');
+                        // 从「一起去」结束回来：让聊天页重读一次消息，确保旅程卡片和系统提示立刻出现
+                        if (data.reload) fr.contentWindow.postMessage({ type: 'nanoReloadChat', chatId: chatId }, '*');
                     }, 120);
+                    if (data.reload) {
+                        setTimeout(function () {
+                            const fr = chatInnerFrame;
+                            if (fr && fr.contentWindow) fr.contentWindow.postMessage({ type: 'nanoReloadChat', chatId: chatId }, '*');
+                        }, 900);
+                    }
                 } catch (e) {}
             }
 

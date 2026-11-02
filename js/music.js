@@ -2496,6 +2496,17 @@
     });
   }
 
+  async function resolveDuoChar(char) {
+    if (!char) return char;
+    if (char.setting || char.desc || char.persona) return char;
+    try {
+      var chars = await loadCharList();
+      var found = (chars || []).filter(function(c) { return String(c.id) === String(char.id); })[0];
+      if (found) return Object.assign({}, found, { avatar: found.avatar || char.avatar || '' });
+    } catch (e) {}
+    return char;
+  }
+
   function openPickChar() {
     pickCharList.innerHTML = '<div class="pick-char-empty">加载中...</div>';
     pickCharOverlay.classList.add('show');
@@ -2512,7 +2523,7 @@
           '<div class="pick-char-name">' + (c.name || '未命名') + '</div>';
         item.addEventListener('click', function() {
           pickCharOverlay.classList.remove('show');
-          requestListenInvite({ id: c.id, name: c.name || '伙伴', avatar: c.avatar || '' });
+          requestListenInvite(c);
         });
         pickCharList.appendChild(item);
       });
@@ -2666,7 +2677,7 @@
     } catch (e) {}
     parts.push('【点歌能力】你可以用 [播放:歌名] 点播任意歌曲，系统会自动联网搜索并播放；也可以用 [切歌] 切到下一首。');
     parts.push('【禁止思考链】本轮不要输出任何思维链/思考内容，严禁 [think]、[/think]、<think>、【思考】等标记，直接写聊天内容。');
-    parts.push('【心声 · 每次回复必须附带】在聊天正文最后单独占一行输出 [heart:此刻印象||心声独白]。此刻印象用一句话写你此刻对用户/这首歌的感觉；心声独白用第一人称"我"，50~120 字，写你发这条消息时真实的心理活动，口语、平实、可以跳跃或自嘲，不煽情、不升华、不写霸总腔。这一行不会显示在聊天里，用户点你的头像才会看到，所以不要把它写进正文。');
+    parts.push('【心声 · 每次回复必须附带】在聊天正文最后单独占一行输出 [heart:此刻印象||心声独白]。此刻印象用一句话写你此刻对用户/这首歌的感觉；心声独白用第一人称"我"，50~120 字，写你发这条消息时真实的心理活动。必须严格贴合上面的人设、身份、说话习惯和你们的关系，用这个角色自己的口吻和认知来想事情，不要写成通用温柔情话、霸总腔或客服式关心；口语、平实、可以跳跃或自嘲，不煽情、不升华。这一行不会显示在聊天里，用户点你的头像才会看到，所以不要把它写进正文。');
     parts.push(
       '【铁律】\n' +
       '1. 你就是「' + (char.name || '这个角色') + '」本人，严格遵循上面的人设与世界观，绝不 OOC：不做设定里不会做的事，不说设定里不会说的话。\n' +
@@ -2680,7 +2691,8 @@
       '8.1 【感情浓度适中】你和对方是有温度的熟人/暧昧关系：会关心、会接话、会有小情绪和调侃，也会主动分享自己的状态（今天怎么了、听到这首歌想起什么），让对话有来有回；但不要冷淡敷衍，也不要腻歪夸张、不要一直表白。\n' +
       '8.2 【严格贴合设定】你的说话方式必须按上面的人设与世界书来：称呼、口癖、用词习惯、教育程度、地域感、职业语气都要对得上，不要用千篇一律的客服腔或网络烂梗堆砌。\n' +
       '9. 可以自然聊到这首歌的歌词、旋律、心情，以及你和用户的共同经历；不确定的事不要编。\n' +
-      '10. 每次回复 1-3 句、30 字以内，口语化；不写旁白、括号动作、心理描写；不要复述用户的话。\n' +
+      '10. 像真人连发消息：每次回复 2~4 条短消息，每条单独占一行、10~24 字左右；口语化；不写旁白、括号动作、心理描写；不要复述用户的话。\n' +
+      '10.1 每一条都要像这个角色本人会说的话（称呼、口癖、用词、情绪都要对得上人设），不要变成千篇一律的温柔陪聊。\n' +
       '11. 【主动切歌】你要主动表达对当前歌曲的态度，不要一直被动听：不喜欢、听腻了、和当下心情不符，就在回复末尾加上 [切歌]（切到下一首），或者说 [播放:歌名] 点播你想听的；也可以直接告诉用户「这首我不太喜欢，换一首」。标记只在末尾、每轮最多一个，用户看不到，不要在正文里解释。\n' +
       '12. 如果用户点的歌你不喜欢，可以礼貌说自己的想法或提议换歌，但不要贬低用户的品味。'
     );
@@ -2777,7 +2789,7 @@
     try {
       var chars = await loadCharList();
       var found = (chars || []).filter(function (c) { return String(c.id) === String(charId); })[0];
-      if (found) char = { id: found.id, name: found.name || char.name, avatar: found.avatar || '' };
+      if (found) char = found;
     } catch (e) {}
     try { setListenTab('chat'); } catch (e) {}
     enterDuoMode(char, true);
@@ -2868,7 +2880,8 @@
 
   async function requestListenInvite(char) {
     // 邀请阶段：不进入一起听界面，等对方在聊天里同意后才开始
-    partnerInfo = char;
+    partnerInfo = await resolveDuoChar(char);
+    char = partnerInfo || char;
     duoActive = false;
     duoPending = false;
     duoHistory = [];
@@ -2997,7 +3010,8 @@
     if (listenDuration) listenDuration.textContent = '一起听了 0 分钟';
   }
 
-  function enterDuoMode(char, skipInvite) {
+  async function enterDuoMode(char, skipInvite) {
+    char = await resolveDuoChar(char);
     partnerInfo = char;
     duoActive = true;
     duoHistory = [];
@@ -3464,7 +3478,7 @@
     if (wasActive && prevPartner) {
       var cid = String(prevPartner.id || prevPartner.name || '');
       if (cid) {
-        var notice = '一起听已结束，你们不再一起听歌了（不要再说“我们还在听同一首歌”）。';
+        var notice = '你们已经结束了一起听';
         try { localStorage.setItem('nano_listen_notice_' + cid, JSON.stringify({ text: notice, ts: Date.now() })); } catch (e) {}
         try { postListenNotice(cid, notice); } catch (e) {}
       }

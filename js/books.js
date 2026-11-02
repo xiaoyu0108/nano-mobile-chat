@@ -1514,10 +1514,15 @@ async function replyFromChar(){
 /* 重roll：删掉上一轮 char 的所有气泡，重新调用 API */
 async function retryRound(){
   if(!currentChar){ toast('请先选择角色'); return; }
+  // 重roll 前必须先让用户说明上一版的问题，再按原因重写
   if(window.NanoReroll){
     const reason = await NanoReroll.ask({ title: '重roll 一起看', subtitle: '上一版哪里不对？留空也可以直接重写' });
     if(reason === null) return;
     window.__booksRerollReason = reason || '';
+  }else{
+    const reason = window.prompt('上一版哪里不对？（可留空直接重写）', '');
+    if(reason === null) return;
+    window.__booksRerollReason = String(reason || '').trim();
   }
   const box=document.getElementById('chatWindowBody');
   const msgs=[...box.querySelectorAll('.msg')];
