@@ -1190,7 +1190,7 @@
         }
 
         var systemContent = opts.system || (isContext
-            ? '你是一个真实的人类，正在刷朋友圈。像随手发动态一样：口语、生活化、松弛不端着。写具体的日常/情绪/吐槽/小事，大多数字数在 30~50 字左右（一两句话讲清一件事或一个情绪，带一点具体细节），偶尔可以很短（半句、一个词、一个 emoji），偶尔情绪真的上来、事情值得讲时再写小作文；长度完全跟着角色当下的情绪、事情大小和人设走，不要每条都固定长度。不要写成汇报、硬广、旅行博主腔或正能量总结。广告只能是隐晦暗广。不要加引号，不要解释，直接输出文案内容。'
+            ? '你是一个真实的人类，正在刷朋友圈。像随手发动态一样：口语、生活化、松弛不端着。写具体的日常/情绪/吐槽/小事，大多数在 30~50 字左右（一两句话讲清一件事或一个情绪，带一点具体细节），偶尔可以很短（半句、一个词、一个 emoji）；每 8 条左右要有 1 条 150~400 字的长文——追星/演唱会 repo、好物分享、情感经历、求助/避雷、深夜碎碎念等，要有具体细节、真实情绪和口语感，不要 AI 腔、营销号腔。长度完全跟着角色当下的情绪、事情大小和人设走，不要每条都固定长度。不要写成汇报、硬广、旅行博主腔或正能量总结。广告只能是隐晦暗广。不要加引号，不要解释，直接输出文案内容。'
             : '你是一个真实的人类，正在朋友圈评论区互动。像熟人随手打字：可以只回一句、一个表情、损一句或问一句，不要客服腔、不要总结、不要小作文。不超过20个字。不要加引号，不要解释，直接输出评论内容。');
         try {
             if (window.NanoPrompts && NanoPrompts.appendTo) systemContent = NanoPrompts.appendTo(systemContent, 'moments', { keepFormat: true });
@@ -2082,7 +2082,7 @@
                 '\n\n【这条朋友圈】\n作者：' + (item.author || '') + '\n内容：' + (item.text || '') +
                 (existing ? ('\n已有评论（可接着聊）：\n' + existing) : '') +
                 (hasUserComment ? ('\n【用户本人的评论（必须回复）】\n' + userCommentLines) : '') +
-                '\n\n请生成 5~8 条新的评论互动（既要回复已有评论，也要有新的人加入）：\n' +
+                '\n\n请生成 7~12 条新的评论互动（数量要够，不要只写两三条；既要回复已有评论，也要有新的人加入）：\n' +
                 '- 评论者只能从上面的名字里选，名字原样使用；\n' +
                 (isUserPost && charNamesForPrompt ? ('- 这条是用户本人发的动态：点赞名单里必须包含全部角色（' + charNamesForPrompt + '），并且至少 2 位角色要发表评论；\n') : '') +
                 (hasUserComment
@@ -2106,7 +2106,7 @@
 
             var raw;
             try {
-                raw = await fetchAIResponse(userMsg, false, { apiPref: 'sub', system: system, maxTokens: isUserPost ? 900 : 700, temperature: 0.9 });
+                raw = await fetchAIResponse(userMsg, false, { apiPref: 'sub', system: system, maxTokens: isUserPost ? 1400 : 1200, temperature: 0.9 });
             } catch (err) {
                 showApiError(err);
                 return;
@@ -2116,10 +2116,10 @@
             var rawForComments = String(raw || '').replace(/^\s*(?:LIKES|点赞)\s*[:：].*$/gim, '');
             var existingUsers = (item.comments || []).map(function(c) { return c.user; });
             var parsed = filterCommentList(parseCommentLines(rawForComments), authorChar, bound, npcs, isUserPost, existingUsers);
-            // 单独刷新评论时至少 5 条：不够就再补一次（只补一次，避免刷出十几条）。
-            if (parsed.length < 5) {
+            // 单独刷新评论时至少 7 条：不够就再补一次，单次最多追加 12 条。
+            if (parsed.length < 7) {
                 try {
-                    var raw2 = await fetchAIResponse(userMsg + '\n\n上次只生成了 ' + parsed.length + ' 条，请再补齐到 5~8 条；不要重复已有评论。', false, { apiPref: 'sub', system: system, maxTokens: isUserPost ? 900 : 700, temperature: 0.92 });
+                    var raw2 = await fetchAIResponse(userMsg + '\n\n上次只生成了 ' + parsed.length + ' 条，请再补齐到 7~12 条；不要重复已有评论。', false, { apiPref: 'sub', system: system, maxTokens: isUserPost ? 1400 : 1200, temperature: 0.92 });
                     var parsed2 = filterCommentList(
                         parseCommentLines(String(raw2 || '').replace(/^\s*(?:LIKES|点赞)\s*[:：].*$/gim, '')),
                         authorChar, bound, npcs, isUserPost, existingUsers.concat(parsed.map(function(c) { return c.user; }))
@@ -2128,6 +2128,7 @@
                 } catch (e) {}
             }
             // 关键兜底：用户评论后必须有人回复用户；被回复的人优先，否则作者本人。
+            parsed = parsed.slice(0, 12);
             parsed = await ensureUserReply(item, parsed, authorChar, bound, npcs, isUserPost, persona);
             if (!parsed.length && !newLikes.length) {
                 showApiError({
@@ -2160,7 +2161,7 @@
             }
 
             if (!item.comments) item.comments = [];
-            parsed.slice(0, 8).forEach(function(c) { item.comments.push(c); });
+            parsed.forEach(function(c) { item.comments.push(c); });
             saveOneMoment(item);
             renderFeed();
             if (document.getElementById('viewDetail').classList.contains('active') && currentDetailId === id) openDetail(id);
@@ -2241,8 +2242,8 @@
             }
         }
         lines.push('- 内容是活人发的日常，别一板一眼：会有吐槽、碎碎念、吃到好吃的、遇到无语的人、和谁一起的瞬间、路边看到的风景……可以有 emoji、口语、网络用语；');
-        lines.push('- 【文案长度必须有变化，不要固定字数】大多数动态控制在 30~50 字（一两句话讲完一件小事或一个情绪，带具体细节）；偶尔可以只写半句、一个词、一个标点或一个 emoji（如「无语。」「老子服了。」），偶尔情绪真的上来、事情值得讲时再写有起承转合的小作文（100~200 字甚至更长）。长度跟着角色当下的情绪、事情大小和人设走，不要每条都一个长度，也不要为了凑字硬写；');
-        lines.push('- 禁止写成汇报/小作文/广告/正能量总结；允许错别字、重复词、没头没尾的情绪；朋友圈是给熟人看的，不是公开发言；');
+        lines.push('- 【文案长度必须有变化，不要固定字数】大多数动态控制在 30~50 字（一两句话讲完一件小事或一个情绪，带具体细节）；偶尔可以只写半句、一个词、一个标点或一个 emoji（如「无语。」「老子服了。」）；每 8 条左右至少有 1 条 150~400 字的长文——追星/演唱会 repo、好物分享、情感经历、求助/避雷、深夜碎碎念等，要有具体细节、真实情绪和起承转合，不要 AI 腔。长度跟着角色当下的情绪、事情大小和人设走，不要每条都一个长度，也不要为了凑字硬写；');
+        lines.push('- 禁止写成汇报/硬广/正能量总结；长文只能是少数，不要每条都长；允许错别字、重复词、没头没尾的情绪；朋友圈是给熟人看的，不是公开发言；');
         lines.push('- 评论像熟人随口接话：可以损、可以关心、可以只发“哈哈哈”“？”或一个表情，不要每条都礼貌完整、不要总结对方的话；');
         lines.push('- 一部分是「配图动态」：MEDIA 写 image，并写 IMAGE 描述这张照片拍的是什么（吃的 / 风景 / 宠物 / 牵手 / 自拍等日常照）；其余是纯文字，MEDIA 写 text；这 ' + total + ' 条里至少 1 条 image、至少 1 条 text（除非只要求 1 条）；');
         lines.push('- 每条动态必须配 2~4 个点赞（LIKES 写 2~4 个名字）和 2~4 条评论；不要只写点赞不写评论，也不要只写评论不写点赞；');

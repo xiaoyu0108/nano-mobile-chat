@@ -36,10 +36,32 @@
     var now = Date.now();
     (ids || []).forEach(function (id) { if (id) map[id] = now; });
     writeTombstones(map);
+    // 同时把删除标记写进业务状态本身。localStorage 配额满/被清掉时，
+    // 仅靠 TOMB_KEY 不够，旧快照会把删掉的消息又合并回来。
+    try {
+      if (state) {
+        if (!state.deleted || typeof state.deleted !== 'object') state.deleted = {};
+        (ids || []).forEach(function (id) { if (id) state.deleted[id] = map[id] || now; });
+        var keys = Object.keys(state.deleted);
+        if (keys.length > 3000) {
+          keys.sort(function (a, b) { return (state.deleted[a] || 0) - (state.deleted[b] || 0); });
+          keys.slice(0, keys.length - 3000).forEach(function (k) { delete state.deleted[k]; });
+        }
+      }
+    } catch (e) {}
   }
   function applyTombstones(s) {
     if (!s) return s;
     var map = readTombstones();
+    // 业务状态里的删除标记优先级不低于 localStorage，避免配额问题导致复活。
+    try {
+      if (s.deleted && typeof s.deleted === 'object') {
+        Object.keys(s.deleted).forEach(function (id) {
+          if (id && (!map[id] || Number(s.deleted[id]) > Number(map[id]))) map[id] = s.deleted[id];
+        });
+      }
+      s.deleted = map;
+    } catch (e) {}
     (s.sessions || []).forEach(function (sess) {
       if (!sess) return;
       sess.items = (sess.items || []).filter(function (it) { return it && !map[it.id]; });
@@ -183,8 +205,15 @@
     // 本地只剩一个空壳、IDB 里还有完整记录时，别把历史消息“隐藏”掉；
     // 真正清空/删除的条目由 tombstone 在合并后统一过滤。
     if (preferLight && lightTotal === 0 && heavyTotal > 0) preferLight = false;
+    // 两边携带的删除标记都要合并，避免选了较新的 IDB 副本后丢掉刚删除的 id。
+    var mergedDeleted = {};
+    if (heavy.deleted && typeof heavy.deleted === 'object') Object.keys(heavy.deleted).forEach(function (k) { mergedDeleted[k] = heavy.deleted[k]; });
+    if (light.deleted && typeof light.deleted === 'object') Object.keys(light.deleted).forEach(function (k) {
+      if (!mergedDeleted[k] || Number(light.deleted[k]) > Number(mergedDeleted[k])) mergedDeleted[k] = light.deleted[k];
+    });
     // 本地更新，或同级但确实清空/改过窗口时，以本地为准；避免 IDB 旧记录顶掉刚清空的聊天。
     if (preferLight) {
+      light.deleted = mergedDeleted;
       var heavyById = {};
       (heavy.sessions || []).forEach(function (hs) { if (hs && hs.id) heavyById[hs.id] = hs; });
       (light.sessions || []).forEach(function (ls) {
@@ -212,6 +241,7 @@
       if (ls && ls.id && (ls.items || []).length && !(heavy.sessions || []).some(function (hs) { return hs && hs.id === ls.id; })) merged.push(ls);
     });
     heavy.sessions = merged;
+    heavy.deleted = mergedDeleted;
     return normalize(heavy);
   }
   function mergeStoredIntoMemory(memory, stored) {
@@ -257,6 +287,9 @@
     });
   }
   function reloadState() {
+    // 正在出图时不要用 IndexedDB 快照替换内存状态：否则新插入的 loading 项
+    // 和生成结果可能被旧快照顶掉，表现成“退出又回来图没了 / 删掉的消息复活”。
+    if (generating) return Promise.resolve();
     return saveChain.catch(function () {}).then(function () {
       if (!idbReady()) return;
       return window.NanoIDB.get(KEY).then(function (heavy) {
@@ -269,6 +302,7 @@
   }
   var state = loadLocal();
   var generating = false;
+  var submitLock = false;
   var pendingImages = [];
   var MAX_PENDING_IMAGES = 9;
   var pendingQuote = null;
@@ -861,8 +895,22 @@
     }
   }
 
+  function notifyImageBusy(on) {
+    try {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({
+          type: 'nanoImageBusy',
+          id: 'nano-image',
+          busy: !!on,
+          ttl: 20 * 60 * 1000
+        }, '*');
+      }
+    } catch (e) {}
+  }
+
   function setGenerating(on) {
     generating = !!on;
+    notifyImageBusy(generating);
     syncSendButton();
   }
 
@@ -974,34 +1022,39 @@
   }
 
   async function submit() {
-    if (generating) return;
-    var input = $('niPrompt');
-    var text = input ? String(input.value || '').trim() : '';
-    var images = pendingImages.slice();
-    if (!text && !images.length) {
-      var pending = latestPendingUserItem();
-      if (pending) { await replyToUserItem(pending.id); return; }
-      toast('想画什么？直接描述画面，或先添加参考图');
-      try { input.focus(); } catch (e) {}
-      return;
+    if (generating || submitLock) return;
+    submitLock = true;
+    try {
+      var input = $('niPrompt');
+      var text = input ? String(input.value || '').trim() : '';
+      var images = pendingImages.slice();
+      if (!text && !images.length) {
+        var pending = latestPendingUserItem();
+        if (pending) { await replyToUserItem(pending.id); return; }
+        toast('想画什么？直接描述画面，或先添加参考图');
+        try { input.focus(); } catch (e) {}
+        return;
+      }
+      if (!text) {
+        text = images.length > 1
+          ? '参考这些照片里的人物、画风与氛围，生成一张新的图片。'
+          : '参考这张照片里的人物、画风与氛围，生成一张新的图片。';
+      }
+      var quote = pendingQuote;
+      if (input) input.value = '';
+      try { input.style.height = 'auto'; } catch (e) {}
+      setPendingImage('');
+      setPendingQuote(null);
+      closeSheet('niMoreSheet');
+      closeMsgMenu();
+      try { if (input) input.blur(); } catch (e) {}
+      // 点一次就落气泡并立刻开始生图；不允许重叠提交抢跑。
+      var userItem = await sendChat(text, images, quote);
+      if (userItem && userItem.id) await replyToUserItem(userItem.id);
+    } finally {
+      submitLock = false;
+      syncSendButton();
     }
-    if (!text) {
-      text = images.length > 1
-        ? '参考这些照片里的人物、画风与氛围，生成一张新的图片。'
-        : '参考这张照片里的人物、画风与氛围，生成一张新的图片。';
-    }
-    var quote = pendingQuote;
-    if (input) input.value = '';
-    try { input.style.height = 'auto'; } catch (e) {}
-    setPendingImage('');
-    setPendingQuote(null);
-    closeSheet('niMoreSheet');
-    closeMsgMenu();
-    try { if (input) input.blur(); } catch (e) {}
-    // 点一次就落气泡并立刻开始生图。
-    var userItem = await sendChat(text, images, quote);
-    if (userItem && userItem.id) await replyToUserItem(userItem.id);
-    syncSendButton();
   }
 
   /* ---------- 窗口 ---------- */
@@ -1040,8 +1093,8 @@
     if (!state.sessions.some(function (x) { return x.id === state.currentId; })) {
       state.currentId = state.sessions[0].id;
     }
-    save();
     tombstoneItems(ids);
+    save();
     render();
     toast('已删除窗口');
   }
@@ -1364,6 +1417,7 @@
       var userImage = (user.images && user.images.length) ? user.images : (user.image || '');
       var userQuote = user.quote || null;
       currentSession().items = list.filter(function (x) { return x && x.id !== last.id && x.id !== user.id; });
+      tombstoneItems([last.id, user.id]);
       save();
       sendChat(userText, userImage, userQuote);
       var after = currentSession().items || [];
@@ -1374,6 +1428,7 @@
     }
     var ref = refsForImageItem(last);
     currentSession().items = list.filter(function (x) { return x && x.id !== last.id; });
+    tombstoneItems([last.id]);
     save();
     generateImage(last.prompt || '', ref, { noUser: true });
   }
@@ -1385,8 +1440,8 @@
     var ids = (s.items || []).map(function (x) { return x && x.id; });
     s.items = [];
     s.updatedAt = Math.max(Date.now(), (Number(s.updatedAt) || 0) + 1);
-    save();
     tombstoneItems(ids);
+    save();
     render();
     toast('已清空当前窗口');
   }
@@ -1465,9 +1520,10 @@
     if (!confirm('删除这条消息？')) return;
     currentSession().items = currentSession().items.filter(function (x) { return x && x.id !== id; });
     currentSession().updatedAt = Date.now();
-    save();
-    // 先写轻量镜像腾出 localStorage 空间，再写删除标记，避免存储满时标记写不进去。
+    // 先记删除标记，再保存完整状态：这样即便 IndexedDB 里还有旧快照，
+    // 下次合并时也会被 state.deleted 过滤掉，不会在发新消息后复活。
     tombstoneItems([id]);
+    save();
     render();
   }
 
@@ -1498,6 +1554,22 @@
     } catch (e) { toast('保存失败'); }
   }
 
+  function isIOSDevice() {
+    try {
+      return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    } catch (e) { return false; }
+  }
+  function shareOnIOS(blob, name) {
+    if (!isIOSDevice()) return false;
+    try {
+      if (!navigator.share) return false;
+      var file = new File([blob], name, { type: blob.type || 'image/png' });
+      if (navigator.canShare && !navigator.canShare({ files: [file] })) return false;
+      navigator.share({ files: [file], title: name }).catch(function () {});
+      return true;
+    } catch (e) { return false; }
+  }
   function downloadMessage(id, srcOverride) {
     var item = findItem(id);
     var src = srcOverride || (item && (item.url || item.image));
@@ -1513,6 +1585,16 @@
       a.click();
       a.remove();
       if (revoke) setTimeout(function () { try { URL.revokeObjectURL(u); } catch (e) {} }, 4000);
+    }
+    // iOS：系统分享半屏面板，避免全屏下载页退不回来。
+    if (isIOSDevice() && navigator.share) {
+      fetch(url).then(function (r) {
+        if (!r || !r.ok) throw new Error('http');
+        return r.blob();
+      }).then(function (blob) {
+        if (!shareOnIOS(blob, name)) direct(url, false);
+      }).catch(function () { direct(url, false); });
+      return;
     }
     if (/^data:image\//i.test(url) || /^blob:/i.test(url)) { direct(url, /^blob:/i.test(url)); return; }
     fetch(url).then(function (r) {
@@ -1562,6 +1644,7 @@
     if (item.kind === 'image' || (item.kind !== 'chat' && (item.url || item.fullPrompt || item.size))) {
       var ref = refsForImageItem(item);
       currentSession().items = list.filter(function (x) { return x && x.id !== item.id; });
+      tombstoneItems([item.id]);
       save();
       generateImage(item.prompt || '', ref, { noUser: true });
       return;
@@ -1571,6 +1654,7 @@
     var userText = user.text || '';
     var userImage = (user.images && user.images.length) ? user.images : (user.image || '');
     currentSession().items = list.filter(function (x) { return x && x.id !== item.id && x.id !== user.id; });
+    tombstoneItems([item.id, user.id]);
     save();
     sendChat(userText, userImage, quote);
     var after = currentSession().items || [];
@@ -1816,6 +1900,7 @@
       } else if (act === 'retry') {
         var retryRef = refsForImageItem(item);
         currentSession().items = currentSession().items.filter(function (x) { return x.id !== id; });
+        tombstoneItems([id]);
         save();
         generateImage(item.prompt || '', retryRef, { noUser: true });
       } else if (act === 'retry-chat') {
@@ -1831,6 +1916,7 @@
         var retryImage = (user.images && user.images.length) ? user.images : (user.image || '');
         var retryQuote = user.quote || null;
         currentSession().items = list.filter(function (x) { return x && x.id !== id && x.id !== user.id; });
+        tombstoneItems([id, user.id]);
         save();
         sendChat(retryText, retryImage, retryQuote);
         var retryList = currentSession().items || [];
@@ -1840,8 +1926,8 @@
       } else if (act === 'del') {
         currentSession().items = currentSession().items.filter(function (x) { return x.id !== id; });
         currentSession().updatedAt = Date.now();
-        save();
         tombstoneItems([id]);
+        save();
         render();
       }
     });

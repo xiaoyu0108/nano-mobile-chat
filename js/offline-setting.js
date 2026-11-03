@@ -127,12 +127,12 @@ function makeGodGroup() {
 // ===== 内置思维链预设（英语版，5 步自查）=====
 const BUILTIN_COT_NAME = 'English Reasoning (内置)';
 const BUILTIN_COT_CONTENT = [
-  'Reason step by step before you write. Go through all five checks below in order, briefly but concretely:',
-  '1. Who are {{user}} and {{char}} right now? Recall their exact personas, names, relationship, background and speech habits — this is to lock the character voice and avoid OOC.',
-  '2. What is the current scene? Note the time, place, atmosphere, who is present, and what just happened in the story so far.',
-  '3. What rules and settings am I bound by? List every active item: rules (额外规则), writing style (文风), word count (字数), person (人称), user-action prediction (用户行动预测), NSFW / 尺度, world book, and memory — and mark which ones affect this turn.',
-  '4. What would {{char}} actually do and say here? Decide the intent, emotion and the concrete action or line of {{char}} that fits the persona and the scene — not a generic reply.',
-  '5. Self-check before writing: Is my planned output in character (no OOC)? Does it obey every rule and setting from step 3? If anything is off, revise it before you output.'
+  'Think briefly and concretely before you write. Do not show this reasoning outside [thinking: … ].',
+  '1. Read in this exact order: global world book → {{char}} / {{user}} persona → enabled offline settings (word count, person, user-action prediction, extra rules). Disabled rules must be ignored.',
+  '2. Current scene: time, place, who is present, and what just happened. Pick the single most natural next beat instead of restarting the scene.',
+  '3. Decide {{char}}\'s concrete reaction: one real action and one line of dialogue that only this character would say. No generic comfort, no lecturing, no explaining the character\'s own personality.',
+  '4. Style check: no oily address words (姑娘 / 女人 / 女孩 / 小孩 / 小朋友 etc.); no three-part parallelism; no action-list filler; no lyric summary. Prefer short, plain, spoken sentences; let dialogue carry the scene.',
+  '5. Completeness check: output [thinking: … ] first, then the body, then [heart: … ] and exactly 5 [plot: … ] lines. Do not stop after the body.'
 ].join('\n');
 
 async function loadAllData() {
@@ -141,6 +141,11 @@ async function loadAllData() {
     const found = settingsData.find(s => s.id === SETTINGS_ID);
     if (found) settings = found;
     if (!Array.isArray(settings.statusBars)) settings.statusBars = [];
+    // 旧版内置思维链已直接写进 settings.cot 的，也迁移到新版，避免继续用旧逻辑。
+    if (settings.cot && /Reason step by step before you write|Who are \{\{user\}\} and \{\{char\}\} right now/i.test(settings.cot)) {
+      settings.cot = BUILTIN_COT_CONTENT;
+      try { await saveSettings(); } catch (e) {}
+    }
 
     const rulesData = await getStoreData('rules');
     const foundRules = rulesData.find(r => r.id === RULES_ID);
@@ -163,29 +168,42 @@ async function loadAllData() {
     } catch (e) {}
 
     // 内置「文风」规则组：文风写在规则里，用户按需开启一种即可。
+    // v2：同步这次升级后的日式轻小说 / 中式古风 / 情侣日常 / 文艺忧郁 / 轻笔重意等内置文风。
     try {
-      if (localStorage.getItem('nano_offline_style_group_v1') !== '1') {
+      if (localStorage.getItem('nano_offline_style_group_v3') !== '1') {
         const STYLE_GROUP_ID = 'offline-style';
         const list = (window.NanoOfflineStyles && NanoOfflineStyles.list) || [];
-        if (list.length && !(ruleGroups || []).some(function (g) { return g && g.id === STYLE_GROUP_ID; })) {
-          ruleGroups.push({
-            id: STYLE_GROUP_ID,
-            name: '文风（线下 · 开启一种）',
-            enabled: true,
-            expanded: false,
-            rules: list.map(function (s) {
-              return {
-                id: 'style-' + s.id,
-                name: s.name,
-                enabled: false,
-                content: s.prompt + '\n参考语感（只学节奏和语气，不要照抄内容）：\n' + s.example +
-                    '\n以上文风优先级高于默认文风；但仍必须服从角色人设、世界书、线下规则、用户行动预测和输出格式。'
-              };
-            })
+        if (list.length) {
+          let group = (ruleGroups || []).find(function (g) { return g && g.id === STYLE_GROUP_ID; });
+          if (!group) {
+            group = { id: STYLE_GROUP_ID, name: '文风（线下 · 开启一种）', enabled: true, expanded: false, rules: [] };
+            ruleGroups.push(group);
+          }
+          const oldById = {};
+          (group.rules || []).forEach(function (r) { if (r && r.id) oldById[r.id] = r; });
+          const builtinIds = {};
+          const next = list.map(function (s) {
+            const id = 'style-' + s.id;
+            builtinIds[id] = 1;
+            const old = oldById[id];
+            return {
+              id: id,
+              name: s.name,
+              enabled: !!(old && old.enabled === true),
+              content: s.prompt + '\n参考语感（只学节奏和语气，不要照抄内容）：\n' + s.example +
+                  '\n以上文风优先级高于默认文风；但仍必须服从角色人设、世界书、线下规则、用户行动预测和输出格式。'
+            };
           });
+          const custom = (group.rules || []).filter(function (r) {
+            return r && !builtinIds[r.id] && String(r.id || '').indexOf('style-') !== 0;
+          });
+          group.rules = next.concat(custom);
+          group.name = '文风（线下 · 开启一种）';
+          group.enabled = true;
+          group.expanded = false;
           await saveRules();
+          localStorage.setItem('nano_offline_style_group_v3', '1');
         }
-        if (list.length) localStorage.setItem('nano_offline_style_group_v1', '1');
       }
     } catch (e) {}
 
@@ -240,14 +258,14 @@ async function loadAllData() {
     const foundCot = cotData.find(s => s.id === COT_PRESETS_ID);
     if (foundCot && foundCot.presets) cotPresets = foundCot.presets;
 
-    // 内置英语思维链预设：首次写入一次（用户可自行修改/删除）
+    // 内置英语思维链预设：版本升级时更新内容（用户可自行改名/修改/删除）
     try {
-      if (localStorage.getItem('nano_offline_cot_v1') !== '1') {
-        if (!(cotPresets || []).some(function (p) { return p && p.name === BUILTIN_COT_NAME; })) {
-          cotPresets.unshift({ name: BUILTIN_COT_NAME, content: BUILTIN_COT_CONTENT });
-          await saveCotPresets();
-        }
-        localStorage.setItem('nano_offline_cot_v1', '1');
+      if (localStorage.getItem('nano_offline_cot_v2') !== '1') {
+        const oldIdx = (cotPresets || []).findIndex(function (p) { return p && p.name === BUILTIN_COT_NAME; });
+        if (oldIdx >= 0) cotPresets[oldIdx] = { name: BUILTIN_COT_NAME, content: BUILTIN_COT_CONTENT };
+        else cotPresets.unshift({ name: BUILTIN_COT_NAME, content: BUILTIN_COT_CONTENT });
+        await saveCotPresets();
+        localStorage.setItem('nano_offline_cot_v2', '1');
       }
     } catch (e) {}
 

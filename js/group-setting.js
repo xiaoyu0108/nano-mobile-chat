@@ -79,6 +79,11 @@
             }
             localStorage.setItem(GROUPS_KEY, JSON.stringify(data));
         } catch(e){}
+        try {
+            if (window.parent && window.parent !== window) {
+                window.parent.postMessage({ type: 'groupsDataUpdated', groupId: chatId }, '*');
+            }
+        } catch(e){}
     }
     function saveGroup(g){ try { localStorage.setItem(GROUP_KEY, JSON.stringify(g)); } catch(e){} }
     function loadSettings(){

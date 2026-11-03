@@ -1651,14 +1651,18 @@
     return prefix + previewText(m);
   }
 
-  function loadGroups() {
-    let groups = [];
+  // 群列表头像优先读每个群自己的 group_data_<id>，它比 nano_groups_data 小得多：
+  // 换头像时大注册表常因 localStorage 配额写不进去，旧头像就留在列表里。
+  function readGroupLocal(id) {
     try {
-      const raw = localStorage.getItem(GROUP_KEY);
-      groups = raw ? (JSON.parse(raw).groups || []) : [];
-    } catch (e) {}
+      const raw = localStorage.getItem(GROUP_DATA_PREFIX + id);
+      return raw ? (JSON.parse(raw) || null) : null;
+    } catch (e) { return null; }
+  }
+
+  function mapGroups(groups) {
     const pinned = getPinnedIds();
-    groupsData = groups.filter(function (g) {
+    return groups.filter(function (g) {
       if (!g || g.pending) return false;
       try {
         if (window.GroupStore && GroupStore.groupBelongsToCurrentUser && !GroupStore.groupBelongsToCurrentUser(g)) return false;
@@ -1666,11 +1670,14 @@
       return true;
     }).map(function (g) {
       const last = getGroupLastMessage(g.id);
+      const gd = readGroupLocal(g.id) || {};
+      const hasAvatar = Object.prototype.hasOwnProperty.call(gd, 'avatar');
+      const hasName = Object.prototype.hasOwnProperty.call(gd, 'name');
       return {
         id: String(g.id),
         type: 'group',
-        name: g.name || '未命名群聊',
-        avatar: g.avatar || '',
+        name: (hasName && gd.name) ? gd.name : (g.name || '未命名群聊'),
+        avatar: hasAvatar ? (gd.avatar || '') : (g.avatar || ''),
         msg: last ? groupPreview(last, g) : '点击进入群聊',
         time: timeText(last),
         lastTs: messageSortTs(last),
@@ -1681,6 +1688,15 @@
       if ((b.lastTs || 0) !== (a.lastTs || 0)) return (b.lastTs || 0) - (a.lastTs || 0);
       return String(b.id).localeCompare(String(a.id));
     });
+  }
+
+  function loadGroups() {
+    let groups = [];
+    try {
+      const raw = localStorage.getItem(GROUP_KEY);
+      groups = raw ? (JSON.parse(raw).groups || []) : [];
+    } catch (e) {}
+    groupsData = mapGroups(groups);
   }
 
   /* ================= 渲染 ================= */
@@ -2327,6 +2343,7 @@
       }
       if (d.type === 'nanoChatGoHome') {
         activatePage('chat');
+        if (d.tab === 'groups' || !d.tab) loadGroups();
         if (d.tab === 'friends' || d.tab === 'groups') activateTab(d.tab);
       }
     });

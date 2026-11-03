@@ -381,11 +381,44 @@
     var note = faceRef
       ? '【锁脸说明】人物参考图只用于保持长相（五官、脸型、肤色、发色）一致；请完全忽略参考图的姿势、角度、表情、背景与构图，按当前场景重新构图。\n'
       : '';
+    // 有锁脸参考时先走图生图 /images/edits：不少中转站只在 edits 里认真使用参考图，
+    // 普通 /images/generations 的 image 字段会被忽略，旅途照片就会“没锁脸”。
+    if (faceRef && String(faceRef).indexOf('data:') === 0) {
+      try {
+        var fc = faceRef.indexOf(',');
+        var fbin = atob(faceRef.slice(fc + 1));
+        var fu8 = new Uint8Array(fbin.length);
+        for (var fi = 0; fi < fbin.length; fi++) fu8[fi] = fbin.charCodeAt(fi);
+        var fmime = (faceRef.slice(5, fc).split(';')[0]) || 'image/png';
+        var ffd = new FormData();
+        ffd.append('model', model);
+        ffd.append('prompt', note + prompt);
+        ffd.append('n', '1');
+        ffd.append('size', size);
+        ffd.append('image', new Blob([fu8], { type: fmime }), 'face.png');
+        var base = toV1Base(resolveApiHost(imgUrl));
+        var er = await fetch(base + '/images/edits', {
+          method: 'POST',
+          headers: { Authorization: 'Bearer ' + key },
+          body: ffd
+        });
+        if (er.ok) {
+          var ed = await er.json();
+          var eit = ed && ed.data && ed.data[0];
+          var esrc = eit && (eit.url || (eit.b64_json ? 'data:image/png;base64,' + eit.b64_json : ''));
+          if (esrc) return finalizeImage({ src: esrc, kind: 'api', prompt: prompt }, prompt, opts.charName || '');
+        }
+      } catch (e) {
+        console.warn('[Travel] 锁脸图生图失败，改用普通生图:', e && e.message);
+      }
+    }
     var body = { model: model || undefined, prompt: note + prompt, n: 1, size: size };
     if (faceRef) {
       body.image = faceRef;
       body.reference_image = [faceRef];
       body.input_reference_image = [faceRef];
+      body.reference_images = [faceRef];
+      body.ref_image = faceRef;
     }
     var headers = { 'Content-Type': 'application/json' };
     if (key) headers.Authorization = 'Bearer ' + key;

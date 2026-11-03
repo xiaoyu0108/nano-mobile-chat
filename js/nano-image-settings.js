@@ -34,10 +34,24 @@
     var now = Date.now();
     (ids || []).forEach(function (id) { if (id) map[id] = now; });
     writeTombstones(map);
+    try {
+      if (state) {
+        if (!state.deleted || typeof state.deleted !== 'object') state.deleted = {};
+        (ids || []).forEach(function (id) { if (id) state.deleted[id] = map[id] || now; });
+      }
+    } catch (e) {}
   }
   function applyTombstones(s) {
     if (!s) return s;
     var map = readTombstones();
+    try {
+      if (s.deleted && typeof s.deleted === 'object') {
+        Object.keys(s.deleted).forEach(function (id) {
+          if (id && (!map[id] || Number(s.deleted[id]) > Number(map[id]))) map[id] = s.deleted[id];
+        });
+      }
+      s.deleted = map;
+    } catch (e) {}
     (s.sessions || []).forEach(function (sess) {
       if (!sess) return;
       sess.items = (sess.items || []).filter(function (it) { return it && !map[it.id]; });
@@ -146,7 +160,13 @@
     (heavy.sessions || []).forEach(function (s) { heavyTotal += ((s && s.items) || []).length; });
     var preferLight = lt > ht || (lt === ht && localHasChanges(light, heavy));
     if (preferLight && lightTotal === 0 && heavyTotal > 0) preferLight = false;
+    var mergedDeleted = {};
+    if (heavy.deleted && typeof heavy.deleted === 'object') Object.keys(heavy.deleted).forEach(function (k) { mergedDeleted[k] = heavy.deleted[k]; });
+    if (light.deleted && typeof light.deleted === 'object') Object.keys(light.deleted).forEach(function (k) {
+      if (!mergedDeleted[k] || Number(light.deleted[k]) > Number(mergedDeleted[k])) mergedDeleted[k] = light.deleted[k];
+    });
     if (preferLight) {
+      light.deleted = mergedDeleted;
       var heavyById = {};
       (heavy.sessions || []).forEach(function (hs) { if (hs && hs.id) heavyById[hs.id] = hs; });
       (light.sessions || []).forEach(function (ls) {
@@ -173,6 +193,7 @@
       if (ls && ls.id && (ls.items || []).length && !(heavy.sessions || []).some(function (hs) { return hs && hs.id === ls.id; })) merged.push(ls);
     });
     heavy.sessions = merged;
+    heavy.deleted = mergedDeleted;
     return normalize(heavy);
   }
   function idbReady() { return !!(window.NanoIDB && window.NanoIDB.get && window.NanoIDB.set); }
@@ -217,7 +238,8 @@
       presets: state.presets,
       basePresetId: state.basePresetId,
       importedApiName: state.importedApiName,
-      size: state.size
+      size: state.size,
+      deleted: state.deleted || {}
     };
     var localSessions = state.sessions || [];
     var localCurrentId = state.currentId;
@@ -650,8 +672,8 @@
     var ids = (s.items || []).map(function (x) { return x && x.id; });
     s.items = [];
     s.updatedAt = Math.max(Date.now(), (Number(s.updatedAt) || 0) + 1);
-    save();
     tombstoneItems(ids);
+    save();
     savedLabel('已清空本窗口记录');
   }
 

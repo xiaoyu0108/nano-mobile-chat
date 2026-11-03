@@ -444,14 +444,16 @@
     } catch (e) { return false; }
   }
 
-  // 不触发浏览器「下载」栏：把图片铺满屏幕，让用户长按保存到相册
+  // 系统分享不可用时的兜底：半屏底部面板，绝不铺满全屏，随时可以关掉。
   function showLongPressPreview(blob) {
     var url = URL.createObjectURL(blob);
     var ov = document.createElement('div');
-    ov.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(8,8,9,.94);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:18px;box-sizing:border-box;';
-    ov.innerHTML = '<img alt="Nano 票根" style="max-width:100%;max-height:calc(100% - 90px);border-radius:10px;box-shadow:0 20px 60px rgba(0,0,0,.5);" src="' + url + '">'
-      + '<div style="margin-top:16px;color:#e8e8ee;font:500 13px/1.5 ' + FONT + ';text-align:center;">长按图片保存到相册</div>'
-      + '<button type="button" style="margin-top:12px;height:40px;padding:0 22px;border-radius:12px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.08);color:#fff;font:600 14px ' + FONT + ';">关闭</button>';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(8,8,9,.45);display:flex;align-items:flex-end;justify-content:center;';
+    ov.innerHTML = '<div style="width:100%;max-width:520px;max-height:64vh;background:#111;border-radius:18px 18px 0 0;padding:16px 18px calc(16px + env(safe-area-inset-bottom,0px));box-sizing:border-box;display:flex;flex-direction:column;align-items:center;gap:12px;overflow:auto;">'
+      + '<div style="color:#e8e8ee;font:600 13px/1.4 ' + FONT + ';">长按图片保存到相册</div>'
+      + '<img alt="Nano 票根" style="max-width:100%;max-height:42vh;object-fit:contain;border-radius:10px;box-shadow:0 12px 36px rgba(0,0,0,.45);" src="' + url + '">'
+      + '<button type="button" style="width:100%;height:42px;border-radius:12px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.08);color:#fff;font:600 14px ' + FONT + ';">关闭</button>'
+      + '</div>';
     var close = function () {
       try { URL.revokeObjectURL(url); } catch (e) {}
       try { ov.remove(); } catch (e) {}

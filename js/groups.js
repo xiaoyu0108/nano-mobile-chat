@@ -1291,22 +1291,13 @@
             var groupCtx = recentGroupImageContext(member, 6);
             if (groupCtx) fullDesc += '\n【最近群聊上下文，用于保持场景和人物一致】\n' + groupCtx;
             if (faceRef) fullDesc = '【锁脸说明】人物参考图只用于保持长相（五官、脸型、肤色、发色）一致；请完全忽略参考图的姿势、角度、表情、背景与构图，按当前场景重新构图。\n' + fullDesc;
-            var body = { model:imgModel, prompt:fullDesc, n:1, size:'1024x1024' };
-            if (faceRef) { body.image = faceRef; body.reference_image = [faceRef]; body.input_reference_image = [faceRef]; }
-            fetch(baseUrl + '/images/generations', {
-                method:'POST',
-                headers:{ 'Authorization':'Bearer ' + imgKey, 'Content-Type':'application/json' },
-                body: JSON.stringify(body)
-            }).then(function(r){
-                if (!r.ok) {
-                    return r.text().then(function(t){
-                        var apiMsg = '';
-                        try { var d = JSON.parse(t || '{}'); apiMsg = (d && d.error && d.error.message) || (d && d.message) || ''; } catch(e) {}
-                        throw new Error(describeGroupHttpError(r.status) + (apiMsg ? '\n服务端信息：' + apiMsg : ''));
-                    });
+            var fail = function(err){
+                if (!opts.replaceMsgId) {
+                    try { showAlert('生图失败', String((err && err.message) || err || '生图请求失败')); } catch(e) {}
                 }
-                return r.json();
-            }).then(async function(d){
+                fallback();
+            };
+            var applyResult = async function(d){
                 var item = d && d.data && d.data[0];
                 var url = item && item.url;
                 if (!url && item && item.b64_json) url = 'data:image/png;base64,' + item.b64_json;
@@ -1327,13 +1318,58 @@
                         return;
                     }
                 }
-                pushMsg({ type:'left', senderId:member.id, isImage:true, imageData:{ url:url, desc:desc, genPrompt:desc } });
-            }).catch(function(err){
-                if (!opts.replaceMsgId) {
-                    try { showAlert('生图失败', String((err && err.message) || err || '生图请求失败')); } catch(e) {}
+                pushMsg({ type:'left', senderId:member.id, isImage:true, imageData:{ url: url, desc: desc, genPrompt: desc } });
+            };
+            var runTextToImage = function(){
+                var body = { model:imgModel, prompt:fullDesc, n:1, size:'1024x1024' };
+                if (faceRef) { body.image = faceRef; body.reference_image = [faceRef]; body.input_reference_image = [faceRef]; body.reference_images = [faceRef]; body.ref_image = faceRef; }
+                fetch(baseUrl + '/images/generations', {
+                    method:'POST',
+                    headers:{ 'Authorization':'Bearer ' + imgKey, 'Content-Type':'application/json' },
+                    body: JSON.stringify(body)
+                }).then(function(r){
+                    if (!r.ok) {
+                        return r.text().then(function(t){
+                            var apiMsg = '';
+                            try { var d = JSON.parse(t || '{}'); apiMsg = (d && d.error && d.error.message) || (d && d.message) || ''; } catch(e) {}
+                            throw new Error(describeGroupHttpError(r.status) + (apiMsg ? '\n服务端信息：' + apiMsg : ''));
+                        });
+                    }
+                    return r.json();
+                }).then(applyResult).catch(fail);
+            };
+            // 有锁脸参考时优先 /images/edits，否则很多中转站会忽略 generations 里的 image 字段。
+            var editTried = false;
+            if (faceRef && String(faceRef).indexOf('data:') === 0) {
+                editTried = true;
+                try {
+                    var fc = String(faceRef).indexOf(',');
+                    var fbin = atob(String(faceRef).slice(fc + 1));
+                    var fu8 = new Uint8Array(fbin.length);
+                    for (var fi = 0; fi < fbin.length; fi++) fu8[fi] = fbin.charCodeAt(fi);
+                    var fmime = (String(faceRef).slice(5, fc).split(';')[0]) || 'image/png';
+                    var ffd = new FormData();
+                    ffd.append('model', imgModel);
+                    ffd.append('prompt', fullDesc);
+                    ffd.append('n', '1');
+                    ffd.append('size', '1024x1024');
+                    ffd.append('image', new Blob([fu8], { type: fmime }), 'face.png');
+                    fetch(baseUrl + '/images/edits', {
+                        method:'POST',
+                        headers:{ 'Authorization':'Bearer ' + imgKey },
+                        body: ffd
+                    }).then(function(r){
+                        if (!r.ok) throw new Error('edit ' + r.status);
+                        return r.json();
+                    }).then(applyResult).catch(function(e){
+                        console.warn('[Group Image] 锁脸图生图失败，改用普通生图:', e && e.message);
+                        runTextToImage();
+                    });
+                } catch(e) {
+                    editTried = false;
                 }
-                fallback();
-            });
+            }
+            if (!editTried) runTextToImage();
         });
     }
 
@@ -1481,6 +1517,7 @@
         prompt += '- 改群名：[groupname:新群名]  例：[groupname:摸鱼小分队]\n';
         prompt += '- 发语音：[voice:秒数|语音内容]  例：[voice:4|我晚点到]\n';
         prompt += (settings.allowImage === false ? '' : '- 发图片：[image:画面描述]  例：[image:一只在窗台打盹的橘猫]\n');
+        prompt += '- 想给用户打电话 / 视频：[call:来电] 或 [call:视频]。群聊里不能打电话，系统会自动切到你和用户的私聊并拨过去；只有在非常着急、明确要打电话时再用。\n';
         prompt += '（标签必须单独放在该角色这一行；请自然、偶尔使用，不要每条都发功能。）\n';
         prompt += '- 想加用户好友/微信：[加好友]  例：某成员愿意和用户私聊时，在 TA 这一行的末尾加 [加好友]（系统会向用户发起好友申请，用户在 Meet 同意后即可私聊）。只在自然需要时偶尔使用。\n';
 
@@ -1680,6 +1717,7 @@
         s = s.replace(/\[title\s*:\s*([^\]]*)\]/gi, function(_, v){ tags.push({ kind:'title', payload:(v||'').trim() }); return ''; });
         s = s.replace(/\[groupname\s*:\s*([^\]]*)\]/gi, function(_, v){ tags.push({ kind:'groupname', payload:(v||'').trim() }); return ''; });
         s = s.replace(/\[voice\s*:\s*([^\]]*)\]/gi, function(_, v){ tags.push({ kind:'voice', payload:(v||'').trim() }); return ''; });
+        s = s.replace(/\[call\s*:\s*([^\]]*)\]/gi, function(_, v){ tags.push({ kind:'call', payload:(v||'').trim() }); return ''; });
         s = s.replace(/\[(?:加好友|加微信|加我|申请加好友|addfriend)\]/gi, function(){ tags.push({ kind:'friendreq', payload:'' }); return ''; });
         s = s.replace(/\[image\s*:\s*([^\]]*)\]/gi, function(_, v){ tags.push({ kind:'image', payload:(v||'').trim() }); return ''; });
         s = s.replace(/【(红包|接龙|公告|昵称|头衔|群名)\s*[:：]\s*([^】]*?)】/g, function(_, k, v){
@@ -1760,6 +1798,35 @@
     function notifyGroupChange(text){
         pushTip(text);
         pendingNotes.push(text);
+    }
+
+    // 群聊里不能打电话：成员要打电话时切到 TA 的私聊，由外壳在私聊里发起来电。
+    function startGroupPrivateCall(member, payload){
+        if (!member) return;
+        var now = Date.now();
+        if (window.__nanoGroupCallAt && now - window.__nanoGroupCallAt < 2500) return;
+        window.__nanoGroupCallAt = now;
+        var video = /视频|video/i.test(String(payload || ''));
+        var c = groupCharMap[member.id] || groupCharMap[member.name] || null;
+        var cid = String((c && c.id) || member.id || '');
+        if (!cid) return;
+        var name = member.nick || member.name || '角色';
+        if (window.parent !== window) {
+            try {
+                window.parent.postMessage({
+                    type: 'groupPrivateCall',
+                    groupId: chatId,
+                    chatId: cid,
+                    name: name,
+                    avatar: member.avatar || '',
+                    video: video
+                }, '*');
+                return;
+            } catch (e) {}
+        }
+        try {
+            location.href = 'chat_inner.html?chat=' + encodeURIComponent(cid) + '&name=' + encodeURIComponent(name);
+        } catch (e) {}
     }
 
     // 群成员申请加好友 → 写进 Meet 好友申请（绑定当前人设，同意后进入好友/角色库）
@@ -2090,6 +2157,7 @@
             parsed.tags.forEach(function(tag, ti){
                 // 红包卡片放到本轮最后再出现，方便用户先看完互动再决定要不要抢
                 if (tag.kind === 'redpacket') { deferredRedPackets.push({ member: member, tag: tag, timeStr: timeStr }); return; }
+                if (tag.kind === 'call') { setTimeout(function(){ startGroupPrivateCall(member, tag.payload); }, i * 450 + ti * 180); return; }
                 if (tag.kind === 'friendreq') { setTimeout(function(){ requestFriendFromGroup(member); }, i * 450 + ti * 180); return; }
                 setTimeout(function(){ handleGroupTag(member, tag, timeStr); }, i * 450 + ti * 180);
             });

@@ -224,6 +224,8 @@ let currentTagDesc = '';
 let tagManageMode = false;
 let insImageSettings = { enabled: false, chars: [], npc: false, stranger: false, round: 0 };
 let insBusy = { forum: false, tag: false, comments: false, dm: false };
+// 只在当前页面内存里保存「本次/最近生成过的随机 NPC」，不落 localStorage，不当固定库用。
+const transientNpcs = [];
 let insBackground = false;
 let followedUsers = [];
 const IMG_SETTINGS_KEY = 'nano_ins_image_settings';
@@ -828,12 +830,21 @@ async function refreshComments() {
   const post = currentPost;
   showLoading('正在生成评论互动…');
   try {
-    const bound = getSelectableChars();
-  let npcs = pickNpcs(3 + Math.floor(Math.random() * 2));
-  if (!npcs.length && bound.length) {
-    // 不再用固定名字兜底：NPC 必须由 AI 按人设/世界书/记忆自己想。
-    try { await generateNpcRoster(bound); npcs = pickNpcs(3); } catch (e) {}
-  }
+    const allChars = getSelectableChars();
+    // 评论只围绕这条动态的作者生成 NPC：charA 的世界书人物不能出现在 charB 的评论区。
+    const authorChar = allChars.find(c => c && normName(c.name) === normName(post.user)) || null;
+    const isUserAuthor = normName(post.user) === normName(userProfile.name);
+    const scope = authorChar ? ('char_' + String(authorChar.id || authorChar.name))
+      : (isUserAuthor ? 'user' : ('post_' + normName(post.user)));
+    const bound = authorChar ? [authorChar] : (isUserAuthor ? allChars : []);
+    let npcs = [];
+    if (bound.length) {
+      // 每次刷新评论都让 AI 现场随机生成一批，不复用固定 NPC 库。
+      try {
+        const fresh = await generateNpcRoster(bound, 6, scope);
+        npcs = pickRandom(fresh, 3);
+      } catch (e) {}
+    }
     const exclude = bound.map(c => c.name).concat(npcs.map(n => n.name));
     await ensureStrangerRoster(bound, 8, exclude);
     const strangers = pickStrangers(5, []);
@@ -844,10 +855,10 @@ async function refreshComments() {
     const before = (post.comments || []).length;
     let newCount = 0;
     try {
-      newCount = await generateCommentsForPost(post, bound, npcs, strangers);
-      // 单独刷新评论时至少 5~8 条互动；不够 5 条才补一次，避免一次刷出十几条。
-      if (newCount < 5) {
-        try { newCount += await generateCommentsForPost(post, bound, npcs, strangers); } catch (e) {}
+      newCount = await generateCommentsForPost(post, bound, npcs, strangers, 12);
+      // 单独刷新评论时每次生成 7~12 条；不够 7 条才补一次，避免一次刷出太多。
+      if (newCount < 7) {
+        try { newCount += await generateCommentsForPost(post, bound, npcs, strangers, 12 - newCount); } catch (e) {}
       }
     } catch (e) {
       showToast('评论生成失败');
@@ -985,10 +996,12 @@ function renderDiscover() {
 async function generateInsPosts(count, topic) {
   const chars = getSelectableChars();
   if (!chars.length) return [];
-  let npcs = pickNpcs(4);
-  if (!npcs.length) {
-    try { await generateNpcRoster(chars, 6); npcs = pickNpcs(4); } catch (e) {}
-  }
+  // 每次生成现场随机一批 NPC，不落固定库。
+  let npcs = [];
+  try {
+    const fresh = await generateNpcRoster(chars, 6, 'feed');
+    npcs = pickRandom(fresh, 4);
+  } catch (e) {}
   const total = count || (4 + Math.floor(Math.random() * 2));
   const charNames = chars.map(c => c.name).filter(Boolean);
   const npcNames = npcs.map(c => c.name).filter(Boolean);
@@ -1004,7 +1017,8 @@ async function generateInsPosts(count, topic) {
     '\n已选角色（优先每人 1 条）：' + charNames.join('、') +
     (npcQuota > 0 ? ('\n已选角色不足 ' + total + ' 条，剩余 ' + npcQuota + ' 条由朋友 NPC 补足：' + npcNames.join('、')) : '\n已选角色数量足够，全部由已选角色发帖') +
     '\n评论者/点赞者可用：' + allowedNames.join('、') +
-    '\n【最高优先级】已选角色（char）之间绝对不允许互相评论、回复、点赞或接话，即使人设/世界书/角色关系明确写了认识也不行。char 只能和用户或 NPC/陌生网友互动；char 发的帖子下只允许 NPC/陌生网友和作者本人出现，作者本人只回复用户。';
+    '\n【最高优先级】已选角色（char）之间绝对不允许互相评论、回复、点赞或接话，即使人设/世界书/角色关系明确写了认识也不行。char 只能和用户或 NPC/陌生网友互动；char 发的帖子下只允许 NPC/陌生网友和作者本人出现，作者本人只回复用户。' +
+    '\n【NPC 归属】每个 NPC 只属于自己的关系角色：A 的熟人只能出现在 A 的帖子下，绝对不要把 A 的 NPC 写到 B / C 的评论区或点赞里。';
   let out = '';
   try { out = await callChatApi([{ role: 'system', content: sys }, { role: 'user', content: userMsg }], 'sub'); } catch (e) { out = ''; }
   const arrMatch = (out || '').match(/\[[\s\S]*\]/);
@@ -1058,7 +1072,7 @@ async function generateInsPosts(count, topic) {
           tags: Array.isArray(p.tags) && p.tags.length ? p.tags : (topic ? [topic] : ['随笔']),
           comments: []
         };
-        appendInteractions(post, comments);
+        appendInteractions(post, comments, npcs);
         made.push(post);
       });
     } catch (e) {}
@@ -1124,29 +1138,57 @@ function isGenericNpcName(name) {
 }
 
 function currentMaskId() { return (userProfile && userProfile.id) || 'default'; }
-function rosterKey() { return NPC_ROSTER_PREFIX + currentMaskId(); }
-function rosterSrcKey() { return NPC_ROSTER_PREFIX + 'src_' + currentMaskId(); }
+// NPC 池按「生成上下文」分开存：charA 的世界书 NPC 不能跑到 charB / charC 的评论区。
+// scope 由调用方传：单角色用 char_<id>，一次批量生成用 set_<ids>，开放平台用 feed。
+function normalizeRosterScope(scope) {
+  return String(scope || 'user').replace(/[^\w\u4e00-\u9fa5:-]/g, '_').slice(0, 90) || 'user';
+}
+function rosterKey(scope) { return NPC_ROSTER_PREFIX + currentMaskId() + '_' + normalizeRosterScope(scope); }
+function rosterSrcKey(scope) { return NPC_ROSTER_PREFIX + 'src_' + currentMaskId() + '_' + normalizeRosterScope(scope); }
+function legacyRosterKey() { return NPC_ROSTER_PREFIX + currentMaskId(); }
+function legacyRosterSrcKey() { return NPC_ROSTER_PREFIX + 'src_' + currentMaskId(); }
 
-function loadNpcRoster() {
+function readRosterArray(key) {
   try {
-    const raw = localStorage.getItem(rosterKey());
+    const raw = localStorage.getItem(key);
     if (raw) { const a = JSON.parse(raw); if (Array.isArray(a)) return a; }
   } catch (e) {}
   return null;
 }
 
-function loadNpcRosterSrc() {
+function loadNpcRoster(scope) {
+  if (scope) return readRosterArray(rosterKey(scope));
+  // 不传 scope = 查所有上下文（只用于给评论/点赞者找头像和资料，不用于抽取候选）。
+  const base = NPC_ROSTER_PREFIX + currentMaskId() + '_';
+  const srcBase = NPC_ROSTER_PREFIX + 'src_' + currentMaskId() + '_';
+  const seen = {}, out = [];
   try {
-    const raw = localStorage.getItem(rosterSrcKey());
-    if (raw) { const a = JSON.parse(raw); if (Array.isArray(a)) return a; }
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k || k.indexOf(base) !== 0 || k.indexOf(srcBase) === 0) continue;
+      const arr = readRosterArray(k) || [];
+      arr.forEach(n => {
+        if (!n || !n.name || seen[normName(n.name)]) return;
+        seen[normName(n.name)] = 1; out.push(n);
+      });
+    }
+    // 兼容旧版全局池：只在“查全部”时用来显示头像，不再参与新的抽取。
+    (readRosterArray(legacyRosterKey()) || []).forEach(n => {
+      if (!n || !n.name || seen[normName(n.name)]) return;
+      seen[normName(n.name)] = 1; out.push(n);
+    });
   } catch (e) {}
-  return null;
+  return out;
 }
 
-function saveNpcRoster(list, ids) {
+function loadNpcRosterSrc(scope) {
+  return readRosterArray(scope ? rosterSrcKey(scope) : legacyRosterSrcKey()) || [];
+}
+
+function saveNpcRoster(list, ids, scope) {
   try {
-    localStorage.setItem(rosterKey(), JSON.stringify(list || []));
-    localStorage.setItem(rosterSrcKey(), JSON.stringify(ids || []));
+    localStorage.setItem(rosterKey(scope), JSON.stringify(list || []));
+    localStorage.setItem(rosterSrcKey(scope), JSON.stringify(ids || []));
   } catch (e) {}
 }
 
@@ -1284,26 +1326,36 @@ function dbNpcs() {
   }));
 }
 
-function rosterNpcs() {
-  const list = loadNpcRoster() || [];
+function rosterNpcs(scope) {
+  const list = loadNpcRoster(scope) || [];
   return list.filter(n => n && n.name && !isGenericNpcName(n.name) && !isLegacyFallbackNpc(n.name)).map(n => ({
     id: n.id || ('npc_' + normName(n.name)), name: n.name, avatar: n.avatar || '', type: 'npc',
     isNpc: true, relation: n.relation || '', setting: n.setting || n.relation || '', gender: n.gender || ''
   }));
 }
 
-function generateContextNPCs() {
+function postNpcProfiles() {
+  const out = [];
+  try {
+    (posts || []).forEach(function (p) {
+      ((p && p.npcProfiles) || []).forEach(function (n) { if (n && n.name) out.push(n); });
+    });
+  } catch (e) {}
+  return out;
+}
+
+function generateContextNPCs(scope) {
   const seen = {}, out = [];
-  dbNpcs().concat(rosterNpcs()).forEach(n => {
+  dbNpcs().concat(rosterNpcs(scope)).concat(transientNpcs).concat(postNpcProfiles()).forEach(n => {
     if (!n || !n.name || seen[normName(n.name)]) return;
     seen[normName(n.name)] = 1; out.push(n);
   });
-  return out.slice(0, 12);
+  return out.slice(0, 80);
 }
 
-// NPC 每次随机出现：从候选池里随机抽 n 个
-function pickNpcs(n) {
-  return pickRandom(generateContextNPCs(), n);
+// NPC 每次随机出现：只从本次页面里 AI 临时生成的人物中抽，不读固定池。
+function pickNpcs(n, scope) {
+  return pickRandom(transientNpcs, n);
 }
 
 // ==================== 平台陌生用户（Instagram 是开放平台，不只是好友圈） ====================
@@ -1416,7 +1468,7 @@ function parseNpcRoster(raw, chars) {
   return out;
 }
 
-async function generateNpcRoster(chars, want) {
+async function generateNpcRoster(chars, want, scope) {
   let persona = buildPersonaBlock(chars);
   const memText = await loadCharMemoryText(chars).catch(() => '');
   if (memText) persona += '\n\n【角色长期记忆（优先从这里提到的真实人物取材）】\n' + memText.slice(0, 2400);
@@ -1435,8 +1487,16 @@ async function generateNpcRoster(chars, want) {
     '[{"name":"李思雨","relation":"XX的大学同学","setting":"一句话性格与背景","gender":"女"}]';
   const raw = await callChatApi([{ role: 'system', content: system }, { role: 'user', content: userPersonaBlock() + '\n\n' + userMsg }], 'sub');
   const list = parseNpcRoster(raw, chars);
-  const ids = (chars || []).map(c => String((c && (c.id || c.name)) || '')).filter(Boolean);
-  if (list.length) saveNpcRoster(list, ids);
+  // 不再写入固定 NPC 库：每次生成只把这批随机 NPC 用于本次调用。
+  // 仅保留一个页面内存池，方便当前页面的评论头像/资料查找；刷新/重开即丢失。
+  if (list.length) {
+    list.forEach(function (n) {
+      if (!n || !n.name) return;
+      var key = normName(n.name);
+      if (!transientNpcs.some(function (x) { return normName(x.name) === key; })) transientNpcs.push(n);
+    });
+    if (transientNpcs.length > 80) transientNpcs.splice(0, transientNpcs.length - 80);
+  }
   return list;
 }
 
@@ -1591,7 +1651,26 @@ function filterCommentList(list, authorName, allowedNames, existingNames) {
 }
 
 // 把「评论者|回复对象|内容」结果写入帖子的评论区（回复挂在被回复者的评论下）
-function appendInteractions(post, parsed) {
+function appendInteractions(post, parsed, npcPool) {
+  // 把本次用到的 NPC 资料随帖子保存（不建全局库）：重开页面后仍能按名字找到头像/关系。
+  try {
+    if (npcPool && npcPool.length) {
+      var mentioned = {};
+      (parsed || []).forEach(function (c) {
+        if (c && c.user) mentioned[normName(c.user)] = 1;
+        if (c && c.toUser) mentioned[normName(c.toUser)] = 1;
+      });
+      var seen = {};
+      var profiles = (post.npcProfiles || []).slice();
+      profiles.forEach(function (n) { if (n && n.name) seen[normName(n.name)] = 1; });
+      npcPool.forEach(function (n) {
+        if (!n || !n.name || !mentioned[normName(n.name)] || seen[normName(n.name)]) return;
+        seen[normName(n.name)] = 1;
+        profiles.push({ name: n.name, relation: n.relation || '', setting: n.setting || '', gender: n.gender || '' });
+      });
+      if (profiles.length) post.npcProfiles = profiles;
+    }
+  } catch (e) {}
   if (!post.comments) post.comments = [];
   const stamp = Date.now() + '_' + Math.floor(Math.random() * 9999);
   (parsed || []).forEach((c, i) => {
@@ -1670,7 +1749,7 @@ function sanitizeCharInteractionsIns() {
   return changed;
 }
 
-async function generateCommentsForPost(post, bound, npcs, strangers) {
+async function generateCommentsForPost(post, bound, npcs, strangers, limit) {
   const pool = buildCommenterPool(post, bound, npcs, strangers);
   if (!pool.length) return 0;
   const persona = buildPersonaBlock((bound || []).concat(npcs || []).concat(strangers || []));
@@ -1691,7 +1770,7 @@ async function generateCommentsForPost(post, bound, npcs, strangers) {
     (existing ? ('\n【已有评论（初始回复人，可继续回帖）】\n' + existing) : '') +
     (newPool.length ? ('\n【还没出现过的新回复人】\n' + newPool.map(n => '· ' + n).join('\n')) : '') +
     (hasUserComment ? ('\n【用户本人的评论（必须有人回复 TA）】\n' + userComments.map(c => '用户：' + c.text).join('\n')) : '') +
-    '\n\n请生成 5~8 条新的评论互动（数量要够，不要只写两三条；既要回复已有评论，也要有新的人加入）：\n' +
+    '\n\n请生成 7~12 条新的评论互动（数量要够，不要只写两三条；既要回复已有评论，也要有新的人加入）：\n' +
     '- 每条评论都要针对上面帖子的标题/正文/话题来写，可以引用其中的具体词、细节或观点，绝对不要跑题；\n' +
     '- 必须包含发帖人「' + post.user + '」的评论，作者要回应评论区；\n' +
     (existingNames.length ? '- 必须包含「初始回复人」（上面已有评论里出现过的人）继续回帖；\n' : '') +
@@ -1707,8 +1786,10 @@ async function generateCommentsForPost(post, bound, npcs, strangers) {
   const raw = await callChatApi([{ role: 'system', content: system }, { role: 'user', content: userMsg }], 'sub');
   const parsed = filterInsKnownReplies(filterCommentList(parseCommentLines(raw), post.user, pool, existingNames), post, bound, npcs, strangers);
   if (!parsed.length) return 0;
-  appendInteractions(post, parsed);
-  return parsed.length;
+  const cap = Math.max(0, limit == null ? 12 : limit);
+  const kept = parsed.slice(0, cap);
+  appendInteractions(post, kept, npcs);
+  return kept.length;
 }
 
 // ==================== AI 生成帖子 ====================
@@ -1726,7 +1807,7 @@ function buildForumPrompt(chars, npcs, strangers, recent, opts) {
   const persona = buildPersonaBlock(charList.concat(npcList).concat(strangerList));
   const lines = [];
   lines.push('这是一个开放的社交平台（类似 Instagram）。平台上不只有用户的好友，还有大量陌生网友在这里发帖和互动。');
-  lines.push('【平台气质 · 必须和朋友圈区分开】这里是面向所有人的公开主页，不是只给熟人看的朋友圈：文案更短、更精致、更有展示感，像认真挑过的一张照片配一两句话；少写家庭/职场/感情的私密细节和负能量长文，多写生活方式、审美、旅行、美食、健身、作品、当下心情；可以中英混排、只有半句、emoji 或定位，但不要旅行博主腔和硬广。');
+  lines.push('【平台气质 · 必须和朋友圈区分开】这里是面向所有人的公开主页，不是只给熟人看的朋友圈：大多数文案短、精致、有展示感，像认真挑过的一张照片配一两句话；但每 6~8 条里要有 1~2 条长文——追星/演唱会 repo、好物分享/测评、情感经历、事情求助/避雷等，写得具体、有细节、像真人真实经历，不要 AI 腔和营销号腔；少写过度私密的家庭/职场细节和纯负能量发泄，多展示生活方式、审美、旅行、美食、健身、作品、当下心情；可以中英混排、只有半句、emoji 或定位，但不要每条都长，也不要旅行博主腔和硬广。');
   lines.push('请一次性生成 ' + count + ' 条帖子，每条自带 2~4 个点赞和 2~4 条初始评论：');
   lines.push('- 发帖人必须从上面列出的名字里选，名字原样使用；');
   if (charQuota > 0) lines.push('- 【发帖人优先级】先让已选角色发帖：' + charList.slice(0, charQuota).map(c => c.name).join('、') + ' 每人至少 1 条，作者不要重复；');
@@ -1741,9 +1822,10 @@ function buildForumPrompt(chars, npcs, strangers, recent, opts) {
   }
   if (tag) lines.push('- 所有帖子都必须围绕话题 #' + tag + '，并把它写进 TAGS；');
   if (desc) lines.push('- 话题描述与方向（必须严格符合）：' + desc + '；');
-  lines.push('- 文案像真实的人在经营公开主页：短、干净、有画面感，常常只有一两句 + emoji/定位/英文短语；比朋友圈更克制，少写家庭、职场、感情的具体私事和负能量长文，多展示生活方式、审美、旅行、美食、健身、作品、当下心情；偶尔也可以很随意或发一句吐槽，但整体要有「发给大家看」的精致感；不要旅行博主腔、硬广和每条都升华总结；');
+  lines.push('- 文案像真实的人在经营公开主页：大多数短、干净、有画面感，常常只有一两句 + emoji/定位/英文短语；但每 6~8 条里至少 1 条长文（追星/演唱会 repo、好物分享/测评、情感经历、求助/避雷），要有具体细节和真实情绪；偶尔也可以很随意或发一句吐槽，但整体不要每条都长，不要旅行博主腔、硬广和每条都升华总结；');
   lines.push('- 每条帖子必须配 2~4 个点赞（LIKES 写 2~4 个名字）和 2~4 条初始评论；评论者只能从上面的名字里选，评论像随手打字，可以只回一句、发表情、歪楼，不要客服腔；');
-  lines.push('- 【最高优先级】已选角色（char）之间绝对不允许互相评论、回复、点赞或接话，即使人设/世界书/角色关系明确写了认识也不行。char 只能和用户或 NPC/陌生网友互动。');
+    lines.push('- 【最高优先级】已选角色（char）之间绝对不允许互相评论、回复、点赞或接话，即使人设/世界书/角色关系明确写了认识也不行。char 只能和用户或 NPC/陌生网友互动。');
+    lines.push('- 【NPC 归属】每个 NPC 只属于自己的关系角色：A 的熟人只能出现在 A 的帖子下，绝对不要把 A 的 NPC 写到 B / C 的评论区或点赞里。');
   lines.push('- char 发的帖子：评论者/点赞者只能来自 NPC / 陌生网友和作者本人；其它 char 的名字一个都不许写。作者本人只回复用户；NPC/陌生网友之间可以自然接话，NPC 也可以回复作者。');
   lines.push('- 用户本人发的帖子（如果出现）：所有 char 都可以评论用户；但 char 绝对不能回复、点名或评论另一个 char；NPC 可以评论任何参与者。');
   lines.push('- 评论者回复别人时写成「评论者|回复对象|内容」，不是回复则写成「评论者||内容」；');
@@ -1898,7 +1980,7 @@ function buildPostsFromParsed(parsed, chars, npcs, strangers, opts) {
       tags: tags,
       comments: []
     };
-    appendInteractions(post, safeComments);
+    appendInteractions(post, safeComments, npcs);
     made.push(post);
   });
   return made;
@@ -1963,9 +2045,12 @@ async function runForumGenerate(selected) {
   try{ if(window.NanoRefresh) NanoRefresh.start({ key:'ins-forum', label:'刷新帖子' }); }catch(e){}
   showLoading('正在生成帖子…');
   try {
-    // NPC 每次随机：重新生成一小批关系人物；失败时沿用已有池，不再塞内置名字
-    try { await generateNpcRoster(picked, 6); } catch (e) {}
-    let npcs = pickNpcs(4 + Math.floor(Math.random() * 3));
+    // NPC 每次现场随机生成，不复用固定池
+    let npcs = [];
+    try {
+      const fresh = await generateNpcRoster(picked, 6);
+      npcs = pickRandom(fresh, 4 + Math.floor(Math.random() * 3));
+    } catch (e) {}
     // 开放平台：再准备一批陌生网友，并挑 3 位发帖
     const exclude = picked.map(c => c.name).concat(npcs.map(n => n.name));
     await ensureStrangerRoster(picked, 8, exclude);
@@ -2600,10 +2685,13 @@ async function refreshTagResult() {
   showLoading('正在生成 #' + currentTag + ' 的帖子…');
   try {
     const bound = getSelectableChars();
-    let npcs = pickNpcs(4 + Math.floor(Math.random() * 3));
-    if (!npcs.length && bound.length) {
-      // 不再用固定名字兜底：NPC 必须由 AI 按人设/世界书/记忆自己想。
-      try { await generateNpcRoster(bound); npcs = pickNpcs(4); } catch (e) {}
+    let npcs = [];
+    if (bound.length) {
+      // 每次现场随机生成，不读固定 NPC 池
+      try {
+        const fresh = await generateNpcRoster(bound, 6);
+        npcs = pickRandom(fresh, 4);
+      } catch (e) {}
     }
     // 开放平台：话题下大量陌生网友参与
     const exclude = bound.map(c => c.name).concat(npcs.map(n => n.name));
@@ -3599,11 +3687,21 @@ function idbInsSet(key, value) {
   }).catch(function () { return false; });
 }
 
-function insStatePayload() {
+function insStatePayload(stripLargeImages) {
+  const list = (posts || []).slice(0, 120);
+  const outPosts = stripLargeImages
+    ? list.map(function (p) {
+        if (p && p.image && String(p.image).length > 60000) {
+          // 不能直接改原对象，否则页面上的生成图会一起消失
+          return Object.assign({}, p, { image: null });
+        }
+        return p;
+      })
+    : list;
   return {
     friends: friends, strangers: strangers, chatHistories: chatHistories,
     pending: insPendingReplies, followed: followedUsers, savedPosts: savedPosts,
-    posts: (posts || []).slice(0, 120)
+    posts: outPosts
   };
 }
 
@@ -3614,14 +3712,12 @@ function saveInsChatState() {
   // 兜底：localStorage 只存去大图版本，避免配额超限把整份状态丢掉
   if (insSaveTimer) clearTimeout(insSaveTimer);
   insSaveTimer = setTimeout(function () {
-    const full = insStatePayload();
     try {
-      localStorage.setItem(insChatKey(), JSON.stringify(full));
+      localStorage.setItem(insChatKey(), JSON.stringify(insStatePayload()));
       return; // 装得下就把图片也存进 localStorage（第二层保险）
     } catch (e) {}
     try {
-      (full.posts || []).forEach(function (p) { if (p && p.image && p.image.length > 60000) p.image = null; });
-      localStorage.setItem(insChatKey(), JSON.stringify(full));
+      localStorage.setItem(insChatKey(), JSON.stringify(insStatePayload(true)));
     } catch (e2) {}
   }, 400);
 }

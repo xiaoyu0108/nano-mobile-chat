@@ -8,7 +8,7 @@
     // 全站唯一构建号：下面的自愈逻辑、iframe 的 nb= 参数都用它。
     // 注意：不要再另写第二个版本号，否则两个版本号会互相判定“版本变了”，
     // 造成每次打开都清缓存 + 反复 reload。
-    window.__NANO_BUILD__ = 'nano-2026-11-08-4';
+    window.__NANO_BUILD__ = 'nano-2026-11-08-15';
     // 版本升级时强制清一次缓存并重载：避免手机/PWA 一直跑旧 JS（屏幕共享/思维链等问题）
     (function () {
         try {
@@ -2883,6 +2883,16 @@ setTimeout(function () {
             }
             return false;
         }
+        // Nano 生图室正在出图时，退出到桌面也不能销毁它的 iframe，否则后台生成会中断。
+        const nanoImageBusy = {};
+        function nanoImageBusyActive() {
+            const now = Date.now();
+            for (const k in nanoImageBusy) {
+                if (Number(nanoImageBusy[k]) > now) return true;
+                delete nanoImageBusy[k];
+            }
+            return false;
+        }
         const urlSourceMap = {};
         // 设置 → 储存/备份等二级页面：返回时先回到设置，而不是直接回桌面
         const settingsPageStack = [];
@@ -2935,6 +2945,7 @@ setTimeout(function () {
             if (!f) return false;
             try {
                 if (frameBase(f) === 'offline.html' && nanoOfflineBusyActive()) return true;
+                if (frameBase(f) === 'nano-image.html' && nanoImageBusyActive()) return true;
             } catch (e) {}
             let win = null;
             try { win = f.contentWindow; } catch (e) { return false; }
@@ -3581,6 +3592,13 @@ setTimeout(function () {
                 const busyId = String(data.id || 'main');
                 if (data.busy) nanoOfflineBusy[busyId] = Date.now() + (Number(data.ttl) || 15 * 60 * 1000);
                 else delete nanoOfflineBusy[busyId];
+                return;
+            }
+
+            if (data.type === 'nanoImageBusy') {
+                const busyId = String(data.id || 'nano-image');
+                if (data.busy) nanoImageBusy[busyId] = Date.now() + (Number(data.ttl) || 20 * 60 * 1000);
+                else delete nanoImageBusy[busyId];
                 return;
             }
 
@@ -4329,6 +4347,26 @@ setTimeout(function () {
                 console.log('[Index] AI 主动来电:', data.scenario, url);
                 voiceCallKeptAlive = false;
                 openFullscreen(url, data.video ? '视频通话' : '语音电话', false, 'main');
+            }
+
+            // 群聊里角色要打电话：先切到 TA 的私聊，再在私聊里拨过来。
+            if (data.type === 'groupPrivateCall') {
+                const chatId = data.chatId || 'default';
+                const name = data.name || '对方';
+                const isVideo = !!data.video;
+                console.log('[Index] 群聊转私聊来电:', chatId, name);
+                openFullscreen('chat_inner.html?chat=' + encodeURIComponent(chatId) +
+                               '&name=' + encodeURIComponent(name), '', false, 'main');
+                const callPage = isVideo ? 'video-call.html' : 'voice-call.html';
+                const callUrl = callPage + '?chat=' + encodeURIComponent(chatId) +
+                                '&name=' + encodeURIComponent(name) + '&incoming=1';
+                setTimeout(function () {
+                    try {
+                        voiceCallKeptAlive = false;
+                        openFullscreen(callUrl, isVideo ? '视频通话' : '语音电话', false, 'main');
+                    } catch (e) {}
+                }, 520);
+                return;
             }
 
             if (data.type === 'syncCallTime') {

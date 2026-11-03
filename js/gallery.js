@@ -126,12 +126,30 @@
         var e = ext ? (ext[1] === 'jpeg' ? 'jpg' : ext[1]) : 'png';
         return 'nano-gallery-' + Date.now() + '.' + e;
     }
+    function isIOSDevice() {
+        try {
+            return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+                (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        } catch (e) { return false; }
+    }
+    function shareOnIOS(blob, name) {
+        if (!isIOSDevice()) return false;
+        try {
+            if (!navigator.share) return false;
+            var file = new File([blob], name, { type: blob.type || 'image/png' });
+            if (navigator.canShare && !navigator.canShare({ files: [file] })) return false;
+            navigator.share({ files: [file], title: name }).catch(function () {});
+            return true;
+        } catch (e) { return false; }
+    }
     function downloadCurrent() {
         var x = list[current];
         if (!x) return;
         var name = downloadName(x);
         var url = x.url;
         function saveBlob(blob) {
+            // iOS 走系统分享（半屏原生面板）：不会全屏卡在下载页，也能直接存相册。
+            if (shareOnIOS(blob, name)) return;
             var obj = URL.createObjectURL(blob);
             var a = document.createElement('a');
             a.href = obj;
@@ -156,6 +174,14 @@
             if (!r.ok) throw new Error('http ' + r.status);
             return r.blob();
         }).then(saveBlob).catch(function () {
+            // 跨域图片抓不到 blob 时：iOS 仍然用系统分享（传链接也是半屏面板），
+            // 绝不跳到全屏下载/白屏页面。
+            if (isIOSDevice() && navigator.share) {
+                try {
+                    navigator.share({ url: url, title: name }).catch(function () {});
+                    return;
+                } catch (e) {}
+            }
             var a = document.createElement('a');
             a.href = url;
             a.download = name;

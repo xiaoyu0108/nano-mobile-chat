@@ -7,3 +7,9 @@ push-server/
 .DS_Store
 Thumbs.db
 tmp-apply-index.js
+
+# Android signing material — never commit
+apk/signing/
+apk/*.keystore
+apk/signing-key-info.txt
+apk/*.aab

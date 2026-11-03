@@ -6369,7 +6369,7 @@
             mem = String(__memHints || '').split('\n').filter(Boolean).slice(0, 8).join('\n');
         } catch (e) {}
         let sys = '你是「' + (displayName || charName || '角色') + '」，一个真实的人。请发一条朋友圈动态。严格贴合你的人设与你们的关系，像真人发朋友圈一样自然，禁止 AI 腔、禁止解释、禁止出戏。\n' +
-            '口语、生活化、松弛不端着。大多数动态的字数控制在 30~50 字左右（一两句话讲清一件具体的事或一个情绪，带一点细节），偶尔可以只写半句、一个词、一个标点或一个 emoji（如「无语。」「老子服了。」），偶尔情绪真的上来、事情值得讲时再写成有起承转合的小作文（100~200 字甚至更长）。长度跟着角色当下的情绪、事情大小和人设走，不要每条都一个长度，也不要为了凑字硬写。题材从吃喝玩乐、旅游、日常碎片、宠物、天气、开心、emo、吐槽、发疯、追星、避雷、攻略、测评、健身打卡、读书、职场、提问、投票、段子、恋爱日常、热点八卦里自然长出来。广告只做隐晦暗广，先讲真实体验和小缺点。\n' +
+            '口语、生活化、松弛不端着。大多数动态的字数控制在 30~50 字左右（一两句话讲清一件具体的事或一个情绪，带一点细节），偶尔可以只写半句、一个词、一个标点或一个 emoji（如「无语。」「老子服了。」）；有时可以直接写 150~400 字的长文——追星/演唱会 repo、好物分享、情感经历、求助/避雷、深夜碎碎念等，要有具体细节、真实情绪和起承转合，不要 AI 腔。长度跟着角色当下的情绪、事情大小和人设走，不要每条都一个长度，也不要为了凑字硬写。题材从吃喝玩乐、旅游、日常碎片、宠物、天气、开心、emo、吐槽、发疯、追星、避雷、攻略、测评、健身打卡、读书、职场、提问、投票、段子、恋爱日常、热点八卦里自然长出来。广告只做隐晦暗广，先讲真实体验和小缺点。\n' +
             '不要写成流水账或日程记录：拒绝“早上…中午…晚上…”地罗列作息，也拒绝“今天天气不错 / 吃了三明治 / 上班好累 / 晚安”这类谁都能发的空话；要落到一件具体的事或一个具体的细节，有只有你此刻才会发的东西。\n' +
             '只输出一个 JSON，不要多余内容：{"text":"动态文案","wantImage":true 或 false,"imagePrompt":"若想配图，描述这张照片的画面；不配图则留空","location":"地点或空字符串"}';
         try { if (window.NanoPrompts && NanoPrompts.appendTo) sys = NanoPrompts.appendTo(sys, 'moments', { keepFormat: true }); } catch (e) {}
@@ -6379,7 +6379,7 @@
         suppressApiAlerts = true;
         let content = null;
         try {
-            content = await callMainApiRaw([{ role: 'system', content: sys }, { role: 'user', content: userMsg }], 900, 0.95);
+            content = await callMainApiRaw([{ role: 'system', content: sys }, { role: 'user', content: userMsg }], 1400, 0.95);
         } catch (e) {} finally { suppressApiAlerts = false; }
         if (!content) return null;
         let obj = null;
@@ -6524,7 +6524,7 @@
             + '【最高优先级】任何 char 之间都绝对不允许互相评论、回复、点赞或接话，即使角色关系/悄悄话记录写了认识也不行。char 只能和 NPC 互动；char 的动态下评论区只能出现 NPC。\n'
             + '【发帖人】优先让「' + (authors[0] && authors[0].name) + '」至少发 1 条；其余动态由名单里的其他角色发，数量不够时由作者可能认识的 NPC 发帖补足到 ' + totalPosts + ' 条。作者不要重复太多，内容贴合各自人设、身份和当天心情。\n'
             + '【拒绝流水账】严禁把动态写成日程记录或流水账：不要“早上…中午…晚上…”地罗列作息，也不要“今天天气不错 / 吃了三明治 / 上班好累 / 晚安”这种谁都能发的空话。每条都要落到一件具体的事或一个具体的细节（一个地点、一个人、一句话、刚发生的一个小插曲，或一种有来由的情绪），要有只有这个人此刻才会发的东西。宁少勿滥。\n'
-            + '【文案长度】大多数动态控制在 30~50 字（一两句话讲完一件小事或一个情绪，带具体细节）；偶尔可以只写半句、一个词、一个标点或一个 emoji（如「无语。」「老子服了。」），偶尔情绪真的上来、事情值得讲时再写成有起承转合的小作文（100~200 字甚至更长）。长度跟着角色当下的情绪、事情大小和人设走，不要每条都一个长度，也不要为了凑字硬写。\n'
+            + '【文案长度】大多数动态控制在 30~50 字（一两句话讲完一件小事或一个情绪，带具体细节）；偶尔可以只写半句、一个词、一个标点或一个 emoji（如「无语。」「老子服了。」）；如果这批有 3 条以上，至少挑 1 条写成 150~400 字的长文——追星/演唱会 repo、好物分享、情感经历、求助/避雷、深夜碎碎念等，要有具体细节、真实情绪和起承转合，不要 AI 腔。长度跟着角色当下的情绪、事情大小和人设走，不要每条都一个长度，也不要为了凑字硬写。\n'
             + '【重要 · 朋友圈不是聊天】这是发在朋友圈的动态，不是私聊：不要对任何人说话，不要提问，不要出现「你要不要/你去吗/在吗/一起吃吗」这类约人或聊天的语气；只分享自己的日常与心情。禁止 AI 腔、禁止解释、禁止出戏。\n'
             + '【互动规则】每条必须写 2~4 个点赞、2~4 条评论。点赞者/评论者只能是作者生活里真实存在的同学、朋友、同事、家人、邻居等 NPC（可以虚构真实完整姓名），可以是动态作者/评论区里的人。'
             + '绝对不能是作者本人，也不能是用户本人；绝对不能让任何普通 char 点赞或评论另一个 char。\n'
@@ -8139,6 +8139,7 @@
         if (!faceRef && typeof localforage !== 'undefined') {
             try { faceRef = (await localforage.getItem('chat_setting_faceRef_' + chatId)) || ''; } catch (e) {}
         }
+        let faceRefs = [];
         let body = { model: imgModel, prompt: prompt, n: 1, size: '1024x1024' };
         // 普通模型的反面词已经并进 prompt；negative_prompt 只给 NAI，避免严格 OpenAI 站拒绝未知字段。
         if (imagePresets.negative && isNaiImageModel) body.negative_prompt = imagePresets.negative;
@@ -8172,66 +8173,87 @@
                 if (!charRef) charRef = String(faceRef || '');
             }
             if (wantUser && wantChar && userRef && charRef) {
-                faceRef = await combineCoupleFaceRefs(userRef, charRef);
-                prompt += '\n【合照锁脸】参考图是左右拼接：左边是用户本人，右边是角色本人。必须同时保留两人的五官、脸型和发型，不要换脸或混成一个人。';
+                // 两张参考图分开传给图生图：只拼成一张图时，很多网关只会锁住其中一张脸。
+                faceRefs = [userRef, charRef];
+                faceRef = await combineCoupleFaceRefs(userRef, charRef); // 只接受单图的网关兜底
+                prompt += '\n【合照锁脸】若提供多张参考图：第 1 张是用户本人，第 2 张是角色本人；若只有一张左右拼接图：左边是用户，右边是角色。必须同时保留两人的五官、脸型和发型，不要换脸或混成一个人。';
             } else if (wantUser) {
                 if (userRef) {
                     faceRef = userRef;
+                    faceRefs = [userRef];
                     prompt += '\n【合照锁脸】参考图是用户本人。画面里出现用户时必须保持这张脸不变。';
                 }
             } else if (wantChar) {
                 if (charRef) {
                     faceRef = charRef;
+                    faceRefs = [charRef];
                     prompt += '\n【合照锁脸】参考图是角色本人。画面里出现角色时必须保持这张脸不变。';
                 }
             }
             body.prompt = prompt;
         }
         const hasFace = !!(faceRef && faceRef.trim() !== '');
+        let refs = [];
         if (hasFace) {
+            refs = (faceRefs.length ? faceRefs : [faceRef]).filter(function (x) { return !!x; });
             // 普通单人图也要明确告诉模型“保持参考图长相”，否则很多网关只把参考图当装饰。
             if (!/(锁脸|参考图是|保持.{0,8}脸)/.test(prompt)) {
                 prompt += '\n【锁脸】必须严格按照参考图保持人物五官、脸型、发型和肤色一致，不要换脸或生成另一个人。';
             }
             body.prompt = prompt;
-            // 兼容不同中转站的图生图字段
+            // 兼容不同中转站的图生图字段：单图字段给拼接图，数组字段给两张独立参考图。
             body.image = faceRef;
-            body.reference_image = [faceRef];
-            body.input_reference_image = [faceRef];
-            body.reference_images = [faceRef];
+            body.reference_image = refs;
+            body.input_reference_image = refs;
+            body.reference_images = refs;
             body.ref_image = faceRef;
         }
             let baseUrl = toV1Base(resolveApiHost(imgUrl));
 
-        // 锁脸优先走图生图 /images/edits（multipart），失败再退回普通生图
-        if (hasFace && faceRef.indexOf('data:') === 0) {
-            try {
-                const comma = faceRef.indexOf(',');
-                const bstr = atob(faceRef.slice(comma + 1));
-                const u8 = new Uint8Array(bstr.length);
-                for (let i = 0; i < bstr.length; i++) u8[i] = bstr.charCodeAt(i);
-                const mime = (faceRef.slice(5, comma).split(';')[0]) || 'image/png';
-                const fd = new FormData();
-                fd.append('model', imgModel);
-                fd.append('prompt', prompt);
-                fd.append('n', '1');
-                fd.append('size', '1024x1024');
-                if (imagePresets.negative && isNaiImageModel) fd.append('negative_prompt', imagePresets.negative);
-                fd.append('image', new Blob([u8], { type: mime }), 'face.png');
-                const editResp = await fetch(baseUrl + '/images/edits', {
-                    method: 'POST',
-                    headers: { 'Authorization': 'Bearer ' + imgKey },
-                    body: fd
-                });
-                if (editResp.ok) {
+        // 锁脸优先走图生图 /images/edits（multipart），失败再退回普通生图。
+        // 合照时把「用户 / 角色」两张参考图分别放进同一个请求，避免拼接图只锁住一张脸。
+        if (hasFace) {
+            const tryEdit = async function (list) {
+                try {
+                    const dataRefs = (list || []).filter(function (x) { return String(x).indexOf('data:') === 0; });
+                    if (!dataRefs.length) return '';
+                    const fd = new FormData();
+                    fd.append('model', imgModel);
+                    fd.append('prompt', prompt);
+                    fd.append('n', '1');
+                    fd.append('size', '1024x1024');
+                    if (imagePresets.negative && isNaiImageModel) fd.append('negative_prompt', imagePresets.negative);
+                    dataRefs.forEach(function (ref, idx) {
+                        const comma = ref.indexOf(',');
+                        const bstr = atob(ref.slice(comma + 1));
+                        const u8 = new Uint8Array(bstr.length);
+                        for (let i = 0; i < bstr.length; i++) u8[i] = bstr.charCodeAt(i);
+                        const mime = (ref.slice(5, comma).split(';')[0]) || 'image/png';
+                        const fname = dataRefs.length > 1 ? (idx === 0 ? 'reference-user.png' : 'reference-char.png') : 'face.png';
+                        fd.append('image', new Blob([u8], { type: mime }), fname);
+                    });
+                    const editResp = await fetch(baseUrl + '/images/edits', {
+                        method: 'POST',
+                        headers: { 'Authorization': 'Bearer ' + imgKey },
+                        body: fd
+                    });
+                    if (!editResp.ok) return '';
                     const ed = await editResp.json();
                     const eitem = ed && ed.data && ed.data[0];
-                    if (eitem && eitem.url) return await registerImage(eitem.url);
-                    if (eitem && eitem.b64_json) return await registerImage('data:image/png;base64,' + eitem.b64_json);
+                    if (eitem && eitem.url) return eitem.url;
+                    if (eitem && eitem.b64_json) return 'data:image/png;base64,' + eitem.b64_json;
+                } catch (e) {
+                    console.warn('[Image] 锁脸图生图失败:', e && e.message);
                 }
-            } catch (e) {
-                console.warn('[Image] 锁脸图生图失败，改用普通生图:', e && e.message);
+                return '';
+            };
+            let edited = '';
+            const allData = refs.length > 0 && refs.every(function (x) { return String(x).indexOf('data:') === 0; });
+            if (refs.length > 1 && allData) edited = await tryEdit(refs);
+            if (!edited && faceRef && String(faceRef).indexOf('data:') === 0) {
+                edited = await tryEdit([faceRef]);
             }
+            if (edited) return await registerImage(edited);
         }
 
         let response;

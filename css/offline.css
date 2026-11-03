@@ -577,6 +577,7 @@ html, body, .app{background:var(--page,#f5f0f0)}
 
 /* ===== 线下生图：拍立得卡片 + 大图查看器 ===== */
 .offline-polaroid {
+  position: relative;
   display: block;
   width: min(74%, 270px);
   margin: 10px auto 6px;
@@ -589,6 +590,32 @@ html, body, .app{background:var(--page,#f5f0f0)}
   cursor: pointer;
   text-align: center;
   -webkit-tap-highlight-color: transparent;
+}
+/* 拍立得顶部的半透明胶带 */
+.offline-polaroid-tape {
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  z-index: 2;
+  width: 68px;
+  height: 22px;
+  transform: translateX(-50%) rotate(-3deg);
+  border: 1px solid rgba(255, 255, 255, .7);
+  border-radius: 2px;
+  background:
+    linear-gradient(100deg, rgba(255, 255, 255, .18) 0%, rgba(255, 255, 255, .62) 45%, rgba(255, 255, 255, .34) 100%);
+  box-shadow: 0 2px 5px rgba(80, 62, 70, .12), inset 0 0 0 1px rgba(255, 255, 255, .28);
+  pointer-events: none;
+  -webkit-backdrop-filter: blur(1px);
+  backdrop-filter: blur(1px);
+}
+.offline-polaroid-tape::after {
+  content: "";
+  position: absolute;
+  inset: 4px 5px;
+  border-top: 1px dashed rgba(255, 255, 255, .75);
+  border-bottom: 1px dashed rgba(255, 255, 255, .45);
+  opacity: .7;
 }
 .offline-polaroid:nth-of-type(2n) { transform: rotate(1.1deg); }
 .offline-polaroid:active { transform: scale(.985) rotate(0deg); }

@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<script src="../js/nano-runtime.js?v=20261028e"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>APK</title>
+<link rel="icon" href="../icons/icon-192.png">
+<script>window.__NANO_FONT_ONLY = true;</script>
+<script src="../js/appearance.js?v=20261026d"></script>
+<script src="../js/nano-idb.js"></script>
+<link rel="stylesheet" href="../css/settings.css?v=20261029e">
+<link rel="stylesheet" href="../css/settings-android.css?v=20261103a">
+</head>
+<body data-page="android">
+<div class="app">
+  <header class="nav">
+    <a class="back" href="settings.html" aria-label="返回">
+      <svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
+    </a>
+    <h1>APK</h1>
+    <button class="nav-refresh" type="button" aria-label="刷新" onclick="location.reload()">
+      <svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.34 5.66"/><polyline points="20 4 20 11 13 11"/></svg>
+    </button>
+  </header>
+
+  <main class="scroll">
+    <section class="apk-hero">
+      <span class="apk-icon"><img src="../icons/icon-192.png" alt="Nano"></span>
+      <span class="apk-hero-main">
+        <span class="apk-name">Nano 安卓版</span>
+        <span class="apk-sub" id="apkStatus">正在检测安装包…</span>
+      </span>
+      <span class="apk-badge" id="apkBadge">检测中</span>
+    </section>
+
+    <div class="group-title">下载与安装</div>
+    <section class="list">
+      <a class="row apk-primary" id="apkDownload" href="#" rel="noopener">
+        <span class="row-icon">
+          <svg viewBox="0 0 24 24"><path d="M12 3v11"/><path d="m7.5 10.5 4.5 4.5 4.5-4.5"/><path d="M5 20h14"/></svg>
+        </span>
+        <span class="row-label">下载 APK</span>
+        <span class="row-value" id="apkMeta">—</span>
+        <span class="chev">›</span>
+      </a>
+      <button class="row" id="pwaInstall" type="button">
+        <span class="row-icon">
+          <svg viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M9.5 18.5h5"/><path d="M12 6v6"/><path d="m9.5 9.5 2.5 2.5 2.5-2.5"/></svg>
+        </span>
+        <span class="row-label">直接安装到桌面</span>
+        <span class="row-value" id="pwaMeta">网页版</span>
+        <span class="chev">›</span>
+      </button>
+      <button class="row" id="copyLink" type="button">
+        <span class="row-icon">
+          <svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.07 0l2.12-2.12a5 5 0 0 0-7.07-7.07L11 5"/><path d="M14 11a5 5 0 0 0-7.07 0L4.81 13.12a5 5 0 0 0 7.07 7.07L13 19"/></svg>
+        </span>
+        <span class="row-label">复制安装地址</span>
+        <span class="chev">›</span>
+      </button>
+    </section>
+
+    <div class="group-title">运行信息</div>
+    <section class="list">
+      <div class="row">
+        <span class="row-label">当前环境</span>
+        <span class="row-value" id="envMeta">检测中</span>
+      </div>
+      <div class="row">
+        <span class="row-label">更新方式</span>
+        <span class="row-value">网页更新后自动生效</span>
+      </div>
+      <div class="row">
+        <span class="row-label">安装地址</span>
+        <span class="row-value apk-site-value" id="siteMeta">—</span>
+      </div>
+    </section>
+
+    <p class="hint" id="apkHint">下载后如提示“未知来源”，请在系统设置中允许当前浏览器安装应用。</p>
+  </main>
+</div>
+<div class="toast" id="toast"></div>
+<script src="../js/settings-android.js?v=20261103a"></script>
+</body>
+</html>
