@@ -1004,7 +1004,7 @@ async function generateInsPosts(count, topic) {
     '\n已选角色（优先每人 1 条）：' + charNames.join('、') +
     (npcQuota > 0 ? ('\n已选角色不足 ' + total + ' 条，剩余 ' + npcQuota + ' 条由朋友 NPC 补足：' + npcNames.join('、')) : '\n已选角色数量足够，全部由已选角色发帖') +
     '\n评论者/点赞者可用：' + allowedNames.join('、') +
-    '\n已选角色之间只有人设/世界书/角色关系明确写了认识，才可以互相评论、回复、点赞；没有明确关系的 char 绝不互动。';
+    '\n【最高优先级】已选角色（char）之间绝对不允许互相评论、回复、点赞或接话，即使人设/世界书/角色关系明确写了认识也不行。char 只能和用户或 NPC/陌生网友互动；char 发的帖子下只允许 NPC/陌生网友和作者本人出现，作者本人只回复用户。';
   let out = '';
   try { out = await callChatApi([{ role: 'system', content: sys }, { role: 'user', content: userMsg }], 'sub'); } catch (e) { out = ''; }
   const arrMatch = (out || '').match(/\[[\s\S]*\]/);
@@ -1026,11 +1026,8 @@ async function generateInsPosts(count, topic) {
         (Array.isArray(p.likes) ? p.likes : []).forEach(n => {
           const hit = matchAllowed(n, likePool);
           if (!hit || normName(hit) === normName(name) || normName(hit) === normName(userProfile.name)) return;
-          if (authorIsChar && charSet.has(normName(hit))) {
-            const author = findCharByName(chars, name);
-            const liker = findCharByName(chars, hit);
-            if (!author || !liker || !charKnows(author, liker)) return;
-          }
+          // char 的帖子下，其它 char 一律不能点赞。
+          if (authorIsChar && charSet.has(normName(hit))) return;
           if (!likedBy.some(x => normName(x) === normName(hit))) likedBy.push(hit);
         });
         for (let li = 0; li < likePool.length && likedBy.length < 2; li++) {
@@ -1041,14 +1038,7 @@ async function generateInsPosts(count, topic) {
         }
         likedBy.splice(4);
         let comments = filterCommentList(Array.isArray(p.comments) ? p.comments : [], name, allowedNames, []);
-        if (authorIsChar) {
-          const author = findCharByName(chars, name);
-          comments = comments.filter(c => {
-            if (!charSet.has(normName(c && c.user))) return true;
-            const commenter = findCharByName(chars, c.user);
-            return !!(author && commenter && charKnows(author, commenter));
-          });
-        }
+        comments = filterInsKnownReplies(comments, { user: name }, chars, npcs, []);
         comments = comments.slice(0, 4);
         for (let ci = 0; ci < commentPool.length && comments.length < 2; ci++) {
           const who = commentPool[(i + ci) % commentPool.length];
@@ -1493,7 +1483,7 @@ function postParticipantNames(post) {
 }
 
 // 评论区可用名单：发帖人 + 已有参与者 + 好友/NPC/陌生网友
-// char 之间绝对不互动：char 发的帖子下只允许 NPC/陌生网友和作者本人出现。
+// char 之间绝对不互动：只有用户本人发的帖子，char 才能以评论者身份出现。
 function buildCommenterPool(post, bound, npcs, strangers) {
   const authorName = post && post.user;
   const isUserAuthor = normName(authorName) === normName(userProfile.name);
@@ -1512,8 +1502,8 @@ function buildCommenterPool(post, bound, npcs, strangers) {
   (bound || []).forEach(c => {
     if (!c || !c.name) return;
     if (normName(c.name) === normName(authorName)) return;
-    // 用户动态：所有绑定 char 都认识用户；char 动态：只有明确认识作者的 char 才能出现
-    if (isUserAuthor || charKnows(resolveAuthor(authorName, bound, npcs, strangers) || { name: authorName }, c)) add(c.name);
+    // 只有用户本人发的帖子，char 才能评论用户；char/NPC 帖子里其它 char 一律不出现。
+    if (isUserAuthor) add(c.name);
   });
   (npcs || []).forEach(c => { if (c && c.name) add(c.name); });
   (strangers || []).forEach(c => add(c && c.name));
@@ -1521,27 +1511,17 @@ function buildCommenterPool(post, bound, npcs, strangers) {
 }
 
 function filterInsKnownReplies(list, post, bound, npcs, strangers) {
-  const author = resolveAuthor(post && post.user, bound, npcs, strangers);
-  const isUserAuthor = normName(post && post.user) === normName(userProfile.name);
+  const authorName = post && post.user;
+  const isUserAuthor = normName(authorName) === normName(userProfile.name);
   const charNameSet = new Set((bound || []).map(c => c && c.name).filter(Boolean).map(normName));
   return (list || []).filter(c => {
     if (!c || !c.user) return false;
-    const isAuthor = !!(author && normName(author.name) === normName(c.user));
     const commenterIsChar = charNameSet.has(normName(c.user));
-    // char 帖子的评论区：只有作者本人、或与作者明确认识的其他 char 才能出现
-    if (commenterIsChar && !isUserAuthor && !isAuthor) {
-      const commenter = findCharByName(bound, c.user);
-      if (!author || !commenter || !charKnows(author, commenter)) return false;
-    }
-    if (c.toUser) {
-      const targetIsChar = charNameSet.has(normName(c.toUser));
-      // char↔char 只有明确认识才建立回复关系
-      if (commenterIsChar && targetIsChar) {
-        const from = findCharByName(bound, c.user);
-        const to = findCharByName(bound, c.toUser);
-        if (!from || !to || !charKnows(from, to)) delete c.toUser;
-      }
-    }
+    const isAuthor = commenterIsChar && normName(c.user) === normName(authorName);
+    // char 发的帖子：除作者本人外，其它 char 一个都不许出现。
+    if (!isUserAuthor && commenterIsChar && !isAuthor) return false;
+    // char 不能回复/点名另一个 char；用户和 NPC 不受限。
+    if (commenterIsChar && c.toUser && charNameSet.has(normName(c.toUser)) && normName(c.toUser) !== normName(c.user)) return false;
     return true;
   });
 }
@@ -1640,7 +1620,7 @@ function formatCommentLine(c) {
   return base + (reps ? ' ' + reps : '');
 }
 
-// 清理历史 char↔char 互动：char 帖子下删掉其它 char 的评论，用户帖子下只拆回复关系。
+// 清理历史 char↔char 互动：绝对禁止 char 互评论/回复/点赞，即使用户人设里写了认识也不放开。
 function sanitizeCharInteractionsIns() {
   const chars = getSelectableChars();
   const byName = {};
@@ -1648,35 +1628,44 @@ function sanitizeCharInteractionsIns() {
   if (!Object.keys(byName).length) return false;
   const charSet = new Set(Object.keys(byName));
   let changed = false;
-  function knownPair(a, b) {
-    const ca = byName[normName(a)], cb = byName[normName(b)];
-    return !!(ca && cb && charKnows(ca, cb));
-  }
   (posts || []).forEach(p => {
     if (!p) return;
     const authorIsChar = charSet.has(normName(p.user));
+    const isUserPost = normName(p.user) === normName(userProfile.name);
     (p.comments || []).forEach(c => {
       if (!c) return;
       const commenterIsChar = charSet.has(normName(c.user));
-      if (authorIsChar && commenterIsChar && !knownPair(p.user, c.user)) { c.__drop = true; changed = true; }
+      const isAuthorComment = authorIsChar && normName(c.user) === normName(p.user);
+      // 非用户帖子：除作者本人外，其它 char 一个都不许评论。
+      if (!isUserPost && commenterIsChar && !isAuthorComment) { c.__drop = true; changed = true; }
+      // char 不能回复/点名另一个 char。
+      if (commenterIsChar && c.toUser && charSet.has(normName(c.toUser)) && normName(c.toUser) !== normName(c.user)) {
+        c.__drop = true; changed = true;
+      }
       (c.replies || []).forEach(r => {
         if (!r) return;
         const replyIsChar = charSet.has(normName(r.user));
-        if (authorIsChar && replyIsChar && !knownPair(p.user, r.user)) { r.__drop = true; changed = true; }
-        else if (replyIsChar && r.toUser && charSet.has(normName(r.toUser)) && !knownPair(r.user, r.toUser)) {
-          // 回复文本里带了「回复 X：」前缀，拆掉关系即可，保留回复本身
-          r.text = String(r.text || '').replace(/^回复\s*[^：:]{1,20}[：:]\s*/, '');
-          delete r.toUser; changed = true;
+        const isAuthorReply = authorIsChar && normName(r.user) === normName(p.user);
+        if (!isUserPost && replyIsChar && !isAuthorReply) { r.__drop = true; changed = true; }
+        if (replyIsChar && r.toUser && charSet.has(normName(r.toUser)) && normName(r.toUser) !== normName(r.user)) {
+          r.__drop = true; changed = true;
         }
       });
-      if (c.replies) c.replies = c.replies.filter(r => !r.__drop);
-      if (!authorIsChar && commenterIsChar && c.toUser && charSet.has(normName(c.toUser)) && !knownPair(c.user, c.toUser)) {
-        delete c.toUser; changed = true;
-      }
+      if (c.replies) c.replies = c.replies.filter(r => r && !r.__drop);
     });
     const before = (p.comments || []).length;
     p.comments = (p.comments || []).filter(c => !c.__drop);
     if (p.comments.length !== before) changed = true;
+    // char 发的帖子：点赞者里不能出现其它 char。
+    if (authorIsChar && Array.isArray(p.likedBy)) {
+      const beforeLikes = p.likedBy.length;
+      p.likedBy = p.likedBy.filter(n => !charSet.has(normName(n)));
+      const removed = beforeLikes - p.likedBy.length;
+      if (removed > 0) {
+        changed = true;
+        p.likes = Math.max(0, (Number(p.likes) || 0) - removed);
+      }
+    }
   });
   return changed;
 }
@@ -1710,8 +1699,8 @@ async function generateCommentsForPost(post, bound, npcs, strangers) {
     (hasUserComment ? ('- 必须至少 1 条回复用户本人（回复对象写「' + (userProfile.name || '用户') + '」），自然接住 TA 说的话；\n') : '') +
     '- 回复对象必须是这条帖子下真正发过言的人（作者或评论区里出现过的人）；\n' +
     ((normName(post.user) === normName(userProfile.name))
-      ? '- 角色可以评论用户；角色之间只有明确认识才能互相回复，不认识的不互动；NPC 可以评论任何参与者；\n'
-      : '- 这条帖子的作者是角色或 NPC：评论区优先 NPC/陌生网友和作者本人；只有与作者明确认识的其他 char 才能出现并互动，其余 char 绝对不能出现；\n') +
+      ? '- 角色可以评论用户；但 char 绝对不能回复、点名或评论另一个 char；NPC 可以评论任何参与者；\n'
+      : '- 这条帖子的作者是角色或 NPC：评论区只能出现 NPC/陌生网友和作者本人；其它 char 一个都不许出现，作者本人只回复用户；\n') +
     '- 评论者只能从上面的名字里选，名字原样使用；严禁以用户身份发言；\n' +
     '- 每条不超过 25 字，口语化，像真人。\n\n' +
     '严格按下面格式输出（不要编号、不要解释）：\n评论者|回复对象|内容\n（不是回复别人时第二段留空，写成「评论者||内容」）';
@@ -1754,9 +1743,9 @@ function buildForumPrompt(chars, npcs, strangers, recent, opts) {
   if (desc) lines.push('- 话题描述与方向（必须严格符合）：' + desc + '；');
   lines.push('- 文案像真实的人在经营公开主页：短、干净、有画面感，常常只有一两句 + emoji/定位/英文短语；比朋友圈更克制，少写家庭、职场、感情的具体私事和负能量长文，多展示生活方式、审美、旅行、美食、健身、作品、当下心情；偶尔也可以很随意或发一句吐槽，但整体要有「发给大家看」的精致感；不要旅行博主腔、硬广和每条都升华总结；');
   lines.push('- 每条帖子必须配 2~4 个点赞（LIKES 写 2~4 个名字）和 2~4 条初始评论；评论者只能从上面的名字里选，评论像随手打字，可以只回一句、发表情、歪楼，不要客服腔；');
-  lines.push('- 【最高优先级】已选角色（char）之间只有人设/世界书/角色关系明确写了认识，才可以互相评论、回复、点赞；没有明确关系的 char 绝对不能在同一个评论区出现，也不要点赞或接话。');
-  lines.push('- char 发的帖子：评论者/点赞者主要来自 NPC / 陌生网友和作者本人；只有与作者明确认识的 char 才能出现，其余 char 的名字一个都不许写。NPC/陌生网友之间可以自然接话，NPC 也可以回复作者。');
-  lines.push('- 用户本人发的帖子（如果出现）：所有 char 都可以评论用户；char 之间只有明确认识才能互相回复，不认识的不互动。');
+  lines.push('- 【最高优先级】已选角色（char）之间绝对不允许互相评论、回复、点赞或接话，即使人设/世界书/角色关系明确写了认识也不行。char 只能和用户或 NPC/陌生网友互动。');
+  lines.push('- char 发的帖子：评论者/点赞者只能来自 NPC / 陌生网友和作者本人；其它 char 的名字一个都不许写。作者本人只回复用户；NPC/陌生网友之间可以自然接话，NPC 也可以回复作者。');
+  lines.push('- 用户本人发的帖子（如果出现）：所有 char 都可以评论用户；但 char 绝对不能回复、点名或评论另一个 char；NPC 可以评论任何参与者。');
   lines.push('- 评论者回复别人时写成「评论者|回复对象|内容」，不是回复则写成「评论者||内容」；');
   lines.push('- 严禁以用户身份发帖、点赞或评论；');
   lines.push('- 每条评论不超过 25 字。');
@@ -1814,7 +1803,7 @@ function detectProviderRefusal(text) {
 }
 
 async function requestForumPosts(chars, npcs, strangers, recent, opts) {
-  const system = '你是社交平台上的真实人类。请发帖，并只让 NPC 朋友或陌生网友在评论区接话；已选角色（char）之间只有人设/世界书/角色关系明确写了认识，才可以互相评论/回复/点赞，不认识的 char 绝不互动。发帖要有公开平台的展示感：比朋友圈更短、更精致、更少私密细节，允许陌生人参与。严格贴合各自人设、关系与世界书，保持活人感，绝不 OOC，禁止 AI 腔、解释和出戏。所有角色均为成年人。' + ADULT_PLATFORM_NOTE;
+  const system = '你是社交平台上的真实人类。请发帖，评论区只能由 NPC 朋友、陌生网友和作者本人接话；已选角色（char）之间绝对不允许互相评论、回复、点赞或接话，即使人设/世界书/角色关系明确写了认识也不行。char 只能和用户或 NPC/陌生网友互动；char 发的帖子下，其它 char 一个都不许出现，作者本人只回复用户。发帖要有公开平台的展示感：比朋友圈更短、更精致、更少私密细节，允许陌生人参与。严格贴合各自人设、关系与世界书，保持活人感，绝不 OOC，禁止 AI 腔、解释和出戏。所有角色均为成年人。' + ADULT_PLATFORM_NOTE;
   const userMsg = buildForumPrompt(chars, npcs, strangers, recent, opts);
   let raw = await callChatApi([{ role: 'system', content: system }, { role: 'user', content: userMsg }], 'main');
   lastForumRaw = String(raw || '');
@@ -1887,22 +1876,8 @@ function buildPostsFromParsed(parsed, chars, npcs, strangers, opts) {
     likedBy.splice(4);
 
     const comments = filterCommentList(p.comments || [], author.name, allowedNames, []);
-    let safeComments = comments.filter(c => {
-      if (!c || !c.user) return false;
-      const commenterIsChar = charNameSet.has(normName(c.user));
-      // char 发的帖子：只有与作者明确认识的 char 才能出现，其余 char 绝不互动
-      if (authorIsChar && commenterIsChar && normName(c.user) !== normName(author.name)) {
-        const commenter = findCharByName(chars, c.user);
-        if (!commenter || !charKnows(author, commenter)) return false;
-      }
-      // char↔char 只有明确认识才建立回复关系
-      if (c.toUser && commenterIsChar && charNameSet.has(normName(c.toUser))) {
-        const from = findCharByName(chars, c.user);
-        const to = findCharByName(chars, c.toUser);
-        if (!from || !to || !charKnows(from, to)) delete c.toUser;
-      }
-      return true;
-    }).slice(0, 4);
+    // char 之间绝对不互动：char 帖下只留作者本人，任何 char 都不能回复另一个 char。
+    let safeComments = filterInsKnownReplies(comments, { user: author.name }, chars, npcs, strangers).slice(0, 4);
     const commentPool = friendPool.filter(n => normName(n) !== normName(author.name));
     for (let ci = 0; ci < commentPool.length && safeComments.length < 2; ci++) {
       const who = commentPool[(i + ci) % commentPool.length];

@@ -1435,6 +1435,7 @@ function graySakuraCardHTML(m, i, avatarHTML, displayName, isChar, showPlot, par
 
       ${renderCustomBars(m, 'before')}
       <div class="content" data-role="content">${parsedContent}</div>
+      ${offlineImageHTML(m, i)}
 
       ${renderCustomBars(m, 'after')}
       ${renderBodyStatusBar(m)}
@@ -1496,6 +1497,16 @@ function graySakuraTypingCardHTML() {
     '<div class="gs-floor"><span class="gs-chap">장절</span><b>' + (messages.length + 1) + '</b></div></div>' +
     '<div class="typing-dots"><span></span><span></span><span></span></div>' +
     '<button class="typing-stop" type="button" aria-label="停止生成"></button>';
+}
+
+function offlineImageHTML(m, i) {
+  if (!m || !m.image) return '';
+  if (m.role !== 'assistant' && m.role !== 'char') return '';
+  var cap = m.imageCaption || ((m.name || settings.charName || '') + ' · 拍立得');
+  return '<button type="button" class="offline-polaroid" data-action="viewOfflineImage" data-index="' + i + '" aria-label="查看生成的图片">' +
+    '<span class="offline-polaroid-photo"><img src="' + escapeHTML(m.image) + '" alt="" loading="lazy"></span>' +
+    '<span class="offline-polaroid-cap">' + escapeHTML(cap) + '</span>' +
+    '</button>';
 }
 
 function render() {
@@ -1576,6 +1587,7 @@ function render() {
 
       ${renderCustomBars(m, 'before')}
       <div class="content" data-role="content">${parsedContent}</div>
+      ${offlineImageHTML(m, i)}
       <div class="time-row">
         <svg class="clock-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
           <circle cx="12" cy="12" r="8.5"></circle>
@@ -1763,6 +1775,10 @@ chat.addEventListener('click', function(e) {
   if (action === 'heart') toggleHeart(i);
   else if (action === 'edit') startEdit(i);
   else if (action === 'delete') openDeleteModal(i);
+  else if (action === 'viewOfflineImage') {
+    var im = messages[i];
+    if (im && im.image) showOfflineImageViewer(im.image, im.name || settings.charName, im.imagePrompt || '', im.id);
+  }
   else if (action === 'more') {
     document.querySelectorAll('.more-menu.open').forEach(x => x.classList.remove('open'));
     card.querySelector('.more-menu').classList.toggle('open');
@@ -3597,7 +3613,8 @@ async function omOpenInvite() {
         row.appendChild(btn);
         return row;
     }
-    function render() {
+
+function render() {
         list.innerHTML = '';
         const q = String(search.value || '').trim().toLowerCase();
         if (offlineInvitedChars.length) {
@@ -4151,7 +4168,52 @@ async function buildOfflineImageTags(recent, charName) {
   } catch (e) { return ''; }
 }
 
-async function generateSceneImage() {
+function attachOfflineSceneImage(url, prompt, charName, targetMsgId) {
+  if (!url) return '';
+  var idx = -1;
+  if (targetMsgId) {
+    for (var k = 0; k < messages.length; k++) {
+      if (messages[k] && messages[k].id === targetMsgId) { idx = k; break; }
+    }
+  }
+  if (idx < 0) {
+    for (var i = messages.length - 1; i >= 0; i--) {
+      var mm = messages[i];
+      if (mm && (mm.role === 'assistant' || mm.role === 'char')) { idx = i; break; }
+    }
+  }
+  if (idx < 0) {
+    messages.push({
+      id: Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+      chatId: offlineChatId || '',
+      scene: offlineScene,
+      role: 'assistant',
+      name: charName || settings.charName,
+      avatar: settings.charAvatar,
+      content: '',
+      heart: '',
+      thinking: '',
+      plots: [],
+      bars: [],
+      body: [],
+      showHeart: false,
+      showThinking: false,
+      selected: false
+    });
+    idx = messages.length - 1;
+  }
+  var target = messages[idx];
+  target.image = url;
+  target.imagePrompt = String(prompt || '');
+  target.imageCaption = (target.name || charName || settings.charName || '') + ' · 拍立得';
+  saveMessages(messages);
+  render();
+  requestAnimationFrame(function () { chat.scrollTop = chat.scrollHeight; });
+  return target.id;
+}
+
+async function generateSceneImage(opts) {
+  opts = opts || {};
   if (window.__offlineGenBusy) return;
   if (!window.NanoImage) { showToast('生图模块未加载'); return; }
   window.__offlineGenBusy = true;
@@ -4161,8 +4223,11 @@ async function generateSceneImage() {
   const charName = settings.charName || '角色';
   const fallbackPrompt = '根据下面的线下剧情，生成一张电影感的画面。画面里如果有角色，要符合角色人设和当前场景；不要出现文字、字幕、水印。\n角色：' + charName + '\n最近剧情：\n' + (recent || '两人安静地待在一起') + '\n\n画面要求：自然光、真实质感、构图完整，情绪贴合当前对话。';
   setGenStatus(true);
-  const tagPrompt = await buildOfflineImageTags(recent, charName);
-  const prompt = tagPrompt || fallbackPrompt;
+  let prompt = String(opts.promptOverride || '').trim();
+  if (!prompt) {
+    const tagPrompt = await buildOfflineImageTags(recent, charName);
+    prompt = tagPrompt || fallbackPrompt;
+  }
   let faceRef = '';
   try {
     if (window.NanoFaceRef && NanoFaceRef.get) faceRef = await NanoFaceRef.get(offlineChatId || '');
@@ -4173,11 +4238,12 @@ async function generateSceneImage() {
   } catch (e) {}
   try {
     const url = await window.NanoImage.generate(prompt, { faceRef: faceRef, nsfw: settings.nsfw === true });
+    const fullPrompt = (window.NanoImage && window.NanoImage.lastPrompt) || prompt;
     try {
-      const fullPrompt = (window.NanoImage && window.NanoImage.lastPrompt) || prompt;
       if (window.NanoGallery) window.NanoGallery.add({ url: url, source: '线下', charName: charName, prompt: fullPrompt, generated: true });
     } catch (e) {}
-    showOfflineImageViewer(url, charName);
+    const msgId = attachOfflineSceneImage(url, fullPrompt, charName, opts.targetMsgId);
+    showOfflineImageViewer(url, charName, fullPrompt, msgId);
   } catch (e) {
     showErrorModal('生图失败：' + (e && e.message ? e.message : e));
   } finally {
@@ -4201,17 +4267,85 @@ function openOfflineGallery() {
   }
   window.addEventListener('message', onMsg);
 }
-function showOfflineImageViewer(url, charName) {  var old = document.getElementById('offlineImageViewer');
+function showOfflineImageViewer(url, charName, prompt, msgId) {
+  var old = document.getElementById('offlineImageViewer');
   if (old) old.remove();
+  var promptText = String(prompt || '').trim();
   var box = document.createElement('div');
   box.id = 'offlineImageViewer';
-  box.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.94);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;';
-  box.innerHTML = '<button style="position:absolute;top:18px;right:18px;width:38px;height:38px;border:0;border-radius:50%;background:rgba(255,255,255,.18);color:#fff;font-size:24px;line-height:1;cursor:pointer;">×</button>' +
-    '<img style="max-width:100%;max-height:76vh;object-fit:contain;border-radius:10px;" src="' + url + '" alt="">' +
-    '<div style="color:#ddd;font-size:12px;margin-top:12px;">' + (charName || '') + ' · 线下场景</div>' +
-    '<a style="margin-top:14px;background:#fff;color:#111;text-decoration:none;font-size:14px;padding:10px 20px;border-radius:20px;font-weight:600;" download="nano-offline-' + Date.now() + '.png" href="' + url + '">下载图片</a>';
-  box.querySelector('button').addEventListener('click', function () { box.remove(); });
-  box.addEventListener('click', function (e) { if (e.target === box) box.remove(); });
+  box.className = 'offline-iv';
+  box.innerHTML =
+    '<img class="offline-iv-img" src="' + escapeHTML(url) + '" alt="">' +
+    '<div class="offline-iv-caption">' + escapeHTML(charName || '') + ' · 线下场景</div>' +
+    '<div class="offline-iv-actions">' +
+      '<button type="button" class="offline-iv-act" data-iv="close" aria-label="取消">' +
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg><span>取消</span>' +
+      '</button>' +
+      '<button type="button" class="offline-iv-act" data-iv="prompt" aria-label="查看和修改提示词">' +
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.6"/></svg><span>查看</span>' +
+      '</button>' +
+      '<button type="button" class="offline-iv-act" data-iv="reroll" aria-label="重roll">' +
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 0 0-14.9-3M4 4v4h4"/><path d="M4 13a8 8 0 0 0 14.9 3M20 20v-4h-4"/></svg><span>重roll</span>' +
+      '</button>' +
+      '<button type="button" class="offline-iv-act" data-iv="download" aria-label="下载">' +
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg><span>下载</span>' +
+      '</button>' +
+    '</div>' +
+    '<div class="offline-iv-editor" hidden>' +
+      '<div class="offline-iv-editor-card">' +
+        '<div class="offline-iv-editor-head">修改这张图的提示词</div>' +
+        '<textarea class="offline-iv-editor-input" spellcheck="false" placeholder="描述这张图……"></textarea>' +
+        '<div class="offline-iv-editor-actions">' +
+          '<button type="button" class="offline-iv-editor-btn" data-edit="cancel">取消</button>' +
+          '<button type="button" class="offline-iv-editor-btn primary" data-edit="go">按此重roll</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  var editor = box.querySelector('.offline-iv-editor');
+  var editorInput = box.querySelector('.offline-iv-editor-input');
+  if (editor) editor.addEventListener('click', function (e) {
+    if (e.target === editor) { editor.hidden = true; return; }
+    var editBtn = e.target && e.target.closest ? e.target.closest('[data-edit]') : null;
+    if (!editBtn) return;
+    var editAct = editBtn.getAttribute('data-edit');
+    if (editAct === 'cancel') { editor.hidden = true; return; }
+    if (editAct === 'go') {
+      var nextPrompt = editorInput ? String(editorInput.value || '').trim() : '';
+      if (!nextPrompt) { showToast('提示词不能为空'); return; }
+      box.remove();
+      generateSceneImage({ promptOverride: nextPrompt, targetMsgId: msgId });
+    }
+  });
+  box.addEventListener('click', function (e) {
+    if (e.target === box) { box.remove(); return; }
+    var btn = e.target && e.target.closest ? e.target.closest('[data-iv]') : null;
+    if (!btn) return;
+    var act = btn.getAttribute('data-iv');
+    if (act === 'close') { box.remove(); return; }
+    if (act === 'prompt') {
+      if (editor && editorInput) {
+        editorInput.value = promptText;
+        editor.hidden = false;
+        setTimeout(function () { try { editorInput.focus(); } catch (err) {} }, 30);
+      }
+      return;
+    }
+    if (act === 'reroll') {
+      if (!promptText) { showToast('这张图片没有保存提示词，无法重roll'); return; }
+      box.remove();
+      generateSceneImage({ promptOverride: promptText, targetMsgId: msgId });
+      return;
+    }
+    if (act === 'download') {
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = 'nano-offline-' + Date.now() + '.png';
+      a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+  });
   document.body.appendChild(box);
 }
 if (genImageBtn) genImageBtn.onclick = generateSceneImage;

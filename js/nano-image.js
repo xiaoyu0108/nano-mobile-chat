@@ -90,7 +90,9 @@
         var model = String(cfg.imgModel || '').trim();
         if (!rawUrl || !key || !model) throw new Error('请先在 API → 生图里配置地址、Key 和模型');
         var base = toV1(rawUrl);
-        var faceRef = String(opts.faceRef || '');
+        var faceRefs = Array.isArray(opts.faceRefs) ? opts.faceRefs.filter(function (x) { return !!x; }) : [];
+        var faceRef = String(opts.faceRef || faceRefs[0] || '');
+        if (!faceRefs.length && faceRef) faceRefs = [faceRef];
         var prompts = {};
         try { prompts = await getPrompts(); } catch (e) { prompts = {}; }
         var positive = joinPrompt(prompts && prompts.positive);
@@ -99,7 +101,7 @@
         // 已由生图室等调用方自己拼过的不要重复加；否则把 API 里的画师串/风格词放在最前面。
         if (positive && finalPrompt.indexOf(positive) < 0) finalPrompt = positive + ', ' + finalPrompt;
         // 有参考图时必须把“保持这张脸”写进提示词，否则不少中转站只把参考图当普通附件。
-        if (faceRef) {
+        if (faceRefs.length) {
             if (!/face lock|same face|consistent facial|character reference/i.test(finalPrompt)) {
                 finalPrompt += ', same face, consistent facial features, same hairstyle, character reference, (face lock:1.2)';
             }
@@ -131,7 +133,8 @@
             } catch (e) {}
             return u;
         };
-        if (faceRef && faceRef.indexOf('data:') === 0) {
+        var dataRefs = faceRefs.filter(function (x) { return x.indexOf('data:') === 0; });
+        if (dataRefs.length) {
             try {
                 var fd = new FormData();
                 fd.append('model', model);
@@ -140,7 +143,11 @@
                 fd.append('size', size);
                 if (negative && isNai) fd.append('negative_prompt', negative);
                 if (opts.nsfw) fd.append('nsfw', 'true');
-                fd.append('image', dataUrlToBlob(faceRef), 'ref.png');
+                // OpenAI / 中转站的多图参考：多张时用 image[]，单张沿用 image。
+                var field = dataRefs.length > 1 ? 'image[]' : 'image';
+                dataRefs.forEach(function (ref, i) {
+                    fd.append(field, dataUrlToBlob(ref), 'ref' + i + '.png');
+                });
                 var er = await fetch(base + '/images/edits', { method: 'POST', headers: { 'Authorization': 'Bearer ' + key }, body: fd });
                 if (er.ok) {
                     var ed = await er.json();
@@ -171,7 +178,13 @@
                 scale: 5
             };
         }
-        if (faceRef) { body.image = faceRef; body.reference_image = [faceRef]; body.input_reference_image = [faceRef]; body.reference_images = [faceRef]; body.ref_image = faceRef; }
+        if (faceRefs.length) {
+            body.image = faceRefs[0];
+            body.reference_image = faceRefs.slice();
+            body.input_reference_image = faceRefs.slice();
+            body.reference_images = faceRefs.slice();
+            body.ref_image = faceRefs[0];
+        }
         var resp = await fetch(base + '/images/generations', {
             method: 'POST',
             headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json' },
@@ -182,7 +195,7 @@
             var simple = { model: model, prompt: finalPrompt, n: 1, size: size };
             if (negative && isNai) simple.negative_prompt = negative;
             if (opts.nsfw) simple.nsfw = true;
-            if (faceRef) { simple.image = faceRef; simple.reference_image = [faceRef]; }
+            if (faceRefs.length) { simple.image = faceRefs[0]; simple.reference_image = faceRefs.slice(); }
             try {
                 resp = await fetch(base + '/images/generations', {
                     method: 'POST',

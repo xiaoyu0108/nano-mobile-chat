@@ -2733,10 +2733,11 @@
                 } catch(e) {}
             }
 
-            if (!bgImage && bgType === 'image' && typeof localforage !== 'undefined') {
+            if (bgType === 'image' && typeof localforage !== 'undefined') {
+                // 背景图只存在 IndexedDB（localStorage 会写满），每次都从 IDB 取最新一张。
                 localforage.getItem('chat_setting_bgImage_' + chatId).then(function(img) {
-                    renderBg(img || '');
-                }).catch(function() { renderBg(''); });
+                    renderBg(img || bgImage);
+                }).catch(function() { renderBg(bgImage); });
             } else {
                 renderBg(bgImage);
             }

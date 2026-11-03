@@ -3264,6 +3264,20 @@ messageContainer.addEventListener('click', function(e){
     updateSendState();
     consumePendingChanges();
 
+    // localStorage 满时群资料可能只写进了 IndexedDB：异步补读一次，避免头像/群名停在旧值。
+    if (window.GroupStore && GroupStore.get) {
+        GroupStore.get(GROUP_KEY).then(function (raw) {
+            if (!raw) return;
+            var g = null;
+            try { g = JSON.parse(raw); } catch (e) { return; }
+            if (!g || !g.members) return;
+            if (String(g.avatar || '') === String(group.avatar || '') && String(g.name || '') === String(group.name || '')) return;
+            group = g;
+            renderHeader();
+            resolveIdentities().then(function(){ renderHeader(); renderMessages(); });
+        }).catch(function(){});
+    }
+
     // 已退出群聊：只能围观，点击发送按钮让 AI 自己互动
     if (userLeft) {
         messageInput.disabled = true;

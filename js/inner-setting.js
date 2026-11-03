@@ -43,7 +43,10 @@
     function setSetting(key, val) {
         try {
             localStorage.setItem(getStorageKey(key), JSON.stringify(val));
-        } catch(e) {}
+        } catch(e) {
+            // localStorage 写满时清掉旧值，避免聊天页继续读到上一次的大图。
+            try { localStorage.removeItem(getStorageKey(key)); } catch(e2) {}
+        }
         if (typeof localforage !== 'undefined') {
             localforage.setItem(getStorageKey(key), val).catch(function(err) {});
         }
@@ -487,9 +490,9 @@
             }
         }
 
-        if (!bgImage && typeof localforage !== 'undefined') {
+        if (bgType === 'image' && typeof localforage !== 'undefined') {
             localforage.getItem(getStorageKey('bgImage')).then(function(img) {
-                renderBg(img || bgImage);
+                renderBg(img || bgImage || '');
             }).catch(function() { renderBg(bgImage); });
         } else {
             renderBg(bgImage);
@@ -690,68 +693,92 @@
         var bgImage = getSetting('bgImage', '');
         var bgColor = getSetting('bgColor', '#ffffff');
         var bgType = getSetting('bgType', 'color');
-        if (bgType === 'image' && bgImage) {
-            bgPreviewBox.style.backgroundImage = 'url(' + bgImage + ')';
-            bgPreviewBox.style.backgroundSize = 'cover';
-            bgPreviewBox.style.backgroundPosition = 'center';
-            bgPreviewBox.textContent = '';
+        var show = function (img) {
+            if (bgType === 'image' && img) {
+                bgPreviewBox.style.backgroundImage = 'url(' + img + ')';
+                bgPreviewBox.style.backgroundSize = 'cover';
+                bgPreviewBox.style.backgroundPosition = 'center';
+                bgPreviewBox.textContent = '';
+            } else {
+                bgPreviewBox.style.backgroundImage = 'none';
+                bgPreviewBox.style.backgroundColor = bgColor || '#ffffff';
+                bgPreviewBox.textContent = '无预览';
+            }
+        };
+        if (bgType === 'image' && typeof localforage !== 'undefined') {
+            localforage.getItem(getStorageKey('bgImage')).then(function (img) {
+                show(img || bgImage || '');
+            }).catch(function () { show(bgImage); });
         } else {
-            bgPreviewBox.style.backgroundImage = 'none';
-            bgPreviewBox.style.backgroundColor = bgColor || '#ffffff';
-            bgPreviewBox.textContent = '无预览';
+            show(bgImage);
         }
     }
 
     function saveBackground() {
         var bgImage = bgPreviewBox.style.backgroundImage;
+        var imageUrl = '';
+        var writeP = Promise.resolve();
         if (bgImage && bgImage !== 'none' && bgImage !== '') {
             var url = bgImage.replace(/url\(["']?([^"')]+)["']?\)/, '$1');
             if (url && url.startsWith('data:image')) {
+                imageUrl = url;
                 setSetting('bgType', 'image');
-                setSetting('bgImage', url);
+                // 大图只放 IndexedDB（localforage）。localStorage 里保留旧图会让聊天页一直读到上一张。
+                try { localStorage.removeItem(getStorageKey('bgImage')); } catch (e) {}
+                if (typeof localforage !== 'undefined') {
+                    writeP = localforage.setItem(getStorageKey('bgImage'), url).catch(function(err) {});
+                }
                 bgDisplay.textContent = '自定义图片';
             }
         } else {
             var color = bgPreviewBox.style.backgroundColor || '#ffffff';
             setSetting('bgType', 'color');
             setSetting('bgColor', color);
+            try { localStorage.removeItem(getStorageKey('bgImage')); } catch (e) {}
             if (typeof localforage !== 'undefined') {
-                localforage.removeItem(getStorageKey('bgImage')).catch(function(err) {});
+                writeP = localforage.removeItem(getStorageKey('bgImage')).catch(function(err) {});
             }
             bgDisplay.textContent = color === '#ffffff' ? '默认' : '颜色';
         }
-        if (window.parent !== window) {
-            window.parent.postMessage({
-                type: 'backgroundChanged',
-                chatId: chatId,
-                bgType: getSetting('bgType', 'color'),
-                bgColor: getSetting('bgColor', '#ffffff'),
-                bgImage: getSetting('bgImage', '')
-            }, '*');
-        }
-        bgModal.classList.remove('active');
+        // 等 IndexedDB 写完再通知聊天页，避免它读到上一张背景图。
+        writeP.then(function () {
+            if (window.parent !== window) {
+                window.parent.postMessage({
+                    type: 'backgroundChanged',
+                    chatId: chatId,
+                    bgType: getSetting('bgType', 'color'),
+                    bgColor: getSetting('bgColor', '#ffffff'),
+                    bgImage: imageUrl
+                }, '*');
+            }
+            bgModal.classList.remove('active');
+        });
     }
 
     function resetBackground() {
         setSetting('bgType', 'color');
         setSetting('bgColor', '#ffffff');
+        try { localStorage.removeItem(getStorageKey('bgImage')); } catch (e) {}
+        var writeP = Promise.resolve();
         if (typeof localforage !== 'undefined') {
-            localforage.removeItem(getStorageKey('bgImage')).catch(function(err) {});
+            writeP = localforage.removeItem(getStorageKey('bgImage')).catch(function(err) {});
         }
         bgDisplay.textContent = '默认';
         bgPreviewBox.style.backgroundImage = 'none';
         bgPreviewBox.style.backgroundColor = '#ffffff';
         bgPreviewBox.textContent = '无预览';
-        if (window.parent !== window) {
-            window.parent.postMessage({
-                type: 'backgroundChanged',
-                chatId: chatId,
-                bgType: 'color',
-                bgColor: '#ffffff',
-                bgImage: ''
-            }, '*');
-        }
-        bgModal.classList.remove('active');
+        writeP.then(function () {
+            if (window.parent !== window) {
+                window.parent.postMessage({
+                    type: 'backgroundChanged',
+                    chatId: chatId,
+                    bgType: 'color',
+                    bgColor: '#ffffff',
+                    bgImage: ''
+                }, '*');
+            }
+            bgModal.classList.remove('active');
+        });
     }
 
     // ===== 搜索 =====

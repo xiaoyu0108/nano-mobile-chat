@@ -101,6 +101,7 @@
         Object.keys(it).forEach(function (k) { i2[k] = it[k]; });
         if (typeof i2.url === 'string' && /^data:/i.test(i2.url)) i2.url = '';
         if (typeof i2.image === 'string' && /^data:/i.test(i2.image)) i2.image = '';
+        if (Array.isArray(i2.images) && i2.images.some(function (u) { return /^data:/i.test(String(u)); })) i2.images = [];
         return i2;
       });
       return s2;
@@ -121,6 +122,7 @@
       if (!h) return;
       if (!it.url && h.url) it.url = h.url;
       if (!it.image && h.image) it.image = h.image;
+      if ((!it.images || !it.images.length) && h.images && h.images.length) it.images = h.images;
     });
   }
   function localHasChanges(light, heavy) {
@@ -139,7 +141,12 @@
     if (!light) return normalize(heavy);
     var ht = Number(heavy.savedAt) || 0;
     var lt = Number(light.savedAt) || 0;
-    if (lt > ht || (lt === ht && localHasChanges(light, heavy))) {
+    var lightTotal = 0, heavyTotal = 0;
+    (light.sessions || []).forEach(function (s) { lightTotal += ((s && s.items) || []).length; });
+    (heavy.sessions || []).forEach(function (s) { heavyTotal += ((s && s.items) || []).length; });
+    var preferLight = lt > ht || (lt === ht && localHasChanges(light, heavy));
+    if (preferLight && lightTotal === 0 && heavyTotal > 0) preferLight = false;
+    if (preferLight) {
       var heavyById = {};
       (heavy.sessions || []).forEach(function (hs) { if (hs && hs.id) heavyById[hs.id] = hs; });
       (light.sessions || []).forEach(function (ls) {
@@ -153,7 +160,9 @@
     var merged = [];
     (heavy.sessions || []).forEach(function (hs) {
       var ls = hs && hs.id ? lightById[hs.id] : null;
-      if (ls && (Number(ls.updatedAt) || 0) >= (Number(hs.updatedAt) || 0)) {
+      var lsEmpty = ls && !((ls.items || []).length);
+      var hsHasItems = !!((hs.items || []).length);
+      if (ls && (Number(ls.updatedAt) || 0) >= (Number(hs.updatedAt) || 0) && !(lsEmpty && hsHasItems)) {
         fillHeavyMedia(ls, hs);
         merged.push(ls);
       } else {

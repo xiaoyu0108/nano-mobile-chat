@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Nano 生图室</title>
   <link rel="stylesheet" href="../css/nano.css?v=20261025b">
-  <link rel="stylesheet" href="../css/nano-image.css?v=20261029b">
+  <link rel="stylesheet" href="../css/nano-image.css?v=20261103b">
   <script src="../js/localforage.min.js?v=20261027a"></script>
 </head>
 <body class="ni-body">
@@ -17,7 +17,7 @@
       </button>
       <div class="ni-title">
         <b>Nano 生图室</b>
-        <small id="niSub">聊天 · 生图 · 风格参考</small>
+        <small id="niSub">生图 · 多图参考 · 风格延续</small>
       </div>
       <button class="ni-top-btn" id="niSessionsBtn">窗口</button>
       <button class="ni-top-btn" id="niSettingsBtn">设置</button>
@@ -37,8 +37,8 @@
 
       <div class="ni-feed" id="niFeed"></div>
       <div class="ni-empty" id="niEmpty">
-        <b>和 Nano 聊天，或直接说「画一张…」</b>
-        可以正常聊天，也可以发图片让 Nano 识别画风；生成的图片会自动保存到图库。
+        <b>直接说想画什么，或一次添加多张参考图</b>
+        主职生图；可以一次选多张照片作为参考，生成的图片会自动保存到图库。
       </div>
     </div>
 
@@ -51,10 +51,7 @@
           </div>
           <button type="button" class="ni-quote-close" id="niQuoteClose" aria-label="取消引用">×</button>
         </div>
-        <div class="ni-attach-preview" id="niAttachPreview" hidden>
-          <img id="niAttachThumb" alt="">
-          <button type="button" class="ni-attach-remove" id="niAttachRemove" aria-label="移除图片">×</button>
-        </div>
+        <div class="ni-attach-preview" id="niAttachPreview" hidden></div>
         <textarea id="niPrompt" placeholder="和 Nano 聊天，或直接说「画一张雨夜东京街头的照片」…" rows="2"></textarea>
         <div class="ni-composer-tools">
           <button type="button" class="ni-tool-btn ni-plus-btn" id="niPlusBtn" aria-label="更多" title="更多">
@@ -69,7 +66,7 @@
             <option value="768x1344">9:16 手机</option>
             <option value="1344x768">16:9 宽屏</option>
           </select>
-          <input type="file" id="niImageFile" accept="image/*" hidden>
+          <input type="file" id="niImageFile" accept="image/*" multiple hidden>
           <input type="file" id="niDocFile" accept=".txt,.doc,.docx,.json,.md" hidden>
           <span class="ni-composer-spacer"></span>
           <button class="ni-generate" id="niGenerate">发送</button>
@@ -151,8 +148,8 @@
 
   <script src="../js/nano-idb.js?v=20261028e"></script>
   <script src="../js/nano-gallery.js?v=20261102a"></script>
-  <script src="../js/nano-image.js?v=20261102b"></script>
-  <script src="../js/nano-image-studio.js?v=20261029h"></script>
+  <script src="../js/nano-image.js?v=20261103b"></script>
+  <script src="../js/nano-image-studio.js?v=20261103b"></script>
   <script src="../swipe-back.js"></script>
 </body>
 </html>

@@ -374,22 +374,40 @@
     $('avatarCancel').addEventListener('click', function(){ $('avatarModal').classList.remove('active'); });
     $('avatarConfirm').addEventListener('click', function(){
         var old = group.avatar;
-        group.avatar = avatarTemp || '';
+        var nextAvatar = avatarTemp || '';
+        group.avatar = nextAvatar;
         saveGroup(group);
         syncToRegistry();
+        var finish = function () {
+            pushPendingChange('用户更换了群头像');
+            renderAll();
+            $('avatarModal').classList.remove('active');
+        };
+        var fail = function () {
+            group.avatar = old;
+            saveGroup(group);
+            syncToRegistry();
+            alert('群头像保存失败：本地存储空间不足，请换一张更小的图片。');
+        };
         var saved = false;
         try {
             var chk = JSON.parse(localStorage.getItem(GROUP_KEY) || 'null');
             saved = !!(chk && String(chk.avatar || '') === String(group.avatar || ''));
         } catch(e) { saved = false; }
-        if (!saved) {
-            group.avatar = old;
-            alert('群头像保存失败：本地存储空间不足，请换一张更小的图片。');
-            return;
+        if (saved) { finish(); return; }
+        // 群数据会镜像到 IndexedDB；localStorage 写满时并不代表头像没保存。
+        if (window.GroupStore && GroupStore.set && GroupStore.get) {
+            GroupStore.set(GROUP_KEY, JSON.stringify(group)).then(function(){
+                return GroupStore.get(GROUP_KEY);
+            }).then(function(raw){
+                var chk = null;
+                try { chk = JSON.parse(raw || 'null'); } catch (e) { chk = null; }
+                if (chk && String(chk.avatar || '') === String(nextAvatar)) finish();
+                else fail();
+            }).catch(fail);
+        } else {
+            fail();
         }
-        pushPendingChange('用户更换了群头像');
-        renderAll();
-        $('avatarModal').classList.remove('active');
     });
 
     // ========== 聊天背景 ==========
@@ -883,4 +901,16 @@
     // ========== 初始化 ==========
     renderAll();
     resolveIdentities().then(function(){ renderAll(); });
+    // localStorage 满时新头像可能只写进 IndexedDB：异步补读一次，避免页面显示旧头像。
+    if (window.GroupStore && GroupStore.get) {
+        GroupStore.get(GROUP_KEY).then(function (raw) {
+            if (!raw) return;
+            var g = null;
+            try { g = JSON.parse(raw); } catch (e) { return; }
+            if (!g || !g.members) return;
+            if (String(g.avatar || '') === String(group.avatar || '') && String(g.name || '') === String(group.name || '')) return;
+            group = g;
+            renderAll();
+        }).catch(function(){});
+    }
 })();

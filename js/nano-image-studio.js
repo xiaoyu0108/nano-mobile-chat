@@ -133,6 +133,8 @@
         Object.keys(it).forEach(function (k) { i2[k] = it[k]; });
         if (typeof i2.url === 'string' && /^data:/i.test(i2.url)) i2.url = '';
         if (typeof i2.image === 'string' && /^data:/i.test(i2.image)) i2.image = '';
+        // 多张参考图同样只留在 IndexedDB，localStorage 只放精简镜像。
+        if (Array.isArray(i2.images) && i2.images.some(function (u) { return /^data:/i.test(String(u)); })) i2.images = [];
         return i2;
       });
       return s2;
@@ -155,6 +157,7 @@
       if (!h) return;
       if (!it.url && h.url) it.url = h.url;
       if (!it.image && h.image) it.image = h.image;
+      if ((!it.images || !it.images.length) && h.images && h.images.length) it.images = h.images;
     });
   }
   function localHasChanges(light, heavy) {
@@ -173,8 +176,15 @@
     if (!light) return normalize(heavy);
     var ht = Number(heavy.savedAt) || 0;
     var lt = Number(light.savedAt) || 0;
+    var lightTotal = 0, heavyTotal = 0;
+    (light.sessions || []).forEach(function (s) { lightTotal += ((s && s.items) || []).length; });
+    (heavy.sessions || []).forEach(function (s) { heavyTotal += ((s && s.items) || []).length; });
+    var preferLight = lt > ht || (lt === ht && localHasChanges(light, heavy));
+    // 本地只剩一个空壳、IDB 里还有完整记录时，别把历史消息“隐藏”掉；
+    // 真正清空/删除的条目由 tombstone 在合并后统一过滤。
+    if (preferLight && lightTotal === 0 && heavyTotal > 0) preferLight = false;
     // 本地更新，或同级但确实清空/改过窗口时，以本地为准；避免 IDB 旧记录顶掉刚清空的聊天。
-    if (lt > ht || (lt === ht && localHasChanges(light, heavy))) {
+    if (preferLight) {
       var heavyById = {};
       (heavy.sessions || []).forEach(function (hs) { if (hs && hs.id) heavyById[hs.id] = hs; });
       (light.sessions || []).forEach(function (ls) {
@@ -189,7 +199,9 @@
     var merged = [];
     (heavy.sessions || []).forEach(function (hs) {
       var ls = hs && hs.id ? lightById[hs.id] : null;
-      if (ls && (Number(ls.updatedAt) || 0) >= (Number(hs.updatedAt) || 0)) {
+      var lsEmpty = ls && !((ls.items || []).length);
+      var hsHasItems = !!((hs.items || []).length);
+      if (ls && (Number(ls.updatedAt) || 0) >= (Number(hs.updatedAt) || 0) && !(lsEmpty && hsHasItems)) {
         fillHeavyMedia(ls, hs);
         merged.push(ls);
       } else {
@@ -257,7 +269,8 @@
   }
   var state = loadLocal();
   var generating = false;
-  var pendingImage = '';
+  var pendingImages = [];
+  var MAX_PENDING_IMAGES = 9;
   var pendingQuote = null;
 
   function readAsDataURL(file) {
@@ -297,14 +310,35 @@
     });
   }
 
-  function setPendingImage(dataUrl) {
-    pendingImage = String(dataUrl || '');
+  function renderPendingImages() {
     var box = $('niAttachPreview');
-    var thumb = $('niAttachThumb');
-    if (box) box.hidden = !pendingImage;
-    if (thumb) thumb.src = pendingImage || '';
+    if (!box) return;
+    box.hidden = !pendingImages.length;
+    box.innerHTML = pendingImages.map(function (src, i) {
+      return '<span class="ni-attach-item">' +
+        '<img src="' + esc(src) + '" alt="参考图 ' + (i + 1) + '">' +
+        '<button type="button" class="ni-attach-remove" data-remove-img="' + i + '" aria-label="移除图片">×</button>' +
+        '</span>';
+    }).join('');
     renderChips();
     syncSendButton();
+  }
+
+  function addPendingImages(list) {
+    (list || []).forEach(function (src) {
+      src = String(src || '');
+      if (!src) return;
+      if (pendingImages.length >= MAX_PENDING_IMAGES) return;
+      if (pendingImages.indexOf(src) >= 0) return;
+      pendingImages.push(src);
+    });
+    renderPendingImages();
+    if ((list || []).length && pendingImages.length >= MAX_PENDING_IMAGES) toast('最多同时参考 ' + MAX_PENDING_IMAGES + ' 张图片');
+  }
+
+  function setPendingImage(dataUrl) {
+    pendingImages = dataUrl ? [String(dataUrl)] : [];
+    renderPendingImages();
   }
 
   function svgIcon(name) {
@@ -340,7 +374,7 @@
     var item = findItem(id);
     if (!item) return;
     var text = String(item.text || item.fullPrompt || item.prompt || '').trim();
-    if (!text && (item.url || item.image)) text = '一张图片';
+    if (!text && (item.url || item.image || (item.images && item.images.length))) text = '一张图片';
     if (!text) { toast('这条消息没有可引用的内容'); return; }
     setPendingQuote({ who: item.role === 'user' ? '我' : 'Nano', text: text });
     closeMsgMenu();
@@ -369,14 +403,30 @@
     var list = currentSession().items;
     return list.find(function (x) { return x && x.id === id; }) || null;
   }
-  function previousUserImage(id) {
+  function previousUserImages(id) {
     var list = currentSession().items || [];
     var idx = -1;
     list.some(function (x, i) { if (x && x.id === id) { idx = i; return true; } return false; });
     for (var i = idx - 1; i >= 0; i--) {
-      if (list[i] && list[i].role === 'user' && list[i].image) return list[i].image;
+      var it = list[i];
+      if (!it || it.role !== 'user') continue;
+      if (it.images && it.images.length) return it.images.slice();
+      if (it.image) return [it.image];
     }
-    return '';
+    return [];
+  }
+  function previousUserImage(id) {
+    var imgs = previousUserImages(id);
+    return imgs[0] || '';
+  }
+  function refsForImageItem(item) {
+    if (item && Array.isArray(item.refImages) && item.refImages.length) return item.refImages.slice();
+    if (item && item.image) return [item.image];
+    if (item && item.id) {
+      var prev = previousUserImages(item.id);
+      if (prev.length) return prev;
+    }
+    return pendingImages.slice();
   }
 
   /* ---------- API 提示词读取 ---------- */
@@ -588,13 +638,15 @@
   async function sendChat(text, image, quote) {
     if (generating) return;
     var session = currentSession();
-    var userItem = { id: uid('it'), role: 'user', text: text, image: image || '', at: Date.now(), awaitingReply: true };
+    var images = Array.isArray(image) ? image.filter(Boolean) : (image ? [image] : []);
+    var userItem = { id: uid('it'), role: 'user', text: text, image: images[0] || '', images: images, at: Date.now(), awaitingReply: true };
     if (quote) userItem.quote = { who: String(quote.who || ''), text: String(quote.text || '') };
     session.items.push(userItem);
     session.updatedAt = Date.now();
     save();
     render();
     scrollBottom();
+    return userItem;
   }
 
   async function replyToUserItem(id) {
@@ -609,75 +661,21 @@
     userItem.awaitingReply = false;
     userItem.replying = true;
 
-    // 生图指令也走同一个「回复」按钮：第一次发送只落气泡，点回复才生成。
-    if (isImageRequest(userItem.text || '')) {
-      session.updatedAt = Date.now();
-      save();
-      render();
-      scrollBottom();
-      try {
-        await generateImage(userItem.text || '', userItem.image || '', {
-          noUser: true,
-          quote: userItem.quote || null,
-          afterId: userItem.id
-        });
-        userItem.replied = true;
-      } finally {
-        userItem.replying = false;
-        userItem.awaitingReply = false;
-        session.updatedAt = Date.now();
-        save();
-        render();
-        scrollBottom();
-      }
-      return;
-    }
-
-    var ai = { id: uid('it'), role: 'ai', kind: 'chat', status: 'loading', at: Date.now() };
-    list.splice(idx + 1, 0, ai);
+    // 生图室只负责生图：任何消息都直接生成图片，不再走文本聊天。
     session.updatedAt = Date.now();
     save();
     render();
     scrollBottom();
-    setGenerating(true);
     try {
-      var cfg = await getMainConfig();
-      var sys = '你是 Nano，一个可以自然聊天的 AI 助手，同时非常擅长图像生成与画风分析。' +
-        '聊天时像朋友一样自然、简洁、有温度，不要端着，也不要编造自己看不到图片。' +
-        '用户发图片时，认真观察画面，说明画风、构图、光影、色彩、材质与氛围，并给出可以直接用于生图的提示词。' +
-        '如果用户只是闲聊，就正常聊天，不要强行转成生图。';
-      if (state.useBasePrompt && String(state.basePositive || '').trim()) {
-        sys += '\n用户常用的生图风格偏好：' + String(state.basePositive).trim();
-        if (String(state.baseNegative || '').trim()) sys += '\n需要避免：' + String(state.baseNegative).trim();
-      }
-      var messages = [{ role: 'system', content: sys }].concat(chatHistory(list.slice(0, idx + 1)));
-      var resp = await fetch(cfg.url + '/chat/completions', {
-        method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + cfg.key, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: cfg.model, messages: messages, temperature: 0.85, max_tokens: 1400, stream: false })
+      await generateImage(userItem.text || '', userItem.images || userItem.image || '', {
+        noUser: true,
+        quote: userItem.quote || null,
+        afterId: userItem.id
       });
-      if (!resp.ok) {
-        var msg = 'HTTP ' + resp.status;
-        try {
-          var d = await resp.json();
-          msg = (d.error && d.error.message) || d.message || msg;
-        } catch (e) {}
-        throw new Error(msg);
-      }
-      var data = await resp.json();
-      var out = data && data.choices && data.choices[0] && data.choices[0].message;
-      var reply = messageText(out && out.content).trim();
-      if (!reply) throw new Error('接口没有返回内容');
-      ai.text = reply;
-      ai.status = 'done';
       userItem.replied = true;
-    } catch (err) {
-      ai.status = 'error';
-      ai.error = String((err && err.message) || err || '聊天失败');
-      if (userItem.image) ai.error += '\n如果模型不支持图片输入，请换用支持视觉的模型。';
     } finally {
       userItem.replying = false;
-      setGenerating(false);
+      userItem.awaitingReply = false;
       session.updatedAt = Date.now();
       save();
       render();
@@ -697,17 +695,17 @@
     var label = currentPresetLabel();
     box.innerHTML =
       '<span class="ni-chip ' + (state.useBasePrompt ? 'on' : '') + '"><i></i>提示词 ' + (state.useBasePrompt ? '开' : '关') + (label ? ' · ' + esc(label) : '') + '</span>' +
-      (pendingImage ? '<span class="ni-chip on"><i></i>图片已添加</span>' : '');
+      (pendingImages.length ? '<span class="ni-chip on"><i></i>参考图 ' + pendingImages.length + ' 张</span>' : '');
   }
 
   function renderMode() {
     var input = $('niPrompt');
-    if (input) input.placeholder = '和 Nano 聊天，或直接说「画一张雨夜东京街头的照片」…';
+    if (input) input.placeholder = '描述想生成的图片；也可以一次添加多张参考图…';
     syncSendButton();
     var empty = $('niEmpty');
     if (empty) {
       var b = empty.querySelector('b');
-      if (b) b.textContent = '和 Nano 聊天，或直接说「画一张…」';
+      if (b) b.textContent = '直接说想画什么，或一次添加多张参考图';
     }
   }
 
@@ -745,10 +743,14 @@
       if (!item) return '';
       var quoteHtml = item.quote ? ('<div class="ni-quote-inline"><b>' + esc(item.quote.who || '消息') + '</b>' + esc(item.quote.text || '') + '</div>') : '';
       if (item.role === 'user') {
+        var userImgs = (item.images && item.images.length) ? item.images : (item.image ? [item.image] : []);
+        var userImgsHtml = userImgs.length
+          ? '<div class="ni-user-imgs' + (userImgs.length > 1 ? ' multi' : '') + '">' + userImgs.map(function (src) {
+              return '<img class="ni-bubble-img" src="' + esc(src) + '" alt="" title="查看大图" data-img-src="' + esc(src) + '">';
+            }).join('') + '</div>'
+          : '';
         return '<div class="ni-item user" data-msg-id="' + esc(item.id) + '" data-msg-role="user"><div class="ni-user-bubble">' +
-          quoteHtml +
-          (item.image ? '<img class="ni-bubble-img" src="' + esc(item.image) + '" alt="" title="查看大图">' : '') +
-          esc(item.text || '') + '</div></div>';
+          quoteHtml + userImgsHtml + esc(item.text || '') + '</div></div>';
       }
       if (item.role !== 'ai') return '';
       if (item.kind === 'chat') {
@@ -840,7 +842,7 @@
       return;
     }
     var input = $('niPrompt');
-    var hasContent = !!(input && String(input.value || '').trim()) || !!pendingImage;
+    var hasContent = !!(input && String(input.value || '').trim()) || pendingImages.length > 0;
     var pending = latestPendingUserItem();
     if (hasContent) {
       btn.disabled = false;
@@ -880,7 +882,7 @@
   // 普通生图也要参照最近几轮生图上下文，保持人物、服装和场景连续，而不是每次从零画。
   function recentStudioContext(excludeText) {
     var arr = [];
-    var items = session.items || [];
+    var items = currentSession().items || [];
     var ex = String(excludeText || '').trim();
     for (var i = items.length - 1; i >= 0 && arr.length < 4; i--) {
       var it = items[i];
@@ -896,6 +898,7 @@
     if (generating) return;
     if (!window.NanoImage || !NanoImage.generate) { toast('生图模块没有加载，请重开页面'); return; }
     opts = opts || {};
+    var images = Array.isArray(image) ? image.filter(Boolean) : (image ? [image] : []);
     var session = currentSession();
     var oldName = session.name || '';
     if (/^(绘图|生图)\s*\d*$/.test(oldName) || oldName === '新窗口' || oldName === '生图窗口') {
@@ -903,7 +906,7 @@
     }
     var quote = opts.quote || null;
     if (!opts.noUser) {
-      var userItem = { id: uid('it'), role: 'user', text: text, image: image || '', at: Date.now() };
+      var userItem = { id: uid('it'), role: 'user', text: text, image: images[0] || '', images: images, at: Date.now() };
       if (quote) userItem.quote = { who: String(quote.who || ''), text: String(quote.text || '') };
       session.items.push(userItem);
     }
@@ -926,12 +929,12 @@
       var promptText = (ctx ? ('【最近生图上下文，用于保持人物/场景一致】\n' + ctx + '\n') : '')
         + (quote ? ('引用内容：' + quote.text + '\n') : '') + text;
       var full = await buildPrompt(promptText);
-      if (image) {
-        full = '参考上传图片的画风、配色、构图与光线，但不要照搬具体内容。\n' + full;
+      if (images.length) {
+        full = (images.length > 1 ? ('参考上传的 ' + images.length + ' 张图片的画风、配色、构图与光线，并保持其中的人物一致。') : '参考上传图片的画风、配色、构图与光线，但不要照搬具体内容。') + '\n' + full;
       }
       ai.fullPrompt = full;
       var size = detectSize(text, state.size);
-      var url = await NanoImage.generate(full, { size: size, faceRef: image || '' });
+      var url = await NanoImage.generate(full, { size: size, faceRef: images[0] || '', faceRefs: images });
       if (!url) throw new Error('接口没有返回图片');
       ai.url = url;
       ai.size = size;
@@ -959,10 +962,12 @@
     var t = String(text || '').trim();
     if (!t) return false;
     if (/^\/(?:img|draw|image|gen)\b/i.test(t)) return true;
+    // 「帮我画一张」「画个女孩」「生成一张夜景」这类最常见，之前的规则会漏掉而走成聊天。
+    if (/(?:帮我|给我|请|麻烦|能不能|可以|我想|我要|想要|想看|要)\s*.{0,10}(?:生成|绘制|画|出图|生图|重绘|改图|做|拍|来).{0,24}(?:图片|照片|图|画像|插画|壁纸|头像|海报|封面|画面|图像|自拍|写真|场景|人物|角色|女孩|男孩|猫|狗|动漫)/.test(t)) return true;
+    if (/^(?:帮我|给我|请|麻烦|我想要|我要)?\s*(?:生成|绘制|画|出图|生图|重绘|改图|做|拍|来)\s*(?:一|两|几)?\s*(?:张|幅|个|只|位|下)/.test(t)) return true;
     if (/(?:^|[\s，,。！？])(?:帮我|给我|请)?\s*(?:生成|画|绘制|出图|生图|重绘|改图)(?:一|两|几)?(?:张|幅|个)/.test(t)) return true;
     if (/(?:生成|绘制|画|出图|生图|重绘|改图|做|来|拍)(?:一|两|几)?(?:张|幅|个)?(?:图片|照片|图|画像|插画|壁纸|头像|海报|封面|画面|图像|自拍|写真)/.test(t)) return true;
     if (/(?:帮我|给我|请|能不能|可以).{0,10}(?:生成|画|绘制|做|拍|出).{0,12}(?:图片|照片|图|插画|壁纸|头像|海报|封面|画面|图像|自拍)/.test(t)) return true;
-    if (/(?:^|[\s，,。！？])(?:画|来|拍|做)(?:一|两|几)?张(?:图|照片|图片)?/.test(t)) return true;
     if (/(?:要|想要|需要|给我)(?:一|两|几)?张(?:图|照片|图片|插画|壁纸|头像|海报|封面|画面)/.test(t)) return true;
     if (/(?:^|\s)(?:draw|generate|make|create)\b.{0,30}(?:image|picture|photo|art|illustration)/i.test(t)) return true;
     return false;
@@ -972,16 +977,18 @@
     if (generating) return;
     var input = $('niPrompt');
     var text = input ? String(input.value || '').trim() : '';
-    var image = pendingImage;
-    if (!text && !image) {
+    var images = pendingImages.slice();
+    if (!text && !images.length) {
       var pending = latestPendingUserItem();
       if (pending) { await replyToUserItem(pending.id); return; }
-      toast('想聊点什么，或者直接说要画什么？');
+      toast('想画什么？直接描述画面，或先添加参考图');
       try { input.focus(); } catch (e) {}
       return;
     }
     if (!text) {
-      text = '帮我看看这张图片的画风、构图、光影和配色，并给出可以复用的生图提示词。';
+      text = images.length > 1
+        ? '参考这些照片里的人物、画风与氛围，生成一张新的图片。'
+        : '参考这张照片里的人物、画风与氛围，生成一张新的图片。';
     }
     var quote = pendingQuote;
     if (input) input.value = '';
@@ -991,8 +998,9 @@
     closeSheet('niMoreSheet');
     closeMsgMenu();
     try { if (input) input.blur(); } catch (e) {}
-    // 第一次点击只把消息放进气泡；输入框清空后按钮变成「回复」，再点才调用 API。
-    await sendChat(text, image, quote);
+    // 点一次就落气泡并立刻开始生图。
+    var userItem = await sendChat(text, images, quote);
+    if (userItem && userItem.id) await replyToUserItem(userItem.id);
     syncSendButton();
   }
 
@@ -1353,7 +1361,7 @@
       }
       if (!user) { toast('没有找到对应的提问'); return; }
       var userText = user.text || '';
-      var userImage = user.image || '';
+      var userImage = (user.images && user.images.length) ? user.images : (user.image || '');
       var userQuote = user.quote || null;
       currentSession().items = list.filter(function (x) { return x && x.id !== last.id && x.id !== user.id; });
       save();
@@ -1364,7 +1372,7 @@
       }
       return;
     }
-    var ref = last.image || previousUserImage(last.id) || pendingImage;
+    var ref = refsForImageItem(last);
     currentSession().items = list.filter(function (x) { return x && x.id !== last.id; });
     save();
     generateImage(last.prompt || '', ref, { noUser: true });
@@ -1424,7 +1432,7 @@
     if (!item || item.status === 'loading') return;
     menuMsgId = id;
     var hasText = !!String(item.text || item.fullPrompt || item.prompt || '').trim();
-    var hasImage = !!(item.url || item.image);
+    var hasImage = !!(item.url || item.image || (item.images && item.images.length));
     var isAiImage = item.role === 'ai' && item.kind !== 'chat' && item.status === 'done' && !!item.url;
     setMsgAct('niMsgCopy', hasText);
     setMsgAct('niMsgQuote', hasText || hasImage);
@@ -1490,9 +1498,9 @@
     } catch (e) { toast('保存失败'); }
   }
 
-  function downloadMessage(id) {
+  function downloadMessage(id, srcOverride) {
     var item = findItem(id);
-    var src = item && (item.url || item.image);
+    var src = srcOverride || (item && (item.url || item.image));
     if (!src) { toast('这条消息没有图片'); return; }
     var url = String(src);
     var name = 'nano-' + Date.now() + '.png';
@@ -1516,12 +1524,14 @@
   }
 
   var ivMsgId = '';
+  var ivSrc = '';
 
-  function openImageViewer(id) {
+  function openImageViewer(id, srcOverride) {
     var item = findItem(id);
-    var src = item && (item.url || item.image);
+    var src = srcOverride || (item && (item.url || item.image));
     if (!src) return;
     ivMsgId = id;
+    ivSrc = src;
     var viewer = $('niImageViewer');
     var img = $('niIvImg');
     if (!viewer || !img) return;
@@ -1535,6 +1545,7 @@
     var viewer = $('niImageViewer');
     if (viewer) viewer.classList.remove('on');
     ivMsgId = '';
+    ivSrc = '';
   }
 
   function rerollMessage(id) {
@@ -1549,7 +1560,7 @@
       if (list[i] && list[i].role === 'user') { user = list[i]; break; }
     }
     if (item.kind === 'image' || (item.kind !== 'chat' && (item.url || item.fullPrompt || item.size))) {
-      var ref = item.image || previousUserImage(item.id) || pendingImage;
+      var ref = refsForImageItem(item);
       currentSession().items = list.filter(function (x) { return x && x.id !== item.id; });
       save();
       generateImage(item.prompt || '', ref, { noUser: true });
@@ -1558,7 +1569,7 @@
     if (!user) { toast('没有找到对应的提问'); return; }
     var quote = user.quote || null;
     var userText = user.text || '';
-    var userImage = user.image || '';
+    var userImage = (user.images && user.images.length) ? user.images : (user.image || '');
     currentSession().items = list.filter(function (x) { return x && x.id !== item.id && x.id !== user.id; });
     save();
     sendChat(userText, userImage, quote);
@@ -1618,14 +1629,18 @@
       input.addEventListener('paste', function (e) {
         var items = e.clipboardData && e.clipboardData.items;
         if (!items) return;
+        var files = [];
         for (var i = 0; i < items.length; i++) {
           if (items[i].type && items[i].type.indexOf('image/') === 0) {
             var f = items[i].getAsFile();
-            if (!f) continue;
-            e.preventDefault();
-            compressImage(f).then(setPendingImage).catch(function (err) { toast((err && err.message) || '图片读取失败'); });
-            break;
+            if (f) files.push(f);
           }
+        }
+        if (files.length) {
+          e.preventDefault();
+          Promise.all(files.map(function (f) {
+            return compressImage(f).catch(function () { return ''; });
+          })).then(function (list) { addPendingImages(list.filter(Boolean)); });
         }
       });
     }
@@ -1683,7 +1698,7 @@
         else if (act === 'ref') {
           var it = findItem(id);
           var src = it && (it.url || it.image);
-          if (src) { setPendingImage(src); toast('已添加为参考图'); }
+          if (src) { addPendingImages([src]); toast('已添加为参考图'); }
         }
         else if (act === 'delete') setTimeout(function () { deleteMessage(id); }, 60);
       });
@@ -1698,7 +1713,7 @@
     var ivClose = $('niIvClose');
     if (ivClose) ivClose.addEventListener('click', closeImageViewer);
     var ivDownload = $('niIvDownload');
-    if (ivDownload) ivDownload.addEventListener('click', function () { if (ivMsgId) downloadMessage(ivMsgId); });
+    if (ivDownload) ivDownload.addEventListener('click', function () { if (ivMsgId) downloadMessage(ivMsgId, ivSrc); });
     var ivReroll = $('niIvReroll');
     if (ivReroll) ivReroll.addEventListener('click', function () {
       var id = ivMsgId;
@@ -1711,13 +1726,35 @@
     var imageFile = $('niImageFile');
     if (imageFile) {
       imageFile.addEventListener('change', function () {
-        var f = imageFile.files && imageFile.files[0];
+        var files = Array.prototype.slice.call(imageFile.files || []);
         imageFile.value = '';
-        if (!f) return;
-        if (f.size > 12 * 1024 * 1024) { toast('图片不能超过 12MB'); return; }
-        compressImage(f).then(setPendingImage).catch(function (err) { toast((err && err.message) || '图片读取失败'); });
+        if (!files.length) return;
+        var room = MAX_PENDING_IMAGES - pendingImages.length;
+        if (room <= 0) { toast('最多同时参考 ' + MAX_PENDING_IMAGES + ' 张图片'); return; }
+        var valid = [];
+        files.forEach(function (f) {
+          if (!f) return;
+          if (f.size > 12 * 1024 * 1024) { toast('单张图片不能超过 12MB'); return; }
+          if (valid.length < room) valid.push(f);
+        });
+        if (!valid.length) return;
+        Promise.all(valid.map(function (f) {
+          return compressImage(f).catch(function () { return ''; });
+        })).then(function (list) {
+          addPendingImages(list.filter(Boolean));
+        });
       });
     }
+    var attachBox = $('niAttachPreview');
+    if (attachBox) attachBox.addEventListener('click', function (e) {
+      var rm = e.target && e.target.closest ? e.target.closest('[data-remove-img]') : null;
+      if (!rm) return;
+      var idx = Number(rm.getAttribute('data-remove-img'));
+      if (idx >= 0 && idx < pendingImages.length) {
+        pendingImages.splice(idx, 1);
+        renderPendingImages();
+      }
+    });
     var docFile = $('niDocFile');
     if (docFile) {
       docFile.addEventListener('change', async function () {
@@ -1741,15 +1778,15 @@
         }
       });
     }
-    var attachRemove = $('niAttachRemove');
-    if (attachRemove) attachRemove.addEventListener('click', function () { setPendingImage(''); });
+    // 参考图删除由上面的 #niAttachPreview 事件委托处理。
 
     var feed = $('niFeed');
     if (feed) feed.addEventListener('click', function (e) {
       if (e.target && e.target.tagName === 'IMG') {
         var imgRow = e.target.closest ? e.target.closest('[data-msg-id]') : null;
         var imgItem = imgRow ? findItem(imgRow.getAttribute('data-msg-id')) : null;
-        if (imgItem && (imgItem.url || imgItem.image)) { openImageViewer(imgItem.id); return; }
+        var clickedSrc = e.target.getAttribute && e.target.getAttribute('data-img-src');
+        if (imgItem && (clickedSrc || imgItem.url || imgItem.image)) { openImageViewer(imgItem.id, clickedSrc || ''); return; }
       }
       var btn = e.target && e.target.closest ? e.target.closest('[data-act]') : null;
       if (!btn) return;
@@ -1766,7 +1803,7 @@
       } else if (act === 'ref') {
         var refSrc = item.url || item.image;
         if (!refSrc) return;
-        setPendingImage(refSrc);
+        addPendingImages([refSrc]);
         toast('已添加为参考图');
       } else if (act === 'copy-chat') {
         var text = String(item.text || '');
@@ -1775,9 +1812,9 @@
           navigator.clipboard.writeText(text).then(function () { toast('已复制'); }).catch(function () { toast('复制失败'); });
         } else toast('复制失败');
       } else if (act === 'again') {
-        generateImage(item.prompt || '', item.image || previousUserImage(id), { noUser: true });
+        generateImage(item.prompt || '', refsForImageItem(item), { noUser: true });
       } else if (act === 'retry') {
-        var retryRef = item.image || previousUserImage(id);
+        var retryRef = refsForImageItem(item);
         currentSession().items = currentSession().items.filter(function (x) { return x.id !== id; });
         save();
         generateImage(item.prompt || '', retryRef, { noUser: true });
@@ -1791,7 +1828,7 @@
         }
         if (!user) { toast('找不到对应的提问'); return; }
         var retryText = user.text || '';
-        var retryImage = user.image || '';
+        var retryImage = (user.images && user.images.length) ? user.images : (user.image || '');
         var retryQuote = user.quote || null;
         currentSession().items = list.filter(function (x) { return x && x.id !== id && x.id !== user.id; });
         save();
@@ -1895,6 +1932,12 @@
           loadApiPresets();
           if (window.parent && window.parent !== window) window.parent.postMessage({ type: 'setTitle', title: 'Nano 生图室' }, '*');
         } catch (e) {}
+      });
+    });
+    // 从设置页 / 其它页面回到生图室时，重新读一次 IndexedDB 再渲染，避免只显示新消息。
+    window.addEventListener('focus', function () {
+      reloadState().then(function () {
+        try { render(); } catch (e) {}
       });
     });
     window.addEventListener('storage', function (e) {

@@ -146,6 +146,22 @@
         }).catch(function () {});
     }
 
+    function idbGet(key) {
+        return openDB().then(function (db) {
+            return new Promise(function (resolve) {
+                try {
+                    var tx = db.transaction(STORE, 'readonly');
+                    var req = tx.objectStore(STORE).get(key);
+                    req.onsuccess = function () {
+                        db.close();
+                        resolve(req.result && req.result.value != null ? String(req.result.value) : null);
+                    };
+                    req.onerror = function () { db.close(); resolve(null); };
+                } catch (e) { try { db.close(); } catch (e2) {} resolve(null); }
+            });
+        }).catch(function () { return null; });
+    }
+
     var patched = false;
     var rawSetItem = null;
     var rawRemoveItem = null;
@@ -208,6 +224,7 @@
                 } else if (isScopedGroupKey(k) && isGroupKey(k)) {
                     idbPut(k, v);
                 }
+                // localStorage 写满时也不能丢数据：IndexedDB 里已经镜像了这次写入。
                 try { origSet(k, v); } catch (e) {}
             };
             localStorage.removeItem = function (k) {
@@ -306,7 +323,15 @@
         setCurrentUid: setCurrentUid,
         groupBelongsToCurrentUser: groupBelongsToCurrentUser,
         scopeKey: function (k) { return isBaseGroupKey(k) ? scopedKey(k, currentUid()) : k; },
-        set: function (k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+        get: function (k) {
+            var key = isBaseGroupKey(k) ? scopedKey(k, currentUid()) : k;
+            return idbGet(key);
+        },
+        set: function (k, v) {
+            try { localStorage.setItem(k, v); } catch (e) {}
+            var key = isBaseGroupKey(k) ? scopedKey(k, currentUid()) : k;
+            return idbPut(key, v);
+        },
         remove: function (k) { try { localStorage.removeItem(k); } catch (e) {} }
     };
 
