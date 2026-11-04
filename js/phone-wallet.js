@@ -177,7 +177,7 @@
                 window.__phoneRefresh();
                 ran = true;
             } else if (window.parent && window.parent !== window) {
-                window.parent.postMessage({ type: 'phoneAppRefresh' }, '*');
+                window.parent.postMessage({ type: 'phoneAppRefresh', appId: 'wallet' }, '*');
                 ran = true;
             }
         } catch (e) {}

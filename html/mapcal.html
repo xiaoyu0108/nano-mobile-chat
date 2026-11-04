@@ -124,11 +124,11 @@ button,input{font:inherit;border:0;background:none;color:inherit}
 }
 .add svg{width:25px;height:25px;fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round}
 .bottom{
- height:66px;flex:0 0 66px;background:rgba(255,255,255,.96);border-top:1px solid rgba(0,0,0,.07);
+ height:calc(66px + env(safe-area-inset-bottom));flex:0 0 calc(66px + env(safe-area-inset-bottom));background:rgba(255,255,255,.96);border-top:1px solid rgba(0,0,0,.07);
  display:flex;padding-bottom:env(safe-area-inset-bottom);z-index:30
 }
 .nav{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:10px;color:#8e8e93}
-.nav.active{color:#111;font-weight:600}.nav svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.nav.active{color:#111;font-weight:600}.nav svg{width:22px;height:22px;flex:none;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .empty-tip{color:#8e8e93;font-size:12px;padding:8px 3px}
 @media(min-width:700px){
  .app{max-width:520px;margin:auto;box-shadow:0 0 35px rgba(0,0,0,.08)}

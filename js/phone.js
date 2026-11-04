@@ -3198,8 +3198,14 @@ const MULTI_COUNT = {
 };
 
 function buildMultiPrompt(ids, char, ctx){
-  const need = ids.filter(id => MULTI_SPEC[id]).map(id => MULTI_SPEC[id]).join(",\n  ");
-  const counts = ids.filter(id => MULTI_COUNT[id]).map(id => MULTI_COUNT[id]).join("；");
+  // 输出太长时模型会从后往前截断；把钱包 / 相册 / 备忘 / 浏览器这些容易被截掉的 App 排到最前面。
+  const PREFERRED_ORDER = ["wallet","album","memo","browser","mapcal","taobao","store","health","game","private","doubao","chat","mail","diary","video"];
+  const orderedIds = ids.slice().sort((a, b) => {
+    const ia = PREFERRED_ORDER.indexOf(a), ib = PREFERRED_ORDER.indexOf(b);
+    return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib);
+  });
+  const need = orderedIds.filter(id => MULTI_SPEC[id]).map(id => MULTI_SPEC[id]).join(",\n  ");
+  const counts = orderedIds.filter(id => MULTI_COUNT[id]).map(id => MULTI_COUNT[id]).join("；");
   const matureLine = "【成人向】内容面向成年读者，成人向内容不限角色；禁止血腥暴力和违法内容。\n";
   let walletContext = "";
   if(ids.includes("wallet")){
@@ -3219,7 +3225,7 @@ ${matureLine}
 ${walletContext}
 【本次随机编号】${Date.now().toString(36)}-${Math.floor(Math.random()*1e6)}
 请根据这个编号换一个与以往不同的切入角度、场景与措辞来写，避免和之前生成的内容雷同。
-请一次性生成以下 App 的数据（只生成这些：${ids.join("、")}）：
+请一次性生成以下 App 的数据（只生成这些：${orderedIds.join("、")}）：
 {
   ${need}
 }
@@ -3282,9 +3288,9 @@ async function genMulti(api, char, ids, opts){
   try {
     if (window.NanoPrompts && NanoPrompts.appendTo) __sysJson = NanoPrompts.appendTo(__sysJson, 'phone', { keepFormat: true });
   } catch (e) {}
-  // 32768 会被很多兼容接口直接 400（超过模型上限），而且更容易输出到一半截断。
-  // 16384 是多数模型能接受的上限；startGeneration 会把 App 拆成小批，避免一次塞太多导致截断。
-  const maxTokens = Math.min(16384, Math.max(4096, Number(api.maxTokens) || 8192));
+  // 一次生成全部 App 时输出很长；至少给 16384，低于这个值会被截断导致后面的 App（钱包/相册等）缺失。
+  // 如果接口不接受，下面的重试会自动减半到 8192 / 4096。
+  const maxTokens = Math.min(32768, Math.max(16384, Number(api.maxTokens) || 16384));
   const baseBody = {
     model: api.model,
     messages: [{role:"system", content:__sysJson},{role:"user", content:user}],
@@ -3665,7 +3671,7 @@ window.addEventListener("message", e => {
   const d = e && e.data;
   if(d && d.type === "phoneAppClose") closeApp();
   else if(d && d.type === "screenSetupClose"){ try{ openSettings(); }catch(err){} }
-  else if(d && d.type === "phoneAppRefresh"){ try{ startGeneration([currentAppId || "wallet"]); }catch(err){} }
+  else if(d && d.type === "phoneAppRefresh"){ try{ startGeneration([d.appId || currentAppId || "wallet"]); }catch(err){} }
   else if(d && d.type === "startScreenShare"){
     // 窥屏页嵌在「查手机」里时，把共享请求继续交给外壳
     try{

@@ -1114,18 +1114,19 @@ function buildGroupOfflinePrompt() {
   const wordInstruction = settings.wordCount ? ('字数要求：本次回复正文至少 ' + Number(settings.wordCount) + ' 字，不得低于此长度。\n') : '';
   const personInstruction = '人称要求：' + (personMap[settings.person] || personMap.auto) + '。\n';
   const predictInstruction = predictUserInstruction() + '\n';
-  const cotInstruction = settings.cot ? ('思维链预设（COT，必须遵守，覆盖对 [thinking:] 的长度限制）：\n' + settings.cot + '\n请先严格按此预设思考，把完整思考过程写在回复最前面的 [thinking:...] 段落里（可多行、可详细），然后再输出正文。\n') : '';
+  const cotInstruction = settings.cot ? ('思维链预设（COT，必须遵守）：\n' + settings.cot + '\n请按此预设思考，把分析、计划、角色动机写在回复最前面的 [thinking:...] 段落里，控制在 400 字以内；thinking 里绝不能写剧情正文、对白或动作描写，正文必须写在 [thinking] 块外面。\n') : '';
   p += '\n' + wordInstruction + personInstruction + predictInstruction + cotInstruction;
   if (settings.style) p += '\n【用户文风偏好 · 优先遵守】\n' + settings.style + '\n';
   p += '\n' + offlineStyleLibrary() + '\n';
   p += '\n【禁止】禁止解释规则、跳出角色、插入免责声明、评价自己的回答。只输出正文。\n';
   p += '\n【一次性输出 · 严格按这个顺序，缺一不可】\n';
   p += '- 同一次回复里，严格按：①[thinking:…] ②正文 ③[heart:…] ④[plot:…] ⑤ 下方配置的自定义状态栏（如果有）。全部一次给全，绝不分次生成、绝不省略、绝不只输出正文。\n';
+  p += '- thinking 只写分析、计划、角色动机，控制在 300 字以内；绝不能把正文、对白、动作描写写进 thinking。\n';
   p += '- 先写 thinking，再写正文；正文写完后必须继续写 heart 与 5 条 plot，不要因为正文写完就收尾。\n';
   p += '- 正文里不要出现 thinking / heart / plot 标记；思考内容只能放在 [thinking: … ] 里。\n';
   p += '- 思考过程必须完整包在方括号里、结尾要有 ]；绝不能把思考内容（尤其英文思考）直接写进正文。\n';
   p += '\n【附带内容的位置（供后台读取，不会展示给用户）：thinking 在正文最前面，heart / plot 在正文之后】\n';
-  p += '[thinking:按思维链预设给出的思考摘要]\n';
+  p += '[thinking:按思维链预设给出的思考摘要，只写分析计划，不要写正文]\n';
   p += '[heart:此刻的一句心理状态，第一人称、简短自然、像心里闪过的一个念头；严禁"小姑娘/小东西/丫头/女人/低吼/揉碎/你是我的/逃不掉/我接住你/乖"等霸道油腻词汇，也严禁"过来让我抱一下/让我抱抱/抱一下/亲一下/摸摸头"这类撒娇求抱话术]\n';
   p += '[plot:剧情走向1\n剧情走向2\n剧情走向3\n剧情走向4\n剧情走向5]\n';
   p += '\n【剧情推荐选项要求】[plot:] 里给出 5 条接下来的剧情走向：必须与当前剧情高度相关、是很有可能接着发生的；五个方向各不相同，既有日常向也有非日常向，可以侧重不同的角色或人物关系；选项里直接写角色和用户的名字，不用“对方”“他/她”代替。每条20~30字，完整可读像一句能接着演的剧情；其中一条可以带暧昧/擦边(NSFW)推进，但不露骨、不低俗。每条一行，不要编号、不要序号、不要引号。\n';
@@ -3093,6 +3094,32 @@ async function requestReply(opts) {
       result = await callMainAPI(history, { continue: continueMode });
     }
     let reply = typeof result === 'string' ? result : (result?.reply ?? result?.content ?? result?.message ?? '');
+    // 模型偶尔会把正文写进 [thinking:] 里，或者只输出心声/剧情，导致正文区空白。
+    // 这种情况下单独补一次「只写正文」的请求，再把第一段的 thinking/heart/plot 合回去。
+    try {
+      const probe = extractMeta(reply);
+      if (!String(probe.text || '').replace(/\s+/g, '').trim()) {
+        const bodyHistory = history.concat([
+          { role: 'assistant', content: reply || '' },
+          { role: 'user', content: '（正文区是空的。现在只写正文，接着上一段剧情往下写，不要 [thinking]/[heart]，不要解释。）' }
+        ]);
+        const bodyRaw = await callMainAPI(bodyHistory, { continue: true, bodyOnly: true });
+        const bodyMeta = extractMeta(bodyRaw);
+        const bodyText = String(bodyMeta.text || '').replace(/\s+$/g, '').trim();
+        if (bodyText) {
+          let think = probe.thinking || bodyMeta.thinking || '';
+          // 旧 thinking 里可能混进了正文；补写成功后只保留前面一段摘要，避免正文在思维链里重复一遍。
+          if (think.length > 600) think = think.slice(0, 400).replace(/\s+$/g, '') + '…';
+          const heart = probe.heart || bodyMeta.heart;
+          const plots = (probe.plots && probe.plots.length) ? probe.plots : bodyMeta.plots;
+          let merged = bodyText;
+          if (think) merged = '[thinking:' + think + ']\n' + merged;
+          if (heart) merged += '\n[heart:' + heart + ']';
+          if (plots && plots.length) merged += '\n[plot:' + plots.join('\n') + ']';
+          reply = merged;
+        }
+      }
+    } catch (e) {}
     try { reply = await ensureOfflineLength(reply, history, continueMode); } catch (e) {}
     try {
       if (!offlineIsGroup && !offlineInvitedChars.length && reply && window.NanoScheduleBridge && window.NanoScheduleBridge.applyMarkers) {
@@ -3189,6 +3216,7 @@ function buildOfflineForeignInstruction() {
     + '如果一句话里既有动作又有台词，动作留在中文旁白里，只有引号/对话部分写成「母语（中文翻译）」。';
 }
 async function callMainAPI(history, opts) {
+  const bodyOnly = !!(opts && opts.bodyOnly);
   const rules = await loadRulesFromDB();
   const personMap = { auto: '由模型根据上下文自然决定', first: '第一人称', second: '第二人称', third: '第三人称' };
 
@@ -3262,12 +3290,13 @@ ${offlineStyleLibrary()}
 
 【一次性输出 · 严格按这个顺序，缺一不可】
 - 同一次回复里，严格按：①[thinking:…] ②正文 ③[heart:…] ④[plot:…] ⑤ 下方配置的自定义状态栏（如果有）。全部一次给全，绝不分次生成、绝不省略、绝不只输出正文。
+- thinking 只写分析、计划、角色动机，控制在 300 字以内；绝不能把正文、对白、动作描写写进 thinking。
 - 先写 thinking，再写正文；正文写完后必须继续写 heart 与 5 条 plot，不要因为正文写完就收尾。
 - 正文里绝不能出现 thinking / heart / plot 标记，也不要用它们做小标题；思考内容（尤其英文思考）只能放在 [thinking: … ] 里，不能混进正文。
 - 即使使用英文思维链预设，思考也只写在 [thinking: … ] 里；正文与心声必须是中文。
 
 【附带内容的位置（供后台读取，不会展示给用户）：thinking 在正文最前面，heart / plot 在正文之后】
-[thinking:一行简洁的底层思考过程摘要，说明你为什么这样回，不要长]
+[thinking:一行简洁的底层思考摘要，只写分析计划，不要写正文]
 [heart:此刻的一句心理状态，第一人称、简短自然、像心里闪过的一个念头；严禁"小姑娘/小东西/丫头/女人/低吼/揉碎/你是我的/逃不掉/我接住你/乖"等霸道油腻词汇，不写占有欲和露骨暗示；也严禁"过来让我抱一下/让我抱抱/抱一下/亲一下/摸摸头"这类撒娇求抱话术]
 [plot:剧情走向1
 剧情走向2
@@ -3284,7 +3313,7 @@ ${offlineStyleLibrary()}
   const styleInstruction = settings.style ? `用户文风偏好（优先遵守）：\n${settings.style}` : '';
   const rulesInstruction = rules.length ? `额外规则：\n${rules.map((r, i) => `${i + 1}. ${r}`).join('\n')}` : '';
   const cotInstruction = settings.cot
-    ? `思维链预设（COT，必须遵守，覆盖上文对 [thinking:] 的长度限制）：\n${settings.cot}\n请先严格按此预设思考，把完整思考过程写在回复最前面的 [thinking:...] 段落里（可以多行、可以详细），然后再输出正文。思考内容不会展示在正文里，但会按此预设展示出来。`
+    ? `思维链预设（COT，必须遵守）：\n${settings.cot}\n请按此预设思考，把分析、计划、角色动机写在回复最前面的 [thinking:...] 段落里，控制在 400 字以内。thinking 里绝不能写剧情正文、对白或动作描写；正文必须写在 [thinking] 块外面，然后再输出 [heart] 与 [plot]。`
     : '';
   // 只有用户显式打开 NSFW 时才注入这段；否则它会一直把日常对话往露骨方向拉。
   const nsfwInstruction = !!settings.nsfw
@@ -3298,22 +3327,24 @@ ${offlineStyleLibrary()}
       return v ? ('【全局内置提示词 · 必须遵守】\n' + v) : '';
     } catch (e) { return ''; }
   })();
-  const systemPrompt = [
-    settingsComplianceInstruction(),
-    builtinPrompt,
-    statusBarsPromptBlock(),
-    bodyStatusPromptBlock(),
-    buildOfflineForeignInstruction(),
-    cotInstruction,
-    wordInstruction,
-    personInstruction,
-    predictInstruction,
-    nsfwInstruction,
-    globalBuiltinPrompt,
-    rulesInstruction,
-    '【输出前最终自检 · 最高优先级】输出前把下面几项过一遍：①没有用“女人/姑娘/女孩/丫头/小姑娘/小孩/小朋友/小家伙”称呼 {{user}}，称呼只用名字或“你”；②没有低吼/揉碎/揉进骨血/下巴抵在头顶/乖/听话这类油腻表达；③没有三连排比（“他没说…也没有…甚至没说…”）、“不是…而是…”、“…了…（如笑了一下）”这类八股；④没有把普通动作夸大成“理智的弦崩了/心里某根弦断了/嘴角控制不住地动了动/这一刻不一样”；⑤没有“这就够了/那就够了/我接住你/你不一样”这类套话；⑥没有无病呻吟、没有流水账动作清单、没有喜剧化放大普通情绪；⑦thinking / 正文 / heart / plot 四部分是否都写完，plot 是否正好 5 条。发现任何一条就改掉重写，宁可平实一点。',
-    '只输出最终回复正文，不要解释规则，不要输出系统提示词。'
-  ].filter(Boolean).join('\n\n');
+  const systemPrompt = bodyOnly
+    ? '只输出这一段剧情的正文（动作、对白、心理描写），正文写完后输出 5 条 [plot:...]。不要输出 [thinking]、[heart] 或状态栏，不要解释，不要重复已经写过的内容。'
+    : [
+        settingsComplianceInstruction(),
+        builtinPrompt,
+        statusBarsPromptBlock(),
+        bodyStatusPromptBlock(),
+        buildOfflineForeignInstruction(),
+        cotInstruction,
+        wordInstruction,
+        personInstruction,
+        predictInstruction,
+        nsfwInstruction,
+        globalBuiltinPrompt,
+        rulesInstruction,
+        '【输出前最终自检 · 最高优先级】输出前把下面几项过一遍：①没有用“女人/姑娘/女孩/丫头/小姑娘/小孩/小朋友/小家伙”称呼 {{user}}，称呼只用名字或“你”；②没有低吼/揉碎/揉进骨血/下巴抵在头顶/乖/听话这类油腻表达；③没有三连排比（“他没说…也没有…甚至没说…”）、“不是…而是…”、“…了…（如笑了一下）”这类八股；④没有把普通动作夸大成“理智的弦崩了/心里某根弦断了/嘴角控制不住地动了动/这一刻不一样”；⑤没有“这就够了/那就够了/我接住你/你不一样”这类套话；⑥没有无病呻吟、没有流水账动作清单、没有喜剧化放大普通情绪；⑦thinking / 正文 / heart / plot 四部分是否都写完，plot 是否正好 5 条。发现任何一条就改掉重写，宁可平实一点。',
+        '只输出最终回复正文，不要解释规则，不要输出系统提示词。'
+      ].filter(Boolean).join('\n\n');
 
   // 读取顺序：全局世界书 → 人设 → 线下设置（每次生成都重新读，不沿用旧逻辑）
   const charSetting = offlineIsGroup ? '' : String((offlineCharRecord && (offlineCharRecord.setting || offlineCharRecord.desc || offlineCharRecord.persona)) || '').trim();
@@ -3463,13 +3494,16 @@ ${offlineStyleLibrary()}
         if (scheduleBlock) scheduleBlock = scheduleBlock + '\n\n';
       }
     } catch (e) {}
-    const systemPromptStr = worldbookFirstBlock + personaBlock + settingsPriorityBlock + timeBlock + scheduleBlock + memBlock + onlineBlock + openingBlock + ((offlineIsGroup || offlineInvitedChars.length)
-      ? (buildGroupOfflinePrompt() + (rules.length
-          ? ('\n\n【额外规则 · 强制遵守】\n' + rules.map((r, i) => `${i + 1}. ${r}`).join('\n'))
-          : ''))
-      : systemPrompt
-          .replace(/{{char}}/g, settings.charName)
-          .replace(/{{user}}/g, settings.userName || '对方')) + offlineExitedBlock();
+    const scenePrompt = bodyOnly
+      ? systemPrompt
+      : ((offlineIsGroup || offlineInvitedChars.length)
+          ? (buildGroupOfflinePrompt() + (rules.length
+              ? ('\n\n【额外规则 · 强制遵守】\n' + rules.map((r, i) => `${i + 1}. ${r}`).join('\n'))
+              : ''))
+          : systemPrompt
+              .replace(/{{char}}/g, settings.charName)
+              .replace(/{{user}}/g, settings.userName || '对方'));
+    const systemPromptStr = worldbookFirstBlock + personaBlock + settingsPriorityBlock + timeBlock + scheduleBlock + memBlock + onlineBlock + openingBlock + scenePrompt + offlineExitedBlock();
     // 可编辑的角色扮演 Prompt 模板（js/roleplay-prompt.js），用户可自行修改
     let finalSystemPrompt = systemPromptStr;
     try {
@@ -3529,13 +3563,14 @@ ${offlineStyleLibrary()}
     const wantTokens = parseInt(settings.maxTokens, 10) || 0;
     let offlineMaxTokens;
     if (wantTokens > 0) {
-      // 用户在「线下设置 → 输出上限」里手动指定
-      offlineMaxTokens = Math.min(Math.max(wantTokens, 1024), 32768);
+      // 用户在「线下设置 → 输出上限」里手动指定；下限抬到 8192，
+      // 避免思维链吃掉额度后正文/剧情选项还没写完就被截断。
+      offlineMaxTokens = Math.min(Math.max(wantTokens, 8192), 32768);
     } else {
       // 正文按目标字数估算，再为思维链 / 心声 / 5 条剧情走向预留余量；
-      // 下限提到 8192，避免模型正文还没写完附带的三段就被 max_tokens 截断。
-      offlineMaxTokens = Math.ceil(wantChars * 1.8) + 2600;
-      offlineMaxTokens = Math.max(8192, offlineMaxTokens);
+      // 下限提到 12000，给长思维链和正文都留够空间。
+      offlineMaxTokens = Math.ceil(wantChars * 1.8) + 3600;
+      offlineMaxTokens = Math.max(12000, offlineMaxTokens);
       offlineMaxTokens = Math.min(offlineMaxTokens, 32768);
     }
 
