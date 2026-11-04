@@ -1,8 +1,8 @@
 /* sw.js — 用于 PWA 安装、通知点击聚焦、静态资源加速。
    缓存策略（解决“每次打开都要好几秒”）：
-     · HTML：先联网（保证拿到最新版本），断网时用缓存兜底
-     · CSS / JS / 图片 / 图标 / 字体：先用缓存秒开，后台静默更新（stale-while-revalidate）
-       —— 改了代码刷新两次即可看到新版；不想等可以给 CACHE 换个版本号
+     · HTML：始终先联网（no-store，绕过 GitHub 的 HTTP 缓存），断网/超时才用缓存兜底
+     · CSS / JS / 图片 / 图标 / 字体：先用缓存秒开；带 ?v= 的直接用缓存，不带版本号的后台静默更新
+       —— 改 JS/CSS 时一定要同步改对应的 ?v=，否则会继续命中旧缓存
      · 跨域（CDN）请求不拦截，交给浏览器自己的缓存
    注意：Service Worker 无法在应用被关闭后持续运行 AI 生成，
    “后台回复”依赖页面常驻 + 音频保活；真正的“关闭也能收到”需要服务端配合（见 push 事件）。 */
@@ -10,7 +10,6 @@
 
 var CACHE = 'nano-static-v374';
 var STATIC_RE = /\.(css|js|png|jpg|jpeg|webp|svg|gif|ico|woff2?|ttf|mp3)$/i;
-var HTML_FRESH_MS = 30 * 60 * 1000;   // 30 分钟内直接用缓存 HTML（页面切换秒开），后台静默更新
 var NET_TIMEOUT_MS = 700;             // 有缓存时网络最多等 0.7 秒，超时立刻上缓存
 
 // 与客户端 NanoScope.appId 使用同一套算法：用「站点根目录」区分不同部署。
@@ -29,6 +28,16 @@ function appIdFromRoot(root) {
     return 'app_' + h.toString(36);
 }
 var APP_ID = appIdFromRoot(self.registration.scope);
+
+function offlinePage() {
+    return new Response(
+        '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
+        '<title>离线</title><div style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;padding:32px 20px;color:#333">' +
+        '<h2 style="font-size:18px;margin:0 0 8px">当前网络不可用</h2>' +
+        '<p style="font-size:14px;color:#777;margin:0">请检查网络后重试，或返回上一页。</p></div>',
+        { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
+    );
+}
 
 self.addEventListener('install', function (event) {
     self.skipWaiting();
@@ -51,17 +60,13 @@ self.addEventListener('fetch', function (event) {
 
     var isHTML = req.mode === 'navigate' || /\.html?$/i.test(url.pathname) || /\/$/.test(url.pathname);
     if (isHTML) {
-        // 10 分钟内直接命中缓存（页面之间切换秒开）；否则联网拿最新。
-        // 有缓存时最多等 2.5 秒网络，超时就先用缓存显示，后台继续更新，
-        // 避免网络慢/节点卡时整个页面卡住几十秒。
+        // HTML 始终先联网，并且用 no-store 绕过 GitHub Pages 的 10 分钟 HTTP 缓存。
+        // 有缓存时最多等 0.7 秒，超时才先显示缓存；这样 build 号不会新旧来回跳。
+        // 注意：网络失败时绝对不能拿 index.html 兜底其它页面，否则聊天 iframe 会显示开屏页。
         event.respondWith(
             caches.open(CACHE).then(function (cache) {
                 return cache.match(req).then(function (cached) {
-                    var at = 0;
-                    try { at = parseInt((cached && cached.headers.get('x-nano-at')) || '0', 10) || 0; } catch (e) {}
-                    if (cached && (Date.now() - at < HTML_FRESH_MS)) return cached;
-
-                    var network = fetch(req).then(function (res) {
+                    var network = fetch(req, { cache: 'no-store' }).then(function (res) {
                         try {
                             var h = new Headers(res.headers);
                             h.set('x-nano-at', String(Date.now()));
@@ -70,13 +75,20 @@ self.addEventListener('fetch', function (event) {
                             }));
                         } catch (e) {}
                         return res;
-                    });
+                    }).catch(function () { return null; });
 
                     if (!cached) {
-                        return network.catch(function () { return caches.match('./index.html'); });
+                        return network.then(function (res) {
+                            if (res) return res;
+                            var isRoot = /\/$/.test(url.pathname) || /\/index\.html?$/i.test(url.pathname);
+                            if (!isRoot) return offlinePage();
+                            return caches.match('./index.html').then(function (r) {
+                                return r || offlinePage();
+                            });
+                        });
                     }
                     return Promise.race([
-                        network,
+                        network.then(function (res) { return res || cached; }),
                         new Promise(function (resolve) { setTimeout(function () { resolve(cached); }, NET_TIMEOUT_MS); })
                     ]).catch(function () { return cached; });
                 });
@@ -86,20 +98,24 @@ self.addEventListener('fetch', function (event) {
     }
 
     // JS 采用「先用缓存秒开，后台静默更新」（stale-while-revalidate）：
-    // 改完代码刷新两次即可看到新版；带 ?v= 的资源是新缓存键，会直接走网络。
+    // 带 ?v= 的资源是版本化资源，内容不会变，直接命中缓存，不再每次回源；
+    // 不带版本号的脚本才在后台静默更新，避免一次打开几十个脚本时把网络占满。
     if (/\.js$/i.test(url.pathname)) {
         event.respondWith(
             caches.open(CACHE).then(function (cache) {
                 return cache.match(req).then(function (cached) {
-                    var network = fetch(req).then(function (res) {
-                        try { if (res && res.status === 200) cache.put(req, res.clone()); } catch (e) {}
-                        return res;
-                    });
                     if (cached) {
-                        event.waitUntil(network.catch(function () {}));
+                        if (!url.searchParams.has('v')) {
+                            event.waitUntil(fetch(req).then(function (res) {
+                                try { if (res && res.status === 200) cache.put(req, res.clone()); } catch (e) {}
+                            }).catch(function () {}));
+                        }
                         return cached;
                     }
-                    return network.catch(function () { return cached; });
+                    return fetch(req).then(function (res) {
+                        try { if (res && res.status === 200) cache.put(req, res.clone()); } catch (e) {}
+                        return res;
+                    }).catch(function () { return cached; });
                 });
             })
         );
@@ -110,15 +126,19 @@ self.addEventListener('fetch', function (event) {
     event.respondWith(
         caches.open(CACHE).then(function (cache) {
             return cache.match(req).then(function (cached) {
-                var network = fetch(req).then(function (res) {
+                // 有缓存就立刻返回，不再等网络（之前会先等最多 700ms，导致每次打开都慢半拍）。
+                if (cached) {
+                    if (!url.searchParams.has('v')) {
+                        event.waitUntil(fetch(req).then(function (res) {
+                            try { if (res && res.status === 200) cache.put(req, res.clone()); } catch (e) {}
+                        }).catch(function () {}));
+                    }
+                    return cached;
+                }
+                return fetch(req).then(function (res) {
                     try { if (res && res.status === 200) cache.put(req, res.clone()); } catch (e) {}
                     return res;
                 }).catch(function () { return cached; });
-                if (!cached) return network;
-                return Promise.race([
-                    network,
-                    new Promise(function (resolve) { setTimeout(function () { resolve(cached); }, NET_TIMEOUT_MS); })
-                ]).catch(function () { return cached; });
             });
         })
     );

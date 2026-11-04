@@ -13929,6 +13929,13 @@ if (data.type === 'NANO_VOICE_CALL_CARD' || data.type === 'NANO_VIDEO_CALL_CARD'
             try { consumeNanoPrefill(); } catch (e) {}
             window.__nanoChatReady = true;
             window.__nanoChatReadyChat = String(chatId || '');
+            // 消息已经渲染完成就通知外层收起「正在打开…」，
+            // 不再等 iframe 里所有非关键脚本、图片和字体都加载完。
+            try {
+                if (window.parent && window.parent !== window) {
+                    window.parent.postMessage({ type: 'nanoFrameReady' }, '*');
+                }
+            } catch (e) {}
             // 窥屏轮次不做前台定时轮询：快捷指令跑完回到 App 时，外层 ios-bridge
             // 会立即补拉并广播 NANO_PEEK_UPDATED；这里只在进入聊天时拉一次。
             try { consumePendingPeekTurns(); } catch (e) {}

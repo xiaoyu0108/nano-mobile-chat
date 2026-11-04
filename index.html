@@ -8,33 +8,26 @@
     // 全站唯一构建号：下面的自愈逻辑、iframe 的 nb= 参数都用它。
     // 注意：不要再另写第二个版本号，否则两个版本号会互相判定“版本变了”，
     // 造成每次打开都清缓存 + 反复 reload。
-    window.__NANO_BUILD__ = 'nano-2026-11-09-02';
-    // 版本升级时强制清一次缓存并重载：避免手机/PWA 一直跑旧 JS（屏幕共享/思维链等问题）
+    // build 号保持最新即可，但不要再用 reload 强制更新：reload + 旧 SW 的 HTML 缓存
+    // 会让新旧 build 号互相触发，开屏动画无限循环。现在只清缓存，不自动 reload。
+    window.__NANO_BUILD__ = 'nano-2026-11-09-03';
     (function () {
         try {
             var KEY = 'nano_build';
             var CUR = window.__NANO_BUILD__;
-            var prev = null, ok = false;
-            try { prev = localStorage.getItem(KEY); } catch (e) {}
+            var prev = null;
+            try { prev = localStorage.getItem(KEY); } catch (e) { return; }
             if (prev === CUR) return;
-            try { localStorage.setItem(KEY, CUR); ok = true; } catch (e) {}
-            var jobs = [];
+            // 写入失败（隐私模式/存储满）就直接放弃，避免每次打开都清缓存。
+            try { localStorage.setItem(KEY, CUR); } catch (e) { return; }
             try {
-                if (window.caches && caches.keys) jobs.push(caches.keys().then(function (ks) {
-                    // 只清站点静态缓存，别把图片/其它 CacheStorage 一起删掉，否则升级后首屏又要重新下载。
+                if (window.caches && caches.keys) caches.keys().then(function (ks) {
+                    // 只清站点静态缓存，别把图片/其它 CacheStorage 一起删掉。
                     return Promise.all(ks.filter(function (k) { return String(k).indexOf('nano-static-') === 0; })
                         .map(function (k) { return caches.delete(k).catch(function () {}); }));
-                }));
+                }).catch(function () {});
             } catch (e) {}
-            try {
-                if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) jobs.push(navigator.serviceWorker.getRegistrations().then(function (rs) {
-                    return Promise.all(rs.map(function (r) { return r.unregister().catch(function () {}); }));
-                }));
-            } catch (e) {}
-            var fired = false;
-            var go = function () { if (fired) return; fired = true; if (ok) { try { location.reload(); } catch (e) {} } };
-            Promise.all(jobs).catch(function () {}).then(go);
-            setTimeout(go, 1200);
+            // 不 unregister、不 reload：否则会和页面底部的 sw 注册互相抢，并且反复开屏。
         } catch (e) {}
     })();
     </script>

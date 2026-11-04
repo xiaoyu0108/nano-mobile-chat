@@ -568,9 +568,9 @@
         '<div style="font-size:12px;color:#8c8c8c;margin-bottom:14px;">发送一张「一起去」卡片。对方回应前不会调用 API。</div>' +
         '<label style="display:block;font-size:12px;color:#8c8c8c;margin:12px 0 6px;">目的地</label>' +
         '<input id="ntvDest" type="text" placeholder="例如：苏州 · 平江路" style="width:100%;box-sizing:border-box;border:1px solid #e4e4e7;border-radius:12px;padding:11px 12px;font-size:15px;outline:none;">' +
-        '<div style="display:flex;gap:12px;align-items:flex-end;">' +
-          '<div style="flex:1 1 0;min-width:0;"><label style="display:block;font-size:12px;color:#8c8c8c;margin:12px 0 6px;">日期</label><input id="ntvDate" type="date" style="width:100%;min-width:0;box-sizing:border-box;border:1px solid #e4e4e7;border-radius:12px;padding:11px 12px;font-size:15px;outline:none;"></div>' +
-          '<div style="width:92px;flex:none;"><label style="display:block;font-size:12px;color:#8c8c8c;margin:12px 0 6px;">天数</label><input id="ntvDays" type="number" min="1" max="30" value="1" style="width:100%;box-sizing:border-box;border:1px solid #e4e4e7;border-radius:12px;padding:11px 12px;font-size:15px;outline:none;"></div>' +
+        '<div style="display:flex;align-items:flex-end;width:100%;">' +
+          '<div style="flex:1 1 0;min-width:0;overflow:hidden;margin-right:12px;"><label style="display:block;font-size:12px;color:#8c8c8c;margin:12px 0 6px;">日期</label><input id="ntvDate" type="date" style="display:block;width:100%;max-width:100%;min-width:0;box-sizing:border-box;border:1px solid #e4e4e7;border-radius:12px;padding:11px 12px;font-size:15px;outline:none;-webkit-appearance:none;appearance:none;"></div>' +
+          '<div style="width:92px;flex:0 0 92px;"><label style="display:block;font-size:12px;color:#8c8c8c;margin:12px 0 6px;">天数</label><input id="ntvDays" type="number" min="1" max="30" value="1" style="display:block;width:100%;max-width:100%;box-sizing:border-box;border:1px solid #e4e4e7;border-radius:12px;padding:11px 12px;font-size:15px;outline:none;"></div>' +
         '</div>' +
         '<label style="display:block;font-size:12px;color:#8c8c8c;margin:12px 0 6px;">时间（选填）</label>' +
         '<input id="ntvTime" type="text" placeholder="例如：上午十点 / 周六傍晚" style="width:100%;box-sizing:border-box;border:1px solid #e4e4e7;border-radius:12px;padding:11px 12px;font-size:15px;outline:none;">' +

@@ -273,8 +273,15 @@ public class MainActivity extends Activity {
         if (!path.startsWith("/")) path = "/" + path;
         if (path.contains("..")) return notFound();
         String mime = mimeFor(path);
+        String assetPath = "www" + path;
         try {
-            InputStream is = getAssets().open("www" + path);
+            InputStream is;
+            try {
+                is = getAssets().open(assetPath);
+            } catch (IOException missing) {
+                // Windows 版 aapt2 可能把 assets 路径写成反斜杠；AssetManager 只认正斜杠，这里兼容一次。
+                is = getAssets().open(assetPath.replace('/', '\\'));
+            }
             WebResourceResponse response = new WebResourceResponse(
                     mime, isText(mime) ? "UTF-8" : null, is);
             Map<String, String> headers = new HashMap<>();

@@ -39,6 +39,59 @@ function Find-Sdk {
     throw "找不到 Android SDK（需要 platforms;android-35）。请设置 ANDROID_SDK_ROOT，或传入 -SdkRoot。"
 }
 
+# Windows 版 aapt2 可能把 assets 里的路径写成反斜杠（assets\www\index.html），
+# Android 的 AssetManager 只认正斜杠，装到手机上会直接 404（Not Found）。
+# 这里按 zip 结构逐个文件名原地替换，长度不变，不影响压缩数据和资源对齐。
+function Repair-ZipEntrySeparators {
+    param([string]$Path)
+    $bytes = [System.IO.File]::ReadAllBytes($Path)
+    $eocd = -1
+    $min = [Math]::Max(0, $bytes.Length - 22 - 65535)
+    for ($i = $bytes.Length - 22; $i -ge $min; $i--) {
+        if ($bytes[$i] -eq 0x50 -and $bytes[$i + 1] -eq 0x4B -and
+            $bytes[$i + 2] -eq 0x05 -and $bytes[$i + 3] -eq 0x06) {
+            $eocd = $i
+            break
+        }
+    }
+    if ($eocd -lt 0) { return 0 }
+    $count = [int][BitConverter]::ToUInt16($bytes, $eocd + 10)
+    $cdOffset = [int][BitConverter]::ToUInt32($bytes, $eocd + 16)
+    $p = $cdOffset
+    $fixed = 0
+    for ($n = 0; $n -lt $count; $n++) {
+        if (!($bytes[$p] -eq 0x50 -and $bytes[$p + 1] -eq 0x4B -and
+              $bytes[$p + 2] -eq 0x01 -and $bytes[$p + 3] -eq 0x02)) { break }
+        $nameLen = [int][BitConverter]::ToUInt16($bytes, $p + 28)
+        $extraLen = [int][BitConverter]::ToUInt16($bytes, $p + 30)
+        $commentLen = [int][BitConverter]::ToUInt16($bytes, $p + 32)
+        $localOffset = [int][BitConverter]::ToUInt32($bytes, $p + 42)
+        $nameStart = $p + 46
+        for ($j = 0; $j -lt $nameLen; $j++) {
+            if ($bytes[$nameStart + $j] -eq 0x5C) {
+                $bytes[$nameStart + $j] = 0x2F
+                $fixed++
+            }
+        }
+        if ($bytes[$localOffset] -eq 0x50 -and $bytes[$localOffset + 1] -eq 0x4B -and
+            $bytes[$localOffset + 2] -eq 0x03 -and $bytes[$localOffset + 3] -eq 0x04) {
+            $localNameLen = [int][BitConverter]::ToUInt16($bytes, $localOffset + 26)
+            $limit = [Math]::Min($localNameLen, $nameLen)
+            for ($j = 0; $j -lt $limit; $j++) {
+                if ($bytes[$localOffset + 30 + $j] -eq 0x5C) {
+                    $bytes[$localOffset + 30 + $j] = 0x2F
+                    $fixed++
+                }
+            }
+        }
+        $p = $nameStart + $nameLen + $extraLen + $commentLen
+    }
+    if ($fixed -gt 0) {
+        [System.IO.File]::WriteAllBytes($Path, $bytes)
+    }
+    return $fixed
+}
+
 function Find-Jdk {
     param([string]$Hint)
     $candidates = @()
@@ -178,6 +231,14 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "写入 classes.dex 失败" }
 } finally {
     Pop-Location
+}
+
+Write-Host "修正资源路径分隔符…"
+$fixedNames = Repair-ZipEntrySeparators (Join-Path $BuildDir "base.apk")
+if ($fixedNames -gt 0) {
+    Write-Host "  已把 $fixedNames 处反斜杠改成正斜杠（否则 Android 会报 Not Found）"
+} else {
+    Write-Host "  资源路径正常，无需修改"
 }
 
 Write-Host "对齐…"
