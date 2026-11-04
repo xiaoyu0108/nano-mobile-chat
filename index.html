@@ -4194,16 +4194,36 @@ setTimeout(function () {
                 } catch(e) {}
                 // 上次从「一起去」直接退出：再点开这个角色，继续那趟旅行
                 let activeTravel = null;
+                let activeTravelKeyCharId = '';
                 try { activeTravel = JSON.parse(localStorage.getItem('nano_travel_active_' + chatId) || 'null'); } catch(e) { activeTravel = null; }
+                if (!activeTravel) {
+                    // 兼容存档 key 与当前 chatId 不一致（例如 char id / session id 不同）的情况：
+                    // 扫一遍所有一起去存档，用 charId 或角色名匹配。
+                    try {
+                        for (let ai = 0; ai < localStorage.length; ai++) {
+                            const ak = localStorage.key(ai);
+                            if (!ak || ak.indexOf('nano_travel_active_') !== 0) continue;
+                            let av = null;
+                            try { av = JSON.parse(localStorage.getItem(ak) || 'null'); } catch(e) { av = null; }
+                            if (!av) continue;
+                            if (String(av.charId || '') === String(chatId) || (chatName && String(av.charName || '') === String(chatName))) {
+                                activeTravel = av;
+                                activeTravelKeyCharId = ak.slice('nano_travel_active_'.length);
+                                break;
+                            }
+                        }
+                    } catch(e) {}
+                }
                 if (activeTravel && activeTravel.savedAt && Date.now() - Number(activeTravel.savedAt) > 7 * 24 * 3600 * 1000) {
-                    try { localStorage.removeItem('nano_travel_active_' + chatId); } catch(e) {}
+                    try { localStorage.removeItem('nano_travel_active_' + (activeTravelKeyCharId || chatId)); } catch(e) {}
                     activeTravel = null;
                 }
-                if (activeTravel && String(activeTravel.charId || chatId) === String(chatId)) {
+                if (activeTravel && (activeTravelKeyCharId || String(activeTravel.charId || chatId) === String(chatId) || (chatName && String(activeTravel.charName || '') === String(chatName)))) {
                     const av = activeTravel.invite || {};
                     const params = new URLSearchParams();
-                    params.set('char', chatId);
-                    params.set('chatId', chatId);
+                    const resumeCharId = activeTravelKeyCharId || activeTravel.charId || chatId;
+                    params.set('char', resumeCharId);
+                    params.set('chatId', activeTravel.chatId || chatId);
                     params.set('name', chatName);
                     params.set('userId', activeTravel.userId || '');
                     params.set('resume', '1');

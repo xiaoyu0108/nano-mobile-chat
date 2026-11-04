@@ -2302,7 +2302,10 @@ function extractMeta(content) {
   });
   // 末尾元段落清洗：用「一直到下一个元标签或结尾」来匹配，防止模型漏写结尾的 ]、
   // 或思考内容里本身带 ]（尤其英文思维链）时，整段泄漏到正文里。
-  const META_NEXT = '(?=\\[\\s*(?:thinking|思维链|思考|think|heart|心声|plot|身体|生理|body|bar|状态栏|status)\\s*[:：]|$)';
+  // 关键：优先在真正的结尾 ] 处停止。旧版只看到「下一个元标签或结尾」，
+  // 当模型写成 [thinking:…] 正文 [heart:…] 时，会把中间的正文整段吞进 thinking，
+  // 结果只剩心声和思维链、没有正文。
+  const META_END = '(?:[\\]】]|(?=\\[\\s*(?:thinking|思维链|思考|think|heart|心声|plot|身体|生理|body|bar|状态栏|status)\\s*[:：])|$)';
   function pullMeta(re, onValue) {
     text = text.replace(re, function (m, c) {
       const v = String(c == null ? '' : c).trim().replace(/\][ \t]*$/, '').trim();
@@ -2310,9 +2313,9 @@ function extractMeta(content) {
       return ' ';
     });
   }
-  pullMeta(new RegExp('\\[\\s*(?:thinking|思维链|思考|think)\\s*[:：]([\\s\\S]*?)' + META_NEXT, 'gi'), function (v) { if (v) thinking = v; });
-  pullMeta(new RegExp('\\[\\s*(?:heart|心声)\\s*[:：]([\\s\\S]*?)' + META_NEXT, 'gi'), function (v) { if (v) heart = v; });
-  pullMeta(new RegExp('\\[\\s*(?:plot)\\s*[:：]([\\s\\S]*?)' + META_NEXT, 'gi'), function (v) {
+  pullMeta(new RegExp('\\[\\s*(?:thinking|思维链|思考|think)\\s*[:：]([\\s\\S]*?)' + META_END, 'gi'), function (v) { if (v) thinking = v; });
+  pullMeta(new RegExp('\\[\\s*(?:heart|心声)\\s*[:：]([\\s\\S]*?)' + META_END, 'gi'), function (v) { if (v) heart = v; });
+  pullMeta(new RegExp('\\[\\s*(?:plot)\\s*[:：]([\\s\\S]*?)' + META_END, 'gi'), function (v) {
     if (v) {
       const arr = v.split('\n').map(s => s.trim()).map(s => s.replace(/^[-*\d.\s、)]+/, '')).filter(s => s && s.length >= 4);
       if (arr.length) plots = arr.slice(0, 5);

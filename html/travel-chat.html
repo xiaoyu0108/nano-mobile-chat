@@ -1084,6 +1084,7 @@ function fresh(){
 function hasProgress(){
   return S.msgs.some(m=>m&&(m.role==='user'||m.role==='char'||m.role==='photo'))||S.plan.length>0;
 }
+let activeDbWritePromise = null;
 function saveActiveSession(){
   const lastPhoto=[...S.msgs].reverse().find(m=>m.role==='photo'&&m.url);
   const msgs=S.msgs.map(m=>{
@@ -1104,7 +1105,7 @@ function saveActiveSession(){
     savedAt:Date.now()
   };
   // 完整会话写 IndexedDB；localStorage 再存一份（配额不够时自动放弃，不影响 IDB）。
-  try{activeDbSet(ACTIVE_KEY,sess)}catch(e){}
+  try{activeDbWritePromise=activeDbSet(ACTIVE_KEY,sess)}catch(e){activeDbWritePromise=null}
   try{localStorage.setItem(ACTIVE_KEY,JSON.stringify(sess))}
   catch(e){
     try{
@@ -1113,7 +1114,19 @@ function saveActiveSession(){
         lastPhoto:null
       });
       localStorage.setItem(ACTIVE_KEY,JSON.stringify(light));
-    }catch(e2){}
+    }catch(e2){
+      // 连去掉图片的轻量存档都塞不进 localStorage 时，至少写一个很小的续玩指针。
+      // 真正的聊天记录在 IndexedDB 里，下次点开角色时靠这个指针恢复「一起去」，不会掉回线上。
+      try{
+        const pointer={
+          pointer:true,version:1,
+          charId:CHAR_ID,userId:(readMask().id||USER_ID),chatId:CHAT_ID||CHAR_ID,
+          charName:CHAR,userName:USER,dest:DEST,invite:Object.assign({},INVITE),
+          tripId:TRIP_ID,savedAt:0
+        };
+        localStorage.setItem(ACTIVE_KEY,JSON.stringify(pointer));
+      }catch(e3){}
+    }
   }
   return sess;
 }
@@ -1306,7 +1319,13 @@ async function exit(mode){
   if(S.exiting)return;
   S.exiting=true;
   const final=mode==='online';
-  if(!final&&hasProgress())saveActiveSession();
+  if(!final){
+    // 直接退出一定要留下续玩存档，哪怕这趟旅行还没有用户消息；
+    // 否则下次点开角色会掉回线上聊天。
+    saveActiveSession();
+    // 等 IndexedDB 真正落盘再离开，避免下次续玩时读不到存档。
+    try{ if(activeDbWritePromise) await activeDbWritePromise; }catch(e){}
+  }
   closeAll();
   toast(final?'正在整理这次旅行…':'正在保存行程…');
   try{
@@ -1356,7 +1375,11 @@ document.addEventListener('visibilitychange', function(){
     if(rec&&rec.name)CHAR=rec.name;
     const mask=await loadMaskInfo(true);USER=mask.name||'你';
     await loadRecords();
-    if(RESUME)restored=await restoreActiveSession();
+    if(RESUME){
+      restored=await restoreActiveSession();
+      // 存档已经过期/损坏时清掉，避免下次还试图恢复却总是掉回线上。
+      if(!restored){ try{localStorage.removeItem(ACTIVE_KEY)}catch(e){} }
+    }
   }catch(e){}
   if(!restored)fresh();
   syncBtn();
