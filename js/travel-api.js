@@ -89,12 +89,13 @@
       var cur = window.location.hostname;
       var isLan = cur && (/^(localhost|127\.0\.0\.1|\[::1\]|::1)$/.test(cur) || /^10\./.test(cur) || /^192\.168\./.test(cur) || /^172\.(1[6-9]|2\d|3[01])\./.test(cur) || /\.local$/.test(cur));
       if ((host === 'localhost' || host === '127.0.0.1' || host === '[::1]') && isLan) u.hostname = cur;
-      return u.toString();
+      // new URL() 会带结尾斜杠，必须剥掉，否则后面拼 /v1 会变成 //v1，网关会返回网页。
+      return u.toString().replace(/\/+$/, '').replace(/([^:])\/{2,}/g, '$1/');
     } catch (e) { return rawUrl; }
   }
   // 统一补全 /v1，兼容用户把完整端点填进配置
   function toV1Base(u) {
-    var s = String(u || '').trim().replace(/\/+$/, '');
+    var s = String(u || '').trim().replace(/\/+$/, '').replace(/([^:])\/{2,}/g, '$1/');
     s = s.replace(/\/chat\/completions$/i, '');
     s = s.replace(/\/embeddings$/i, '');
     s = s.replace(/\/images\/(generations|edits)$/i, '/v1');
@@ -168,24 +169,37 @@
             reject(new Error(msg));
             return;
           }
-          resolve(String(r.text || ''));
+          var txt = String(r.text || '');
+          if (/^\s*<(?:!doctype\s+html|html[\s>])/i.test(txt)) {
+            reject(new Error('API 地址返回了网页，不是接口。请检查主 API 地址（应填到 /v1）：' + url));
+            return;
+          }
+          resolve(txt);
         }, reject);
       }, 20);
     });
   }
   function postJson(url, headers, body, tag) {
-    if (window.parent && window.parent !== window) {
+    // 先尝试同页直接请求（和查手机一致，网关允许跨域）。
+    // 失败（CORS / 网络）再走父窗口代理，避免“后台无法返回结果”卡死。
+    function direct() {
+      return fetch(url, { method: 'POST', headers: headers, body: body }).then(function (r) {
+        return r.text().then(function (t) {
+          if (!r.ok) {
+            throw new Error('HTTP ' + r.status + (t ? ' · ' + String(t).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 300) : ''));
+          }
+          if (/^\s*<(?:!doctype\s+html|html[\s>])/i.test(String(t || ''))) {
+            throw new Error('API 地址返回了网页，不是接口。请检查主 API 地址（应填到 /v1）：' + url);
+          }
+          return t;
+        });
+      });
+    }
+    if (!(window.parent && window.parent !== window)) return direct();
+    return direct().catch(function () {
       var token = (tag || 'travel') + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
       var resultKey = 'travel_result_' + token;
       return requestViaParent(url, headers, body, token, resultKey);
-    }
-    return fetch(url, { method: 'POST', headers: headers, body: body }).then(function (r) {
-      return r.text().then(function (t) {
-        if (!r.ok) {
-          throw new Error('HTTP ' + r.status + (t ? ' · ' + String(t).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 300) : ''));
-        }
-        return t;
-      });
     });
   }
 

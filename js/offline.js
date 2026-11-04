@@ -3362,7 +3362,7 @@ ${offlineStyleLibrary()}
     const apiConfig = candidates.find(c => c && typeof c.mainUrl === 'string' && c.mainUrl.trim() !== '') || null;
     if (!apiConfig) throw new Error('主 API 未配置');
 
-    let mainUrl = String(apiConfig.mainUrl).trim().replace(/\/+$/, '');
+    let mainUrl = String(apiConfig.mainUrl).trim().replace(/\/+$/, '').replace(/([^:])\/{2,}/g, '$1/');
     if (!/\/v1$/i.test(mainUrl)) mainUrl += '/v1';
     const mainKey = String(apiConfig.mainKey || '').trim();
     const mainModel = apiConfig.mainModel || '';
@@ -4336,7 +4336,7 @@ async function buildOfflineImageTags(recent, charName) {
   try {
     const cfg = await readMainApiConfigForImage();
     if (!cfg) return '';
-    let base = String(cfg.mainUrl || '').trim().replace(/\/+$/, '');
+    let base = String(cfg.mainUrl || '').trim().replace(/\/+$/, '').replace(/([^:])\/{2,}/g, '$1/');
     base = base.replace(/\/chat\/completions$/i, '');
     if (!/\/v1$/i.test(base)) base += '/v1';
     const nsfw = settings.nsfw === true;
@@ -4726,7 +4726,7 @@ async function offExtractViaMain(chatText, label, opts) {
   opts = opts || {};
   const cfg = await offMainConfig();
   if (!cfg || !cfg.mainUrl) return '';
-  let url = String(cfg.mainUrl).trim().replace(/\/+$/, '');
+  let url = String(cfg.mainUrl).trim().replace(/\/+$/, '').replace(/([^:])\/{2,}/g, '$1/');
   if (!/\/v1$/i.test(url)) url += '/v1';
   const key = String(cfg.mainKey || '').trim();
   const model = cfg.mainModel || '';
@@ -4803,7 +4803,7 @@ async function offEmbConfig() {
     const key = await offMemGet('embKey');
     const model = await offMemGet('embModel');
     if (!url || !key || !model) return null;
-    let base = String(url).trim().replace(/\/+$/, '');
+    let base = String(url).trim().replace(/\/+$/, '').replace(/([^:])\/{2,}/g, '$1/');
     if (!/\/v1$/i.test(base)) base += '/v1';
     return { url: base, key: String(key).trim(), model: String(model) };
   } catch (e) { return null; }

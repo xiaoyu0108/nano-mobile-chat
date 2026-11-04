@@ -528,11 +528,14 @@ function resolveApiHost(rawUrl){
     if((host === "localhost" || host === "127.0.0.1" || host === "[::1]") && isLan){
       u.hostname = cur;
     }
-    return u.toString();
+    // new URL() 会给出 https://host/ 这种结尾斜杠；如果这里不剥掉，
+    // 后面再拼 /v1 就会变成 https://host//v1，网关会直接返回它的网页而不是 JSON。
+    return u.toString().replace(/\/+$/, "").replace(/([^:])\/{2,}/g, "$1/");
   }catch(e){ return rawUrl; }
 }
 function buildChatEndpoint(rawUrl){
-  let s = resolveApiHost(String(rawUrl || "").trim().replace(/\/+$/, ""));
+  let s = resolveApiHost(String(rawUrl || "").trim());
+  s = String(s || "").replace(/\/+$/, "").replace(/([^:])\/{2,}/g, "$1/");
   if(/\/chat\/completions$/i.test(s)) return s;
   if(/\/v1$/i.test(s)) return s + "/chat/completions";
   return s + "/v1/chat/completions";
@@ -559,7 +562,12 @@ async function callAPI(api, sys, user){
     try{ const t = await r.text(); if(t) detail = "：" + t.slice(0, 200); }catch(e){}
     throw new Error("HTTP " + r.status + detail);
   }
-  const d = await r.json();
+  const raw = await r.text();
+  if(/^\s*<(?:!doctype\s+html|html[\s>])/i.test(String(raw || ""))){
+    throw new Error("API 地址返回了网页，不是接口。请检查主 API 地址（应填到 /v1）：" + endpoint);
+  }
+  let d = null;
+  try{ d = JSON.parse(raw); }catch(e){ throw new Error("API 返回的不是 JSON，请检查主 API 地址：" + endpoint); }
   const text = d?.choices?.[0]?.message?.content || d?.choices?.[0]?.text || d?.output_text;
   if(!text) throw new Error("API 返回没有文本内容");
   return text;
@@ -3306,6 +3314,12 @@ async function genMulti(api, char, ids, opts){
       return {ok:{}, log, fatal:"网络错误：" + e.message};
     }
     try{ rawText = await resp.text(); }catch(e){ rawText = ""; }
+    // 网关地址填错时经常返回 200 + 登录页 HTML，看起来“API 调用了”，但其实没进模型。
+    // 直接给出明确错误，别让它伪装成 JSON 解析失败。
+    if(resp.ok && /^\s*<(?:!doctype\s+html|html[\s>])/i.test(String(rawText || ""))){
+      log.push({t:"err", s:"API 返回的是 HTML 网页，不是模型 JSON。请检查主 API 地址（应填到 /v1，不能有多余路径）。"});
+      return {ok:{}, log, fatal:"API 地址返回了网页，不是接口：\n" + endpoint};
+    }
     if(resp.ok) break;
     lastErr = "HTTP " + resp.status + (rawText ? "：" + rawText.slice(0,150) : "");
     // 接口不支持 response_format：去掉再试
@@ -3316,8 +3330,9 @@ async function genMulti(api, char, ids, opts){
     }
     // 模型不支持这么大的 max_tokens：降到 4096 再试
     if(tokens > 4096 && /max_tokens|max output|too large|invalid/i.test(rawText)){
-      log.push({t:"warn", s:"接口不接受 max_tokens=" + tokens + "，已降到 4096"});
-      tokens = 4096;
+      const nextTokens = Math.max(4096, Math.floor(tokens / 2));
+      log.push({t:"warn", s:"接口不接受 max_tokens=" + tokens + "，已降到 " + nextTokens});
+      tokens = nextTokens;
       continue;
     }
     break;
@@ -3525,20 +3540,9 @@ async function startGeneration(ids){
     return r;
   };
 
-  // 关键：不要把所有 App 塞进同一次请求。输出上限再高也容易被截断，
-  // 一旦 JSON 断在中间就会「API 调用了但一个 App 都没生成」。
-  // 按 3 个 App 一批生成，每批单独落盘，失败只影响这一批。
-  const BATCH_SIZE = 3;
+  // 按你的要求：一次请求生成全部 App，不分批。
   try {
-    if (ids.length > BATCH_SIZE) {
-      for (let bi = 0; bi < ids.length; bi += BATCH_SIZE) {
-        if (!genState.running) break;
-        const batch = ids.slice(bi, bi + BATCH_SIZE);
-        await runBatch(batch, `正在生成 ${batch.length} 个 App…（${bi + 1}-${Math.min(bi + BATCH_SIZE, ids.length)}/${ids.length}）`);
-      }
-    } else {
-      await runBatch(ids, `正在生成 ${ids.length} 个 App…（可返回切换其它 App）`);
-    }
+    await runBatch(ids, `正在一次生成 ${ids.length} 个 App…（可返回切换其它 App）`);
   } catch (e) {
     fatalMsgs.push('生成异常：' + ((e && e.message) || e));
   } finally {

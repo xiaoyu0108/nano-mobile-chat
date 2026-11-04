@@ -603,7 +603,8 @@
     // 统一补全 /v1：自动去掉结尾斜杠，避免出现 /v1/v1 导致连不上。
     // 也兼容用户把完整 /images/generations、/images/edits 地址填进生图 API 的情况。
     function toV1Base(u) {
-        let s = String(u || '').trim().replace(/\/+$/, '');
+        let s = String(u || '').trim().replace(/\/+$/, '').replace(/([^:])\/{2,}/g, '$1/');
+        s = s.replace(/\/chat\/completions$/i, '');
         s = s.replace(/\/images\/(generations|edits)$/i, '/v1');
         if (!/\/v1$/i.test(s)) s = s + '/v1';
         return s;
