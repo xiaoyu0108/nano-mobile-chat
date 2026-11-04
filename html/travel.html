@@ -357,7 +357,7 @@ textarea.ta:focus,.inp:focus{border-color:var(--ink)}
 <script src="../js/nano-gallery.js?v=20261106a"></script>
 <script src="../js/localforage.min.js?v=20261106a"></script>
 <script src="../js/mem-link.js?v=20261106a"></script>
-<script src="../js/travel-store.js?v=20261102b"></script>
+<script src="../js/travel-store.js?v=20261109a"></script>
 <script src="../js/travel-api.js?v=20261102a"></script>
 <script>
 /* ================= 配置 / 对接口子 ================= */
@@ -671,6 +671,30 @@ function openUs(id){
   renderBoxes(); renderPanel();
 }
 
+function openReplayPage(id, cid){
+  const p = together.find(x=>String(x.id)===String(id)||String(x.tripId||'')===String(id))
+    || trips.find(x=>String(x.id)===String(id)||String(x.tripId||'')===String(id)) || {};
+  const charId = String(cid || p.charId || (CHAR&&CHAR.id) || '');
+  const charName = String(CHAR_NAME || (CHAR&&CHAR.name) || '');
+  const params = new URLSearchParams();
+  params.set('replay','1');
+  params.set('from','travel');
+  params.set('trip', String(id || p.tripId || p.id || ''));
+  if(p.journeyId) params.set('journeyId', String(p.journeyId));
+  params.set('char', charId);
+  params.set('chatId', String(p.chatId || charId));
+  params.set('name', charName);
+  params.set('userId', String((MASK&&MASK.id) || ''));
+  params.set('dest', String(p.place || p.dest || ''));
+  params.set('date', String(p.date || ''));
+  const url = 'travel-chat.html?' + params.toString();
+  if(window.parent && window.parent !== window){
+    try { window.parent.postMessage({ type:'openFullscreen', url, title:'旅途回顾', source:'chat_inner' }, '*'); } catch(e) {}
+  } else {
+    location.href = url;
+  }
+}
+
 function openAdd(){
   const isUs = S.tab==='us';
   const quick = CHAR ? `<div class="quick">
@@ -728,7 +752,10 @@ function mapTogether(p){
 }
 function journeyHtml(p){
   const list=(p && Array.isArray(p.journey) ? p.journey : []).filter(Boolean);
-  if(!list.length) return '';
+  const hasText=!!(p && (p.summary || p.noteChar || p.thought));
+  if(!list.length && !hasText) return '';
+  const replayBtn=`<button class="btn" data-replay="${esc(String(p.id||p.tripId||''))}" data-replay-char="${esc(String(p.charId||(CHAR&&CHAR.id)||''))}" style="margin-bottom:10px">${ic('i-plane')} 打开当时的页面</button>`;
+  if(!list.length) return `<div class="sec"><h4>${ic('i-heart')}完整回顾</h4>${replayBtn}<div class="empty-box">这段旅程只留下了总结，点上面的按钮回到当时的样子</div></div>`;
   const rows=list.map(m=>{
     const role=m.role;
     if(role==='photo'){
@@ -743,7 +770,7 @@ function journeyHtml(p){
     if(!txt) return '';
     return `<div class="jr ${isMe?'me':'char'}"><div class="jr-who">${isMe?'我':esc(CHAR_NAME)}</div><div class="jr-bubble">${esc(txt)}</div></div>`;
   }).join('');
-  return `<div class="sec"><h4>${ic('i-heart')}完整回顾 <em>${list.length} 段</em></h4><div class="journey">${rows}</div></div>`;
+  return `<div class="sec"><h4>${ic('i-heart')}完整回顾 <em>${list.length} 段</em></h4>${replayBtn}<div class="journey">${rows}</div></div>`;
 }
 function syncArrays(){
   trips.length = 0;
@@ -1125,6 +1152,7 @@ document.addEventListener('click', async e=>{
   else if(el=g('#dock .dk')){ if(S.tab!==el.dataset.tab){ S.tab=el.dataset.tab; S.type='all'; S.dest='all'; S.enter=true; render(); window.scrollTo({top:0}); } }
   else if(el=g('[data-type]')){ S.type=el.dataset.type; render(); }
   else if(el=g('[data-dest]')){ S.dest=el.dataset.dest; render(); }
+  else if(el=g('[data-replay]')){ openReplayPage(el.dataset.replay, el.dataset.replayChar); }
   else if(el=g('[data-trip]')){ openTrip(el.dataset.trip); }
   else if(el=g('[data-us]')){ openUs(el.dataset.us); }
   else if(g('#fab')){ openAdd(); }

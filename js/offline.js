@@ -2282,46 +2282,110 @@ function extractMeta(content) {
   let heart = '';
   let thinking = '';
   let plots = [];
-  let mm;
-  const pats = [
-    { re: /\[heart:([\s\S]*?)\]/gi, key: 'heart' },
-    { re: /\[心声:([\s\S]*?)\]/gi, key: 'heart' },
-    { re: /\[thinking:([\s\S]*?)\]/gi, key: 'thinking' },
-    { re: /\[思维链:([\s\S]*?)\]/gi, key: 'thinking' },
-    { re: /\[思考:([\s\S]*?)\]/gi, key: 'thinking' },
-    { re: /\[plot:([\s\S]*?)\]/gi, key: 'plots' }
-  ];
-  pats.forEach(p => {
-    while ((mm = p.re.exec(text)) !== null) {
-      if (p.key === 'heart' && !heart) heart = mm[1].trim();
-      if (p.key === 'thinking' && !thinking) thinking = mm[1].trim();
-      if (p.key === 'plots') {
-        const arr = mm[1].split('\n').map(s => s.trim()).map(s => s.replace(/^[-*\d.\s、)]+/, '')).filter(s => s && s.length >= 4);
-        if (arr.length) plots = arr.slice(0, 5);
+  // 统一识别 [..] / 【..】 两种括号、半角/全角冒号。模型（尤其中文模型）经常把
+  // 标签写成全角 【thinking：…】 / 【plot：…】，旧逻辑只认 ASCII [tag:…]，
+  // 结果思维链整段漏进正文、plot 一条也解析不出来。
+  const OPEN = '[\\[【]';
+  const CLOSE = '[\\]】]';
+  const COLON = '\\s*[:：]\\s*';
+  const THINK_TAG = 'thinking|think|thought|reasoning|analysis|cot|思考|思维链';
+  const HEART_TAG = 'heart|心声';
+  const PLOT_TAG = 'plot|剧情推荐|剧情走向|剧情';
+  const ALL_TAGS = THINK_TAG + '|' + HEART_TAG + '|' + PLOT_TAG;
+  const cleanMeta = v => String(v == null ? '' : v).trim()
+    .replace(/^[:：\s]+/, '')
+    .replace(/[\s\]】>]+$/, '')
+    .trim();
+  const parsePlots = v => String(v || '')
+    .replace(/\r/g, '')
+    .split(/\n|(?=\s*(?:\d+|[一二三四五六七八九十]+)\s*[.、)）])/)
+    .map(s => s.trim()
+      .replace(/^[\s>*_#\-–—•·]+/, '')
+      .replace(/^(?:\d+|[一二三四五六七八九十]+)\s*[.、)）:：]\s*/, '')
+      .replace(/^["“「『']|["”」』']$/g, '')
+      .trim())
+    .filter(s => s && s.length >= 4)
+    .slice(0, 5);
+  const setThinking = v => { v = cleanMeta(v); if (v && !thinking) thinking = v; };
+  const setHeart = v => { v = cleanMeta(v); if (v && !heart) heart = v; };
+  const setPlots = v => { const arr = parsePlots(v); if (arr.length) plots = arr; };
+  const pull = (re, fn) => {
+    text = text.replace(re, function () {
+      const args = Array.prototype.slice.call(arguments, 1);
+      fn.apply(null, args);
+      return '\n';
+    });
+  };
+
+  // 0) 模型有时先输出一段「1. Read... 2. Decide...」式原生推理，再接 [thinking:]。
+  // 这段内容不是正文，必须挪进思维链；只认以编号/thinking/分析开头的段落，避免误伤正文。
+  try {
+    const firstTag = text.search(new RegExp(OPEN + '\\s*(?:' + ALL_TAGS + ')|<\\s*(?:' + THINK_TAG + ')\\s*>', 'i'));
+    if (firstTag > 0) {
+      const pre = text.slice(0, firstTag).trim();
+      if (pre.length >= 40
+        && /^(?:#{1,6}[ \t]*|[-*•][ \t]*|\d+[.、)）][ \t]*|(?:thinking|reasoning|analysis|think|分析|思考|思维链))/i.test(pre)
+        && /(?:用户|角色|场景|剧情|设定|回应|对白|user|character|scene|response|dialogue|persona|setting|read|decide|style|check)/i.test(pre)) {
+        setThinking(pre);
+        text = text.slice(firstTag);
       }
     }
-  });
-  // 末尾元段落清洗：用「一直到下一个元标签或结尾」来匹配，防止模型漏写结尾的 ]、
-  // 或思考内容里本身带 ]（尤其英文思维链）时，整段泄漏到正文里。
-  // 关键：优先在真正的结尾 ] 处停止。旧版只看到「下一个元标签或结尾」，
-  // 当模型写成 [thinking:…] 正文 [heart:…] 时，会把中间的正文整段吞进 thinking，
-  // 结果只剩心声和思维链、没有正文。
-  const META_END = '(?:[\\]】]|(?=\\[\\s*(?:thinking|思维链|思考|think|heart|心声|plot|身体|生理|body|bar|状态栏|status)\\s*[:：])|$)';
-  function pullMeta(re, onValue) {
-    text = text.replace(re, function (m, c) {
-      const v = String(c == null ? '' : c).trim().replace(/\][ \t]*$/, '').trim();
-      onValue(v);
-      return ' ';
-    });
-  }
-  pullMeta(new RegExp('\\[\\s*(?:thinking|思维链|思考|think)\\s*[:：]([\\s\\S]*?)' + META_END, 'gi'), function (v) { if (v) thinking = v; });
-  pullMeta(new RegExp('\\[\\s*(?:heart|心声)\\s*[:：]([\\s\\S]*?)' + META_END, 'gi'), function (v) { if (v) heart = v; });
-  pullMeta(new RegExp('\\[\\s*(?:plot)\\s*[:：]([\\s\\S]*?)' + META_END, 'gi'), function (v) {
-    if (v) {
-      const arr = v.split('\n').map(s => s.trim()).map(s => s.replace(/^[-*\d.\s、)]+/, '')).filter(s => s && s.length >= 4);
-      if (arr.length) plots = arr.slice(0, 5);
+  } catch (e) {}
+
+  // 1) 成对标签：[thinking]…[/thinking]、【思考】…【/思考】、[plot]…[/plot]
+  pull(new RegExp(OPEN + '\\s*(?:' + THINK_TAG + ')\\s*' + CLOSE + '([\\s\\S]*?)' + OPEN + '\\s*\\/\\s*(?:' + THINK_TAG + ')\\s*' + CLOSE, 'gi'), setThinking);
+  pull(new RegExp(OPEN + '\\s*(?:' + HEART_TAG + ')\\s*' + CLOSE + '([\\s\\S]*?)' + OPEN + '\\s*\\/\\s*(?:' + HEART_TAG + ')\\s*' + CLOSE, 'gi'), setHeart);
+  pull(new RegExp(OPEN + '\\s*(?:' + PLOT_TAG + ')\\s*' + CLOSE + '([\\s\\S]*?)' + OPEN + '\\s*\\/\\s*(?:' + PLOT_TAG + ')\\s*' + CLOSE, 'gi'), setPlots);
+  // <thinking>…</thinking> 等 HTML 风格
+  pull(/<\s*(thinking|think|thought|reasoning|analysis|cot|思考|思维链)\s*>([\s\S]*?)<\s*\/\s*\1\s*>/gi, function (tag, inner) { setThinking(inner); });
+
+  // 2) 冒号形式（半角/全角括号 + 半角/全角冒号），优先在最近的右括号处结束。
+  const colonForm = tag => new RegExp(OPEN + '\\s*(?:' + tag + ')' + COLON + '([\\s\\S]*?)' + CLOSE, 'gi');
+  pull(colonForm(THINK_TAG), setThinking);
+  pull(colonForm(HEART_TAG), setHeart);
+  pull(colonForm(PLOT_TAG), setPlots);
+
+  // 3) 未闭合的冒号形式：一直读到下一个元标签或结尾，防止漏写 ] 时整段漏进正文。
+  const NEXT_META = '(?=(?:' + OPEN + '\\s*(?:' + ALL_TAGS + '|身体|生理|body|bar|状态栏|status)\\s*(?:[:：]|' + CLOSE + '))|$)';
+  pull(new RegExp(OPEN + '\\s*(?:' + THINK_TAG + ')' + COLON + '([\\s\\S]*?)' + NEXT_META, 'i'), setThinking);
+  pull(new RegExp(OPEN + '\\s*(?:' + HEART_TAG + ')' + COLON + '([\\s\\S]*?)' + NEXT_META, 'i'), setHeart);
+  pull(new RegExp(OPEN + '\\s*(?:' + PLOT_TAG + ')' + COLON + '([\\s\\S]*?)' + NEXT_META, 'i'), setPlots);
+  // [plot] 后面忘了写 [/plot] 时，把剩下的都当作剧情走向
+  pull(new RegExp(OPEN + '\\s*(?:' + PLOT_TAG + ')\\s*' + CLOSE + '([\\s\\S]*)$', 'i'), setPlots);
+
+  // 4) 完全不带标签、但以「思考过程：」「Thinking Process:」开头的推理，移到思维链。
+  if (!thinking) {
+    const hm = text.match(/^\s*(?:#{1,6}[ \t]*|\*\*)?(?:thinking(?:\s*process)?|reasoning|chain of thought|思考(?:过程)?|思维链|分析(?:过程)?)(?:\*\*)?\s*[:：]\s*(?:\*\*)?[ \t]*\r?\n([\s\S]*?)(?=\r?\n[ \t]*\r?\n|$)/i);
+    if (hm) {
+      setThinking(hm[1]);
+      text = text.slice(hm[0].length).replace(/^\s+/, '');
     }
-  });
+  }
+
+  // 5) 有的模型完全不带标签，先写一段「好的，我先分析一下…」再空行接正文。
+  // 只在前一段有明确分析口吻时把它移进思维链，避免把普通开场白误判成思考。
+  if (!thinking) {
+    const bm = text.match(/^([\s\S]{0,900}?)\r?\n[ \t]*\r?\n/);
+    if (bm) {
+      const block = bm[1].trim();
+      if (block.length >= 40 && /^(?:好的[，,、]?\s*(?:我)?(?:先|来)?(?:分析|想|梳理|理一下)|首先[，,]|让我(?:先)?(?:想|分析|梳理)|我需要(?:先)?(?:分析|考虑|判断)|用户(?:刚|说|的|这句)|从(?:上文|剧情|对话|场景|关系)|分析(?:一下)?|The user|We need|Let me|I should|First,|Okay,|Alright,)/i.test(block)) {
+        setThinking(block);
+        text = text.slice(bm[0].length).replace(/^\s+/, '');
+      }
+    }
+  }
+
+  // 6) 没有 [plot:] 但末尾写了「剧情推荐：」并列出 2 条以上时，也收进剧情推荐。
+  if (!plots.length) {
+    const pm = text.match(/(?:^|\n)[ \t>*_#-]*(?:剧情推荐|剧情走向|剧情选项|可选剧情|接下来的剧情)[ \t]*[:：]?[ \t]*\r?\n([\s\S]{1,1500})$/i);
+    if (pm) {
+      const arr = parsePlots(pm[1]);
+      if (arr.length >= 2) {
+        plots = arr;
+        text = (text.slice(0, pm.index) + '\n' + text.slice(pm.index + pm[0].length)).trim();
+      }
+    }
+  }
   // 内置「身体状态」： [身体:心跳=88次/分|好感度=63|手=指尖发凉]（也支持 [生理:…] / [body:…]）
   const body = [];
   text = text.replace(/\[(?:身体|生理|body)\s*:\s*([^\]]*)\]/gi, function (m, inner) {
@@ -2334,13 +2398,11 @@ function extractMeta(content) {
     });
     return ' ';
   });
-  // 思维链：去掉 [think]/<thinking>/【思考】等成对或未闭合标记（离线也用 [think] 时同样清洗）
-  const TW = 'think(?:ing)?|thought|reasoning|analysis|cot|思考|思维链';
+  // 兜底：清掉残留的思维链标记（成对/未闭合/全角都处理），避免思考内容漏进正文
   text = text
-    .replace(new RegExp('\\[\\s*(?:' + TW + ')\\s*\\][\\s\\S]*?\\[\\s*\\/\\s*(?:' + TW + ')\\s*\\]', 'gi'), '')
-    .replace(new RegExp('<\\s*(?:' + TW + ')\\s*>[\\s\\S]*?<\\s*\\/\\s*(?:' + TW + ')\\s*>', 'gi'), '')
-    .replace(new RegExp('\\[\\s*(?:' + TW + ')\\s*\\][\\s\\S]*$', 'i'), '')
-    .replace(new RegExp('\\[\\s*\\/?\\s*(?:' + TW + ')\\s*\\]', 'gi'), '');
+    .replace(new RegExp(OPEN + '\\s*\\/?\\s*(?:' + THINK_TAG + ')\\s*' + CLOSE, 'gi'), ' ')
+    .replace(new RegExp('<\\s*\\/?\\s*(?:' + THINK_TAG + ')\\s*>', 'gi'), ' ')
+    .replace(new RegExp(OPEN + '\\s*(?:' + THINK_TAG + ')\\s*' + CLOSE + '[\\s\\S]*$', 'i'), ' ');
   // 自定义状态栏： [bar:名称]内容[/bar]（也支持 [状态栏:名称]…[/状态栏]）
   // 模型经常写成全角冒号/中文方括号（[bar：着装]、【状态栏：着装】），也必须识别，
   // 否则整段会留在正文最后变成一行纯文字，而状态栏一直停在初始 HTML。
@@ -2422,7 +2484,8 @@ function extractMeta(content) {
     }
   } catch (e) {}
   text = text
-    .replace(/\[(heart|心声|thinking|思维链|思考|plot|身体|生理|body):[\s\S]*?\]/gi, '')
+    .replace(new RegExp(OPEN + '\\s*(?:' + ALL_TAGS + ')' + COLON + '[\\s\\S]*?' + CLOSE, 'gi'), ' ')
+    .replace(new RegExp(OPEN + '\\s*\\/?\\s*(?:' + ALL_TAGS + ')\\s*' + CLOSE, 'gi'), ' ')
     .replace(/[\[【]\/?\s*(?:bar|状态栏|status)(?:\s*[:：][^\]】\n]*)?[\]】]/gi, ' ')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
@@ -3112,10 +3175,12 @@ async function requestReply(opts) {
           if (think.length > 600) think = think.slice(0, 400).replace(/\s+$/g, '') + '…';
           const heart = probe.heart || bodyMeta.heart;
           const plots = (probe.plots && probe.plots.length) ? probe.plots : bodyMeta.plots;
+          // 内容里自带的 ] / 】 会把重新包上的标签提前截断，先替换掉再合并。
+          const stripTagEnd = s => String(s || '').replace(/[\]】]/g, ' ');
           let merged = bodyText;
-          if (think) merged = '[thinking:' + think + ']\n' + merged;
-          if (heart) merged += '\n[heart:' + heart + ']';
-          if (plots && plots.length) merged += '\n[plot:' + plots.join('\n') + ']';
+          if (think) merged = '[thinking:' + stripTagEnd(think) + ']\n' + merged;
+          if (heart) merged += '\n[heart:' + stripTagEnd(heart) + ']';
+          if (plots && plots.length) merged += '\n[plot:' + plots.map(stripTagEnd).join('\n') + ']';
           reply = merged;
         }
       }

@@ -3,7 +3,8 @@
 
   // 把打包好的安装包放到站点 apk/nano.apk，本页会自动启用下载。
   // 也可以改成完整直链（https://.../nano.apk）；跨域地址不再检测文件是否存在。
-  var APK_URL = '../apk/nano.apk';
+  var APK_URL = '../apk/nano.apk?v=2.1.0';
+  var IS_NANO_APP = /NanoApp/i.test(navigator.userAgent || '');
 
   var $ = function (id) { return document.getElementById(id); };
   var state = { ready: false, size: 0, external: false, standalone: false, android: false, installEvent: null };
@@ -28,6 +29,7 @@
 
   function isStandalone() {
     try {
+      if (IS_NANO_APP) return true;
       if (navigator.standalone) return true;
       if (window.matchMedia) {
         if (matchMedia('(display-mode: standalone)').matches) return true;
@@ -85,21 +87,33 @@
     if (env) env.textContent = state.standalone ? '已安装 App' : (state.android ? '安卓浏览器' : '浏览器');
 
     if (state.ready) {
-      dl.href = state.external ? absolute(APK_URL) : APK_URL;
-      dl.classList.remove('is-disabled');
-      if (state.external) {
-        dl.setAttribute('target', '_blank');
-        dl.setAttribute('rel', 'noopener');
+      if (IS_NANO_APP) {
+        dl.href = '#';
+        dl.classList.add('is-disabled');
         dl.removeAttribute('download');
-      } else {
         dl.removeAttribute('target');
         dl.removeAttribute('rel');
-        dl.setAttribute('download', 'nano.apk');
+        meta.textContent = '已内置';
+        status.textContent = '当前是离线安装版，无需再下载';
+        setBadge('已安装', 'ok');
+        if (hint) hint.textContent = '离线版已把网页资源打包进 APK，断网也能打开；网页功能更新后需要重新打包。';
+      } else {
+        dl.href = state.external ? absolute(APK_URL) : APK_URL;
+        dl.classList.remove('is-disabled');
+        if (state.external) {
+          dl.setAttribute('target', '_blank');
+          dl.setAttribute('rel', 'noopener');
+          dl.removeAttribute('download');
+        } else {
+          dl.removeAttribute('target');
+          dl.removeAttribute('rel');
+          dl.setAttribute('download', 'nano.apk');
+        }
+        meta.textContent = state.size ? fmtSize(state.size) : '下载';
+        status.textContent = '安装包已就绪，下载后直接安装';
+        setBadge(state.standalone ? '已安装' : '可下载', 'ok');
+        if (hint) hint.textContent = '下载后如提示“未知来源”，请在系统设置中允许当前浏览器安装应用。';
       }
-      meta.textContent = state.size ? fmtSize(state.size) : '下载';
-      status.textContent = '安装包已就绪，下载后直接安装';
-      setBadge(state.standalone ? '已安装' : '可下载', 'ok');
-      if (hint) hint.textContent = '下载后如提示“未知来源”，请在系统设置中允许当前浏览器安装应用。';
     } else {
       dl.href = '#';
       dl.removeAttribute('download');
@@ -119,6 +133,13 @@
   }
 
   function probe() {
+    if (IS_NANO_APP) {
+      state.ready = true;
+      state.external = false;
+      state.size = 0;
+      render();
+      return;
+    }
     if (!sameOrigin(APK_URL)) {
       state.ready = true;
       state.external = true;
@@ -160,8 +181,12 @@
 
     var site = $('siteMeta');
     if (site) {
-      site.textContent = appUrl();
-      site.title = appUrl();
+      if (IS_NANO_APP) {
+        site.textContent = '内置资源（离线版）';
+      } else {
+        site.textContent = appUrl();
+      }
+      site.title = site.textContent;
     }
 
     var dl = $('apkDownload');
@@ -200,13 +225,17 @@
 
     var copy = $('copyLink');
     if (copy) {
-      copy.addEventListener('click', function () {
-        copyText(appUrl()).then(function () {
-          toast('安装地址已复制');
-        }).catch(function () {
-          toast('复制失败，请手动复制地址');
+      if (IS_NANO_APP) {
+        copy.style.display = 'none';
+      } else {
+        copy.addEventListener('click', function () {
+          copyText(appUrl()).then(function () {
+            toast('安装地址已复制');
+          }).catch(function () {
+            toast('复制失败，请手动复制地址');
+          });
         });
-      });
+      }
     }
 
     window.addEventListener('beforeinstallprompt', function (e) {

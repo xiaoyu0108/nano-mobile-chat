@@ -39,21 +39,24 @@ header small{display:block;color:var(--g3);font-size:12px;white-space:nowrap;ove
 html,body,#scroll,.cards,.chips,.sheet{scrollbar-width:none;-ms-overflow-style:none}
 html::-webkit-scrollbar,body::-webkit-scrollbar,#scroll::-webkit-scrollbar,.cards::-webkit-scrollbar,.chips::-webkit-scrollbar,.sheet::-webkit-scrollbar{display:none;width:0;height:0}
 .st.c{color:var(--ink)}
-#scroll{flex:1;overflow-y:auto;padding:6px 22px 20px}
-.m{margin:22px 0}
-.who{font-size:12px;color:var(--g3);letter-spacing:.12em}
-.char p{margin-bottom:.5em;text-align:justify}
-.m .trans{margin-top:6px;font-size:12.5px;line-height:1.75;color:var(--g3);letter-spacing:.01em;border-left:2px solid var(--g2);padding-left:10px;white-space:pre-wrap}
-.user{display:flex;flex-direction:column;align-items:flex-end;margin:14px 0}
-.bub{max-width:80%;background:var(--bk);color:#fff;border-radius:20px;padding:3px 16px;font-size:13.5px;line-height:1.8;animation:bin .35s cubic-bezier(.3,1.4,.5,1);transform-origin:right bottom}
+#scroll{flex:1;overflow-y:auto;padding:10px 24px 26px}
+.m{margin:20px 0}
+.m.char{margin:26px 0}
+.who{font-size:11px;color:#b08390;letter-spacing:.18em;margin-bottom:5px}
+.char p{margin:0 0 .82em;text-align:justify;text-justify:inter-ideograph;line-height:2.02;letter-spacing:.012em}
+.char p:last-child{margin-bottom:0}
+.m .trans{margin-top:8px;font-size:12.5px;line-height:1.8;color:var(--g3);letter-spacing:.01em;border-left:2px solid var(--pk);padding-left:11px;white-space:pre-wrap}
+.user{display:flex;flex-direction:column;align-items:flex-end;margin:16px 0}
+.bub{max-width:82%;background:var(--bk);color:#fff;border-radius:20px 20px 7px 20px;padding:5px 16px;font-size:13.5px;line-height:1.8;animation:bin .35s cubic-bezier(.3,1.4,.5,1);transform-origin:right bottom}
 @keyframes bin{from{transform:scale(.7);opacity:0}}
-.sys{text-align:center;font-size:12px;color:var(--g3);letter-spacing:.2em}
-.sys::before,.sys::after{content:"";display:inline-block;width:28px;height:1px;background:var(--g2);vertical-align:middle;margin:0 10px}
+.sys{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;margin:28px 0;font-size:11.5px;color:#a98792}
+.sys>span{max-width:100%;background:#fdf7f9;border:1px solid #f2e3e8;border-radius:999px;padding:4px 16px;line-height:1.6;letter-spacing:.1em;text-align:center}
+.sys::before,.sys::after{display:none}
 .acts{display:flex;gap:2px;margin-top:2px;margin-left:-6px}
 .user .acts{margin:2px -6px 0 0}.sys .acts{justify-content:center;margin:0}
 .acts .ib{width:28px;height:28px}
 .ed{width:100%;min-height:80px;border:1px solid var(--g2);border-radius:14px;padding:8px 12px;background:#fff;resize:vertical}
-.cards{display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;margin:8px -22px 0;padding:6px 22px}
+.cards{display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;margin:8px -24px 0;padding:6px 24px}
 .card{flex:0 0 150px;scroll-snap-align:start;border:1px solid var(--g2);border-radius:18px;padding:12px;position:relative;background:#fff;transition:.35s}
 .cards.in .card{animation:ci .55s backwards}.cards.in .card:nth-child(2){animation-delay:.12s}.cards.in .card:nth-child(3){animation-delay:.24s}
 @keyframes ci{from{opacity:0;transform:translateY(16px) rotate(2deg)}}
@@ -138,14 +141,25 @@ html::-webkit-scrollbar,body::-webkit-scrollbar,#scroll::-webkit-scrollbar,.card
 @keyframes sh{to{background-position:-300% 0}}
 .m.photo .ph.fail{box-shadow:0 0 0 1px #f3c6cf;background:#fff7f9}
 .m.photo .ph.fail .loading{background:#fff7f9;color:var(--pk2)}
-/* 旁白：特殊字体 / 颜色 / 版式 */
-.m.narr{display:flex;flex-direction:column;align-items:center;gap:6px;margin:20px 0;padding:0 10px}
-.m.narr .nlab{font-size:10px;letter-spacing:.34em;color:var(--pk2);opacity:.75;text-indent:.34em}
-.m.narr .nt{position:relative;max-width:92%;text-align:center;white-space:pre-wrap;color:#a34c66;
-  font-family:"Noto Serif SC","Songti SC",Georgia,"Times New Roman",serif;font-style:italic;
-  font-size:14px;line-height:2.05;letter-spacing:.06em}
-.m.narr .nt::before,.m.narr .nt::after{content:"";display:block;width:34px;height:1px;background:var(--pk);margin:8px auto}
-.m.narr .acts{justify-content:center}
+/* 旁白：像一页旅行手记，不再用居中的长斜体 */
+.m.narr{display:flex;flex-direction:column;align-items:stretch;gap:0;margin:24px 0;padding:0 2px}
+.m.narr .nlab{display:flex;align-items:center;justify-content:center;gap:8px;font-size:9.5px;letter-spacing:.3em;color:#c09aa6;margin-bottom:8px;text-indent:.3em}
+.m.narr .nlab::before,.m.narr .nlab::after{content:"";width:18px;height:1px;background:#eedde2}
+.m.narr .nt{position:relative;width:100%;max-width:none;text-align:justify;text-justify:inter-ideograph;white-space:pre-wrap;color:#8d5b6a;
+  font-family:"Noto Serif SC","Songti SC",Georgia,"Times New Roman",serif;font-style:normal;
+  font-size:14.5px;line-height:2.1;letter-spacing:.025em;
+  background:linear-gradient(180deg,#fdf9fa 0%,#fffbfc 100%);
+  border:1px solid #f4e4e9;border-radius:16px;padding:15px 18px;
+  box-shadow:0 8px 22px rgba(200,93,122,.055)}
+.m.narr .nt::before,.m.narr .nt::after{display:none}
+.m.narr .acts{justify-content:center;margin-top:4px}
+/* 回顾模式：隐藏输入和编辑入口，只保留当时的页面 */
+body.is-replay .bar,body.is-replay .chips{display:none}
+body.is-replay #route .st{cursor:default}
+/* 旅行记录列表 */
+.rcrow{display:flex;align-items:center;gap:6px;margin-top:10px}
+.rcrow .rc{flex:1;margin-top:0}
+.rcrow .ib{width:32px;height:32px;flex:none;color:var(--g3)}
 /* 大图查看 */
 #pv{position:fixed;inset:0;z-index:30;background:#0b0b0cf0;display:none;align-items:center;justify-content:center;padding:18px}
 #pv.on{display:flex}
@@ -232,7 +246,7 @@ html::-webkit-scrollbar,body::-webkit-scrollbar,#scroll::-webkit-scrollbar,.card
 <script src="../js/localforage.min.js?v=20261106a"></script>
 <script src="../js/mem-link.js?v=20261106a"></script>
 <script src="../js/builtin-worldbook.js?v=20261025b"></script>
-<script src="../js/travel-store.js?v=20261102b"></script>
+<script src="../js/travel-store.js?v=20261109a"></script>
 <script src="../js/travel-api.js?v=20261102a"></script>
 <script>
 /* ===== API 接入点 =====
@@ -257,7 +271,20 @@ let USER = '你';
 let DEST = INVITE.dest || '附近走走';
 let TRIP_ID = 'trip_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,5);
 const RESUME = QS2.get('resume') === '1';
+const REPLAY_Q = QS2.get('replay') === '1';
+const REPLAY_TRIP_ID = String(QS2.get('trip') || QS2.get('tripId') || '');
+const REPLAY_JOURNEY_ID = String(QS2.get('journeyId') || '');
+const REPLAY_FROM = String(QS2.get('from') || '');
+// 老卡片 / 记录没写进旅途时，至少还能用卡片上的标题和心得打开一页回顾。
+const REPLAY_FALLBACK = {
+  title: String(QS2.get('title') || '').trim(),
+  thought: String(QS2.get('thought') || '').trim()
+};
 const ACTIVE_KEY = 'nano_travel_active_' + CHAR_ID;
+const RESUME_MARK_KEY = 'nano_travel_resume_' + CHAR_ID;
+let REPLAY_MODE = false;
+let REPLAY_FROM_LIVE = false;
+let LIVE_STATE = null;
 /* 旅途中的照片要持久保存：localStorage 只做快速兜底，完整会话（含 dataURL 图片）
    同步写一份到 IndexedDB，避免退出再回来看到照片被“销毁”。 */
 const ACTIVE_DB = 'nano_travel_chat_db';
@@ -598,6 +625,7 @@ function photoNode(m,ro){
   return d;
 }
 function node(m,ro){
+  ro = !!ro || REPLAY_MODE;
   if(m.role==='photo')return photoNode(m,ro);
   const d=E('div','m '+m.role);d.dataset.id=m.id;
   if(m.role==='narr'){
@@ -650,8 +678,8 @@ function card(c){
   }
   draw();return d;
 }
-function refresh(m){const o=log.querySelector('[data-id="'+m.id+'"]');if(o)o.replaceWith(node(m))}
-function render(){log.innerHTML='';S.msgs.forEach(m=>log.append(node(m)))}
+function refresh(m){const o=log.querySelector('[data-id="'+m.id+'"]');if(o)o.replaceWith(node(m,REPLAY_MODE))}
+function render(){log.innerHTML='';S.msgs.forEach(m=>log.append(node(m,REPLAY_MODE)))}
 
 /* ---------- send / reply (reply = the only API call) ---------- */
 const syncBtn=()=>{const h=inp.value.trim();$('#send').textContent=h?'发送':'回复';$('#send').classList.toggle('re',!h)};
@@ -938,7 +966,7 @@ async function reply(old,opt){
 /* ---------- route + landmark animation ---------- */
 function drawRoute(){
   const r=$('#route');r.innerHTML='';
-  GUIDE.forEach((g,i)=>{const s=E('button','st'+(i<S.gi?' p':i===S.gi?' c':''));s.innerHTML='<i></i>'+g[0];s.onclick=()=>go(i);r.append(s)});
+  GUIDE.forEach((g,i)=>{const s=E('button','st'+(i<S.gi?' p':i===S.gi?' c':''));s.innerHTML='<i></i>'+g[0];s.onclick=REPLAY_MODE?null:()=>go(i);r.append(s)});
 }
 function go(t){
   if(t===S.gi||S.busy)return;
@@ -1004,41 +1032,182 @@ async function loadRecords(){
       const uid=(mask&&mask.id)||USER_ID;
       const list=NanoTravelStore.listTogether(uid,CHAR_ID);
       if(list&&list.length){
-        REC=list.slice().reverse().map(p=>({
-          id:p.id,title:p.place||DEST,date:p.date||'',summary:p.summary||p.noteChar||'',
+        const fromStore=list.slice().reverse().map(p=>({
+          id:p.id,tripId:String(p.tripId||p.id||''),journeyId:String(p.journeyId||''),
+          title:p.place||p.title||DEST,dest:p.place||p.title||p.dest||DEST,
+          date:p.date||'',summary:p.summary||p.noteChar||p.thought||'',
           stops:Array.isArray(p.places)?p.places:(Array.isArray(p.stops)?p.stops:[]),
+          plan:Array.isArray(p.plan)?p.plan:[],settings:p.settings||{},
+          charId:p.charId||CHAR_ID,charName:p.charName||CHAR,
           msgs:Array.isArray(p.journey)?p.journey:[]
         }));
+        // 与本地回顾合并而不是直接覆盖：即使某次旅途记录因为配额没写进 IDB，
+        // localStorage 里的回顾副本仍然能点开。
+        const local=Array.isArray(REC)?REC.slice():[];
+        fromStore.forEach(r=>{
+          const at=local.findIndex(x=>x&&(String(x.id)===String(r.id)||(r.tripId&&String(x.tripId||'')===String(r.tripId))));
+          if(at>=0)local[at]=r;else local.push(r);
+        });
+        REC=local.slice(-40);
         saveRec();return;
       }
     }
   }catch(e){}
 }
+function normalizeReplayRecord(rec){
+  rec=rec||{};
+  const rawMsgs=Array.isArray(rec.msgs)?rec.msgs:[];
+  const journey=rawMsgs.length?rawMsgs:(Array.isArray(rec.journey)?rec.journey:[]);
+  const stops=Array.isArray(rec.stops)?rec.stops:(Array.isArray(rec.places)?rec.places:[]);
+  return {
+    id:String(rec.id||rec.tripId||'replay'),
+    tripId:String(rec.tripId||rec.id||''),
+    dest:rec.dest||rec.place||rec.title||'',
+    title:rec.title||rec.place||rec.dest||'',
+    date:rec.date||'',
+    stops:stops.filter(Boolean),
+    plan:Array.isArray(rec.plan)?rec.plan:[],
+    settings:rec.settings||{},
+    summary:String(rec.summary||rec.thought||rec.noteChar||''),
+    charId:String(rec.charId||CHAR_ID||''),
+    charName:rec.charName||rec.name||CHAR,
+    userName:rec.userName||USER,
+    msgs:journey.filter(Boolean)
+  };
+}
+function setReplayChrome(on){
+  document.body.classList.toggle('is-replay',!!on);
+  ['#chips','.bar','#bPlan','#bSet'].forEach(sel=>{
+    const el=$(sel);if(el)el.style.display=on?'none':'';
+  });
+  const fpEl=$('#fp');
+  if(fpEl){fpEl.style.display='';fpEl.innerHTML=on?(I('book',13)+'回顾'):'';}
+}
+function snapshotLive(){
+  LIVE_STATE={
+    msgs:S.msgs,plan:S.plan,gi:S.gi,n:S.n,uid:S.uid,
+    dest:DEST,invite:Object.assign({},INVITE),guide:GUIDE,tripId:TRIP_ID,
+    char:CHAR,user:USER,title:$('#tTitle').textContent,
+    settings:{len:$('#len').value,person:$('#person').value,userMode:$('#umode').value,style:$('#styleTxt').value}
+  };
+}
+function enterReplay(rec,opts){
+  opts=opts||{};
+  if(opts.fromLive&&(S.busy||S.photoBusy)){toast('等这一轮旅行写完后，再打开回顾');return;}
+  const r=normalizeReplayRecord(rec);
+  if(!r.msgs.length&&!r.plan.length&&!r.summary){toast('这段旅程没有留下可回顾的内容');return;}
+  if(!REPLAY_MODE){
+    if(opts.fromLive){
+      // 进回顾前先把当前旅行落盘：即使用户从回顾页直接关掉 App，也能继续原来的旅程。
+      try{saveActiveSession()}catch(e){}
+      snapshotLive();REPLAY_FROM_LIVE=true;
+    }else{LIVE_STATE=null;REPLAY_FROM_LIVE=false}
+  }
+  REPLAY_MODE=true;
+  closeAll();
+  if(r.charName)CHAR=r.charName;
+  if(r.userName)USER=r.userName;
+  if(r.dest)DEST=r.dest;
+  const visited=(r.stops||[]).filter(Boolean);
+  const planNames=(r.plan||[]).map(x=>x&&x.name).filter(Boolean);
+  const routeNames=[...new Set(visited.length?visited:planNames)].slice(0,6);
+  GUIDE=routeNames.length?routeNames.map(n=>[n,'到过']):buildGuide(DEST);
+  S.gi=Math.max(0,GUIDE.length-1);
+  S.plan=(r.plan||[]).slice();
+  S.n=0;
+  const planText=(r.plan||[]).map(x=>x&&x.name).filter(Boolean).join('、');
+  const src=r.msgs.length?r.msgs:(r.summary?[{role:'narr',text:r.summary}]
+    :(planText?[{role:'narr',text:'这趟走过：'+planText+'。'}]:[]));
+  S.msgs=src.map((m,i)=>Object.assign({},m,{id:'rp'+i,edit:false,typing:false,fresh:false}));
+  if(r.settings){
+    if(r.settings.len!=null)$('#len').value=r.settings.len;
+    if(r.settings.person)$('#person').value=r.settings.person;
+    if(r.settings.userMode)$('#umode').value=r.settings.userMode;
+    if(r.settings.style!=null)$('#styleTxt').value=r.settings.style;
+  }
+  setReplayChrome(true);
+  $('#tTitle').textContent=r.dest||r.title||'旅途回顾';
+  $('#sub').textContent=[r.date,'已经结束的旅程'].filter(Boolean).join(' · ');
+  render();drawRoute();scr.scrollTop=0;
+}
+function exitReplay(){
+  closeAll();
+  if(REPLAY_FROM_LIVE&&LIVE_STATE){
+    const L=LIVE_STATE;LIVE_STATE=null;REPLAY_FROM_LIVE=false;REPLAY_MODE=false;
+    S.msgs=L.msgs;S.plan=L.plan;S.gi=L.gi;S.n=L.n;S.uid=L.uid;S.busy=false;S.photoBusy=false;
+    DEST=L.dest;Object.assign(INVITE,L.invite);GUIDE=L.guide;TRIP_ID=L.tripId;CHAR=L.char;USER=L.user;
+    setReplayChrome(false);
+    if(L.settings){
+      if(L.settings.len!=null)$('#len').value=L.settings.len;
+      if(L.settings.person)$('#person').value=L.settings.person;
+      if(L.settings.userMode)$('#umode').value=L.settings.userMode;
+      if(L.settings.style!=null)$('#styleTxt').value=L.settings.style;
+      try{uh()}catch(e){}
+    }
+    $('#tTitle').textContent=L.title;
+    render();drawRoute();setSub();fp();drawPlan();syncBtn();down();
+    return;
+  }
+  // 保持 REPLAY_MODE=true 直到页面卸载：否则 pagehide 会把「回顾内容」误存成续玩存档，
+  // 把用户正在进行的旅行覆盖掉。
+  const backToTravel='travel.html?char='+encodeURIComponent(CHAR_ID)+'&name='+encodeURIComponent(CHAR);
+  if(REPLAY_FROM==='travel'){
+    location.href=backToTravel;
+    return;
+  }
+  if(window.parent&&window.parent!==window){
+    try{window.parent.postMessage({type:'closeFullscreen'},'*')}catch(e){}
+  }else if(history.length>1)history.back();
+  else location.href=backToTravel;
+}
+async function loadReplayRecord(tripId){
+  const targets=[...new Set([String(tripId||''),REPLAY_JOURNEY_ID].filter(Boolean))];
+  const matchRec=target=>REC.find(x=>x&&(String(x.id)===target||String(x.tripId||'')===target||String(x.journeyId||'')===target));
+  try{
+    if(window.NanoTravelStore&&targets.length){
+      await NanoTravelStore.load(true);
+      const findTrip=typeof NanoTravelStore.findTrip==='function'?NanoTravelStore.findTrip.bind(NanoTravelStore):null;
+      for(const target of targets){
+        const hit=findTrip?findTrip(target):null;
+        if(hit&&hit.trip)return Object.assign({},hit.trip,{charId:hit.charId||CHAR_ID});
+      }
+      const mask=readMask();const uid=(mask&&mask.id)||USER_ID;
+      const list=NanoTravelStore.listTogether(uid,CHAR_ID)||[];
+      for(const target of targets){
+        const p=list.find(x=>x&&(String(x.id)===target||String(x.tripId||'')===target||String(x.journeyId||'')===target));
+        if(p)return p;
+      }
+    }
+  }catch(e){}
+  for(const target of targets){const r=matchRec(target);if(r)return r;}
+  if(!targets.length&&REC.length)return REC[REC.length-1];
+  // 卡片只带了目的地 / 日期时，按这两个字段兜底找回最近的同一次旅程。
+  if(INVITE.dest){
+    const r=REC.slice().reverse().find(x=>x&&String(x.dest||x.title||x.place||'')===String(INVITE.dest)&&(!INVITE.date||String(x.date||'')===String(INVITE.date)));
+    if(r)return r;
+  }
+  return null;
+}
 function drawRec(){
   const l=$('#recList');$('#recView').hidden=true;l.hidden=false;l.innerHTML='';
   if(!REC.length)l.append(E('div','empty','还没有旅行记录。离开旅行时会自动保存在这里。'));
   REC.slice().reverse().forEach(r=>{
-    const d=E('button','rc');d.append(E('b','',r.title||DEST),E('small','',r.summary||(r.stops&&r.stops.length?'到过：'+r.stops.join('、'):'未记录地点')));
-    d.onclick=()=>viewRec(r);l.append(d);
+    const row=E('div','rcrow');
+    const d=E('button','rc');
+    d.append(E('b','',r.dest||r.title||DEST),E('small','',r.summary||(r.stops&&r.stops.length?'到过：'+r.stops.join('、'):'未记录地点')));
+    d.onclick=()=>{closeAll();enterReplay(r,{fromLive:true})};
+    row.append(d,ib('trash','删除记录',()=>ask('删除这条旅行记录？',()=>{
+      REC=REC.filter(x=>x!==r);saveRec();
+      try{if(window.NanoTravelStore&&r.id)NanoTravelStore.deleteTrip(r.id)}catch(e){}
+      drawRec();
+    }),16));
+    l.append(row);
   });
 }
-function viewRec(r){
-  const v=$('#recView');$('#recList').hidden=true;v.hidden=false;v.innerHTML='';
-  const h=E('div','');h.style.cssText='display:flex;align-items:center;justify-content:space-between';
-  h.append(ib('chev','返回列表',drawRec,20),E('span','',r.title||DEST),ib('trash','删除记录',()=>ask('删除这条旅行记录？',()=>{
-    REC=REC.filter(x=>x!==r);saveRec();
-    try{if(window.NanoTravelStore&&r.id)NanoTravelStore.deleteTrip(r.id)}catch(e){}
-    drawRec();
-  }),18));
-  v.append(h);
-  if(Array.isArray(r.msgs)&&r.msgs.length){r.msgs.forEach((m,i)=>v.append(node({...m,id:'r'+i,edit:false,typing:false},true)))}
-  else{v.append(E('div','empty',r.summary||'这一段只保留了总结。'))}
-}
-// 点「旅行记录」直接进入最近一次回顾；用户能在回顾里看到完整流程（对话/旁白/拍立得）。
+// 点一条旅行记录 → 直接回到当时的那一页（而不是只显示文字）
 const openRec=async()=>{
   try{ await loadRecords(); }catch(e){}
-  if(REC&&REC.length) viewRec(REC[REC.length-1]);
-  else drawRec();
+  drawRec();
   open_('#shRec');
 };
 $('#bRec').onclick=openRec;$('#cRec').onclick=openRec;
@@ -1068,7 +1237,7 @@ $('#sdel').onclick=()=>{const v=$('#ssel').value;if(v==='')return;ask('删除预
 drawStyles(ST[0]?0:'');$('#styleTxt').value=ST[0]?ST[0].t:'';
 
 /* ---------- exit: summarize, write memory, sync travel app ---------- */
-$('#back').onclick=()=>open_('#dlg');
+$('#back').onclick=()=>{ if(REPLAY_MODE){exitReplay();return;} open_('#dlg'); };
 $('#stay').onclick=closeAll;
 function fresh(){
   S.msgs=[];S.plan=[];S.gi=0;S.n=0;S.busy=false;S.photoBusy=false;S.exiting=false;$('#send').disabled=false;
@@ -1082,10 +1251,26 @@ function fresh(){
   }, 420);
 }
 function hasProgress(){
-  return S.msgs.some(m=>m&&(m.role==='user'||m.role==='char'||m.role==='photo'))||S.plan.length>0;
+  // 只要页面里已经留下了这趟旅行的内容（哪怕只有开场提示）就值得续玩；
+  // 之前只认 user/char/photo，用户很快点「直接退出」时会误判成空存档而掉回线上。
+  return S.msgs.length>0||S.plan.length>0;
 }
 let activeDbWritePromise = null;
+function clearTravelResume(){
+  try{localStorage.removeItem(ACTIVE_KEY)}catch(e){}
+  try{localStorage.removeItem(RESUME_MARK_KEY)}catch(e){}
+  try{localStorage.removeItem('nano_travel_resume_'+(CHAT_ID||CHAR_ID))}catch(e){}
+}
+function resumeMark(){
+  return {
+    version:1,pointer:true,
+    charId:CHAR_ID,userId:(readMask().id||USER_ID),chatId:CHAT_ID||CHAR_ID,
+    charName:CHAR,userName:USER,dest:DEST,invite:Object.assign({},INVITE),
+    tripId:TRIP_ID,savedAt:Date.now()
+  };
+}
 function saveActiveSession(){
+  if(REPLAY_MODE) return null;
   const lastPhoto=[...S.msgs].reverse().find(m=>m.role==='photo'&&m.url);
   const msgs=S.msgs.map(m=>{
     if(!m)return m;
@@ -1128,6 +1313,12 @@ function saveActiveSession(){
       }catch(e3){}
     }
   }
+  // 轻量续玩标记：即使完整会话因为配额/体积写不进去，下次点开角色也能知道这趟还没结束。
+  try{
+    const mark=JSON.stringify(resumeMark());
+    localStorage.setItem(RESUME_MARK_KEY,mark);
+    localStorage.setItem('nano_travel_resume_'+(CHAT_ID||CHAR_ID),mark);
+  }catch(e){}
   return sess;
 }
 async function restoreActiveSession(){
@@ -1140,6 +1331,8 @@ async function restoreActiveSession(){
   if(!sess||String(sess.charId||'')!==String(CHAR_ID))return false;
   if(sess.savedAt&&Date.now()-Number(sess.savedAt)>7*24*3600*1000)return false;
   DEST=sess.dest||DEST;Object.assign(INVITE,sess.invite||{});GUIDE=buildGuide(DEST);
+  if(sess.charName)CHAR=sess.charName;
+  if(sess.userName)USER=sess.userName;
   TRIP_ID=sess.tripId||TRIP_ID;
   S.msgs=Array.isArray(sess.msgs)?sess.msgs.slice():[];
   if(!S.msgs.length)return false;
@@ -1245,6 +1438,8 @@ async function travelExit(i){
   // 只有「回到线上」才算结束旅行、写旅途卡片/系统提示；
   // 「直接退出」即使勾选了总结，也只写记忆，保留继续旅行的存档。
   const shouldSync=!!(hasContent&&final);
+  // 卡片和本地回顾都用这个 id 回查，必须和真正写进旅途的记录保持一致。
+  let savedTripId=TRIP_ID;
   try{ if(window.NanoTravelStore&&hasContent) await NanoTravelStore.load(true); }catch(e){}
   if(summarize&&hasContent){
     try{
@@ -1267,7 +1462,7 @@ async function travelExit(i){
     try{
       const ticketNo='TRV-'+String(TRIP_ID).replace(/[^a-z0-9]/gi,'').slice(-8).toUpperCase();
       const patch={
-        tripId:TRIP_ID,place:DEST,date,cost:null,legs:[],noteMe:'',noteChar:cardThought,summary:brief||cardThought,
+        tripId:TRIP_ID,journeyId:TRIP_ID,place:DEST,date,cost:null,legs:[],noteMe:'',noteChar:cardThought,summary:brief||cardThought,
         polaroid:lastPhoto?lastPhoto.url:'',caption:cardCaption,
         shared:false,source:'travel-chat',places:visited,days:INVITE.days||'1',ticketNo:ticketNo,
         charId:CHAR_ID,userId:uid,title:cardTitle,thought:cardThought,journey:journey,
@@ -1276,11 +1471,12 @@ async function travelExit(i){
       };
       let saved=null;
       try{
-        const existed=(NanoTravelStore.listTogether(uid,CHAR_ID)||[]).find(p=>p&&(String(p.tripId||'')===String(TRIP_ID)||String(p.id)===String(TRIP_ID)));
+        const existed=(NanoTravelStore.listTogether(uid,CHAR_ID)||[]).find(p=>p&&(String(p.tripId||'')===String(TRIP_ID)||String(p.journeyId||'')===String(TRIP_ID)||String(p.id)===String(TRIP_ID)));
         if(existed) saved=await NanoTravelStore.updateTrip(existed.id,Object.assign({},patch,{id:existed.id}));
         else saved=await NanoTravelStore.addTogether(uid,CHAR_ID,patch);
       }catch(e){try{console.warn('[travel] 旅途记录写入失败',e)}catch(e2){}}
       const tid=(saved&&saved.id)||TRIP_ID;
+      savedTripId=tid;
       const card={
         cardType:'travelReport',travelKind:'together',direction:'char',
         tripId:tid,title:cardTitle,place:DEST,date,days:INVITE.days||'1',
@@ -1309,7 +1505,12 @@ async function travelExit(i){
     if(shouldSync){
       // REC 只是本地行程列表，localStorage 放不下大图；完整旅程已写进旅途（IDB）。
       const recMsgs=journey.map(x=>x&&x.url&&x.url.length>180000?Object.assign({},x,{url:''}):x);
-      REC.push({id:Date.now(),title:DEST,date,summary:brief,stops:visited,msgs:recMsgs});
+      // id / tripId 必须和卡片、旅途记录对得上，否则点回顾卡片时回查不到这段旅程。
+      REC.push({
+        id:String(savedTripId),tripId:String(TRIP_ID),charId:CHAR_ID,charName:CHAR,
+        title:DEST,dest:DEST,date,summary:brief,stops:visited,msgs:recMsgs,
+        plan:S.plan||[],settings:{person:$('#person').value,userMode:$('#umode').value,style:$('#styleTxt').value}
+      });
       REC=REC.slice(-40);saveRec();
     }
   }catch(e){}
@@ -1338,17 +1539,21 @@ async function exit(mode){
   if(window.parent&&window.parent!==window){
     try{
       if(final){
-        try{localStorage.removeItem(ACTIVE_KEY)}catch(e){}
+        clearTravelResume();
         try{localStorage.setItem('nano_chat_mode_'+(CHAT_ID||CHAR_ID),'online')}catch(e){}
         window.parent.postMessage({type:'openChat',chatId:CHAT_ID||CHAR_ID,chatName:CHAR,name:CHAR,reload:true},'*');
       }else{
-        window.parent.postMessage({type:'nanoTravelExitToChat',chatId:CHAT_ID||CHAR_ID},'*');
+        window.parent.postMessage({
+          type:'nanoTravelExitToChat',
+          chatId:CHAT_ID||CHAR_ID,charId:CHAR_ID,charName:CHAR,userId:(readMask().id||USER_ID),
+          dest:DEST,tripId:TRIP_ID,invite:Object.assign({},INVITE)
+        },'*');
       }
     }catch(e){}
     return;
   }
   if(final){
-    try{localStorage.removeItem(ACTIVE_KEY)}catch(e){}
+    clearTravelResume();
     location.href='chat_inner.html?chat='+encodeURIComponent(CHAT_ID||CHAR_ID)+'&name='+encodeURIComponent(CHAR);
   }else{
     location.href='chat.html';
@@ -1357,6 +1562,13 @@ async function exit(mode){
 $('#online').onclick=()=>exit('online');$('#leave').onclick=()=>exit('leave');
 $('#again').onclick=()=>{$('#cover').classList.remove('on');fresh()};
 
+window.addEventListener('message', function(e){
+  var d=e&&e.data;
+  if(!d)return;
+  if(d.type==='nanoOverlayClosed'&&!REPLAY_MODE){
+    try{saveActiveSession()}catch(err){}
+  }
+});
 window.addEventListener('pagehide', function(){
   if(S.exiting||!hasProgress())return;
   try{saveActiveSession()}catch(e){}
@@ -1375,10 +1587,34 @@ document.addEventListener('visibilitychange', function(){
     if(rec&&rec.name)CHAR=rec.name;
     const mask=await loadMaskInfo(true);USER=mask.name||'你';
     await loadRecords();
+    if(REPLAY_Q){
+      const rr=await loadReplayRecord(REPLAY_TRIP_ID);
+      if(rr){ enterReplay(rr,{fromLive:false}); syncBtn(); return; }
+      if(REPLAY_FALLBACK.thought){
+        enterReplay({
+          dest:INVITE.dest||REPLAY_FALLBACK.title||'旅途回顾',title:REPLAY_FALLBACK.title,
+          date:INVITE.date,summary:REPLAY_FALLBACK.thought,msgs:[]
+        },{fromLive:false});
+        syncBtn(); return;
+      }
+      toast('没有找到这段旅程');
+      if(window.parent&&window.parent!==window){
+        setTimeout(()=>{try{window.parent.postMessage({type:'closeFullscreen'},'*')}catch(e){}},900);
+      }else{
+        setTimeout(()=>{location.href='travel.html?char='+encodeURIComponent(CHAR_ID)+'&name='+encodeURIComponent(CHAR)},900);
+      }
+      return;
+    }
     if(RESUME){
       restored=await restoreActiveSession();
-      // 存档已经过期/损坏时清掉，避免下次还试图恢复却总是掉回线上。
-      if(!restored){ try{localStorage.removeItem(ACTIVE_KEY)}catch(e){} }
+      // IndexedDB 刚打开/上一页刚写入时偶尔会比新页面慢一拍，多给几次机会，
+      // 避免把「还在落盘」的存档误判成没有存档而掉回线上。
+      for(let attempt=0;attempt<3&&!restored;attempt++){
+        await new Promise(r=>setTimeout(r,180*(attempt+1)));
+        restored=await restoreActiveSession();
+      }
+      // 存档确实过期/损坏时才清掉，避免下次还试图恢复却总是掉回线上。
+      if(!restored){ clearTravelResume(); }
     }
   }catch(e){}
   if(!restored)fresh();

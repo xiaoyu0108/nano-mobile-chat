@@ -355,23 +355,25 @@
     cd.trips.push(trip);
     return save().then(function () { return trip; });
   }
-  function addUserTrip(uid, trip) {
-    var u = userData(uid || getMask().id);
+  function addUserTrip(userId, trip) {
+    var u = userData(userId || getMask().id);
     trip = Object.assign({}, trip || {});
     trip.id = trip.id || uid('trip');
     trip.owner = 'me';
-    trip.userId = String(uid || getMask().id || '');
+    trip.userId = String(userId || getMask().id || '');
     trip.createdAt = trip.createdAt || now();
     u.trips.push(trip);
     return save().then(function () { return trip; });
   }
-  function addTogether(uid, cid, trip) {
-    var u = userData(uid || getMask().id);
+  function addTogether(userId, cid, trip) {
+    var u = userData(userId || getMask().id);
     trip = Object.assign({}, trip || {});
+    // 注意：参数不能叫 uid，否则会遮住上面的 uid() 工具函数，
+    // 未自带 id 的旅程会直接抛 "uid is not a function"，记录写不进旅途。
     trip.id = trip.id || uid('us');
     trip.owner = 'us';
     trip.charId = String(cid || '');
-    trip.userId = String(uid || getMask().id || '');
+    trip.userId = String(userId || getMask().id || '');
     trip.createdAt = trip.createdAt || now();
     u.together.push(trip);
     return save().then(function () { return trip; });

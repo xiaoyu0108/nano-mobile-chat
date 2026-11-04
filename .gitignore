@@ -13,3 +13,6 @@ apk/signing/
 apk/*.keystore
 apk/signing-key-info.txt
 apk/*.aab
+
+# Android build output
+android/build/

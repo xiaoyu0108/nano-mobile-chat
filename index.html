@@ -8,7 +8,7 @@
     // 全站唯一构建号：下面的自愈逻辑、iframe 的 nb= 参数都用它。
     // 注意：不要再另写第二个版本号，否则两个版本号会互相判定“版本变了”，
     // 造成每次打开都清缓存 + 反复 reload。
-    window.__NANO_BUILD__ = 'nano-2026-11-08-15';
+    window.__NANO_BUILD__ = 'nano-2026-11-09-02';
     // 版本升级时强制清一次缓存并重载：避免手机/PWA 一直跑旧 JS（屏幕共享/思维链等问题）
     (function () {
         try {
@@ -4062,6 +4062,21 @@ setTimeout(function () {
 
             // 一起去 → 直接退出：回到聊天 App 的好友区域，但保留继续旅行的入口
             if (data.type === 'nanoTravelExitToChat') {
+                // 记一份内存提示：即使 localStorage 的续玩存档因为配额/图片体积没写成功，
+                // 紧接着点开这个角色时也能直接回到「一起去」，而不是掉回线上。
+                try {
+                    window.__nanoTravelExitHint = window.__nanoTravelExitHint || {};
+                    window.__nanoTravelExitHint[String(data.chatId || '')] = {
+                        at: Date.now(),
+                        charId: String(data.charId || data.chatId || ''),
+                        chatId: String(data.chatId || data.charId || ''),
+                        charName: String(data.charName || ''),
+                        dest: String(data.dest || ''),
+                        tripId: String(data.tripId || ''),
+                        userId: String(data.userId || ''),
+                        invite: data.invite || {}
+                    };
+                } catch (e) {}
                 try { sessionStorage.setItem('nano_chat_active_page', JSON.stringify({ page: 'chat', tab: 'friends', at: Date.now() })); } catch (e) {}
                 try { isChatInnerActive = false; } catch (e) {}
                 try { currentOverlaySource = 'main'; } catch (e) {}
@@ -4192,9 +4207,19 @@ setTimeout(function () {
                 try {
                     sessionStorage.setItem('last_chat_info', JSON.stringify({ chatId, chatName, chatAvatar }));
                 } catch(e) {}
-                // 上次从「一起去」直接退出：再点开这个角色，继续那趟旅行
+                if (data.reload) {
+                    try { if (window.__nanoTravelExitHint) delete window.__nanoTravelExitHint[String(chatId)]; } catch(e) {}
+                }
+                // 上次从「一起去」直接退出：再点开这个角色，继续那趟旅行。
+                // 先读完整存档；完整存档不存在时再用轻量续玩标记 / 刚才退出的内存提示兜底，
+                // 避免 localStorage 配额、图片体积或 charId 不一致导致又掉回线上聊天。
                 let activeTravel = null;
                 let activeTravelKeyCharId = '';
+                let resumeMark = null;
+                let resumeMarkCharId = '';
+                const travelExitHint = (function () {
+                    try { return (window.__nanoTravelExitHint || {})[String(chatId)] || null; } catch(e) { return null; }
+                })();
                 try { activeTravel = JSON.parse(localStorage.getItem('nano_travel_active_' + chatId) || 'null'); } catch(e) { activeTravel = null; }
                 if (!activeTravel) {
                     // 兼容存档 key 与当前 chatId 不一致（例如 char id / session id 不同）的情况：
@@ -4214,8 +4239,35 @@ setTimeout(function () {
                         }
                     } catch(e) {}
                 }
+                if (!activeTravel) {
+                    try { resumeMark = JSON.parse(localStorage.getItem('nano_travel_resume_' + chatId) || 'null'); } catch(e) { resumeMark = null; }
+                    if (!resumeMark) {
+                        try {
+                            for (let mi = 0; mi < localStorage.length; mi++) {
+                                const mk = localStorage.key(mi);
+                                if (!mk || mk.indexOf('nano_travel_resume_') !== 0) continue;
+                                let mv = null;
+                                try { mv = JSON.parse(localStorage.getItem(mk) || 'null'); } catch(e) { mv = null; }
+                                if (!mv) continue;
+                                if (String(mv.charId || '') === String(chatId) || (chatName && String(mv.charName || '') === String(chatName))) {
+                                    resumeMark = mv;
+                                    resumeMarkCharId = String(mv.charId || mk.slice('nano_travel_resume_'.length));
+                                    break;
+                                }
+                            }
+                        } catch(e) {}
+                    }
+                    if (resumeMark) {
+                        activeTravel = resumeMark;
+                        activeTravelKeyCharId = resumeMarkCharId || String(resumeMark.charId || '');
+                    } else if (travelExitHint && travelExitHint.at && Date.now() - Number(travelExitHint.at) < 7 * 24 * 3600 * 1000) {
+                        activeTravel = travelExitHint;
+                        activeTravelKeyCharId = String(travelExitHint.charId || chatId);
+                    }
+                }
                 if (activeTravel && activeTravel.savedAt && Date.now() - Number(activeTravel.savedAt) > 7 * 24 * 3600 * 1000) {
                     try { localStorage.removeItem('nano_travel_active_' + (activeTravelKeyCharId || chatId)); } catch(e) {}
+                    try { localStorage.removeItem('nano_travel_resume_' + (activeTravelKeyCharId || chatId)); } catch(e) {}
                     activeTravel = null;
                 }
                 if (activeTravel && (activeTravelKeyCharId || String(activeTravel.charId || chatId) === String(chatId) || (chatName && String(activeTravel.charName || '') === String(chatName)))) {
@@ -4233,6 +4285,7 @@ setTimeout(function () {
                     params.set('time', av.time || '');
                     params.set('days', av.days || '1');
                     params.set('note', av.note || '');
+                    try { if (window.__nanoTravelExitHint) delete window.__nanoTravelExitHint[String(chatId)]; } catch(e) {}
                     isChatInnerActive = false;
                     currentOverlaySource = 'main';
                     openFullscreen('travel-chat.html?' + params.toString(), '一起去', false, 'main');

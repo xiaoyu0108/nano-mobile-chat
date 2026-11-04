@@ -23,6 +23,7 @@
   var LS_DEVICE = 'nano_account_device';
   var LS_NEEDS = 'nano_account_needs_activation';
   var LS_API = 'nano_account_api';
+  var LS_LOCAL = 'nano_local_mode';
   var SESSION_VERIFY_MS = 0;
 
   var overlayEl = null;
@@ -111,6 +112,14 @@
     return { token: token, username: username, sid: lsGet(LS_SID) };
   }
 
+  function isNanoApp() {
+    try { return /NanoApp/i.test(navigator.userAgent || ''); } catch (e) { return false; }
+  }
+
+  function localMode() {
+    return lsGet(LS_LOCAL) === '1';
+  }
+
   function currentRole() {
     return lsGet(LS_ROLE) === 'admin' ? 'admin' : 'user';
   }
@@ -151,6 +160,7 @@
     if (data.device) writeJSON(LS_DEVICE, data.device);
     lsSet(LS_NEEDS, data.needsActivation ? '1' : '0');
     lsSet(LS_CHECKED, Date.now());
+    lsDel(LS_LOCAL);
     if (data.sessions) applySessions(data.sessions);
   }
 
@@ -507,6 +517,12 @@
               '<button type="button" class="nacc-btn nacc-btn-soft" id="naccServerBtn" style="min-height:30px;padding:0 10px;font-size:11px">服务器设置</button>' +
             '</div>' +
             '<div id="naccForm"></div>' +
+            (isNanoApp()
+              ? '<div class="nacc-actions" style="margin-top:10px">' +
+                  '<button type="button" class="nacc-btn nacc-btn-soft" id="naccOffline">离线使用（不登录）</button>' +
+                '</div>' +
+                '<p class="nacc-hint">离线模式跳过账号与导入校验；账号、设备激活、云备份、推送不可用。之后仍可在设置里登录。</p>'
+              : '') +
           '</div>' +
         '</div>';
       var ui = overlay(html, {
@@ -530,6 +546,14 @@
       if (resetServerBtn) resetServerBtn.addEventListener('click', function () {
         resetServer();
         showErr('');
+      });
+
+      var offlineBtn = ui.el.querySelector('#naccOffline');
+      if (offlineBtn) offlineBtn.addEventListener('click', function () {
+        lsSet(LS_LOCAL, '1');
+        ui.close();
+        toast('已进入离线模式');
+        resolve(true);
       });
 
       function showErr(msg) {
@@ -723,6 +747,7 @@
     opts = opts || {};
     var needActivation = opts.needActivation === true;
     function attempt(retry) {
+      if (localMode()) return confirmImportPolicy();
       if (!currentAuth()) {
         return loginOverlay({ reason: '导入前请先登录账号。' }).then(function (ok) {
           if (!ok) return false;
@@ -766,6 +791,7 @@
     gateStarted = true;
     var auth = currentAuth();
     if (!auth) {
+      if (localMode()) return;
       loginOverlay({ force: true, reason: '请登录后继续。首次使用请先注册。' });
       return;
     }
@@ -1285,6 +1311,8 @@
   window.NanoAccount = {
     apiBase: apiBase,
     currentAuth: currentAuth,
+    localMode: localMode,
+    isNanoApp: isNanoApp,
     currentRole: currentRole,
     isAdmin: isAdmin,
     currentPolicy: currentPolicy,

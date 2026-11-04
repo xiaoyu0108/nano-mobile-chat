@@ -493,6 +493,24 @@
     var params = new URLSearchParams();
     params.set('char', chatId);
     params.set('name', displayName());
+    // 过去的旅程卡片：点击直接回到当时的那一页（完整对话 / 旁白 / 拍立得），
+    // 不再只跳去「旅途」里看一段文字总结。
+    var tripId = String(cd.tripId || cd.journeyId || '');
+    if (tripId && (cd.cardType === 'travelReport' || cd.cardType === 'travelShare')) {
+      params.set('replay', '1');
+      params.set('from', 'chat');
+      params.set('trip', tripId);
+      // 有的卡片 tripId 是记录 id，有的只有 journeyId（本次旅程 id）；两个都带上，
+      // 回顾页任一能对上就能打开，避免「卡片在、却说没找到这段旅行」。
+      if (cd.journeyId) params.set('journeyId', String(cd.journeyId));
+      params.set('chatId', chatId);
+      params.set('dest', String(cd.place || cd.title || ''));
+      params.set('date', String(cd.date || ''));
+      if (cd.title) params.set('title', String(cd.title).slice(0, 120));
+      if (cd.thought) params.set('thought', String(cd.thought).slice(0, 600));
+      openFull('travel-chat.html?' + params.toString(), '旅途回顾');
+      return;
+    }
     if (cd.tripId) params.set('trip', String(cd.tripId));
     openFull('travel.html?' + params.toString(), '旅途');
   }
