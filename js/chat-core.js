@@ -4511,7 +4511,7 @@
         if (isImage && type === 'right' && !(imageData && imageData.video) && row && row.dataset && row.dataset.id) {
             try { attachScreenshotCover(row.dataset.id); } catch (e) {}
         }
-        renderMessages();
+        appendRenderedRow(row);
         saveMessages();
         // 纳米文件：把 Nano 聊天里的文件卡片归档到独立文件库（删聊天不影响文件）
         try {
@@ -4669,6 +4669,65 @@
             scrollToBottom();
         }
         // 每条新消息都通知窥屏上下文（700ms 防抖），快捷指令才能接上私聊。
+        try { pushPeekContext(); } catch (e) {}
+    }
+
+    // 增量追加一条新消息：只插这一行，不重建整个列表。
+    // 之前每次 addMessage 都 renderMessages() 清空重绘，图片/头像会重新解码，
+    // 连续气泡时整屏反复闪烁；这里改成追加，同时补上时间分隔和 tail-end。
+    function appendRenderedRow(row) {
+        if (!row) return;
+        try {
+            const total = messages.length;
+            const msg = total ? messages[total - 1] : null;
+            const prevMsg = total > 1 ? messages[total - 2] : null;
+            if (prevMsg && prevMsg.ts && msg && msg.ts && (msg.ts - prevMsg.ts) > 5 * 60 * 1000) {
+                const divider = document.createElement('div');
+                divider.className = 'chat-time-divider';
+                const d = new Date(msg.ts);
+                const now = new Date();
+                const hh = String(d.getHours()).padStart(2, '0');
+                const mm = String(d.getMinutes()).padStart(2, '0');
+                divider.textContent = (d.toDateString() === now.toDateString())
+                    ? (hh + ':' + mm)
+                    : ((d.getMonth() + 1) + '月' + d.getDate() + '日' + hh + ':' + mm);
+                messageContainer.appendChild(divider);
+            }
+        } catch (e) {}
+        // 输入中指示器先挪开，保证新消息插在它前面
+        try {
+            if (typingIndicator && typingIndicator.parentNode === messageContainer) {
+                messageContainer.removeChild(typingIndicator);
+            }
+        } catch (e) {}
+        messageContainer.appendChild(row);
+        // 只重算最后两行的 tail-end，不动其余已有节点
+        try {
+            const rows = messageContainer.querySelectorAll('.message-row');
+            const from = Math.max(0, rows.length - 2);
+            for (let ri = from; ri < rows.length; ri++) {
+                const r = rows[ri];
+                const next = r.nextElementSibling;
+                const side = r.classList.contains('right') ? 'right' : 'left';
+                const same = !!(next && next.classList &&
+                    next.classList.contains('message-row') &&
+                    next.classList.contains(side) &&
+                    !next.classList.contains('centered') &&
+                    !next.classList.contains('sys-notice') &&
+                    !next.classList.contains('recalled'));
+                r.classList.toggle('tail-end', !same);
+            }
+        } catch (e) {}
+        try { ensureRecallTranslations(); } catch (e) {}
+        try {
+            if (typingIndicator && typingIndicator.classList.contains('active')) {
+                messageContainer.appendChild(typingIndicator);
+            }
+        } catch (e) {}
+        try {
+            lastCollapseSig = messages.length + '|' + (messages.length ? messages[messages.length - 1].id : '');
+        } catch (e) {}
+        try { scrollToBottom(); } catch (e) {}
         try { pushPeekContext(); } catch (e) {}
     }
 

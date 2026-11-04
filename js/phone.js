@@ -467,7 +467,12 @@ function idbGetApi(key){
 async function getApiConfig(){
   try{
     const v = await idbGetApi(API_CONFIG_KEY);
-    if(v) return v;
+    if(v && v.mainUrl) return v;
+  }catch(e){}
+  // 兼容只写 localStorage 的配置（线下 / 旅途也是同样的回退顺序）
+  try{
+    const raw = localStorage.getItem("nano_api_config");
+    if(raw){ const v = JSON.parse(raw); if(v && v.mainUrl) return v; }
   }catch(e){}
   return null;
 }
@@ -788,7 +793,7 @@ async function buildCharContext(char){
 
 /* 内容受限时的轻量上下文：去掉世界书、记忆库和用户设定，只保留脱敏后的角色概况 */
 function sanitizeContextText(s, max){
-  const bad = /(裸体|裸照|强奸|幼女|正太|血腥|肢解|自残|自杀|毒品|犯罪|虐待|)/i;
+  const bad = /(裸体|裸照|强奸|幼女|正太|血腥|肢解|自残|自杀|毒品|犯罪|虐待)/i;
   const lines = String(s || "").split(/\n+/).filter(line => line && !bad.test(line));
   return lines.join("\n").slice(0, max || 1000);
 }
@@ -3270,7 +3275,8 @@ async function genMulti(api, char, ids, opts){
     if (window.NanoPrompts && NanoPrompts.appendTo) __sysJson = NanoPrompts.appendTo(__sysJson, 'phone', { keepFormat: true });
   } catch (e) {}
   // 32768 会被很多兼容接口直接 400（超过模型上限），而且更容易输出到一半截断。
-  const maxTokens = Math.min(12288, Math.max(4096, Number(api.maxTokens) || 8192));
+  // 16384 是多数模型能接受的上限；startGeneration 会把 App 拆成小批，避免一次塞太多导致截断。
+  const maxTokens = Math.min(16384, Math.max(4096, Number(api.maxTokens) || 8192));
   const baseBody = {
     model: api.model,
     messages: [{role:"system", content:__sysJson},{role:"user", content:user}],
@@ -3519,11 +3525,27 @@ async function startGeneration(ids){
     return r;
   };
 
-  await runBatch(ids, `正在一次生成 ${ids.length} 个 App…（可返回切换其它 App）`);
-
-  genState.running = false;
-  hideGenToast();
-  await reRenderCurrentApp();
+  // 关键：不要把所有 App 塞进同一次请求。输出上限再高也容易被截断，
+  // 一旦 JSON 断在中间就会「API 调用了但一个 App 都没生成」。
+  // 按 3 个 App 一批生成，每批单独落盘，失败只影响这一批。
+  const BATCH_SIZE = 3;
+  try {
+    if (ids.length > BATCH_SIZE) {
+      for (let bi = 0; bi < ids.length; bi += BATCH_SIZE) {
+        if (!genState.running) break;
+        const batch = ids.slice(bi, bi + BATCH_SIZE);
+        await runBatch(batch, `正在生成 ${batch.length} 个 App…（${bi + 1}-${Math.min(bi + BATCH_SIZE, ids.length)}/${ids.length}）`);
+      }
+    } else {
+      await runBatch(ids, `正在生成 ${ids.length} 个 App…（可返回切换其它 App）`);
+    }
+  } catch (e) {
+    fatalMsgs.push('生成异常：' + ((e && e.message) || e));
+  } finally {
+    genState.running = false;
+    hideGenToast();
+    try { await reRenderCurrentApp(); } catch (e) {}
+  }
 
   const failed = ids.filter(id => !okAll[id]);
   genState.failed = failed;

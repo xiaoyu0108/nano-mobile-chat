@@ -828,6 +828,34 @@ async function refreshComments() {
   insBusy.comments = true;
   try{ if(window.NanoRefresh) NanoRefresh.start({ key:'ins-comments', label:'刷新评论' }); }catch(e){}
   const post = currentPost;
+  // 刷新评论 = 换一批新面孔。先清掉上一次 AI 生成的 NPC 评论（保留作者和用户本人），
+  // 否则旧 NPC 会一直占着评论区，模型也会继续沿用这些名字。
+  let oldCommentsBackup = [];
+  try { oldCommentsBackup = Array.isArray(post.comments) ? JSON.parse(JSON.stringify(post.comments)) : []; } catch (e) { oldCommentsBackup = []; }
+  try {
+    const keep = [];
+    const authorKey = normName(post.user);
+    const userKey = normName(userProfile.name);
+    (post.comments || []).forEach(function (c) {
+      if (!c) return;
+      const cu = normName(c.user);
+      if (cu === authorKey || cu === userKey) {
+        c.replies = (c.replies || []).filter(function (r) {
+          const ru = normName(r && r.user);
+          return ru === authorKey || ru === userKey;
+        });
+        keep.push(c);
+        return;
+      }
+      // 旧 NPC 评论里如果有用户/作者的回复，单独保留下来，不连旧 NPC 一起保留。
+      (c.replies || []).forEach(function (r) {
+        const ru = normName(r && r.user);
+        if (ru !== authorKey && ru !== userKey) return;
+        keep.push({ id: r.id || ('c_' + Date.now() + Math.random().toString(36).slice(2, 6)), user: r.user, text: r.text || '', replies: [] });
+      });
+    });
+    post.comments = keep;
+  } catch (e) {}
   showLoading('正在生成评论互动…');
   try {
     const allChars = getSelectableChars();
@@ -846,13 +874,13 @@ async function refreshComments() {
       } catch (e) {}
     }
     const exclude = bound.map(c => c.name).concat(npcs.map(n => n.name));
-    await ensureStrangerRoster(bound, 8, exclude);
-    const strangers = pickStrangers(5, []);
+    // 陌生网友也只属于这个作者：每次刷新现场生成，绝不和其他角色共用同一批人。
+    await ensureStrangerRoster(bound, 8, exclude, scope, true);
+    const strangers = pickStrangers(5, [], scope);
     if (!bound.length && !npcs.length && !strangers.length) {
       showToast('没有可互动的角色，请先绑定角色或配置 API');
       return;
     }
-    const before = (post.comments || []).length;
     let newCount = 0;
     try {
       newCount = await generateCommentsForPost(post, bound, npcs, strangers, 12);
@@ -861,12 +889,17 @@ async function refreshComments() {
         try { newCount += await generateCommentsForPost(post, bound, npcs, strangers, 12 - newCount); } catch (e) {}
       }
     } catch (e) {
+      // 生成失败就把旧评论还回去，不能让一次失败清空评论区。
+      try { post.comments = oldCommentsBackup.slice(); } catch (e2) {}
       showToast('评论生成失败');
       try{ if(window.NanoRefresh) NanoRefresh.fail(e, { key:'ins-comments' }); }catch(err){}
     }
+    if (!newCount && oldCommentsBackup.length) {
+      try { post.comments = oldCommentsBackup.slice(); } catch (e) {}
+    }
     saveInsChatState();
     renderDetail(); renderFeed();
-    const added = post.comments.length - before;
+    const added = Math.max(0, Number(newCount) || 0);
     showToast(added > 0 ? ('已生成 ' + added + ' 条评论互动') : '暂无新评论');
     notifyInsDone('Instagram', '评论刷新完成，+' + added + ' 条互动');
     try{ if(window.NanoRefresh) NanoRefresh.success('评论互动已更新，点「去看看」查看', { key:'ins-comments' }); }catch(e){}
@@ -1361,24 +1394,54 @@ function pickNpcs(n, scope) {
 // ==================== 平台陌生用户（Instagram 是开放平台，不只是好友圈） ====================
 const STRANGER_ROSTER_PREFIX = 'nano_ins_strangers_';
 
-function strangerRosterKey() { return STRANGER_ROSTER_PREFIX + currentMaskId(); }
-function loadStrangerRoster() {
+// 陌生网友池按「作者」隔离：charA 的网友只出现在 charA 的帖子/评论区，
+// 不会和 charB 共用同一批名字。scope 为空时才做跨作者查询（用于头像/资料回查）。
+function strangerScopeToken(scope) {
+  return String(scope || 'global').replace(/[^a-zA-Z0-9_-]/g, '_');
+}
+function strangerRosterKey(scope) {
+  return STRANGER_ROSTER_PREFIX + currentMaskId() + '_' + strangerScopeToken(scope);
+}
+function loadStrangerRoster(scope) {
   try {
-    const raw = localStorage.getItem(strangerRosterKey());
+    const raw = localStorage.getItem(strangerRosterKey(scope));
     if (raw) { const a = JSON.parse(raw); if (Array.isArray(a)) return a; }
   } catch (e) {}
   return null;
 }
-function saveStrangerRoster(list) {
-  try { localStorage.setItem(strangerRosterKey(), JSON.stringify(list || [])); } catch (e) {}
+function saveStrangerRoster(list, scope) {
+  try { localStorage.setItem(strangerRosterKey(scope), JSON.stringify(list || [])); } catch (e) {}
 }
-function strangerRosterList() {
-  const list = loadStrangerRoster() || [];
-  return list.filter(s => s && s.name && !isGenericNpcName(s.name));
+function strangerRosterList(scope) {
+  if (scope) {
+    return (loadStrangerRoster(scope) || []).filter(s => s && s.name && !isGenericNpcName(s.name));
+  }
+  // 不指定 scope：合并该 mask 下所有作者的网友池（仅用于按名字反查头像/资料）
+  const out = [];
+  const seen = {};
+  try {
+    const prefix = STRANGER_ROSTER_PREFIX + currentMaskId() + '_';
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k || k.indexOf(prefix) !== 0) continue;
+      let arr = null;
+      try { arr = JSON.parse(localStorage.getItem(k) || '[]'); } catch (e) { arr = null; }
+      (Array.isArray(arr) ? arr : []).forEach(s => {
+        if (!s || !s.name || isGenericNpcName(s.name)) return;
+        const nk = normName(s.name);
+        if (seen[nk]) return;
+        seen[nk] = 1; out.push(s);
+      });
+    }
+  } catch (e) {}
+  return out;
 }
-function findStrangerByName(name) {
+function findStrangerByName(name, scope) {
   if (!name) return null;
   const key = normName(name);
+  const local = scope ? strangerRosterList(scope) : null;
+  const hit = local && local.find(s => normName(s.name) === key);
+  if (hit) return hit;
   return strangerRosterList().find(s => normName(s.name) === key) || null;
 }
 function parseStrangerRoster(raw, exclude) {
@@ -1406,7 +1469,7 @@ function parseStrangerRoster(raw, exclude) {
   });
   return out;
 }
-async function generateStrangerRoster(chars, want, exclude) {
+async function generateStrangerRoster(chars, want, exclude, scope) {
   const persona = buildPersonaBlock((chars || []).slice(0, 3));
   const system = '你是一个社交平台（类似 Instagram / 微博）的用户运营助手，负责构思平台上的普通陌生用户。他们不属于用户的熟人圈子，只是活跃在这个开放平台上的路人网友，均为成年人。' + ADULT_PLATFORM_NOTE;
   const userMsg = persona +
@@ -1421,22 +1484,25 @@ async function generateStrangerRoster(chars, want, exclude) {
   const raw = await callChatApi([{ role: 'system', content: system }, { role: 'user', content: userPersonaBlock() + '\n\n' + userMsg }], 'sub');
   return parseStrangerRoster(raw, exclude);
 }
-// 确保陌生用户池至少有 min 个；不足则按人设/世界书生成
-async function ensureStrangerRoster(chars, min, exclude) {
-  let list = strangerRosterList();
-  if (list.length >= (min || 6)) return list;
+// 确保某个作者的陌生用户池至少有 min 个；force 时重新现场生成（不复用旧名单）。
+async function ensureStrangerRoster(chars, min, exclude, scope, force) {
+  let list = strangerRosterList(scope);
+  if (!force && list.length >= (min || 6)) return list;
   const ex = (exclude || []).concat(list.map(s => s.name));
   try {
-    const more = await generateStrangerRoster(chars, Math.max(8, (min || 6) - list.length + 4), ex);
+    const more = await generateStrangerRoster(chars, Math.max(8, (min || 6) - list.length + 4), ex, scope);
     if (more.length) {
-      saveStrangerRoster(list.concat(more).slice(0, 24));
+      saveStrangerRoster((force ? more : list.concat(more)).slice(0, 24), scope);
+    } else if (force) {
+      // 这次生成失败也要清掉旧名单，避免继续复用上一次的同一批网友。
+      saveStrangerRoster([], scope);
     }
   } catch (e) {}
-  return strangerRosterList();
+  return strangerRosterList(scope);
 }
-function pickStrangers(n, exclude) {
+function pickStrangers(n, exclude, scope) {
   const ex = (exclude || []).map(normName);
-  const pool = strangerRosterList().filter(s => ex.indexOf(normName(s.name)) === -1);
+  const pool = strangerRosterList(scope).filter(s => ex.indexOf(normName(s.name)) === -1);
   return pickRandom(pool, n);
 }
 
@@ -2053,8 +2119,9 @@ async function runForumGenerate(selected) {
     } catch (e) {}
     // 开放平台：再准备一批陌生网友，并挑 3 位发帖
     const exclude = picked.map(c => c.name).concat(npcs.map(n => n.name));
-    await ensureStrangerRoster(picked, 8, exclude);
-    const strangers = pickStrangers(3, []);
+    const feedScope = 'forum_' + picked.map(c => String(c.id || c.name)).sort().join('_');
+    await ensureStrangerRoster(picked, 8, exclude, feedScope, true);
+    const strangers = pickStrangers(3, [], feedScope);
 
     const recent = posts.slice(0, 5).map(p => '· ' + p.user + '：' + (p.title || p.body || '')).join('\n');
     const total = 4 + Math.floor(Math.random() * 2);
@@ -2695,8 +2762,9 @@ async function refreshTagResult() {
     }
     // 开放平台：话题下大量陌生网友参与
     const exclude = bound.map(c => c.name).concat(npcs.map(n => n.name));
-    await ensureStrangerRoster(bound, 10, exclude);
-    const strangers = pickStrangers(5, []);
+    const tagScope = 'tag_' + String(currentTag || '');
+    await ensureStrangerRoster(bound, 10, exclude, tagScope, true);
+    const strangers = pickStrangers(5, [], tagScope);
 
     if (!bound.length && !npcs.length && !strangers.length) {
       showToast('没有可生成帖子的角色，请先绑定角色或配置 API');

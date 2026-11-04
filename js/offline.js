@@ -557,7 +557,9 @@ async function loadOfflineInvites() {
         avatar: c.avatar || x.avatar || '',
         setting: c.setting || x.setting || '',
         gender: c.gender || x.gender || '',
-        nationality: c.nationality || x.nationality || ''
+        nationality: c.nationality || x.nationality || '',
+        joinedAt: Number(x.joinedAt) || 0,
+        leftAt: Number(x.leftAt) || 0
       };
     }).filter(x => x && String(x.id) !== String(offlineChatId));
   } catch (e) { offlineInvitedChars = []; }
@@ -1985,9 +1987,14 @@ if (backBtnEl) {
 // 本轮是否还有没总结的剧情
 function offHasPendingMem() {
   try {
-    var count = parseInt(localStorage.getItem(offMemCountKey()) || '0', 10) || 0;
-    var rel = messages.filter(function (m) { return (m.role === 'user' || m.role === 'assistant') && isStoryScene(m.scene || 'story'); });
-    return rel.length > count;
+    var targets = [{ id: offlineChatId, isMain: true }];
+    (offlineInvitedChars || []).forEach(function (c) {
+      if (c && c.id != null) targets.push({ id: c.id, joinedAt: c.joinedAt, leftAt: c.leftAt });
+    });
+    return targets.some(function (t) {
+      var count = parseInt(localStorage.getItem(offMemCountKeyForChar(t)) || '0', 10) || 0;
+      return offMessagesForChar(t).length > count;
+    });
   } catch (e) { return false; }
 }
 (function bindExitModal() {
@@ -3326,7 +3333,6 @@ ${offlineStyleLibrary()}
        settings.maxTokens ? ('输出上限：' + Number(settings.maxTokens) + ' tokens。') : '',
        rulesInstruction, styleInstruction
       ].filter(Boolean).join('\n');
-  const worldbookFirstBlock = wb.front + wb.middle + wb.back;
 
   // ---- 接入你的主 API ----
   setOfflineBusy(true, 'gen');
@@ -3446,6 +3452,7 @@ ${offlineStyleLibrary()}
     let wb = { front: '', middle: '', back: '' };
     // 线下单聊/群聊都读取世界书：全局世界书永远生效；单人世界书按当前角色或群成员的绑定命中。
     try { wb = offGetWorldbookText(offlineIsGroup ? offGroupWorldbookIds() : null); } catch (e) {}
+    const worldbookFirstBlock = wb.front + wb.middle + wb.back;
     let scheduleBlock = '';
     try {
       if (!offlineIsGroup && window.NanoScheduleBridge && window.NanoScheduleBridge.refreshContext) {
@@ -3811,6 +3818,8 @@ function render() {
             list.appendChild(h);
             offlineInvitedChars.slice().forEach(function (c) {
                 list.appendChild(makeRow(c.name || '角色', '已加入这段线下；点「退场」回到初始角色的双人线', '退场', function () {
+                    // 先记下退场时间：只总结 TA 从入场到退场之间参与的这段剧情，单独写进 TA 自己的记忆库。
+                    c.leftAt = Date.now();
                     offlineInvitedChars = offlineInvitedChars.filter(function (x) { return String(x.id) !== String(c.id); });
                     if (!offlineExitedChars.some(function (x) { return String(x.id) === String(c.id); })) {
                         offlineExitedChars.push({ id: c.id, name: c.name || '' });
@@ -3819,7 +3828,8 @@ function render() {
                     saveOfflineExited();
                     rebuildMultiCharMembers();
                     try { updateTopTitle(); } catch (e) {}
-                    omToast((c.name || '角色') + ' 已退场，接下来回到双人线');
+                    omToast((c.name || '角色') + ' 已退场，正在整理 TA 这段的记忆…');
+                    try { offSummarizeInvitedChar(c); } catch (e) {}
                     render();
                 }, true));
             });
@@ -3857,8 +3867,11 @@ function render() {
                     avatar: c.avatar || '',
                     setting: c.setting || '',
                     gender: c.gender || '',
-                    nationality: c.nationality || ''
+                    nationality: c.nationality || '',
+                    joinedAt: Date.now()
                 });
+                // 重新邀请同一角色时，从这次入场开始重新计算 TA 的记忆进度
+                try { localStorage.removeItem(offMemCountKeyForChar({ id: c.id })); } catch (e) {}
                 saveOfflineInvites();
                 rebuildMultiCharMembers();
                 try { updateTopTitle(); } catch (e) {}
@@ -4709,7 +4722,8 @@ async function offMainConfig() {
     return raw;
   } catch (e) { return null; }
 }
-async function offExtractViaMain(chatText, label) {
+async function offExtractViaMain(chatText, label, opts) {
+  opts = opts || {};
   const cfg = await offMainConfig();
   if (!cfg || !cfg.mainUrl) return '';
   let url = String(cfg.mainUrl).trim().replace(/\/+$/, '');
@@ -4717,9 +4731,9 @@ async function offExtractViaMain(chatText, label) {
   const key = String(cfg.mainKey || '').trim();
   const model = cfg.mainModel || '';
   const where = String(label || '线下长文记录');
-  const charName = String(settings.charName || '角色');
+  const charName = String(opts.charName || settings.charName || '角色');
   const userName = String(settings.userName || '用户');
-  const prompt = '你就是「' + charName + '」本人。下面是「我」和「' + userName + '」的一段对话（可能是' + where + '）。请以「我」的第一人称，写下我真正会记住、会在意的事：重要事件、约定与承诺、关键关系进展、称呼与喜好的变化、我们说过的重要话与关键决定。\n'
+  const prompt = '你就是「' + charName + '」本人。下面是这段线下相处里所有参与者（可能包含「' + userName + '」和其他角色）说过的话（' + where + '）。请只以「我」的第一人称，写下我真正会记住、会在意的事：重要事件、约定与承诺、关键关系进展、称呼与喜好的变化、我们说过的重要话与关键决定。\n'
     + '【视角铁律】\n'
     + '- 每条都必须用「我」来写：我记得什么、我当时怎么想、我答应过什么。\n'
     + '- 不要写「' + charName + '和' + userName + '……」这种第三人称总结。\n'
@@ -4750,7 +4764,7 @@ function offGuessImportance(type, content) {
   if (String(content || '').length > 120) return 4;
   return 3;
 }
-async function offBuildMemoryEntries(summary, chatId, baseTs) {
+async function offBuildMemoryEntries(summary, chatId, baseTs, relatedChar) {
   let items = String(summary || '').split('\n').map(l => l.trim()).map(l => l.replace(/^[-*\d.\s、)]+/, '')).filter(l => l && l.length >= 6);
   const seen = {};
   items = items.filter(function (t) {
@@ -4773,7 +4787,7 @@ async function offBuildMemoryEntries(summary, chatId, baseTs) {
     }
     if (!importance) importance = offGuessImportance(type, t);
     const ts = startedAt + idx;
-    const entry = { id: 'om' + Date.now() + '-' + Math.random().toString(36).slice(2, 6), ts: ts, date: new Date(ts).toISOString(), time: new Date(ts).toLocaleString('zh-CN'), type: type, importance: importance, chatId: chatId, relatedChar: settings.charName || '', content: t, embedding: null, hasVector: false };
+    const entry = { id: 'om' + Date.now() + '-' + Math.random().toString(36).slice(2, 6), ts: ts, date: new Date(ts).toISOString(), time: new Date(ts).toLocaleString('zh-CN'), type: type, importance: importance, chatId: chatId, relatedChar: relatedChar || settings.charName || '', content: t, embedding: null, hasVector: false };
     try {
       const emb = await offEmbed(t);
       if (emb && emb.length) { entry.embedding = emb; entry.hasVector = true; }
@@ -4832,43 +4846,22 @@ async function offEmbedMany(texts) {
 }
 
 // 通用：把一段文本（可能跨多个楼层）一次性总结成记忆并入库。返回写入条数。
-async function summarizeTextToMemory(chatText, chatId, baseTs) {
+async function summarizeTextToMemory(chatText, chatId, baseTs, relatedChar) {
   if (!chatText || !String(chatText).trim()) return 0;
-  const summary = await offExtractViaMain(chatText);
+  const summary = await offExtractViaMain(chatText, '线下长文记录', { charName: relatedChar });
   if (!summary) return 0;
-  const entries = await offBuildMemoryEntries(summary, chatId || offlineChatId, baseTs);
+  const targetId = chatId || offlineChatId;
+  const entries = await offBuildMemoryEntries(summary, targetId, baseTs, relatedChar);
   if (!entries.length) return 0;
   if (window.NanoMemLink && window.NanoMemLink.append) {
-    await window.NanoMemLink.append(chatId || offlineChatId, entries);   // 小号记忆计入大号记忆库
+    await window.NanoMemLink.append(targetId, entries);   // 小号记忆计入大号记忆库
   } else {
-    const list = (await offMemGet('memlist_' + (chatId || offlineChatId))) || [];
+    const list = (await offMemGet('memlist_' + targetId)) || [];
     const arr = Array.isArray(list) ? list : [];
     entries.forEach(e => arr.push(e));
-    await offMemPut('memlist_' + (chatId || offlineChatId), arr);
+    await offMemPut('memlist_' + targetId, arr);
   }
-  try { window.parent.postMessage({ type: 'NANO_MEMORY_UPDATED', chatId: chatId || offlineChatId }, '*'); } catch (e) {}
-  // 多人修罗场：把这段线下记忆同步给被邀请的角色，之后他们在线上也会记得
-  try {
-    const extras = (offlineInvitedChars || []).filter(c => c && String(c.id) !== String(chatId || offlineChatId));
-    if (extras.length && isStoryScene(offlineScene)) {
-      for (let k = 0; k < extras.length; k++) {
-        const c = extras[k];
-        const copies = entries.map((e, idx) => Object.assign({}, e, {
-          id: 'omc' + Date.now() + '-' + k + '-' + idx + '-' + Math.random().toString(36).slice(2, 5),
-          chatId: c.id
-        }));
-        if (window.NanoMemLink && window.NanoMemLink.append) {
-          await window.NanoMemLink.append(c.id, copies);
-        } else {
-          const old = (await offMemGet('memlist_' + c.id)) || [];
-          const arr = Array.isArray(old) ? old : [];
-          copies.forEach(x => arr.push(x));
-          await offMemPut('memlist_' + c.id, arr);
-        }
-        try { window.parent.postMessage({ type: 'NANO_MEMORY_UPDATED', chatId: c.id }, '*'); } catch (e) {}
-      }
-    }
-  } catch (e) { console.warn('邀请角色记忆同步失败', e); }
+  try { window.parent.postMessage({ type: 'NANO_MEMORY_UPDATED', chatId: targetId }, '*'); } catch (e) {}
   return entries.length;
 }
 
@@ -4882,6 +4875,90 @@ function offMemFriendlyError(e) {
   if (/network|failed to fetch|fetch failed|网络|timeout|超时/i.test(s)) return '网络连接失败，记忆 API 请求没有发出去。这次没有写入记忆库，10 分钟后会自动重试。';
   return '记忆总结失败：' + (s ? s.slice(0, 200) : '未知错误') + '\n这次对话没有写入记忆库，聊天本身不受影响；10 分钟后会自动重试。';
 }
+// 线下记忆按「角色」分开记账：主角用原有 key；被邀请的角色各自一份，
+// 只统计自己入场（joinedAt）到退场（leftAt）之间的剧情，避免把整段历史重复抄给所有人。
+function offMsgTsStrict(m) {
+  var ts = parseInt(String((m && m.id) || '').split('-')[0], 10);
+  if (!ts || ts < 1000000000000) ts = Number(m && m.ts) || 0;
+  return ts > 0 ? ts : 0;
+}
+function offMemCountKeyForChar(target) {
+  var base = offMemCountKey();
+  if (!target || target.isMain) return base;
+  return base + '_' + String(target.id != null ? target.id : (target.name || 'char'));
+}
+function offMessagesForChar(target) {
+  var rel = messages.filter(function (m) {
+    return m && (m.role === 'user' || m.role === 'assistant' || m.role === 'char') && isStoryScene(m.scene || 'story');
+  });
+  if (!target || target.isMain) return rel;
+  var start = Number(target.joinedAt) || 0;
+  var end = Number(target.leftAt) || 0;
+  if (!start) return rel;
+  return rel.filter(function (m) {
+    var ts = offMsgTsStrict(m);
+    if (!ts || ts < start) return false;
+    if (end && ts > end) return false;
+    return true;
+  });
+}
+async function offSummarizeCharOnce(target, force) {
+  var key = offMemCountKeyForChar(target);
+  var rel = offMessagesForChar(target);
+  var count = parseInt(localStorage.getItem(key) || '0', 10) || 0;
+  if (count >= rel.length) return 0;
+  var seg = rel.slice(count);
+  var threshold = parseInt(settings.memThreshold || localStorage.getItem('offline_mem_threshold') || '5', 10) || 5;
+  if (!force && seg.length < threshold) return 0;
+  var take = seg.slice(0, 12);   // 从未总结的最早一段开始，避免跳过中间楼层
+  var defaultName = target && target.name ? target.name : (settings.charName || '角色');
+  var chatText = take.map(function (m) {
+    var who = m.role === 'user' ? (settings.userName || '用户') : (m.name || defaultName);
+    return who + '：' + String(m.content || '').slice(0, 900);
+  }).join('\n');
+  if (!chatText.trim()) return 0;
+  var summary = await offExtractViaMain(chatText, '线下相处', { charName: defaultName });
+  if (!summary) return 0;
+  var targetId = target && target.id != null ? target.id : offlineChatId;
+  var entries = await offBuildMemoryEntries(summary, targetId, offlineMsgTs(take[0]), defaultName);
+  if (!entries.length) return 0;
+  if (window.NanoMemLink && window.NanoMemLink.append) {
+    await window.NanoMemLink.append(targetId, entries);
+  } else {
+    var old = (await offMemGet('memlist_' + targetId)) || [];
+    var arr = Array.isArray(old) ? old : [];
+    entries.forEach(function (e) { arr.push(e); });
+    await offMemPut('memlist_' + targetId, arr);
+  }
+  var lastIdx = rel.indexOf(take[take.length - 1]);
+  localStorage.setItem(key, String(Math.max(count, lastIdx + 1)));
+  try { window.parent.postMessage({ type: 'NANO_MEMORY_UPDATED', chatId: targetId }, '*'); } catch (e) {}
+  return entries.length;
+}
+var OFF_MEM_CHAR_BUSY = {};
+async function offSummarizeCharBatches(target, opts) {
+  opts = opts || {};
+  var lock = offMemCountKeyForChar(target);
+  if (OFF_MEM_CHAR_BUSY[lock]) return 0;
+  OFF_MEM_CHAR_BUSY[lock] = true;
+  var total = 0;
+  try {
+    for (var i = 0; i < 8; i++) {
+      var n = await offSummarizeCharOnce(target, !!opts.force);
+      if (!n) break;
+      total += n;
+    }
+  } finally {
+    OFF_MEM_CHAR_BUSY[lock] = false;
+  }
+  return total;
+}
+async function offSummarizeInvitedChar(target) {
+  if (!target || target.id == null) return 0;
+  if (!isStoryScene(offlineScene)) return 0;
+  try { return await offSummarizeCharBatches(target, { force: true }); }
+  catch (e) { console.warn('邀请角色记忆总结失败', e); return 0; }
+}
 async function summarizeOfflineMemories(force) {
   if (!offlineChatId || OFF_MEM_BUSY.v) return;
   if (!force && Date.now() < OFF_MEM_RETRY_AFTER) return;
@@ -4891,19 +4968,17 @@ async function summarizeOfflineMemories(force) {
   if (!force && settings.autoSummary === false) return;
   OFF_MEM_BUSY.v = true;
   try {
-    const count = parseInt(localStorage.getItem(offMemCountKey()) || '0', 10) || 0;
-    const rel = messages.filter(m => (m.role === 'user' || m.role === 'assistant') && isStoryScene(m.scene || 'story'));
-    if (count >= rel.length) return;
-    const seg = rel.slice(count);
-    const threshold = parseInt(settings.memThreshold || localStorage.getItem('offline_mem_threshold') || '5', 10) || 5;
-    if (!force && seg.length < threshold) return;
-    const take = seg.slice(0, 12);   // 从未总结的最早一段开始，避免跳过中间楼层
-    const chatText = take.map(m => ((m.role === 'user' ? (settings.userName || '用户') : (m.name || settings.charName || '角色')) + '：' + String(m.content || '').slice(0, 900))).join('\n');
-    if (!chatText.trim()) return;
-    const n = await summarizeTextToMemory(chatText, offlineChatId, offlineMsgTs(take[0]));
-    if (!n) return;
-    const lastIdx = rel.indexOf(take[take.length - 1]);
-    localStorage.setItem(offMemCountKey(), String(Math.max(count, lastIdx + 1)));
+    var targets = [{ id: offlineChatId, name: settings.charName || '角色', isMain: true }];
+    // 退出线下（force）时：主人格 + 仍在场的被邀请角色分别总结；已退场的角色在点「退场」时已经单独总结过。
+    if (force) {
+      (offlineInvitedChars || []).forEach(function (c) {
+        if (!c || c.id == null) return;
+        targets.push({ id: c.id, name: c.name || '角色', joinedAt: c.joinedAt, leftAt: c.leftAt });
+      });
+    }
+    for (var i = 0; i < targets.length; i++) {
+      await offSummarizeCharBatches(targets[i], { force: !!force });
+    }
   } catch (e) {
     console.warn('离线记忆总结失败', e);
     OFF_MEM_RETRY_AFTER = Date.now() + 10 * 60 * 1000;

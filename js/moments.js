@@ -295,11 +295,15 @@
         return false;
     }
 
-    function rosterKey() { return NPC_ROSTER_PREFIX + currentMaskId(); }
-    function rosterSrcKey() { return NPC_ROSTER_PREFIX + 'src_' + currentMaskId(); }
-    function loadNpcRoster() {
+    // 花名册按「作者角色」隔离：charA 的熟人只出现在 charA 的动态下，不和 charB 共用。
+    function rosterScopeToken(scope) {
+        return String(scope || 'global').replace(/[^a-zA-Z0-9_-]/g, '_');
+    }
+    function rosterKey(scope) { return NPC_ROSTER_PREFIX + currentMaskId() + '_' + rosterScopeToken(scope); }
+    function rosterSrcKey(scope) { return NPC_ROSTER_PREFIX + 'src_' + currentMaskId() + '_' + rosterScopeToken(scope); }
+    function readRoster(key) {
         try {
-            var raw = localStorage.getItem(rosterKey());
+            var raw = localStorage.getItem(key);
             if (raw) {
                 var arr = JSON.parse(raw);
                 if (Array.isArray(arr)) {
@@ -313,14 +317,32 @@
         } catch (e) {}
         return null;
     }
-    function loadNpcRosterSrc() {
-        try { var raw = localStorage.getItem(rosterSrcKey()); if (raw) { var a = JSON.parse(raw); if (Array.isArray(a)) return a; } } catch (e) {}
+    function loadNpcRoster(scope) {
+        if (scope) return readRoster(rosterKey(scope));
+        // 不指定 scope：合并该 mask 下所有作者的花名册（只用于头像/资料回查）
+        var out = [], seen = {};
+        try {
+            var prefix = NPC_ROSTER_PREFIX + currentMaskId() + '_';
+            var srcPrefix = NPC_ROSTER_PREFIX + 'src_' + currentMaskId() + '_';
+            for (var i = 0; i < localStorage.length; i++) {
+                var k = localStorage.key(i);
+                if (!k || k.indexOf(prefix) !== 0 || k.indexOf(srcPrefix) === 0) continue;
+                (readRoster(k) || []).forEach(function (n) {
+                    if (!n || !n.name || seen[n.name]) return;
+                    seen[n.name] = 1; out.push(n);
+                });
+            }
+        } catch (e) {}
+        return out;
+    }
+    function loadNpcRosterSrc(scope) {
+        try { var raw = localStorage.getItem(rosterSrcKey(scope)); if (raw) { var a = JSON.parse(raw); if (Array.isArray(a)) return a; } } catch (e) {}
         return null;
     }
-    function saveNpcRoster(list, charIds) {
+    function saveNpcRoster(list, charIds, scope) {
         try {
-            localStorage.setItem(rosterKey(), JSON.stringify(list || []));
-            localStorage.setItem(rosterSrcKey(), JSON.stringify(charIds || []));
+            localStorage.setItem(rosterKey(scope), JSON.stringify(list || []));
+            localStorage.setItem(rosterSrcKey(scope), JSON.stringify(charIds || []));
         } catch (e) {}
     }
 
@@ -670,8 +692,8 @@
         });
     }
 
-    function rosterNpcs() {
-        var list = loadNpcRoster() || [];
+    function rosterNpcs(scope) {
+        var list = loadNpcRoster(scope) || [];
         return list.filter(function(n) { return n && n.name && !isGenericNpcName(n.name) && !isLegacyFallbackNpc(n.name); }).map(function(n) {
             return {
                 id: n.id || ('npc_' + n.name),
@@ -687,9 +709,9 @@
         });
     }
 
-    function generateContextNPCs() {
+    function generateContextNPCs(scope) {
         var seen = {}, out = [];
-        dbNpcs().concat(rosterNpcs()).forEach(function(n) {
+        dbNpcs().concat(rosterNpcs(scope)).forEach(function(n) {
             if (!n || !n.name || seen[n.name]) return;
             seen[n.name] = 1;
             out.push(n);
@@ -1887,7 +1909,7 @@
     }
 
     // ===== 生成 NPC 花名册（依据 char / user 人设、世界书推断真实关系人物） =====
-    async function generateNpcRoster(chars) {
+    async function generateNpcRoster(chars, scope, replace) {
         var persona = buildPersonaBlock(chars);
         var memText = await loadCharMemoryText(chars).catch(function() { return ''; });
         if (memText) persona += '\n\n【角色长期记忆（优先从这里提到的真实人物取材）】\n' + memText.slice(0, 2400);
@@ -1908,7 +1930,19 @@
         var raw = await fetchAIResponse(userMsg, false, { apiPref: 'sub', system: system, maxTokens: 700, temperature: 0.85 });
         var list = parseNpcRoster(raw, chars);
         var ids = (chars || []).map(function(c) { return String((c && (c.id || c.name)) || ''); }).filter(Boolean);
-        if (list.length) saveNpcRoster(list, ids);
+        // replace 模式下即使这次生成失败也要清掉旧名单，避免继续复用上一次的同一批 NPC。
+        if (replace || list.length) {
+            var old = replace ? [] : (loadNpcRoster(scope) || []);
+            var merged = old.concat(list);
+            var seen = {};
+            merged = merged.filter(function(n) {
+                if (!n || !n.name) return false;
+                var k = normName(n.name);
+                if (seen[k]) return false;
+                seen[k] = 1; return true;
+            });
+            saveNpcRoster(merged.slice(0, 24), ids, scope);
+        }
         return list;
     }
 
@@ -2008,6 +2042,20 @@
         if (!item) return;
         if (window.__momentsGenerating) return;
 
+        // 刷新评论 = 换一批新面孔。先清掉上一次 AI 生成的 NPC 评论，
+        // 只保留作者和用户本人，避免旧 NPC 一直占着评论区被反复复用。
+        var __oldComments = Array.isArray(item.comments) ? item.comments.slice() : null;
+        var __refreshOk = false;
+        try {
+            var authorKey = normName(item.author);
+            var userKey = normName(currentUser.name);
+            item.comments = (item.comments || []).filter(function (c) {
+                if (!c) return false;
+                var cu = normName(c.user);
+                return cu === authorKey || cu === userKey;
+            });
+        } catch (e) { __oldComments = null; __refreshOk = true; }
+
         showMomentsLoading('正在生成评论…');
         window.__momentsGenerating = true;
         try {
@@ -2015,11 +2063,20 @@
 
             var bound = ((boundOverride && boundOverride.length) ? boundOverride : getUserBindChars())
                 .filter(isPostableChar);
-            var npcs = (npcsOverride && npcsOverride.length) ? npcsOverride : generateContextNPCs();
-            // 没有朋友（NPC）花名册时先生成一份，保证评论区能刷出 NPC 互动
-            if (!npcs.length && !(npcsOverride && npcsOverride.length) && bound.length) {
-                // 不再使用固定名字兜底：NPC 必须由 AI 按人设/世界书/记忆自己想。
-                try { await generateNpcRoster(bound); npcs = generateContextNPCs(); } catch (e) {}
+            // NPC 只属于这条动态的作者：每次刷新评论都按作者现场重新生成，
+            // 不再读所有人共用的花名册，避免四个 char 的评论区全是同一批人。
+            var isUserAuthor = normName(item.author) === normName(currentUser.name);
+            var authorCharForScope = findCharByName(bound, item.author) || null;
+            var rosterScope = authorCharForScope
+                ? ('char_' + String(authorCharForScope.id || authorCharForScope.name))
+                : (isUserAuthor ? 'user' : ('post_' + normName(item.author)));
+            var npcs = (npcsOverride && npcsOverride.length) ? npcsOverride : [];
+            if (!npcs.length) {
+                var rosterChars = authorCharForScope ? [authorCharForScope] : (isUserAuthor ? bound : []);
+                if (rosterChars.length) {
+                    try { await generateNpcRoster(rosterChars, rosterScope, true); } catch (e) {}
+                }
+                npcs = generateContextNPCs(rosterScope);
             }
             // 主动朋友圈（后台/Worker）里的 NPC 不在花名册中。把这条动态里已经出现的
             // NPC 收编进来，用户回复他们时才能被识别、才会得到回应。
@@ -2039,9 +2096,8 @@
                         relation: '朋友圈里可能认识的人', setting: ''
                     });
                 }
+                // 只保留作者本人；旧的点赞者/评论者不再并入，刷新评论要换新面孔。
                 add(item.author);
-                (item.likes || []).forEach(add);
-                (item.comments || []).forEach(function(c) { if (c) add(c.user); });
             })();
             var isUserPost = normName(item.author) === normName(currentUser.name);
             var authorNpc = findNpcByName(npcs, item.author);
@@ -2162,10 +2218,20 @@
 
             if (!item.comments) item.comments = [];
             parsed.forEach(function(c) { item.comments.push(c); });
+            __refreshOk = parsed.length > 0;
             saveOneMoment(item);
             renderFeed();
             if (document.getElementById('viewDetail').classList.contains('active') && currentDetailId === id) openDetail(id);
         } finally {
+            // 生成失败/没有新评论：把旧评论还回去，不能让一次刷新清空评论区。
+            if (!__refreshOk && __oldComments) {
+                try {
+                    item.comments = __oldComments;
+                    saveOneMoment(item);
+                    renderFeed();
+                    if (document.getElementById('viewDetail').classList.contains('active') && currentDetailId === id) openDetail(id);
+                } catch (e) {}
+            }
             hideMomentsLoading();
             window.__momentsGenerating = false;
             try { if (window.parent !== window) window.parent.postMessage({ type: 'NANO_GEN_NOTIFY', title: '朋友圈已更新', body: '新动态生成完成', target: 'moments', avatar: (item && item.avatar) || '', name: (item && item.name) || '朋友圈' }, '*'); } catch (e) {}
@@ -2376,12 +2442,13 @@
                 });
                 if (added.length) {
                     var ids = selected.map(function(c) { return String((c && (c.id || c.name)) || ''); }).filter(Boolean);
-                    try { saveNpcRoster(npcs.slice(0, 12), ids); } catch (e) {}
+                    try { saveNpcRoster(npcs.slice(0, 12), ids, 'forum_batch'); } catch (e) {}
                 }
             })();
             // 仍然没有任何 NPC 时再补一次花名册，避免整批动态没有点赞/评论。
+            // 用独立的批次 scope，不覆盖各角色自己的花名册。
             if (!npcs.length && selected.length) {
-                try { await generateNpcRoster(selected); npcs = generateContextNPCs(); } catch (e) {}
+                try { await generateNpcRoster(selected, 'forum_batch', true); npcs = generateContextNPCs('forum_batch'); } catch (e) {}
             }
             // 已选手动角色（含 NPC）不能同时作为「NPC 名单」重复出现。
             npcs = npcs.filter(function(n) {
@@ -2545,7 +2612,8 @@
         if (!userPosts.length) return;
         var todo = userPosts.slice(0, 2);
         for (var i = 0; i < todo.length; i++) {
-            try { await window.triggerPostRefresh(todo[i].id, selected, npcs); } catch (e) {}
+            // 不传共享 NPC：让 triggerPostRefresh 按这条动态的作者现场生成，避免跨角色共用。
+            try { await window.triggerPostRefresh(todo[i].id, selected); } catch (e) {}
         }
     }
 

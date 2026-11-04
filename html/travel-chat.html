@@ -1229,8 +1229,9 @@ async function travelExit(i){
     };
   });
   // 每一步单独兜底，避免某一步失败导致卡片和旅途记录都写不进去。
-  // 只要这次行程有内容并做过总结（回到线上，或直接退出时勾选了总结），都要同步。
-  const shouldSync=!!(hasContent&&(final||summarize));
+  // 只有「回到线上」才算结束旅行、写旅途卡片/系统提示；
+  // 「直接退出」即使勾选了总结，也只写记忆，保留继续旅行的存档。
+  const shouldSync=!!(hasContent&&final);
   try{ if(window.NanoTravelStore&&hasContent) await NanoTravelStore.load(true); }catch(e){}
   if(summarize&&hasContent){
     try{
