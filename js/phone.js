@@ -959,6 +959,21 @@ ${PERSONA_RULE}
   return o;
 }
 
+/* 浏览器数据兼容：旧数据是数组（只有普通记录），新数据是 {normal, incognito} */
+function normalizeBrowserData(raw){
+  const clean = arr => (Array.isArray(arr) ? arr : [])
+    .filter(it => it && typeof it === "object")
+    .filter(it => it.keyword || it.query || it.title || it.url);
+  if(Array.isArray(raw)) return { normal: clean(raw), incognito: [] };
+  if(raw && typeof raw === "object"){
+    return {
+      normal: clean(raw.normal || raw.history),
+      incognito: clean(raw.incognito || raw.private)
+    };
+  }
+  return { normal: [], incognito: [] };
+}
+
 async function genBrowser(api, char){
   const ctx = await buildCharContext(char);
   const user = `你是「${char.name}」的浏览器记录生成器。
@@ -966,13 +981,13 @@ ${ctx}
 
 ${PERSONA_RULE}
 
-请生成 4-5 条「${char.name}」的浏览器搜索/访问记录。
+请生成「${char.name}」的浏览器记录，分成「普通搜索」和「无痕浏览」两组。
 要求：
-1. 内容符合角色兴趣与生活，可包含 1 条角色私下查过的日常问题。
-2. 网址像真实域名。
-3. 字段：
+1. normal（普通搜索/访问记录）4 条：符合角色兴趣与生活的日常搜索、网页访问。
+2. incognito（无痕浏览记录）2-3 条：角色私下查过、不想被别人看到的内容，例如健康与身体的小疑虑、感情里的反复确认、难以启齿的念头、私密购物或独自面对的心事。要贴合人设，克制但具体，不要每条都写性。
+3. 每条记录包含：
    - keyword: 搜索词或页面标题（显示在列表第一行）
-   - url: 网址
+   - url: 网址，像真实域名
    - site: 网站名（如 "NANO JOURNAL"）
    - title: 网页标题（详情页大标题）
    - time: 完整时间，如 "今天 22:06"
@@ -980,11 +995,14 @@ ${PERSONA_RULE}
    - intro: 页面摘要（40-80 字）
    - quote: 页面引用句（15-40 字）
    - points: 3 条要点字符串数组
-只输出 JSON 数组，形如 [{"keyword":"...","url":"...","site":"...","title":"...","time":"...","visits":3,"intro":"...","quote":"...","points":["..."]}]`;
+只输出 JSON 对象，形如 {"normal":[{"keyword":"...","url":"...","site":"...","title":"...","time":"...","visits":3,"intro":"...","quote":"...","points":["..."]}],"incognito":[{"keyword":"...","url":"...","site":"...","title":"...","time":"...","visits":2,"intro":"...","quote":"...","points":["..."]}]}`;
   const t = await callAPI(api, SYS_JSON, user);
-  const a = extractJSON(t);
-  if(!Array.isArray(a) || !a.length) throw new Error("浏览器数据格式错误");
-  return a.slice(0, 5);
+  const o = extractJSON(t);
+  const model = normalizeBrowserData(o);
+  if(!model.normal.length && !model.incognito.length) throw new Error("浏览器数据格式错误");
+  model.normal = model.normal.slice(0, 6);
+  model.incognito = model.incognito.slice(0, 4);
+  return model;
 }
 
 async function genGame(api, char){
@@ -1137,6 +1155,7 @@ function closeApp(){
   appHost.classList.remove("show");
   appHost.innerHTML = "";
   currentAppId = null;
+  appHost._bwMode = null;
 }
 
 /* ---------- 视频 ---------- */
@@ -1921,9 +1940,20 @@ async function openBrowser(){
         <input data-q placeholder="搜索或输入网址">
         <button class="bw-go" data-go>↑</button>
       </div>
-      <div class="bw-heading"><h2>搜索记录</h2><span data-count>0 条</span></div>
+      <div class="bw-tip hidden" data-tip>无痕浏览是单独归档，不会混进搜索记录</div>
+      <div class="bw-heading"><h2 data-mode-title>搜索记录</h2><span data-count>0 条</span></div>
       <div class="bw-records" data-list></div>
     </main>
+    <nav class="bw-tabbar">
+      <button class="bw-tab active" data-mode="normal" type="button">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 5 5"/></svg>
+        <span>搜索</span>
+      </button>
+      <button class="bw-tab" data-mode="incognito" type="button">
+        <svg viewBox="0 0 24 24"><path d="M4.5 10.5 6 7.8a2.2 2.2 0 0 1 1.9-1.1h8.2a2.2 2.2 0 0 1 1.9 1.1l1.5 2.7"/><path d="M3.5 12.2c1.7-1.4 3.9-2.2 6.1-2.2 1.3 0 2.1.6 2.4 1.4.3-.8 1.1-1.4 2.4-1.4 2.2 0 4.4.8 6.1 2.2"/><circle cx="8.2" cy="14.2" r="2.6"/><circle cx="15.8" cy="14.2" r="2.6"/></svg>
+        <span>无痕浏览</span>
+      </button>
+    </nav>
     <div class="dt" data-detail>
       <header class="dt-top">
         <button class="dt-back" data-dback aria-label="返回"><svg viewBox="0 0 24 24"><path d="M14.5 5 7.5 12l7 7"/></svg></button>
@@ -1967,15 +1997,26 @@ async function openBrowser(){
   };
 
   const saved = await dataGet(`app_${currentChar.id}_browser`);
-  renderBrowserList(saved?.data || []);
+  const model = normalizeBrowserData(saved?.data);
+  const setMode = mode => {
+    appHost._bwMode = mode;
+    appHost.querySelectorAll(".bw-tab").forEach(b => b.classList.toggle("active", b.dataset.mode === mode));
+    appHost.querySelector("[data-mode-title]").textContent = mode === "incognito" ? "无痕浏览" : "搜索记录";
+    appHost.querySelector("[data-tip]").classList.toggle("hidden", mode !== "incognito");
+    renderBrowserList(model, mode);
+  };
+  appHost.querySelectorAll(".bw-tab").forEach(b => { b.onclick = () => setMode(b.dataset.mode); });
+  setMode(appHost._bwMode === "incognito" ? "incognito" : "normal");
 }
-function renderBrowserList(items){
+function renderBrowserList(model, mode){
+  const items = mode === "incognito" ? model.incognito : model.normal;
   const list = appHost.querySelector("[data-list]");
   const count = appHost.querySelector("[data-count]");
   count.textContent = items.length + " 条";
+  list.classList.toggle("incognito", mode === "incognito");
   list.innerHTML = "";
   if(!items.length){
-    list.innerHTML = `<div class="app-empty">暂无搜索记录，点右上角刷新生成</div>`;
+    list.innerHTML = `<div class="app-empty">${mode === "incognito" ? "没有无痕浏览记录，点右上角刷新生成" : "暂无搜索记录，点右上角刷新生成"}</div>`;
     return;
   }
   items.forEach(it => {
@@ -2002,9 +2043,9 @@ async function refreshBrowser(){
   const list = appHost.querySelector("[data-list]");
   if(list) list.innerHTML = `<div class="app-empty">正在生成…</div>`;
   try{
-    const data = await genBrowser(api, currentChar);
-    await dataSet(`app_${currentChar.id}_browser`, {type:"browser", data});
-    renderBrowserList(data);
+    const model = await genBrowser(api, currentChar);
+    await dataSet(`app_${currentChar.id}_browser`, {type:"browser", data:model});
+    renderBrowserList(model, appHost._bwMode || "normal");
   }catch(e){
     if(list) list.innerHTML = `<div class="app-error">生成失败：${escHtml(e.message)}</div>`;
   }
@@ -2512,9 +2553,12 @@ function renderChatList(chats, userMsgs){
     </div>
     <div class="ct-side">
       <div class="ct-time">${escHtml(uPrev.time)}</div>
+      <button class="ct-remark-btn" data-remark type="button">改备注</button>
     </div>`;
   const uConv = {id: USER_CONV_ID, name: nick, avatar: uAv, messages: userMsgs || [], isUser: true};
   uRow.onclick = () => openChatDetail(uConv);
+  const remarkBtn = uRow.querySelector("[data-remark]");
+  if(remarkBtn) remarkBtn.onclick = e => { e.stopPropagation(); openRemarkEditor(); };
   list.appendChild(uRow);
 
   (chats || []).forEach(c => {
@@ -2555,6 +2599,11 @@ function openChatDetail(c){
   const isUser = !!c.isUser;
   currentConv = c;
   appHost.querySelector("[data-dtitle]").textContent = c.name || "";
+  const more = appHost.querySelector("[data-dmore]");
+  if(more){
+    more.style.display = isUser ? "" : "none";
+    more.setAttribute("aria-label", isUser ? "修改备注" : "更多");
+  }
   const box = appHost.querySelector("[data-msgs]");
   const charAv = (currentChar && currentChar.avatar) || "";
   const charInit = escHtml(String((currentChar && currentChar.name) || "?").slice(0,1));
@@ -3176,7 +3225,7 @@ const MULTI_SPEC = {
   mail:`"mail":[{"sender":"发件人","date":"8月27日","subject":"标题","preview":"预览","icon":"person","unread":false,"title":"正文标题","body":["段落一","段落二"]}]`,
   memo:`"memo":[{"group":"过去 7 天","items":[{"title":"标题","meta":"日期 · 摘要","content":"正文"}]}]`,
   health:`"health":{"steps":{"total":8426,"goal":10000,"hours":[24个整数]},"distance":{"total":"5.80","kcal":318},"sleep":{"score":92,"duration":"8小时12分","deep":"1h 48m","weekly":[7个0-100]},"screen":{"hours":3,"minutes":46,"weekly":[7个整数分钟]}}`,
-  browser:`"browser":[{"keyword":"搜索词","url":"https://example.com/a","site":"网站名","title":"网页标题","time":"今天 22:06","visits":3,"intro":"页面摘要","quote":"引用句","points":["要点一","要点二","要点三"]}]`,
+  browser:`"browser":{"normal":[{"keyword":"搜索词","url":"https://example.com/a","site":"网站名","title":"网页标题","time":"今天 22:06","visits":3,"intro":"页面摘要","quote":"引用句","points":["要点一","要点二","要点三"]}],"incognito":[{"keyword":"无痕搜索词","url":"https://example.com/b","site":"网站名","title":"网页标题","time":"今天 23:41","visits":2,"intro":"页面摘要","quote":"引用句","points":["要点一","要点二","要点三"]}]}`,
   game:`"game":[{"name":"中文游戏名","id":"4827 1936","winRate":68,"matches":327,"wins":222,"losses":105,"rank":"大师","rating":2847,"rankMark":"III","recent":[{"result":"W","mode":"排位赛","time":"今天 · 21:42","kda":"18 / 6 / 11"}],"habit":"隐藏游戏习惯","weekly":[35,55,43,75,100,67,46]}]`,
   private:`"private":[{"type":"PRIVATE / 01","time":"23:41","title":"标题","preview":"一句隐晦的概述","detail":"不为人说的具体内容","tags":["心事","私密"],"level":"轻"}]`,
   chat:`"chat":[{"name":"NPC名字","lastMsg":"最后一条","time":"昨天 22:13","unread":0,"messages":[{"side":"left","text":"消息"}]}]`,
@@ -3188,7 +3237,7 @@ const MULTI_SPEC = {
 };
 const MULTI_COUNT = {
   video:"video 3 条", diary:"diary 3 篇", album:"album 5 条", mail:"mail 4 封",
-  memo:"memo 约 4 条（分 2-3 组，每组 1-2 条）", browser:"browser 4 条", game:"game 2 个",
+  memo:"memo 约 4 条（分 2-3 组，每组 1-2 条）", browser:"browser：normal 4 条、incognito 2-3 条", game:"game 2 个",
   private:"private 4 条不为人说的私事 / 心事（成人角色可含亲密关系）", chat:"chat 3 个会话（每个 5-8 条消息）",
   doubao:"doubao 8-10 条消息（char 与 ai 交替，构成一次完整对话）",
   taobao:"taobao：cart 2-3 件、orders 2-3 单、food 2-3 单",
@@ -3230,7 +3279,7 @@ ${walletContext}
   ${need}
 }
 数量要求：${counts || "按示例数量生成"}；health 的 hours 恰好 24 个整数、weekly 恰好 7 个数字。
-必须保证每一个 App 都有数据，一个都不能漏。
+优先保证每个 App 都至少出现：如果篇幅不够，宁可每个 App 写短一点，也不要漏掉后面的 App；确实写不出的 App 可以跳过，继续写后面的 App，不要中断整段 JSON。
 严禁生成「和用户本人」的聊天会话。
 
 【写作要求 · 每条都要有内容，不要只写一两句】
@@ -3238,6 +3287,7 @@ ${walletContext}
 - diary.content：120-200 字，有具体场景、动作、心情变化，像真人日记。
 - mail.body：每封 3-4 段，每段 30-60 字，有称呼、正文、落款的感觉。
 - memo：总数约 4 条，分 2-3 组；每条 content 90-150 字，写清具体经过、心情或待办细节，不要写得太短。
+- browser.normal：4 条日常搜索/访问；browser.incognito：2-3 条角色私下查过、不想被别人看到的内容（健康与身体的小疑虑、感情里的反复确认、难以启齿的念头、私密购物等），克制但具体，不要每条都写性。
 - browser.intro：50-100 字；quote：15-40 字；points 3 条各 15-30 字。
 ${ids.includes("private") ? "- private.preview：一句隐晦的概述；detail：不为人说的具体内容，写角色不愿公开的私事、难以启齿的心事或亲密关系里的秘密；角色可以涉及亲密与性相关的私事。\n" : ""}
 - game.habit：40-80 字，写清玩法习惯与心态。
@@ -3277,6 +3327,12 @@ function extractAppValue(raw, id){
       }
     }
   }
+  // 输出被截断时，最后一个 App 往往没有闭合括号：补全后再尝试抢救。
+  try{
+    const fixed = repairJsonText(raw.slice(start));
+    const v = JSON.parse(fixed);
+    if(v !== undefined && v !== null) return v;
+  }catch(e){}
   return undefined;
 }
 
@@ -3309,7 +3365,10 @@ async function genMulti(api, char, ids, opts){
   log.push({t:"", s:"Apps: " + ids.join(", ")});
 
   let resp, rawText = "";
-  let useJsonFormat = true, tokens = maxTokens, lastErr = "";
+  /* 不再默认发送 response_format：部分网关（如 AI Studio）开启抗截断后，
+     会和结构化输出冲突并直接返回 HTTP 400，整批 App 一个都生成不出来。
+     提示词已经要求只输出 JSON，解析端也能逐 App 抢救，所以这里用普通文本输出。 */
+  let useJsonFormat = false, tokens = maxTokens, lastErr = "";
   for(let attempt = 0; attempt < 4; attempt++){
     const payload = Object.assign({}, baseBody, {max_tokens: tokens});
     if(useJsonFormat) payload.response_format = {type:"json_object"};
@@ -3328,9 +3387,11 @@ async function genMulti(api, char, ids, opts){
     }
     if(resp.ok) break;
     lastErr = "HTTP " + resp.status + (rawText ? "：" + rawText.slice(0,150) : "");
-    // 接口不支持 response_format：去掉再试
-    if(useJsonFormat && /response_format|json_object|invalid|unsupported|unknown/i.test(rawText)){
-      log.push({t:"warn", s:"接口不支持 response_format，已改为普通 JSON 输出"});
+    // 接口不支持 / 拒绝结构化输出：去掉 response_format 再试。
+    // 兼容中英文报错，例如「不能同时使用结构化输出」「请求参数无效」「抗截断」。
+    if(useJsonFormat && (resp.status === 400 || resp.status === 422 ||
+        /response_format|json_object|structured|invalid|unsupported|unknown|结构化|抗截断|参数无效|不兼容|不能同时/i.test(rawText))){
+      log.push({t:"warn", s:"接口拒绝结构化输出，已改为普通 JSON 重试"});
       useJsonFormat = false;
       continue;
     }
@@ -3355,7 +3416,8 @@ async function genMulti(api, char, ids, opts){
       finishReason = env?.choices?.[0]?.finish_reason || "";
     }
   }catch(e){}
-  if(finishReason) log.push({t: finishReason === "length" ? "warn" : "", s:"finish_reason: " + finishReason});
+  const truncated = finishReason === "length";
+  if(finishReason) log.push({t: truncated ? "warn" : "", s:"finish_reason: " + finishReason + (truncated ? "（输出被截断，已保留截断前生成的内容）" : "")});
   if(!content) content = rawText;   /* 兼容直接返回模型内容的接口 */
   const text = String(content);
   log.push({t:"sec", s:"模型内容（前 1200 字）"});
@@ -3367,8 +3429,10 @@ async function genMulti(api, char, ids, opts){
 
   log.push({t:"sec", s:"解析结果"});
   const ok = {};
+  const partialIds = [];
   const source = (json && typeof json === "object") ? json : {};
   if(!json || typeof json !== "object") log.push({t:"warn", s:"顶层 JSON 解析失败，尝试逐个 App 抢救…"});
+  const ARRAY_APPS = ["video","diary","album","mail","memo","game","private","chat","doubao"];
   for(const id of ids){
     let data = source[id];
     if(data === undefined || data === null){
@@ -3377,8 +3441,27 @@ async function genMulti(api, char, ids, opts){
     }
     if(data === undefined || data === null){ log.push({t:"err", s:`${id}: 缺失`}); continue; }
     let valid = true, reason = "";
-    if(["video","diary","album","mail","memo","browser","game","private","chat","doubao"].includes(id)){
+    if(id === "browser"){
+      data = normalizeBrowserData(data);
+      if(data.normal.length > 6) data.normal = data.normal.slice(0, 6);
+      if(data.incognito.length > 4) data.incognito = data.incognito.slice(0, 4);
+      if(!data.normal.length || !data.incognito.length){
+        if(data.normal.length || data.incognito.length){
+          /* 两组只生成了一组：先保存已生成的部分，同时记为未完成，让用户可继续补。 */
+          ok[id] = {type:id, data};
+          partialIds.push(id);
+          log.push({t:"warn", s:`${id}: 只生成了一部分（普通 ${data.normal.length} 条 / 无痕 ${data.incognito.length} 条），已先保存`});
+          continue;
+        }
+        valid = false;
+        reason = "normal / incognito 都为空";
+      }
+    }else if(ARRAY_APPS.includes(id)){
       if(!Array.isArray(data) || !data.length){ valid = false; reason = "不是非空数组"; }
+      else{
+        data = data.filter(it => it && typeof it === "object" && Object.keys(it).length);
+        if(!data.length){ valid = false; reason = "数组里没有有效内容"; }
+      }
     }
     if(id === "health" && (!data || typeof data !== "object" || !data.steps)){ valid = false; reason = "缺少 steps"; }
     if((id === "taobao" || id === "store") && (!data || typeof data !== "object" || !(Array.isArray(data.cart) || Array.isArray(data.orders) || Array.isArray(data.food)))){ valid = false; reason = "缺少 cart/orders/food"; }
@@ -3386,9 +3469,16 @@ async function genMulti(api, char, ids, opts){
     if(id === "wallet" && (!data || typeof data !== "object" || !Array.isArray(data.transactions) || !data.transactions.length)){ valid = false; reason = "缺少 transactions"; }
     if(!valid){ log.push({t:"err", s:`${id}: 校验失败（${reason}）`}); continue; }
     ok[id] = {type:id, data};
-    log.push({t:"ok", s:`${id}: OK（${Array.isArray(data)?data.length+" 条":"对象"}）`});
+    const count = id === "browser"
+      ? `普通 ${data.normal.length} 条 / 无痕 ${data.incognito.length} 条`
+      : (Array.isArray(data) ? data.length + " 条" : "对象");
+    log.push({t:"ok", s:`${id}: OK（${count}）`});
   }
-  return {ok, log, fatal:null};
+  if(truncated){
+    const missing = ids.filter(id => !ok[id] || partialIds.includes(id));
+    log.push({t:"warn", s:`输出达到上限被截断，已保留截断前生成的 ${ids.length - missing.length} 个 App` + (missing.length ? `；未完成：${missing.join("、")}` : "")});
+  }
+  return {ok, log, fatal:null, truncated, partialIds};
 }
 
 /* ===== 生成状态（非阻塞 · 可切换 App · 一次只调用一次 API） ===== */
@@ -3475,6 +3565,8 @@ async function startGeneration(ids){
   const fatalMsgs = [];
   let blockedSkipped = false;
   let liteUsed = false;
+  let wasTruncated = false;
+  const partialIdSet = new Set();
 
   const runBatch = async (batch, label) => {
     showGenToast(label);
@@ -3526,9 +3618,11 @@ async function startGeneration(ids){
       r.ok.private = { type: "private", data: genPrivateLocal(currentChar) };
       genState.log.push({t:"warn", s:"私密：已用本地个人随想补充（不消耗 API）"});
     }
+    if(r.truncated) wasTruncated = true;
+    (r.partialIds || []).forEach(id => partialIdSet.add(id));
     if(r.fatal) fatalMsgs.push(`${label}：${r.fatal}`);
 
-    /* 生成完就立刻落盘 */
+    /* 生成完就立刻落盘：能解析出来的 App 先保存，缺失的 App 留给「继续生成」补。 */
     for(const id of Object.keys(r.ok)){
       try{
         let payload = r.ok[id];
@@ -3557,19 +3651,25 @@ async function startGeneration(ids){
     try { await reRenderCurrentApp(); } catch (e) {}
   }
 
-  const failed = ids.filter(id => !okAll[id]);
+  const failed = ids.filter(id => !okAll[id] || partialIdSet.has(id));
   genState.failed = failed;
-  if(!failed.length){ try{ if(window.NanoRefresh) NanoRefresh.success('已生成 ' + Object.keys(okAll).length + ' 个 App 的内容', { key:'gen' }); }catch(e){} }
+  const retryBtn = document.getElementById("genFailRetry");
+  if(!failed.length){
+    if(retryBtn) retryBtn.textContent = "重新生成";
+    try{ if(window.NanoRefresh) NanoRefresh.success('已生成 ' + Object.keys(okAll).length + ' 个 App 的内容', { key:'gen' }); }catch(e){}
+  }
   if(failed.length){
     lastFailedIds = failed;
     const all = getAppsForRefresh();
     const names = failed.map(id => { const a = all.find(x => x.id === id); return a ? a.name : id; });
-    const done = ids.length - failed.length;
-    const msg = (done ? `已保存 ${done} 个 App 的内容。\n` : "") +
+    const done = Object.keys(okAll).length;
+    if(retryBtn) retryBtn.textContent = done ? "继续生成" : "重新生成";
+    const msg = (done ? `已保存 ${done} 个 App 的内容，未生成完的部分可以继续补。\n` : "") +
+      (wasTruncated ? `本次输出达到上限被截断，已保留截断前生成的 App。\n` : "") +
       ((blockedSkipped || liteUsed) ? `模型安全策略拦截了部分内容${blockedSkipped ? "，「私密」已用本地随想补充" : ""}${liteUsed ? "，并用轻量上下文重试" : ""}；如果仍有失败，可调整人设 / 世界书后再试。\n` : "") +
       (fatalMsgs.length ? fatalMsgs.join("\n") + "\n" : "") +
-      `以下 App 生成失败：${names.join("、")}\n` +
-      `可点「重新生成」只补失败的部分。`;
+      `以下 App 未生成完整：${names.join("、")}\n` +
+      `可点「${done ? "继续生成" : "重新生成"}」只补失败的部分。`;
     showGenFail(msg);
     try{ if(window.NanoRefresh) NanoRefresh.fail('以下 App 生成失败：' + names.join('、'), { key:'gen' }); }catch(e){}
   }

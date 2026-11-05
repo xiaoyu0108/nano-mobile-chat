@@ -878,7 +878,7 @@
             padding: env(safe-area-inset-top, 0) 0 env(safe-area-inset-bottom, 0);
             font-family: 'Arial Rounded MT Bold', 'Hiragino Maru Gothic ProN', 'PingFang SC', system-ui, sans-serif;
             touch-action: manipulation; -webkit-tap-highlight-color: transparent;
-            transition: opacity .45s ease;
+            transition: opacity .3s ease;
             --ns-p1: #ffe6ef; --ns-p2: #ffd5e5; --ns-p3: #f9c6da; --ns-txt: #eba4c0;
         }
         #nano-splash.ns-out { opacity: 0; pointer-events: none; }
@@ -995,8 +995,17 @@
 <script src="bg.js"></script>
 
 <div class="home-shell pre-splash" id="homeShell">
-    <iframe id="homeFrame" src="html/home.html?v=20261029f" title="Nano桌面"></iframe>
+    <!-- 首页地址带上构建号：SW 可以对它直接缓存秒开，同时每次发版都会自动换缓存键，不会停在旧首页。 -->
+    <iframe id="homeFrame" data-src="html/home.html" title="Nano桌面"></iframe>
 </div>
+<script>
+(function () {
+    var f = document.getElementById('homeFrame');
+    if (!f) return;
+    var b = window.__NANO_BUILD__ || '';
+    f.src = 'html/home.html' + (b ? '?nb=' + encodeURIComponent(b) : '?v=20261029f');
+})();
+</script>
 <div class="app hidden-shell" id="legacyShell" aria-hidden="true">
   <div class="app-container">
     <div class="app-content" id="appContent">
@@ -1091,8 +1100,9 @@
   }
 
   // 开场动画只在「大退后重新进入」时出现；App 内切换页面不会重载首页，所以不会反复播放。
-  // 时长压到 0.9 秒，点屏幕 / 按 Esc 可立即加速结束。
-  var DUR = 900, READY_HOLD = 150;
+  // 时长压到 0.75 秒，点屏幕 / 按 Esc 可立即加速结束；
+  // 淡出开始时就先显示桌面，让首页在动画遮罩下面先画出来，避免淡出结束后再等一帧。
+  var DUR = 750, READY_HOLD = 80;
   var t0 = performance.now(), lastSp = 0, burst = false, done = false, raf = 0;
   var G = ['♡', '✦', '✧', '●'], COL = ['#ffc2d9', '#ffd7a8', '#cfe4ff', '#fff', '#e2d6ff'];
 
@@ -1116,10 +1126,12 @@
     root.__nsRemoved = true;
     if (raf) { try { cancelAnimationFrame(raf); } catch (e) {} }
     root.classList.add('ns-out');
+    // 淡出动画一开始就先解除桌面的 pre-splash 隐藏：桌面在遮罩下面同步绘制，
+    // 用户看到的是「动画淡出 → 桌面已经在那儿」，而不是淡出完再闪一下白屏。
+    document.dispatchEvent(new Event('nano-splash-done'));
     setTimeout(function () {
       if (root.parentNode) root.parentNode.removeChild(root);
-      document.dispatchEvent(new Event('nano-splash-done'));
-    }, 460);
+    }, 320);
   }
 
   function finish(instant) {

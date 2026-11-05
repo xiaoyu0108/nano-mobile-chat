@@ -413,7 +413,18 @@ let deleteTarget = null;
 let isReplying = false;
 let offAbort = null;        // 当前线下回复请求的中止控制
 let offAbortTimer = null;   // 超时兜底计时器
-const OFFLINE_GEN_TIMEOUT = 180000;
+// 长番外 / 长思维链的非流式请求可能超过 3 分钟，给到 5 分钟；用户仍可随时点停止。
+const OFFLINE_GEN_TIMEOUT = 300000;
+// 单次请求的安全输出上限：多数 Claude 端点只支持 4096/8192，超过会直接 400。
+// 更长内容靠 ensureOfflineLength 分多次续写，而不是一次把 max_tokens 顶到 12000+。
+const OFFLINE_SAFE_MAX_TOKENS = 8192;
+// 自动模式下，如果模型/中转拒绝了 8192，记住它实际能接受的值，后续续写不再反复撞 400。
+let offlineTokenCeiling = 0;
+const OFFLINE_PLOT_ONLY_PROMPT = '你是剧情推荐生成器。根据最近剧情，续写 5 条接下来很有可能发生的剧情走向。\n'
+  + '要求：每条 20~30 字；五条方向各不相同，既有日常向也有非日常向；直接写角色名和用户名字，不用“对方/他/她”；不要编号、不要引号、不要解释。\n'
+  + '只按下面格式输出，不要输出正文或其他内容，也不要照抄示例文字：\n'
+  + '[plot:走向1\n走向2\n走向3\n走向4\n走向5]';
+let lastOfflineFinishReason = '';
 // 告诉外壳「线下正在生成/总结」，回线上时只隐藏、不要销毁 iframe。
 function setOfflineBusy(on, id) {
   try {
@@ -1118,7 +1129,7 @@ function buildGroupOfflinePrompt() {
   p += '\n' + wordInstruction + personInstruction + predictInstruction + cotInstruction;
   if (settings.style) p += '\n【用户文风偏好 · 优先遵守】\n' + settings.style + '\n';
   p += '\n' + offlineStyleLibrary() + '\n';
-  p += '\n【禁止】禁止解释规则、跳出角色、插入免责声明、评价自己的回答。只输出正文。\n';
+  p += '\n【禁止】禁止解释规则、跳出角色、插入免责声明、评价自己的回答。正文写完后必须继续输出 [heart] 与 5 条 [plot]，不要停在正文。\n';
   p += '\n【一次性输出 · 严格按这个顺序，缺一不可】\n';
   p += '- 同一次回复里，严格按：①[thinking:…] ②正文 ③[heart:…] ④[plot:…] ⑤ 下方配置的自定义状态栏（如果有）。全部一次给全，绝不分次生成、绝不省略、绝不只输出正文。\n';
   p += '- thinking 只写分析、计划、角色动机，控制在 300 字以内；绝不能把正文、对白、动作描写写进 thinking。\n';
@@ -3082,20 +3093,23 @@ function visibleCharCount(content) {
   try { return String(extractMeta(content).text || '').replace(/\s+/g, '').length; }
   catch (e) { return String(content || '').replace(/\s+/g, '').length; }
 }
-// 字数硬性兜底：不足就接着往下写，直到达到设置里的最低字数（最多补 3 段）
+// 字数硬性兜底：不足或被 max_tokens 截断就接着往下写，直到达到最低字数（最多补 5 段）
 async function ensureOfflineLength(reply, history, continueMode) {
   const target = parseInt(settings.wordCount, 10) || 0;
-  if (!target) return reply;
+  // 字数已够但 finish_reason=length，说明正文其实被截断了，也要继续补完。
+  if (!target && lastOfflineFinishReason !== 'length') return reply;
   let text = String(reply || '');
   let n = visibleCharCount(text);
   let tries = 0;
-  while (n < target && tries < 3) {
-    const need = target - n;
+  let extraPlots = [];
+  while ((n < target || lastOfflineFinishReason === 'length') && tries < 5) {
+    const need = Math.max(0, target - n);
     let raw = '';
     try {
-      raw = await callMainAPI(history.concat([{ role: 'assistant', content: text }]), { continue: true, minExtra: need });
+      raw = await callMainAPI(history.concat([{ role: 'assistant', content: text }]), { continue: true, minExtra: need > 0 ? need : 0 });
     } catch (e) { break; }
     const extra = extractMeta(raw);
+    if (extra.plots && extra.plots.length && !extraPlots.length) extraPlots = extra.plots.slice(0, 5);
     const add = String(extra.text || '').replace(/\s+$/g, '').trim();
     if (visibleCharCount(add) < 20) break;
     // 补写内容插到正文末尾、元标签之前，避免被当成 [plot]/[thinking] 的内容
@@ -3107,7 +3121,50 @@ async function ensureOfflineLength(reply, history, continueMode) {
     if (nn <= n) break;
     text = next; n = nn; tries++;
   }
+  // 续写请求本身也带 [plot:]，但旧逻辑只取正文，导致补完字数后剧情推荐消失。
+  // 这里把续写里的 plot 合并回主回复（主回复已有 plot 时不覆盖）。
+  if (extraPlots.length) {
+    const cur = extractMeta(text);
+    if (!cur.plots || !cur.plots.length) {
+      text = String(text).replace(/\s+$/g, '') + '\n[plot:' + extraPlots.join('\n') + ']';
+    }
+  }
   return text;
+}
+
+// 剧情推荐不跟正文同一轮硬挤：正文已生成但没带 [plot] 时，单独发一个很小的请求只补 5 条。
+// 这样对模型要求最低，也不受正文长度 / 输出截断影响。
+async function ensureOfflinePlots(reply, history) {
+  try {
+    if (extractMeta(reply).plots.length) return reply;
+    const recent = (history || []).slice(-8).map(function (m) {
+      const who = m.role === 'user' ? (settings.userName || '用户') : (settings.charName || '角色');
+      return who + '：' + String(m.content || '').replace(/\s+/g, ' ').slice(0, 500);
+    }).filter(function (s) { return s.length > 2; }).join('\n');
+    // 把刚生成的本轮正文也带上，推荐才会贴着最新剧情，而不是只根据上一条用户消息猜。
+    const replyBody = String(extractMeta(reply).text || '').replace(/\s+/g, ' ').trim().slice(-1500);
+    const context = [recent, replyBody ? ((settings.charName || '角色') + '：' + replyBody) : ''].filter(Boolean).join('\n');
+    if (!context) return reply;
+    const raw = await callMainAPI([
+      { role: 'user', content: '【最近剧情】\n' + context + '\n\n请生成 5 条接下来的剧情走向。' }
+    ], { plotOnly: true, maxTokens: 800 });
+    let plots = (extractMeta(raw).plots || []).slice(0, 5);
+    if (!plots.length) {
+      plots = String(raw || '').replace(/\[[^\]]*\]/g, ' ').replace(/\r/g, '').split(/\n+/)
+        .map(function (s) {
+          return s.replace(/^[\s>*_#\-–—•·]+/, '')
+            .replace(/^(?:\d+|[一二三四五六七八九十]+)\s*[.、)）:：]\s*/, '')
+            .replace(/^["“「『']|["”」』']$/g, '')
+            .trim();
+        })
+        .filter(function (s) { return s.length >= 4 && s.length <= 80; })
+        .slice(0, 5);
+    }
+    if (!plots.length) return reply;
+    return String(reply || '').replace(/\s+$/g, '') + '\n[plot:' + plots.join('\n') + ']';
+  } catch (e) {
+    return reply;
+  }
 }
 async function requestReply(opts) {
   const continueMode = !!(opts && opts.continue);
@@ -3186,6 +3243,8 @@ async function requestReply(opts) {
       }
     } catch (e) {}
     try { reply = await ensureOfflineLength(reply, history, continueMode); } catch (e) {}
+    // 正文有了但没带剧情推荐：单独补一次小请求，不再依赖模型在长文末尾记得写 [plot]。
+    try { if (reply && !extractMeta(reply).plots.length) reply = await ensureOfflinePlots(reply, history); } catch (e) {}
     try {
       if (!offlineIsGroup && !offlineInvitedChars.length && reply && window.NanoScheduleBridge && window.NanoScheduleBridge.applyMarkers) {
         reply = await window.NanoScheduleBridge.applyMarkers(reply, { charId: offlineChatId, charName: settings.charName });
@@ -3282,6 +3341,7 @@ function buildOfflineForeignInstruction() {
 }
 async function callMainAPI(history, opts) {
   const bodyOnly = !!(opts && opts.bodyOnly);
+  const plotOnly = !!(opts && opts.plotOnly);
   const rules = await loadRulesFromDB();
   const personMap = { auto: '由模型根据上下文自然决定', first: '第一人称', second: '第二人称', third: '第三人称' };
 
@@ -3351,7 +3411,7 @@ ${offlineStyleLibrary()}
 - 写完前自查一遍，有没有落入 AI 常用腔调或八股：如"揉碎""很x""这就够了""那就够了""我接住你""极其""姑娘/女人/女孩/小孩/小朋友""下巴抵在头顶""他没说…也没有…甚至没说…""不是…而是…""理智的弦崩了""嘴角控制不住地动了动"，有就删掉或换成 {{char}} 自己会用的说法。
 - 禁止用「姑娘 / 女人 / 女孩 / 小姑娘 / 小丫头 / 丫头 / 小孩 / 小朋友 / 小家伙」这类性别、年龄或外貌词称呼 {{user}}。称呼只能用 {{user}} 的名字或「你」，不要用代称。
 
-请用这种风格生成 {{char}} 的回复。只输出正文，不解释、不评价。
+请用这种风格生成 {{char}} 的回复。正文写完后继续输出 [heart] 与 5 条 [plot]，不要解释、不要评价、不要停在正文。
 
 【一次性输出 · 严格按这个顺序，缺一不可】
 - 同一次回复里，严格按：①[thinking:…] ②正文 ③[heart:…] ④[plot:…] ⑤ 下方配置的自定义状态栏（如果有）。全部一次给全，绝不分次生成、绝不省略、绝不只输出正文。
@@ -3392,7 +3452,9 @@ ${offlineStyleLibrary()}
       return v ? ('【全局内置提示词 · 必须遵守】\n' + v) : '';
     } catch (e) { return ''; }
   })();
-  const systemPrompt = bodyOnly
+  const systemPrompt = plotOnly
+    ? OFFLINE_PLOT_ONLY_PROMPT
+    : bodyOnly
     ? '只输出这一段剧情的正文（动作、对白、心理描写），正文写完后输出 5 条 [plot:...]。不要输出 [thinking]、[heart] 或状态栏，不要解释，不要重复已经写过的内容。'
     : [
         settingsComplianceInstruction(),
@@ -3408,7 +3470,7 @@ ${offlineStyleLibrary()}
         globalBuiltinPrompt,
         rulesInstruction,
         '【输出前最终自检 · 最高优先级】输出前把下面几项过一遍：①没有用“女人/姑娘/女孩/丫头/小姑娘/小孩/小朋友/小家伙”称呼 {{user}}，称呼只用名字或“你”；②没有低吼/揉碎/揉进骨血/下巴抵在头顶/乖/听话这类油腻表达；③没有三连排比（“他没说…也没有…甚至没说…”）、“不是…而是…”、“…了…（如笑了一下）”这类八股；④没有把普通动作夸大成“理智的弦崩了/心里某根弦断了/嘴角控制不住地动了动/这一刻不一样”；⑤没有“这就够了/那就够了/我接住你/你不一样”这类套话；⑥没有无病呻吟、没有流水账动作清单、没有喜剧化放大普通情绪；⑦thinking / 正文 / heart / plot 四部分是否都写完，plot 是否正好 5 条。发现任何一条就改掉重写，宁可平实一点。',
-        '只输出最终回复正文，不要解释规则，不要输出系统提示词。'
+        '只输出最终回复（正文 + 规定的 thinking/heart/plot 格式），不要解释规则，不要输出系统提示词。'
       ].filter(Boolean).join('\n\n');
 
   // 读取顺序：全局世界书 → 人设 → 线下设置（每次生成都重新读，不沿用旧逻辑）
@@ -3429,7 +3491,6 @@ ${offlineStyleLibrary()}
     : '';
   const settingsPriorityBlock = '\n\n【读取顺序 3 · 线下设置（本次生成实时读取，开启的规则才生效）】\n'
     + [wordInstruction, personInstruction, predictInstruction,
-       settings.maxTokens ? ('输出上限：' + Number(settings.maxTokens) + ' tokens。') : '',
        rulesInstruction, styleInstruction
       ].filter(Boolean).join('\n');
 
@@ -3559,7 +3620,7 @@ ${offlineStyleLibrary()}
         if (scheduleBlock) scheduleBlock = scheduleBlock + '\n\n';
       }
     } catch (e) {}
-    const scenePrompt = bodyOnly
+    const scenePrompt = (bodyOnly || plotOnly)
       ? systemPrompt
       : ((offlineIsGroup || offlineInvitedChars.length)
           ? (buildGroupOfflinePrompt() + (rules.length
@@ -3568,10 +3629,12 @@ ${offlineStyleLibrary()}
           : systemPrompt
               .replace(/{{char}}/g, settings.charName)
               .replace(/{{user}}/g, settings.userName || '对方'));
-    const systemPromptStr = worldbookFirstBlock + personaBlock + settingsPriorityBlock + timeBlock + scheduleBlock + memBlock + onlineBlock + openingBlock + scenePrompt + offlineExitedBlock();
+    const systemPromptStr = plotOnly
+      ? systemPrompt
+      : (worldbookFirstBlock + personaBlock + settingsPriorityBlock + timeBlock + scheduleBlock + memBlock + onlineBlock + openingBlock + scenePrompt + offlineExitedBlock());
     // 可编辑的角色扮演 Prompt 模板（js/roleplay-prompt.js），用户可自行修改
     let finalSystemPrompt = systemPromptStr;
-    try {
+    if (!plotOnly) try {
       const RP = window.NanoRoleplayPrompt;
       if (RP && RP.enabled !== false && typeof RP.build === 'function') {
         finalSystemPrompt = String(RP.build(systemPromptStr) || systemPromptStr)
@@ -3580,7 +3643,7 @@ ${offlineStyleLibrary()}
       }
     } catch (e) {}
     // 用户规则里最关键的禁令在最后再压一遍：长人设 / 世界书容易把中间的规则冲淡。
-    try {
+    if (!plotOnly) try {
       const hardBans = (rules || []).filter(function (r) {
         return /禁止|不要|不许|不能|禁用|称呼|叫/.test(String(r || ''));
       });
@@ -3591,7 +3654,7 @@ ${offlineStyleLibrary()}
       finalSystemPrompt += '\n\n【称呼硬性禁令】禁止用「姑娘 / 女人 / 女孩 / 小姑娘 / 小丫头 / 丫头 / 小孩 / 小朋友 / 小家伙」这类性别、年龄或外貌词称呼 ' + (settings.userName || '用户') + '。称呼只能使用名字或「你」，正文、对白、心声、思维链全部适用。';
     } catch (e) {}
     // 时间锚点放在系统提示末尾，防止长人设/长世界书把开头的时间感知冲淡。
-    try {
+    if (!plotOnly) try {
       if (__taOn && window.NanoHoliday && window.NanoHoliday.nowAnchor) {
         finalSystemPrompt += '\n\n【时间锚点 · 最新】' + window.NanoHoliday.nowAnchor(new Date(), {
           lastUserMs: __lastUserMs, lastAiMs: __lastAiMs, nationality: __nat
@@ -3599,7 +3662,7 @@ ${offlineStyleLibrary()}
       }
     } catch (e) {}
     // 重roll 纠正：只作用于这一轮，追加在系统提示最后
-    try {
+    if (!plotOnly) try {
       const rr = String(window.__offlineRerollReason || '').trim();
       if (rr) {
         window.__offlineRerollReason = '';
@@ -3607,12 +3670,12 @@ ${offlineStyleLibrary()}
       }
     } catch (e) {}
     // 月潮：被授权的角色知道她的经期
-    try {
+    if (!plotOnly) try {
       const cyc = window.NanoCycle && NanoCycle.promptBlock(offlineChatId || (settings && settings.chatId));
       if (cyc) finalSystemPrompt += '\n\n' + cyc;
     } catch (e) {}
     // 续写模式：不是新一轮对话，也不是回复用户，只是把上一张卡片往下写
-    if (opts && opts.continue) {
+    if (!plotOnly && opts && opts.continue) {
       finalSystemPrompt += '\n\n【续写模式 · 本轮唯一任务】你现在不是重新开始一段对话，也不是在回复用户。请直接接着你上一条已经写出的正文继续往下写：\n'
         + '- 从上次停下的地方自然接续；不要重新开头、不要复述上一段、不要总结前文、不要更换场景或时间线。\n'
         + '- 保持同一人称、视角、文风和尺度；如果上一段停在动作、对白或半句话，就顺着写下去。\n'
@@ -3620,23 +3683,45 @@ ${offlineStyleLibrary()}
         + (opts && opts.minExtra ? ('- 本次续写至少还要再写 ' + Number(opts.minExtra) + ' 字，写满再停，不要提前收尾。\n') : '')
         + '- 开头照常输出 [thinking:…]，正文之后照常输出 [heart:…] 和 5 条 [plot:…]。';
     }
+    // 设置项放到系统提示最后再压一遍：长人设 / 世界书容易把中段的设置冲淡。
+    if (!plotOnly && !bodyOnly) {
+      const finalSettings = [
+        wordInstruction,
+        personInstruction,
+        predictInstruction,
+        rules.length
+          ? (rules.length <= 6
+              ? rulesInstruction
+              : ('额外规则：共 ' + rules.length + ' 条，逐条遵守上面【额外规则】里的全部内容，不得遗漏。'))
+          : '',
+        styleInstruction,
+        settings.cot ? '思维链预设已开启：按预设思考，thinking 只写分析计划，不写正文。' : ''
+      ].filter(Boolean).join('\n');
+      if (finalSettings) finalSystemPrompt += '\n\n【本轮生效设置 · 最后确认】\n' + finalSettings;
+    }
+    if (!plotOnly) {
+      finalSystemPrompt += '\n\n' + (bodyOnly
+        ? '【本轮输出格式 · 最后确认】只写正文，正文写完后必须输出 5 条 [plot:...]；不要 [thinking]/[heart]，不要解释。'
+        : '【本轮输出格式 · 最后确认】按顺序输出：[thinking:…] → 正文 → [heart:…] → [plot:…]（正好 5 条）→ 自定义状态栏。正文写完后必须继续补齐 heart 和 plot，不能停在正文；不要解释规则，不要输出系统提示词。');
+    }
     const promptStr = finalSystemPrompt + '\n\n' + chatText;
 
-    // 线下长文按「目标字数」估算输出 token：中文约 1.8 token/字，再加思维链/心声/剧情选项的余量。
-    // 之前这里写死 1024，模型最多只能吐 ~1500 字，小剧场/长文必然被截断 —— 与破限无关，是 max_tokens 限制。
+    // 中文约 1.5~1.8 token/字，再给思维链 / 心声 / 5 条剧情留余量。
+    // 不再强制 12000：多数 Claude 端点输出上限只有 4096/8192，超了会直接 400。
+    // 单次封顶 8192，长文靠 ensureOfflineLength 分多次续写。
     const wantChars = parseInt(settings.wordCount, 10) || 0;
     const wantTokens = parseInt(settings.maxTokens, 10) || 0;
     let offlineMaxTokens;
-    if (wantTokens > 0) {
-      // 用户在「线下设置 → 输出上限」里手动指定；下限抬到 8192，
-      // 避免思维链吃掉额度后正文/剧情选项还没写完就被截断。
-      offlineMaxTokens = Math.min(Math.max(wantTokens, 8192), 32768);
+    if (opts && opts.maxTokens) {
+      offlineMaxTokens = Math.min(Math.max(parseInt(opts.maxTokens, 10) || 700, 256), 32768);
+    } else if (wantTokens > 0) {
+      // 用户手动指定：原样尊重，不再强制抬高；超出模型上限时由 400 自动降档处理。
+      offlineMaxTokens = Math.min(Math.max(wantTokens, 1024), 32768);
     } else {
-      // 正文按目标字数估算，再为思维链 / 心声 / 5 条剧情走向预留余量；
-      // 下限提到 12000，给长思维链和正文都留够空间。
-      offlineMaxTokens = Math.ceil(wantChars * 1.8) + 3600;
-      offlineMaxTokens = Math.max(12000, offlineMaxTokens);
-      offlineMaxTokens = Math.min(offlineMaxTokens, 32768);
+      offlineMaxTokens = Math.ceil(wantChars * 1.6) + 2000;
+      offlineMaxTokens = Math.max(4096, offlineMaxTokens);
+      offlineMaxTokens = Math.min(offlineMaxTokens, OFFLINE_SAFE_MAX_TOKENS);
+      if (offlineTokenCeiling > 0) offlineMaxTokens = Math.min(offlineMaxTokens, offlineTokenCeiling);
     }
 
     const body = {
@@ -3658,16 +3743,42 @@ ${offlineStyleLibrary()}
       offAbortTimer = setTimeout(function () { try { offAbortTimer = null; __c.abort(); } catch (e) {} }, OFFLINE_GEN_TIMEOUT);
     }
     let response;
+    let preReadRaw = '';
     try {
-      response = await fetch(mainUrl + '/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': 'Bearer ' + mainKey,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(body),
-        signal: __ctrl ? __ctrl.signal : undefined
-      });
+      // 有些模型 / 中转不接受过大的 max_tokens（Claude 常见 400：max_tokens > 模型输出上限）。
+      // 与线上聊天一致：遇到 400 且错误信息指向 token 上限时，自动逐档下降重试。
+      for (let __try = 0; __try < 6; __try++) {
+        response = await fetch(mainUrl + '/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': 'Bearer ' + mainKey,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(body),
+          signal: __ctrl ? __ctrl.signal : undefined
+        });
+        if (response.ok) break;
+        preReadRaw = '';
+        try { preReadRaw = await response.text(); } catch (e) {}
+        let __apiMsg = '';
+        try {
+          const d = JSON.parse(preReadRaw || '{}');
+          __apiMsg = (d && d.error && (d.error.message || d.error)) || (d && d.message) || '';
+        } catch (e) {
+          __apiMsg = String(preReadRaw || '').replace(/\s+/g, ' ').trim().slice(0, 400);
+        }
+        if (typeof __apiMsg !== 'string') { try { __apiMsg = JSON.stringify(__apiMsg); } catch (e) { __apiMsg = String(__apiMsg); } }
+        const __tokenErr = response.status === 400
+          && /max[_\s-]?tokens|maximum context|context length|token limit|too many tokens|prompt is too long/i.test(__apiMsg);
+        if (__tokenErr && Number(body.max_tokens) > 1024) {
+          // 先退到 4096，再逐档下降；比直接减半更适合「只超了一点」的情况。
+          const __cur = Number(body.max_tokens) || 0;
+          body.max_tokens = Math.max(1024, Math.min(4096, __cur - 1024));
+          offlineTokenCeiling = Number(body.max_tokens) || 0;
+          continue;
+        }
+        break;
+      }
     } catch (netErr) {
       const aborted = !!(__ctrl && __ctrl.signal && __ctrl.signal.aborted) || !!(netErr && (netErr.name === 'AbortError' || /abort/i.test(String(netErr.message || ''))));
       const ee = new Error(aborted ? '已停止生成' : ((netErr && netErr.message) || 'API 请求失败'));
@@ -3681,8 +3792,8 @@ ${offlineStyleLibrary()}
 
     if (!response.ok) {
       // 一次性读完整响应体，JSON 解析失败时也能把上游原文展示出来（很多中转 500 返回 HTML/纯文本）
-      let raw = '';
-      try { raw = await response.text(); } catch (e) {}
+      let raw = preReadRaw;
+      if (!raw) { try { raw = await response.text(); } catch (e) {} }
       let apiMsg = '';
       try {
         const d = JSON.parse(raw || '{}');
@@ -3720,6 +3831,9 @@ ${offlineStyleLibrary()}
     }
 
     const data = await response.json();
+    try { lastOfflineFinishReason = String(data.choices?.[0]?.finish_reason || ''); } catch (e) { lastOfflineFinishReason = ''; }
+    // 如果这次用手动更大的上限成功了，说明模型支持，清掉之前自动降档留下的上限。
+    try { if (offlineTokenCeiling > 0 && Number(body.max_tokens) > offlineTokenCeiling) offlineTokenCeiling = 0; } catch (e) {}
     const reply = data.choices?.[0]?.message?.content?.trim();
     if (!reply) throw new Error('API 返回内容为空');
     return reply;

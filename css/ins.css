@@ -68,7 +68,7 @@ body:not(.fullscreen-active) .content{padding-bottom:68px}
 .actions .right{margin-left:auto}
 .action-icon{width:24px;height:24px}
 .likes{font-size:13px;font-weight:650;margin:4px 0}
-.caption{font-size:13px;line-height:19px}
+.caption{font-size:13px;line-height:19px;white-space:pre-wrap;word-break:break-word}
 .comments{color:var(--muted);font-size:13px;margin-top:5px}
 .time{font-size:10px;color:#b0b0b4;text-transform:uppercase;margin-top:5px}
 

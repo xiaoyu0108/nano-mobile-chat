@@ -1,6 +1,8 @@
 /* sw.js — 用于 PWA 安装、通知点击聚焦、静态资源加速。
    缓存策略（解决“每次打开都要好几秒”）：
-     · HTML：始终先联网（no-store，绕过 GitHub 的 HTTP 缓存），断网/超时才用缓存兜底
+     · HTML：首屏 index.html 先联网（no-store，绕过 GitHub 的 HTTP 缓存），最多等 0.25 秒就先用缓存；
+       带 ?v= / ?nb= 的页面（首页 iframe、App 内页都走 nb）内容随构建号变化，直接缓存秒开；
+       其余子页面先用缓存秒开，后台静默更新
      · CSS / JS / 图片 / 图标 / 字体：先用缓存秒开；带 ?v= 的直接用缓存，不带版本号的后台静默更新
        —— 改 JS/CSS 时一定要同步改对应的 ?v=，否则会继续命中旧缓存
      · 跨域（CDN）请求不拦截，交给浏览器自己的缓存
@@ -10,7 +12,7 @@
 
 var CACHE = 'nano-static-v374';
 var STATIC_RE = /\.(css|js|png|jpg|jpeg|webp|svg|gif|ico|woff2?|ttf|mp3)$/i;
-var NET_TIMEOUT_MS = 700;             // 有缓存时网络最多等 0.7 秒，超时立刻上缓存
+var HTML_NET_TIMEOUT_MS = 250;        // 首屏 HTML 有缓存时最多等 0.25 秒，超时立刻上缓存
 
 // 与客户端 NanoScope.appId 使用同一套算法：用「站点根目录」区分不同部署。
 // 例如 /nano-mobile-chat/ 和 /nano/ 会得到不同 appId，旧 Nano 的推送不会弹到新纳米。
@@ -60,12 +62,18 @@ self.addEventListener('fetch', function (event) {
 
     var isHTML = req.mode === 'navigate' || /\.html?$/i.test(url.pathname) || /\/$/.test(url.pathname);
     if (isHTML) {
-        // HTML 始终先联网，并且用 no-store 绕过 GitHub Pages 的 10 分钟 HTTP 缓存。
-        // 有缓存时最多等 0.7 秒，超时才先显示缓存；这样 build 号不会新旧来回跳。
-        // 注意：网络失败时绝对不能拿 index.html 兜底其它页面，否则聊天 iframe 会显示开屏页。
+        // 首屏 index.html 始终先联网，避免旧页面一直压住新构建号；
+        // 但只等 0.25 秒，网络慢时立刻用缓存，不再让每次打开都卡 0.7 秒。
+        // 子页面（尤其带 ?v= / ?nb= 的 iframe 页面）直接命中缓存秒开：
+        // nb 跟随 window.__NANO_BUILD__ 变化，构建号一换就是新缓存键，不会串旧页面。
+        // 不带版本号的子页面走「先用缓存，后台静默更新」，下次打开就是最新。
+        var isRoot = /\/$/.test(url.pathname) || /\/index\.html?$/i.test(url.pathname);
+        var versioned = url.searchParams.has('v') || url.searchParams.has('nb');
         event.respondWith(
             caches.open(CACHE).then(function (cache) {
                 return cache.match(req).then(function (cached) {
+                    if (cached && versioned) return cached;
+
                     var network = fetch(req, { cache: 'no-store' }).then(function (res) {
                         try {
                             var h = new Headers(res.headers);
@@ -80,16 +88,20 @@ self.addEventListener('fetch', function (event) {
                     if (!cached) {
                         return network.then(function (res) {
                             if (res) return res;
-                            var isRoot = /\/$/.test(url.pathname) || /\/index\.html?$/i.test(url.pathname);
                             if (!isRoot) return offlinePage();
                             return caches.match('./index.html').then(function (r) {
                                 return r || offlinePage();
                             });
                         });
                     }
+                    if (!isRoot) {
+                        // 子页面先用缓存显示，网络结果只用来更新缓存，不阻塞进入。
+                        event.waitUntil(network.catch(function () {}));
+                        return cached;
+                    }
                     return Promise.race([
                         network.then(function (res) { return res || cached; }),
-                        new Promise(function (resolve) { setTimeout(function () { resolve(cached); }, NET_TIMEOUT_MS); })
+                        new Promise(function (resolve) { setTimeout(function () { resolve(cached); }, HTML_NET_TIMEOUT_MS); })
                     ]).catch(function () { return cached; });
                 });
             })

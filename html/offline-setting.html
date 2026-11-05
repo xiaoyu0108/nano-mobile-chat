@@ -56,7 +56,7 @@
 </select>
 </div>
 <div class="row">
-<div class="row-label">输出上限<span class="row-desc">线下单次最多生成的 token，越大越不容易被截断；留空则按字数自动估算</span></div>
+      <div class="row-label">输出上限<span class="row-desc">线下单次最多生成的 token；留空自动（约 4096～8192，长文自动分段续写）；超过模型上限会自动减半重试</span></div>
 <div style="width:45%"><input class="search-input" id="maxTokens" type="number" min="1024" max="32768" step="512" placeholder="自动" style="text-align:right"></div>
 </div>
 <div class="row">

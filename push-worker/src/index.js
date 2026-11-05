@@ -1152,6 +1152,21 @@ async function generateAutoMoments(env, cfg, busyChatId, maxChars) {
   const npcPool = (cfg.chars || []).filter(function (c) {
     return c && c.name && (c.isNpc || c.isAltProbe);
   }).map(function (c) { return c.name; });
+  const BAD_NPC_NAME = /(旅行者|游客|路人|路人甲|陌生人|神秘人|神秘|未知|某人|那位|这位|新朋友|网友|客人|顾客|邻居|同事|同学|老师|医生|护士|警官|警察|司机|阿姨|叔叔|大爷|大妈|女士|先生|小姐|老板|店主|店长|店员|朋友|好友|总裁|助理|前台|保安|服务生|NPC|npc)/;
+  const badNpcName = function (raw) {
+    const s = String(raw == null ? '' : raw).trim().replace(/^@+/, '');
+    const base = s.replace(/[（(【\[].*$/, '').trim();
+    if (!base) return true;
+    if (/^[阿小老].$/.test(base)) return true;
+    if (BAD_NPC_NAME.test(base)) return true;
+    if (/^[\u4e00-\u9fa5]{1,2}(姐|哥|叔|姨|婶|爷|奶|婆|嫂|总|董)$/.test(base)) return true;
+    return false;
+  };
+  const foreignPicked = picked.filter(function (c) { return c && autoIsForeign(c); });
+  const foreignLine = foreignPicked.length
+    ? ('【外语发帖】' + foreignPicked.map(function (c) { return c.name + '（' + (c.nationality || '外国') + '，母语 ' + autoLangName(c) + '）'; }).join('、')
+      + '：动态文案必须先用母语写一句，再换行用括号附中文翻译，例如：do you like me？\n（你爱我吗？）；评论也要「外语原文（中文翻译）」，NPC 大多是 TA 国家的朋友。\n')
+    : '';
   const profiles = picked.map(function (c) {
     const recent = (c.recent || []).slice(-8).map(function (r) {
       return (r.who === 'user' ? '用户：' : 'TA：') + r.text;
@@ -1164,12 +1179,17 @@ async function generateAutoMoments(env, cfg, busyChatId, maxChars) {
     + '【最高优先级】任何 char 之间都绝对不允许互相评论、回复、点赞或接话；char 发的动态下评论区只能出现 NPC，即使人设写了认识也不行。\n'
     + '【发帖人】优先让以下角色发，每人只发 1 条：' + names.join('、') + '；数量不够 ' + count + ' 条时，由他们可能认识的 NPC 发帖补足，作者不要重复。\n'
     + '要求：像真人随手发的日常，具体、有细节，最好和 TA 最近聊过的事有一点关联；不要流水账，不要对任何人说话，不要提问，禁止 AI 腔。\n'
-    + '大多数动态字数控制在 30~50 字（一两句话讲清一件具体的事或一个情绪，带一点细节）；偶尔可以只写半句、一个词、一个标点或一个 emoji（如「无语。」「老子服了。」）；如果这批有 3 条以上，至少挑 1 条写成 150~400 字的长文——追星/演唱会 repo、好物分享、情感经历、求助/避雷、深夜碎碎念等，要有具体细节、真实情绪和起承转合，不要 AI 腔。长度跟着角色当下的情绪、事情大小和人设走，不要每条都一个长度，也不要为了凑字硬写。\n'
-    + '每条动态都必须带 2~4 个点赞和 2~4 条评论，不能只发一条光秃秃的动态。点赞/评论者只能是作者生活里的同学、朋友、同事、家人、邻居等 NPC（可以虚构真实完整姓名），不能是作者本人，绝对不能出现用户「' + cfg.user.name + '」，也不能是任何普通 char。\n'
+    + '这一批约一半写短帖（100 字以下，2~4 句，也要有意思），一半写中等长度（100~220 字，把一件具体的事或情绪讲完整，有细节、有画面）；偶尔挑 1 条写 300~500 字长文——追星/演唱会 repo、好物分享、情感经历、求助/避雷、深夜碎碎念等，要有细节、真实情绪和起承转合，不要 AI 腔。不要每次都只说一句话，也不要为了凑字硬写。\n'
+    + '每条动态都必须带 2~4 个点赞和 3~4 条评论，不能只发一条光秃秃的动态。点赞/评论者只能是作者生活里的同学、朋友、同事、家人、邻居等 NPC（可以虚构真实完整姓名），不能是作者本人，绝对不能出现用户「' + cfg.user.name + '」，也不能是任何普通 char。\n'
+    + '【NPC 归属】每个 NPC 只属于与自己真实有关系的作者：A 的熟人只能出现在 A 的动态下，绝对不要写到 B/C 的点赞或评论区里；不认识作者的人一个都不许出现；同一个 NPC 不要出现在两个不同角色的动态里。\n'
+    + '【回复对象】只有评论区里真正发过评论的人才能被回复；作者没在评论区留言时，NPC 不能写「回复作者」。\n'
+    + '【名字】NPC 必须是真实姓名，禁止王姐/李哥/店老板/神秘人/旅行者这类假名；身份备注只能放在姓名后的括号里，如「李思雨（咖啡店老板）」。\n'
+    + foreignLine
+    + 'JSON 字符串里的换行必须写成 \\n 转义。\n'
     + '只输出 JSON 数组：[{"author":"名字","text":"动态文案","location":"地点或空","likes":["名字"],"comments":[{"user":"名字","toUser":"","text":"评论"}]}]';
   const content = await autoChat(env, cfg, [
     { role: 'system', content: sys },
-    { role: 'user', content: '生成 ' + count + ' 条朋友圈动态，每条都带 2~4 个点赞和 2~4 条评论。' }
+    { role: 'user', content: '生成 ' + count + ' 条朋友圈动态，每条都带 2~4 个点赞和 3~4 条评论。' }
   ], 3800, 1.0);
   if (!content) return [];
   let arr = null;
@@ -1189,6 +1209,7 @@ async function generateAutoMoments(env, cfg, busyChatId, maxChars) {
     const k = keyOf(n);
     if (!k || k === userKey || k === keyOf(authorName)) return '';
     if (plainChars[k]) return '';   // 普通 char 绝不参与互动
+    if (badNpcName(n)) return '';
     return n;
   };
   const pickTarget = function (raw, authorName) {
@@ -1196,6 +1217,7 @@ async function generateAutoMoments(env, cfg, busyChatId, maxChars) {
     const k = keyOf(n);
     if (!k || k === userKey) return '';
     if (plainChars[k] && k !== keyOf(authorName)) return '';
+    if (badNpcName(n) && k !== keyOf(authorName)) return '';
     return n;
   };
   const out = [];
@@ -1209,6 +1231,7 @@ async function generateAutoMoments(env, cfg, busyChatId, maxChars) {
     [o.author].concat(Array.isArray(o.likes) ? o.likes : []).concat((Array.isArray(o.comments) ? o.comments : []).map(function (c) { return c && (c.user || c.name || c.author); })).forEach(function (raw) {
       const n = canonical(raw), k = keyOf(n);
       if (!k || k === userKey || plainChars[k] || npcExtra.indexOf(n) > -1) return;
+      if (badNpcName(n)) return;
       npcExtra.push(n);
     });
   });
@@ -1231,7 +1254,7 @@ async function generateAutoMoments(env, cfg, busyChatId, maxChars) {
     });
     // 点赞不够时从 NPC 补，绝不让其他 char 来点赞。
     const likePool = npcPool.concat(npcExtra).concat(out.map(function (x) { return x.author; })).filter(function (n, idx, a) {
-      return n && a.indexOf(n) === idx && keyOf(n) !== keyOf(au) && !plainChars[keyOf(n)] && keyOf(n) !== userKey;
+      return n && a.indexOf(n) === idx && keyOf(n) !== keyOf(au) && !plainChars[keyOf(n)] && keyOf(n) !== userKey && !badNpcName(n);
     });
     for (let li = 0; li < likePool.length && likes.length < 2; li++) {
       if (likes.indexOf(likePool[li]) < 0) likes.push(likePool[li]);
@@ -1245,13 +1268,16 @@ async function generateAutoMoments(env, cfg, busyChatId, maxChars) {
       comments.push({ user: u, toUser: pickTarget(c.toUser || c.replyTo || c.to, au), text: txt.slice(0, 120) });
     });
     // 模型漏写评论时也要有互动，不能只发一条光秃秃的动态。
+    const char = picked.find(function (c) { return c.name === au; }) || {};
+    const fallbackCanned = (char && autoIsForeign(char))
+      ? (/英文/.test(autoLangName(char)) ? ['nice（不错）', 'haha（哈哈）'] : [])
+      : canned;
     const commentPool = likePool.filter(function (n) {
       return !comments.some(function (c) { return keyOf(c.user) === keyOf(n); });
     });
-    for (let ci = 0; ci < commentPool.length && comments.length < 2; ci++) {
-      comments.push({ user: commentPool[(i + ci) % commentPool.length], toUser: '', text: canned[(i + ci + au.length) % canned.length] });
+    for (let ci = 0; ci < commentPool.length && comments.length < 4 && fallbackCanned.length; ci++) {
+      comments.push({ user: commentPool[(i + ci) % commentPool.length], toUser: '', text: fallbackCanned[(i + ci + au.length) % fallbackCanned.length] });
     }
-    const char = picked.find(function (c) { return c.name === au; }) || {};
     out.push({
       id: 'srv_' + now + '_' + i + '_' + Math.random().toString(36).slice(2, 5),
       author: au, avatar: char.avatar || '', text: String(o.text).slice(0, 500),

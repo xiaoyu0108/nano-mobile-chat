@@ -6429,9 +6429,13 @@
             mem = String(__memHints || '').split('\n').filter(Boolean).slice(0, 8).join('\n');
         } catch (e) {}
         let sys = '你是「' + (displayName || charName || '角色') + '」，一个真实的人。请发一条朋友圈动态。严格贴合你的人设与你们的关系，像真人发朋友圈一样自然，禁止 AI 腔、禁止解释、禁止出戏。\n' +
-            '口语、生活化、松弛不端着。大多数动态的字数控制在 30~50 字左右（一两句话讲清一件具体的事或一个情绪，带一点细节），偶尔可以只写半句、一个词、一个标点或一个 emoji（如「无语。」「老子服了。」）；有时可以直接写 150~400 字的长文——追星/演唱会 repo、好物分享、情感经历、求助/避雷、深夜碎碎念等，要有具体细节、真实情绪和起承转合，不要 AI 腔。长度跟着角色当下的情绪、事情大小和人设走，不要每条都一个长度，也不要为了凑字硬写。题材从吃喝玩乐、旅游、日常碎片、宠物、天气、开心、emo、吐槽、发疯、追星、避雷、攻略、测评、健身打卡、读书、职场、提问、投票、段子、恋爱日常、热点八卦里自然长出来。广告只做隐晦暗广，先讲真实体验和小缺点。\n' +
+            '口语、生活化、松弛不端着。大多数情况写 100~220 字，把一件具体的事或一种情绪讲完整，带细节、有画面、有意思的表达，不要每次都只说一句话；也可以写短帖（100 字以下，2~4 句，也要有意思），偶尔写 300~500 字长文——追星/演唱会 repo、好物分享、情感经历、求助/避雷、深夜碎碎念等，要有具体细节、真实情绪和起承转合，不要 AI 腔。长度跟着角色当下的情绪、事情大小和人设走，也不要为了凑字硬写。题材从吃喝玩乐、旅游、日常碎片、宠物、天气、开心、emo、吐槽、发疯、追星、避雷、攻略、测评、健身打卡、读书、职场、提问、投票、段子、恋爱日常、热点八卦里自然长出来。广告只做隐晦暗广，先讲真实体验和小缺点。\n' +
             '不要写成流水账或日程记录：拒绝“早上…中午…晚上…”地罗列作息，也拒绝“今天天气不错 / 吃了三明治 / 上班好累 / 晚安”这类谁都能发的空话；要落到一件具体的事或一个具体的细节，有只有你此刻才会发的东西。\n' +
             '只输出一个 JSON，不要多余内容：{"text":"动态文案","wantImage":true 或 false,"imagePrompt":"若想配图，描述这张照片的画面；不配图则留空","location":"地点或空字符串"}';
+        var __fi = momentCharForeign(characterData || {});
+        if (__fi.foreign) {
+            sys += '\n【外语格式】你是' + (__fi.nat || '外国') + '人，母语是' + __fi.lang + '。动态文案必须先用' + __fi.lang + '写一句，再换行用括号附中文翻译，例如：do you like me？\n（你爱我吗？）。不能只写中文。JSON 字符串里的换行必须写成 \\n 转义。';
+        }
         try { if (window.NanoPrompts && NanoPrompts.appendTo) sys = NanoPrompts.appendTo(sys, 'moments', { keepFormat: true }); } catch (e) {}
         const userMsg = (setting ? ('【你的人设】\n' + setting.slice(0, 600) + '\n\n') : '') +
             (mem ? ('【最近发生的事】\n' + mem + '\n\n') : '') +
@@ -6476,6 +6480,72 @@
         return null;
     }
     function momentNameKey(name) { return String(name == null ? '' : name).replace(/^@/, '').replace(/\s+/g, '').trim(); }
+    var MOMENT_LANG_MAP = {
+        '美国': '英文', '英国': '英文', '澳大利亚': '英文', '加拿大': '英文', '新西兰': '英文', '爱尔兰': '英文',
+        '法国': '法文', '德国': '德文', '奥地利': '德文', '瑞士': '德文', '意大利': '意大利文', '西班牙': '西班牙文',
+        '葡萄牙': '葡萄牙文', '俄罗斯': '俄文', '乌克兰': '乌克兰文', '日本': '日文', '韩国': '韩文', '朝鲜': '韩文',
+        '泰国': '泰文', '越南': '越南文', '印度': '印地文', '阿拉伯': '阿拉伯文', '土耳其': '土耳其文', '荷兰': '荷兰文',
+        '瑞典': '瑞典文', '挪威': '挪威文', '丹麦': '丹麦文', '芬兰': '芬兰文', '波兰': '波兰文', '巴西': '葡萄牙文',
+        '墨西哥': '西班牙文', '阿根廷': '西班牙文', '埃及': '阿拉伯文', '伊朗': '波斯文', '以色列': '希伯来文'
+    };
+    function momentCharLanguage(c) {
+        c = c || {};
+        var lang = String(c.language || '').trim();
+        if (lang && lang !== '未知' && lang !== '未设定') return lang;
+        var nat = String(c.nationality || c.country || '').trim();
+        for (var k in MOMENT_LANG_MAP) if (nat.indexOf(k) > -1) return MOMENT_LANG_MAP[k];
+        return '英文';
+    }
+    function momentCharForeign(c) {
+        c = c || {};
+        var nat = String(c.nationality || c.country || '').trim();
+        var lang = String(c.language || '').trim();
+        var chinese = /(中国|中國|china|chinese|台湾|香港|澳门|澳門)/i.test(nat);
+        var nonChineseLang = !!lang && !/中文|汉语|漢語|普通话|國語|chinese|mandarin|粤语|粵語|cantonese/i.test(lang);
+        if (c.foreign === true) return { foreign: true, nat: nat || '外国', lang: momentCharLanguage(c) };
+        if (nat && nat !== '未知' && nat !== '未设定' && !chinese) return { foreign: true, nat: nat, lang: momentCharLanguage(c) };
+        if (nonChineseLang) return { foreign: true, nat: (nat && nat !== '未知' && nat !== '未设定' && !chinese) ? nat : '外国', lang: lang };
+        return { foreign: false, nat: nat, lang: '中文' };
+    }
+    function momentLooksForeignText(text) {
+        var first = String(text || '').split(/\n/)[0] || '';
+        var han = (first.match(/[\u3400-\u4DBF\u4E00-\u9FFF]/g) || []).length;
+        var foreign = (first.match(/[A-Za-z\u00C0-\u024F\u0400-\u04FF\u3040-\u30FF\uAC00-\uD7AF\u0600-\u06FF\u0E00-\u0E7F\u0900-\u097F]/g) || []).length;
+        return foreign >= 2 && han <= 2;
+    }
+    var MOMENT_BAD_NAME = /(旅行者|游客|路人|路人甲|陌生人|神秘人|神秘|未知|某人|那位|这位|新朋友|网友|客人|顾客|邻居|同事|同学|老师|医生|护士|警官|警察|司机|阿姨|叔叔|大爷|大妈|女士|先生|小姐|老板|店主|店长|店员|朋友|好友|总裁|助理|前台|保安|服务生|NPC|npc)/;
+    function momentBadNpcName(name) {
+        var s = String(name == null ? '' : name).trim().replace(/^@+/, '');
+        var base = s.replace(/[（(【\[].*$/, '').trim();
+        if (!base) return true;
+        if (/^[阿小老].$/.test(base)) return true;
+        if (MOMENT_BAD_NAME.test(base)) return true;
+        if (/^[\u4e00-\u9fa5]{1,2}(姐|哥|叔|姨|婶|爷|奶|婆|嫂|总|董)$/.test(base)) return true;
+        return false;
+    }
+    // 两个人是否可能认识：显式关系/悄悄话优先，其次人设/世界书里提到名字。
+    function momentPersonKnows(a, b) {
+        if (!a || !b) return false;
+        if (momentNameKey(a.name) && momentNameKey(a.name) === momentNameKey(b.name)) return true;
+        try {
+            if (window.NanoSocialGraph && NanoSocialGraph.knows && NanoSocialGraph.knows(a, b)) return true;
+        } catch (e) {}
+        var at = String(a.setting || '') + ' ' + String(a.relation || '') + ' ' + String(a.desc || '');
+        var bt = String(b.setting || '') + ' ' + String(b.relation || '') + ' ' + String(b.desc || '');
+        return !!((b.name && at.indexOf(b.name) > -1) || (a.name && bt.indexOf(a.name) > -1));
+    }
+    // 绑定的 NPC / 小号也是角色：只有确实可能认识作者时，才允许出现在作者动态的点赞/评论里。
+    // 模型虚构的 NPC（角色库里找不到）不做限制，因为 TA 本来就是按这条动态现场生成的熟人。
+    function momentBoundNpcKnownTo(name, authorName) {
+        var nk = momentNameKey(name);
+        var ak = momentNameKey(authorName);
+        var person = socialCharByName(name, allCharacters) ||
+            (allCharacters || []).find(function (c) { return c && c.name && momentNameKey(c.name) === nk; }) || null;
+        if (!person || (!person.isNpc && !person.isAltProbe)) return true;
+        var author = socialCharByName(authorName, allCharacters) ||
+            (allCharacters || []).find(function (c) { return c && c.name && momentNameKey(c.name) === ak; }) || { name: authorName };
+        return momentPersonKnows(person, author);
+    }
     // 普通 char 集合：NPC/小号不算 char。自动朋友圈里 char 之间绝对不能互动。
     function momentPlainCharMap() {
         const map = {};
@@ -6500,6 +6570,7 @@
                 const key = momentNameKey(raw);
                 if (!key || key === authorKey || key === userKey) return false;
                 if (plain[key]) return false;   // char 之间绝不互相点赞
+                if (!momentBoundNpcKnownTo(raw, o.author)) return false; // NPC/小号不能跨角色乱入
                 return true;
             }).map(function (n) { return String(n).trim(); });
             // 评论：只保留 NPC/小号；普通 char 一律不出现。NPC 可以回复作者 char。
@@ -6508,6 +6579,7 @@
                 const uKey = momentNameKey(c.user);
                 if (!uKey || uKey === authorKey || uKey === userKey) return false;
                 if (plain[uKey]) return false;  // char 之间绝不互相评论/回复
+                if (!momentBoundNpcKnownTo(c.user, o.author)) return false; // NPC/小号不能跨角色乱入
                 if (c.toUser) {
                     const tKey = momentNameKey(c.toUser);
                     if (!tKey || tKey === uKey || tKey === userKey) delete c.toUser;
@@ -6529,6 +6601,7 @@
             const n = String(raw == null ? '' : raw).trim();
             const k = momentNameKey(n);
             if (!k || k === userKey || plain[k] || seen[k]) return;
+            if (momentBadNpcName(n)) return;
             // 已绑定的 NPC / 小号优先
             seen[k] = 1; out.push(n);
         }
@@ -6579,15 +6652,23 @@
             return '· ' + a.name + (st ? ('：' + st) : '');
         }).join('\n');
         const totalPosts = 3 + Math.floor(Math.random() * 3); // 3~5 条
+        const foreignAuthors = authors.map(function (a) {
+            const full = (allCharacters || []).find(function (x) { return x && (String(x.id) === String(a.id) || x.name === a.name); }) || a;
+            return { name: a.name, info: momentCharForeign(full) };
+        }).filter(function (x) { return x.info && x.info.foreign; });
         let sys = '下面这几位是用户的好友，他们的动态会出现在同一个朋友圈里：' + authorNames + '。\n'
-            + '请一次性生成 ' + totalPosts + ' 条朋友圈动态（3~5 条），每条动态必须自带 2~4 个点赞和 2~4 条评论，不能只写文案。\n'
+            + '请一次性生成 ' + totalPosts + ' 条朋友圈动态（3~5 条），每条动态必须自带 2~4 个点赞和 3~4 条评论，不能只写文案。\n'
             + '【最高优先级】任何 char 之间都绝对不允许互相评论、回复、点赞或接话，即使角色关系/悄悄话记录写了认识也不行。char 只能和 NPC 互动；char 的动态下评论区只能出现 NPC。\n'
             + '【发帖人】优先让「' + (authors[0] && authors[0].name) + '」至少发 1 条；其余动态由名单里的其他角色发，数量不够时由作者可能认识的 NPC 发帖补足到 ' + totalPosts + ' 条。作者不要重复太多，内容贴合各自人设、身份和当天心情。\n'
             + '【拒绝流水账】严禁把动态写成日程记录或流水账：不要“早上…中午…晚上…”地罗列作息，也不要“今天天气不错 / 吃了三明治 / 上班好累 / 晚安”这种谁都能发的空话。每条都要落到一件具体的事或一个具体的细节（一个地点、一个人、一句话、刚发生的一个小插曲，或一种有来由的情绪），要有只有这个人此刻才会发的东西。宁少勿滥。\n'
-            + '【文案长度】大多数动态控制在 30~50 字（一两句话讲完一件小事或一个情绪，带具体细节）；偶尔可以只写半句、一个词、一个标点或一个 emoji（如「无语。」「老子服了。」）；如果这批有 3 条以上，至少挑 1 条写成 150~400 字的长文——追星/演唱会 repo、好物分享、情感经历、求助/避雷、深夜碎碎念等，要有具体细节、真实情绪和起承转合，不要 AI 腔。长度跟着角色当下的情绪、事情大小和人设走，不要每条都一个长度，也不要为了凑字硬写。\n'
+            + '【文案长度】这一批约一半写短帖（100 字以下，2~4 句，也要有意思），一半写中等长度（100~220 字，把一件具体的事或情绪讲完整，有细节、有画面）；偶尔挑 1 条写 300~500 字长文——追星/演唱会 repo、好物分享、情感经历、求助/避雷、深夜碎碎念等，要有细节、真实情绪和起承转合，不要 AI 腔。不要每次都只说一句话，也不要为了凑字硬写。\n'
             + '【重要 · 朋友圈不是聊天】这是发在朋友圈的动态，不是私聊：不要对任何人说话，不要提问，不要出现「你要不要/你去吗/在吗/一起吃吗」这类约人或聊天的语气；只分享自己的日常与心情。禁止 AI 腔、禁止解释、禁止出戏。\n'
-            + '【互动规则】每条必须写 2~4 个点赞、2~4 条评论。点赞者/评论者只能是作者生活里真实存在的同学、朋友、同事、家人、邻居等 NPC（可以虚构真实完整姓名），可以是动态作者/评论区里的人。'
+            + '【互动规则】每条必须写 2~4 个点赞、3~4 条评论。点赞者/评论者只能是作者生活里真实存在的同学、朋友、同事、家人、邻居等 NPC（可以虚构真实完整姓名），可以是动态作者/评论区里的人。'
             + '绝对不能是作者本人，也不能是用户本人；绝对不能让任何普通 char 点赞或评论另一个 char。\n'
+            + '【回复对象】只有评论区里真正发过评论的人才能被回复；作者没在评论区留言时，NPC 不能写「回复作者」。\n'
+            + '【NPC 去重】同一个 NPC 不要出现在两个不同角色的动态里；名字必须是真实姓名，禁止王姐/李哥/店老板/神秘人/旅行者这类假名。\n'
+            + (foreignAuthors.length ? ('【外语发帖】' + foreignAuthors.map(function (x) { return x.name + '（' + (x.info.nat || '外国') + '，母语 ' + x.info.lang + '）'; }).join('、') + '：动态文案必须先用母语写一句，再换行用括号附中文翻译，例如：do you like me？\n（你爱我吗？）；评论也要「外语原文（中文翻译）」，NPC 大多是 TA 国家的朋友。\n') : '')
+            + 'JSON 字符串里的换行必须写成 \\n 转义。\n'
             + '只输出一个 JSON 数组，不要多余内容：[{"author":"发动态的人名（优先使用名单里的名字，不足时可是合理 NPC）","text":"动态文案","wantImage":true 或 false,"imagePrompt":"若想配图，描述这张照片的画面；不配图则留空","location":"地点或空字符串","likes":["点赞者名字"],"comments":[{"user":"评论者名字","toUser":"回复对象名字，没有就留空","text":"评论内容"}]}]';
         try { if (window.NanoPrompts && NanoPrompts.appendTo) sys = NanoPrompts.appendTo(sys, 'moments', { keepFormat: true }); } catch (e) {}
         const userMsg = '【朋友圈成员与人设】\n' + authorInfo + '\n\n'
@@ -6618,13 +6699,27 @@
             // 每条动态都要有点赞和评论；缺任意一项就补生成。
             if (posts.every(function (p) { return p.comments && p.comments.length && p.likes && p.likes.length; })) return;
             const names = authors.map(function (a) { return a.name; }).filter(Boolean);
+            const foreignAuthors = [];
+            (posts || []).forEach(function (p) {
+                if (!p || !p.author) return;
+                if (foreignAuthors.some(function (x) { return x.name === p.author; })) return;
+                const full = socialCharByName(p.author, allCharacters) || { name: p.author };
+                var fi = momentCharForeign(full);
+                if (!fi.foreign && momentLooksForeignText(p.text)) fi = { foreign: true, nat: '外国', lang: '作者母语' };
+                if (fi.foreign) foreignAuthors.push({ name: p.author, info: fi });
+            });
             const sys = '你是朋友圈互动生成器。根据每条动态的作者和内容，生成像真人一样的点赞和评论。评论要短、口语、碎片化，像随手打字：可以只回“哈哈哈”“？”“好家伙”、玩梗、损一句或问一个具体细节；不要长评、客服腔和升华总结。\n'
-                + '【最高优先级】任何 char 之间都绝对不允许互相评论、回复、点赞；char 动态的评论区只能出现 NPC。\n'
-                + '每条动态必须生成 2~4 个点赞和 2~4 条评论，不能留空。点赞者/评论者只能是作者生活里的同学、朋友、同事、家人、邻居等 NPC，可以虚构真实完整姓名；不能是作者本人，绝对不能出现用户本人。\n'
+                + '【最高优先级】普通 char 之间绝对不允许互相评论、回复、点赞；char 动态的评论区只能出现作者认识的 NPC。\n'
+                + '每条动态必须生成 2~4 个点赞和 3~4 条评论，不能留空。点赞者/评论者只能是作者生活里的同学、朋友、同事、家人、邻居等 NPC，可以虚构真实完整姓名；不能是作者本人，绝对不能出现用户本人。\n'
+                + '【NPC 归属】每个 NPC 只属于与自己真实有关系的作者：A 的熟人只能出现在 A 的动态下，绝对不要写到 B/C 的点赞或评论区里；同一个 NPC 不要出现在两个不同角色的动态里。\n'
+                + '【回复对象】只有评论区里真正发过评论的人才能被回复；作者没在评论区留言时，不能写「回复作者」。\n'
+                + '【名字】NPC 必须是真实姓名，禁止王姐/李哥/店老板/神秘人/旅行者这类假名；身份备注只能放在姓名后的括号里，如「李思雨（咖啡店老板）」。\n'
+                + (foreignAuthors.length ? ('【外语评论】' + foreignAuthors.map(function (x) { return x.name + '（' + (x.info.nat || '外国') + '，母语 ' + x.info.lang + '）'; }).join('、') + '：评论必须先用母语写一句，再用括号附中文翻译，例如：do you love me？（爱我吗？）；不能只写中文。\n') : '')
+                + 'JSON 字符串里的换行必须写成 \\n 转义。\n'
                 + '只输出一个 JSON 数组，不要多余内容：[{"index":0,"likes":["点赞者名字"],"comments":[{"user":"评论者名字","toUser":"回复对象名字，没有就留空","text":"评论内容"}]}]';
             const userMsg = posts.map(function (p, i) {
                 return (i + 1) + '. 作者：' + p.author + '\n内容：' + String(p.text || '').slice(0, 220);
-            }).join('\n\n') + '\n\n请为每一段生成 2~4 个点赞和 2~4 条评论（index 从 0 开始）。';
+            }).join('\n\n') + '\n\n请为每一段生成 2~4 个点赞和 3~4 条评论（index 从 0 开始）。';
             suppressApiAlerts = true;
             let content = null;
             try { content = await callMainApiRaw([{ role: 'system', content: sys }, { role: 'user', content: userMsg }], 1800, 0.9); }
@@ -6643,6 +6738,7 @@
                 // 名单里的角色名做一次模糊匹配；名单外的 NPC/小号名字原样保留。
                 const exact = names.find(function (x) { return momentNameKey(x) === momentNameKey(n); });
                 if (exact) return exact;
+                if (momentBadNpcName(n)) return '';
                 return n;
             };
             const pickTarget = function (raw) {
@@ -6650,7 +6746,9 @@
                 if (!n || n === '用户' || n === '我') return '';
                 if (momentNameKey(n) === momentNameKey(userName)) return '';
                 const exact = names.find(function (x) { return momentNameKey(x) === momentNameKey(n); });
-                return exact || n;
+                if (exact) return exact;
+                if (momentBadNpcName(n)) return '';
+                return n;
             };
             const changed = [];
             arr.forEach(function (o, fallbackIndex) {
@@ -6687,7 +6785,33 @@
         for (let pi = 0; pi < (posts || []).length; pi++) {
             const p = posts[pi];
             if (!p) continue;
-            const others = pool.filter(function (n) { return momentNameKey(n) !== momentNameKey(p.author); });
+            const authorKey = momentNameKey(p.author);
+            const fullAuthor = socialCharByName(p.author, allCharacters) || { name: p.author };
+            var authorFi = momentCharForeign(fullAuthor);
+            if (!authorFi.foreign && momentLooksForeignText(p.text)) authorFi = { foreign: true, nat: '外国', lang: '作者母语' };
+            const postFallback = authorFi.foreign
+                ? (/英文/i.test(authorFi.lang) ? ['nice（不错）', 'haha（哈哈）'] : [])
+                : fallbackComments;
+            // 本动态已经出现过的名字（模型为这条动态写的 NPC）优先。
+            const others = [];
+            function addOther(n) {
+                const k = momentNameKey(n);
+                if (!k || k === authorKey || k === userKey || plain[k]) return;
+                if (momentBadNpcName(n)) return;
+                if (!momentBoundNpcKnownTo(n, p.author)) return;
+                if (!others.some(function (x) { return momentNameKey(x) === k; })) others.push(n);
+            }
+            (p.likes || []).forEach(addOther);
+            (p.comments || []).forEach(function (c) { if (c && c.user) addOther(c.user); });
+            // 再从绑定的 NPC/小号里补：必须确实认识这位作者；模型虚构的名字只留在它自己的动态下。
+            pool.forEach(function (n) {
+                const k = momentNameKey(n);
+                if (!k || k === authorKey || k === userKey || plain[k]) return;
+                if (others.some(function (x) { return momentNameKey(x) === k; })) return;
+                if (!socialCharByName(n, allCharacters)) return;
+                if (!momentBoundNpcKnownTo(n, p.author)) return;
+                others.push(n);
+            });
             let touched = false;
             if (!Array.isArray(p.likes)) p.likes = [];
             for (let li = 0; li < others.length && p.likes.length < 2; li++) {
@@ -6696,13 +6820,13 @@
                 }
             }
             if (!Array.isArray(p.comments)) p.comments = [];
-            for (let ci = 0; ci < others.length && p.comments.length < 2; ci++) {
+            for (let ci = 0; ci < others.length && p.comments.length < 4 && postFallback.length; ci++) {
                 const who = others[(pi + ci) % others.length];
                 if (!who) continue;
                 if (p.comments.some(function (c) { return c && momentNameKey(c.user) === momentNameKey(who); })) continue;
                 p.comments.push({
                     user: who, toUser: '',
-                    text: fallbackComments[(pi + ci + String(p.author || '').length) % fallbackComments.length]
+                    text: postFallback[(pi + ci + String(p.author || '').length) % postFallback.length]
                 });
                 touched = true;
             }
@@ -6743,7 +6867,9 @@
                 if (key === momentNameKey(uName)) return '';
                 if (authorName && key === momentNameKey(authorName)) return '';
                 if (plainChars[key]) return '';        // 普通 char 绝不参与互动
-                return canonicalName(n);
+                const cn = canonicalName(n);
+                if (momentBadNpcName(cn)) return '';
+                return cn;
             };
             const pickTarget = function (raw, authorName) {
                 let n = String(raw == null ? '' : raw).trim().replace(/^@/, '');
@@ -6751,6 +6877,7 @@
                 const key = momentNameKey(n);
                 if (key === momentNameKey(uName)) return '';
                 if (plainChars[key] && key !== momentNameKey(authorName)) return '';
+                if (momentBadNpcName(n) && key !== momentNameKey(authorName)) return '';
                 return canonicalName(n);
             };
             const created = [];

@@ -1034,8 +1034,10 @@ function migrateWidgetCopy(it){
 }
 async function loadState(){
   let j=null, savedImgs=null, idbImgs=null;
-  try{ j=await NanoIDB.get(IDB_LAYOUT); }catch(e){}
-  try{ idbImgs=await NanoIDB.get(IDB_IMGS); }catch(e){}
+  try{
+    const got=await Promise.all([NanoIDB.get(IDB_LAYOUT),NanoIDB.get(IDB_IMGS)]);
+    j=got[0];idbImgs=got[1];
+  }catch(e){}
   if(!j){ try{ j=JSON.parse(localStorage.getItem(KEY)); }catch(e){} }
   if(!idbImgs){ try{ savedImgs=JSON.parse(localStorage.getItem(IKEY)); }catch(e){} }
   try{Object.assign(IMG,idbImgs||savedImgs||{})}catch(e){}
@@ -1137,9 +1139,14 @@ function saveImgs(){
   }catch(e){toast('图片保存失败');return false}
 }
 async function loadDesktopCustom(){
-  try{ DESKTOP_BG = await NanoIDB.get(IDB_BG); }catch(e){ DESKTOP_BG=null; }
+  let bg=null,custom=null;
+  try{
+    const got=await Promise.all([NanoIDB.get(IDB_BG),NanoIDB.get(IDB_CUSTOM)]);
+    bg=got[0];custom=got[1];
+  }catch(e){}
+  DESKTOP_BG=bg||null;
   if(!DESKTOP_BG){ try{ DESKTOP_BG=JSON.parse(localStorage.getItem(LS_BG)||'null'); }catch(e){} }
-  try{ APP_CUSTOM = (await NanoIDB.get(IDB_CUSTOM)) || {}; }catch(e){ APP_CUSTOM={}; }
+  APP_CUSTOM=custom||{};
   if(!APP_CUSTOM || !Object.keys(APP_CUSTOM).length){
     try{
       const localCustom=JSON.parse(localStorage.getItem(LS_CUSTOM)||'null');
@@ -1716,11 +1723,13 @@ function init(){
   defaultState();
   applyDesktopBg();
   render();
-  loadDesktopCustom().then(function(){ applyDesktopBg(); render(); });
   loadBuiltinTemplates();
   (async function hydrate(){
     try{
-      const ok=await loadState();
+      // 布局、图片、桌面背景、自定义图标同时读，避免 4 次 IndexedDB 串行等待；
+      // 读完只重绘一次，减少开屏期间整页 DOM 的重建次数。
+      const got=await Promise.all([loadState().catch(function(){return false}),loadDesktopCustom()]);
+      const ok=!!got[0];
       if(!ok) defaultState();
       else if(isOldInitialLayout()){
         // 老用户的「初始布局」还是旧版 5 页结构：只迁移完全没有改动过的默认布局。
@@ -1728,6 +1737,7 @@ function init(){
         try{ localStorage.setItem('nanoHomeLayoutV2','1'); }catch(e) {}
       }
       save();
+      applyDesktopBg();
       render();
     }catch(e){}
   })();

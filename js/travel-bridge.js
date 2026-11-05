@@ -493,10 +493,9 @@
     var params = new URLSearchParams();
     params.set('char', chatId);
     params.set('name', displayName());
-    // 过去的旅程卡片：点击直接回到当时的那一页（完整对话 / 旁白 / 拍立得），
-    // 不再只跳去「旅途」里看一段文字总结。
     var tripId = String(cd.tripId || cd.journeyId || '');
-    if (tripId && (cd.cardType === 'travelReport' || cd.cardType === 'travelShare')) {
+    // 「一起去」结束后的总结卡片：回到「一起去」页面，直接看当时的那一页。
+    if (tripId && cd.travelKind === 'together') {
       params.set('replay', '1');
       params.set('from', 'chat');
       params.set('trip', tripId);
@@ -511,7 +510,8 @@
       openFull('travel-chat.html?' + params.toString(), '旅途回顾');
       return;
     }
-    if (cd.tripId) params.set('trip', String(cd.tripId));
+    // 主动报备 / 分享的旅程卡片：打开「旅途」App 里的这段记录。
+    if (tripId) params.set('trip', tripId);
     openFull('travel.html?' + params.toString(), '旅途');
   }
   async function openTripChat(cardData) {
