@@ -7344,6 +7344,7 @@
     window.addEventListener('message', function (e) {
         const d = e && e.data;
         if (!d || d.type !== 'nanoOverlayOpen') return;
+        try { if (isStorageReady) consumePendingCharSay(); } catch (e) {}
         if (isProcessingApi || isWaitingForReply) return;
         try {
             if (chatPendingGet()) {
@@ -9096,6 +9097,26 @@
                 const __deepTalk = deepTalkPromptBlock();
                 if (__deepTalk) __sys += '\n\n' + __deepTalk;
             } catch (e) {}
+            // 用户规则里的禁令与「关系平等 / 称呼」在最后再压一遍：
+            // 角色扮演模板里的 NSFW 段落只放宽内容尺度，绝不能覆盖这些硬禁令。
+            try {
+                const __hard = [
+                    '1. 关系绝对平等：不命令、不居高临下、不替对方做决定。禁止“立刻/马上/赶紧/现在就给我报告、汇报、交代、说清楚、过来、听着”“赶紧去做…”“立刻去…”“马上去…”“给我听着”“不许/不准…”这类通牒、命令和上位者语气；关心、邀约、请求一律用商量或建议的口吻。',
+                    '2. 称呼只能用对方的名字或“你”；禁止“女人 / 这女人 / 那女人 / 姑娘 / 这姑娘 / 女孩 / 小姑娘 / 小丫头 / 丫头 / 小孩 / 小朋友 / 小家伙 / 小东西 / 小可爱”这类性别、年龄或外貌称呼。',
+                    '3. 禁止低吼 / 揉碎 / 揉进骨血 / 你是我的 / 逃不掉 / 下巴抵在头顶 / 乖 / 听话 / 宠你 等霸总油腻话术；禁止命令式索抱索亲。'
+                ];
+                try {
+                    const NP = window.NanoPrompts;
+                    if (NP && NP.activeText) {
+                        const userTexts = [NP.activeText('global'), NP.activeText('online')].filter(Boolean).join('\n');
+                        userTexts.split(/\n+/).forEach(function (line) {
+                            const r = String(line || '').trim();
+                            if (r && /禁止|不要|不许|不准|不能|禁用|称呼|只准|只能/.test(r) && __hard.indexOf(r) < 0) __hard.push(r);
+                        });
+                    }
+                } catch (e) {}
+                __sys += '\n\n【用户硬性禁令 · 最高优先级（最后确认，违反即失败）】\n' + __hard.join('\n');
+            } catch (e) {}
             // 重roll 纠正：本轮只生效一次，直接追加在系统提示最后，确保模型优先读到
             try {
                 const __rr = String(window.__nanoRerollReason || '').trim();
@@ -10050,6 +10071,13 @@
 
         reply = cleanReplyText(reply);
         if (!reply) return;
+        // 模型偶尔无视系统提示：把油腻称呼和命令式语气在落气泡前再清理一遍。
+        // 只处理称呼用户 / 对用户下命令的句子，不碰普通叙述里的名词。
+        try {
+            if (window.NanoPrompts && NanoPrompts.scrubReply) {
+                reply = NanoPrompts.scrubReply(reply, currentUserName || (currentUser && currentUser.name) || '你');
+            }
+        } catch (e) {}
 
         // 聊天里改变计划：读取隐藏的 [schedule:...] 标记，生成「日程修改卡片」等用户确认；
         // 不再直接改日程，避免角色单方面替用户做决定。
@@ -13440,6 +13468,9 @@ if (callCard) {
                         var h = (bi === 0 && item && item.heart) ? item.heart : null;
                         var th = (bi === 0 && item && item.think) ? String(item.think) : '';
                         var mid = (item && item.id) ? (bi === 0 ? String(item.id) : (String(item.id) + '_' + bi)) : '';
+                        // 同一条消息可能已经实时插入过（online-catchup / 无后台推送实时投递）：
+                        // 按 id 去重，避免补发时出现双份。
+                        if (mid && messages.some(function (x) { return x && String(x.id) === mid; })) return;
                         addCharSaid(String(t), h, th, mid);
                     });
                 });
@@ -13620,6 +13651,15 @@ if (callCard) {
         // 情侣空间分享卡片：可能不是当前聊天，须在 chatId 过滤之前处理
         if (data.type === 'NANO_COUPLE_SHARE_CARD') {
             handleCoupleShare(data);
+            return;
+        }
+
+        // 主动消息 / Web Push pending 刚落地，或外壳重新打开本聊天：
+        // 立即把 localStorage 里暂存的消息补进聊天，避免「通知有、点进来没有」。
+        if (data.type === 'nanoAutoPending' || data.type === 'nanoChatOpened') {
+            if (!data.chatId || String(data.chatId) === String(chatId)) {
+                try { if (isStorageReady) consumePendingCharSay(); } catch (e) {}
+            }
             return;
         }
 
@@ -13921,6 +13961,10 @@ if (data.type === 'NANO_VOICE_CALL_CARD' || data.type === 'NANO_VIDEO_CALL_CARD'
     // ===== 页面可见性 =====
     document.addEventListener('visibilitychange', function() {
         isPageVisible = !document.hidden;
+        // 回到前台 / 重新可见时把暂存的主动消息补进聊天（通知有、私聊没有的兜底）。
+        if (!document.hidden) {
+            try { if (isStorageReady) consumePendingCharSay(); } catch (e) {}
+        }
     });
 
     // ===== 通知父页面 =====

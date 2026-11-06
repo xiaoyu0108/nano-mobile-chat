@@ -200,11 +200,34 @@
         if (!content) return false;
         var out = parseOutput(content);
         if (!out.bubbles.length) return false;
+        try {
+            if (window.NanoPrompts && NanoPrompts.scrubReply) {
+                out.bubbles = out.bubbles.map(function (b) { return NanoPrompts.scrubReply(b, ''); });
+                if (out.heart) out.heart = NanoPrompts.scrubReply(out.heart, '');
+            }
+        } catch (e) {}
         var sh = window.__nanoShell;
         if (!sh) return false;
+        // 先落一份待补发：即使聊天内页还没加载好、实时 postToChat 丢了，
+        // 用户点通知进私聊时也能从 nano_auto_pending_msgs 补出来。
+        // 实时插入成功时，chat-core 会按 id 去重，不会重复显示。
+        var qid = 'catchup_' + Date.now().toString(36) + '_' + String(info.id);
+        try {
+            var qk = 'nano_auto_pending_msgs';
+            var qmap = JSON.parse(localStorage.getItem(qk) || '{}') || {};
+            var qlist = Array.isArray(qmap[String(info.id)]) ? qmap[String(info.id)] : [];
+            if (!qlist.some(function (x) { return x && String(x.id) === qid; })) {
+                qlist.push({
+                    id: qid, name: info.name || 'TA', bubbles: out.bubbles.slice(0, 3),
+                    heart: out.heart || null, think: '', ts: Date.now()
+                });
+                qmap[String(info.id)] = qlist.slice(-20);
+                localStorage.setItem(qk, JSON.stringify(qmap));
+            }
+        } catch (e) {}
         for (var i = 0; i < out.bubbles.length; i++) {
             try {
-                if (sh.postToChat) sh.postToChat({ type: 'NANO_CHAR_SAY', chatId: String(info.id), text: String(out.bubbles[i]), heart: out.heart || null });
+                if (sh.postToChat) sh.postToChat({ type: 'NANO_CHAR_SAY', chatId: String(info.id), text: String(out.bubbles[i]), heart: out.heart || null, id: i === 0 ? qid : (qid + '_' + i) });
             } catch (e) {}
             await new Promise(function (r) { setTimeout(r, 500); });
         }

@@ -70,7 +70,7 @@
             return wrap('<path d="M5 8h11v6a5 5 0 0 1-5 5h-1a5 5 0 0 1-5-5V8Z"/><path d="M16 9h2a3 3 0 0 1 0 6h-2"/><path d="M7 3v2M10 3v2M13 3v2"/>');
         }
         if (/外卖|餐|饭|火锅|烧烤|麻辣烫|甜品|蛋糕|面|粉|食/.test(d)) {
-            return wrap('<path d="M7 3v8M5 3v4a2 2 0 0 0 4 0V3"/><path d="M17 3c-2 3-2 6 0 8v10"/>');
+            return wrap('<path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Z"/><path d="M21 15v7"/>');
         }
         if (/地铁|公交|打车|滴滴|出行|机票|火车|高铁|加油|停车|车/.test(d)) {
             return wrap('<rect x="5" y="3" width="14" height="14" rx="3"/><path d="M5 10h14M9 17l-2 4M15 17l2 4"/><path d="M8.5 13.5h.01M15.5 13.5h.01"/>');

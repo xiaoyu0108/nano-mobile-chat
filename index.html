@@ -48,11 +48,11 @@
     <link rel="dns-prefetch" href="https://nanopush.nano315.online">
     <link rel="dns-prefetch" href="https://music.nano315.online">
     <!-- 底部脚本很多，提前并行下载，避免解析到底部才开始请求 -->
-    <link rel="preload" as="script" href="js/nano-push.js?v=20261029j">
+    <link rel="preload" as="script" href="js/nano-push.js?v=20261106a">
     <link rel="preload" as="script" href="js/keep-alive.js?v=20261023a">
     <link rel="preload" as="script" href="js/char-takeover.js?v=20261107a">
-    <link rel="preload" as="script" href="js/online-catchup.js?v=20261027a">
-    <link rel="preload" as="script" href="js/auto-push-bridge.js?v=20261028c">
+    <link rel="preload" as="script" href="js/online-catchup.js?v=20261106a">
+    <link rel="preload" as="script" href="js/auto-push-bridge.js?v=20261106a">
     <!-- 聊天/通话/设置页会同步加载 localforage；在这里提前拉，避免它们卡在 CDN 往返上 -->
     <link rel="preload" as="script" href="js/localforage.min.js">
     <link rel="dns-prefetch" href="https://unpkg.com">
@@ -1640,6 +1640,11 @@ setTimeout(function () {
                 f.setAttribute('data-loaded-url', url);
                 f.src = url;
             }
+            // 聊天内页已经加载（复用时更明显）：立刻让它补发本地暂存的主动消息，
+            // 避免通知里有、点进私聊却看不到。新加载的帧由聊天页 init 自己补发。
+            setTimeout(function () {
+                try { f.contentWindow.postMessage({ type: 'nanoChatOpened', chatId: String(chatId || '') }, '*'); } catch (e) {}
+            }, 400);
             return f;
         }
         function showInsFrame() {
@@ -4728,15 +4733,15 @@ setTimeout(function () {
 <script src="js/aux-memory.js?v=20261029d"></script>
 <script src="js/user-scope.js?v=20261020j"></script>
 <script src="js/nano-notify.js?v=20261102a"></script>
-<script src="js/nano-push.js?v=20261029j"></script>
+<script src="js/nano-push.js?v=20261106a"></script>
 <script src="swipe-back.js"></script>
 <script src="js/keep-alive.js?v=20261023a"></script>
 <script src="js/char-takeover.js?v=20261107a"></script>
-<script src="js/nano-prompts.js?v=20261102a"></script>
+<script src="js/nano-prompts.js?v=20261106a"></script>
 <script src="js/screen-share.js?v=20261027a"></script>
 <script src="js/ios-bridge.js?v=20261027k"></script>
-<script src="js/auto-push-bridge.js?v=20261028c"></script>
-<script src="js/online-catchup.js?v=20261027a"></script>
+<script src="js/auto-push-bridge.js?v=20261106a"></script>
+<script src="js/online-catchup.js?v=20261106a"></script>
 <script src="js/whisper-store.js?v=20261026a"></script>
 <script src="js/char-secret-chat.js?v=20261029f"></script>
 </div>

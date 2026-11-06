@@ -1106,6 +1106,19 @@ function genPrivateLocal(char){
   });
 }
 
+/* 聊天数据兼容：旧数据是数组（只有会话），新数据是 {userRemark, chats} */
+function normalizeChatData(raw){
+  const clean = arr => (Array.isArray(arr) ? arr : [])
+    .filter(it => it && typeof it === "object" && (it.name || it.lastMsg || (Array.isArray(it.messages) && it.messages.length)));
+  if(Array.isArray(raw)) return {userRemark: "", chats: clean(raw)};
+  if(raw && typeof raw === "object"){
+    return {
+      userRemark: String(raw.userRemark || raw.remark || raw.user_note || "").trim(),
+      chats: clean(raw.chats || raw.data || [])
+    };
+  }
+  return {userRemark: "", chats: []};
+}
 async function genChat(api, char){
   const ctx = await buildCharContext(char);
   const user = `你是「${char.name}」的聊天 App 数据生成器。
@@ -1113,22 +1126,25 @@ ${ctx}
 
 ${PERSONA_RULE}
 
-请生成 3 个「${char.name}」与 NPC 的聊天会话（不要生成和用户本人的会话）。
+请生成「${char.name}」手机里的聊天数据：3 个与 NPC 的聊天会话，以及「${char.name}」给用户存的联系人备注。
 要求：
-1. 3 个聊天对象是不同的 NPC（家人、朋友、同事、暗恋对象、陌生人等），必须符合角色的社交圈与世界观。
+1. 3 个聊天对象是不同的 NPC（家人、朋友、同事、暗恋对象、陌生人等），必须符合角色的社交圈与世界观；不要生成和用户本人的会话。
 2. 每个会话 5-8 条聊天记录，有来有回，语气贴合各自身份。
-3. 字段：
+3. userRemark：${char.name} 在自己手机里给「用户」存的备注（2-8 字），要符合两人的关系、角色对用户的称呼习惯与性格，可以是亲昵、别扭、吐槽式或普通备注，不要用「小姑娘/小东西/丫头/女人」这类油腻称呼。
+4. 会话字段：
    - name: NPC 名字（2-8 字）
    - lastMsg: 最后一条消息（列表预览）
    - time: 最后消息时间，如 "昨天 22:13"、"8月27日"
    - unread: 未读数量（0-5 整数）
    - messages: 消息数组，每条 {"side":"left"|"right","text":"..."}
      - left = NPC 发的，right = 角色自己发的
-只输出 JSON 数组，形如 [{"name":"...","lastMsg":"...","time":"...","unread":0,"messages":[{"side":"left","text":"..."}]}]`;
+只输出 JSON 对象，形如 {"userRemark":"...","chats":[{"name":"...","lastMsg":"...","time":"...","unread":0,"messages":[{"side":"left","text":"..."}]}]}`;
   const t = await callAPI(api, SYS_JSON, user);
-  const a = extractJSON(t);
-  if(!Array.isArray(a) || !a.length) throw new Error("聊天数据格式错误");
-  return a.slice(0, 3);
+  const o = extractJSON(t);
+  const model = normalizeChatData(o);
+  if(!model.chats.length) throw new Error("聊天数据格式错误");
+  model.chats = model.chats.slice(0, 3);
+  return model;
 }
 
 async function generateFor(appId, api, char){
@@ -2501,15 +2517,17 @@ async function openChat(){
     if(currentConv && currentConv.isUser) openRemarkEditor();
   };
 
-  chatUserRemark = (await dataGet(`app_${currentChar.id}_chat_remark_user`)) || "";
   chatUserAvatar = await loadUserAvatar();
   const saved = await dataGet(`app_${currentChar.id}_chat`);
+  const model = normalizeChatData(saved?.data);
+  const manualRemark = (await dataGet(`app_${currentChar.id}_chat_remark_user`)) || "";
+  chatUserRemark = manualRemark || model.userRemark || "";
   const userMsgs = await loadUserChatMessages();
-  renderChatList(saved?.data || [], userMsgs);
+  renderChatList(model.chats, userMsgs);
 }
 async function reloadChatList(){
   const saved = await dataGet(`app_${currentChar.id}_chat`);
-  renderChatList(saved?.data || [], await loadUserChatMessages());
+  renderChatList(normalizeChatData(saved?.data).chats, await loadUserChatMessages());
 }
 /* 给 user 的备注编辑 */
 function openRemarkEditor(){
@@ -2589,8 +2607,11 @@ async function refreshChat(){
   if(list) list.innerHTML = `<div class="app-empty">正在生成…</div>`;
   try{
     const data = await genChat(api, currentChar);
-    await dataSet(`app_${currentChar.id}_chat`, {type:"chat", data});
-    renderChatList(data, await loadUserChatMessages());
+    const model = normalizeChatData(data);
+    await dataSet(`app_${currentChar.id}_chat`, {type:"chat", data: model});
+    const manual = (await dataGet(`app_${currentChar.id}_chat_remark_user`)) || "";
+    chatUserRemark = manual || model.userRemark || "";
+    renderChatList(model.chats, await loadUserChatMessages());
   }catch(e){
     if(list) list.innerHTML = `<div class="app-error">生成失败：${escHtml(e.message)}</div>`;
   }
@@ -3228,7 +3249,7 @@ const MULTI_SPEC = {
   browser:`"browser":{"normal":[{"keyword":"搜索词","url":"https://example.com/a","site":"网站名","title":"网页标题","time":"今天 22:06","visits":3,"intro":"页面摘要","quote":"引用句","points":["要点一","要点二","要点三"]}],"incognito":[{"keyword":"无痕搜索词","url":"https://example.com/b","site":"网站名","title":"网页标题","time":"今天 23:41","visits":2,"intro":"页面摘要","quote":"引用句","points":["要点一","要点二","要点三"]}]}`,
   game:`"game":[{"name":"中文游戏名","id":"4827 1936","winRate":68,"matches":327,"wins":222,"losses":105,"rank":"大师","rating":2847,"rankMark":"III","recent":[{"result":"W","mode":"排位赛","time":"今天 · 21:42","kda":"18 / 6 / 11"}],"habit":"隐藏游戏习惯","weekly":[35,55,43,75,100,67,46]}]`,
   private:`"private":[{"type":"PRIVATE / 01","time":"23:41","title":"标题","preview":"一句隐晦的概述","detail":"不为人说的具体内容","tags":["心事","私密"],"level":"轻"}]`,
-  chat:`"chat":[{"name":"NPC名字","lastMsg":"最后一条","time":"昨天 22:13","unread":0,"messages":[{"side":"left","text":"消息"}]}]`,
+  chat:`"chat":{"userRemark":"角色给用户存的备注（2-8字）","chats":[{"name":"NPC名字","lastMsg":"最后一条","time":"昨天 22:13","unread":0,"messages":[{"side":"left","text":"消息"}]}]}`,
   doubao:`"doubao":[{"role":"char","content":"角色问豆包的问题"},{"role":"ai","content":"豆包的回答"}]`,
   taobao:`"taobao":{"cart":[{"name":"商品名","shop":"店铺","spec":"规格","price":"129"}],"orders":[{"shop":"店铺","name":"商品名","spec":"规格","price":"129","status":"交易成功","time":"8月27日"}],"food":[{"restaurant":"店名","dish":"菜品","price":"26.8","status":"已送达","time":"今天 12:18"}]}`,
   store:`"store":{"cart":[{"name":"商品名","shop":"店铺","spec":"规格","price":"129"}],"orders":[{"shop":"店铺","name":"商品名","spec":"规格","price":"129","status":"交易成功","time":"8月27日"}],"food":[{"restaurant":"店名","dish":"菜品","price":"26.8","status":"已送达","time":"今天 12:18"}]}`,
@@ -3238,7 +3259,7 @@ const MULTI_SPEC = {
 const MULTI_COUNT = {
   video:"video 3 条", diary:"diary 3 篇", album:"album 5 条", mail:"mail 4 封",
   memo:"memo 约 4 条（分 2-3 组，每组 1-2 条）", browser:"browser：normal 4 条、incognito 2-3 条", game:"game 2 个",
-  private:"private 4 条不为人说的私事 / 心事（成人角色可含亲密关系）", chat:"chat 3 个会话（每个 5-8 条消息）",
+  private:"private 4 条不为人说的私事 / 心事（成人角色可含亲密关系）", chat:"chat：userRemark 1 条（角色给用户的备注），chats 3 个会话（每个 5-8 条消息）",
   doubao:"doubao 8-10 条消息（char 与 ai 交替，构成一次完整对话）",
   taobao:"taobao：cart 2-3 件、orders 2-3 单、food 2-3 单",
   store:"store：cart 2-3 件、orders 2-3 单、food 2-3 单",
@@ -3291,7 +3312,8 @@ ${walletContext}
 - browser.intro：50-100 字；quote：15-40 字；points 3 条各 15-30 字。
 ${ids.includes("private") ? "- private.preview：一句隐晦的概述；detail：不为人说的具体内容，写角色不愿公开的私事、难以启齿的心事或亲密关系里的秘密；角色可以涉及亲密与性相关的私事。\n" : ""}
 - game.habit：40-80 字，写清玩法习惯与心态。
-- chat：每个会话 6-10 条消息，有来有回，单条 5-25 字。
+- chat.userRemark：${char.name} 在手机里给用户存的备注（2-8 字），符合两人的关系与角色对用户的称呼习惯，不要用「小姑娘/小东西/丫头/女人」这类油腻称呼。
+- chat.chats：每个会话 6-10 条消息，有来有回，单条 5-25 字；不要生成和用户本人的会话。
 - album.text：10-30 字，有画面感。
 - doubao：8-10 条，char 提问与 ai 回答交替；问题贴合角色当下生活与困惑，ai 回答口语化、可带分点，单条 20-60 字。
 - taobao / store：商品名、店铺、规格、价格要像真实电商；外卖写清店名、菜品、时间与配送状态；cart/orders/food 都要有数据。
@@ -3336,6 +3358,28 @@ function extractAppValue(raw, id){
   return undefined;
 }
 
+/* 把 stream:true 的 SSE 文本还原成和普通响应一样的 choices 结构 */
+function sseRawToEnvelope(raw){
+  const text = String(raw || "");
+  if(!/^\s*data:/m.test(text)) return text;
+  let content = "", finish = "";
+  text.split(/\r?\n/).forEach(function(line){
+    const m = line.match(/^\s*data:\s*(.*)$/);
+    if(!m) return;
+    const chunk = String(m[1] || "").trim();
+    if(!chunk || chunk === "[DONE]") return;
+    try{
+      const o = JSON.parse(chunk);
+      const ch = o && o.choices && o.choices[0];
+      if(ch){
+        content += (ch.delta && ch.delta.content) || (ch.message && ch.message.content) || "";
+        if(ch.finish_reason) finish = ch.finish_reason;
+      }
+    }catch(e){}
+  });
+  return JSON.stringify({choices:[{message:{content}, finish_reason:finish}]});
+}
+
 async function genMulti(api, char, ids, opts){
   const ctx = (opts && opts.lite) ? buildLiteContext(char) : await buildCharContext(char);
   const user = buildMultiPrompt(ids, char, ctx);
@@ -3369,16 +3413,39 @@ async function genMulti(api, char, ids, opts){
      会和结构化输出冲突并直接返回 HTTP 400，整批 App 一个都生成不出来。
      提示词已经要求只输出 JSON，解析端也能逐 App 抢救，所以这里用普通文本输出。 */
   let useJsonFormat = false, tokens = maxTokens, lastErr = "";
-  for(let attempt = 0; attempt < 4; attempt++){
-    const payload = Object.assign({}, baseBody, {max_tokens: tokens});
+  let compatLevel = 0, structuredConflict = false;
+  const post = async function(payload){
+    return fetch(endpoint, {method:"POST", headers, body: JSON.stringify(payload)});
+  };
+  for(let attempt = 0; attempt < 6; attempt++){
+    const payload = {
+      model: api.model,
+      messages: baseBody.messages,
+      temperature: api.temp
+    };
+    if(compatLevel === 0){
+      payload.max_tokens = tokens;
+      payload.presence_penalty = 0.4;
+      payload.frequency_penalty = 0.5;
+    }else if(compatLevel === 1){
+      /* 兼容模式 1：去掉惩罚项和超大 max_tokens，只保留最小请求体。 */
+      payload.max_tokens = Math.min(tokens, 8192);
+    }else{
+      /* 兼容模式 2：完全不传 max_tokens，并改用流式，绕开只对非流式请求生效的抗截断。 */
+      payload.stream = true;
+    }
     if(useJsonFormat) payload.response_format = {type:"json_object"};
     try{
-      resp = await fetch(endpoint, {method:"POST", headers, body: JSON.stringify(payload)});
+      resp = await post(payload);
     }catch(e){
       log.push({t:"err", s:"网络错误: " + e.message});
       return {ok:{}, log, fatal:"网络错误：" + e.message};
     }
     try{ rawText = await resp.text(); }catch(e){ rawText = ""; }
+    // 流式响应用 SSE 返回时，转成普通 choices 结构，后面的解析逻辑完全复用。
+    if(resp.ok && (/text\/event-stream/i.test(resp.headers.get("content-type") || "") || /^\s*data:/.test(String(rawText || "")))){
+      rawText = sseRawToEnvelope(rawText);
+    }
     // 网关地址填错时经常返回 200 + 登录页 HTML，看起来“API 调用了”，但其实没进模型。
     // 直接给出明确错误，别让它伪装成 JSON 解析失败。
     if(resp.ok && /^\s*<(?:!doctype\s+html|html[\s>])/i.test(String(rawText || ""))){
@@ -3387,10 +3454,18 @@ async function genMulti(api, char, ids, opts){
     }
     if(resp.ok) break;
     lastErr = "HTTP " + resp.status + (rawText ? "：" + rawText.slice(0,150) : "");
+    const conflict = /response_format|json_object|structured|结构化|抗截断|不能同时|参数无效|不兼容/i.test(rawText);
+    if(conflict) structuredConflict = true;
+    // 网关把请求当成结构化输出（AI Studio 的抗截断功能会和它冲突）：
+    // 已发普通文本后仍报这个错，就逐级降级：最小请求体 → 不传 max_tokens + 流式。
+    if(conflict && compatLevel < 2){
+      compatLevel++;
+      useJsonFormat = false;
+      log.push({t:"warn", s:"接口报「抗截断 / 结构化输出」冲突，已切换到兼容模式 " + compatLevel + " 重试"});
+      continue;
+    }
     // 接口不支持 / 拒绝结构化输出：去掉 response_format 再试。
-    // 兼容中英文报错，例如「不能同时使用结构化输出」「请求参数无效」「抗截断」。
-    if(useJsonFormat && (resp.status === 400 || resp.status === 422 ||
-        /response_format|json_object|structured|invalid|unsupported|unknown|结构化|抗截断|参数无效|不兼容|不能同时/i.test(rawText))){
+    if(useJsonFormat && (resp.status === 400 || resp.status === 422 || conflict)){
       log.push({t:"warn", s:"接口拒绝结构化输出，已改为普通 JSON 重试"});
       useJsonFormat = false;
       continue;
@@ -3405,7 +3480,11 @@ async function genMulti(api, char, ids, opts){
     break;
   }
   log.push({t: resp && resp.ok ? "ok" : "err", s:"HTTP " + (resp && resp.status)});
-  if(!resp || !resp.ok) return {ok:{}, log, fatal:lastErr || "请求失败"};
+  if(!resp || !resp.ok){
+    let fatal = lastErr || "请求失败";
+    if(structuredConflict) fatal += "\n\n该中转把请求识别成了「结构化输出」，同时又开启了「抗截断」，两者不兼容。App 已自动尝试普通文本、最小参数和流式三种方式；若仍失败，请在该中转后台关闭「抗截断」（或换一个渠道/模型）后再试。";
+    return {ok:{}, log, fatal};
+  }
 
   /* ⚠️ rawText 是 API 外层响应，必须取出 choices[0].message.content 才是模型内容 */
   let content = "", finishReason = "";
@@ -3432,7 +3511,7 @@ async function genMulti(api, char, ids, opts){
   const partialIds = [];
   const source = (json && typeof json === "object") ? json : {};
   if(!json || typeof json !== "object") log.push({t:"warn", s:"顶层 JSON 解析失败，尝试逐个 App 抢救…"});
-  const ARRAY_APPS = ["video","diary","album","mail","memo","game","private","chat","doubao"];
+  const ARRAY_APPS = ["video","diary","album","mail","memo","game","private","doubao"];
   for(const id of ids){
     let data = source[id];
     if(data === undefined || data === null){
@@ -3456,6 +3535,10 @@ async function genMulti(api, char, ids, opts){
         valid = false;
         reason = "normal / incognito 都为空";
       }
+    }else if(id === "chat"){
+      data = normalizeChatData(data);
+      if(!data.chats.length){ valid = false; reason = "chats 为空"; }
+      else data.chats = data.chats.slice(0, 3);
     }else if(ARRAY_APPS.includes(id)){
       if(!Array.isArray(data) || !data.length){ valid = false; reason = "不是非空数组"; }
       else{
@@ -3471,7 +3554,7 @@ async function genMulti(api, char, ids, opts){
     ok[id] = {type:id, data};
     const count = id === "browser"
       ? `普通 ${data.normal.length} 条 / 无痕 ${data.incognito.length} 条`
-      : (Array.isArray(data) ? data.length + " 条" : "对象");
+      : (id === "chat" ? `${data.chats.length} 个会话${data.userRemark ? " + 备注" : ""}` : (Array.isArray(data) ? data.length + " 条" : "对象"));
     log.push({t:"ok", s:`${id}: OK（${count}）`});
   }
   if(truncated){

@@ -8,6 +8,7 @@
     'use strict';
 
     var PENDING_MSGS = 'nano_auto_pending_msgs';
+    var SEEN_MSG_IDS = 'nano_auto_seen_msg_ids';
     var UNREAD_KEY = 'nano_unread_counts';
     var ACT_KEY = 'nano_chat_activity';
     var lastPull = 0;
@@ -173,6 +174,27 @@
         // 让聊天列表/通知栏立刻刷新，不用等重新打开页面。
         try { window.postMessage({ type: 'nanoUnreadUpdated', chatId: String(chatId) }, '*'); } catch (e) {}
     }
+    // 通知已经加载好的聊天内页：本角色刚有 pending 落地，立刻补进聊天。
+    // 不依赖聊天页是否可见；只有 chatId 匹配的那一页会处理，避免串会话。
+    function notifyChatPending(chatId) {
+        try {
+            var attempts = 0;
+            var send = function () {
+                attempts++;
+                try {
+                    ['chatInnerFrame', 'chatInnerFrame2', 'chatInnerFrame3'].forEach(function (id) {
+                        var f = document.getElementById(id);
+                        if (!f || !f.contentWindow) return;
+                        try { f.contentWindow.postMessage({ type: 'nanoAutoPending', chatId: String(chatId) }, '*'); } catch (e) {}
+                    });
+                } catch (e) {}
+                // 刚点通知时聊天内页可能还没加载完，前几次 postMessage 会丢；
+                // 多补几次，等它初始化好后自己从 localStorage 取走。
+                if (attempts < 6) setTimeout(send, 600 * attempts);
+            };
+            send();
+        } catch (e) {}
+    }
     function markRead(chatId) {
         if (!chatId) return;
         var u = readJSON(UNREAD_KEY, {});
@@ -276,15 +298,25 @@
             if (!store || typeof store !== 'object') store = {};
             var openChat = currentOpenChat();
             var canLive = !!(openChat && window.__nanoShell && window.__nanoShell.postToChat && chatReadyFor(openChat));
+            var newPending = [];
+            var seenIds = readJSON(SEEN_MSG_IDS, []);
+            if (!Array.isArray(seenIds)) seenIds = [];
+            var addSeen = [];
             messages.forEach(function (m) {
                 if (!m || !m.id || !m.chatId) { if (m && m.id) handledMsgIds.push(m.id); return; }
                 if (charIds && !charIds[String(m.chatId)]) { handledMsgIds.push(m.id); return; }
                 // 这个角色已经关闭主动消息：丢弃并 ack，避免关掉后还继续收到旧 pending。
                 if (!autoMsgOn(m.chatId)) { handledMsgIds.push(m.id); return; }
+                var wasSeen = seenIds.indexOf(m.id) >= 0;
                 var bubbles = Array.isArray(m.bubbles) ? m.bubbles.slice() : [];
                 if (!bubbles.length && m.text) bubbles = [m.text];
                 bubbles = splitBubbles(bubbles);
                 if (!bubbles.length) { handledMsgIds.push(m.id); return; }   // 空内容直接丢弃，避免反复推
+                try {
+                    if (window.NanoPrompts && NanoPrompts.scrubReply) {
+                        bubbles = bubbles.map(function (b) { return NanoPrompts.scrubReply(b, ''); });
+                    }
+                } catch (e) {}
                 try {
                     if (m.avatar && window.__nanoUpdateNotifyAvatar) {
                         window.__nanoUpdateNotifyAvatar('chat:' + String(m.chatId), m.avatar);
@@ -295,6 +327,7 @@
                         markRead(String(m.chatId));
                         handledMsgIds.push(m.id);
                         liveIds.push(m.id);
+                        if (!wasSeen) addSeen.push(m.id);
                         return;
                     }
                 }
@@ -307,23 +340,40 @@
                     });
                     store[m.chatId] = list;
                     bumpUnread(String(m.chatId));
-                    // App 还开着但不在这个私聊时，也弹一次内置/系统通知；
-                    // 这样即使 Web Push 被系统限制，也不会完全不知道 TA 发了消息。
-                    try {
-                        if (window.NanoNotify && NanoNotify.notify) {
-                            NanoNotify.notify(m.name || 'TA', bubbles[0] || '你有一条新消息', {
-                                channel: 'chat', target: 'chat:' + String(m.chatId),
-                                avatar: m.avatar || '', name: m.name || 'TA', force: true
-                            });
-                        }
-                    } catch (e) {}
+                    // 同一个 id 只弹一次：即使 ack 失败、服务端反复返回旧 pending，
+                    // 也不会每次打开 App 都弹同一条通知。
+                    if (!wasSeen) {
+                        newPending.push({ chatId: String(m.chatId), m: m, bubbles: bubbles });
+                        addSeen.push(m.id);
+                    }
                 }
                 handledMsgIds.push(m.id);
             });
             if (!writeJSON(PENDING_MSGS, store)) {
-                // localStorage 写失败：只保留已经真正插进聊天的条目
+                // localStorage 写失败：只保留已经真正插进聊天的条目，服务端 pending 留到下次重试。
+                // 也不弹「假通知」：没有真正落到本地/聊天的消息，绝不让用户看到通知却找不到内容。
                 handledMsgIds = handledMsgIds.filter(function (id) { return liveIds.indexOf(id) >= 0; });
+                newPending = [];
+                addSeen = addSeen.filter(function (id) { return liveIds.indexOf(id) >= 0; });
             }
+            if (addSeen.length) {
+                try {
+                    var merged = seenIds.concat(addSeen);
+                    writeJSON(SEEN_MSG_IDS, merged.slice(-800));
+                } catch (e) {}
+            }
+            // 只有成功落地到本地后，才弹通知并通知已打开的聊天内页立即补进来。
+            newPending.forEach(function (item) {
+                try {
+                    if (window.NanoNotify && NanoNotify.notify) {
+                        NanoNotify.notify(item.m.name || 'TA', item.bubbles[0] || '你有一条新消息', {
+                            channel: 'chat', target: 'chat:' + item.chatId,
+                            avatar: item.m.avatar || '', name: item.m.name || 'TA', force: true
+                        });
+                    }
+                } catch (e) {}
+                notifyChatPending(item.chatId);
+            });
         }
 
         // ===== 朋友圈 =====

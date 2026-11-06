@@ -1211,7 +1211,7 @@ function render() {
     const isChar = (m.role === 'assistant' || m.role === 'char');
     const showPlot = isChar && !m.isOpening && m.content && m.content.length > 3;
     card.classList.add(isChar ? 'gs-char' : 'gs-user');
-    { const st = gsUi[gsKey(m)] || {}; if (st.open) card.classList.add('gs-open'); if (st.plot && showPlot) card.classList.add('gs-plot-open'); }
+    { const st = gsUi[gsKey(m)] || {}; if (st.open) card.classList.add('gs-open'); if (showPlot && (st.plot === true || (st.plot !== false && Array.isArray(m.plots) && m.plots.length))) card.classList.add('gs-plot-open'); }
     const floorNo = messages.indexOf(m) + 1;
 
     const parsedContent = renderOfflineContent(m.content || '');
@@ -1226,11 +1226,11 @@ function render() {
       </div>
 
       ${renderCustomBars(m, 'top')}
-      ${renderHeartThinkBars(m, 'heart')}
       ${renderHeartThinkBars(m, 'think')}
 
       ${renderCustomBars(m, 'before')}
       <div class="content" data-role="content">${parsedContent}</div>
+      ${renderHeartThinkBars(m, 'heart')}
 
       ${renderCustomBars(m, 'after')}
       ${renderBodyStatusBar(m)}
@@ -2354,6 +2354,9 @@ function scrubForbiddenAddress(text, userName, mode) {
   const terms = '小姑娘|小丫头|丫头|姑娘|女人|女孩|小孩|小朋友|小家伙';
   const scrubInner = function (v) {
     let t = String(v || '');
+    try {
+      if (window.NanoPrompts && NanoPrompts.scrubReply) return NanoPrompts.scrubReply(t, uname);
+    } catch (e) {}
     t = t.replace(new RegExp('(^|[“"「『，,。！？!?\\s])(' + terms + ')(?=[\\s，,。！？!?…”"」』]|$)', 'g'), function (m, pre) { return pre + repl; });
     t = t.replace(new RegExp('你(?:这个|这)?(?:' + terms + ')', 'g'), repl);
     t = t.replace(new RegExp('(?:我的|我的小)(?:' + terms + ')', 'g'), repl);

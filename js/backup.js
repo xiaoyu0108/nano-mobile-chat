@@ -239,6 +239,23 @@ function isBinary(v) {
 
 /** 二进制 → base64（用于 JSON 格式） */
 async function binaryToBase64(v) {
+    // Blob 直接走 FileReader：浏览器内部完成 base64，避免再额外造一份 bin 字符串，
+    // 大图片 / 语音多的时候能明显降低内存峰值。
+    if (v instanceof Blob) {
+        const viaReader = await new Promise((resolve) => {
+            try {
+                const fr = new FileReader();
+                fr.onload = () => {
+                    const s = String(fr.result || '');
+                    const i = s.indexOf(',');
+                    resolve(i >= 0 ? s.slice(i + 1) : s);
+                };
+                fr.onerror = () => resolve(null);
+                fr.readAsDataURL(v);
+            } catch (e) { resolve(null); }
+        });
+        if (viaReader != null) return viaReader;
+    }
     let buf;
     if (v instanceof Blob) {
         buf = await v.arrayBuffer();
@@ -258,19 +275,63 @@ async function binaryToBase64(v) {
     return btoa(bin);
 }
 
-/** base64 → ArrayBuffer */
+/** base64 → ArrayBuffer（分段解码，避免生成一整个巨大的二进制字符串） */
 function base64ToArrayBuffer(b64) {
-    const bin = atob(b64);
-    const len = bin.length;
-    const bytes = new Uint8Array(len);
-    for (let i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i);
-    return bytes.buffer;
+    const clean = String(b64 || '').replace(/[^A-Za-z0-9+/=]/g, '');
+    const len = clean.length;
+    if (!len) return new ArrayBuffer(0);
+    const padding = clean.endsWith('==') ? 2 : (clean.endsWith('=') ? 1 : 0);
+    const out = new Uint8Array(Math.max(0, Math.floor(len * 3 / 4) - padding));
+    let offset = 0;
+    const step = 4 * 1024 * 1024;   // 4MB 字符，且能被 4 整除
+    for (let i = 0; i < len; i += step) {
+        const part = clean.slice(i, Math.min(i + step, len));
+        const bin = atob(part);
+        for (let j = 0; j < bin.length; j++) out[offset++] = bin.charCodeAt(j);
+    }
+    return out.buffer;
+}
+
+/**
+ * 估算所有 IndexedDB 里二进制（图片 / 语音 / Blob）的总字节数。
+ * 只读 cursor.value 的 size，不把内容转成 base64，也不会把整库读进数组，
+ * 用于云端“包含图片”前的内存安全预检。
+ */
+async function estimateBinaryBytes() {
+    const dbs = await listDatabases();
+    let total = 0;
+    for (const { name, version } of dbs) {
+        let db;
+        try { db = await openDatabase(name, version); } catch { continue; }
+        const storeNames = Array.from(db.objectStoreNames);
+        for (const storeName of storeNames) {
+            try {
+                const tx = db.transaction(storeName, 'readonly');
+                const store = tx.objectStore(storeName);
+                await new Promise((resolve) => {
+                    const req = store.openCursor();
+                    req.onsuccess = (e) => {
+                        const cursor = e.target.result;
+                        if (!cursor) { resolve(); return; }
+                        const v = cursor.value;
+                        if (isBinary(v)) {
+                            total += (typeof v.size === 'number' ? v.size : (v.byteLength || 0));
+                        }
+                        cursor.continue();
+                    };
+                    req.onerror = () => resolve();
+                });
+            } catch (e) {}
+        }
+        try { db.close(); } catch (e) {}
+    }
+    return total;
 }
 
 // ================= 导出 =================
 
 // 这些是本机云端凭据，不属于用户数据，导出时一律跳过。
-const NANO_SECRET_LOCAL_KEYS = { nano_cloud_github: 1, nano_cloud_cloudflare: 1 };
+const NANO_SECRET_LOCAL_KEYS = { nano_cloud_github: 1, nano_cloud_cloudflare: 1, nano_backup_running_at: 1 };
 
 /**
  * 收集全站数据。
@@ -331,7 +392,8 @@ async function collectAllData(opts = { binary: false }) {
             data.indexedDB[name].schema[storeName] = storeSchema;
 
             const out = [];
-            for (const rec of records) {
+            for (let ri = 0; ri < records.length; ri++) {
+                const rec = records[ri];
                 if (isBinary(rec.value)) {
                     if (opts.binary) {
                         const b64 = await binaryToBase64(rec.value);
@@ -352,7 +414,9 @@ async function collectAllData(opts = { binary: false }) {
                 } else {
                     out.push({ key: rec.key, value: rec.value });
                 }
+                records[ri] = null;   // 及时释放已处理的 Blob / 记录，降低大备份内存峰值
             }
+            records = null;
             data.indexedDB[name].stores[storeName] = out;
         }
         db.close();

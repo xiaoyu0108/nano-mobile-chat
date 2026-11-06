@@ -420,6 +420,13 @@ const OFFLINE_GEN_TIMEOUT = 300000;
 const OFFLINE_SAFE_MAX_TOKENS = 8192;
 // 自动模式下，如果模型/中转拒绝了 8192，记住它实际能接受的值，后续续写不再反复撞 400。
 let offlineTokenCeiling = 0;
+const OFFLINE_SECTION_ONLY_PROMPT = '你是线下剧情的隐藏字段补全器。只补齐用户点名缺少的字段，不写正文、不续写剧情、不解释、不要代码块。\n'
+  + '必须严格使用这些格式（只输出被要求的字段，未要求的不要输出）：\n'
+  + '[thinking:一行底层思考摘要，只写分析计划]\n'
+  + '[heart:此刻的一句心理状态，第一人称、简短自然]\n'
+  + '[plot:走向1\n走向2\n走向3\n走向4\n走向5]\n'
+  + '[身体:心跳=88 次/分|好感度=63|手=指尖发凉]\n'
+  + '[bar:状态栏名]本回合该状态栏的新内容[/bar]';
 const OFFLINE_PLOT_ONLY_PROMPT = '你是剧情推荐生成器。根据最近剧情，续写 5 条接下来很有可能发生的剧情走向。\n'
   + '要求：每条 20~30 字；五条方向各不相同，既有日常向也有非日常向；直接写角色名和用户名字，不用“对方/他/她”；不要编号、不要引号、不要解释。\n'
   + '只按下面格式输出，不要输出正文或其他内容，也不要照抄示例文字：\n'
@@ -1486,12 +1493,12 @@ function graySakuraCardHTML(m, i, avatarHTML, displayName, isChar, showPlot, par
       </div>
 
       ${renderCustomBars(m, 'top')}
-      ${renderHeartThinkBars(m, 'heart')}
       ${renderHeartThinkBars(m, 'think')}
 
       ${renderCustomBars(m, 'before')}
       <div class="content" data-role="content">${parsedContent}</div>
       ${offlineImageHTML(m, i)}
+      ${renderHeartThinkBars(m, 'heart')}
 
       ${renderCustomBars(m, 'after')}
       ${renderBodyStatusBar(m)}
@@ -1619,7 +1626,11 @@ function render() {
       card.classList.add(isChar ? 'gs-char' : 'gs-user');
       const st = gsUi[gsKey(m)] || {};
       if (st.open) card.classList.add('gs-open');
-      if (st.plot && showPlot) card.classList.add('gs-plot-open');
+      // 灰樱皮肤默认把剧情推荐折叠起来，很多用户根本不知道要点韩文展开。
+      // 只要这条回复真的有剧情走向，默认展开；用户手动收起过（st.plot === false）才保持收起。
+      if (showPlot && (st.plot === true || (st.plot !== false && Array.isArray(m.plots) && m.plots.length))) {
+        card.classList.add('gs-plot-open');
+      }
     }
     const floorNo = messages.indexOf(m) + 1;
 
@@ -1640,7 +1651,6 @@ function render() {
       </div>
 
       ${renderCustomBars(m, 'top')}
-      ${renderHeartThinkBars(m, 'heart')}
       ${renderHeartThinkBars(m, 'think')}
 
       ${renderCustomBars(m, 'before')}
@@ -1652,6 +1662,7 @@ function render() {
           <path d="M12 7.7v4.8l3.1 1.8"></path>
         </svg>
       </div>
+      ${renderHeartThinkBars(m, 'heart')}
 
       ${renderCustomBars(m, 'after')}
       ${renderBodyStatusBar(m)}
@@ -2991,9 +3002,13 @@ function scrubForbiddenAddress(text, userName, mode) {
   if (!s) return s;
   const uname = String(userName || '').trim();
   const repl = (uname && uname !== 'user' && uname !== '用户') ? uname : '你';
-  const terms = '小姑娘|小丫头|丫头|姑娘|女人|女孩|小孩|小朋友|小家伙';
+  const terms = '小姑娘|小丫头|丫头|姑娘|女人|女孩|小孩|小朋友|小家伙|小东西|小可爱';
   const scrubInner = function (v) {
     let t = String(v || '');
+    // 与线上共用同一套后处理：油腻称呼 + 命令 / 通牒 / 上位者语气。
+    try {
+      if (window.NanoPrompts && NanoPrompts.scrubReply) return NanoPrompts.scrubReply(t, uname);
+    } catch (e) {}
     t = t.replace(new RegExp('(^|[“"「『，,。！？!?\\s])(' + terms + ')(?=[\\s，,。！？!?…”"」』]|$)', 'g'), function (m, pre) { return pre + repl; });
     t = t.replace(new RegExp('你(?:这个|这)?(?:' + terms + ')', 'g'), repl);
     t = t.replace(new RegExp('(?:我的|我的小)(?:' + terms + ')', 'g'), repl);
@@ -3102,6 +3117,10 @@ async function ensureOfflineLength(reply, history, continueMode) {
   let n = visibleCharCount(text);
   let tries = 0;
   let extraPlots = [];
+  let extraThinking = '';
+  let extraHeart = '';
+  let extraBars = [];
+  let extraBody = [];
   while ((n < target || lastOfflineFinishReason === 'length') && tries < 5) {
     const need = Math.max(0, target - n);
     let raw = '';
@@ -3110,6 +3129,10 @@ async function ensureOfflineLength(reply, history, continueMode) {
     } catch (e) { break; }
     const extra = extractMeta(raw);
     if (extra.plots && extra.plots.length && !extraPlots.length) extraPlots = extra.plots.slice(0, 5);
+    if (extra.thinking && !extraThinking) extraThinking = extra.thinking;
+    if (extra.heart && !extraHeart) extraHeart = extra.heart;
+    if (extra.bars && extra.bars.length && !extraBars.length) extraBars = extra.bars.slice();
+    if (extra.body && extra.body.length && !extraBody.length) extraBody = extra.body.slice();
     const add = String(extra.text || '').replace(/\s+$/g, '').trim();
     if (visibleCharCount(add) < 20) break;
     // 补写内容插到正文末尾、元标签之前，避免被当成 [plot]/[thinking] 的内容
@@ -3121,13 +3144,30 @@ async function ensureOfflineLength(reply, history, continueMode) {
     if (nn <= n) break;
     text = next; n = nn; tries++;
   }
-  // 续写请求本身也带 [plot:]，但旧逻辑只取正文，导致补完字数后剧情推荐消失。
-  // 这里把续写里的 plot 合并回主回复（主回复已有 plot 时不覆盖）。
-  if (extraPlots.length) {
-    const cur = extractMeta(text);
-    if (!cur.plots || !cur.plots.length) {
-      text = String(text).replace(/\s+$/g, '') + '\n[plot:' + extraPlots.join('\n') + ']';
-    }
+  // 续写请求本身也带 [plot]/[heart]/状态栏，但旧逻辑只取正文，导致补完字数后这些内容消失。
+  // 这里把续写里的附加内容合并回主回复（主回复已有的不覆盖）。
+  const cur = extractMeta(text);
+  if (extraPlots.length && (!cur.plots || !cur.plots.length)) {
+    text = String(text).replace(/\s+$/g, '') + '\n[plot:' + extraPlots.join('\n') + ']';
+  }
+  if (extraThinking && !cur.thinking) {
+    text = '[thinking:' + String(extraThinking).replace(/[\]】]/g, ' ') + ']\n' + text;
+  }
+  if (extraHeart && !cur.heart) {
+    text = String(text).replace(/\s+$/g, '') + '\n[heart:' + String(extraHeart).replace(/[\]】]/g, ' ') + ']';
+  }
+  if (extraBars.length) {
+    const have = {};
+    (cur.bars || []).forEach(function (b) { if (b && b.name) have[b.name] = true; });
+    extraBars.forEach(function (b) {
+      if (!b || !b.name || have[b.name] || !String(b.content || '').trim()) return;
+      text = String(text).replace(/\s+$/g, '') + '\n[bar:' + String(b.name).replace(/[\]】]/g, ' ') + ']' + String(b.content) + '[/bar]';
+    });
+  }
+  if (extraBody.length && !(cur.body && cur.body.length)) {
+    text = String(text).replace(/\s+$/g, '') + '\n[身体:' + extraBody.map(function (it) {
+      return (it && it.k ? it.k + '=' : '') + ((it && it.v) || '');
+    }).join('|') + ']';
   }
   return text;
 }
@@ -3147,7 +3187,7 @@ async function ensureOfflinePlots(reply, history) {
     if (!context) return reply;
     const raw = await callMainAPI([
       { role: 'user', content: '【最近剧情】\n' + context + '\n\n请生成 5 条接下来的剧情走向。' }
-    ], { plotOnly: true, maxTokens: 800 });
+    ], { plotOnly: true, maxTokens: 1200 });
     let plots = (extractMeta(raw).plots || []).slice(0, 5);
     if (!plots.length) {
       plots = String(raw || '').replace(/\[[^\]]*\]/g, ' ').replace(/\r/g, '').split(/\n+/)
@@ -3157,11 +3197,85 @@ async function ensureOfflinePlots(reply, history) {
             .replace(/^["“「『']|["”」』']$/g, '')
             .trim();
         })
-        .filter(function (s) { return s.length >= 4 && s.length <= 80; })
+        .filter(function (s) { return s.length >= 4 && s.length <= 120; })
         .slice(0, 5);
     }
     if (!plots.length) return reply;
     return String(reply || '').replace(/\s+$/g, '') + '\n[plot:' + plots.join('\n') + ']';
+  } catch (e) {
+    return reply;
+  }
+}
+// 检查一轮回复里必须出现的附加内容：思维链 / 心声 / 5 条剧情推荐 / 身体状态 / 自定义状态栏。
+function offlineSectionNeeds(reply) {
+  const meta = extractMeta(reply);
+  const need = { thinking: false, heart: false, plots: false, body: false, bars: [] };
+  if (!String(meta.thinking || '').trim()) need.thinking = true;
+  if (!String(meta.heart || '').trim()) need.heart = true;
+  if (!meta.plots || meta.plots.length < 5) need.plots = true;
+  if (settings.builtinBody && !(meta.body && meta.body.length)) need.body = true;
+  const norm = v => String(v == null ? '' : v).replace(/[\s\u3000]+/g, '');
+  const have = {};
+  (meta.bars || []).forEach(function (b) { if (b && b.name) have[norm(b.name)] = true; });
+  allStatusBars().filter(function (s) { return s && s.name && s.enabled !== false; })
+    .forEach(function (s) { if (!have[norm(s.name)]) need.bars.push(s); });
+  need.any = need.thinking || need.heart || need.plots || need.body || need.bars.length > 0;
+  return { meta, need };
+}
+// 正文 / 剧情推荐生成后，再补一次缺失的隐藏字段，保证一轮回复里所有内容都齐全。
+async function ensureOfflineSections(reply, history) {
+  try {
+    const check = offlineSectionNeeds(reply);
+    if (!check.need.any) return reply;
+    const recent = (history || []).slice(-8).map(function (m) {
+      const who = m.role === 'user' ? (settings.userName || '用户') : (settings.charName || '角色');
+      return who + '：' + String(m.content || '').replace(/\s+/g, ' ').slice(0, 500);
+    }).filter(function (s) { return s.length > 2; }).join('\n');
+    const replyBody = String(check.meta.text || '').replace(/\s+/g, ' ').trim().slice(-1800);
+    const L = ['【最近剧情】', recent || '（无）', '', '【本轮正文（只作为上下文，不要重写、不要续写）】', replyBody || '（无）', '',
+      '请只补齐下面缺失的隐藏字段。严格用规定格式输出，不要输出正文、不要解释、不要代码块：'];
+    if (check.need.thinking) L.push('- [thinking:一行底层思考摘要，只写分析计划]');
+    if (check.need.heart) L.push('- [heart:此刻的一句心理状态，第一人称、简短自然]');
+    if (check.need.plots) L.push('- [plot:剧情走向1\\n剧情走向2\\n剧情走向3\\n剧情走向4\\n剧情走向5]（必须是 5 条，直接写角色名和用户名）');
+    if (check.need.body) L.push('- [身体:心跳=88 次/分|好感度=63|手=指尖发凉]（必须含心跳与好感度）');
+    check.need.bars.forEach(function (s) {
+      L.push('- [bar:' + s.name + ']本回合「' + s.name + '」的最新内容[/bar]（' + (s.prompt || '贴合本轮剧情更新') + '）');
+    });
+    const raw = await callMainAPI([{ role: 'user', content: L.join('\n') }], { sectionsOnly: true, maxTokens: 2600 });
+    const fill = extractMeta(raw);
+    let out = String(reply || '').replace(/\s+$/g, '');
+    const clean = s => String(s || '').replace(/[\]】]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (check.need.thinking && String(fill.thinking || '').trim()) {
+      out = '[thinking:' + clean(fill.thinking) + ']\n' + out;
+    }
+    if (check.need.heart && String(fill.heart || '').trim()) {
+      out += '\n[heart:' + clean(fill.heart) + ']';
+    }
+    if (check.need.plots && fill.plots && fill.plots.length) {
+      const have = (check.meta.plots || []).slice();
+      const merged = have.concat(fill.plots).filter(function (v, i, a) { return v && a.indexOf(v) === i; }).slice(0, 5);
+      if (merged.length > have.length) {
+        // 同一条回复里后面的 [plot] 会覆盖前面的，先把旧的去掉再写入合并后的 5 条。
+        out = out.replace(/[\[【]\s*(?:plot|剧情推荐|剧情走向|剧情)\s*[:：][\s\S]*?[\]】]/i, ' ').replace(/\s+$/g, '');
+        out += '\n[plot:' + merged.map(clean).join('\n') + ']';
+      }
+    }
+    if (check.need.body && fill.body && fill.body.length) {
+      out += '\n[身体:' + fill.body.map(function (it) {
+        return (it && it.k ? clean(it.k) + '=' : '') + clean(it && it.v);
+      }).join('|') + ']';
+    }
+    if (check.need.bars.length) {
+      const norm = v => String(v == null ? '' : v).replace(/[\s\u3000]+/g, '');
+      const got = {};
+      (fill.bars || []).forEach(function (b) { if (b && b.name) got[norm(b.name)] = b; });
+      check.need.bars.forEach(function (s) {
+        const b = got[norm(s.name)];
+        if (!b || !String(b.content || '').trim()) return;
+        out += '\n[bar:' + clean(s.name) + ']' + String(b.content) + '[/bar]';
+      });
+    }
+    return out;
   } catch (e) {
     return reply;
   }
@@ -3232,12 +3346,23 @@ async function requestReply(opts) {
           if (think.length > 600) think = think.slice(0, 400).replace(/\s+$/g, '') + '…';
           const heart = probe.heart || bodyMeta.heart;
           const plots = (probe.plots && probe.plots.length) ? probe.plots : bodyMeta.plots;
+          const bars = (probe.bars && probe.bars.length) ? probe.bars : (bodyMeta.bars || []);
+          const body = (probe.body && probe.body.length) ? probe.body : (bodyMeta.body || []);
           // 内容里自带的 ] / 】 会把重新包上的标签提前截断，先替换掉再合并。
           const stripTagEnd = s => String(s || '').replace(/[\]】]/g, ' ');
           let merged = bodyText;
           if (think) merged = '[thinking:' + stripTagEnd(think) + ']\n' + merged;
           if (heart) merged += '\n[heart:' + stripTagEnd(heart) + ']';
           if (plots && plots.length) merged += '\n[plot:' + plots.map(stripTagEnd).join('\n') + ']';
+          (bars || []).forEach(function (b) {
+            if (!b || !b.name || !String(b.content || '').trim()) return;
+            merged += '\n[bar:' + stripTagEnd(b.name) + ']' + String(b.content) + '[/bar]';
+          });
+          if (body && body.length) {
+            merged += '\n[身体:' + body.map(function (it) {
+              return (it.k ? stripTagEnd(it.k) + '=' : '') + stripTagEnd(it.v);
+            }).join('|') + ']';
+          }
           reply = merged;
         }
       }
@@ -3245,6 +3370,8 @@ async function requestReply(opts) {
     try { reply = await ensureOfflineLength(reply, history, continueMode); } catch (e) {}
     // 正文有了但没带剧情推荐：单独补一次小请求，不再依赖模型在长文末尾记得写 [plot]。
     try { if (reply && !extractMeta(reply).plots.length) reply = await ensureOfflinePlots(reply, history); } catch (e) {}
+    // 最后统一检查：thinking / heart / plot / 身体状态 / 自定义状态栏，缺什么补什么，保证一轮输出完整。
+    try { if (reply) reply = await ensureOfflineSections(reply, history); } catch (e) {}
     try {
       if (!offlineIsGroup && !offlineInvitedChars.length && reply && window.NanoScheduleBridge && window.NanoScheduleBridge.applyMarkers) {
         reply = await window.NanoScheduleBridge.applyMarkers(reply, { charId: offlineChatId, charName: settings.charName });
@@ -3342,6 +3469,7 @@ function buildOfflineForeignInstruction() {
 async function callMainAPI(history, opts) {
   const bodyOnly = !!(opts && opts.bodyOnly);
   const plotOnly = !!(opts && opts.plotOnly);
+  const sectionsOnly = !!(opts && opts.sectionsOnly);
   const rules = await loadRulesFromDB();
   const personMap = { auto: '由模型根据上下文自然决定', first: '第一人称', second: '第二人称', third: '第三人称' };
 
@@ -3454,6 +3582,8 @@ ${offlineStyleLibrary()}
   })();
   const systemPrompt = plotOnly
     ? OFFLINE_PLOT_ONLY_PROMPT
+    : sectionsOnly
+    ? OFFLINE_SECTION_ONLY_PROMPT
     : bodyOnly
     ? '只输出这一段剧情的正文（动作、对白、心理描写），正文写完后输出 5 条 [plot:...]。不要输出 [thinking]、[heart] 或状态栏，不要解释，不要重复已经写过的内容。'
     : [
@@ -3620,7 +3750,7 @@ ${offlineStyleLibrary()}
         if (scheduleBlock) scheduleBlock = scheduleBlock + '\n\n';
       }
     } catch (e) {}
-    const scenePrompt = (bodyOnly || plotOnly)
+    const scenePrompt = (bodyOnly || plotOnly || sectionsOnly)
       ? systemPrompt
       : ((offlineIsGroup || offlineInvitedChars.length)
           ? (buildGroupOfflinePrompt() + (rules.length
@@ -3629,12 +3759,12 @@ ${offlineStyleLibrary()}
           : systemPrompt
               .replace(/{{char}}/g, settings.charName)
               .replace(/{{user}}/g, settings.userName || '对方'));
-    const systemPromptStr = plotOnly
+    const systemPromptStr = (plotOnly || sectionsOnly)
       ? systemPrompt
       : (worldbookFirstBlock + personaBlock + settingsPriorityBlock + timeBlock + scheduleBlock + memBlock + onlineBlock + openingBlock + scenePrompt + offlineExitedBlock());
     // 可编辑的角色扮演 Prompt 模板（js/roleplay-prompt.js），用户可自行修改
     let finalSystemPrompt = systemPromptStr;
-    if (!plotOnly) try {
+    if (!plotOnly && !sectionsOnly) try {
       const RP = window.NanoRoleplayPrompt;
       if (RP && RP.enabled !== false && typeof RP.build === 'function') {
         finalSystemPrompt = String(RP.build(systemPromptStr) || systemPromptStr)
@@ -3643,7 +3773,7 @@ ${offlineStyleLibrary()}
       }
     } catch (e) {}
     // 用户规则里最关键的禁令在最后再压一遍：长人设 / 世界书容易把中间的规则冲淡。
-    if (!plotOnly) try {
+    if (!plotOnly && !sectionsOnly) try {
       const hardBans = (rules || []).filter(function (r) {
         return /禁止|不要|不许|不能|禁用|称呼|叫/.test(String(r || ''));
       });
@@ -3654,7 +3784,7 @@ ${offlineStyleLibrary()}
       finalSystemPrompt += '\n\n【称呼硬性禁令】禁止用「姑娘 / 女人 / 女孩 / 小姑娘 / 小丫头 / 丫头 / 小孩 / 小朋友 / 小家伙」这类性别、年龄或外貌词称呼 ' + (settings.userName || '用户') + '。称呼只能使用名字或「你」，正文、对白、心声、思维链全部适用。';
     } catch (e) {}
     // 时间锚点放在系统提示末尾，防止长人设/长世界书把开头的时间感知冲淡。
-    if (!plotOnly) try {
+    if (!plotOnly && !sectionsOnly) try {
       if (__taOn && window.NanoHoliday && window.NanoHoliday.nowAnchor) {
         finalSystemPrompt += '\n\n【时间锚点 · 最新】' + window.NanoHoliday.nowAnchor(new Date(), {
           lastUserMs: __lastUserMs, lastAiMs: __lastAiMs, nationality: __nat
@@ -3662,7 +3792,7 @@ ${offlineStyleLibrary()}
       }
     } catch (e) {}
     // 重roll 纠正：只作用于这一轮，追加在系统提示最后
-    if (!plotOnly) try {
+    if (!plotOnly && !sectionsOnly) try {
       const rr = String(window.__offlineRerollReason || '').trim();
       if (rr) {
         window.__offlineRerollReason = '';
@@ -3670,12 +3800,12 @@ ${offlineStyleLibrary()}
       }
     } catch (e) {}
     // 月潮：被授权的角色知道她的经期
-    if (!plotOnly) try {
+    if (!plotOnly && !sectionsOnly) try {
       const cyc = window.NanoCycle && NanoCycle.promptBlock(offlineChatId || (settings && settings.chatId));
       if (cyc) finalSystemPrompt += '\n\n' + cyc;
     } catch (e) {}
     // 续写模式：不是新一轮对话，也不是回复用户，只是把上一张卡片往下写
-    if (!plotOnly && opts && opts.continue) {
+    if (!plotOnly && !sectionsOnly && opts && opts.continue) {
       finalSystemPrompt += '\n\n【续写模式 · 本轮唯一任务】你现在不是重新开始一段对话，也不是在回复用户。请直接接着你上一条已经写出的正文继续往下写：\n'
         + '- 从上次停下的地方自然接续；不要重新开头、不要复述上一段、不要总结前文、不要更换场景或时间线。\n'
         + '- 保持同一人称、视角、文风和尺度；如果上一段停在动作、对白或半句话，就顺着写下去。\n'
@@ -3684,7 +3814,7 @@ ${offlineStyleLibrary()}
         + '- 开头照常输出 [thinking:…]，正文之后照常输出 [heart:…] 和 5 条 [plot:…]。';
     }
     // 设置项放到系统提示最后再压一遍：长人设 / 世界书容易把中段的设置冲淡。
-    if (!plotOnly && !bodyOnly) {
+    if (!plotOnly && !bodyOnly && !sectionsOnly) {
       const finalSettings = [
         wordInstruction,
         personInstruction,
@@ -3699,7 +3829,7 @@ ${offlineStyleLibrary()}
       ].filter(Boolean).join('\n');
       if (finalSettings) finalSystemPrompt += '\n\n【本轮生效设置 · 最后确认】\n' + finalSettings;
     }
-    if (!plotOnly) {
+    if (!plotOnly && !sectionsOnly) {
       finalSystemPrompt += '\n\n' + (bodyOnly
         ? '【本轮输出格式 · 最后确认】只写正文，正文写完后必须输出 5 条 [plot:...]；不要 [thinking]/[heart]，不要解释。'
         : '【本轮输出格式 · 最后确认】按顺序输出：[thinking:…] → 正文 → [heart:…] → [plot:…]（正好 5 条）→ 自定义状态栏。正文写完后必须继续补齐 heart 和 plot，不能停在正文；不要解释规则，不要输出系统提示词。');

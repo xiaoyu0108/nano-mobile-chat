@@ -434,13 +434,21 @@
             var last = parseInt(localStorage.getItem('nano_push_meta_sync_at') || '0', 10) || 0;
             var identity = appId() + '|' + autoDeviceId() + '|' + currentAutoUserId();
             var lastIdentity = localStorage.getItem('nano_push_meta_identity') || '';
-            // 切换面具 / 站点、或升级到带 appId 的版本后必须立刻重写订阅元数据，
-            // 否则服务端仍会按旧身份把它当成别的用户/别的站点推送。
-            if (lastIdentity === identity && Date.now() - last < 10 * 60 * 1000) return Promise.resolve(false);
             return registerSW().then(function (reg) {
                 return reg.pushManager.getSubscription();
             }).then(function (sub) {
-                if (!sub) return false;
+                if (!sub) {
+                    // 浏览器可能因为长期未用、卸载重装、Push 服务报 410 等原因悄悄丢掉订阅。
+                    // 权限仍然 granted 时自动重建一次，否则用户只会收到「最后一次」推送，之后永远静默。
+                    var healAt = 0;
+                    try { healAt = parseInt(localStorage.getItem('nano_push_heal_at') || '0', 10) || 0; } catch (e) {}
+                    if (healAt && Date.now() - healAt < 60 * 60 * 1000) return false;
+                    try { localStorage.setItem('nano_push_heal_at', String(Date.now())); } catch (e) {}
+                    return enable(true).then(function () { return true; }).catch(function () { return false; });
+                }
+                // 切换面具 / 站点、或升级到带 appId 的版本后必须立刻重写订阅元数据，
+                // 否则服务端仍会按旧身份把它当成别的用户/别的站点推送。
+                if (lastIdentity === identity && Date.now() - last < 10 * 60 * 1000) return false;
                 return postJSON(cfg.endpoint + '/subscribe', {
                     subscription: sub.toJSON ? sub.toJSON() : sub,
                     userId: currentAutoUserId(),
@@ -456,6 +464,7 @@
                     try {
                         localStorage.setItem('nano_push_meta_sync_at', String(Date.now()));
                         localStorage.setItem('nano_push_meta_identity', identity);
+                        localStorage.removeItem('nano_push_heal_at');
                     } catch (e) {}
                     return true;
                 });
@@ -556,6 +565,14 @@
     try {
         if (window.top === window) {
             setTimeout(function () { syncVapid().then(function () { refreshSubscription(); }); }, 1600);
+            // 长时间挂着的 PWA / 从后台回来时再自检一次：订阅若被浏览器回收，自动补回来。
+            var lastResync = 0;
+            document.addEventListener('visibilitychange', function () {
+                if (document.visibilityState !== 'visible') return;
+                if (Date.now() - lastResync < 10 * 60 * 1000) return;
+                lastResync = Date.now();
+                try { refreshSubscription(); } catch (e) {}
+            });
         }
     } catch (e) {}
 })();

@@ -15,6 +15,9 @@
     // 所以分片必须小于 10MB：这里用 8MB。应用层不再限制总大小；
     // 实际上限由 GitHub Gist（最多 300 个文件）和手机内存决定。
     var CHUNK_BYTES = 8 * 1024 * 1024;
+    // 不设应用层大小上限：无论多少数据都允许走云端。
+    // 通过流式压缩 + 逐片上传降低内存峰值，避免大备份把页面撑到被系统重启。
+    var BACKUP_LOCK_KEY = 'nano_backup_running_at';
     var PART_PREFIX = 'nano-backup-part-';
     function partName(i) {
         return PART_PREFIX + String(i + 1).padStart(3, '0') + '.txt';
@@ -126,17 +129,167 @@
         return data;
     }
 
-    async function packBackup() {
-        if (typeof collectAllData !== 'function') throw new Error('备份模块未加载，请刷新页面');
-        setProgress(4, '读取数据库…');
-        var data = await collectAllData({ binary: true });
-        stripCloudSecrets(data);
-        setProgress(38, '序列化数据…');
-        var json = JSON.stringify(data);
-        var raw = new TextEncoder().encode(json);
-        setProgress(48, '压缩数据…');
-        var gz = await gzipBytes(raw);
-        return { jsonBytes: raw.length, bytes: gz.bytes, gzip: gz.gzip };
+    function wantIncludeBinary() {
+        var el = $('cloudIncludeBinary');
+        return !!(el && el.checked);
+    }
+
+    async function confirmFullBinary() {
+        return confirm('包含图片 / 语音会把完整数据一起上传到云端，体积可能很大。\n\n备份已改为流式压缩 + 分片上传，不再限制总大小；数据越大耗时越长，请保持页面在前台。继续？');
+    }
+
+    async function packBackup(opts) {
+        opts = opts || {};
+        var useBinary = !!opts.binary;
+        // 自动备份和手动备份可能同时跑（首页有隐藏的自动备份 iframe）：
+        // 用 localStorage 锁避免两份全量数据同时进内存，直接触发 App 重启。
+        var lockAt = 0;
+        try { lockAt = parseInt(localStorage.getItem(BACKUP_LOCK_KEY) || '0', 10) || 0; } catch (e) {}
+        if (lockAt && Date.now() - lockAt < 5 * 60 * 1000) {
+            throw new Error('另一个备份正在进行，请等它完成后再试');
+        }
+        try { localStorage.setItem(BACKUP_LOCK_KEY, String(Date.now())); } catch (e) {}
+        try {
+            if (typeof collectAllData !== 'function') throw new Error('备份模块未加载，请刷新页面');
+            setProgress(4, useBinary ? '读取数据库…' : '读取数据库（轻量备份：跳过图片 / 语音）…');
+            var data = await collectAllData({ binary: useBinary });
+            stripCloudSecrets(data);
+            setProgress(38, '序列化数据…');
+            var json = JSON.stringify(data);
+            data = null;   // 尽早释放整份对象，降低大备份的内存峰值
+            var raw = new TextEncoder().encode(json);
+            json = null;
+            var jsonBytes = raw.length;
+            setProgress(48, '压缩数据…');
+            var gz = await gzipBytes(raw);
+            raw = null;
+            return { jsonBytes: jsonBytes, bytes: gz.bytes, gzip: gz.gzip };
+        } finally {
+            try { localStorage.removeItem(BACKUP_LOCK_KEY); } catch (e) {}
+        }
+    }
+
+    // 逐段序列化备份对象：每处理完一个 store / 一条记录就释放引用，
+    // 避免超大备份在 JSON.stringify 阶段同时保留「整份数据 + 整段 JSON」。
+    function* backupJsonChunks(data) {
+        const js = function (v) {
+            const s = JSON.stringify(v);
+            return s === undefined ? 'null' : s;
+        };
+        yield '{"meta":' + js(data.meta || {});
+        yield ',"indexedDB":{';
+        const dbs = data.indexedDB || {};
+        let di = 0;
+        for (const dbName of Object.keys(dbs)) {
+            const db = dbs[dbName] || {};
+            if (di++) yield ',';
+            yield js(dbName) + ':{"version":' + js(db.version) + ',"schema":' + js(db.schema || {}) + ',"stores":{';
+            const stores = db.stores || {};
+            let si = 0;
+            for (const storeName of Object.keys(stores)) {
+                if (si++) yield ',';
+                const arr = stores[storeName] || [];
+                yield js(storeName) + ':[';
+                for (let i = 0; i < arr.length; i++) {
+                    if (i) yield ',';
+                    yield js(arr[i]);
+                    arr[i] = null;   // 已写入 JSON，立刻释放这条记录（尤其是大图片 / 语音）
+                }
+                yield ']';
+                stores[storeName] = null;
+            }
+            yield '}}';
+            dbs[dbName] = null;
+        }
+        yield '}';
+        // localStorage / sessionStorage / cacheStorage 通常很小，直接整段输出。
+        const tailKeys = ['localStorage', 'sessionStorage', 'cacheStorage'];
+        for (const k of tailKeys) {
+            if (data[k] == null) continue;
+            const s = js(data[k]);
+            data[k] = null;
+            // 前面的 indexedDB 已经闭合，这里补逗号。
+            yield ',"' + k + '":' + s;
+        }
+        yield '}';
+    }
+
+    // 流式打包：压缩结果按块交给 onChunk（逐片上传），不在内存里保留完整的压缩包和 base64。
+    async function packBackupStream(opts, onChunk, onProgress) {
+        opts = opts || {};
+        var useBinary = !!opts.binary;
+        var lockAt = 0;
+        try { lockAt = parseInt(localStorage.getItem(BACKUP_LOCK_KEY) || '0', 10) || 0; } catch (e) {}
+        if (lockAt && Date.now() - lockAt < 5 * 60 * 1000) {
+            throw new Error('另一个备份正在进行，请等它完成后再试');
+        }
+        try { localStorage.setItem(BACKUP_LOCK_KEY, String(Date.now())); } catch (e) {}
+        try {
+            if (typeof collectAllData !== 'function') throw new Error('备份模块未加载，请刷新页面');
+            setProgress(4, useBinary ? '读取数据库…' : '读取数据库（轻量备份：跳过图片 / 语音）…');
+            var data = await collectAllData({ binary: useBinary });
+            stripCloudSecrets(data);
+            setProgress(20, '序列化并压缩数据…');
+            if (typeof CompressionStream !== 'undefined') {
+                // 逐段序列化 → 逐段压缩：峰值只需要「已读取的数据 + 当前一段 JSON」。
+                var encoder = new TextEncoder();
+                var totalBytes = 0;
+                var cs = new CompressionStream('gzip');
+                var writer = cs.writable.getWriter();
+                var reader = cs.readable.getReader();
+                var writePromise = (async function () {
+                    for (var part of backupJsonChunks(data)) {
+                        var enc = encoder.encode(part);
+                        totalBytes += enc.length;
+                        await writer.write(enc);
+                        if (onProgress) onProgress(totalBytes, 0);
+                    }
+                    data = null;
+                    await writer.close();
+                    return totalBytes;
+                })();
+                try {
+                    while (true) {
+                        var rd = await reader.read();
+                        if (rd.done) break;
+                        if (rd.value && rd.value.length) await onChunk(rd.value);
+                    }
+                } finally {
+                    // 上传失败 / 用户中断时先取消读取，避免写入端一直等背压而卡住。
+                    try { await reader.cancel(); } catch (e) {}
+                    try { await writePromise; } catch (e) {}
+                    try { reader.releaseLock(); } catch (e) {}
+                    try { writer.releaseLock(); } catch (e) {}
+                }
+                return { jsonBytes: totalBytes, gzip: true };
+            }
+            // 老浏览器没有 CompressionStream：退回整段序列化 + pako。
+            var json = JSON.stringify(data);
+            data = null;
+            var raw = new TextEncoder().encode(json);
+            json = null;
+            var jsonBytes = raw.length;
+            if (onProgress) onProgress(0, jsonBytes);
+            if (window.pako && typeof window.pako.gzip === 'function') {
+                var gz = window.pako.gzip(raw);
+                raw = null;
+                if (onProgress) onProgress(jsonBytes, jsonBytes);
+                var gzStep = 3 * 1024 * 1024;
+                for (var gi = 0; gi < gz.length; gi += gzStep) {
+                    await onChunk(gz.subarray(gi, Math.min(gi + gzStep, gz.length)));
+                }
+                return { jsonBytes: jsonBytes, gzip: true };
+            }
+            if (onProgress) onProgress(jsonBytes, jsonBytes);
+            var rawStep = 3 * 1024 * 1024;
+            for (var ri = 0; ri < raw.length; ri += rawStep) {
+                await onChunk(raw.subarray(ri, Math.min(ri + rawStep, raw.length)));
+            }
+            raw = null;
+            return { jsonBytes: jsonBytes, gzip: false };
+        } finally {
+            try { localStorage.removeItem(BACKUP_LOCK_KEY); } catch (e) {}
+        }
     }
 
     function keepLocalCloudCfg() {
@@ -376,42 +529,41 @@
         opts = opts || {};
         var isAuto = !!opts.auto;
         if (!ghToken()) { if (!isAuto) toast('请先连接 GitHub'); return false; }
-        if (!isAuto && !confirm('将把本机全部数据压缩后上传到你的 GitHub（私有 Gist）。\n备份包含聊天记录和图片，继续？')) return false;
+        var useBinary = !isAuto && wantIncludeBinary();
+        if (!isAuto) {
+            if (useBinary) {
+                if (!(await confirmFullBinary())) return false;
+            } else if (!confirm('将把本机数据（聊天记录、角色卡、设置）压缩后上传到 GitHub 私有 Gist。\n当前未勾选“包含图片 / 语音”，备份是轻量版；需要完整数据请先勾选。继续？')) return false;
+        }
         setGhBusy(true);
         if (!isAuto) showProgress('正在上传到 GitHub');
         try {
-            var pack = await packBackup();
-            setProgress(58, '生成备份文件…');
-            var b64 = await binaryToBase64(pack.bytes);
-            var payload = JSON.stringify({
+            // 流式压缩 + 边压边切片上传：不再把完整 base64 / payload 同时放进内存，
+            // 即使图片语音很多也不会因为内存峰值把页面撑到重启。
+            var gzipOk = (typeof CompressionStream !== 'undefined')
+                || !!(window.pako && typeof window.pako.gzip === 'function');
+            var createdAt = new Date().toISOString();
+            var head = {
                 format: 'nano-cloud-backup',
                 version: 1,
-                encoding: pack.gzip ? 'gzip+base64' : 'base64',
-                createdAt: new Date().toISOString(),
+                encoding: gzipOk ? 'gzip+base64' : 'base64',
+                createdAt: createdAt,
                 origin: location.origin,
-                jsonBytes: pack.jsonBytes,
-                data: b64
-            });
-            var chunks = [];
-            for (var off = 0; off < payload.length; off += CHUNK_BYTES) {
-                chunks.push(payload.slice(off, off + CHUNK_BYTES));
-            }
-            if (!chunks.length) chunks.push('');
-            // GitHub 单个 Gist 最多返回 300 个文件；这是平台限制，不是应用限制。
-            if (chunks.length > 290) {
-                throw new Error('备份需要 ' + chunks.length + ' 个分片，超过 GitHub Gist 的 300 文件上限。请改用本地导出，或先清理部分聊天/图片数据。');
-            }
+                jsonBytes: 0
+            };
+            var prefix = JSON.stringify(head).replace(/\}$/, ',"data":"');
+            var suffix = '"}';
             var manifest = {
                 format: 'nano-cloud-backup-manifest',
                 version: 2,
                 complete: false,
-                createdAt: new Date().toISOString(),
+                createdAt: createdAt,
                 origin: location.origin,
-                jsonBytes: pack.jsonBytes,
-                size: payload.length,
-                parts: chunks.map(function (_, i) { return partName(i); })
+                jsonBytes: 0,
+                size: 0,
+                parts: []
             };
-            setProgress(66, '创建备份（' + chunks.length + ' 个分片，共 ' + fmtSize(payload.length) + '）…');
+            setProgress(58, '创建备份…');
             var created = null;
             try {
                 created = await ghRequest('/gists', {
@@ -428,19 +580,77 @@
                     })
                 });
                 if (!created || !created.id) throw new Error('GitHub 没有返回 Gist ID');
-                // 逐个 PATCH 分片：单个请求不会过大，失败时删除半成品 Gist。
-                for (var i = 0; i < chunks.length; i++) {
+                var partNames = [];
+                var totalSize = 0;
+                var partBuf = prefix;
+                var carry = new Uint8Array(0);
+                var uploadPart = async function (content) {
+                    if (partNames.length >= 290) {
+                        throw new Error('备份超过 GitHub Gist 的 300 文件上限。GitHub 是平台限制；可改用 Cloudflare 云端备份，或先清理部分聊天/图片数据。');
+                    }
+                    var name = partName(partNames.length);
                     var f = {};
-                    f[partName(i)] = { content: chunks[i] };
+                    f[name] = { content: content };
                     await ghRequest('/gists/' + encodeURIComponent(created.id), {
                         method: 'PATCH',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ files: f })
                     });
-                    setProgress(66 + Math.round(30 * (i + 1) / chunks.length), '上传分片 ' + (i + 1) + '/' + chunks.length + '…');
+                    partNames.push(name);
+                    totalSize += content.length;
+                    setProgress(58 + Math.min(34, partNames.length * 2), '上传分片 ' + partNames.length + '…');
+                };
+                var flushParts = async function () {
+                    while (partBuf.length >= CHUNK_BYTES) {
+                        var slice = partBuf.slice(0, CHUNK_BYTES);
+                        partBuf = partBuf.slice(CHUNK_BYTES);
+                        await uploadPart(slice);
+                    }
+                };
+                var feedB64 = async function (b64) {
+                    partBuf += b64;
+                    await flushParts();
+                };
+                var toB64 = function (u8) {
+                    var all = u8;
+                    if (carry.length) {
+                        all = new Uint8Array(carry.length + u8.length);
+                        all.set(carry);
+                        all.set(u8, carry.length);
+                    }
+                    var usable = all.length - (all.length % 3);
+                    var bin = '';
+                    for (var i = 0; i < usable; i += 0x8000) {
+                        bin += String.fromCharCode.apply(null, all.subarray(i, Math.min(i + 0x8000, usable)));
+                    }
+                    carry = all.slice(usable);
+                    return usable ? btoa(bin) : '';
+                };
+                var packed = await packBackupStream(
+                    { binary: useBinary },
+                    async function (chunk) { await feedB64(toB64(chunk)); },
+                    function (done, total) {
+                        var pct = total ? Math.round(5 + 50 * (done / total)) : 5;
+                        setProgress(pct, '压缩数据 ' + fmtSize(done) + (total ? ' / ' + fmtSize(total) : '') + '…');
+                    }
+                );
+                if (carry.length) {
+                    var tailBin = '';
+                    for (var ci = 0; ci < carry.length; ci++) tailBin += String.fromCharCode(carry[ci]);
+                    await feedB64(btoa(tailBin));
+                    carry = new Uint8Array(0);
+                }
+                await feedB64(suffix);
+                if (partBuf) {
+                    var last = partBuf;
+                    partBuf = '';
+                    await uploadPart(last);
                 }
                 // 所有分片成功后再把清单标记为完成；中途退出/失败时恢复端会明确提示备份不完整。
                 manifest.complete = true;
+                manifest.parts = partNames;
+                manifest.size = totalSize;
+                manifest.jsonBytes = packed.jsonBytes;
                 var doneFile = {};
                 doneFile[GH_FILE] = { content: JSON.stringify(manifest) };
                 await ghRequest('/gists/' + encodeURIComponent(created.id), {
@@ -448,14 +658,14 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ files: doneFile })
                 });
+                setProgress(100, '上传完成');
+                if (!isAuto) toast('已上传到 GitHub 私有 Gist（' + partNames.length + ' 个分片）');
             } catch (upErr) {
                 if (created && created.id) {
                     try { await ghRequest('/gists/' + encodeURIComponent(created.id), { method: 'DELETE' }); } catch (e) {}
                 }
                 throw upErr;
             }
-            setProgress(100, '上传完成');
-            if (!isAuto) toast('已上传到 GitHub 私有 Gist（' + chunks.length + ' 个分片）');
             try {
                 await ghLoadList(true);
                 // 自动备份每次新建 Gist，再按设置的份数删除最旧的（0 = 不限制）。
@@ -529,15 +739,24 @@
                     setProgress(24 + Math.round(22 * (pi + 1) / names.length), '下载分片 ' + (pi + 1) + '/' + names.length + '…');
                 }
                 content = pieces.join('');
+                pieces = null;
                 if (!content) throw new Error('备份分片内容为空');
                 wrap = JSON.parse(content);
+                content = null;
             }
             setProgress(46, '解压备份…');
-            var data = wrap;
+            var data = null;
             if (wrap && wrap.format === 'nano-cloud-backup') {
-                var bytes = new Uint8Array(base64ToArrayBuffer(wrap.data || ''));
-                if (wrap.encoding && wrap.encoding.indexOf('gzip') !== -1) bytes = await gunzipBytes(bytes);
+                var b64 = wrap.data || '';
+                var gz = !!(wrap.encoding && wrap.encoding.indexOf('gzip') !== -1);
+                wrap = null;
+                var bytes = new Uint8Array(base64ToArrayBuffer(b64));
+                b64 = null;
+                if (gz) bytes = await gunzipBytes(bytes);
                 data = JSON.parse(new TextDecoder().decode(bytes));
+                bytes = null;
+            } else {
+                data = wrap;
             }
             await restoreBackupData(data);
         } catch (e) {
@@ -735,25 +954,61 @@
         opts = opts || {};
         var isAuto = !!opts.auto;
         if (!(cfBase() && cfToken())) { if (!isAuto) toast('请先连接 Cloudflare'); return false; }
-        if (!isAuto && !confirm('将把本机全部数据压缩后上传到你自己的 Cloudflare Worker。\n备份包含聊天记录和图片，继续？')) return false;
+        var useBinary = !isAuto && wantIncludeBinary();
+        if (!isAuto) {
+            if (useBinary) {
+                if (!(await confirmFullBinary())) return false;
+            } else if (!confirm('将把本机数据（聊天记录、角色卡、设置）压缩后上传到你的 Cloudflare Worker。\n当前未勾选“包含图片 / 语音”，备份是轻量版；需要完整数据请先勾选。继续？')) return false;
+        }
         setCfBusy(true);
         if (!isAuto) showProgress('正在上传到 Cloudflare');
         try {
-            var pack = await packBackup();
             // R2 不限制 24MB；如果 Worker 仍绑的是 KV，后端会返回明确错误。
             var key = isAuto ? 'nano-backup-auto.bak' : ('nano-backup-' + stamp() + '.bak');
+            var gzipOk = (typeof CompressionStream !== 'undefined')
+                || !!(window.pako && typeof window.pako.gzip === 'function');
             var meta = encodeURIComponent(JSON.stringify({
                 createdAt: new Date().toISOString(),
                 origin: location.origin,
-                jsonBytes: pack.jsonBytes,
-                gzip: pack.gzip ? 1 : 0
+                jsonBytes: 0,
+                gzip: gzipOk ? 1 : 0
             }));
-            setProgress(65, '上传 ' + fmtSize(pack.bytes.length) + '…');
-            var data = await cfJson('/put?key=' + encodeURIComponent(key) + '&meta=' + meta, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/octet-stream' },
-                body: pack.bytes
-            });
+            var data;
+            if (typeof TransformStream !== 'undefined' && typeof ReadableStream !== 'undefined') {
+                // 压缩结果直接作为请求体流式上传，页面内存里不再保留完整压缩包。
+                var ts = new TransformStream();
+                var writer = ts.writable.getWriter();
+                var uploadPromise = cfJson('/put?key=' + encodeURIComponent(key) + '&meta=' + meta, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/octet-stream' },
+                    body: ts.readable,
+                    duplex: 'half'
+                });
+                try {
+                    await packBackupStream(
+                        { binary: useBinary },
+                        async function (chunk) { await writer.write(chunk); },
+                        function (done, total) {
+                            var pct = total ? Math.round(5 + 55 * (done / total)) : 5;
+                            setProgress(pct, '压缩并上传 ' + fmtSize(done) + (total ? ' / ' + fmtSize(total) : '') + '…');
+                        }
+                    );
+                    await writer.close();
+                    data = await uploadPromise;
+                } catch (e) {
+                    try { await writer.abort(e); } catch (e2) {}
+                    try { await uploadPromise; } catch (e3) {}
+                    throw e;
+                }
+            } else {
+                var pack = await packBackup({ binary: useBinary });
+                setProgress(65, '上传 ' + fmtSize(pack.bytes.length) + '…');
+                data = await cfJson('/put?key=' + encodeURIComponent(key) + '&meta=' + meta, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/octet-stream' },
+                    body: pack.bytes
+                });
+            }
             if (!data || data.ok === false) throw new Error((data && data.error) || '上传失败');
             setProgress(100, '上传完成');
             if (!isAuto) toast('已上传到 Cloudflare ' + (data.store === 'r2' ? 'R2' : 'KV'));
@@ -789,9 +1044,12 @@
             var buf = new Uint8Array(await res.arrayBuffer());
             setProgress(46, '解压备份…');
             var bytes = await gunzipBytes(buf);
+            buf = null;
             setProgress(52, '解析备份…');
             var data = JSON.parse(new TextDecoder().decode(bytes));
+            bytes = null;
             await restoreBackupData(data);
+            data = null;
         } catch (e) {
             toast('恢复失败：' + friendlyError(e), 4200);
             hideProgress();
@@ -831,7 +1089,7 @@
     async function loadWorkerCode() {
         var box = $('cfCodeBox');
         try {
-            var res = await fetch('../backup-worker/index.js?v=20261026d', { cache: 'no-store' });
+            var res = await fetch('../backup-worker/index.js?v=20261106b', { cache: 'no-store' });
             if (!res.ok) throw new Error('HTTP ' + res.status);
             workerCode = await res.text();
             if (box) box.textContent = workerCode;

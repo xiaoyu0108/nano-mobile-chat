@@ -80,12 +80,13 @@ export default {
         if (r2) {
           const obj = await r2.get(key);
           if (!obj) return json({ ok: false, error: '备份不存在' }, 404);
-          return new Response(await obj.arrayBuffer(), {
-            headers: Object.assign({}, cors, {
-              'Content-Type': 'application/octet-stream',
-              'X-Nano-Metadata': encodeURIComponent(JSON.stringify(obj.customMetadata || {}))
-            })
+          // 直接把 R2 的流交给客户端，避免大备份在 Worker 内存里再复制一份。
+          const headers = Object.assign({}, cors, {
+            'Content-Type': 'application/octet-stream',
+            'X-Nano-Metadata': encodeURIComponent(JSON.stringify(obj.customMetadata || {}))
           });
+          if (obj && obj.size) headers['Content-Length'] = String(obj.size);
+          return new Response(obj.body, { headers });
         }
         const got = await kv.getWithMetadata(key, { type: 'arrayBuffer' });
         if (!got || !got.value) return json({ ok: false, error: '备份不存在' }, 404);
@@ -99,20 +100,25 @@ export default {
 
       if (request.method === 'PUT' && url.pathname.endsWith('/put')) {
         if (!/^[A-Za-z0-9._-]{1,200}$/.test(key)) return json({ ok: false, error: 'key 不合法' }, 400);
+        let meta = {};
+        try { meta = JSON.parse(url.searchParams.get('meta') || '{}'); } catch (e) {}
+        const uploadedAt = new Date().toISOString();
+        const contentLength = Number(request.headers.get('content-length') || 0) || 0;
+
+        if (r2) {
+          // 不限制大小：请求体直接流进 R2，不在 Worker 内存里缓冲整份备份。
+          const fullMeta = Object.assign({}, meta, { uploadedAt: uploadedAt });
+          if (contentLength) fullMeta.size = contentLength;
+          const obj = await r2.put(key, request.body, { customMetadata: metaStrings(fullMeta) });
+          return json({ ok: true, store: 'r2', key: key, size: (obj && obj.size) || contentLength || 0 });
+        }
+
+        // KV 只能整段读取，保留 24MB 平台限制。
         const body = await request.arrayBuffer();
         const size = body.byteLength;
         if (!size) return json({ ok: false, error: '备份内容为空' }, 400);
-        let meta = {};
-        try { meta = JSON.parse(url.searchParams.get('meta') || '{}'); } catch (e) {}
-        const fullMeta = Object.assign({}, meta, { size: size, uploadedAt: new Date().toISOString() });
-
-        if (r2) {
-          // R2 不限制 24MB；实际对象上限远高于手机能生成的备份。
-          await r2.put(key, body, { customMetadata: metaStrings(fullMeta) });
-          return json({ ok: true, store: 'r2', key: key, size: size });
-        }
-
         if (size > 24 * 1024 * 1024) return json({ ok: false, error: '当前使用 KV，单个备份不能超过 24MB；绑定 R2（BACKUP_R2）后即可取消该限制' }, 413);
+        const fullMeta = Object.assign({}, meta, { size: size, uploadedAt: uploadedAt });
         await kv.put(key, body, { metadata: fullMeta });
         return json({ ok: true, store: 'kv', key: key, size: size });
       }
