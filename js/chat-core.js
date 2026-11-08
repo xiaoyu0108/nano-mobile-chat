@@ -1234,8 +1234,9 @@
             if (cotPrompt) {
                 prompt += '严格按下面的思维链预设进行推理：\n' + cotPrompt + '\n';
             } else {
-                prompt += '思考内容：先判断对方情绪和意图 → 回忆相关设定 → 想清楚你此刻的态度、以及要说的重点。\n';
+                prompt += '思考内容：先判断对方情绪和意图 → 回忆相关设定 → 想清楚你此刻的态度、以及要说的重点。只写分析、判断和计划，不要写成心声、情绪独白或第一人称抒情。\n';
             }
+            prompt += 'thinking 只写分析、判断、计划和下一步，不要写成心声、情绪独白或第一人称抒情；thinking ≠ heart，heart 才是此刻的情绪/心理状态。thinking 与正文必须遵守同一套内置禁词/红线（称呼、油腻、命令、重复），出现就改掉。\n';
             prompt += '[/think] 之后再按【对话规则】正常输出对话气泡；思考内容不会展示给对方。\n';
             prompt += '顺序只能是「先 [think]…[/think]，后正文」：绝对禁止把 [think] 或思考内容放到正文后面 / 结尾，也绝对禁止重复输出 [think]。\n';
         } else {
@@ -2681,7 +2682,11 @@
         const range = FREQ[freq] || FREQ.medium;
         const key = 'nano_moment_img_round_' + chatId;
         let n = 0;
-        try { n = parseInt(localStorage.getItem(key) || '0', 10) || 0; } catch (e) {}
+        try {
+            const raw = localStorage.getItem(key);
+            // 第一次使用：按频率的最短间隔等待，而不是一上来就生图。
+            n = raw === null ? range[0] : (parseInt(raw, 10) || 0);
+        } catch (e) { n = range[0]; }
         n -= 1;
         const due = n <= 0;
         if (due) n = range[0] + Math.floor(Math.random() * (range[1] - range[0] + 1));
@@ -4250,6 +4255,9 @@
         const rerollBtn = document.getElementById('ivReroll');
         // 只有「单图（或文字图）且能拿到生图提示词」时才显示重roll（多图整体重roll无意义）
         if (rerollBtn) rerollBtn.style.display = (ivCurrentPrompt && ivList.length <= 1) ? 'flex' : 'none';
+        const viewBtn = document.getElementById('ivView');
+        // 没有消息 ID（例如分享卡片图）时没有可查看/编辑的提示词。
+        if (viewBtn) viewBtn.style.display = ivCurrentMsgId ? 'flex' : 'none';
         const dlBtn = document.getElementById('ivDownload');
         if (dlBtn) dlBtn.style.display = 'flex';
         let cap = document.getElementById('ivCaption');
@@ -4355,13 +4363,23 @@
         if (si) si.src = ivCurrentSrc;
         openIvSheet('ivSaveSheet');
     }
-    // 重roll：弹底部半屏，展示并可修改当前生图提示词（不改也能直接重roll）
-    function rerollCurrentImage() {
+    // 查看 / 重roll 共用同一个底部半屏：展示并可修改当前生图提示词。
+    function openPromptSheet(mode) {
         if (!ivCurrentMsgId) return;
         const inp = document.getElementById('ivRerollInput');
         if (inp) inp.value = ivCurrentPrompt || '';
+        const title = document.getElementById('ivSheetTitle');
+        const desc = document.getElementById('ivSheetDesc');
+        if (title) title.textContent = mode === 'view' ? '查看提示词' : '重新生成图片';
+        if (desc) {
+            desc.textContent = mode === 'view'
+                ? '可以查看并修改提示词；点「重roll」按新提示词重新生成，点「取消」退出编辑。'
+                : '可以修改提示词后再重roll，也可以不改直接重roll。';
+        }
         openIvSheet('ivRerollSheet');
     }
+    function rerollCurrentImage() { openPromptSheet('reroll'); }
+    function viewCurrentPrompt() { openPromptSheet('view'); }
     function doReroll() {
         if (!ivCurrentMsgId) return;
         const inp = document.getElementById('ivRerollInput');
@@ -4374,9 +4392,11 @@
     const ivClose = document.getElementById('ivClose');
     const ivDownloadBtn = document.getElementById('ivDownload');
     const ivRerollBtn = document.getElementById('ivReroll');
+    const ivViewBtn = document.getElementById('ivView');
     if (ivClose) ivClose.addEventListener('click', closeImageViewer);
     if (ivDownloadBtn) ivDownloadBtn.addEventListener('click', downloadImage);
     if (ivRerollBtn) ivRerollBtn.addEventListener('click', rerollCurrentImage);
+    if (ivViewBtn) ivViewBtn.addEventListener('click', viewCurrentPrompt);
     // 多图左右翻看：按钮 + 手势
     const ivPrevBtn = document.getElementById('ivPrev');
     const ivNextBtn = document.getElementById('ivNext');
@@ -6930,11 +6950,9 @@
                 };
                 // 只给当前角色（有锁脸/头像参照）真正生图，其他角色用文字照片兜底
                 const isCurrent = String(au.id) === String(chatId);
-                if (allowMomentImage && isCurrent) {
-                    const due = momentImageRoundDue();
-                    if (wantImage || due) {
-                        try { const url = await generateImage(buildImagePrompt(imgPrompt)); if (url) { post.images = [url]; post.genPrompt = imgPrompt; } } catch (e) {}
-                    }
+                // 严格按「朋友圈生图频率」判断：到点才真生图，模型想要图也不能绕过频率。
+                if (allowMomentImage && isCurrent && momentImageRoundDue()) {
+                    try { const url = await generateImage(buildImagePrompt(imgPrompt)); if (url) { post.images = [url]; post.genPrompt = imgPrompt; } } catch (e) {}
                 }
                 if (wantImage && (!post.images || !post.images.length)) post.imageText = imgPrompt;
                 post.maskId = getCurrentMaskId();
@@ -6980,15 +6998,12 @@
             const wantImage = !!obj.wantImage;
             const imgPrompt = String(obj.imagePrompt || obj.text || '').trim();
             const allowMomentImage = getChatSetting('allowMomentImage', false);
-            // 开启了朋友圈生图：模型想要图、或轮到「2~3 条动态一张图」时都真的生成
-            if (allowMomentImage) {
-                const due = momentImageRoundDue();
-                if (wantImage || due) {
-                    try {
-                        const url = await generateImage(buildImagePrompt(imgPrompt));
-                        if (url) { post.images = [url]; post.genPrompt = imgPrompt; }
-                    } catch (e) {}
-                }
+            // 开启了朋友圈生图：严格按设置的频率判断是否到点，模型想要图也不绕过频率。
+            if (allowMomentImage && momentImageRoundDue()) {
+                try {
+                    const url = await generateImage(buildImagePrompt(imgPrompt));
+                    if (url) { post.images = [url]; post.genPrompt = imgPrompt; }
+                } catch (e) {}
             }
             // 没开启生图但想要照片：用文字照片（白色正方形 + 黑色文字描述）
             if (wantImage && (!post.images || !post.images.length)) post.imageText = imgPrompt;
@@ -7028,7 +7043,8 @@
                 isPhoto: true
             };
             const allowMomentImage = getChatSetting('allowMomentImage', false);
-            if (allowMomentImage) {
+            // 照片动态同样受「朋友圈生图频率」控制；没到点就退回文字照片。
+            if (allowMomentImage && momentImageRoundDue()) {
                 try {
                     const url = await generateImage(buildImagePrompt(prompt));
                     if (url) { post.images = [url]; post.genPrompt = prompt; }

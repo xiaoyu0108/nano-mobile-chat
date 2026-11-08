@@ -255,6 +255,23 @@
     return list;
   }
 
+  // 线下内置思维链的唯一来源：设置页与线下页共用一个版本，旧版内置预设会在启动时被清掉。
+  // 只写「分析 / 判断 / 计划」，不写心声、情绪独白或正文。
+  var BUILTIN_COT_NAME = 'English Reasoning (内置)';
+  var BUILTIN_COT_CONTENT = [
+    'Think briefly and concretely before you write. Do not show this reasoning outside [thinking: … ].',
+    '1. Read in this exact order: global world book → {{char}} / {{user}} persona → enabled offline settings (word count, person, user-action prediction, extra rules, selected writing style). Disabled rules must be ignored.',
+    '2. Current scene: time, place, who is present, and what just happened. Pick the single most natural next beat instead of restarting the scene.',
+    '3. Decide {{char}}\'s concrete reaction: one real action and one line of dialogue that only this character would say. No generic comfort, no lecturing, no explaining the character\'s own personality.',
+    '4. Style and safety check (thinking must obey the same bans as the body): no oily address words (姑娘 / 女人 / 女孩 / 小孩 / 小朋友 etc.); no commanding or bossy tone; no three-part parallelism; no action-list filler; no lyric summary; do not repeat the same point. Prefer short, plain, spoken sentences.',
+    '5. Completeness check: output [thinking: … ] first, then the body, then [heart: … ] and exactly 5 [plot: … ] lines. thinking is analysis only — never write it as an inner-voice / heart monologue.'
+  ].join('\n');
+  window.NanoBuiltinCot = {
+    name: BUILTIN_COT_NAME,
+    content: BUILTIN_COT_CONTENT,
+    version: '2026-11-08-v3'
+  };
+
   function newId() {
     return 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   }

@@ -2826,7 +2826,11 @@
         var range = MOMENT_IMG_FREQ[freq] || MOMENT_IMG_FREQ.medium;
         var key = 'nano_moment_img_round_' + charId;
         var n = 0;
-        try { n = parseInt(localStorage.getItem(key) || '0', 10) || 0; } catch (e) {}
+        try {
+            var raw = localStorage.getItem(key);
+            // 第一次使用：按频率的最短间隔等待，而不是一上来就生图。
+            n = raw === null ? range[0] : (parseInt(raw, 10) || 0);
+        } catch (e) { n = range[0]; }
         n -= 1;
         var due = n <= 0;
         if (due) n = range[0] + Math.floor(Math.random() * (range[1] - range[0] + 1));
@@ -3010,41 +3014,30 @@
                 return;
             }
 
-            // 生图：仅「允许朋友圈生图」的 char 参与，且按各自频率（高/中/低）决定本轮到点；
-            // 到点的角色里随机选，不固定同一个人；模型标为配图的动态优先，并保证本轮至少出一张图。
+            // 生图：仅「允许朋友圈生图」的 char 参与，按每条动态累计各自频率（高/中/低）：
+            // 高=每条都生；中=2~3 条一次；低=6~8 条一次。到点的动态都生成，不再只出 1 张。
             if (settings.imageEnabled) {
-                var dueMap = {};   // 本轮到点、可生图的角色：normName -> charId
-                selected.forEach(function(c) {
-                    var cid = String(c.id || c.name);
+                var duePosts = [];   // 本轮到点、可生图的动态
+                newPosts.forEach(function(p) {
+                    var gch = findCharByName(selected, p.author);
+                    if (!gch) return;
+                    var cid = String(gch.id || gch.name);
                     if (!charMomentImageAllowed(cid)) return;
-                    if (momentImageRoundDue(cid)) dueMap[normName(c.name)] = cid;
+                    if (!momentImageRoundDue(cid)) return;
+                    duePosts.push({ post: p, charId: cid, char: gch });
                 });
 
-                var duePosts = newPosts.filter(function(p) { return dueMap[normName(p.author)]; });
                 if (duePosts.length) {
-                    // 打乱，避免每次都让同一个人/同一条先出图
-                    for (var si = duePosts.length - 1; si > 0; si--) {
-                        var sj = Math.floor(Math.random() * (si + 1));
-                        var tmp = duePosts[si]; duePosts[si] = duePosts[sj]; duePosts[sj] = tmp;
-                    }
                     // 模型标了 image 的排前面
-                    duePosts.sort(function(a, b) { return (b.media === 'image' ? 1 : 0) - (a.media === 'image' ? 1 : 0); });
-
-                    var madeCount = 0, maxImages = 1;
-                    var needForce = (duePosts.length > 0); // 有到点角色 → 至少出一张
-                    for (var ci = 0; ci < duePosts.length && madeCount < maxImages; ci++) {
-                        var cp = duePosts[ci];
-                        var wantImg = (cp.media === 'image') || (madeCount === 0 && needForce);
-                        if (!wantImg) continue;
-                        var gch = findCharByName(selected, cp.author);
-                        if (!gch) continue;
-                        var gid = dueMap[normName(cp.author)];
+                    duePosts.sort(function(a, b) { return (b.post.media === 'image' ? 1 : 0) - (a.post.media === 'image' ? 1 : 0); });
+                    for (var ci = 0; ci < duePosts.length; ci++) {
+                        var cp = duePosts[ci].post;
                         var promptText = cp.image || cp.text;
                         try {
-                            var genUrl = await generateImage(promptText, { charId: gid, char: gch });
+                            var genUrl = await generateImage(promptText, { charId: duePosts[ci].charId, char: duePosts[ci].char });
                             if (genUrl) {
-                                cp.images = [genUrl]; cp.genPrompt = promptText; cp.media = 'image'; madeCount++; needForce = false;
-                                try { if (window.NanoGallery) window.NanoGallery.add({ url: genUrl, source: '朋友圈', charName: (gch && gch.name) || cp.author || '', prompt: promptText, generated: true }); } catch (e) {}
+                                cp.images = [genUrl]; cp.genPrompt = promptText; cp.media = 'image';
+                                try { if (window.NanoGallery) window.NanoGallery.add({ url: genUrl, source: '朋友圈', charName: (duePosts[ci].char && duePosts[ci].char.name) || cp.author || '', prompt: promptText, generated: true }); } catch (e) {}
                             }
                         } catch (e) {}
                     }

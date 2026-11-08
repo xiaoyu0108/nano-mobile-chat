@@ -392,7 +392,12 @@
         });
         getFaceRefAsync('coupleFaceChar').then(function (c) {
             var el = document.getElementById('coupleCharFaceStatus');
-            if (el) el.textContent = c ? '已设置' : '未设置';
+            if (!el) return;
+            if (c) { el.textContent = '已设置'; return; }
+            // 没有单独设置时，合照锁脸会自动回退到角色自己的「锁脸参考」。
+            getFaceRefAsync('faceRef').then(function (f) {
+                el.textContent = f ? '跟随锁脸参考' : '未设置';
+            });
         });
         var coupleFaceModeEl = document.getElementById('coupleFaceMode');
         if (coupleFaceModeEl) {

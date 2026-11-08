@@ -52,20 +52,49 @@
         a[chatId] = Date.now();
         writeMap(ACT_KEY, a);
     }
+    // 是否「真的在前台」。优先复用 NanoNotify 的判定：焦点进入 iframe 时部分
+    // WebView 会误触发顶层 blur，只看 __nanoPageFocused 会把正在看的消息误判成后台。
+    function isPageVisible() {
+        // 被缓存到后台（display:none）的聊天/群聊帧不能算“正在看”，
+        // 否则它的主动消息会被静默标成已读，聊天列表也不会出现红点。
+        try {
+            var fe = window.frameElement;
+            if (fe) {
+                var fcs = window.getComputedStyle ? window.getComputedStyle(fe) : null;
+                if (fcs && (fcs.display === 'none' || fcs.visibility === 'hidden')) return false;
+                if (fe.getClientRects && fe.getClientRects().length === 0) return false;
+            }
+        } catch (e) {}
+        try {
+            if (window.NanoNotify && typeof window.NanoNotify.isForeground === 'function') {
+                return !!window.NanoNotify.isForeground();
+            }
+        } catch (e) {}
+        var pageVisible = !document.hidden;
+        try {
+            if (window.top && window.top !== window) {
+                if (window.top.document && window.top.document.hidden) return false;
+                if (window.top.__nanoPageFocused === true) return true;
+                if (window.top.__nanoPageFocused === false) {
+                    try {
+                        if (window.top.document && typeof window.top.document.hasFocus === 'function' && window.top.document.hasFocus()) return true;
+                    } catch (e) {}
+                    return false;
+                }
+                if (window.top.document && typeof window.top.document.hasFocus === 'function') {
+                    return !!window.top.document.hasFocus();
+                }
+            }
+        } catch (e) {}
+        return pageVisible;
+    }
     // 收到角色/群消息：更新活跃时间；若当前不在前台则累加未读并触发通知
     function incoming(chatId, title, text, opts) {
         if (!chatId) return;
         activity(chatId);
         // 保活音频会让 PWA 在后台仍保持 visible；除了本 iframe 的 blur，
         // 再看一眼顶层的焦点/可见状态，避免把后台消息当成“正在看”吞掉。
-        var pageVisible = !document.hidden;
-        try {
-            if (window.top && window.top !== window) {
-                if (window.top.document && window.top.document.hidden) pageVisible = false;
-                if (window.top.__nanoPageFocused === false) pageVisible = false;
-            }
-        } catch (e) {}
-        var isForeground = (ctx.foreground && ctx.chatId === chatId && pageVisible);
+        var isForeground = (ctx.foreground && ctx.chatId === chatId && isPageVisible());
         if (isForeground) {
             markRead(chatId);
             return; // 正在看这个聊天时不再弹通知/响铃

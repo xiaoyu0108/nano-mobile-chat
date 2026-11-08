@@ -1399,16 +1399,19 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 }
 .image-viewer .iv-act {
     display: flex;
-    flex-direction: column;
     align-items: center;
-    gap: 5px;
+    justify-content: center;
+    width: 46px;
+    height: 46px;
+    padding: 0;
+    border: none;
     color: #fff;
-    font-size: 13px;
-    padding: 10px 16px;
-    border-radius: 14px;
+    border-radius: 50%;
     background: rgba(255, 255, 255, 0.16);
     cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
 }
+.image-viewer .iv-act svg { width: 22px; height: 22px; }
 .image-viewer .iv-act:active { background: rgba(255, 255, 255, 0.28); }
 .image-viewer .iv-close {
     position: absolute;

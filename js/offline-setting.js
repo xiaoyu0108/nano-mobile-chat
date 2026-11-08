@@ -124,15 +124,16 @@ function makeGodGroup() {
   };
 }
 
-// ===== 内置思维链预设（英语版，5 步自查）=====
-const BUILTIN_COT_NAME = 'English Reasoning (内置)';
-const BUILTIN_COT_CONTENT = [
+// ===== 内置思维链预设（唯一来源：js/nano-prompts.js 的 NanoBuiltinCot）=====
+// 旧版内置思维链会在加载时统一清理，只保留这一版。
+const BUILTIN_COT_NAME = (window.NanoBuiltinCot && window.NanoBuiltinCot.name) || 'English Reasoning (内置)';
+const BUILTIN_COT_CONTENT = (window.NanoBuiltinCot && window.NanoBuiltinCot.content) || [
   'Think briefly and concretely before you write. Do not show this reasoning outside [thinking: … ].',
-  '1. Read in this exact order: global world book → {{char}} / {{user}} persona → enabled offline settings (word count, person, user-action prediction, extra rules). Disabled rules must be ignored.',
-  '2. Current scene: time, place, who is present, and what just happened. Pick the single most natural next beat instead of restarting the scene.',
-  '3. Decide {{char}}\'s concrete reaction: one real action and one line of dialogue that only this character would say. No generic comfort, no lecturing, no explaining the character\'s own personality.',
-  '4. Style check: no oily address words (姑娘 / 女人 / 女孩 / 小孩 / 小朋友 etc.); no three-part parallelism; no action-list filler; no lyric summary. Prefer short, plain, spoken sentences; let dialogue carry the scene.',
-  '5. Completeness check: output [thinking: … ] first, then the body, then [heart: … ] and exactly 5 [plot: … ] lines. Do not stop after the body.'
+  '1. Read in this exact order: global world book → {{char}} / {{user}} persona → enabled offline settings.',
+  '2. Current scene: time, place, who is present, and what just happened. Pick the single most natural next beat.',
+  '3. Decide {{char}}\'s concrete reaction: one real action and one line of dialogue that only this character would say.',
+  '4. Style check: no oily address words; no commanding tone; no parallelism; no filler; do not repeat.',
+  '5. Completeness check: [thinking] → body → [heart] → exactly 5 [plot] lines. thinking is analysis only, never a heart monologue.'
 ].join('\n');
 
 async function loadAllData() {
@@ -207,6 +208,28 @@ async function loadAllData() {
       }
     } catch (e) {}
 
+    // 旧数据里可能同时开了多条文风：只保留第一条，避免几套文风混在一起写成四不像。
+    try {
+      const sg = (ruleGroups || []).find(function (g) {
+        return g && (g.id === 'offline-style' || /^文风/.test(String(g.name || '')));
+      });
+      if (sg && Array.isArray(sg.rules)) {
+        let kept = false, changed = false;
+        sg.rules.forEach(function (r) {
+          if (!r) return;
+          if (r.enabled !== false) {
+            if (!kept) {
+              kept = true;
+              if (r.enabled !== true) { r.enabled = true; changed = true; }
+            } else {
+              r.enabled = false; changed = true;
+            }
+          }
+        });
+        if (changed) await saveRules();
+      }
+    } catch (e) {}
+
     // 内置规则组升级：确保 God 组存在，并补齐 / 刷新内置神规则（不动用户自建规则）
     try {
       if (localStorage.getItem('nano_offline_god_v9') !== '1') {
@@ -258,14 +281,29 @@ async function loadAllData() {
     const foundCot = cotData.find(s => s.id === COT_PRESETS_ID);
     if (foundCot && foundCot.presets) cotPresets = foundCot.presets;
 
-    // 内置英语思维链预设：版本升级时更新内容（用户可自行改名/修改/删除）
+    // 内置思维链：清理所有旧版内置预设，只保留当前这一版；用户自建预设不动。
     try {
-      if (localStorage.getItem('nano_offline_cot_v2') !== '1') {
-        const oldIdx = (cotPresets || []).findIndex(function (p) { return p && p.name === BUILTIN_COT_NAME; });
-        if (oldIdx >= 0) cotPresets[oldIdx] = { name: BUILTIN_COT_NAME, content: BUILTIN_COT_CONTENT };
-        else cotPresets.unshift({ name: BUILTIN_COT_NAME, content: BUILTIN_COT_CONTENT });
+      if (localStorage.getItem('nano_offline_cot_v3') !== '1') {
+        const OLD_BUILTIN_RE = /Reason step by step before you write|Who are \{\{user\}\} and \{\{char\}\} right now|Read in this exact order|Style check: no oily address|Completeness check/i;
+        const isOldBuiltin = function (p) {
+          if (!p) return true;
+          const name = String(p.name || '');
+          const content = String(p.content || '');
+          if (name === BUILTIN_COT_NAME && content === BUILTIN_COT_CONTENT) return false;
+          if (name === BUILTIN_COT_NAME) return true;
+          if (/English Reasoning \(内置\)|内置思维链|内置.*思维链/i.test(name)) return true;
+          return !!OLD_BUILTIN_RE.test(content);
+        };
+        cotPresets = (cotPresets || []).filter(function (p) { return !isOldBuiltin(p); });
+        cotPresets.unshift({ name: BUILTIN_COT_NAME, content: BUILTIN_COT_CONTENT });
+        // 当前选中的 COT 如果还是旧内置，直接切到最新版；用户自定义 COT 保留。
+        const cur = String(settings.cot || '');
+        if (cur && cur !== BUILTIN_COT_CONTENT && OLD_BUILTIN_RE.test(cur)) {
+          settings.cot = BUILTIN_COT_CONTENT;
+          try { await saveSettings(); } catch (e) {}
+        }
         await saveCotPresets();
-        localStorage.setItem('nano_offline_cot_v2', '1');
+        localStorage.setItem('nano_offline_cot_v3', '1');
       }
     } catch (e) {}
 
@@ -846,13 +884,21 @@ function bindRuleEvents() {
       e.stopPropagation();
       const gi = parseInt(this.dataset.toggleGroupSwitch);
       ruleGroups[gi].enabled = !ruleGroups[gi].enabled;
-      // 关闭大规则组时，其下所有子规则一并关闭；重新打开则一并启用
       const on = ruleGroups[gi].enabled !== false;
-      (ruleGroups[gi].rules || []).forEach(r => { r.enabled = on; });
+      const isStyleGroup = ruleGroups[gi].id === 'offline-style' || /^文风/.test(String(ruleGroups[gi].name || ''));
+      if (isStyleGroup) {
+        // 文风组是单选：打开组时不要把所有文风一起启用；没有选中的就默认第一条。
+        if (on && !(ruleGroups[gi].rules || []).some(r => r && r.enabled !== false)) {
+          if (ruleGroups[gi].rules && ruleGroups[gi].rules[0]) ruleGroups[gi].rules[0].enabled = true;
+        }
+      } else {
+        // 关闭大规则组时，其下所有子规则一并关闭；重新打开则一并启用
+        (ruleGroups[gi].rules || []).forEach(r => { r.enabled = on; });
+      }
       saveRules();
       renderRules();
       updateSummary();
-      showToast(on ? '已开启该规则组（含全部子规则）' : '已关闭该规则组（含全部子规则）');
+      showToast(on ? '已开启该规则组' : '已关闭该规则组');
     };
   });
 
@@ -923,7 +969,16 @@ function bindRuleEvents() {
     el.onclick = function(e) {
       e.stopPropagation();
       const [gi, ci] = this.dataset.toggleChild.split('-').map(Number);
-      ruleGroups[gi].rules[ci].enabled = !ruleGroups[gi].rules[ci].enabled;
+      const group = ruleGroups[gi];
+      const wasOn = group.rules[ci].enabled !== false;
+      const turningOn = !wasOn;
+      group.rules[ci].enabled = turningOn;
+      const isStyleGroup = group.id === 'offline-style' || /^文风/.test(String(group.name || ''));
+      if (isStyleGroup && turningOn) {
+        // 文风单选：启用一条时自动关掉同组其它文风，避免几套风格混在一起。
+        (group.rules || []).forEach(function (r, i) { if (i !== ci) r.enabled = false; });
+        group.enabled = true;
+      }
       saveRules();
       renderRules();
       updateSummary();
