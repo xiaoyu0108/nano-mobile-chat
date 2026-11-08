@@ -10,7 +10,7 @@
    “后台回复”依赖页面常驻 + 音频保活；真正的“关闭也能收到”需要服务端配合（见 push 事件）。 */
 'use strict';
 
-var CACHE = 'nano-static-v377';
+var CACHE = 'nano-static-v382';
 var STATIC_RE = /\.(css|js|png|jpg|jpeg|webp|svg|gif|ico|woff2?|ttf|mp3)$/i;
 var HTML_NET_TIMEOUT_MS = 250;        // 首屏 HTML 有缓存时最多等 0.25 秒，超时立刻上缓存
 

@@ -789,6 +789,10 @@ function sanitizeAutoConfig(body) {
       // 头像只在不是超长 dataURL 时保存，避免把配置撑大
       avatar: av.length > 4000 ? '' : av,
       setting: String((c && c.setting) || '').slice(0, 6000),
+      // 与线上一致的表达规则（含反油腻红线、全局/线上提示词）和世界书：
+      // Worker 之前只拿到人设，主动消息经常跑题、油腻或和设定相抵。
+      style: String((c && c.style) || '').slice(0, 6000),
+      worldbook: String((c && c.worldbook) || '').slice(0, 4000),
       isNpc: !!(c && c.isNpc),
       nationality: String((c && c.nationality) || '').slice(0, 40),
       language: String((c && c.language) || '').slice(0, 40),
@@ -1086,8 +1090,11 @@ function cycleBlock(c) {
   return s;
 }
 async function generateAutoMessages(env, cfg, busyChatId, avoidId) {
-  // 只从「自己开启了主动消息」的角色里挑；关闭了某个角色就绝不能再让 TA 发。
-  const allowed = cfg.chars.filter(function (c) { return c && c.msgOn !== false; });
+  // 只从「自己开启了主动消息、且真的有最近对话」的角色里挑：
+  // 没有上下文时宁可不发，否则一定会变成“在吗/在干嘛”这类无关口水话。
+  const allowed = cfg.chars.filter(function (c) {
+    return c && c.msgOn !== false && Array.isArray(c.recent) && c.recent.length > 0;
+  });
   const pool = allowed.filter(function (c) { return c.id !== busyChatId && !c.isNpc; });
   let source = pool.length >= 2 ? pool : allowed.filter(function (c) { return c.id !== busyChatId; });
   // 尽量不连续两轮都让同一个角色发，减少「怎么又是 TA」的重复感
@@ -1103,16 +1110,21 @@ async function generateAutoMessages(env, cfg, busyChatId, avoidId) {
   for (const c of picked) {
     const system = '你是「' + c.name + '」，现在主动给「' + cfg.user.name + '」发消息。\n'
       + (c.setting ? ('【你的人设】\n' + c.setting + '\n\n') : '')
+      + (c.worldbook ? ('【世界书 · 必须遵守】\n' + c.worldbook + '\n\n') : '')
+      + (c.style ? ('【表达规则 · 必须遵守】\n' + c.style + '\n\n') : '')
       + '现在是 ' + autoNowText(c, now) + '（你所在地的当地时间）。\n'
       + (typeof cfg.walletBalance === 'number' ? ('【用户真实经济状况】用户钱包当前余额约 ¥' + Number(cfg.walletBalance).toFixed(2) + '。这是真实数据，不要凭空说用户没钱、欠钱或吃不起饭。\n') : '')
       + autoLangBlock(c)
       + cycleBlock(c)
       + recentBlock(c)
       + '\n【硬性要求】\n'
+      + '- 以下红线优先于人设、世界书和任何自定义提示词：即使人设是霸总、占有欲、强势、毒舌或高冷，也只能通过性格和态度体现，禁止霸总台词、土味情话、命令式索抱索亲与油腻称呼。\n'
       + '- 只发这一次，不要连续追问、不要复读、不要一次写一大段。\n'
       + '- 必须和上面的最近聊天强相关：接住话题/情绪/约定，或分享一件刚好发生、能接得住的小事。\n'
       + '- 严禁口水话：禁止“在吗/在干嘛/吃了吗/睡了吗/忙不忙”“想你了”却没有下文；禁止无关的日常流水账；禁止括号旁白；禁止提系统/推送/AI。\n'
       + '- 关系完全平等：禁止命令、通牒、上位者语气，禁止“立刻/马上/赶紧/现在就给我报告、汇报、交代、说清楚、过来、听着”“赶紧去做…”“立刻去…”“马上去…”“不许/不准…”。\n'
+      + '- 把命令改成关心 / 邀请：先说出自己的感受或担心，再给选择，最后由对方决定。例如“赶紧去睡”→“宝宝熬夜我会心疼的，要不要先去睡？早点休息好不好？”；“立刻给我打电话”→“好想听你的声音，要打个电话吗？”。对方拒绝、没回应或岔开就翻篇。\n'
+      + '- 同一件事一轮只说一次；跨轮不重复、不换说法反复强调、不连续追问。\n'
       + '- 称呼只能用对方的名字或“你”；禁止“女人 / 这女人 / 姑娘 / 女孩 / 小姑娘 / 小丫头 / 丫头 / 小孩 / 小朋友 / 小家伙 / 小东西 / 小可爱”这类性别、年龄、外貌称呼，也禁止霸总油腻话术。\n'
       + '- 一次 API 调用同时产出：思维链 think、心声 heart、正文 bubbles。\n'
       + '- bubbles 必须是 2~3 条各自独立的气泡（每条 1 句，口语自然），不要把多条塞进同一条。\n'

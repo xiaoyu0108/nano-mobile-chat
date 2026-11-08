@@ -129,8 +129,13 @@
         if (ctx && ctx.worldbook) lines.push('\n【世界书】\n' + ctx.worldbook);
         if (ctx && ctx.memory) lines.push('\n【你们的共同记忆】\n' + ctx.memory);
         if (ctx && ctx.recent) lines.push('\n【你们最近的对话】\n' + ctx.recent);
+        // 补发也要遵守与线上聊天相同的表达规则（反油腻、去 AI 腔），不能只带人设。
+        try {
+            var style = (window.NanoPrompts && NanoPrompts.buildBlock) ? NanoPrompts.buildBlock('online') : '';
+            if (style) lines.push('\n【表达规则 · 必须遵守】\n' + style);
+        } catch (e) {}
         lines.push(langBlock(info));
-        lines.push('\n【要求】主动发一条消息：必须接住上面最近对话里的话题、情绪或没说完的事，强相关；绝不能是口水话（禁止“在吗/在干嘛/吃了吗/睡了吗”“想你了”却没下文这类没信息量的句子），禁止汇报日常流水账，禁止括号旁白，禁止复述设定。写 1~3 条气泡，每条 1~2 句、口语自然；最后另起一行单独输出心声：[heart:此刻印象||心声独白]（心声 90 字以上、平实口语、禁止煽情浮夸）。只输出气泡与心声，不要任何解释。');
+        lines.push('\n【要求】主动发一条消息：必须接住上面最近对话里的话题、情绪或没说完的事，强相关；绝不能是口水话（禁止“在吗/在干嘛/吃了吗/睡了吗”“想你了”却没下文这类没信息量的句子），禁止汇报日常流水账，禁止括号旁白，禁止复述设定。用关心 / 邀请的口吻，不命令、不施压；对方拒绝或没回应就翻篇，同一件事只说一次。写 1~3 条气泡，每条 1~2 句、口语自然；最后另起一行单独输出心声：[heart:此刻印象||心声独白]（心声 90 字以上、平实口语、禁止煽情浮夸）。只输出气泡与心声，不要任何解释。');
         return lines.join('\n');
     }
 
@@ -196,6 +201,8 @@
 
     async function nudge(info) {
         var ctx = (await fetchContext(info)) || {};
+        // 拿不到最近对话时不生成：宁可不发，也不要发一条和上下文完全无关的“在吗/在干嘛”。
+        if (!ctx || !ctx.recent || !String(ctx.recent).trim()) return false;
         var content = await callModel(ctx, sysText(info, ctx), '（现在主动给对方发一条强相关的消息。）');
         if (!content) return false;
         var out = parseOutput(content);
