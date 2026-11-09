@@ -725,8 +725,8 @@ body.panel-backup {
 .panel-backup .nav-icon-btn {
     width: 36px !important;
     height: 36px !important;
-    border-radius: 50% !important;
-    background: var(--m-fill) !important;
+    border-radius: 0 !important;
+    background: transparent !important;
     color: var(--m-ink) !important;
     flex-shrink: 0 !important;
 }
@@ -860,8 +860,8 @@ body.panel-storage {
 .panel-storage .nav-icon-btn {
     width: 36px !important;
     height: 36px !important;
-    border-radius: 50% !important;
-    background: var(--m-fill) !important;
+    border-radius: 0 !important;
+    background: transparent !important;
     color: var(--m-ink) !important;
     flex: none !important;
 }

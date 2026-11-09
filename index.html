@@ -10,7 +10,7 @@
     // 造成每次打开都清缓存 + 反复 reload。
     // build 号保持最新即可，但不要再用 reload 强制更新：reload + 旧 SW 的 HTML 缓存
     // 会让新旧 build 号互相触发，开屏动画无限循环。现在只清缓存，不自动 reload。
-    window.__NANO_BUILD__ = 'nano-2026-11-09-03';
+    window.__NANO_BUILD__ = 'nano-2026-11-09-04';
     (function () {
         try {
             var KEY = 'nano_build';
@@ -4040,12 +4040,12 @@ setTimeout(function () {
                 broadcastToChatFrames(data);
             }
 
-            // 线下 → 直接退出：回到聊天 App 的第一个按钮页面（好友区域）
+            // 线下 → 直接退出：私聊回到「好友」，群聊回到「群聊」列表
             if (data.type === 'nanoOfflineExitToChat') {
                 try { localStorage.setItem('nano_chat_mode_' + (data.chatId || 'default'), 'offline'); } catch (e) {}
-                // 聊天列表帧在打开线下时已被复用，这里重新打开聊天 App，而不是关闭到手机桌面；
-                // 同时记住「聊天 + 好友」，确保重新加载后落在第一个按钮页面。
-                try { sessionStorage.setItem('nano_chat_active_page', JSON.stringify({ page: 'chat', tab: 'friends', at: Date.now() })); } catch (e) {}
+                // 群聊直接退出回到「群聊」列表，私聊回到「好友」列表。
+                const homeTab = data.isGroup ? 'groups' : 'friends';
+                try { sessionStorage.setItem('nano_chat_active_page', JSON.stringify({ page: 'chat', tab: homeTab, at: Date.now() })); } catch (e) {}
                 try { currentOverlaySource = 'main'; } catch (e) {}
                 try { openFullscreen('chat.html', '', false, 'main'); } catch (e) {}
                 var goChatFriends = function () {
@@ -4059,7 +4059,7 @@ setTimeout(function () {
                         for (var i = 0; i < cands.length; i++) {
                             var fr = cands[i];
                             if (fr && frameBase(fr) === 'chat.html' && fr.contentWindow) {
-                                fr.contentWindow.postMessage({ type: 'nanoChatGoHome', tab: 'friends' }, '*');
+                                fr.contentWindow.postMessage({ type: 'nanoChatGoHome', tab: homeTab }, '*');
                                 break;
                             }
                         }
@@ -4120,6 +4120,15 @@ setTimeout(function () {
                 const lu = String(data.lastUser || '').trim();
                 const lc = String(data.lastChar || '').trim();
                 const rounds = Array.isArray(data.rounds) ? data.rounds : null;
+                if (data.isGroup) {
+                    // 群聊返回线上：直接回到这个群的线上聊天，下次点开也走线上。
+                    lastGroupUrl = 'groups.html?group=' + encodeURIComponent(chatId || '');
+                    lastGroupTitle = data.name || '群聊';
+                    isChatInnerActive = false;
+                    currentOverlaySource = 'chat';
+                    openFullscreen(lastGroupUrl, lastGroupTitle, false, 'chat');
+                    return;
+                }
                 const deliver = function (win) {
                     if (!win) return;
                     try {
@@ -4332,7 +4341,16 @@ setTimeout(function () {
             }
 
             if (data.type === 'openGroupChat') {
-                lastGroupUrl = 'groups.html?group=' + encodeURIComponent(data.groupId || '');
+                const groupId = data.groupId || '';
+                let groupMode = 'online';
+                try { groupMode = localStorage.getItem('nano_chat_mode_' + (groupId || 'default')) || 'online'; } catch (e) {}
+                if (groupMode === 'offline') {
+                    isChatInnerActive = false;
+                    currentOverlaySource = 'main';
+                    openFullscreen('offline.html?chat=' + encodeURIComponent(groupId) + '&name=' + encodeURIComponent(data.groupName || '群聊'), '线下聊天', false, 'main');
+                    return;
+                }
+                lastGroupUrl = 'groups.html?group=' + encodeURIComponent(groupId);
                 lastGroupTitle = data.groupName || '群聊';
                 openFullscreen(lastGroupUrl, lastGroupTitle, false, 'chat');
                 try {

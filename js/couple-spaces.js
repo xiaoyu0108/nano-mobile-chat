@@ -975,10 +975,10 @@ function renderCharSelect() {
       ? `<button class="btn dark enter" onclick="enterSpace()">TA 已同意 · 进入情侣空间</button>`
       : (pending
         ? `<button class="btn dark enter" onclick="openChatWithChar()">去私聊等 TA 回复</button>
-           <button class="btn" style="margin-top:10px;background:#f3eeea;color:#8a8280" onclick="sendCoupleInvite()">重新发送邀请卡</button>`
+           <button class="btn" style="margin-top:10px;background:var(--rosebg);color:var(--rose-d)" onclick="sendCoupleInvite()">重新发送邀请卡</button>`
         : `<button class="btn dark enter" onclick="sendCoupleInvite()">发送邀请卡给 TA</button>`)}
     ${rejected ? `<div class="hint" style="text-align:center;color:#c98b8b;font-size:12px;margin-top:12px">TA 这一次没有答应。可以再聊聊，或稍后再邀请。</div>` : ''}
-    <button class="btn" style="margin-top:10px;background:#f3eeea;color:#8a8280" onclick="openCharPicker()">换一位 Char</button>
+    <button class="btn" style="margin-top:10px;background:var(--rosebg);color:var(--rose-d)" onclick="openCharPicker()">换一位 Char</button>
   </main>`;
 }
 

@@ -2092,7 +2092,7 @@ function offHasPendingMem() {
     window.__offSkipMemFlush = !!(memToggle && !memToggle.checked);
     backgroundSummarize();
     if (window.parent && window.parent !== window) {
-      window.parent.postMessage({ type: 'nanoOfflineExitToChat', chatId: offlineChatId }, '*');
+      window.parent.postMessage({ type: 'nanoOfflineExitToChat', chatId: offlineChatId, isGroup: !!offlineIsGroup }, '*');
     } else if (history.length > 1) {
       history.back();
     } else {
@@ -2108,7 +2108,7 @@ function offHasPendingMem() {
     window.__offSkipMemFlush = !!(memToggle && !memToggle.checked);
     backgroundSummarize();
     if (window.parent && window.parent !== window) {
-      window.parent.postMessage({ type: 'nanoOfflineReturnOnline', chatId: offlineChatId, name: settings.charName || '', lastUser: r.user, lastChar: r.char, rounds: r.rounds }, '*');
+      window.parent.postMessage({ type: 'nanoOfflineReturnOnline', chatId: offlineChatId, name: settings.charName || '', isGroup: !!offlineIsGroup, lastUser: r.user, lastChar: r.char, rounds: r.rounds }, '*');
     } else if (history.length > 1) {
       history.back();
     } else {
