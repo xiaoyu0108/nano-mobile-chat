@@ -48,6 +48,7 @@
         '<span class="ff-char-sub">' + (c.gender && c.gender !== '未知' ? F.esc(c.gender) : '角色') + '</span>' +
       '</button>';
     }).join('');
+    updateSummary();
   }
 
   function renderGenres() {
@@ -98,20 +99,41 @@
     var words = parseInt($('ffWords').value, 10) || 2000;
     $('ffPlanHint').textContent = '计划约 ' + plan.planned + ' 章（' + plan.range + '），每章约 ' + words + ' 字。';
   }
+  function updateSummary() {
+    var el = $('ffStartSummary');
+    if (!el) return;
+    var c = chars.find(function (x) { return String(x.id) === String(selectedCharId); });
+    if (!c) {
+      el.textContent = chars.length ? '先选择一个角色' : '当前 user 还没有角色';
+      return;
+    }
+    if (!genres.length) {
+      el.textContent = (c.name || '角色') + ' · 再选一个题材';
+      return;
+    }
+    var lenName = lengthType === 'short' ? '短篇' : lengthType === 'long' ? '长篇' : '中篇';
+    var words = parseInt($('ffWords').value, 10) || 2000;
+    var style = selectedCustomStyle ? selectedCustomStyle.title : (writingStyle || '');
+    var picked = genres.slice(0, 3).join(' / ') + (genres.length > 3 ? ' 等' + genres.length + '种' : '');
+    var bits = [c.name || '角色', picked, lenName, ending, words + '字/章'];
+    if (style) bits.push(style);
+    el.textContent = bits.join(' · ');
+  }
 
   function setSelectedChar(id) {
     selectedCharId = id || '';
     Array.prototype.forEach.call(document.querySelectorAll('.ff-char'), function (el) {
       el.classList.toggle('on', el.getAttribute('data-id') === selectedCharId);
     });
+    updateSummary();
   }
 
-  function start() {
+  async function start() {
     if (started) return;
     var char = chars.find(function (c) { return String(c.id) === String(selectedCharId); });
     if (!char) { toast('先选择一个角色'); return; }
     if (!genres.length) { toast('至少选一个题材'); return; }
-    var words = Math.max(800, Math.min(6000, parseInt($('ffWords').value, 10) || 2000));
+    var words = Math.max(800, parseInt($('ffWords').value, 10) || 2000);
     var plan = F.planFor(lengthType);
     var u = currentUser();
     var genreNotes = customLib.genres.filter(function (it) { return genres.indexOf(it.title) > -1 && it.desc; })
@@ -143,7 +165,17 @@
       completed: false
     };
     started = true;
-    F.save(story);
+    $('ffStart').disabled = true;
+    try {
+      if (F.ready) await F.ready();
+      var saved = await F.saveAsync(story);
+      if (!saved || !saved.ok) throw new Error('本地存储不可用');
+    } catch (e) {
+      started = false;
+      $('ffStart').disabled = false;
+      toast('创建失败：浏览器存储空间不可用，请清理后重试');
+      return;
+    }
     location.href = 'fanfic-read.html?id=' + encodeURIComponent(story.id) + '&start=1';
   }
 
@@ -159,6 +191,7 @@
     if (i >= 0) genres.splice(i, 1); else genres.push(name);
     btn.classList.toggle('on', genres.indexOf(name) >= 0);
     updateCustomGenreHint();
+    updateSummary();
   });
   $('ffEnding').addEventListener('click', function (e) {
     var btn = e.target.closest('[data-ending]');
@@ -167,6 +200,7 @@
     Array.prototype.forEach.call($('ffEnding').querySelectorAll('.ff-seg'), function (el) {
       el.classList.toggle('on', el === btn);
     });
+    updateSummary();
   });
   $('ffLength').addEventListener('click', function (e) {
     var btn = e.target.closest('[data-length]');
@@ -176,6 +210,7 @@
       el.classList.toggle('on', el === btn);
     });
     updatePlan();
+    updateSummary();
   });
   $('ffStyles').addEventListener('click', function (e) {
     var btn = e.target.closest('[data-style]');
@@ -197,6 +232,7 @@
       writingStyle = writingStyle === name ? '' : name;
     }
     renderStyles();
+    updateSummary();
   });
   $('ffWordQuick').addEventListener('click', function (e) {
     var btn = e.target.closest('[data-words]');
@@ -206,8 +242,9 @@
       el.classList.toggle('on', el === btn);
     });
     updatePlan();
+    updateSummary();
   });
-  $('ffWords').addEventListener('input', updatePlan);
+  $('ffWords').addEventListener('input', function () { updatePlan(); updateSummary(); });
   $('ffStart').addEventListener('click', start);
   $('ffBack').addEventListener('click', function () {
     if (history.length > 1) history.back();
@@ -219,5 +256,6 @@
   renderGenres();
   renderStyles();
   updatePlan();
+  updateSummary();
   loadChars();
 })();

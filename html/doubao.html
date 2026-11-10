@@ -5,7 +5,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <title>豆包 · Char 对话</title>
-<script src="../js/appearance.js?v=20261026d"></script>
+<script src="../js/appearance.js?v=20261110c"></script>
 <style>
 :root{
   --bg:#fff;
@@ -84,7 +84,7 @@ button{border:0;background:none;color:inherit}
   min-height:0;
   overflow-y:auto;
   overscroll-behavior:contain;
-  padding:4px 14px 150px;
+  padding:4px 14px 214px;
   scrollbar-width:none;
 }
 .chat::-webkit-scrollbar{display:none}
@@ -213,7 +213,7 @@ button{border:0;background:none;color:inherit}
   .icon-btn svg{width:19px;height:19px;stroke-width:2}
   .title{font-size:15.5px}
   .subtitle{font-size:9.5px;margin-top:3px}
-  .chat{padding:4px 11px 142px}
+  .chat{padding:4px 11px 207px}
   .message{margin-bottom:12px}
   .char .bubble{font-size:15px;max-width:80%;padding:8px 13px 9px;border-radius:18px 18px 6px 18px}
   .ai-card{border-radius:15px;padding:12px 13px;font-size:14px}
@@ -341,8 +341,17 @@ function phoneRefresh(){
   refreshConversation();
 }
 
+function syncChatPadding(){
+  const chat=document.getElementById('chat');
+  const bottom=document.querySelector('.bottom');
+  if(!chat||!bottom) return;
+  const h=Math.ceil(bottom.getBoundingClientRect().height);
+  if(h>0) chat.style.paddingBottom=(h+48)+'px';
+}
+
 function scrollBottom(){
   const chat=document.getElementById('chat');
+  syncChatPadding();
   chat.scrollTo({top:chat.scrollHeight,behavior:'smooth'});
 }
 
@@ -391,8 +400,18 @@ window.renderDoubaoConversation=function(messages){
     const role=(item.role==='char'||item.role==='user')?'char':'ai';
     chat.appendChild(makeMessage(role,String(item.content||item.text||'')));
   });
+  syncChatPadding();
   scrollBottom();
 };
+
+syncChatPadding();
+window.addEventListener('load', syncChatPadding);
+window.addEventListener('resize', syncChatPadding);
+window.addEventListener('orientationchange', syncChatPadding);
+try {
+  var bottomEl = document.querySelector('.bottom');
+  if (bottomEl && window.ResizeObserver) new ResizeObserver(syncChatPadding).observe(bottomEl);
+} catch (e) {}
 </script>
 </body>
 </html>

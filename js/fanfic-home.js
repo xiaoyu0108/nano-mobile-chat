@@ -167,6 +167,7 @@
 
   try { if (window.parent !== window) window.parent.postMessage({ type: 'nanoHideOuterHeader' }, '*'); } catch (e) {}
   render();
+  if (F.ready) F.ready().then(render).catch(function () {});
   document.addEventListener('visibilitychange', function () {
     if (document.visibilityState === 'visible') render();
   });

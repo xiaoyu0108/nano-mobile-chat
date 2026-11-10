@@ -452,7 +452,7 @@ function setupThoughtExpand(el) {
       var need = !cur;
       if (cur) {
         var stored = String(cur.css || '');
-        var oldVer = stored.match(/nano-heart-pink-dots:v(\d+)/);
+        var oldVer = stored.match(/nano-heart-[a-z0-9-]+:v(\d+)/i);
         if (oldVer && Number(oldVer[1]) < Number(b.version || 1)) need = true;
       }
       if (need) {
@@ -721,6 +721,10 @@ function setupThoughtExpand(el) {
     // 更新发件人
     const sender = $('ivSender');
     if (sender && data.from) sender.textContent = data.from;
+    if (data.from) {
+      const fb = $('ivAvatarFallback');
+      if (fb) fb.textContent = String(data.from).trim().slice(0, 1) || '?';
+    }
 
     // 更新收件人
     const recipient = $('ivRecipient');
@@ -1133,6 +1137,8 @@ function setupThoughtExpand(el) {
       if (data.from) {
         const el = $('ivSender');
         if (el) el.textContent = data.from;
+        const fb = $('ivAvatarFallback');
+        if (fb) fb.textContent = String(data.from).trim().slice(0, 1) || '?';
       }
       if (data.message) {                                                                    
         const el = $('ivThought');                                                           

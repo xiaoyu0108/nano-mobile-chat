@@ -391,8 +391,11 @@
     function read(k) {
         try {
             var v = localStorage.getItem(k);
-            if (v === null || v === '') return k === KEYS.inset ? INSET_DEFAULT : 0;
-            return parseInt(v, 10) || 0;
+            var n;
+            if (v === null || v === '') n = k === KEYS.inset ? INSET_DEFAULT : 0;
+            else n = parseInt(v, 10) || 0;
+            if (k === KEYS.bottom) n = Math.min(0, n);
+            return n;
         } catch (e) { return k === KEYS.inset ? INSET_DEFAULT : 0; }
     }
     function readInsetEnabled() {
@@ -415,6 +418,7 @@
     function apply(target, n) {
         n = parseInt(n, 10) || 0;
         if (target === 'inset') n = Math.max(0, Math.min(220, n));
+        else if (target === 'bottom') n = Math.max(MIN, Math.min(0, n));
         else n = Math.max(MIN, Math.min(MAX, n));
         var key = KEYS[target];
         try { localStorage.setItem(key, String(n)); } catch (e) {}

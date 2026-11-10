@@ -44,31 +44,175 @@
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m];
     });
   }
-  function load() {
+  // ---- 本地书库：IndexedDB 为主，localStorage 作为同步缓存 ----
+  // 同人文一章可能上万字，单靠 localStorage（约 5MB）很容易写满后静默失败，
+  // 表现就是生成完/刷新后提示“找不到这篇故事”。这里改成双写：
+  //   * localStorage：保留同步读取能力（小数据秒开）
+  //   * IndexedDB：主存储，容量大，正文再长也不会把整本书挤丢
+  var MEM = null;
+  var READY = null;
+  var DB_NAME = 'nano_fanfic_db';
+  var DB_STORE = 'kv';
+
+  function cleanList(arr) {
+    return Array.isArray(arr) ? arr.filter(function (s) { return s && s.id; }) : [];
+  }
+  function sortList(arr) {
+    return arr.slice().sort(function (a, b) {
+      return (Number(b.updatedAt || b.createdAt) || 0) - (Number(a.updatedAt || a.createdAt) || 0);
+    });
+  }
+  function readLS() {
     try {
       var raw = localStorage.getItem(KEY);
       var arr = raw ? JSON.parse(raw) : [];
-      return Array.isArray(arr) ? arr.filter(function (s) { return s && s.id; }) : [];
+      return cleanList(arr);
     } catch (e) { return []; }
   }
-  function saveAll(list) {
-    var arr = (list || []).slice(0, 40);
-    try { localStorage.setItem(KEY, JSON.stringify(arr)); return; } catch (e) {}
-    // 空间不足时先丢掉最旧的故事，避免整次保存失败
-    try { localStorage.setItem(KEY, JSON.stringify(arr.slice(0, 20))); } catch (e) {}
+  function writeLS(list) {
+    try { localStorage.setItem(KEY, JSON.stringify(list)); return true; } catch (e) { return false; }
   }
-  function save(story) {
-    var list = load();
+  function setMem(list) {
+    MEM = sortList(cleanList(list));
+    return MEM;
+  }
+  function load() {
+    if (MEM) return MEM;
+    return setMem(readLS());
+  }
+  function openDB() {
+    return new Promise(function (resolve, reject) {
+      if (!window.indexedDB) { reject(new Error('IndexedDB unavailable')); return; }
+      var req;
+      try { req = indexedDB.open(DB_NAME, 1); } catch (e) { reject(e); return; }
+      req.onupgradeneeded = function (e) {
+        var db = e.target.result;
+        if (!db.objectStoreNames.contains(DB_STORE)) db.createObjectStore(DB_STORE, { keyPath: 'k' });
+      };
+      req.onsuccess = function () { resolve(req.result); };
+      req.onerror = function () { reject(req.error || new Error('IndexedDB open failed')); };
+      req.onblocked = function () { reject(new Error('IndexedDB blocked')); };
+    });
+  }
+  function dbGet(k) {
+    return openDB().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        try {
+          var tx = db.transaction(DB_STORE, 'readonly');
+          var rq = tx.objectStore(DB_STORE).get(k);
+          rq.onsuccess = function () {
+            try { db.close(); } catch (e) {}
+            var rec = rq.result;
+            resolve(rec && Array.isArray(rec.v) ? rec.v : null);
+          };
+          rq.onerror = function () { try { db.close(); } catch (e) {} reject(rq.error); };
+        } catch (e) { try { db.close(); } catch (e2) {} reject(e); }
+      });
+    });
+  }
+  function dbPut(k, v) {
+    return openDB().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        try {
+          var tx = db.transaction(DB_STORE, 'readwrite');
+          tx.objectStore(DB_STORE).put({ k: k, v: v });
+          tx.oncomplete = function () { try { db.close(); } catch (e) {} resolve(true); };
+          tx.onerror = function () { try { db.close(); } catch (e) {} reject(tx.error); };
+          tx.onabort = function () { try { db.close(); } catch (e) {} reject(tx.error || new Error('aborted')); };
+        } catch (e) { try { db.close(); } catch (e2) {} reject(e); }
+      });
+    });
+  }
+  function mergeLists(a, b) {
+    var map = {};
+    (a || []).concat(b || []).forEach(function (s) {
+      if (!s || !s.id) return;
+      var prev = map[s.id];
+      var t = Number(s.updatedAt || s.createdAt) || 0;
+      var pt = prev ? (Number(prev.updatedAt || prev.createdAt) || 0) : -1;
+      if (!prev || t >= pt) map[s.id] = s;
+    });
+    return sortList(Object.keys(map).map(function (k) { return map[k]; }));
+  }
+  function ready() {
+    if (READY) return READY;
+    READY = new Promise(function (resolve) {
+      var settled = false;
+      function done() { if (!settled) { settled = true; resolve(load()); } }
+      var timer = setTimeout(done, 4000);
+      (async function () {
+        var ls = readLS();
+        var idb = null;
+        try { idb = await dbGet('library'); } catch (e) {}
+        var merged = mergeLists(ls, idb);
+        setMem(merged);
+        // 只有「IndexedDB 缺失 / 条数不同 / 某本更新时间不同」才回写，避免每次打开都重写整库
+        var needWrite = !idb || !idb.length || merged.length !== idb.length;
+        if (!needWrite) {
+          for (var i = 0; i < merged.length; i++) {
+            var hit = idb.find(function (x) { return x.id === merged[i].id; });
+            if (!hit || Number(hit.updatedAt || hit.createdAt || 0) !== Number(merged[i].updatedAt || merged[i].createdAt || 0)) {
+              needWrite = true;
+              break;
+            }
+          }
+        }
+        if (needWrite) {
+          try { await dbPut('library', merged); } catch (e) {}
+          writeLS(merged);
+        } else if (ls.length !== merged.length) {
+          writeLS(merged);
+        }
+        clearTimeout(timer);
+        done();
+      })().catch(function () {
+        setMem(readLS());
+        clearTimeout(timer);
+        done();
+      });
+    });
+    return READY;
+  }
+  function queueDBWrite(list) {
+    try {
+      ready().then(function () { return dbPut('library', list); }).catch(function () {});
+    } catch (e) {}
+  }
+  function applyStory(story) {
+    var list = load().slice();
     var i = list.findIndex(function (s) { return s.id === story.id; });
     if (i >= 0) list[i] = story; else list.unshift(story);
-    saveAll(list);
+    return setMem(list);
+  }
+  function saveAll(list) {
+    var arr = setMem(list);
+    writeLS(arr);
+    queueDBWrite(arr);
+    return arr;
+  }
+  function save(story) {
+    var list = applyStory(story);
+    writeLS(list);
+    queueDBWrite(list);
     return story;
+  }
+  // 关键保存（新建 / 每章正文）：同时等 IndexedDB 落盘，返回是否至少有一处成功
+  async function saveAsync(story) {
+    try { await ready(); } catch (e) {}
+    var list = applyStory(story);
+    var local = writeLS(list);
+    var remote = false;
+    try { await dbPut('library', list); remote = true; } catch (e) {}
+    return { ok: !!(local || remote), local: local, idb: remote };
   }
   function get(id) {
     return load().find(function (s) { return s.id === id; }) || null;
   }
   function remove(id) {
-    saveAll(load().filter(function (s) { return s.id !== id; }));
+    var list = load().filter(function (s) { return s.id !== id; });
+    setMem(list);
+    writeLS(list);
+    queueDBWrite(list);
   }
   function planFor(type) { return LENGTHS[type] || LENGTHS.medium; }
   function loadCustom() {
@@ -191,8 +335,10 @@
     ENDINGS: ENDINGS,
     uid: uid,
     esc: esc,
+    ready: ready,
     load: load,
     save: save,
+    saveAsync: saveAsync,
     saveAll: saveAll,
     get: get,
     remove: remove,

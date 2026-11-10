@@ -66,7 +66,7 @@
       var need = !cur;
       if (cur) {
         var stored = String(cur.css || '');
-        var oldVer = stored.match(/nano-heart-pink-dots:v(\d+)/);
+        var oldVer = stored.match(/nano-heart-[a-z0-9-]+:v(\d+)/i);
         if (oldVer && Number(oldVer[1]) < Number(t.version || 1)) need = true;
       }
       if (need) {

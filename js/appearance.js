@@ -279,7 +279,7 @@
         'position:absolute !important;top:0 !important;left:0 !important;right:0 !important;bottom:0 !important;' +
         'flex:none !important;z-index:1 !important;background:transparent !important;' +
         'padding-top:calc(var(--chat-top-inset,60px) + var(--chat-top-extra,8px)) !important;' +
-        'padding-bottom:calc(var(--chat-bottom-inset,72px) + var(--chat-bottom-extra,14px)) !important;}' +
+        'padding-bottom:calc(var(--chat-bottom-inset,72px) + var(--chat-bottom-extra,14px) + var(--nano-bottom-overlap,0px)) !important;}' +
         NANO_FLOAT_SEL('.topbar') + '{' +
         'position:absolute !important;top:0 !important;left:0 !important;right:0 !important;width:auto !important;' +
         'z-index:30 !important;flex-shrink:0 !important;pointer-events:none !important;}' +
@@ -1054,17 +1054,25 @@ function applyChatCss(css) {
         var key = kind === 'top' ? 'nanoTopShift' : 'nanoBottomShift';
         var v = parseInt(px, 10);
         if (isNaN(v)) { try { v = parseInt(localStorage.getItem(key) || '0', 10) || 0; } catch (e) { v = 0; } }
+        // 底栏只允许向上（负值）微调；正数会把输入栏推到屏幕外，
+        // 表现就是“底栏跑出去了”。这里统一夹紧到 0。
+        if (kind === 'bottom' && v > 0) {
+            v = 0;
+            try { localStorage.setItem(key, '0'); } catch (e) {}
+        }
         var varName = kind === 'top' ? '--nano-top-shift' : '--nano-bottom-shift';
         var isIndexShell = !!(document.body && document.body.classList.contains('nano-index'));
         var sel = kind === 'top' ? TOP_SHIFT_SEL
             : (isIndexShell ? BOTTOM_SHIFT_SEL_NO_ACTIONS : BOTTOM_SHIFT_SEL);
         applyStyle('nano-' + kind + '-shift',
             ':root{' + varName + ':' + v + 'px;}' +
-            sel + '{transform:translateY(var(' + varName + ',0px)) !important;}' +
-            // 底栏上移（负值）时会给聊天输入栏留出动态底部留白，避免它压住最后几条气泡
+            // 用独立的 translate 属性，不要覆盖美化模板自己的 transform（例如居中用的 translateX）
+            sel + '{translate:0 var(' + varName + ',0px) !important;}' +
+            // 底栏上移（负值）时给聊天输入栏增加额外底部留白；
+            // 不能直接覆写成 22px，否则会把消息区原有的栏高留白冲掉。
             (kind === 'bottom'
                 ? ':root{--nano-bottom-overlap:' + (v < 0 ? -v : 0) + 'px;}' +
-                  '.nano-chat-inner .message-scroll,.nano-groups .message-scroll{padding-bottom:calc(22px + var(--nano-bottom-overlap,0px)) !important;}'
+                  '.nano-chat-inner .message-scroll,.nano-groups .message-scroll{padding-bottom:calc(var(--chat-bottom-inset,90px) + var(--nano-bottom-overlap,0px) + 14px) !important;}'
                 : ''));
     }
     function applyTopShift(px) { applyShift('top', px); }

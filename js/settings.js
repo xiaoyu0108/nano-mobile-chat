@@ -991,8 +991,12 @@ const APP_ICONS = {
   function shiftRead(key) {
     try {
       var v = localStorage.getItem(key);
-      if (v === null || v === '') return key === SHIFT_KEYS.inset ? INSET_DEFAULT : 0;
-      return parseInt(v, 10) || 0;
+      var n;
+      if (v === null || v === '') n = key === SHIFT_KEYS.inset ? INSET_DEFAULT : 0;
+      else n = parseInt(v, 10) || 0;
+      // 底栏只能上移，正数会把底栏推出屏幕
+      if (key === SHIFT_KEYS.bottom) n = Math.min(0, n);
+      return n;
     } catch (e) { return key === SHIFT_KEYS.inset ? INSET_DEFAULT : 0; }
   }
 
@@ -1017,6 +1021,7 @@ const APP_ICONS = {
   function shiftApply(target, n) {
     n = parseInt(n, 10) || 0;
     if (target === 'inset') n = Math.max(0, Math.min(220, n));
+    else if (target === 'bottom') n = Math.max(SHIFT_MIN, Math.min(0, n));
     else n = Math.max(SHIFT_MIN, Math.min(SHIFT_MAX, n));
     var key = SHIFT_KEYS[target];
     try { localStorage.setItem(key, String(n)); } catch (e) {}

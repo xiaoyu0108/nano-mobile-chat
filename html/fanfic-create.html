@@ -5,10 +5,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>New Story</title>
-  <link rel="stylesheet" href="../css/fanfic.css?v=20261018f">
-  <script src="../js/appearance.js?v=20261026d"></script>
+  <link rel="stylesheet" href="../css/fanfic.css?v=20261110h">
+  <script src="../js/appearance.js?v=20261110c"></script>
 </head>
-<body class="ff-page">
+<body class="ff-page ff-create-page">
   <header class="ff-top">
     <button class="ff-icon-btn" id="ffBack" type="button" aria-label="返回">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
@@ -21,6 +21,12 @@
   </header>
 
   <main class="ff-main ff-create">
+    <section class="ff-create-hero">
+      <div class="ff-kicker">A STORY FOR TWO · 同人文</div>
+      <h1>把你们写进<br>同一个故事</h1>
+      <p>选一个角色，定下题材和结局。剩下的，交给第一章。</p>
+    </section>
+
     <section class="ff-section">
       <div class="ff-sec-label"><b>01</b><span>Character · 角色</span></div>
       <h2 class="ff-sec-title">和谁一起写</h2>
@@ -65,16 +71,18 @@
       </div>
       <div class="ff-hint" id="ffPlanHint">计划约 8 章，每章约 2000 字。</div>
       <div class="ff-words-row" style="margin-top:12px">
-        <input class="ff-input" id="ffWords" type="number" min="800" max="6000" step="200" value="2000">
+        <input class="ff-input" id="ffWords" type="number" min="800" step="500" value="2000">
         <span>字 / 章</span>
       </div>
       <div class="ff-chips small" id="ffWordQuick" style="margin-top:10px">
         <button class="ff-chip" data-words="1200" type="button">1200</button>
         <button class="ff-chip on" data-words="2000" type="button">2000</button>
         <button class="ff-chip" data-words="3000" type="button">3000</button>
-        <button class="ff-chip" data-words="4000" type="button">4000</button>
+        <button class="ff-chip" data-words="6000" type="button">6000</button>
+        <button class="ff-chip" data-words="10000" type="button">10000</button>
+        <button class="ff-chip" data-words="15000" type="button">15000</button>
       </div>
-      <p class="ff-hint">每章单独生成，正文优先；生成完正文后再补段评和章评。</p>
+      <p class="ff-hint">每章单独生成，正文优先；超过约 3000 字会自动分段续写，不会因为一次写太长而中断。</p>
     </section>
 
     <section class="ff-section">
@@ -88,14 +96,15 @@
   </main>
 
   <div class="ff-start-wrap">
-    <button class="ff-start" id="ffStart" type="button">生成第一章</button>
+    <div class="ff-start-summary" id="ffStartSummary">选好角色和题材，就可以开始</div>
+    <button class="ff-start" id="ffStart" type="button">生成第一章 <span class="ff-start-arrow">→</span></button>
   </div>
 
   <div class="ff-toast" id="ffToast"></div>
 
   <script src="../js/user-scope.js?v=20261102a"></script>
-  <script src="../js/fanfic-common.js?v=20261018f"></script>
-  <script src="../js/fanfic-create.js?v=20261018f"></script>
+  <script src="../js/fanfic-common.js?v=20261110b"></script>
+  <script src="../js/fanfic-create.js?v=20261110b"></script>
   <script src="../swipe-back.js"></script>
 </body>
 </html>
