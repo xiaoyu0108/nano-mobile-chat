@@ -369,8 +369,13 @@
     }
 
     function unblockChar(id) {
-        try { localStorage.removeItem('chat_setting_blocked_' + id); localStorage.removeItem('chat_setting_blockedContacted_' + id); } catch (e) {}
+        try {
+            localStorage.removeItem('chat_setting_blocked_' + id);
+            localStorage.removeItem('chat_setting_blockedContacted_' + id);
+            localStorage.removeItem('chat_setting_charBlocked_' + id);
+        } catch (e) {}
         try { if (window.parent !== window) window.parent.postMessage({ type: 'nanoBlockChanged', chatId: id, blocked: false, text: '已加回好友' }, '*'); } catch (e) {}
+        try { if (window.parent !== window) window.parent.postMessage({ type: 'nanoCharUnblocked', chatId: id }, '*'); } catch (e) {}
     }
     function queueChatInject(charId, msgs) {
         if (!charId || !msgs || !msgs.length) return;

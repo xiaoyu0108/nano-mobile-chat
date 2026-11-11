@@ -59,6 +59,39 @@
     var s = store();
     return s && s.getMask ? (s.getMask().name || '我') : '我';
   }
+  // 只有开启了「允许生图」的 char 才允许在旅途里生成图片。
+  function charAllowsImage(id) {
+    try {
+      var raw = localStorage.getItem('chat_setting_allowImage_' + String(id || ''));
+      if (raw === null) return false;
+      var v = raw;
+      try { v = JSON.parse(raw); } catch (e) {}
+      return v === true || v === 1 || v === 'true' || v === '1';
+    } catch (e) { return false; }
+  }
+  function isChatOffline() {
+    try { return String(localStorage.getItem('nano_chat_mode_' + chatId) || '') === 'offline'; } catch (e) { return false; }
+  }
+  function recentMessageAt() {
+    var last = 0;
+    messages().forEach(function (m) {
+      if (!m || m.isCard || m.recalled) return;
+      if (!(m.text || m.transcript)) return;
+      var ts = Number(m.ts) || 0;
+      if (!ts) ts = parseInt(String(m.id || '').split('-')[0], 10) || 0;
+      if (ts > last) last = ts;
+    });
+    return last;
+  }
+  // 只让「最近 24 小时真的在聊天」的角色主动分享旅程；很久没聊的不再打扰。
+  function recentlyChatting() {
+    try {
+      var at = store() && store().lastChatAt ? Number(store().lastChatAt(chatId) || 0) : 0;
+      if (at && Date.now() - at < 24 * 3600 * 1000) return true;
+    } catch (e) {}
+    var last = recentMessageAt();
+    return !!last && Date.now() - last < 24 * 3600 * 1000;
+  }
 
   function whenReady(fn) {
     if (window.__chat && window.__chat.addMessage) { try { fn(); } catch (e) {} return; }
@@ -222,6 +255,8 @@
   function deliver() {
     var s = store();
     if (!s || reportBusy) return Promise.resolve(0);
+    // 角色在线下：旅途卡片先留在待投递队列，退出线下后再补进线上聊天。
+    if (isChatOffline()) return Promise.resolve(0);
     try {
       if (!chat() || (chat().isStorageReady && !chat().isStorageReady())) return Promise.resolve(0);
     } catch (e) { return Promise.resolve(0); }
@@ -235,11 +270,16 @@
         var r = list[i];
         if (!r) continue;
         try {
-          // 先发一句话说明为什么分享，再发卡片；不要只甩一张卡片。
-          var lead = String(r.thought || r.note || r.caption || '').trim();
-          if (!lead) lead = '刚到' + (r.place || r.title || '') + '，给你看看这边。';
-          chat().addMessage('left', lead, nowTime(), null, false, false, null);
           var img = await persistentImg(r.img);
+          var thought = String(r.thought || r.note || '').trim();
+          var thoughtZh = String(r.thoughtZh || '').trim();
+          if (!thoughtZh && thought) {
+            try {
+              if (window.__chat && window.__chat.isForeignChar && window.__chat.isForeignChar()) {
+                thoughtZh = await window.__chat.translateToZh(thought);
+              }
+            } catch (e) {}
+          }
           chat().addMessage('left', '', nowTime(), null, false, true, {
             cardType: 'travelReport',
             travelKind: 'report',
@@ -247,10 +287,11 @@
             title: r.title || r.place || '旅途报备',
             place: r.place || '',
             date: r.date || today(),
-            thought: r.thought || r.note || '',
+            thought: thought,
+            thoughtZh: thoughtZh,
             caption: r.caption || '',
             img: img || '',
-            note: r.note || '',
+            note: '',
             fromName: displayName(),
             reportedAt: r.at || Date.now()
           });
@@ -270,14 +311,24 @@
     var m = store() && store().getMask ? store().getMask() : {};
     return 'nano_travel_report_global_' + ((m && m.id) || 'default');
   }
-  var REPORT_EVERY = 48 * 3600 * 1000;   // 每 2 天由一位 char 主动报备一次
+  // 与「旅途」App 的随机拍立得共用同一把锁：两条路径合计约 3 天只分享一次。
+  function sharedShareKey() {
+    var m = store() && store().getMask ? store().getMask() : {};
+    return 'nano_travel_share_at_' + ((m && m.id) || 'default');
+  }
+  var REPORT_EVERY = 72 * 3600 * 1000;   // 约 3 天由一位 char 主动分享一次旅程
   function canReport() {
     var s = store();
     if (!s) return false;
-    // 没有真实聊天记录时先不打扰；有聊天记录后按每 2 天的节奏主动报备。
+    if (isChatOffline()) return false;
+    // 只对近 24 小时还在聊天的角色触发；很久没聊天的角色不再主动分享。
+    if (!recentlyChatting()) return false;
+    // 没有真实聊天记录时先不打扰；有聊天记录后按约 3 天的节奏主动分享。
     var hasChat = messages().some(function (m) { return m && !m.isCard && (m.text || m.transcript); }) || !!s.lastChatAt(chatId);
     if (!hasChat) return false;
     try {
+      var shared = JSON.parse(localStorage.getItem(sharedShareKey()) || 'null');
+      if (shared && Date.now() - Number(shared.at || 0) < REPORT_EVERY) return false;
       var globalLock = JSON.parse(localStorage.getItem(reportGlobalKey()) || 'null');
       if (globalLock && Date.now() - Number(globalLock.at || 0) < REPORT_EVERY) return false;
       var lock = JSON.parse(localStorage.getItem(reportLockKey()) || 'null');
@@ -290,6 +341,7 @@
   function markReport() {
     try { localStorage.setItem(reportLockKey(), JSON.stringify({ at: Date.now() })); } catch (e) {}
     try { localStorage.setItem(reportGlobalKey(), JSON.stringify({ at: Date.now(), charId: chatId })); } catch (e) {}
+    try { localStorage.setItem(sharedShareKey(), JSON.stringify({ at: Date.now(), charId: chatId })); } catch (e) {}
     var cd = store().getCharData(chatId);
     cd.lastReportAt = Date.now();
     store().save();
@@ -297,12 +349,18 @@
   function reportPrompt(charData, mask) {
     var persona = (charData && charData.settings && charData.settings.persona) || '';
     var name = (charData && charData.settings && charData.settings.name) || displayName();
+    var foreign = false, lang = '';
+    try {
+      foreign = !!(window.__chat && window.__chat.isForeignChar && window.__chat.isForeignChar());
+      lang = (window.__chat && window.__chat.charLanguageName) ? window.__chat.charLanguageName() : '';
+    } catch (e) {}
     var sys = '你是角色「' + name + '」。请以第一人称，生成一段你最近真实的出行记录，用作给「' + (mask.name || '用户') + '」的旅途报备。'
       + '必须严格保持人设，严禁 OOC、霸总腔、油腻情话、爹味说教；不要命令、强迫或贬低用户。'
       + (persona ? ('角色设定：' + String(persona).slice(0, 1400) + '。') : '')
+      + (foreign ? ('你的母语是' + (lang || '外语') + '：thought 必须用母语写，thoughtZh 给对应的中文翻译；' ) : 'thoughtZh 留空字符串；')
       + '只输出合法 JSON，不要解释。格式：'
-      + '{"place":"目的地/地点","from":"出发地","to":"到达地","type":"hsr|train|plane|taxi|bike|bus","date":"YYYY-MM-DD","time":"HH:MM","no":"车次/航班/车牌","seat":"座位/里程","price":数字,"thought":"一句真实心得","caption":"拍立得的一句话说明","photoPrompt":"用于生图的画面描述"}'
-      + '。要求：像真实日常出行，不要夸张；地点符合角色所在城市/世界观；thought 不超过 40 字；photoPrompt 描述光线、地点、动作、氛围，不要出现文字。';
+      + '{"place":"目的地/地点","from":"出发地","to":"到达地","type":"hsr|train|plane|taxi|bike|bus","date":"YYYY-MM-DD","time":"HH:MM","no":"车次/航班/车牌","seat":"座位/里程","price":数字,"thought":"一句真实心得","thoughtZh":"中文翻译或空","caption":"拍立得的一句话说明","photoPrompt":"用于生图的画面描述"}'
+      + '。要求：像真实日常出行，不要夸张；地点符合角色所在城市/世界观；thought 不超过 40 字；photoPrompt 描述光线、地点、氛围，可以是人像，也可以只是风景、街角、食物、车票、窗边、影子或手部，不要出现文字。';
     var usr = '今天是 ' + today() + '。请生成一段你一个人出门的记录，或者你为了散心临时去的地方。';
     return { system: sys, user: usr };
   }
@@ -324,6 +382,7 @@
       price: Number(j.price) || 0,
       note: String(j.thought || j.note || '').trim(),
       thought: String(j.thought || j.note || '').trim(),
+      thoughtZh: String(j.thoughtZh || '').trim(),
       caption: String(j.caption || '').trim(),
       photoPrompt: String(j.photoPrompt || '').trim(),
       owner: 'char',
@@ -356,12 +415,26 @@
       });
       var rec = normalizeRecord(j, charData);
       rec.tripId = newTripId();
-      // 随机报备尽量带一张旅途拍立得，让卡片更像 TA 真的在路上
+      // 分享时 75% 概率生图；只有开启「允许生图」的角色才真的调用生图。
+      // 画面随机：人像 / 风景 / 随机角落 / 生活细节都会出现，不再固定成一种。
       try {
-        if (rec.photoPrompt && api() && api().generateImage) {
+        if (rec.photoPrompt && charAllowsImage(chatId) && Math.random() < 0.75 && api() && api().generateImage) {
+          var roll = Math.random();
+          var withChar = roll < 0.42;
+          var photoPrompt = String(rec.photoPrompt).slice(0, 800);
+          if (withChar) {
+            photoPrompt += '。画面里出现你本人，像旅途中朋友随手拍下的人像：自然、真实、不摆拍，可以是半身、背影或侧脸，保留本人长相特征，不要影楼感。';
+          } else if (roll < 0.70) {
+            photoPrompt += '。只拍风景：真实的自然或城市景观，自然光，构图随手，像旅途中抬头看到的一幕，不要出现人物正脸。';
+          } else if (roll < 0.88) {
+            photoPrompt += '。拍一个随机的生活角落：街角、巷口、车站、窗边或路边小店，像随手捡到的一幕，不要摆拍，不要出现人物正脸。';
+          } else {
+            photoPrompt += '。拍旅途中的生活细节：食物、车票、杯子、影子、手部或随身小物，真实自然，不要文字水印。';
+          }
           var img = await api().generateImage({
-            prompt: String(rec.photoPrompt).slice(0, 800),
-            charId: chatId, charName: rec.charName || name
+            prompt: photoPrompt,
+            charId: withChar ? chatId : '',
+            charName: withChar ? (rec.charName || displayName()) : ''
           });
           if (img && img.src) rec.polaroid = img.src;
         }
@@ -369,7 +442,7 @@
       await store().addCharTrip(chatId, rec);
       await store().addPendingReport(chatId, {
         tripId: rec.tripId, title: rec.place, place: rec.place, date: rec.date,
-        thought: rec.thought, caption: rec.caption, note: rec.thought,
+        thought: rec.thought, thoughtZh: rec.thoughtZh || '', caption: rec.caption, note: '',
         img: rec.polaroid || '', at: Date.now()
       });
       markReport();
@@ -399,6 +472,7 @@
   }
   var INVITE_EVERY = 72 * 3600 * 1000;   // 每 3 天由一位 char 主动邀请一次
   function canInvite() {
+    if (isChatOffline()) return false;
     if (hasPendingInvite()) return false;
     try {
       var globalLock = JSON.parse(localStorage.getItem(inviteGlobalKey()) || 'null');

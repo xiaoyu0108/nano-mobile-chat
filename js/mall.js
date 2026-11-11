@@ -29,6 +29,31 @@
         return '我';
     }
     function dataKey() { return 'nano_mall_data__' + uid(); }
+    function idbKey() { return 'nano_mall_store__' + uid(); }
+
+    // 图片（尤其是自定义商品图）只放 IndexedDB，localStorage 里保留一份不含图片的轻量快照，
+    // 既能让老数据平滑迁移，也不会再把 5MB 的 localStorage 写满。
+    function lightCopy(v, depth) {
+        depth = depth || 0;
+        if (!v || typeof v !== 'object' || depth > 6) return v;
+        if (Array.isArray(v)) return v.map(function (x) { return lightCopy(x, depth + 1); });
+        var out = {};
+        Object.keys(v).forEach(function (k) {
+            var val = v[k];
+            if (k === 'image' && typeof val === 'string' && /^data:/i.test(val)) out[k] = '';
+            else out[k] = lightCopy(val, depth + 1);
+        });
+        return out;
+    }
+    function restoreProductImages(products, oldProducts) {
+        if (!Array.isArray(products) || !Array.isArray(oldProducts)) return products;
+        var byId = {};
+        oldProducts.forEach(function (p) { if (p && p.id) byId[p.id] = p; });
+        products.forEach(function (p) {
+            if (p && p.id && !p.image && byId[p.id] && byId[p.id].image) p.image = byId[p.id].image;
+        });
+        return products;
+    }
 
     // ===== 默认商品 =====
     function seedProducts() {
@@ -159,13 +184,24 @@
         return artSvg(p.cat);
     }
 
-    // ===== 数据（localStorage，避免部分 WebView 的 IndexedDB 卡死） =====
-    function loadData() {
-        var data = null;
-        try { data = JSON.parse(localStorage.getItem(dataKey()) || 'null'); } catch (e) { data = null; }
+    // ===== 数据（IndexedDB 主存储，localStorage 只留轻量快照） =====
+    async function loadData() {
+        var data = null, fromIdb = false, localData = null;
+        try { localData = JSON.parse(localStorage.getItem(dataKey()) || 'null'); } catch (e) { localData = null; }
+        if (window.NanoIDB) {
+            try {
+                var saved = await NanoIDB.get(idbKey());
+                if (saved && typeof saved === 'object') { data = saved; fromIdb = true; }
+            } catch (e) {}
+        }
+        if (localData && (!data || Number(localData.savedAt || 0) > Number(data.savedAt || 0))) {
+            // 其他标签页刚写过 localStorage：用轻量快照覆盖非图片字段，图片仍从 IDB 补齐。
+            var oldProducts = data && Array.isArray(data.products) ? data.products : [];
+            data = localData;
+            restoreProductImages(data.products, oldProducts);
+        }
         if (!data || typeof data !== 'object') {
-            data = { products: seedProducts(), cart: [], orders: [] };
-            try { localStorage.setItem(dataKey(), JSON.stringify(data)); } catch (e) {}
+            data = { products: seedProducts(), cart: [], orders: [], inventory: [], savedAt: Date.now() };
         }
         state.products = Array.isArray(data.products) ? data.products : [];
         state.cart = Array.isArray(data.cart) ? data.cart : [];
@@ -182,19 +218,32 @@
         state.cart.forEach(function (c) {
             if (state.selected[c.productId] === undefined) state.selected[c.productId] = true;
         });
-        if (addedDefault) saveData();
+        if (addedDefault || !fromIdb) saveData();
+        else {
+            // 从 IDB 读出来后，回写一份轻量快照，方便其他页面/标签页同步。
+            try { localStorage.setItem(dataKey(), JSON.stringify(lightCopy({ products: state.products, cart: state.cart, orders: state.orders, inventory: state.inventory, savedAt: Date.now() }))); } catch (e) {}
+        }
         return Promise.resolve();
     }
+    var saveChain = Promise.resolve();
     function saveData() {
+        var payload = {
+            products: state.products,
+            cart: state.cart,
+            orders: state.orders,
+            inventory: state.inventory,
+            savedAt: Date.now()
+        };
         try {
-            localStorage.setItem(dataKey(), JSON.stringify({
-                products: state.products,
-                cart: state.cart,
-                orders: state.orders,
-                inventory: state.inventory
-            }));
+            localStorage.setItem(dataKey(), JSON.stringify(lightCopy(payload)));
         } catch (e) {
-            toast('存储空间不足，图片可能过大');
+            try { toast('本地缓存空间不足，已只保留在 IndexedDB'); } catch (err) {}
+        }
+        if (window.NanoIDB) {
+            saveChain = saveChain.then(function () {
+                return NanoIDB.set(idbKey(), payload);
+            }).catch(function () {});
+            return saveChain;
         }
         return Promise.resolve();
     }

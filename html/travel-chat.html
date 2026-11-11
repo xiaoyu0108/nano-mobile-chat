@@ -244,9 +244,9 @@ body.is-replay #route .st{cursor:default}
 <script src="../js/appearance.js?v=20261106a"></script>
 <script src="../js/nano-gallery.js?v=20261106a"></script>
 <script src="../js/localforage.min.js?v=20261106a"></script>
-<script src="../js/mem-link.js?v=20261106a"></script>
+<script src="../js/mem-link.js?v=20261111a"></script>
 <script src="../js/builtin-worldbook.js?v=20261025b"></script>
-<script src="../js/travel-store.js?v=20261109a"></script>
+<script src="../js/travel-store.js?v=20261111a"></script>
 <script src="../js/travel-api.js?v=20261102a"></script>
 <script>
 /* ===== API 接入点 =====
@@ -267,6 +267,16 @@ const INVITE = {
 };
 let CHAR = String(QS2.get('name') || '').trim() || 'TA';
 let CHAR_RECORD = null;
+// 只有开启「允许生图」的角色才能在旅途里拍照生图。
+function charAllowsImage(id){
+  try{
+    const raw=localStorage.getItem('chat_setting_allowImage_'+String(id||''));
+    if(raw===null)return false;
+    let v=raw;
+    try{v=JSON.parse(raw)}catch(e){}
+    return v===true||v===1||v==='true'||v==='1';
+  }catch(e){return false}
+}
 let USER = '你';
 let DEST = INVITE.dest || '附近走走';
 let TRIP_ID = 'trip_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,5);
@@ -764,6 +774,7 @@ $('#promptReroll').onclick=()=>{
 };
 async function takePhoto(existing,forcedPrompt){
   if(S.photoBusy||S.busy)return;
+  if(!charAllowsImage(CHAR_ID)){ toast('该角色未开启允许生图'); return; }
   let m=existing;
   if(!m){m={id:++S.uid,role:'photo',loading:true,url:'',caption:''};S.msgs.push(m);log.append(node(m))}
   else{m.loading=true;m.fail=false;refresh(m)}
@@ -1386,9 +1397,11 @@ async function summarizeTrip(hist){
 }
 async function generateTripCardMeta(brief,visited){
   try{
+    const foreign=charIsForeign();
     const sys='你是角色「'+CHAR+'」。你和「'+USER+'」刚刚结束一趟真实的旅行。请为这次旅行生成一张可以放进「旅途」App 的旅程卡片。'
       +'必须严格保持人设，严禁 OOC、霸总腔、油腻情话；不要编造没有发生的事。'
-      +'只输出合法 JSON，不要解释。格式：{"title":"一句话标题，不超过18字","thought":"你作为角色写下的旅程心得，80-160字，第一人称","caption":"拍立得的一句话说明，不超过24字"}';
+      +(foreign?('你的母语是'+charLanguageName()+'：thought 用母语写，thoughtZh 给中文翻译；'):'thoughtZh 留空字符串；')
+      +'只输出合法 JSON，不要解释。格式：{"title":"一句话标题，不超过18字","thought":"你作为角色写下的旅程心得，80-160字，第一人称","thoughtZh":"中文翻译或空","caption":"拍立得的一句话说明，不超过24字"}';
     const usr='目的地：'+DEST+'；天数：'+(INVITE.days||'1')+'；到过：'+(visited.join('、')||'未记录')
       +'；同行：'+CHAR+' 和 '+USER+'。\n旅程总结：\n'+String(brief||'').slice(0,1800)
       +'\n\n请生成这张旅程卡片。';
@@ -1423,6 +1436,10 @@ async function travelExit(i){
   }
   const cardTitle=String((cardMeta&&cardMeta.title)||('我们 · '+DEST)).trim();
   const cardThought=String((cardMeta&&cardMeta.thought)||brief||'').trim();
+  let cardThoughtZh=String((cardMeta&&cardMeta.thoughtZh)||'').trim();
+  if(!cardThoughtZh && cardThought && charIsForeign()){
+    try{cardThoughtZh=String(await translateToZh(cardThought)||'').trim()}catch(e){}
+  }
   const cardCaption=String((cardMeta&&cardMeta.caption)||(lastPhoto&&lastPhoto.caption)||'').trim();
 
   // 完整回顾：保留这次旅行的叙事流程（限制长度，避免撑爆本地存储）
@@ -1462,7 +1479,7 @@ async function travelExit(i){
     try{
       const ticketNo='TRV-'+String(TRIP_ID).replace(/[^a-z0-9]/gi,'').slice(-8).toUpperCase();
       const patch={
-        tripId:TRIP_ID,journeyId:TRIP_ID,place:DEST,date,cost:null,legs:[],noteMe:'',noteChar:cardThought,summary:brief||cardThought,
+        tripId:TRIP_ID,journeyId:TRIP_ID,place:DEST,date,cost:null,legs:[],noteMe:'',noteChar:cardThought,thoughtZh:cardThoughtZh,summary:brief||cardThought,
         polaroid:lastPhoto?lastPhoto.url:'',caption:cardCaption,
         shared:false,source:'travel-chat',places:visited,days:INVITE.days||'1',ticketNo:ticketNo,
         charId:CHAR_ID,userId:uid,title:cardTitle,thought:cardThought,journey:journey,
@@ -1480,7 +1497,7 @@ async function travelExit(i){
       const card={
         cardType:'travelReport',travelKind:'together',direction:'char',
         tripId:tid,title:cardTitle,place:DEST,date,days:INVITE.days||'1',
-        ticketNo:ticketNo,thought:cardThought,img:lastPhoto?lastPhoto.url:'',
+        ticketNo:ticketNo,thought:cardThought,thoughtZh:cardThoughtZh,img:lastPhoto?lastPhoto.url:'',
         caption:cardCaption,fromName:CHAR,userName:USER,
         places:visited,createdAt:Date.now(),journeyId:TRIP_ID
       };
@@ -1490,10 +1507,6 @@ async function travelExit(i){
         const old=(msgs||[]).find(m=>m&&m.cardData&&m.cardData.cardType==='travelReport'&&String(m.cardData.journeyId||m.cardData.tripId||'')===String(TRIP_ID));
         if(old) await NanoTravelStore.updateChatCard(chatKey,old.id,card);
         else{
-          // 先说一句为什么发这张卡，再发卡片；不能只丢一张行程卡过来。
-          const lead=String(cardCaption||'').trim()||('刚从'+DEST+'回来，这趟整理好了，给你看看。');
-          const leadMsg=NanoTravelStore.baseMessage({type:'left',text:lead.slice(0,120),isCard:false,cardData:{}});
-          await NanoTravelStore.appendChatMessage(chatKey,leadMsg);
           const msg=NanoTravelStore.baseMessage({type:'left',cardData:card,text:''});
           await NanoTravelStore.appendChatMessage(chatKey,msg);
         }

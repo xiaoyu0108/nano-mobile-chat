@@ -1884,6 +1884,14 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
     overflow: visible !important;
     text-overflow: clip !important;
 }
+.message-row.sys-notice .recall-notice.family-notice-link {
+    white-space: normal !important;
+    max-width: 88% !important;
+    color: #ef7390;
+    background: #fff3f6;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
 .message-row.recalled .recall-notice.expand {
     white-space: normal;
     overflow: visible;
@@ -2332,4 +2340,15 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .bubble-card .ship-dot.on { background: #c58a4c; }
 .bubble-card .ship-line { flex: 1; height: 2px; margin: 0 3px; background: #ece3d7; }
 .bubble-card .ship-line.on { background: #c58a4c; }
+.multi-select-bar .ms-right .ms-forward { color: #0a84ff; }
+.bubble-card .fw-box { max-height: 280px; overflow: auto; }
+.bubble-card .fw-box details summary { cursor: pointer; font-weight: 600; color: #6b5b4a; }
+.bubble-card .fw-list { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
+.bubble-card .fw-line { padding-bottom: 8px; border-bottom: 1px solid rgba(0,0,0,.06); }
+.bubble-card .fw-line:last-child { border-bottom: 0; padding-bottom: 0; }
+.bubble-card .fw-meta { font-size: 10.5px; color: #9a8068; margin-bottom: 2px; }
+.bubble-card .fw-text { font-size: 13px; line-height: 1.5; color: #3a3a3c; white-space: pre-wrap; word-break: break-word; }
+.bubble-card .fw-preview-line { font-size: 12.5px; line-height: 1.5; color: #4a4a4c; margin-bottom: 5px; }
+.bubble-card .fw-preview-line b { color: #2c2c2e; font-weight: 600; }
+.bubble-card .fw-open-hint { margin-top: 7px; font-size: 11.5px; color: #0a84ff; }
 

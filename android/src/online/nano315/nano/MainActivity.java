@@ -82,6 +82,7 @@ public class MainActivity extends Activity {
     private String[] pendingMediaPermissions;
     private GeolocationPermissions.Callback pendingGeoCallback;
     private String pendingGeoOrigin;
+    private Map<String, String> assetNameCache;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -271,17 +272,11 @@ public class MainActivity extends Activity {
         String path = uri.getPath();
         if (path == null || path.isEmpty() || "/".equals(path)) path = "/index.html";
         if (!path.startsWith("/")) path = "/" + path;
-        if (path.contains("..")) return notFound();
+        if (path.contains("..")) return notFound(path);
         String mime = mimeFor(path);
         String assetPath = "www" + path;
         try {
-            InputStream is;
-            try {
-                is = getAssets().open(assetPath);
-            } catch (IOException missing) {
-                // Windows 版 aapt2 可能把 assets 路径写成反斜杠；AssetManager 只认正斜杠，这里兼容一次。
-                is = getAssets().open(assetPath.replace('/', '\\'));
-            }
+            InputStream is = openAsset(assetPath);
             WebResourceResponse response = new WebResourceResponse(
                     mime, isText(mime) ? "UTF-8" : null, is);
             Map<String, String> headers = new HashMap<>();
@@ -290,14 +285,56 @@ public class MainActivity extends Activity {
             response.setResponseHeaders(headers);
             return response;
         } catch (IOException e) {
-            return notFound();
+            Log.e(TAG, "asset not found: " + assetPath);
+            return notFound(assetPath);
         }
     }
 
-    private WebResourceResponse notFound() {
+    // 正常 APK 里的 assets 路径是 www/index.html。
+    // 如果构建机上的 aapt2 把路径写成 www\index.html，AssetManager 会找不到；
+    // 这里用运行时索引做兜底，旧 APK / 未修复的构建也能正常打开。
+    private InputStream openAsset(String assetPath) throws IOException {
+        try {
+            return getAssets().open(assetPath);
+        } catch (IOException first) {
+            String backslash = assetPath.replace('/', '\\');
+            if (!backslash.equals(assetPath)) {
+                try {
+                    return getAssets().open(backslash);
+                } catch (IOException ignored) {
+                }
+            }
+            String mapped = assetIndex().get(assetPath);
+            if (mapped != null && !mapped.equals(assetPath)) {
+                return getAssets().open(mapped);
+            }
+            throw first;
+        }
+    }
+
+    private Map<String, String> assetIndex() {
+        if (assetNameCache != null) return assetNameCache;
+        Map<String, String> index = new HashMap<>();
+        try {
+            String[] root = getAssets().list("");
+            if (root != null) {
+                for (String name : root) {
+                    if (name == null) continue;
+                    index.put(name.replace('\\', '/'), name);
+                }
+            }
+        } catch (IOException e) {
+            Log.e(TAG, "asset index failed", e);
+        }
+        assetNameCache = index;
+        return assetNameCache;
+    }
+
+    private WebResourceResponse notFound(String path) {
+        String body = "Not found: " + (path == null ? "" : path);
         return new WebResourceResponse("text/plain", "UTF-8", 404, "Not Found",
                 new HashMap<String, String>(),
-                new ByteArrayInputStream("Not found".getBytes()));
+                new ByteArrayInputStream(body.getBytes()));
     }
 
     private static String mimeFor(String path) {

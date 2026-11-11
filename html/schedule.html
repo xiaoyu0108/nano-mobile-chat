@@ -6,7 +6,7 @@
   <script src="../js/nano-gallery.js?v=20261102a"></script>
 <script>window.__NANO_FONT_ONLY = true;</script>
 <script src="../js/appearance.js?v=20261110c"></script>
-<script src="../js/schedule-bridge.js?v=20261029a"></script>
+<script src="../js/schedule-bridge.js?v=20261112a"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
 <title>日程</title>
@@ -341,6 +341,16 @@ function charDataFor(ch){
   d.settings.avatar=ch.avatar||d.settings.avatar||'';
   if(!Array.isArray(d.events))d.events=[];
   return d;
+}
+// 只有开启「允许生图」的角色才能生成日程图片。
+function charAllowsImage(id){
+  try{
+    const raw=localStorage.getItem('chat_setting_allowImage_'+String(id||''));
+    if(raw===null)return false;
+    let v=raw;
+    try{v=JSON.parse(raw)}catch(e){}
+    return v===true||v===1||v==='true'||v==='1';
+  }catch(e){return false}
 }
 function save(){
   if(!CHAR)return;
@@ -1313,6 +1323,10 @@ function markImgDay(){
 }
 async function runImage(ev,prompt,openAfter,autoReport){
   if(!ev||ev._busy)return;
+  if(!CHAR||!charAllowsImage(CHAR.id)){
+    if(!autoReport)toast('该角色未开启允许生图');
+    return;
+  }
   if(imgLockedToday()){
     if(!autoReport)toast('今天已经生成过一次日程图片，明天再试');
     return;

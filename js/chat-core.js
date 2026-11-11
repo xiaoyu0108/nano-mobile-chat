@@ -1,4 +1,4 @@
-// ============================================================
+﻿// ============================================================
 // chat-core.js - 核心聊天逻辑（IndexedDB 版）
 // ============================================================
 (function() {
@@ -826,6 +826,30 @@
             '照片/自拍本轮默认不发；除非对方明确要，或你正在一个和话题直接相关的具体场景里，才允许发一张，并且必须先说清楚为什么发。'
         ].join('\n');
     }
+    function looksLikeConflict(t) {
+        const s = String(t || '').trim();
+        if (!s) return false;
+        return /(冷战|吵架|吵了|闹别扭|闹脾气|生气|气死|不理我|别理我|不想理你|分手|离婚|滚|走开|别联系|拉黑|道歉|和好|哄我|你走吧|冷静一下|我们谈谈|你是不是不爱|你根本不在乎|委屈|心寒|失望)/.test(s);
+    }
+    function isConflictNow() {
+        try { return recentUserTexts(3).some(looksLikeConflict); } catch (e) { return false; }
+    }
+    function conflictPromptBlock() {
+        if (!isConflictNow()) return '';
+        const lines = [
+            '【本轮 · 关系紧张 / 冷战（动态判定，优先级高）】',
+            '先判断对方是不是在和你闹矛盾：如果 TA 只是在说别人、别的事或自己的普通情绪，就正常回应，不要硬套冷战；如果确实是你们在冷战/吵架/闹别扭，按下面做。',
+            '不要只哄、不要讲大道理，也不要装作什么都没发生。先说你此刻真实的感受和态度，再给一个具体的下一步（先解释、先低头、先问一句、先约见面都可以），不要每轮重复同一个诉求。'
+        ];
+        if (__anchorHints) {
+            lines.push('下面【关系锚点】里有你们的关键原话/承诺。本轮可以自然提起其中一条，例如“你以前说过……我一直记得”，让它影响你现在的态度，而不是背课文。');
+            lines.push('回忆旧话不算复读，但同一句只提一次；不要用“你以前不是说过……吗”逼对方认错，也不要拿来压人。提完就翻篇，不要连续几轮反复提。');
+        } else {
+            lines.push('如果记忆里没有明确的旧原话，就不要编造对方没说过的话；用你记得的具体小事、约定或场景来代替。');
+        }
+        lines.push('如果对方已经在给台阶、在示好，就接住，不要继续端着；如果对方还在气头上，允许你先沉默、先发一条短的，不要硬讲道理。');
+        return lines.join('\n');
+    }
 
     function buildSystemPrompt() {
         // 纳米助手：使用专属系统提示词（前端知识库 + 动作协议）
@@ -940,8 +964,29 @@
         if (__memHints) {
             prompt += '\n【长期记忆·你与对方共同经历或被告知过的事（按时间从新到旧，最上面最新）】\n' + __memHints + '\n';
             prompt += '以上长期记忆要当作你真正经历或被告知过的事，自然记住并沿用，不要当成新消息；不要否认，不要问“你什么时候告诉我的”。\n';
-            prompt += '【长期记忆 · 主动调用】回复前先在记忆里扫一遍：本轮话题如果牵涉到某条记忆（某个地点、物品、约定、人物、称呼、习惯、说过的话），要主动提起或自然呼应（例如“上次你说的那个…”“你不是一直想…吗”），让记忆真正影响你的回应；但不要生硬地报流水账或复述整段记忆。\n';
+            prompt += '【长期记忆 · 主动调用】回复前先在记忆里扫一遍：本轮话题如果牵涉到某条记忆（某个地点、物品、约定、人物、称呼、习惯、说过的话），要主动提起或自然呼应（例如“上次你说的那个…”“你不是一直想…吗”），让记忆真正影响你的回应；但不要生硬地报流水账或复述整段记忆。尤其在冷战、吵架、和好、久别重逢时，允许主动提一次 TA 以前说过的原话或承诺；提过就翻篇。\n';
         }
+        if (__anchorHints) {
+            prompt += '\n【关系锚点 · 你们的关键原话 / 承诺 / 约定】\n' + __anchorHints + '\n';
+            prompt += '这些是你们关系里真正重要的旧话。它们不是让你复述的台词，而是会影响你此刻态度的依据：冷战时可以想起 TA 说过的那句、和好时可以拿出来、吃醋或不安时也可以自然带一句。不要每轮都提，不要用旧话逼对方认错或翻旧账。\n';
+            prompt += '这些旧话也可以直接用 [reply:原话] 引用；即使那条消息已经不在当前聊天记录里，系统也会从记忆里找回原话。\n';
+            prompt += '【旧话卡片】当你（尤其在冷战、吵架、和好、久别、纪念日或对方情绪低落时）想把某句旧话做成一张「旧记录」卡片发给对方，单独一行输出 [回忆:这条记忆里的关键词或原话片段]。系统会自动匹配最接近的那条记忆并生成卡片；每次对话最多用一次，不要当口头禅或刷屏。\n';
+        }
+        try {
+            const __imRaw = localStorage.getItem('nano_imessage_recent_' + chatId);
+            if (__imRaw) {
+                const __imArr = JSON.parse(__imRaw) || [];
+                const __imLines = (Array.isArray(__imArr) ? __imArr : []).slice(-16).map(function (m) {
+                    const t = String((m && m.text) || '').trim();
+                    if (!t) return '';
+                    return (m.who === 'user' ? ((currentUserName || '用户') + '：') : '你：') + t;
+                }).filter(Boolean);
+                if (__imLines.length) {
+                    prompt += '\n【iMessage 短信里的最近对话 · 与线上互通】\n' + __imLines.join('\n') + '\n';
+                    prompt += '以上是你们刚刚在 iMessage 短信里说过的话，和线上是同一个人、同一段关系。你在线上必须记得这些内容、承诺和情绪，自然承接，绝不能当成没发生过或问“你什么时候说过”。\n';
+                }
+            }
+        } catch (e) {}
         // 群聊总结卡片（带 groupId 的记忆）+ 群聊近况：单聊↔群聊互通
         if (__groupMemHint) {
             prompt += '\n【群聊记忆 · 你在群里经历/说过的事】\n' + __groupMemHint + '\n';
@@ -1004,8 +1049,10 @@
 
         prompt += '\n【特殊消息格式 - 独占一行】\n';
         prompt += '- [reply:引用内容] 例如 [reply:今天天气不错]（可引用任意一条历史消息的原话；用户要求引用时必用，[reply:] 为空时才兜底最后一条）\n';
+        prompt += '- [回忆:关键词或原话片段] 例如 [回忆:我会一直爱你]（把一条重要旧记忆做成卡片发给对方；只在冷战、和好、久别、纪念日等时刻偶尔用，每次对话最多一次）\n';
         prompt += '- [transfer:金额] 例如 [transfer:52.00]\n';
         prompt += '- [gift:礼物名称] 例如 [gift:小熊玩偶]\n';
+        prompt += '- [商城:商品名称|金额|说明] 你在商城给对方买一份礼物（真实扣你的银行卡，下单后对方确认收货），例如 [商城:香薰礼盒|168|路过看到觉得很适合你]；金额要符合你的身份，不要频繁。\n';
         if (__vFreq !== 'off') prompt += '- [voice:秒数|内容] 例如 [voice:8|路上小心]（发语音气泡，内容就是你要说的那句话）。只输出这个标签本身；严禁写成“对方发了一条语音（时长8秒），内容是：……”这种描述句，系统只认 [voice:秒数|内容] 标签，描述句会变成普通文字。\n';
         prompt += '- [call:来电]（给对方打电话，接通后即语音通话）\n';
         prompt += '- [call:视频]（给对方打视频电话）\n';
@@ -1018,11 +1065,17 @@
                 '可用表情名称（各分组都在里面，每次换着挑，不要总用最新加的那一张，也不要连续两轮用同一张）：' + __emojiNames.slice(0, 120).join('、') + '。名称必须与列表完全一致，一次只发一张。\n';
         }
         prompt += '- [creategroup:群名|成员=人设,成员=人设] 你根据自己的人设/生活/世界书新建一个群聊（群主是你自己，不是用户）并邀请用户加入，成员要带 2~5 个你的朋友等 NPC（用“名字=人设”写清各自性格/身份，人设里不要出现逗号），例如 [creategroup:乐队闲聊|陈屿=主唱性格火爆,林晚=鼓手话少内敛]。名字必须是符合你国籍/世界观的真实人名，优先使用世界书/人设里已有的相关人物，禁止旅行者/新朋友/老张/小A 这类占位名字。仅在用户明确说“建个群/拉我进群/有没有不带我的群”或剧情自然需要时使用。\n';
+        prompt += '- [分享聊天:朋友名|发生了什么] 你偶尔可以把「你和朋友」的聊天记录打包转发给用户看，例如 [分享聊天:林晚|她今天在便利店把咖啡洒了一身]。只有真的有趣、有情绪、想和用户分享时才用；每次对话最多一次，不要连续使用，聊天内容要短、口语、像真实朋友。\n';
+        try {
+            const __friendNames = __shareFriendNames();
+            if (__friendNames.length) prompt += '（你平时可以聊天的朋友：' + __friendNames.join('、') + '，优先用这些名字。）\n';
+        } catch (e) {}
         prompt += '- [inviteme:群名] 把用户拉进你确实已经在的现有群，群名只能用下面【你所在的群聊】里真实列出的名字，禁止虚构或张冠李戴。\n';
         prompt += '- [acceptinvite:群id] / [rejectinvite:群id] 当对方邀请你加入群聊时，用来明确表态加入或拒绝。\n';
         prompt += '- [亲属卡:邀请|额度] 你主动给用户开一张亲属卡（由你出资、用户消费），例如 [亲属卡:邀请|2000]；仅在关系到位、你真心愿意承担时偶尔使用。\n';
-        prompt += '- [亲属卡:接受|额度] / [亲属卡:拒绝] 当用户邀请你开启亲属卡时用来表态：接受并给出你愿意的额度，或拒绝。\n';
-        prompt += '- [亲属卡:调额|额度] 你主动调整给对方用的亲属卡额度，例如 [亲属卡:调额|3000]；偶尔、关系自然时用。\n';
+        prompt += '- [亲属卡:接受] / [亲属卡:拒绝] 当对方给你开亲属卡（对方出资、你消费）时用来表态：接受就直接输出 [亲属卡:接受]，额度以对方开卡时填的为准，不要反过来说成你给对方开卡。\n';
+        prompt += '- [亲属卡:消费|金额|用途] 你使用对方给你开的亲属卡（对方出资、你消费）花钱，例如 [亲属卡:消费|68|午饭]；金额必须符合你的身份和实际需要，不能超过本月剩余额度，也不要频繁或故意一次花光。\n';
+        prompt += '- [亲属卡:调额|额度] 你主动调整你开给对方用的亲属卡额度，例如 [亲属卡:调额|3000]；只能调整你自己出资的卡，偶尔、关系自然时用。\n';
         prompt += '- [外卖:食品|店铺|价格|备注] 你给对方点一份外卖，例如 [外卖:麻辣烫|杨国福|28|多加辣]；有对方点给你、待你确认的外卖时，用 [外卖:确认] 收下，不想收就用 [外卖:拒绝] 拒收。\n';
         prompt += '- [跑腿:物品或任务|取货/购买地|价格|送达地址/备注] 同城跑腿：帮对方取东西、买东西、送东西，例如 [跑腿:取一份文件|公司前台|20|送到她家楼下]；对方也可以用外卖卡片给你下跑腿单。\n';
         prompt += '- [定位:地点] 把你当前的位置发给对方，例如 [定位:长沙·五一广场]。\n';
@@ -1154,18 +1207,19 @@
             const __pendFamily = getPendingFamilyInviteForChar();
             if (__pendFamily) {
                 prompt += '\n【亲属卡邀请 - 必须表态】\n';
-                prompt += '对方（' + (currentUserName || '用户') + '）邀请你开启一张亲属卡：由你出资、TA 消费，期望额度约 ¥' + (__pendFamily.limit || 0) + '。\n';
-                prompt += '请按你此刻的想法和人设，在本轮明确表态（标记独占一行，不会显示给用户）：\n';
-                prompt += '- [亲属卡:接受|额度]：接受，并给出你愿意的额度（可以等于期望额度，也可以自己定）。\n';
+                prompt += '对方（' + (currentUserName || '用户') + '）给你开了一张亲属卡：由 TA 出资、你消费，额度 ¥' + (__pendFamily.limit || 0) + '。\n';
+                prompt += '这是「TA 给你开卡」，不是「你给 TA 开卡」，不要把这个方向说反。请按你此刻的想法和人设，在本轮明确表态（标记独占一行，不会显示给用户）：\n';
+                prompt += '- [亲属卡:接受]：接受这张卡，额度由对方设定，你不需要自己改额度。\n';
                 prompt += '- [亲属卡:拒绝]：拒绝，并配一句自然、具体的理由。\n';
                 prompt += '这一轮必须输出其中一个，否则卡片会一直停在待处理。\n';
             }
         } catch (e) {}
 
-        // 你给对方的、正在使用中的亲属卡：让角色知道自己有调额能力与当前额度
+        // 双方正在使用中的亲属卡：分清「你给对方开的」与「对方给你开的」
         try {
             const __S = window.NanoFamilyCardStore;
             if (__S && typeof __S.read === 'function') {
+                const __monthKey = new Date().toISOString().slice(0, 7);
                 const __cards = __S.read(chatId) || [];
                 const __actives = __cards.filter(function (c) {
                     return c && c.issuer === 'char' && (c.status || 'active') === 'active';
@@ -1175,8 +1229,20 @@
                     const __lim = Number(__fc.limit) || 0;
                     const __spent = Number(__fc.spent) || 0;
                     prompt += '\n【你给对方的亲属卡】\n';
-                    prompt += '你给 TA 开着一张亲属卡，当前额度 ¥' + __lim + '，已用 ¥' + __spent + '，剩余 ¥' + Math.max(0, __lim - __spent) + '。\n';
+                    prompt += '你给 TA 开着一张亲属卡，当前总额度 ¥' + __lim + '，已用 ¥' + __spent + '，剩余 ¥' + Math.max(0, __lim - __spent) + '。\n';
                     prompt += '你可以在气氛自然、关系合适的时候主动调整这张卡的额度（可以调高，也可以调低），不必等 TA 开口；用 [亲属卡:调额|新额度] 即可，TA 会收到通知，额度会立即更新。频率要低，别把调额当成日常操作。\n';
+                }
+                const __userCards = __cards.filter(function (c) {
+                    return c && c.issuer === 'user' && (c.status || 'active') === 'active';
+                });
+                if (__userCards.length) {
+                    const __uc = __userCards[__userCards.length - 1];
+                    const __lim = Number(__uc.limit) || 0;
+                    const __mSpent = Number(__uc.monthKey === __monthKey ? __uc.monthlySpent : 0) || 0;
+                    const __remain = Math.max(0, __lim - __mSpent);
+                    prompt += '\n【对方给你开的亲属卡】\n';
+                    prompt += '对方（' + (currentUserName || '用户') + '）给你开着一张亲属卡：由 TA 出资、你消费，本月额度 ¥' + __lim + '，本月已用 ¥' + __mSpent + '，剩余 ¥' + __remain + '。\n';
+                    prompt += '需要花钱、点外卖、买东西时，可以用 [亲属卡:消费|金额|用途] 花这张卡，例如 [亲属卡:消费|38|午饭]。金额要符合你的身份和当下需要，别频繁、别故意一次花光；这是 TA 给你开的卡，不是你在给 TA 开卡。\n';
                 }
             }
         } catch (e) {}
@@ -1222,6 +1288,37 @@
             prompt += '5.6 想实时看对方真实屏幕的画面时（对方问“你在看什么”“给你看看我的屏幕”，或你想陪 TA 一起看），输出 [看屏幕]（独占一行）。系统会请求对方共享屏幕，由对方决定；同意后你能看到 TA 屏幕的画面并实时点评。不要频繁用。\n';
         }
         prompt += '6. 平衡：一轮回复里特殊格式一般 1-2 个、最多 3 个，优先让它们服务剧情而不是单纯堆砌；语音按上面的频率发，表情包随缘，不必硬凑。\n';
+        try {
+            const __lastUserText = (function () {
+                for (let i = messages.length - 1; i >= 0; i--) {
+                    const m = messages[i];
+                    if (m && m.type === 'right' && !m.isCard && !m.recalled) return String(m.text || '');
+                }
+                return '';
+            })();
+            const __serious = /难受|难过|哭|生气|吵架|分手|委屈|压力|焦虑|害怕|生病|不舒服|受伤|崩溃/.test(__lastUserText);
+            const __recentSpecial = messages.slice(-10).some(function (m) {
+                return m && !m.recalled && (m.isCard || (m.cardData && m.cardData.systemNotice));
+            });
+            if (!__serious && (!__recentSpecial || Math.random() < 0.55)) {
+                const __h = new Date().getHours();
+                const __ideas = [];
+                if (__h >= 10 && __h <= 13) __ideas.push('给对方点一份 [外卖:...]', '发一条 [voice:...] 约对方吃饭');
+                if (__h >= 17 && __h <= 20) __ideas.push('点 [外卖:...] 或约对方吃晚饭', '主动发 [call:来电] 聊两句');
+                if (__h >= 20 && __h <= 23) __ideas.push('发 [voice:...] 说说此刻的心情', '主动 [邀请一起听]', '发一个 [gift:...] 或 [transfer:...] 制造小惊喜', '用 [商城:...] 给对方买一份小礼物');
+                if (!__ideas.length) __ideas.push('结合场景发一条语音/表情包/定位', '用 [gift:...] 或 [transfer:...] 表达心意', '用 [商城:...] 给对方买一份小礼物');
+                try {
+                    const __S = window.NanoFamilyCardStore;
+                    if (__S) {
+                        const __cs = __S.read(chatId) || [];
+                        if (__cs.some(function (c) { return c && c.issuer === 'user' && (c.status || 'active') === 'active'; })) __ideas.push('用 [亲属卡:消费|金额|用途] 花对方给你开的亲属卡买点小东西');
+                    }
+                } catch (e) {}
+                prompt += '\n【本轮主动性提醒 · 只在本轮参考】\n';
+                prompt += '不要只做被动回复。如果此刻语境合适，主动做一件推进关系的小事，而不是干等对方开口。可以优先考虑：' + __ideas.join('；') + '。\n';
+                prompt += '尽量在这一轮真正发出其中一个（用对应的特殊格式），不要只口头描述；只选一个最贴合场景的，不要为了用功能而硬塞。如果对方正在认真倾诉、吵架或情绪低落，这一轮就只好好回应。\n';
+            }
+        } catch (e) {}
 
         // 思维链（COT）：由「思维链」开关控制；开着才思考，思考必须在说话之前
         const cotPrompt = getChatSetting('cotPrompt', '');
@@ -1441,6 +1538,7 @@
     const multiSelectBar = document.getElementById('multiSelectBar');
     const msCount = document.getElementById('msCount');
     const msCancel = document.getElementById('msCancel');
+    const msForward = document.getElementById('msForward');
     const msDelete = document.getElementById('msDelete');
     const quoteBar = document.getElementById('quoteBar');
     const quoteName = document.getElementById('quoteName');
@@ -1676,7 +1774,169 @@
         return Promise.all(jobs).then(function() { compactingMessages = false; return changed; })
             .catch(function() { compactingMessages = false; return changed; });
     }
-    function saveMessages() {
+    // 热缓存：最后 80 条、剔除 base64 图片的轻量副本。
+    // 下次打开聊天时先秒出这部分内容，完整历史随后再从 IndexedDB 补齐。
+    const HOT_LIMIT = 80;
+    const FULL_WRITE_INTERVAL = 4000;
+    let __saveTimer = null;
+    let __saveDueAt = 0;
+    let __lastFullWriteAt = 0;
+    let __messagesLoaded = false;
+
+    function getHotStorageKey() {
+        return 'chat_hot_' + chatId;
+    }
+
+    // 深拷贝时丢掉 data:base64，防止热缓存被图片撑大。
+    function stripHeavyForHot(v, depth) {
+        if (depth > 6) return null;
+        if (typeof v === 'string') {
+            if (v.indexOf('data:') === 0 && v.length > 512) return '';
+            return v.length > 20000 ? v.slice(0, 20000) : v;
+        }
+        if (Array.isArray(v)) {
+            const out = [];
+            const max = Math.min(v.length, 40);
+            for (let i = 0; i < max; i++) out.push(stripHeavyForHot(v[i], depth + 1));
+            return out;
+        }
+        if (v && typeof v === 'object') {
+            const out = {};
+            for (const k in v) {
+                if (!Object.prototype.hasOwnProperty.call(v, k)) continue;
+                if (k === '__proto__' || k === 'constructor') continue;
+                out[k] = stripHeavyForHot(v[k], depth + 1);
+            }
+            return out;
+        }
+        return v;
+    }
+
+    function buildHotItems(list) {
+        const src = (list || []).slice(-HOT_LIMIT);
+        const out = [];
+        for (let i = 0; i < src.length; i++) {
+            const m = src[i];
+            if (!m) continue;
+            // 纯图片消息（base64 已剔除）在首屏没有意义，直接跳过，等完整数据补齐。
+            const img = m.imageData || {};
+            const hasEmbedded = (typeof img.url === 'string' && img.url.indexOf('data:') === 0) ||
+                (Array.isArray(img.urls) && img.urls.some(function (u) {
+                    return typeof u === 'string' && u.indexOf('data:') === 0;
+                }));
+            if (m.isImage && hasEmbedded && !img.textImage) continue;
+            out.push(stripHeavyForHot(m, 0));
+        }
+        return out;
+    }
+
+    function writeHotSnapshot(list) {
+        if (typeof localforage === 'undefined') return;
+        try {
+            localforage.setItem(getHotStorageKey(), {
+                updatedAt: Date.now(),
+                items: buildHotItems(list)
+            }).catch(function () {});
+        } catch (e) {}
+    }
+
+    // 粗略估算聊天数据的体积（只看大字段的长度，不做序列化）。
+    // 用于决定「完整历史要不要再等久一点写」，以及是否顺手压缩过大的图片。
+    function estimateMessagesBytes(list) {
+        let total = 0;
+        const arr = Array.isArray(list) ? list : [];
+        for (let i = 0; i < arr.length; i++) {
+            const m = arr[i];
+            if (!m) continue;
+            total += 300;
+            if (typeof m.text === 'string') total += m.text.length;
+            if (typeof m.transcript === 'string') total += m.transcript.length;
+            if (typeof m.translation === 'string') total += m.translation.length;
+            if (typeof m.think === 'string') total += m.think.length;
+            const img = m.imageData;
+            if (img) {
+                if (typeof img.url === 'string') total += img.url.length;
+                if (Array.isArray(img.urls)) {
+                    for (let k = 0; k < img.urls.length; k++) {
+                        if (typeof img.urls[k] === 'string') total += img.urls[k].length;
+                    }
+                }
+            }
+            const cd = m.cardData;
+            if (cd) {
+                if (typeof cd.content === 'string') total += cd.content.length;
+                if (typeof cd.img === 'string') total += cd.img.length;
+            }
+            const lp = m.linkPreview;
+            if (lp && typeof lp.image === 'string') total += lp.image.length;
+        }
+        return total;
+    }
+
+    function mergeById(base, extra) {        const src = Array.isArray(base) ? base.slice() : [];
+        if (!Array.isArray(extra) || !extra.length) return src;
+        const seen = Object.create(null);
+        src.forEach(function (m) { if (m && m.id != null) seen[String(m.id)] = 1; });
+        extra.forEach(function (m) {
+            if (!m || m.id == null || seen[String(m.id)]) return;
+            seen[String(m.id)] = 1;
+            src.push(m);
+        });
+        return src;
+    }
+
+    // 以前每条消息都整段重写全部历史（还要再写一份到记忆库），聊天越长越慢。
+    // 现在合并 500ms 内的连续写入；完整历史最多 4 秒写一次，热缓存每次都写但只有 80 条。
+    function saveMessages(force) {
+        __saveDueAt = __saveDueAt || (Date.now() + 500);
+        if (__saveTimer) clearTimeout(__saveTimer);
+        if (force) {
+            __saveTimer = null;
+            __saveDueAt = 0;
+            try { flushMessagesNow(); } catch (e) {}
+            return;
+        }
+        const wait = Math.max(0, Math.min(1200, __saveDueAt - Date.now()));
+        __saveTimer = setTimeout(function () {
+            __saveTimer = null;
+            __saveDueAt = 0;
+            try { flushMessagesNow(); } catch (e) {}
+        }, wait);
+    }
+
+    function flushMessagesNow() {
+        if (!__messagesLoaded) {
+            // 历史还没读完时不要写热缓存，否则可能用空数组覆盖掉上次的秒开数据。
+            if (messages.length) { try { writeHotSnapshot(messages); } catch (e) {} }
+            return;
+        }
+        try { writeHotSnapshot(messages); } catch (e) {}
+        const __now = Date.now();
+        const __elapsed = __lastFullWriteAt ? (__now - __lastFullWriteAt) : Infinity;
+        let __interval = FULL_WRITE_INTERVAL;
+        let __bytes = 0;
+        try { __bytes = estimateMessagesBytes(messages); } catch (e) {}
+        if (__bytes > 6 * 1024 * 1024) {
+            // 数据特别大时把整段写入进一步放慢，避免每几秒卡一次主线程。
+            __interval = 12000;
+            // 顺手把过大的图片压到 1280px 再存，从源头上减小历史体积（只处理 >400KB 的图）。
+            if (__bytes > 8 * 1024 * 1024) {
+                try {
+                    compactMessageImagesForStorage().then(function (changed) {
+                        if (changed) { __lastFullWriteAt = 0; saveMessages(); }
+                    }).catch(function () {});
+                } catch (e) {}
+            }
+        }
+        // 很小的聊天（纯文字、总体积小）还是每次写，保证其它页面读到的记录是新的。
+        const __needFull = __lastFullWriteAt === 0 ||
+            __elapsed >= __interval ||
+            __bytes <= 512 * 1024;
+        if (!__needFull) {
+            try { writeMessageSidecars(); } catch (e) {}
+            return;
+        }
+        __lastFullWriteAt = __now;
         try {
             if (typeof localforage !== 'undefined') {
                 // 配额满了时 IndexedDB 会直接拒绝整次写入；原代码只打日志，
@@ -1736,7 +1996,18 @@
                             altSetting: msg.cardData.altSetting,
                             altFirst: msg.cardData.altFirst,
                             title: msg.cardData.title,
-                            sub: msg.cardData.sub, secretRecordId: msg.cardData.secretRecordId, secretAt: msg.cardData.secretAt, secretLines: (Array.isArray(msg.cardData.secretLines) ? msg.cardData.secretLines.slice(0, 20).map(function(l){return {who:l.who,name:String(l.name||'').slice(0,40),text:String(l.text||'').slice(0,800),translation:String(l.translation||'').slice(0,800)};}) : null),
+                            sub: msg.cardData.sub,
+                            items: (Array.isArray(msg.cardData.items) ? msg.cardData.items.slice(0, 30).map(function (it) { return { who: String((it && it.who) || '').slice(0, 40), text: String((it && it.text) || '').slice(0, 300), time: String((it && it.time) || '').slice(0, 20) }; }) : null),
+                            count: msg.cardData.count,
+                            thought: String(msg.cardData.thought || '').slice(0, 600),
+                            thoughtZh: String(msg.cardData.thoughtZh || '').slice(0, 600),
+                            caption: String(msg.cardData.caption || '').slice(0, 200),
+                            tripId: msg.cardData.tripId,
+                            travelKind: msg.cardData.travelKind,
+                            days: msg.cardData.days,
+                            ticketNo: msg.cardData.ticketNo,
+                            fromName: msg.cardData.fromName,
+                            secretRecordId: msg.cardData.secretRecordId, secretAt: msg.cardData.secretAt, secretLines: (Array.isArray(msg.cardData.secretLines) ? msg.cardData.secretLines.slice(0, 20).map(function(l){return {who:l.who,name:String(l.name||'').slice(0,40),text:String(l.text||'').slice(0,800),translation:String(l.translation||'').slice(0,800)};}) : null),
                             footer: msg.cardData.footer,
                             storyId: msg.cardData.storyId,
                             excerpt: msg.cardData.excerpt,
@@ -1806,7 +2077,7 @@
                             isImage: msg.isImage || false,
                             isCard: msg.isCard || false,
                             isVoice: msg.isVoice || false,
-                            cardData: msg.cardData ? { cardType: msg.cardData.cardType, missed: msg.cardData.missed, claimed: msg.cardData.claimed, status: msg.cardData.status, response: msg.cardData.response, amount: msg.cardData.amount, issuer: msg.cardData.issuer, holder: msg.cardData.holder, familyId: msg.cardData.familyId, limit: msg.cardData.limit, food: msg.cardData.food, shop: msg.cardData.shop, price: msg.cardData.price, note: msg.cardData.note, place: msg.cardData.place, lat: msg.cardData.lat, lng: msg.cardData.lng, distance: msg.cardData.distance, eta: msg.cardData.eta, paidBy: msg.cardData.paidBy, action: msg.cardData.action, altName: msg.cardData.altName, altSetting: msg.cardData.altSetting, altFirst: msg.cardData.altFirst, title: msg.cardData.title, sub: msg.cardData.sub, secretRecordId: msg.cardData.secretRecordId, secretAt: msg.cardData.secretAt, secretLines: (Array.isArray(msg.cardData.secretLines) ? msg.cardData.secretLines.slice(0, 20).map(function(l){return {who:l.who,name:String(l.name||'').slice(0,40),text:String(l.text||'').slice(0,800),translation:String(l.translation||'').slice(0,800)};}) : null), footer: msg.cardData.footer, storyId: msg.cardData.storyId, excerpt: msg.cardData.excerpt, content: msg.cardData.content, genres: msg.cardData.genres, chapters: msg.cardData.chapters, ending: msg.cardData.ending, callId: msg.cardData.callId, video: msg.cardData.video, duration: msg.cardData.duration, direction: msg.cardData.direction, toName: msg.cardData.toName, systemNotice: msg.cardData.systemNotice, nanoError: msg.cardData.nanoError, coupleKind: msg.cardData.coupleKind, coupleSummary: msg.cardData.coupleSummary, coupleDetail: msg.cardData.coupleDetail, shareId: msg.cardData.shareId, eventId: msg.cardData.eventId, date: msg.cardData.date, start: msg.cardData.start, end: msg.cardData.end, mood: msg.cardData.mood, img: (typeof msg.cardData.img === 'string' && msg.cardData.img.indexOf('data:') !== 0) ? msg.cardData.img : null } : null,
+                            cardData: msg.cardData ? { cardType: msg.cardData.cardType, missed: msg.cardData.missed, claimed: msg.cardData.claimed, status: msg.cardData.status, response: msg.cardData.response, amount: msg.cardData.amount, issuer: msg.cardData.issuer, holder: msg.cardData.holder, familyId: msg.cardData.familyId, limit: msg.cardData.limit, food: msg.cardData.food, shop: msg.cardData.shop, price: msg.cardData.price, note: msg.cardData.note, place: msg.cardData.place, lat: msg.cardData.lat, lng: msg.cardData.lng, distance: msg.cardData.distance, eta: msg.cardData.eta, paidBy: msg.cardData.paidBy, action: msg.cardData.action, altName: msg.cardData.altName, altSetting: msg.cardData.altSetting, altFirst: msg.cardData.altFirst, title: msg.cardData.title, sub: msg.cardData.sub, items: (Array.isArray(msg.cardData.items) ? msg.cardData.items.slice(0, 30).map(function (it) { return { who: String((it && it.who) || '').slice(0, 40), text: String((it && it.text) || '').slice(0, 300), time: String((it && it.time) || '').slice(0, 20) }; }) : null), count: msg.cardData.count, thought: String(msg.cardData.thought || '').slice(0, 600), thoughtZh: String(msg.cardData.thoughtZh || '').slice(0, 600), caption: String(msg.cardData.caption || '').slice(0, 200), tripId: msg.cardData.tripId, travelKind: msg.cardData.travelKind, days: msg.cardData.days, ticketNo: msg.cardData.ticketNo, fromName: msg.cardData.fromName, secretRecordId: msg.cardData.secretRecordId, secretAt: msg.cardData.secretAt, secretLines: (Array.isArray(msg.cardData.secretLines) ? msg.cardData.secretLines.slice(0, 20).map(function(l){return {who:l.who,name:String(l.name||'').slice(0,40),text:String(l.text||'').slice(0,800),translation:String(l.translation||'').slice(0,800)};}) : null), footer: msg.cardData.footer, storyId: msg.cardData.storyId, excerpt: msg.cardData.excerpt, content: msg.cardData.content, genres: msg.cardData.genres, chapters: msg.cardData.chapters, ending: msg.cardData.ending, callId: msg.cardData.callId, video: msg.cardData.video, duration: msg.cardData.duration, direction: msg.cardData.direction, toName: msg.cardData.toName, systemNotice: msg.cardData.systemNotice, familyCardId: msg.cardData.familyCardId, familyCardChatId: msg.cardData.familyCardChatId, familyCardName: msg.cardData.familyCardName, familyLimit: msg.cardData.familyLimit, familySpent: msg.cardData.familySpent, nanoError: msg.cardData.nanoError, coupleKind: msg.cardData.coupleKind, coupleSummary: msg.cardData.coupleSummary, coupleDetail: msg.cardData.coupleDetail, shareId: msg.cardData.shareId, eventId: msg.cardData.eventId, date: msg.cardData.date, start: msg.cardData.start, end: msg.cardData.end, mood: msg.cardData.mood, img: (typeof msg.cardData.img === 'string' && msg.cardData.img.indexOf('data:') !== 0) ? msg.cardData.img : null } : null,
                             voiceData: msg.voiceData ? { duration: msg.voiceData.duration, ttsText: msg.voiceData.ttsText || '' } : null,
                             transcript: msg.transcript || null,
                             translation: msg.translation || null,
@@ -1833,6 +2104,19 @@
         } catch (e) {
             console.error('[存储] 保存失败:', e);
         }
+        try { writeMessageSidecars(); } catch (e) {}
+    }
+
+    // 切后台 / 关页面前强制落盘，保证完整历史不会因为 4 秒节流丢最后几条。
+    try {
+        window.addEventListener('pagehide', function () { try { saveMessages(true); } catch (e) {} });
+        document.addEventListener('visibilitychange', function () {
+            if (document.visibilityState === 'hidden') { try { saveMessages(true); } catch (e) {} }
+        });
+    } catch (e) {}
+
+    // 轻量侧车数据：不随完整写入走，走热缓存路径时也会更新。
+    function writeMessageSidecars() {
         // 轻量「最近对话」镜像：主消息在 IndexedDB，其他页面/Worker 同步上下文时
         // 不能只读 localStorage 的旧副本（通常不存在），否则后台主动消息永远接不上上文。
         try {
@@ -1879,13 +2163,19 @@
     }
 
     // ===== 同步聊天记录到记忆页（未总结条数据此计算）=====
+    // 同样不要每条消息都整段写：合并成一次，且内容没变化时直接跳过。
     let __memSyncTimer = null;
-    function syncMessagesToMemory() {
+    let __memSyncSig = '';
+    function syncMessagesToMemory(snapshot) {
         try {
             if (typeof indexedDB === 'undefined' || !chatId) return;
+            const list = Array.isArray(snapshot) ? snapshot : messages;
+            const sig = list.length + '|' + (list.length ? String(list[list.length - 1].id || '') : '');
+            if (sig === __memSyncSig) return;
             clearTimeout(__memSyncTimer);
             __memSyncTimer = setTimeout(function() {
                 try {
+                    __memSyncSig = sig;
                     const req = indexedDB.open('nano_vector_memory_db', 5);
                     req.onupgradeneeded = function(e) {
                         try {
@@ -1915,13 +2205,13 @@
                             conn.onversionchange = function() { try { conn.close(); } catch (e) {} };
                             const tx = conn.transaction('chat_messages', 'readwrite');
                             const store = tx.objectStore('chat_messages');
-                            store.put({ chatId: chatId, messages: messages.slice(), updatedAt: Date.now() });
+                            store.put({ chatId: chatId, messages: list, updatedAt: Date.now() });
                         } catch (e) {}
                         triggerMemoryAutoSummary();
                     };
                     req.onerror = function() {};
                 } catch (e) {}
-            }, 1500);
+            }, 5000);
         } catch (e) {}
     }
 
@@ -1961,6 +2251,9 @@
     }
     // 共享长期记忆（线上/线下都写这里，发消息时注入给模型）
     let __memHints = '';
+    let __anchorHints = '';
+    let __quoteBank = [];
+    let __memItems = [];
     // 群聊总结卡片（带 groupId 的记忆）与群聊近况：单聊里也要读取，实现群聊↔单聊互通
     let __groupMemHint = '';
     // 小号专属：大号最新 2 轮私聊（供小号掌握 TA 的近况，但不暴露）
@@ -1969,6 +2262,8 @@
     let __altChildrenContext = '';
     // 上下文读取条数（记忆页「上下文保留条数」）：每次回复读取多少条前文
     let __memContextLimit = 30;
+    // 启动时后台预读长期记忆，第一轮回复前 await（最多等 2 秒）
+    let __memHintsPromise = Promise.resolve();
 
     // 取最近 N 轮对话（一轮 = 一条用户消息 + 其后的角色消息）
     function __lastRounds(msgs, rounds) {
@@ -2072,6 +2367,47 @@
         return isNaN(t) ? 0 : t;
     }
 
+    function __recentSpecialQuotes(limit) {
+        const re = /一直|永远|一辈子|下辈子|爱你|喜欢你|想你|在乎你|等你|别走|别离开|对不起|原谅|分手|和好|结婚|嫁给我|娶你|答应我|答应你|承诺|约定|说好|保证|不会离开|陪你|生日|纪念日|秘密|只有你|离不开你/;
+        const out = [], seen = {};
+        try {
+            for (let i = messages.length - 1; i >= 0 && out.length < (limit || 6); i--) {
+                const m = messages[i];
+                if (!m || m.recalled || m.isTip || m.isCard || m.isImage || !m.text) continue;
+                const text = String(m.text).trim();
+                if (!text || text.length < 2 || text.length > 160 || !re.test(text)) continue;
+                const key = text.replace(/\s+/g, '');
+                if (seen[key]) continue;
+                seen[key] = 1;
+                const isUser = m.type === 'right';
+                out.unshift({
+                    id: m.id || key,
+                    content: (isUser ? (currentUserName || '你') : (displayName || 'TA')) + '说过：「' + text + '」',
+                    sourceText: text,
+                    sourceSpeaker: isUser ? 'user' : 'char',
+                    importance: 5,
+                    ts: Number(m.ts) || 0,
+                    type: '原话',
+                    _live: true
+                });
+            }
+        } catch (e) {}
+        return out;
+    }
+
+    function __memRecentQuery() {
+        try {
+            const parts = [];
+            for (let i = messages.length - 1; i >= 0 && parts.length < 6; i--) {
+                const m = messages[i];
+                if (!m || m.recalled || m.isTip) continue;
+                const t = String(m.text || '').trim();
+                if (t) parts.unshift(t.slice(0, 80));
+            }
+            return parts.join(' ');
+        } catch (e) { return ''; }
+    }
+
     function refreshMemoryHints() {
         if (typeof indexedDB === 'undefined' || !chatId) return Promise.resolve();
         __groupMemHint = '';
@@ -2084,13 +2420,54 @@
             });
         return readP.then(function(rawList) {
             const list = Array.isArray(rawList) ? rawList : [];
-            // 私聊记忆（无 groupId）：高重要程度（4★/5★）无论多旧都注入，其余按最近顺序补充
-            const priv = list.filter(function(it){ return !(it && it.groupId); });
-            const must = priv.filter(function(it){ return Number(it && it.importance) >= 4; });
-            const rest = priv.filter(function(it){ return !(Number(it && it.importance) >= 4); });
-            // 选完之后按时间倒序排列：最新总结排在最前，模型优先读到近期记忆。
-            const picked = must.concat(rest.slice(-40)).sort(function(a, b) { return __memTs(b) - __memTs(a); });
+            const query = __memRecentQuery();
+            const limit = Math.max(48, Math.min(120, (Number(__memContextLimit) || 30) * 2));
+            let picked = [], anchors = [];
+            if (window.NanoMemLink && window.NanoMemLink.buildRecall) {
+                const recall = window.NanoMemLink.buildRecall(list, { query: query, maxItems: limit, maxAnchors: 12 });
+                picked = recall.items || [];
+                anchors = recall.anchors || [];
+            } else {
+                const priv = list.filter(function(it){ return !(it && it.groupId); });
+                anchors = priv.filter(function(it){
+                    const t = String((it && it.type) || '') + ' ' + String((it && it.content) || '');
+                    return Number(it && it.importance) >= 4 &&
+                        /原话|承诺|答应|约定|表白|吵架|和好|分手|道歉|说过|重要事件|纪念日|求婚|结婚/.test(t);
+                }).sort(function(a, b) { return __memTs(b) - __memTs(a); }).slice(0, 10);
+                const anchorKeys = {};
+                anchors.forEach(function(it) { anchorKeys[String((it && (it.content || it.text)) || '')] = 1; });
+                const must = priv.filter(function(it){
+                    return Number(it && it.importance) >= 4 && !anchorKeys[String((it && (it.content || it.text)) || '')];
+                });
+                const rest = priv.filter(function(it){
+                    return !(Number(it && it.importance) >= 4) && !anchorKeys[String((it && (it.content || it.text)) || '')];
+                });
+                picked = must.concat(rest.slice(-40)).sort(function(a, b) { return __memTs(b) - __memTs(a); });
+            }
+            __memItems = picked.slice();
+            __quoteBank = list.filter(function(it){
+                if (!it) return false;
+                if (it.sourceText || it.sourceSpeaker) return true;
+                return !!(window.NanoMemLink && window.NanoMemLink.isSpecial && window.NanoMemLink.isSpecial(it));
+            });
+            const seenQuote = {};
+            __quoteBank.forEach(function (it) {
+                seenQuote[String(it.sourceText || it.content || it.text || '').replace(/\s+/g, '')] = 1;
+            });
+            const liveQuotes = __recentSpecialQuotes(6).filter(function (it) {
+                const k = String(it.sourceText || it.content || '').replace(/\s+/g, '');
+                if (seenQuote[k]) return false;
+                seenQuote[k] = 1;
+                return true;
+            });
+            if (liveQuotes.length) {
+                __quoteBank = __quoteBank.concat(liveQuotes);
+                anchors = anchors.concat(liveQuotes).sort(function (a, b) {
+                    return (Number(b && b.ts) || 0) - (Number(a && a.ts) || 0);
+                });
+            }
             __memHints = picked.length ? picked.map(function(it) { return '· ' + (it.content || it.text || ''); }).join('\n') : '';
+            __anchorHints = anchors.length ? anchors.map(function(it) { return '· ' + (it.content || it.text || ''); }).join('\n') : '';
             // 群聊总结卡片（带 groupId 的记忆）：单聊里也读取，实现群聊↔单聊互通；同样最新在前
             const grp = list.filter(function(it){ return it && it.groupId; });
             __groupMemHint = grp.length ? grp.slice().sort(function(a, b) { return __memTs(b) - __memTs(a); }).slice(0, 16)
@@ -2145,7 +2522,7 @@
         }).then(function (v) {
             const n = parseInt(v, 10);
             if (n > 0) __memContextLimit = n;
-        }).catch(function() { __memHints = ''; });
+        }).catch(function() { __memHints = ''; __anchorHints = ''; });
     }
 
     function __memOpenDB() {
@@ -2308,6 +2685,44 @@
         return items;
     }
 
+    function __memExtractQuoteItems(segment, charName, baseTs) {
+        const special = /一直|永远|一辈子|下辈子|爱你|喜欢你|想你|在乎你|等你|别走|别离开|对不起|原谅|分手|和好|结婚|嫁给我|娶你|答应我|答应你|承诺|约定|说好|保证|不会离开|陪你|生日|纪念日|秘密|只有你|离不开你/;
+        const out = [];
+        const seen = {};
+        const arr = Array.isArray(segment) ? segment : [];
+        arr.forEach(function (m, idx) {
+            if (!m || m.recalled || m.isTip || m.isCard || m.isImage) return;
+            const text = String(m.text || '').trim();
+            if (!text || text.length < 2 || text.length > 160) return;
+            if (!special.test(text)) return;
+            const k = text.replace(/\s+/g, '');
+            if (seen[k]) return;
+            seen[k] = 1;
+            const isUser = m.type === 'right';
+            const speaker = isUser ? 'user' : 'char';
+            const who = isUser ? '用户' : (charName || '角色');
+            const ts = Number(m.ts) || (Number(baseTs) || Date.now()) + idx;
+            out.push({
+                id: 'memq_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+                type: '原话',
+                content: who + '说过：「' + text + '」',
+                sourceText: text,
+                sourceSpeaker: speaker,
+                sourceMsgId: m.id || '',
+                importance: 5,
+                embedding: null,
+                hasVector: false,
+                ts: ts,
+                date: new Date(ts).toISOString(),
+                relatedChar: charName,
+                chatId: chatId,
+                source: 'auto'
+            });
+            if (out.length >= 8) return;
+        });
+        return out;
+    }
+
     function __memAppendMemory(item) {
         // 记忆卡片以 chatId 为 key 存在 config 存储（与记忆页读取一致）
         // 小号聊天产生的记忆统一计入大号（origin）记忆库
@@ -2364,11 +2779,12 @@
             }).join('\n');
             if (!chatText.trim()) { __autoSummaryBusy = false; return null; }
             return __memCallLlm(res.url, res.key, res.model, chatText, charName, currentUser)
-                .then(function(summary) { return { summary: summary, count: res.segment.length, baseTs: res.baseTs }; });
+                .then(function(summary) { return { summary: summary, count: res.segment.length, baseTs: res.baseTs, segment: res.segment }; });
         }).then(function(res2) {
             __autoSummaryBusy = false;
             if (!res2 || !res2.summary || !res2.summary.trim()) return null;
-            const items = __memParseSummary(res2.summary, charName, res2.baseTs);
+            const items = __memParseSummary(res2.summary, charName, res2.baseTs)
+                .concat(__memExtractQuoteItems(res2.segment || [], charName, res2.baseTs));
             if (items.length === 0) return null;
             // 尝试向量化（若本页配置了 Embedding API）
             return Promise.all([
@@ -2479,24 +2895,76 @@
     function loadMessages(callback) {
         try {
             if (typeof localforage !== 'undefined') {
-                localforage.getItem(getStorageKey()).then(function(data) {
-                    if (data && Array.isArray(data) && data.length > 0) {
-                        messages.length = 0;
-                        messages.push(...data);
-                        restoreMessageState();
-                        archiveNanoFileCards();
-                        consumeChatInject();
-                        renderMessages();
-                        if (callback) callback(true);
-                    } else {
-                        // localforage 为空时回退到 localStorage 的精简副本
-                        // （旧版单独角色备份里只有这份，回退后也能带出历史）
+                let fullDone = false;
+                let fullStarted = false;
+                const startFullLoad = function () {
+                    if (fullStarted) return;
+                    fullStarted = true;
+                    localforage.getItem(getStorageKey()).then(function(data) {
+                        fullDone = true;
+                        const fullArr = (data && Array.isArray(data) && data.length) ? data : [];
+                        // 完整历史最多比热缓存旧 4 秒，期间发出的新消息按 id 补在后面。
+                        const merged = mergeById(fullArr, messages);
+                        if (merged.length > 0) {
+                            messages.length = 0;
+                            messages.push(...merged);
+                            __messagesLoaded = true;
+                            restoreMessageState();
+                            archiveNanoFileCards();
+                            consumeChatInject();
+                            renderMessages();
+                            // 顺手刷新热缓存，下次打开可以直接秒开。
+                            try { writeHotSnapshot(messages); } catch (e) {}
+                            if (merged.length !== fullArr.length) saveMessages();
+                            if (callback) callback(true);
+                        } else {
+                            __messagesLoaded = true;
+                            // localforage 为空时回退到 localStorage 的精简副本
+                            // （旧版单独角色备份里只有这份，回退后也能带出历史）
+                            fallbackLoadMessages(callback);
+                        }
+                    }).catch(function(err) {
+                        fullDone = true;
+                        __messagesLoaded = true;
+                        console.error('[存储] localForage 读取失败:', err);
                         fallbackLoadMessages(callback);
+                    });
+                };
+
+                // 先读热缓存（最后 80 条、无 base64 图片），先把聊天画面画出来，
+                // 完整历史放到空闲时再读，避免一打开就为了解析整段历史卡住主线程。
+                localforage.getItem(getHotStorageKey()).then(function(rec) {
+                    let hotShown = false;
+                    try {
+                        if (!fullDone && !messages.length) {
+                            const items = rec && Array.isArray(rec.items) ? rec.items : null;
+                            if (items && items.length) {
+                                messages.length = 0;
+                                messages.push(...items);
+                                restoreMessageState();
+                                renderMessages();
+                                try { scrollToBottom(); } catch (e) {}
+                                hotShown = true;
+                                // 热缓存已经画出内容：先让外层收起「正在打开…」，完整历史随后补齐。
+                                try {
+                                    if (window.parent && window.parent !== window) {
+                                        window.parent.postMessage({ type: 'nanoFrameReady' }, '*');
+                                    }
+                                } catch (e) {}
+                            }
+                        }
+                    } catch (e) {}
+                    if (fullStarted) return;
+                    if (hotShown) {
+                        if (window.requestIdleCallback) {
+                            window.requestIdleCallback(startFullLoad, { timeout: 1500 });
+                        } else {
+                            setTimeout(startFullLoad, 600);
+                        }
+                    } else {
+                        startFullLoad();
                     }
-                }).catch(function(err) {
-                    console.error('[存储] localForage 读取失败:', err);
-                    fallbackLoadMessages(callback);
-                });
+                }).catch(function() { startFullLoad(); });
             } else {
                 fallbackLoadMessages(callback);
             }
@@ -2507,6 +2975,7 @@
     }
 
     function fallbackLoadMessages(callback) {
+        __messagesLoaded = true;
         try {
             const data = localStorage.getItem(getStorageKey());
             if (data) {
@@ -2518,6 +2987,7 @@
                     archiveNanoFileCards();
                     consumeChatInject();
                     renderMessages();
+                    try { writeHotSnapshot(messages); } catch (e) {}
                     if (callback) callback(true);
                     return;
                 }
@@ -2525,6 +2995,7 @@
             // 即使是全新会话，也要消费 Meet 注入的欢迎消息
             consumeChatInject();
             renderMessages();
+            saveMessages();
         } catch (e) {}
         if (callback) callback(false);
     }
@@ -2622,6 +3093,7 @@
         } else if (d.type === 'ttsVoiceChanged' && String(d.chatId || '') === String(chatId)) {
             setChatSetting('ttsPreset', String(d.ttsPreset || ''));
             if (d.enabled !== undefined) setChatSetting('ttsEnabled', !!d.enabled);
+            try { refreshTtsVoiceGuide(); } catch (e) {}
             renderMessages();
         } else if (d.type === 'ttsEnabledChanged' && String(d.chatId || '') === String(chatId)) {
             setChatSetting('ttsEnabled', !!d.enabled);
@@ -2631,7 +3103,9 @@
     window.addEventListener('storage', function (e) {
         try {
             if (!e || !e.key) return;
-            if (e.key === 'chat_setting_ttsEnabled_' + chatId || e.key === 'chat_setting_ttsPreset_' + chatId) {
+            if (e.key === 'chat_setting_ttsEnabled_' + chatId || e.key === 'chat_setting_ttsPreset_' + chatId ||
+                e.key === 'chat_setting_ttsPrompt_' + chatId || e.key === 'chat_setting_ttsUseWorldbook_' + chatId) {
+                try { refreshTtsVoiceGuide(); } catch (err) {}
                 renderMessages();
             }
         } catch (err) {}
@@ -2656,16 +3130,45 @@
         try { localStorage.setItem('chat_setting_' + key + '_' + chatId, JSON.stringify(val)); } catch(e) {}
         try { if (typeof localforage !== 'undefined') localforage.setItem('chat_setting_' + key + '_' + chatId, val).catch(function(){}); } catch(e) {}
     }
+    // 角色是否已进入线下：进入后标记，退出线下（返回线上）才清除。
+    // 线下期间线上不再主动发消息 / 朋友圈 / 主动照片。
+    function isChatOfflineMode() {
+        try { return String(localStorage.getItem('nano_chat_mode_' + (chatId || 'default')) || '') === 'offline'; } catch (e) { return false; }
+    }
 
     // 用「当前私聊绑定的 TTS 预设」朗读；没绑定就回落到全局 TTS 配置。
     // presetName 存在 chat_setting_ttsPreset_<角色id>（私聊设置里选）。
+    function buildTtsInstructions() {
+        const parts = [];
+        const prompt = String(getChatSetting('ttsPrompt', '') || '').trim();
+        if (prompt) parts.push('【用户朗读规范 · 优先级最高】\n' + prompt);
+        const persona = characterData ? String(characterData.setting || characterData.desc || characterData.persona || '').trim() : '';
+        if (persona) parts.push('【角色语气参考】\n' + persona.slice(0, 900));
+        if (getChatSetting('ttsUseWorldbook', true) !== false) {
+            try {
+                const w = getWorldbookText(chatId);
+                const wb = [w.front, w.middle, w.back].filter(Boolean).join('\n');
+                if (wb) parts.push('【世界书参考 · 只影响语气，绝对不要念出来】\n' + wb.slice(0, 1400));
+            } catch (e) {}
+        }
+        parts.push('【朗读要求】\n按语义断句，句子之间自然停顿；情绪随台词起伏，允许轻微呼吸声、气声和尾音；不要把括号里的动作、旁白或舞台提示念出来。');
+        return parts.join('\n\n').slice(0, 4000);
+    }
+    function refreshTtsVoiceGuide() {
+        try {
+            if (window.NanoTTS && window.NanoTTS.setVoiceGuide) window.NanoTTS.setVoiceGuide(chatId, buildTtsInstructions());
+        } catch (e) {}
+    }
     function speakWithChatVoice(text, onDone, onNa, opts) {
         var done = function (r) { try { if (onDone) onDone(r); } catch (e) {} };
         var na = function () { try { if (onNa) onNa(); } catch (e) {} };
         if (!window.NanoTTS) { na(); return; }
         // 关闭 TTS 的角色：语音气泡只做波形动画，不再偷偷合成或使用浏览器语音。
         if (window.NanoTTS.isEnabled && window.NanoTTS.isEnabled(chatId) === false) { na(); return; }
-        opts = Object.assign({ chatId: chatId }, opts || {});
+        const guide = buildTtsInstructions();
+        try { if (window.NanoTTS.setVoiceGuide) window.NanoTTS.setVoiceGuide(chatId, guide); } catch (e) {}
+        opts = Object.assign({ chatId: chatId, instructions: guide }, opts || {});
+        if (!opts.instructions) opts.instructions = guide;
         if (window.NanoTTS.speakForChat) {
             window.NanoTTS.speakForChat(text, opts).then(function (r) {
                 if (r === false) na(); else done(true);
@@ -3153,7 +3656,7 @@
                 sub = '额度 ¥' + lim.toFixed(2);
                 footer = '<span class="card-footer-text">已拒绝</span>';
             } else if (issuer === 'user') {
-                sub = '额度 ¥' + lim.toFixed(2) + ' · 我邀请对方';
+                sub = '额度 ¥' + lim.toFixed(2) + ' · 我开给对方';
                 footer = '<span class="card-footer-text">等待对方回应</span>';
             } else {
                 sub = '额度 ¥' + lim.toFixed(2) + ' · 对方邀请你';
@@ -3341,6 +3844,7 @@
             const subR = [cardData.place, cardData.date, cardData.days ? (cardData.days + '天') : '', cardData.ticketNo ? ('票号 ' + cardData.ticketNo) : ''].filter(Boolean).join(' · ');
             return imgR + '<div class="card-main"><div class="icon-wrap">' + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M21 16l-5-5-5 5-3-3-5 5"/></svg>' + '</div><div><div class="card-title">' + escR(cardData.title || cardData.place || '旅途') + '</div><div class="card-sub">' + escR(subR) + '</div></div></div>' +
                 (cardData.thought || cardData.note ? '<div class="card-note">' + escR(cardData.thought || cardData.note) + '</div>' : '') +
+                (cardData.thoughtZh ? '<div class="card-note">' + escR(cardData.thoughtZh) + '</div>' : '') +
                 '<div class="card-hint">' + (cardData.travelKind === 'together' ? '这次旅行已同步到「旅途 · 我们」' : (cardData.cardType === 'travelReport' ? 'TA 的旅途已同步到「旅途」' : '这段旅程已同步到「旅途」')) + '</div>';
         }
         return '';
@@ -3381,6 +3885,8 @@
             if (cardData.cardType === 'travelInvite') return '一起去邀请 · ' + (cardData.dest || '');
             if (cardData.cardType === 'travelReport') return (cardData.travelKind === 'together' ? '我们的旅行 · ' : '旅途报备 · ') + (cardData.place || cardData.title || '');
             if (cardData.cardType === 'travelShare') return '旅途分享 · ' + (cardData.place || cardData.title || '');
+            if (cardData.cardType === 'memoryRecall') return '一条旧记录 · ' + (cardData.text || cardData.sub || cardData.title || '');
+            if (cardData.cardType === 'forwardBundle') return '转发聊天记录 · ' + (cardData.count || 0) + ' 条';
             return cardData.sub || '一条卡片消息';
         }
         if (isVoice) return (transcript && transcript.trim()) ? transcript : '一段语音';
@@ -3500,6 +4006,18 @@
         try { renderMessages(); } catch (err) {}
     });
 
+    function openFamilyCardPage(cardChatId, cardName, cardId) {
+        var cid = cardChatId || chatId;
+        var nm = cardName || displayName || chatName || '对方';
+        var qs = 'chat=' + encodeURIComponent(cid) + '&name=' + encodeURIComponent(nm) + (cardId ? ('&card=' + encodeURIComponent(cardId)) : '');
+        try {
+            if (window.parent && window.parent !== window) {
+                window.parent.postMessage({ type: 'openFullscreen', url: 'family-card.html?' + qs, title: '亲属卡', source: 'chat_inner' }, '*');
+            } else {
+                location.href = 'family-card.html?' + qs;
+            }
+        } catch (e) {}
+    }
     function createMessageRow(type, text, time, status, id, recalled, isCard, cardData, transcript, translation, quote, isVoice, voiceData, isImage, imageData, grouped, linkPreview) {
         // 手动翻译用户自己的气泡时，固定用独立译文气泡显示；其余仍跟随聊天设置。
         let __translationSeparate = translationSeparate();
@@ -3877,6 +4395,14 @@
             const sNote = document.createElement('div');
             sNote.className = 'recall-notice';
             sNote.textContent = text || '';
+            if (cardData.familyCardId) {
+                sNote.classList.add('family-notice-link');
+                sNote.style.cursor = 'pointer';
+                sNote.addEventListener('click', function (ev) {
+                    ev.stopPropagation();
+                    openFamilyCardPage(cardData.familyCardChatId, cardData.familyCardName, cardData.familyCardId);
+                });
+            }
             content.appendChild(sNote);
         }
 
@@ -3988,6 +4514,8 @@
             if (m.cardData.cardType === 'gift') return m.cardData.title || '礼物';
             if (m.cardData.cardType === 'call') return m.cardData.missed ? '未接电话' : '语音通话';
             if (m.cardData.cardType === 'couple') return m.cardData.title || '情侣空间分享';
+            if (m.cardData.cardType === 'memoryRecall') return m.cardData.text || m.cardData.sub || '一条旧记录';
+            if (m.cardData.cardType === 'forwardBundle') return '转发聊天记录 · ' + (m.cardData.count || 0) + ' 条';
             return m.cardData.sub || '卡片消息';
         }
         if (m.isVoice) return m.transcript || '语音';
@@ -4029,15 +4557,24 @@
             if (!t || t === '你撤回了一条消息') continue;
             if (t === p || t.indexOf(p) > -1 || (p.indexOf(t) > -1 && t.length >= 2)) return m;
         }
+        try {
+            if (window.NanoMemLink && window.NanoMemLink.findQuote) {
+                const it = window.NanoMemLink.findQuote(__quoteBank || [], p);
+                if (it) {
+                    const txt = String(it.sourceText || it.content || it.text || '').trim();
+                    if (txt) return { type: String(it.sourceSpeaker || '') === 'user' ? 'right' : 'left', text: txt };
+                }
+            }
+        } catch (e) {}
         return null;
     }
     function extractTagsFromText(text) {
         text = String(text == null ? '' : text).replace(/\[reply\s*\]/gi, '[reply:]');
         // 兼容全角括号 / 全角冒号：Claude、Gemini 偶尔会写成【voice：8|…】或 [语音：8|…]
-        text = text.replace(/[【［]\s*(voice|语音|语音消息|transfer|gift|call|image|emoji|takeout|外卖|跑腿|location|定位|reply)\s*[:：]\s*([^】］]*?)\s*[】］]/gi, function (m, k, v) {
+        text = text.replace(/[【［]\s*(voice|语音|语音消息|transfer|gift|call|image|emoji|takeout|外卖|跑腿|location|定位|reply|mem|回忆|记忆|sharechat|分享聊天)\s*[:：]\s*([^】］]*?)\s*[】］]/gi, function (m, k, v) {
             return '[' + k + ':' + v + ']';
         });
-        text = text.replace(/\[(voice|语音|语音消息|transfer|gift|call|image|emoji|takeout|外卖|跑腿|location|定位|reply)\s*：\s*/gi, '[$1:');
+        text = text.replace(/\[(voice|语音|语音消息|transfer|gift|call|image|emoji|takeout|外卖|跑腿|location|定位|reply|mem|回忆|记忆|sharechat|分享聊天)\s*：\s*/gi, '[$1:');
         const results = [];
         let cleaned = text;
 
@@ -4077,7 +4614,7 @@
             return ' ';
         });
 
-        const tagRegex = /\[(transfer|gift|voice|语音|语音消息|call|heart|image|textimage|text-image|文字图|文字图片|reply|creategroup|inviteme|acceptinvite|rejectinvite|familycard|亲属卡|takeout|外卖|跑腿|errand|location|定位|act|动描|altprobe|小号|emoji|sticker|表情包|表情|anniv|纪念日)\s*:\s*([^\]]*?)(?:\]|$)/gi;
+        const tagRegex = /\[(transfer|gift|storegift|商城|voice|语音|语音消息|call|heart|image|textimage|text-image|文字图|文字图片|reply|mem|回忆|记忆|sharechat|分享聊天|creategroup|inviteme|acceptinvite|rejectinvite|familycard|亲属卡|takeout|外卖|跑腿|errand|location|定位|act|动描|altprobe|小号|emoji|sticker|表情包|表情|anniv|纪念日)\s*:\s*([^\]]*?)(?:\]|$)/gi;
         let match;
         while ((match = tagRegex.exec(text)) !== null) {
             const kind = match[1].toLowerCase();
@@ -4108,6 +4645,10 @@
                 // 允许 [reply:] 空引用：模型有时只输出标签，由 processReply 回退到
                 // 最后一条用户消息。旧代码在这里直接丢弃，导致“让它引用却永远不引用”。
                 results.push({ kind: 'reply', payload: payload });
+            } else if (kind === 'mem' || kind === '回忆' || kind === '记忆') {
+                results.push({ kind: 'mem', payload: payload });
+            } else if (kind === 'sharechat' || kind === '分享聊天') {
+                if (payload) results.push({ kind: 'sharechat', payload: payload });
             } else if (kind === 'creategroup') {
                 if (payload) results.push({ kind: 'creategroup', payload: payload });
             } else if (kind === 'inviteme') {
@@ -4118,6 +4659,8 @@
                 if (payload) results.push({ kind: 'rejectinvite', payload: payload });
             } else if (kind === 'familycard' || kind === '亲属卡') {
                 if (payload) results.push({ kind: 'familycard', payload: payload });
+            } else if (kind === 'storegift' || kind === '商城') {
+                if (payload) results.push({ kind: 'storegift', payload: payload });
             } else if (kind === 'takeout' || kind === '外卖') {
                 if (payload) results.push({ kind: 'takeout', payload: payload, mode: 'food' });
             } else if (kind === '跑腿' || kind === 'errand') {
@@ -4135,7 +4678,7 @@
             }
         }
 
-        cleaned = text.replace(/\[(transfer|gift|voice|语音|语音消息|call|heart|image|textimage|text-image|文字图|文字图片|reply|creategroup|inviteme|acceptinvite|rejectinvite|familycard|亲属卡|takeout|外卖|跑腿|errand|location|定位|act|动描|altprobe|小号|emoji|sticker|表情包|表情|anniv|纪念日|微信号|wechat)\s*:\s*[^\]]*?(?:\]|$)/gi, '').trim();
+        cleaned = text.replace(/\[(transfer|gift|storegift|商城|voice|语音|语音消息|call|heart|image|textimage|text-image|文字图|文字图片|reply|mem|回忆|记忆|sharechat|分享聊天|creategroup|inviteme|acceptinvite|rejectinvite|familycard|亲属卡|takeout|外卖|跑腿|errand|location|定位|act|动描|altprobe|小号|emoji|sticker|表情包|表情|anniv|纪念日|微信号|wechat)\s*:\s*[^\]]*?(?:\]|$)/gi, '').trim();
 
         return { tags: results, cleanedText: cleaned };
     }
@@ -4449,8 +4992,8 @@
             }
         } catch (e) {}
         typingIndicator.classList.add('active');
-        // 保证正在输入的三个点始终在消息列表末尾，回复完成前不消失
-        renderMessages();
+        // 只把「正在输入」移到列表末尾，不整段重绘：每次回复都重绘上百行会明显卡顿。
+        try { messageContainer.appendChild(typingIndicator); } catch (e) {}
         scrollToBottom();
     }
 
@@ -4722,6 +5265,18 @@
             }
         } catch (e) {}
         messageContainer.appendChild(row);
+        // 只保留最近约 140 行，避免长时间连聊时 DOM 无限增长
+        // （以前靠每条消息都整页重绘来兜底，现在改成增量追加，就必须自己裁剪）。
+        try {
+            const rows = messageContainer.querySelectorAll('.message-row');
+            if (rows.length > 160) {
+                const cutoff = rows.length - 140;
+                for (let i = 0; i < cutoff; i++) {
+                    const r = rows[i];
+                    if (r && r.parentNode) r.parentNode.removeChild(r);
+                }
+            }
+        } catch (e) {}
         // 只重算最后两行的 tail-end，不动其余已有节点
         try {
             const rows = messageContainer.querySelectorAll('.message-row');
@@ -4878,7 +5433,76 @@
         const m = getPendingFamilyInviteMsgForChar();
         return m ? m.cardData : null;
     }
-    // 处理角色回复里的 [亲属卡:...] 标签：邀请 / 接受 / 拒绝
+    function pushSystemNoticeWithCard(text, cardData) {
+        const now = new Date();
+        const h = String(now.getHours()).padStart(2, '0');
+        const m = String(now.getMinutes()).padStart(2, '0');
+        messages.push({
+            id: 'sys_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+            type: 'right', text: text || '', time: h + ':' + m, status: null, recalled: false,
+            isCard: false, cardData: Object.assign({ systemNotice: true }, cardData || {}),
+            isVoice: false, voiceData: null, isImage: false, imageData: null,
+            quote: null, transcript: null, translation: null, favorite: false, turn: null
+        });
+        try { renderMessages(); saveMessages(); scrollToBottom(); } catch (e) {}
+    }
+    function notifyFamilyLimit(card, total, limit) {
+        const detail = {
+            familyCardId: card && card.id || '',
+            familyCardChatId: chatId,
+            familyCardName: displayName || chatName || '对方',
+            familyLimit: Number(limit || 0),
+            familySpent: Number(total || 0)
+        };
+        pushSystemNoticeWithCard('本月亲属卡额度已用完（¥' + Number(total || 0).toFixed(2) + ' / ¥' + Number(limit || 0).toFixed(2) + '）· 点击查看具体花费', detail);
+    }
+    function applyFamilyCardSpend(amt, desc) {
+        const S = window.NanoFamilyCardStore;
+        if (!S || typeof S.read !== 'function') return;
+        const amount = Math.round((Number(amt) || 0) * 100) / 100;
+        if (!(amount > 0)) return;
+        const cards = (S.read(chatId) || []).filter(function (c) {
+            return c && c.issuer === 'user' && c.holder === 'char' && (c.status || 'active') === 'active';
+        });
+        if (!cards.length) return;
+        const c = cards[cards.length - 1];
+        const monthKey = new Date().toISOString().slice(0, 7);
+        const spent = Number(c.monthKey === monthKey ? (c.monthlySpent || 0) : 0);
+        const limit = Number(c.limit || 0);
+        const remain = Math.max(0, limit - spent);
+        if (remain <= 0) { notifyFamilyLimit(c, spent, limit); return; }
+        let cap = remain;
+        try {
+            const profile = window.NanoCharWealth && NanoCharWealth.readProfile(chatId);
+            if (profile && Array.isArray(profile.expenseRange)) cap = Math.min(cap, Number(profile.expenseRange[1]) * 3);
+        } catch (e) {}
+        const actual = Math.min(amount, remain, cap);
+        const pay = S.spend('亲属卡消费 · ' + (displayName || chatName || '对方') + (desc ? (' · ' + desc) : ''), actual, c.fundingCardId, {
+            familyId: c.id, familyCardId: c.id, charName: displayName || chatName || ''
+        });
+        if (!pay || typeof pay.then !== 'function') return;
+        pay.then(function () {
+            const latest = S.find(chatId, c.id) || c;
+            const nextSpent = spent + actual;
+            S.update(chatId, c.id, {
+                spent: Number(latest.spent || 0) + actual,
+                monthlySpent: nextSpent,
+                monthKey: monthKey
+            });
+            for (let i = messages.length - 1; i >= 0; i--) {
+                const m = messages[i];
+                if (m && m.isCard && m.cardData && m.cardData.cardType === 'familycard' && m.cardData.familyId === c.id) {
+                    m.cardData.spent = nextSpent;
+                    break;
+                }
+            }
+            if (nextSpent >= limit) notifyFamilyLimit(c, nextSpent, limit);
+            else { try { renderMessages(); saveMessages(); } catch (e) {} }
+        }).catch(function (e) {
+            addSystemNotice('亲属卡消费失败：' + ((e && e.message) || '银行卡余额不足'));
+        });
+    }
+    // 处理角色回复里的 [亲属卡:...] 标签：邀请 / 接受 / 拒绝 / 消费
     function handleFamilyCardTag(payload, timeStr) {
         const raw = String(payload || '').trim();
         const parts = raw.split(/[|｜]/);
@@ -4892,6 +5516,11 @@
             addMessage('left', '', timeStr, null, false, true,
                 { cardType: 'familycard', familyId: id, issuer: 'char', holder: 'user', limit: lim, status: 'pending', response: false });
             addSystemNotice('对方邀请你开启一张亲属卡（额度 ¥' + lim + '）');
+            return;
+        }
+        if (/消费|spend|花/i.test(action)) {
+            const desc = (parts[2] || '').trim();
+            applyFamilyCardSpend(limit, desc);
             return;
         }
         if (/调额|调整额度|adjust/i.test(action)) {
@@ -4952,7 +5581,7 @@
         if (/接受|accept/i.test(action)) {
             const m = getPendingFamilyInviteMsgForChar();
             if (m && m.cardData) {
-                const lim = limit || m.cardData.limit || 1000;
+                const lim = m.cardData.issuer === 'user' ? (Number(m.cardData.limit) || 1000) : (limit || m.cardData.limit || 1000);
                 m.cardData.limit = lim;
                 m.cardData.status = 'active';
                 m.cardData.response = true;
@@ -4973,6 +5602,33 @@
             limit: (limit || cd.limit || 0), status: status, response: true
         });
     }
+    function handleStoreGiftTag(payload, timeStr) {
+        const raw = String(payload || '').trim();
+        const parts = raw.split(/[|｜]/);
+        const title = (parts[0] || '商城礼物').trim();
+        const total = Math.round((parseFloat(parts[1]) || 0) * 100) / 100;
+        const note = (parts[2] || '').trim();
+        if (!title || !(total > 0)) return;
+        const S = window.NanoFamilyCardStore;
+        let balance = 0;
+        try { balance = Number(S.readCharWallet(chatId).balance) || 0; } catch (e) {}
+        if (balance < total) {
+            addSystemNotice('对方想送你「' + title + '」，但银行卡余额不足，没能下单');
+            return;
+        }
+        try { S.charSpend(chatId, '商城买给你 · ' + title, total); } catch (e) {}
+        addMessage('left', '', timeStr, null, false, true, {
+            cardType: 'store', storeKind: 'char_gift', direction: 'user',
+            title: title, sub: note || '商城礼物', amount: '¥' + total.toFixed(2),
+            items: [{ name: title, qty: 1, price: total }],
+            status: 'pending', fromName: displayName || chatName || '对方',
+            requestId: 'req_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6)
+        });
+        addSystemNotice('对方在商城给你买了一份礼物：' + title + '（待你确认收货）');
+        renderMessages();
+        saveMessages();
+    }
+
     // 用户接受 / 拒绝角色发来的亲属卡邀请
     function acceptFamilyCard(msg) {
         if (!msg || !msg.cardData) return;
@@ -5059,6 +5715,174 @@
         const place = String(payload || '').trim() || '位置';
         addMessage('left', '', timeStr, null, false, true, {
             cardType: 'location', place: place, lat: null, lng: null, direction: 'char', status: 'sent', footer: '位置'
+        });
+    }
+    function __shareFriendNames() {
+        const out = {}, names = [];
+        function add(name) {
+            name = String(name || '').trim();
+            if (!name || name === String(currentUserName || '') || name === String(displayName || '')) return;
+            if (out[name]) return;
+            out[name] = 1; names.push(name);
+        }
+        try {
+            const d = JSON.parse(localStorage.getItem('nano_groups_data') || '{}');
+            (d.groups || []).forEach(function (g) {
+                (g.members || []).forEach(function (m) {
+                    if (m && m.id !== 'me') add(m.nick || m.name);
+                });
+            });
+        } catch (e) {}
+        try {
+            (allCharacters || []).forEach(function (c) {
+                if (c && !c.nanoAssistant && String(c.id) !== String(chatId)) add(c.name);
+            });
+        } catch (e) {}
+        return names.slice(0, 12);
+    }
+    function __friendSetting(name) {
+        try {
+            const d = JSON.parse(localStorage.getItem('nano_groups_data') || '{}');
+            for (const g of (d.groups || [])) {
+                for (const m of (g.members || [])) {
+                    if (m && ((m.nick && m.nick === name) || (m.name && m.name === name))) {
+                        return String(m.setting || m.role || '').slice(0, 800);
+                    }
+                }
+            }
+        } catch (e) {}
+        return '';
+    }
+    function __nanoSmallChat(system, user, maxTokens) {
+        return getApiConfig().then(function (config) {
+            if (!config || !config.mainUrl || !config.mainKey || !config.mainModel) return '';
+            const base = toV1Base(resolveApiHost(config.mainUrl));
+            return fetch(base + '/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Authorization': 'Bearer ' + String(config.mainKey).trim(),
+                    'Content-Type': 'application/json',
+                    'X-Nano-Kind': 'sharechat'
+                },
+                body: JSON.stringify({
+                    model: config.mainModel,
+                    messages: [
+                        { role: 'system', content: system },
+                        { role: 'user', content: user }
+                    ],
+                    temperature: 0.95,
+                    max_tokens: maxTokens || 700
+                })
+            }).then(function (r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            }).then(function (d) {
+                return (d && d.choices && d.choices[0] && d.choices[0].message) ? String(d.choices[0].message.content || '') : '';
+            });
+        }).catch(function () { return ''; });
+    }
+    function __parseFriendChat(text, friendName, charName) {
+        const lines = String(text || '').split(/\n+/).map(function (l) { return l.trim(); }).filter(Boolean);
+        const items = [];
+        let lastWho = '';
+        lines.forEach(function (line) {
+            let who = '', body = '';
+            const m = line.match(/^([^：:\n]{1,20})[：:]\s*(.+)$/);
+            if (m) {
+                who = m[1].trim();
+                body = m[2].trim();
+            } else {
+                body = line.replace(/^[-*·]\s*/, '').trim();
+                who = lastWho === charName ? friendName : charName;
+            }
+            if (!body || body.length > 220) return;
+            if (who === '我' || who === '他' || who === '她' || who === '你' || who === '角色' || who === 'TA' || who === 'ta') who = charName;
+            if (!who) who = charName;
+            if (who !== charName && who !== friendName) {
+                if (who.indexOf(friendName) > -1 || friendName.indexOf(who) > -1) who = friendName;
+                else if (who.indexOf(charName) > -1 || charName.indexOf(who) > -1) who = charName;
+            }
+            lastWho = who;
+            items.push({ who: who, text: body.slice(0, 220), time: '' });
+        });
+        return items.slice(0, 14);
+    }
+    let __shareChatBusy = false;
+    async function handleShareChatTag(payload, timeStr) {
+        if (__shareChatBusy) return;
+        const lockKey = 'nano_share_chat_at_' + chatId;
+        try {
+            const last = Number(localStorage.getItem(lockKey) || 0);
+            if (last && Date.now() - last < 8 * 3600 * 1000) return;
+        } catch (e) {}
+        const raw = String(payload || '').trim();
+        const parts = raw.split('|');
+        const friendName = (parts.shift() || '').trim() || '朋友';
+        const topic = parts.join('|').trim() || '最近发生的一件小事';
+        __shareChatBusy = true;
+        try {
+            const charName = String(displayName || '我');
+            const persona = String((characterData && (characterData.setting || characterData.desc || characterData.persona)) || '').slice(0, 1200);
+            const friendSetting = __friendSetting(friendName);
+            const system = '你在写角色「' + charName + '」和TA的朋友「' + friendName + '」的私聊记录，稍后会被' + charName + '转发给用户看。'
+                + '必须严格保持两人的性格和关系，像真实朋友聊天：短句、口语、有来有回，可以开玩笑、吐槽、分享小事，不要旁白、不要解释、不要用括号动作。'
+                + (persona ? ('\n' + charName + '的人设：' + persona) : '')
+                + (friendSetting ? ('\n' + friendName + '的人设：' + friendSetting) : '')
+                + '\n只输出 6~12 行聊天记录，每行格式为「名字：内容」，只使用这两个名字：' + charName + '、' + friendName + '。不要输出其它内容。';
+            const user = '话题：' + topic + '。请写出这段朋友之间的聊天记录。';
+            const txt = await __nanoSmallChat(system, user, 700);
+            const items = __parseFriendChat(txt, friendName, charName);
+            if (items.length < 3) return;
+            try { localStorage.setItem(lockKey, String(Date.now())); } catch (e) {}
+            addMessage('left', '', timeStr, null, false, true, {
+                cardType: 'forwardBundle',
+                title: '聊天记录',
+                sub: '我和' + friendName + '的聊天',
+                count: items.length,
+                footer: '转发聊天记录',
+                items: items
+            });
+        } catch (e) {
+        } finally {
+            __shareChatBusy = false;
+        }
+    }
+    function handleMemoryRecallTag(payload, timeStr) {
+        const key = String(payload || '').trim();
+        const bank = (__quoteBank || []).concat(__memItems || []);
+        let item = null;
+        try {
+            if (window.NanoMemLink && window.NanoMemLink.findQuote) item = window.NanoMemLink.findQuote(bank, key);
+        } catch (e) {}
+        if (!item) item = (__quoteBank && __quoteBank[0]) || null;
+        if (!item) return;
+        const content = String(item.content || item.text || '').trim();
+        if (!content) return;
+        const dup = messages.some(function (m) {
+            return m && m.isCard && m.cardData && m.cardData.cardType === 'memoryRecall' &&
+                String(m.cardData.text || '') === content;
+        });
+        if (dup) return;
+        let date = String(item.date || '').trim();
+        if (!date && Number(item.ts) > 0) {
+            try {
+                const d0 = new Date(Number(item.ts));
+                date = (d0.getMonth() + 1) + '月' + d0.getDate() + '日';
+            } catch (e) {}
+        } else if (date && !isNaN(Date.parse(date)) && date.length > 10) {
+            const d = new Date(date);
+            date = (d.getMonth() + 1) + '月' + d.getDate() + '日';
+        }
+        const fromUser = String(item.sourceSpeaker || '') === 'user';
+        addMessage('left', '', timeStr, null, false, true, {
+            cardType: 'memoryRecall',
+            title: key ? key.slice(0, 16) : '旧记录',
+            sub: content.slice(0, 60),
+            text: content,
+            quote: String(item.sourceText || content),
+            date: date,
+            speaker: fromUser ? (currentUserName || '你') : (displayName || 'TA'),
+            footer: '翻到一条旧记录'
         });
     }
     function acceptTakeout(msg) {
@@ -6183,6 +7007,50 @@
             localStorage.setItem('nano_auto_status', JSON.stringify(st));
         } catch (e) {}
     }
+    async function settleProactiveTags(tags) {
+        const list = Array.isArray(tags) ? tags : [];
+        if (!list.length) return;
+        const timeStr = nowHHMM();
+        for (let i = 0; i < list.length; i++) {
+            const tag = list[i];
+            if (!tag || !tag.kind) continue;
+            try {
+                if (tag.kind === 'transfer') {
+                    addMessage('left', '', timeStr, null, false, true, { cardType: 'transfer', amount: '¥' + tag.payload, title: '转账', footer: '待领取' });
+                } else if (tag.kind === 'gift') {
+                    addMessage('left', '', timeStr, null, false, true, {
+                        cardType: 'gift', title: tag.payload || '一份心意', sub: '一份心意礼物',
+                        items: [{ name: tag.payload || '礼物', qty: 1, price: 0 }],
+                        sentAt: Date.now(), etaDays: 3, footer: ''
+                    });
+                } else if (tag.kind === 'voice') {
+                    const parts = String(tag.payload || '').split('|');
+                    const dur = parseInt(parts[0]) || 6;
+                    let voiceText = (parts[1] || '').trim();
+                    let voiceZh = '';
+                    const vi = voiceText.indexOf('||');
+                    if (vi > -1) { voiceZh = voiceText.slice(vi + 2).trim(); voiceText = voiceText.slice(0, vi).trim(); }
+                    if (voiceText || voiceZh) addMessage('left', '', timeStr, null, false, false, null, voiceText || null, voiceZh || null, null, true, { duration: dur, unread: true, ttsText: voiceText });
+                } else if (tag.kind === 'takeout') {
+                    handleTakeoutTag(tag.payload, timeStr, tag.mode);
+                } else if (tag.kind === 'location') {
+                    handleLocationTag(tag.payload, timeStr);
+                } else if (tag.kind === 'familycard') {
+                    handleFamilyCardTag(tag.payload, timeStr);
+                } else if (tag.kind === 'storegift') {
+                    handleStoreGiftTag(tag.payload, timeStr);
+                } else if (tag.kind === 'act') {
+                    addActionNarration(tag.payload, timeStr);
+                } else if (tag.kind === 'emoji') {
+                    const em = await findEmojiByName(tag.payload);
+                    if (em && em.url) addMessage('left', '', timeStr, null, false, false, null, null, null, null, false, null, true, { url: em.url, desc: '表情包', emojiName: em.name || '表情', isEmoji: true });
+                } else if (tag.kind === 'sharechat') {
+                    await handleShareChatTag(tag.payload, timeStr);
+                }
+            } catch (e) {}
+        }
+    }
+
     async function generateProactiveMessage() {
         suppressApiAlerts = true;
         try {
@@ -6205,6 +7073,8 @@
             instr += '输出格式（严格）：\n';
             if (cotOn) instr += '[think]……你的思考……[/think]\n';
             instr += '每行一条气泡，共 1~3 条，每条 1~2 句、口语自然。\n';
+            instr += '如果这一轮确实适合主动发特殊卡片（语音 / 外卖 / 礼物 / 一起听 / 亲属卡 / 商城等），可以按系统提示里的格式额外单独输出一个标签行；只在自然合适时用，不要为了用而用。\n';
+            instr += '极偶尔可以分享一件刚和朋友聊到的趣事：单独输出一行 [分享聊天:朋友名|发生了什么]，系统会生成聊天记录卡片；不要连续使用。\n';
             // 外国人主动消息：必须在正文里强制母语，中文只作为 || 后的翻译
             try {
                 if (isForeignChar()) {
@@ -6246,15 +7116,17 @@
             const secMain = extractHeartSections(body);
             body = secMain.text;
             if (heart && secMain.sections.length) heart = heartWithSections({ subject: heart.subject, thought: heart.thought, sections: secMain.sections });
-            const cleaned = (extractTagsFromText(body).cleanedText || '').trim();
+            const __parsedProactive = extractTagsFromText(body);
+            const tags = __parsedProactive.tags || [];
+            const cleaned = (__parsedProactive.cleanedText || '').trim();
             let bubbles = String(cleaned).split(/\n+/).map(function (s) { return s.trim(); }).filter(Boolean).slice(0, 3);
             // 模型只给一整段时按句子拆成多条气泡；外文「原文||翻译」格式不拆
             if (bubbles.length === 1 && bubbles[0].indexOf('||') < 0 && bubbles[0].length > 16) {
                 const parts = bubbles[0].split(/(?<=[。！？!?…])/).map(function (s) { return s.trim(); }).filter(Boolean);
                 if (parts.length > 1) bubbles = parts.slice(0, 3);
             }
-            if (!bubbles.length) return null;
-            return { bubbles: bubbles, heart: heart, think: think, cotOn: cotOn };
+            if (!bubbles.length && !tags.length) return null;
+            return { bubbles: bubbles, tags: tags, heart: heart, think: think, cotOn: cotOn };
         } catch (e) { return null; } finally { suppressApiAlerts = false; }
     }
 
@@ -6296,6 +7168,11 @@
     }
     // 真正执行一次主动发消息（本地定时器到点、或外壳统一调度到点都会走到这里）
     function runScheduledAutoMsg() {
+        // 角色已进入线下：退出线下之前，线上不发任何主动消息。
+        if (isChatOfflineMode()) {
+            if (autoMsgTimer) { clearTimeout(autoMsgTimer); autoMsgTimer = null; }
+            return;
+        }
         // 已交给 Worker 无后台推送：本机不再生成，避免重复主动消息。
         if (window.__serverAutoPushActive) {
             if (autoMsgTimer) { clearTimeout(autoMsgTimer); autoMsgTimer = null; }
@@ -6323,7 +7200,7 @@
             isProcessingApi = true;
             try {
                 const out = await generateProactiveMessage();
-                if (!out || !out.bubbles || !out.bubbles.length) return;
+                if (!out || ((!out.bubbles || !out.bubbles.length) && (!out.tags || !out.tags.length))) return;
                 const beforeIds = {}; messages.forEach(function (m) { if (m && m.id) beforeIds[m.id] = 1; });
                 if (out.cotOn && out.think) pendingTurnThink = out.think;
                 for (let i = 0; i < out.bubbles.length; i++) {
@@ -6350,13 +7227,15 @@
                     }
                     addMessage('left', btext, nowHHMM(), null, false, false, null, null, btrans, null);
                 }
+                if (out.tags && out.tags.length) await settleProactiveTags(out.tags);
                 // 心声：挂到本轮新加的消息上
                 if (out.heart && (out.heart.subject || out.heart.thought)) {
                     messages.forEach(function (m) { if (m && m.type === 'left' && !beforeIds[m.id]) m.heart = out.heart; });
                 }
                 saveMessages();
                 renderMessages();
-                notifyCharMessage(String(out.bubbles[0]).split('||')[0].slice(0, 60));
+                const __notifyText = (out.bubbles && out.bubbles.length) ? String(out.bubbles[0]).split('||')[0].slice(0, 60) : '给你发来一条新消息';
+                notifyCharMessage(__notifyText);
             } catch (e) {
             } finally { isProcessingApi = false; }
         })();
@@ -6880,7 +7759,7 @@
             if (!batch || !batch.items || !batch.items.length) return;
             // 一次最多 5 条动态，避免刷屏
             const arr = batch.items.slice(0, 5), authors = batch.authors;
-            const allowMomentImage = getChatSetting('allowMomentImage', false);
+            const allowMomentImage = getChatSetting('allowImage', false) && getChatSetting('allowMomentImage', false);
             const nowMs = Date.now();
             const uName = momentCurrentUserName();
             const plainChars = momentPlainCharMap();
@@ -6997,7 +7876,7 @@
             };
             const wantImage = !!obj.wantImage;
             const imgPrompt = String(obj.imagePrompt || obj.text || '').trim();
-            const allowMomentImage = getChatSetting('allowMomentImage', false);
+            const allowMomentImage = getChatSetting('allowImage', false) && getChatSetting('allowMomentImage', false);
             // 开启了朋友圈生图：严格按设置的频率判断是否到点，模型想要图也不绕过频率。
             if (allowMomentImage && momentImageRoundDue()) {
                 try {
@@ -7042,7 +7921,7 @@
                 comments: [],
                 isPhoto: true
             };
-            const allowMomentImage = getChatSetting('allowMomentImage', false);
+            const allowMomentImage = getChatSetting('allowImage', false) && getChatSetting('allowMomentImage', false);
             // 照片动态同样受「朋友圈生图频率」控制；没到点就退回文字照片。
             if (allowMomentImage && momentImageRoundDue()) {
                 try {
@@ -7072,8 +7951,8 @@
             if (!obj) return;
             const prompt = String(obj.imagePrompt || '').slice(0, 120);
             let url = '';
-            // 直接发照片：允许生图或允许朋友圈生图任一开启即可（之前只认 allowMomentImage，导致开了社交活跃度也发不出照片）
-            if (getChatSetting('allowImage', false) || getChatSetting('allowMomentImage', false)) {
+            // 直接发照片：只有开启「允许生图」的角色才生成；未开启不再用朋友圈开关兜底。
+            if (getChatSetting('allowImage', false)) {
                 try { url = await generateImage(buildImagePrompt(prompt)); } catch (e) {}
             }
             if (!url) return;
@@ -7193,6 +8072,7 @@
     }
     async function sendProactiveChatPhoto() {
         if (isNanoChat || isProcessingApi || isWaitingForReply) return;
+        if (isChatOfflineMode()) return;
         isProcessingApi = true;
         try {
             const obj = await generateChatPhotoIdea();
@@ -7238,6 +8118,7 @@
     function maybeScheduleProactivePhoto() {
         try {
             if (isNanoChat || proactivePhotoTimer) return;
+            if (isChatOfflineMode()) return;
             // 情绪/深度对话中不打断，不主动发自拍。
             if (isDeepTalkNow()) return;
             const ai = getChatSetting('allowImage', false);
@@ -7289,6 +8170,11 @@
         } catch (e) { return true; }
     }
     async function runScheduledAutoMoment() {
+        // 角色已进入线下：退出线下之前，线上不再自动发朋友圈。
+        if (isChatOfflineMode()) {
+            if (autoMomentTimer) { clearTimeout(autoMomentTimer); autoMomentTimer = null; }
+            return;
+        }
         // 已交给 Worker 无后台推送：本机不再生成朋友圈。
         if (window.__serverAutoPushActive) {
             if (autoMomentTimer) { clearTimeout(autoMomentTimer); autoMomentTimer = null; }
@@ -8012,6 +8898,15 @@
             if (cd.cardType === 'file') {
                 return who + '发送了文件「' + (cd.name || '文件') + '」（' + (cd.size || '') + '），文件内容如下：\n' + String(cd.content || '');
             }
+            if (cd.cardType === 'memoryRecall') {
+                return who + '翻出一条旧记录（' + (cd.date || '很久以前') + '）：' + String(cd.text || cd.quote || '');
+            }
+            if (cd.cardType === 'forwardBundle') {
+                const fw = (Array.isArray(cd.items) ? cd.items : []).slice(0, 20).map(function (it) {
+                    return (it.who || '') + '：' + (it.text || '');
+                }).join('\n');
+                return who + '转发来一段聊天记录（' + (cd.sub || '聊天记录') + '，共 ' + (cd.count || 0) + ' 条）：\n' + fw;
+            }
             if (cd.cardType === 'transfer') {
                 const amount = cd.amount || '';
                 const note = cd.title ? '（备注：' + cd.title + '）' : '';
@@ -8077,9 +8972,9 @@
             } else if (cd.cardType === 'familycard') {
                 const st = status === 'active' ? '（已开启）' : (status === 'rejected' ? '（已拒绝）' : '（待处理）');
                 if (cd.issuer === 'user') {
-                    return '用户邀请角色开启一张亲属卡（角色出资、用户消费），额度 ¥' + (cd.limit || 0) + st + '。角色需要明确表态是否接受及额度。';
+                    return '用户给角色开了一张亲属卡（用户出资、角色消费），额度 ¥' + (cd.limit || 0) + st + '。角色需要明确表态是否接受；这是用户给角色开卡，不能理解成角色给用户开卡。';
                 }
-                return '角色邀请用户开启一张亲属卡（角色出资、用户消费），额度 ¥' + (cd.limit || 0) + st + '（这是卡片消息，不是空白）。';
+                return '角色给用户开了一张亲属卡（角色出资、用户消费），额度 ¥' + (cd.limit || 0) + st + '（这是卡片消息，不是空白）。';
             } else if (cd.cardType === 'takeout') {
                 const isErrandCard = cd.mode === 'errand' || cd.errand === true;
                 const kindName = isErrandCard ? '同城跑腿' : '外卖';
@@ -8118,6 +9013,7 @@
                     cd.days ? ('天数：' + cd.days + '天') : '',
                     cd.ticketNo ? ('票号：' + cd.ticketNo) : '',
                     cd.thought ? ('心得：' + String(cd.thought).slice(0, 300)) : '',
+                    cd.thoughtZh ? ('心得中文：' + String(cd.thoughtZh).slice(0, 300)) : '',
                     cd.note ? ('附言：' + String(cd.note).slice(0, 200)) : '',
                     cd.img ? '（附带一张旅行拍立得，不是普通照片，是这段旅程的记录）' : ''
                 ].filter(Boolean).join('；');
@@ -8983,6 +9879,15 @@
     }
 
     async function callApi(userMessage, extraContext) {
+        // 首轮回复前确保长期记忆已经读完，但最多等 2 秒，不能因为记忆库慢卡住聊天。
+        try {
+            if (__memHintsPromise) {
+                await Promise.race([
+                    __memHintsPromise,
+                    new Promise(function (r) { setTimeout(r, 2000); })
+                ]);
+            }
+        } catch (e) {}
         const config = await getApiConfig();
         if (!config) {
             if (!suppressApiAlerts) showAlert('配置错误', 'API 未配置，请先在「API」页面配置主 API。\n注意：手机端与电脑是不同来源，需要在手机打开的页面里单独填写一次；若填写的是 localhost/127.0.0.1 的本地 API，会自动改用当前局域网地址。');
@@ -9120,6 +10025,10 @@
             try {
                 const __deepTalk = deepTalkPromptBlock();
                 if (__deepTalk) __sys += '\n\n' + __deepTalk;
+            } catch (e) {}
+            try {
+                const __conflict = conflictPromptBlock();
+                if (__conflict) __sys += '\n\n' + __conflict;
             } catch (e) {}
             // 用户规则里的禁令与「关系平等 / 称呼」在最后再压一遍：
             // 角色扮演模板里的 NSFW 段落只放宽内容尺度，绝不能覆盖这些硬禁令。
@@ -10303,10 +11212,14 @@
                         triggerIncomingCall('通话', /视频/.test(String(tag.payload || '')));
                     } else if (tag.kind === 'creategroup') {
                         try { createGroupFromTag(tag.payload); } catch (e) {}
+                    } else if (tag.kind === 'sharechat') {
+                        try { handleShareChatTag(tag.payload, timeStr); } catch (e) {}
                     } else if (tag.kind === 'inviteme') {
                         try { inviteMeToGroupFromTag(tag.payload); } catch (e) {}
                     } else if (tag.kind === 'familycard') {
                         handleFamilyCardTag(tag.payload, timeStr);
+                    } else if (tag.kind === 'storegift') {
+                        handleStoreGiftTag(tag.payload, timeStr);
                     } else if (tag.kind === 'takeout') {
                         handleTakeoutTag(tag.payload, timeStr, tag.mode);
                     } else if (tag.kind === 'location') {
@@ -10432,6 +11345,10 @@
                                         null, false, null, true, { textImage: true, desc: tag.payload || '' });
                                 }
                             }
+                        } else if (tag.kind === 'mem') {
+                            handleMemoryRecallTag(tag.payload, timeStr);
+                        } else if (tag.kind === 'sharechat') {
+                            handleShareChatTag(tag.payload, timeStr);
                         } else if (tag.kind === 'creategroup') {
                             createGroupFromTag(tag.payload);
                         } else if (tag.kind === 'emoji') {
@@ -10444,6 +11361,8 @@
                             inviteMeToGroupFromTag(tag.payload);
                         } else if (tag.kind === 'familycard') {
                             handleFamilyCardTag(tag.payload, timeStr);
+                        } else if (tag.kind === 'storegift') {
+                            handleStoreGiftTag(tag.payload, timeStr);
                         } else if (tag.kind === 'takeout') {
                             handleTakeoutTag(tag.payload, timeStr, tag.mode);
                         } else if (tag.kind === 'location') {
@@ -11880,8 +12799,13 @@
                     return recentFromArray(arr, 12);
                 } catch (e) { return got; }
             };
+            // 角色进入线下后，线上不再由 Worker 主动生成消息/朋友圈：直接从配置里排除。
+            const isOfflineChar = function (cid) {
+                try { return String(localStorage.getItem('nano_chat_mode_' + cid) || '') === 'offline'; } catch (e) { return false; }
+            };
             const candidates = allCharacters.filter(function (c) {
                 if (!c || !c.id || !c.name || c.nanoAssistant) return false;
+                if (isOfflineChar(c.id)) return false;
                 return !uid || !c.bindUser || String(c.bindUser) === uid;
             });
             // 只让「最近 24 小时真的聊过天」的 char 参与随机主动消息/朋友圈。
@@ -11950,6 +12874,27 @@
                         try {
                             const w = getWorldbookText(String(c.id));
                             return String((w.front || '') + (w.middle || '') + (w.back || '')).slice(0, 4000);
+                        } catch (e) { return ''; }
+                    })(),
+                    memory: await (async function () {
+                        try {
+                            const rec = await __memGet('config', 'memlist_' + c.id);
+                            const list = (rec && Array.isArray(rec.value)) ? rec.value : [];
+                            const priv = list.filter(function (it) { return it && !it.groupId; });
+                            const anchors = priv.filter(function (it) {
+                                const t = String(it.type || '') + ' ' + String(it.content || it.text || '');
+                                return Number(it.importance) >= 4 &&
+                                    /原话|承诺|答应|约定|表白|吵架|和好|分手|道歉|说过|重要事件|纪念日|求婚|结婚/.test(t);
+                            }).sort(function (a, b) { return __memTs(b) - __memTs(a); }).slice(0, 8);
+                            const anchorKeys = {};
+                            anchors.forEach(function (it) { anchorKeys[String(it.content || it.text || '')] = 1; });
+                            const must = priv.filter(function (it) {
+                                return Number(it.importance) >= 4 && !anchorKeys[String(it.content || it.text || '')];
+                            }).sort(function (a, b) { return __memTs(b) - __memTs(a); }).slice(0, 8);
+                            const rest = priv.filter(function (it) { return !(Number(it.importance) >= 4); })
+                                .sort(function (a, b) { return __memTs(b) - __memTs(a); }).slice(0, 4);
+                            return anchors.concat(must).concat(rest).slice(0, 12)
+                                .map(function (it) { return '· ' + (it.content || it.text || ''); }).join('\n').slice(0, 1800);
                         } catch (e) { return ''; }
                     })(),
                     recent: await recentForAsync(String(c.id))
@@ -12189,6 +13134,7 @@
     let __schedReportBusy = false;
     let __schedImgWarned = false;
     async function deliverScheduleReports() {
+        if (isChatOfflineMode()) return;
         if (__schedReportBusy || !window.NanoScheduleBridge || !NanoScheduleBridge.takeReports) return;
         if (!isStorageReady) return;
         __schedReportBusy = true;
@@ -12492,6 +13438,19 @@ if (callCard) {
             const sRow = secretCard.closest('.message-row');
             const sMsg = sRow ? messages.find(m => m.id === sRow.dataset.id) : null;
             if (sMsg && sMsg.cardData) showCharSecretChatCard(sMsg.cardData);
+            return;
+        }
+
+        // ===== 合并转发的聊天记录：半屏弹窗查看全文 =====
+        const forwardCard = e.target.closest('.bubble-card.forwardBundle');
+        if (forwardCard) {
+            if (isMultiSelect) return;
+            const fwRow = forwardCard.closest('.message-row');
+            const fwMsg = fwRow ? messages.find(m => m.id === fwRow.dataset.id) : null;
+            if (fwMsg && fwMsg.cardData) {
+                if (window.NanoForward && window.NanoForward.openViewer) window.NanoForward.openViewer(fwMsg.cardData);
+                else showAlert('聊天记录', (fwMsg.cardData.items || []).map(function (it) { return (it.who || '') + '：' + (it.text || ''); }).join('\n'));
+            }
             return;
         }
 
@@ -12814,6 +13773,34 @@ if (callCard) {
     }
 
     msCancel.addEventListener('click', exitMultiSelect);
+    if (msForward) msForward.addEventListener('click', function() {
+        if (selectedMessages.size === 0) return;
+        const picked = messages.filter(function (m) { return m && selectedMessages.has(m.id); });
+        const items = picked.map(function (m) {
+            let text = String(m.text || '').trim();
+            if (m.isImage) text = '[图片] ' + String((m.imageData && m.imageData.desc) || '');
+            else if (m.isVoice) text = '[语音] ' + String(m.transcript || '');
+            else if (m.isCard) text = '[卡片] ' + String((m.cardData && (m.cardData.title || m.cardData.sub)) || '');
+            return {
+                who: m.type === 'right' ? (currentUserName || '我') : (displayName || 'TA'),
+                text: text.slice(0, 400),
+                time: String(m.time || '')
+            };
+        });
+        if (!items.length) return;
+        exitMultiSelect();
+        if (window.NanoForward) {
+            window.NanoForward.open({
+                sourceName: displayName || '聊天',
+                sourceKind: 'private',
+                currentId: chatId,
+                owner: String((characterData && characterData.bindUser) || ''),
+                items: items
+            });
+        } else {
+            try { addSystemNotice('转发组件未加载，请刷新页面后重试'); } catch (e) { alert('转发组件未加载，请刷新页面后重试'); }
+        }
+    });
     msDelete.addEventListener('click', function() {
         if (selectedMessages.size === 0) return;
         const toDelete = Array.from(selectedMessages);
@@ -13515,7 +14502,11 @@ if (callCard) {
             var autoRaw = localStorage.getItem('nano_auto_pending_msgs') || '{}';
             var autoMap = JSON.parse(autoRaw);
             var autoList = autoMap && autoMap[chatId];
-            if (Array.isArray(autoList) && autoList.length) {
+            // 角色已进入线下：未退出前不再补发任何线上主动消息，直接丢弃暂存。
+            if (isChatOfflineMode() && autoList) {
+                delete autoMap[chatId];
+                try { localStorage.setItem('nano_auto_pending_msgs', JSON.stringify(autoMap)); } catch (e) {}
+            } else if (Array.isArray(autoList) && autoList.length) {
                 delete autoMap[chatId];
                 try { localStorage.setItem('nano_auto_pending_msgs', JSON.stringify(autoMap)); } catch (e) {}
                 autoList.forEach(function (item) {
@@ -13631,9 +14622,20 @@ if (callCard) {
         } catch (e) {}
         let wantReply = false;
         list.forEach(function (p) {
-            if (!p || !p.card) return;
+            if (!p) return;
             const side = p.side === 'left' ? 'left' : 'right';
-            try { addMessage(side, '', nowHHMM(), null, false, true, p.card); } catch (e) {}
+            if (p.mode === 'split' && p.card && Array.isArray(p.card.items)) {
+                p.card.items.forEach(function (it) {
+                    if (!it) return;
+                    const tx = String(it.text || '');
+                    if (!tx) return;
+                    try { addMessage(side, tx, it.time || nowHHMM(), null, false, false, null); } catch (e) {}
+                });
+            } else if (p.card) {
+                try { addMessage(side, '', nowHHMM(), null, false, true, p.card); } catch (e) {}
+            } else if (p.text) {
+                try { addMessage(side, String(p.text), nowHHMM(), null, false, false, null); } catch (e) {}
+            }
             if (p.notice) { try { addSystemNotice(String(p.notice)); } catch (e) {} }
             if (p.triggerReply) wantReply = true;
         });
@@ -13722,6 +14724,8 @@ if (callCard) {
 
         // 角色接管手机：角色亲自发的一条消息，须在 chatId 过滤之前处理
         if (data.type === 'NANO_CHAR_SAY') {
+            // 角色在线下：线上不再接收任何角色主动消息。
+            if (isChatOfflineMode()) return;
             handleCharSay(data);
             return;
         }
@@ -13767,6 +14771,15 @@ if (callCard) {
         // 线下返回线上：系统提示「已退出线下」+ 带回线下最新一轮作为衔接上下文
         if (data.type === 'NANO_SYS_NOTICE') {
             try { addSystemNotice(String(data.text || '')); } catch (e) {}
+            return;
+        }
+        // 线下状态变化：进入时补「已进入线下」系统提示，并立即重新同步自动消息配置
+        if (data.type === 'NANO_OFFLINE_STATE') {
+            if (data.chatId && String(data.chatId) !== String(chatId)) return;
+            if (data.offline) {
+                try { addSystemNotice('已进入线下'); } catch (e) {}
+            }
+            try { syncAutoPushConfig({ reset: true }); } catch (e) {}
             return;
         }
         if (data.type === 'NANO_OFFLINE_ROUND') {
@@ -13883,6 +14896,12 @@ if (callCard) {
             if (amt > 0) addSystemNotice('你使用对方的亲属卡消费了 ¥' + amt.toFixed(2));
             return;
         }
+        if (data.type === 'NANO_FAMILY_LIMIT_REACHED') {
+            const S = window.NanoFamilyCardStore;
+            const card = data.cardId && S ? S.find(chatId, data.cardId) : null;
+            notifyFamilyLimit(card || { id: data.cardId || '' }, data.spent || 0, data.limit || 0);
+            return;
+        }
 
         // 亲属卡：用户在亲属卡页面接受/拒绝对方邀请 → 同步聊天卡片
         if (data.type === 'NANO_FAMILY_CARD_RESULT') {
@@ -13906,8 +14925,23 @@ if (callCard) {
         if (data.type === 'NANO_FAMILY_CARD_SUBMIT') {
             const S = window.NanoFamilyCardStore;
             const lim = Math.max(0, Math.round((parseFloat(data.limit) || 0) * 100) / 100) || 1000;
-            const id = S ? S.add(chatId, { issuer: 'user', holder: 'char', limit: lim, spent: 0, status: 'pending' }).id
-                         : ('fc_' + Date.now());
+            let id = data.familyId || '';
+            if (S && id && S.find(chatId, id)) {
+                S.update(chatId, id, {
+                    limit: lim,
+                    fundingCardId: data.fundingCardId || '',
+                    bankId: data.bankId || '',
+                    bankName: data.bankName || '',
+                    cardLast4: data.cardLast4 || ''
+                });
+            } else {
+                id = S ? S.add(chatId, {
+                    issuer: 'user', holder: 'char', limit: lim, spent: 0, monthlySpent: 0,
+                    monthKey: new Date().toISOString().slice(0, 7), status: 'pending',
+                    fundingCardId: data.fundingCardId || '', bankId: data.bankId || '',
+                    bankName: data.bankName || '', cardLast4: data.cardLast4 || ''
+                }).id : ('fc_' + Date.now());
+            }
             const now = new Date();
             const timeStr = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
             addMessage('right', '', timeStr, null, false, true,
@@ -14057,6 +15091,9 @@ if (data.type === 'NANO_VOICE_CALL_CARD' || data.type === 'NANO_VIDEO_CALL_CARD'
         messages: messages,
         displayName: displayName,
         currentUserName: currentUserName,
+        isForeignChar: function () { try { return isForeignChar(); } catch (e) { return false; } },
+        charLanguageName: function () { try { return charLanguageName(); } catch (e) { return ''; } },
+        translateToZh: function (text) { try { return translateToZh(text); } catch (e) { return Promise.resolve(''); } },
         loadMessages: loadMessages,
         isStorageReady: function() { return isStorageReady; },
         getTakeoverContext: function () {
@@ -14131,14 +15168,19 @@ if (data.type === 'NANO_VOICE_CALL_CARD' || data.type === 'NANO_VIDEO_CALL_CARD'
 
     // ===== 启动 =====
     (async function init() {
-        // 预载表情包数据，让角色能知道自己可以调用哪些表情
-        try { await getEmojiData(); } catch (e) {}
-        await loadAllCharactersFromDB();
+        // 表情包 / 角色库并行读，别再串行等两次 IndexedDB。
+        try {
+            await Promise.all([
+                getEmojiData().catch(function () {}),
+                loadAllCharactersFromDB()
+            ]);
+        } catch (e) {}
         setupCharacter();
         try { pushPeekPersona(); } catch (e) {}
 
-        // 先把长期记忆读出来，保证第一轮回复就能用上记忆库
-        try { await refreshMemoryHints(); } catch (e) {}
+        // 长期记忆改为后台预读：消息先画出来，第一轮回复前再等它（callApi 会 await）。
+        __memHintsPromise = refreshMemoryHints().catch(function () {});
+        try { refreshTtsVoiceGuide(); } catch (e) {}
 
         // ===== 绑定通话弹窗事件 =====
         bindCallSheetEvents();

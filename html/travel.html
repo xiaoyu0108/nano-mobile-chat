@@ -356,8 +356,8 @@ textarea.ta:focus,.inp:focus{border-color:var(--ink)}
 <script src="../js/nano-idb.js?v=20261106a"></script>
 <script src="../js/nano-gallery.js?v=20261106a"></script>
 <script src="../js/localforage.min.js?v=20261106a"></script>
-<script src="../js/mem-link.js?v=20261106a"></script>
-<script src="../js/travel-store.js?v=20261109a"></script>
+<script src="../js/mem-link.js?v=20261111a"></script>
+<script src="../js/travel-store.js?v=20261111a"></script>
 <script src="../js/travel-api.js?v=20261102a"></script>
 <script>
 /* ================= 配置 / 对接口子 ================= */
@@ -872,6 +872,20 @@ function charPersona(c){
   const cd = TravelStore.getCharData(c.id);
   return String((cd.settings && cd.settings.persona) || c.setting || c.desc || c.persona || '');
 }
+// 只有开启「允许生图」的角色才允许在旅途里生成图片。
+function charAllowsImage(id){
+  try{
+    const raw = localStorage.getItem('chat_setting_allowImage_' + String(id || ''));
+    if(raw === null) return false;
+    let v = raw;
+    try{ v = JSON.parse(raw); }catch(e){}
+    return v === true || v === 1 || v === 'true' || v === '1';
+  }catch(e){ return false; }
+}
+// 角色在线下时，线上不再发送旅途分享。
+function charOffline(id){
+  try{ return String(localStorage.getItem('nano_chat_mode_' + String(id || '')) || '') === 'offline'; }catch(e){ return false; }
+}
 async function generateTripRecordAI(c, opts){
   opts = opts || {};
   const persona = charPersona(c);
@@ -918,46 +932,79 @@ async function generateUsThought(record){
   const usr = '地点：' + (record.place||'') + '；日期：' + (record.date||'') + '；' + (record.noteMe ? ('我写下的感受：' + record.noteMe) : '');
   return (await TravelAPI.callChat({ messages:[{role:'system',content:sys},{role:'user',content:usr}], temperature:0.9, maxTokens:600 })).trim();
 }
-function polaroidPrompt(c, record){
+function polaroidPrompt(c, record, sceneOnly){
   const persona = charPersona(c);
   const place = record.place || record.to || '旅行途中';
-  return '拍立得旅行摄影，真实自然光，柔和胶片颗粒，暖色调，生活纪实感。'
-    + '角色：' + (c.name||'TA') + (persona ? ('（' + String(persona).slice(0,700) + '）') : '') + '。'
+  const base = '拍立得旅行摄影，真实自然光，柔和胶片颗粒，暖色调，生活纪实感。'
     + '场景：' + place + '，' + (record.date||'') + ' ' + (record.time||'') + '。'
     + (record.caption ? ('画面说明：' + record.caption + '。') : '')
     + (record.note ? ('心情：' + record.note + '。') : '')
-    + (record.photoPrompt ? ('构图：' + record.photoPrompt + '。') : '')
+    + (record.photoPrompt ? ('构图：' + record.photoPrompt + '。') : '');
+  if(sceneOnly){
+    return base
+      + '不要出现人物正脸；只拍随手拍的风景、街角、食物、车票、窗边、影子或手部等真实生活细节，画面可以留白、有生活痕迹。'
+      + '不出现文字、水印、边框和多余人物。';
+  }
+  return base
+    + '角色：' + (c.name||'TA') + (persona ? ('（' + String(persona).slice(0,700) + '）') : '') + '。'
     + (record.owner==='us'
         ? ('画面里可以出现' + ME_NAME + '的手、背影或侧影，作为同行者，不抢主体；')
         : ('画面里只有' + (c.name||'TA') + '一个人；'))
     + '不出现文字、水印、边框和多余人物。';
 }
-async function genPolaroidFor(c, record){
-  const out = await TravelAPI.generateImage({ prompt: polaroidPrompt(c, record), charId: String(c.id), charName: c.name || '' });
+async function genPolaroidFor(c, record, opts){
+  // 未开启「允许生图」的角色，任何入口都不生成图片。
+  if(!c || !charAllowsImage(c.id)) return '';
+  const sceneOnly = !!(opts && opts.sceneOnly);
+  const out = await TravelAPI.generateImage({
+    prompt: polaroidPrompt(c, record, sceneOnly),
+    charId: sceneOnly ? '' : String(c.id),
+    charName: sceneOnly ? '' : (c.name || '')
+  });
   return out && out.src ? out.src : '';
 }
 async function travelGenerate(req){
   const kind = req.kind, record = req.record;
   if(kind === 'us'){
     if(req.thought) record.noteChar = await generateUsThought(record);
-    if(req.polaroid) record.polaroid = await genPolaroidFor(CHAR, { place:record.place, date:record.date, caption:'', note:record.noteChar||'', owner:'us' });
+    if(req.polaroid) record.polaroid = await genPolaroidFor(CHAR, { place:record.place, date:record.date, caption:'', note:record.noteChar||'', owner:'us' }, { sceneOnly: Math.random()<0.5 });
     await persistTogether(record);
     return { thought: record.noteChar, polaroid: record.polaroid };
   }
   if(record.owner === 'me') return { thought: record.note };
   if(req.thought) await regenerateTripRecord(record);
-  if(req.polaroid) record.polaroid = await genPolaroidFor(CHAR, record);
+  if(req.polaroid) record.polaroid = await genPolaroidFor(CHAR, record, { sceneOnly: Math.random()<0.55 });
   await persistTrip(record);
   return { thought: record.note, polaroid: record.polaroid };
+}
+function travelCharForeign(c){
+  if(!c) return false;
+  const lang = String(c.language || '').trim();
+  if(lang && !/中文|汉语|漢語|chinese/i.test(lang)) return true;
+  const nat = String(c.nationality || c.country || '').trim();
+  if(!nat || /未知|无|unknown/i.test(nat)) return false;
+  return !/中国|中國|china/i.test(nat);
 }
 async function travelShare(req){
   const charId = String(req.charId || (CHAR && CHAR.id) || '');
   if(!charId) throw new Error('没有选择角色');
   const target = CHARS.find(c=>String(c.id)===charId) || CHAR;
+  const thought = req.kind==='us' ? req.record.noteChar : req.record.note;
+  let thoughtZh = String(req.record.thoughtZh || '').trim();
+  if(!thoughtZh && thought && travelCharForeign(target)){
+    try{
+      const tr = await TravelAPI.callChat({ messages:[
+        {role:'system',content:'把下面这段文字翻译成自然、口语化的中文，只输出译文，不要解释。'},
+        {role:'user',content:String(thought)}
+      ], temperature:0.2, maxTokens:400 });
+      thoughtZh = String(tr || '').trim();
+    }catch(e){}
+  }
   const trip = {
     tripId: req.record.tripId || req.record.id,
     place: req.kind==='us' ? req.record.place : (req.record.place || req.record.to),
-    date: req.record.date, thought: req.kind==='us' ? req.record.noteChar : req.record.note,
+    date: req.record.date, thought: thought,
+    thoughtZh: thoughtZh,
     noteMe: req.record.noteMe, noteChar: req.record.noteChar, polaroid: req.record.polaroid,
     caption: req.record.caption, title: req.record.place || req.record.to
   };
@@ -999,13 +1046,19 @@ async function generateReportForChar(){
 }
 async function maybeRandomPolaroid(){
   if(!CHAR || !window.TravelAPI || S.busy) return;
-  try{ const cfg = await TravelAPI.readApiConfig(); if(!cfg || !cfg.imgUrl) return; }catch(e){ return; }
   const maskId = MASK.id || 'default';
   const state = TravelStore.polaroidState();
+  // 约 3 天分享一次旅程；与私聊里的随机旅途报备共用同一把锁，避免两条路径重复分享。
+  const shareKey = 'nano_travel_share_at_' + maskId;
+  try{
+    const shared = JSON.parse(localStorage.getItem(shareKey) || 'null');
+    if(shared && Date.now() - Number(shared.at || 0) < 3*86400000) return;
+  }catch(e){}
   if(state.lastAt && Date.now() - Number(state.lastAt) < 3*86400000) return;
+  // 只挑近 24 小时还在聊天的角色，很久没聊的不打扰
   const recent = TravelStore.recentChatChars(24);
   if(!recent.length) return;
-  const cands = CHARS.filter(c=>recent.indexOf(String(c.id)) !== -1);
+  const cands = CHARS.filter(c=>recent.indexOf(String(c.id)) !== -1 && !charOffline(c.id));
   if(!cands.length) return;
   const lockKey = 'nano_travel_photo_lock_'+maskId;
   try{
@@ -1017,16 +1070,24 @@ async function maybeRandomPolaroid(){
     const c = cands[Math.floor(Math.random()*cands.length)];
     let trip = TravelStore.listCharTrips(c.id)[0];
     if(!trip){ trip = await generateTripRecordAI(c, {}); trip.tripId = trip.tripId || TravelStore.uid('trip'); await TravelStore.addCharTrip(c.id, trip); }
-    const url = await genPolaroidFor(c, trip);
-    if(!url) throw new Error('生图失败');
-    await TravelStore.updateTrip(trip.id, { polaroid:url, caption:trip.caption||'' });
+    // 分享时 75% 概率生图；且只有开启「允许生图」的角色才真的生成图片。
+    // 画面随机：人像 / 风景 / 随机角落 / 生活细节都会出现。
+    let url = '';
+    if(charAllowsImage(c.id) && Math.random() < 0.75){
+      try{
+        const cfg = await TravelAPI.readApiConfig();
+        if(cfg && cfg.imgUrl) url = await genPolaroidFor(c, trip, { sceneOnly: Math.random() < 0.58 });
+      }catch(e){}
+    }
+    if(url) await TravelStore.updateTrip(trip.id, { polaroid:url, caption:trip.caption||'' });
     await TravelStore.addPendingReport(c.id, {
       tripId: trip.tripId || trip.id, title: trip.place || trip.to, place: trip.place || trip.to,
       date: trip.date, thought: trip.thought || trip.note, caption: trip.caption, note: trip.thought || trip.note, img: url
     });
     TravelStore.savePolaroidState(Object.assign({}, state, { lastAt:Date.now(), charId:String(c.id), tripId:trip.id }));
+    try{ localStorage.setItem(shareKey, JSON.stringify({ at:Date.now(), charId:String(c.id) })); }catch(e){}
     if(String(c.id) === String(CHAR.id)){ await TravelStore.load(true); syncArrays(); render(); }
-    toast(c.name+' 发来一张旅途拍立得');
+    toast(url ? (c.name+' 发来一张旅途拍立得') : (c.name+' 分享了一段旅途'));
   }catch(e){}
   finally{ try{ localStorage.removeItem(lockKey); }catch(e){} }
 }

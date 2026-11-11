@@ -11,12 +11,19 @@ function escHtml(s){
   }[m]));
 }
 
+// 角色银行卡：localStorage 负责同步读取，IndexedDB 负责容量与恢复。
+function saveCharWallet(key, value){
+  try{ localStorage.setItem(key, JSON.stringify(value)); }catch(e){}
+  try{ if(window.NanoIDB) NanoIDB.set(key, value).catch(function(){}); }catch(e){}
+}
+
 /* =========================
    2. 主屏：时钟
 ========================= */
 (function initClock(){
   const timeEl = document.getElementById("clockTime");
   const dateEl = document.getElementById("clockDate");
+  if(!timeEl || !dateEl) return;
   function tick(){
     const now = new Date();
     const pad = n => String(n).padStart(2,"0");
@@ -95,9 +102,140 @@ function escHtml(s){
 })();
 
 /* =========================
-   5. 主屏：长按拖动 + 自由换位（两屏都支持）
-   - 1×1 App：和另一个 App 交换，或拖到空格
-   - 2×2 小组件：和另一个小组件交换，或拖到空位
+   4.5 主屏：音乐 / 纪念日 / 日历小组件
+========================= */
+(function initMusicWidget(){
+  const play = document.querySelector("[data-music-play]");
+  const like = document.querySelector("[data-music-like]");
+  const repeat = document.querySelector("[data-music-repeat]");
+  const bar = document.getElementById("musicProgress");
+  let timer = null;
+  let progress = 62;
+  function paint(){ if(bar) bar.style.width = progress + "%"; }
+  paint();
+  if(like){
+    like.addEventListener("click", () => like.classList.toggle("on"));
+  }
+  if(repeat){
+    repeat.addEventListener("click", () => repeat.classList.toggle("on"));
+  }
+  if(play){
+    play.addEventListener("click", () => {
+      const on = play.classList.toggle("playing");
+      clearInterval(timer);
+      timer = null;
+      if(on){
+        timer = setInterval(() => {
+          progress += 0.8;
+          if(progress >= 100) progress = 0;
+          paint();
+        }, 500);
+      }
+    });
+  }
+})();
+
+function homeAvatarNow(){
+  try{
+    if(typeof currentChar !== "undefined" && currentChar && currentChar.avatar) return currentChar.avatar;
+  }catch(e){}
+  try{
+    const d = JSON.parse(localStorage.getItem("nano_mask_data") || "null");
+    if(d){
+      if(d.avatar) return d.avatar;
+      if(d.currentMask && d.currentMask.avatar) return d.currentMask.avatar;
+      if(Array.isArray(d.masks) && d.currentMaskId){
+        const m = d.masks.find(x => x && String(x.id) === String(d.currentMaskId));
+        if(m && m.avatar) return m.avatar;
+      }
+    }
+  }catch(e){}
+  return "";
+}
+
+function renderCalendarWidget(){
+  const root = document.getElementById("calendarWidget");
+  if(!root) return;
+  const now = new Date();
+  const day = now.getDay();
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - day);
+  const monthNames = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
+  const weekNames = ["日","一","二","三","四","五","六"];
+  const avatar = homeAvatarNow();
+  const name = (typeof currentChar !== "undefined" && currentChar && currentChar.name) ? currentChar.name : "";
+  let cells = "";
+  for(let i = 0; i < 7; i++){
+    const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+    const isToday = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+    cells += '<div class="calendar-day' + (isToday ? ' today' : '') + '"><i>' + weekNames[i] + '</i><b>' + d.getDate() + '</b></div>';
+  }
+  root.innerHTML =
+    '<div class="calendar-top">' +
+      '<div class="calendar-avatar' + (avatar ? ' has-image' : '') + '"' + (avatar ? ' style="background-image:url(&quot;' + escHtml(avatar) + '&quot;)"' : '') + '><span>' + escHtml((name || "·").slice(0,1)) + '</span></div>' +
+      '<div class="calendar-meta"><span class="calendar-month">' + monthNames[now.getMonth()] + '</span><span class="calendar-year">' + now.getFullYear() + '</span></div>' +
+    '</div>' +
+    '<div class="calendar-week">' + cells + '</div>';
+}
+
+function updateHomeWidgets(){
+  const name = (typeof currentChar !== "undefined" && currentChar && currentChar.name) ? currentChar.name : "";
+  const avatar = homeAvatarNow();
+  const title = document.getElementById("musicTitle");
+  const sub = document.getElementById("musicSub");
+  const cover = document.getElementById("musicCover");
+  const fallback = document.getElementById("musicCoverFallback");
+  if(title) title.textContent = name || "Char";
+  if(sub) sub.textContent = name ? (name + " 的私人电台") : "私人电台";
+  if(cover && fallback){
+    if(avatar){
+      cover.style.backgroundImage = 'url("' + String(avatar).replace(/"/g, '\\"') + '")';
+      cover.classList.add("has-image");
+      fallback.textContent = "";
+    }else{
+      cover.style.backgroundImage = "";
+      cover.classList.remove("has-image");
+      fallback.textContent = (name || "♪").slice(0,1);
+    }
+  }
+  const pAv = document.getElementById("profileAvatar");
+  const pAvFallback = document.getElementById("profileAvatarFallback");
+  const pName = document.getElementById("profileName");
+  const pSub = document.getElementById("profileSub");
+  if(pName) pName.textContent = name || "Char";
+  if(pSub) pSub.textContent = "很幸福的最近";
+  if(pAv && pAvFallback){
+    if(avatar){
+      pAv.style.backgroundImage = 'url("' + String(avatar).replace(/"/g, '\\"') + '")';
+      pAv.classList.add("has-image");
+      pAvFallback.textContent = "";
+    }else{
+      pAv.style.backgroundImage = "";
+      pAv.classList.remove("has-image");
+      pAvFallback.textContent = (name || "?").slice(0,1);
+    }
+  }
+  const daysEl = document.getElementById("annivDays");
+  const annivName = document.getElementById("annivName");
+  if(daysEl){
+    let start = "";
+    try{ start = localStorage.getItem("glass-phone-anniv-start") || ""; }catch(e){}
+    if(!start){
+      start = new Date().toISOString().slice(0,10);
+      try{ localStorage.setItem("glass-phone-anniv-start", start); }catch(e){}
+    }
+    const t0 = new Date(start + "T00:00:00").getTime();
+    const days = Number.isFinite(t0) ? Math.max(1, Math.floor((Date.now() - t0) / 86400000) + 1) : 1;
+    daysEl.textContent = String(days);
+    if(annivName) annivName.textContent = name ? ("与" + name + "相识") : "相识";
+  }
+  renderCalendarWidget();
+}
+
+/* =========================
+   5. 主屏：长按拖动 + 自由摆放（两屏都支持）
+   - App / 小组件都可拖动，4 列 + 0.1 行精度
+   - 整块主屏（包括下方空白区域）都可作为落点
+   - 可自由调节上下位置，位置会保存
    - 拖到屏幕边缘可翻到另一屏
 ========================= */
 (function initDrag(){
@@ -106,10 +244,10 @@ function escHtml(s){
   const hint = document.getElementById("moveHint");
   if(!grids.length) return;
 
-  const LAYOUT_KEY = "glass_phone_layout_v8";
-  const MAX_COL = 4, MAX_ROW = 4;
-  let active = null, placeholder = null, timer = null;
-  let longPressed = false, startX = 0, startY = 0, offsetX = 0, offsetY = 0, pointerId = null;
+  const LAYOUT_KEY = "glass_phone_layout_v13";
+  const MAX_COL = 4, STEP = 0.1;
+  let active = null, ghost = null, timer = null;
+  let longPressed = false, startX = 0, startY = 0, offX = 0, offY = 0, pointerId = null;
   let origin = null, dropTarget = null, edgeDir = 0, edgeTimer = null;
 
   function clearPress(){ if(timer){ clearTimeout(timer); timer = null; } }
@@ -120,7 +258,13 @@ function escHtml(s){
     showHint.t = setTimeout(() => hint.classList.remove("show"), 1300);
   }
   function clamp(n, min, max){ return n < min ? min : (n > max ? max : n); }
-  function itemsIn(grid){ return [...grid.querySelectorAll(".app, .widget-large")]; }
+  function rowsOf(grid){
+    const n = parseInt(grid && grid.dataset ? grid.dataset.rows : "", 10);
+    return clamp(Number.isFinite(n) ? n : 4, 1, 12);
+  }
+  function itemsIn(grid){
+    return [...grid.querySelectorAll(".app, .widget-large")].filter(el => !el.classList.contains("layout-ghost"));
+  }
   function spanValue(endVal, start){
     const s = String(endVal || '');
     const m = s.match(/span\s+(\d+)/i);
@@ -129,43 +273,65 @@ function escHtml(s){
     if(Number.isFinite(n) && n > start) return n - start;
     return 1;
   }
-  function cellOf(el){
+  function readDefault(el){
     const cs = getComputedStyle(el);
     const c1 = parseInt(cs.gridColumnStart, 10) || 1;
     const r1 = parseInt(cs.gridRowStart, 10) || 1;
+    const grid = el.parentElement;
+    const rows = grid ? metrics(grid).rows : 4;
+    const desiredTop = grid ? (parseFloat(grid.dataset.top) || 0) : 0;
+    const reservedRows = grid ? (parseInt(grid.dataset.rows, 10) || 4) : 4;
+    const top = Math.min(desiredTop, Math.max(0, rows - reservedRows));
+    const w = el.dataset.w ? clamp(parseInt(el.dataset.w, 10) || 1, 1, MAX_COL) : spanValue(cs.gridColumnEnd, c1);
+    const h = el.dataset.h ? clamp(parseFloat(el.dataset.h) || 1, 0.5, rows) : spanValue(cs.gridRowEnd, r1);
+    return { c: c1 - 1, r: (r1 - 1) + top, w, h };
+  }
+  function metrics(grid){
+    const cs = getComputedStyle(grid);
+    const gapX = parseFloat(cs.columnGap) || 0;
+    const gapY = parseFloat(cs.rowGap) || 0;
+    const rect = grid.getBoundingClientRect();
+    const colW = Math.max(1, (rect.width - gapX * (MAX_COL - 1)) / MAX_COL);
+    // 行高固定与列宽一致，保证 4×2 的播放器 / 主页在所有页面大小完全相同；
+    // 整块主屏高度都作为可拖放区域，行数按可用高度自动扩展。
+    const baseRowH = Math.max(1, (rect.height - gapY * 3) / 4);
+    const rowH = Math.min(colW, baseRowH);
+    const usableH = Math.max(rect.height, rowH);
+    const rows = rowH >= colW
+      ? Math.max(4, Math.floor((usableH + gapY) / (rowH + gapY)) || 4)
+      : 4;
     return {
-      c: c1 - 1,
-      r: r1 - 1,
-      w: spanValue(cs.gridColumnEnd, c1),
-      h: spanValue(cs.gridRowEnd, r1)
+      width: rect.width,
+      height: rect.height,
+      gapX,
+      gapY,
+      colW,
+      rowH,
+      rows
     };
   }
-  function setCell(el, cell){
-    el.style.gridColumn = (cell.c + 1) + " / span " + cell.w;
-    el.style.gridRow = (cell.r + 1) + " / span " + cell.h;
+  function normalize(cell, rows){
+    const maxRows = Math.max(1, Number(rows) || 4);
+    const w = clamp(Number(cell.w) || 1, 1, MAX_COL);
+    const h = clamp(Number(cell.h) || 1, 0.5, maxRows);
+    const c = clamp(Math.round(Number(cell.c) || 0), 0, MAX_COL - w);
+    const r = clamp(Math.round((Number(cell.r) || 0) / STEP) * STEP, 0, Math.round((maxRows - h) * 10) / 10);
+    return { c, r, w, h };
   }
-  function overlap(a, b){
-    return a.c < b.c + b.w && b.c < a.c + a.w && a.r < b.r + b.h && b.r < a.r + a.h;
+  function setPos(el, cell, grid){
+    const m = metrics(grid);
+    const n = normalize(cell, m.rows);
+    el._cell = n;
+    el.style.position = "absolute";
+    el.style.gridColumn = "auto";
+    el.style.gridRow = "auto";
+    el.style.left = (n.c * (m.colW + m.gapX)) + "px";
+    el.style.top = (n.r * (m.rowH + m.gapY)) + "px";
+    el.style.width = (n.w * m.colW + Math.max(0, n.w - 1) * m.gapX) + "px";
+    el.style.height = (n.h * m.rowH + Math.max(0, n.h - 1) * m.gapY) + "px";
+    el.style.margin = "0";
   }
-  function occupantAt(grid, cell, exclude){
-    for(const el of itemsIn(grid)){
-      if(el === active || el === placeholder || el === exclude) continue;
-      if(overlap(cellOf(el), cell)) return el;
-    }
-    return null;
-  }
-  function findFreeCell(grid, w, h, pc, pr){
-    let best = null, bestD = Infinity;
-    for(let r = 0; r <= MAX_ROW - h; r++){
-      for(let c = 0; c <= MAX_COL - w; c++){
-        const cell = { c, r, w, h };
-        if(occupantAt(grid, cell, null)) continue;
-        const d = Math.abs(c - pc) + Math.abs(r - pr);
-        if(d < bestD){ bestD = d; best = cell; }
-      }
-    }
-    return best;
-  }
+  function cellOf(el){ return el._cell || el._defaultCell || readDefault(el); }
   function gridAt(x, y){
     for(const g of grids){
       const r = g.getBoundingClientRect();
@@ -174,46 +340,53 @@ function escHtml(s){
     return null;
   }
   function cellFromPoint(grid, x, y, w, h){
-    const cs = getComputedStyle(grid);
-    const gapX = parseFloat(cs.columnGap) || 0;
-    const gapY = parseFloat(cs.rowGap) || 0;
-    const r = grid.getBoundingClientRect();
-    const cw = (r.width - gapX * (MAX_COL - 1)) / MAX_COL;
-    const ch = (r.height - gapY * (MAX_ROW - 1)) / MAX_ROW;
-    const c = clamp(Math.floor((x - r.left) / (cw + gapX)), 0, MAX_COL - w);
-    const row = clamp(Math.floor((y - r.top) / (ch + gapY)), 0, MAX_ROW - h);
-    return { c, r: row, w, h };
+    const m = metrics(grid);
+    const rect = grid.getBoundingClientRect();
+    const left = x - offX - rect.left;
+    const top = y - offY - rect.top;
+    return normalize({
+      c: Math.round(left / (m.colW + m.gapX)),
+      r: Math.round((top / (m.rowH + m.gapY)) / STEP) * STEP,
+      w, h
+    }, m.rows);
   }
-  function clearDropMarks(){
-    document.querySelectorAll(".drop-target").forEach(el => el.classList.remove("drop-target"));
-  }
-  function resetPlaceholder(){
-    if(!placeholder || !origin) return;
-    if(placeholder.parentElement !== origin.grid) origin.grid.appendChild(placeholder);
-    setCell(placeholder, origin.cell);
+  function clearDragStyles(el){
+    el.classList.remove("dragging");
+    el.style.position = "";
+    el.style.width = "";
+    el.style.height = "";
+    el.style.left = "";
+    el.style.top = "";
+    el.style.margin = "";
+    el.style.transform = "";
+    el.style.zIndex = "";
+    el.style.pointerEvents = "";
   }
 
   function beginDrag(el, x, y){
     if(active) return;
     active = el;
     longPressed = true;
-    const r = active.getBoundingClientRect();
-    offsetX = x - r.left - r.width / 2;
-    offsetY = y - r.top - r.height / 2;
-    origin = { grid: active.parentElement, cell: cellOf(active) };
+    const rect = active.getBoundingClientRect();
+    const cell = cellOf(active);
+    offX = x - rect.left;
+    offY = y - rect.top;
+    origin = { grid: active.parentElement, cell: Object.assign({}, cell) };
 
-    placeholder = document.createElement("div");
-    placeholder.className = active.classList.contains("widget-large") ? "widget-large placeholder" : "app placeholder";
-    setCell(placeholder, origin.cell);
-    origin.grid.appendChild(placeholder);
+    ghost = document.createElement("div");
+    ghost.className = "layout-ghost";
+    setPos(ghost, origin.cell, origin.grid);
+    origin.grid.appendChild(ghost);
 
     active.classList.add("dragging");
     active.style.position = "fixed";
-    active.style.width = r.width + "px";
-    active.style.height = r.height + "px";
-    active.style.left = (x - r.width / 2 - offsetX) + "px";
-    active.style.top = (y - r.height / 2 - offsetY) + "px";
+    active.style.width = rect.width + "px";
+    active.style.height = rect.height + "px";
+    active.style.left = (x - offX) + "px";
+    active.style.top = (y - offY) + "px";
     active.style.margin = "0";
+    active.style.transform = "none";
+    active.style.zIndex = "999";
     active.style.pointerEvents = "none";
     document.body.appendChild(active);
     showHint();
@@ -221,38 +394,21 @@ function escHtml(s){
 
   function moveDrag(x, y){
     if(!active) return;
-    active.style.left = (x - active.offsetWidth / 2 - offsetX) + "px";
-    active.style.top = (y - active.offsetHeight / 2 - offsetY) + "px";
+    active.style.left = (x - offX) + "px";
+    active.style.top = (y - offY) + "px";
     checkEdge(x);
 
     const grid = gridAt(x, y);
-    clearDropMarks();
     dropTarget = null;
-    if(!grid){ resetPlaceholder(); return; }
-
-    const size = origin.cell;
-    const cell = cellFromPoint(grid, x, y, size.w, size.h);
-    const hit = occupantAt(grid, cell, null);
-
-    if(hit && cellOf(hit).w === size.w && cellOf(hit).h === size.h){
-      dropTarget = { grid, cell: cellOf(hit), swapEl: hit };
-      hit.classList.add("drop-target");
-      if(placeholder.parentElement !== grid) grid.appendChild(placeholder);
-      setCell(placeholder, cellOf(hit));
+    if(!grid){
+      if(ghost) ghost.style.display = "none";
       return;
     }
-    if(hit){
-      const free = findFreeCell(grid, size.w, size.h, cell.c, cell.r);
-      if(free){
-        dropTarget = { grid, cell: free, swapEl: null };
-        if(placeholder.parentElement !== grid) grid.appendChild(placeholder);
-        setCell(placeholder, free);
-      } else resetPlaceholder();
-      return;
-    }
-    dropTarget = { grid, cell, swapEl: null };
-    if(placeholder.parentElement !== grid) grid.appendChild(placeholder);
-    setCell(placeholder, cell);
+    if(ghost.parentElement !== grid) grid.appendChild(ghost);
+    ghost.style.display = "";
+    const cell = cellFromPoint(grid, x, y, origin.cell.w, origin.cell.h);
+    setPos(ghost, cell, grid);
+    dropTarget = { grid, cell };
   }
 
   function checkEdge(x){
@@ -273,42 +429,24 @@ function escHtml(s){
     }, 430);
   }
 
-  function clearDragStyles(el){
-    el.classList.remove("dragging");
-    el.style.position = "";
-    el.style.width = "";
-    el.style.height = "";
-    el.style.left = "";
-    el.style.top = "";
-    el.style.margin = "";
-    el.style.pointerEvents = "";
-  }
-
   function endDrag(apply){
     clearPress();
     clearTimeout(edgeTimer); edgeDir = 0;
     if(!active) return;
     const el = active;
     const target = apply ? dropTarget : null;
-    clearDropMarks();
+    if(ghost) ghost.remove();
 
     if(target){
-      const src = origin;
-      if(target.swapEl){
-        const other = target.swapEl;
-        setCell(other, src.cell);
-        if(other.parentElement !== src.grid) src.grid.appendChild(other);
-      }
-      setCell(el, target.cell);
       if(el.parentElement !== target.grid) target.grid.appendChild(el);
+      clearDragStyles(el);
+      setPos(el, target.cell, target.grid);
     } else {
-      resetPlaceholder();
-      setCell(el, origin.cell);
       if(el.parentElement !== origin.grid) origin.grid.appendChild(el);
+      clearDragStyles(el);
+      setPos(el, origin.cell, origin.grid);
     }
-    if(placeholder) placeholder.remove();
-    clearDragStyles(el);
-    active = null; placeholder = null; origin = null; dropTarget = null;
+    active = null; ghost = null; origin = null; dropTarget = null;
     saveLayout();
     setTimeout(() => { longPressed = false; }, 80);
   }
@@ -319,8 +457,8 @@ function escHtml(s){
     const map = {};
     grids.forEach((grid, gi) => {
       itemsIn(grid).forEach(el => {
-        if(el.classList.contains("placeholder") || !el.dataset.app) return;
-        const c = cellOf(el);
+        if(!el.dataset.app || !el._cell) return;
+        const c = el._cell;
         map[el.dataset.app] = { g: gi, c: c.c, r: c.r, w: c.w, h: c.h };
       });
     });
@@ -329,21 +467,31 @@ function escHtml(s){
   function restoreLayout(){
     let map = {};
     try{ map = JSON.parse(localStorage.getItem(LAYOUT_KEY) || "{}") || {}; }catch(e){ map = {}; }
-    const occ = grids.map(() => []);
-    grids.forEach((grid, gi) => {
+    const all = [];
+    grids.forEach(grid => {
       itemsIn(grid).forEach(el => {
-        const s = el.dataset.app && map[el.dataset.app];
-        if(!s || !Number.isFinite(s.g) || !grids[s.g]) return;
-        const tg = grids[s.g];
-        const isWidget = el.classList.contains("widget-large");
-        const w = isWidget ? 2 : 1;
-        const h = isWidget ? 2 : 1;
-        const cell = { c: clamp(s.c, 0, MAX_COL - w), r: clamp(s.r, 0, MAX_ROW - h), w: w, h: h };
-        if(cell.c + cell.w > MAX_COL || cell.r + cell.h > MAX_ROW) return;
-        if(occ[s.g].some(o => overlap(o, cell))) return;
-        if(el.parentElement !== tg) tg.appendChild(el);
-        setCell(el, cell);
-        occ[s.g].push(cell);
+        el._defaultCell = readDefault(el);
+        all.push(el);
+      });
+    });
+    all.forEach(el => {
+      const def = el._defaultCell || readDefault(el);
+      const s = el.dataset.app && map[el.dataset.app];
+      let targetGrid = el.parentElement;
+      let cell = def;
+      if(s && Number.isFinite(s.g) && grids[s.g]){
+        targetGrid = grids[s.g];
+        cell = { c: s.c, r: s.r, w: def.w, h: def.h };
+      }
+      if(targetGrid && el.parentElement !== targetGrid) targetGrid.appendChild(el);
+      if(targetGrid) setPos(el, cell, targetGrid);
+    });
+  }
+  function applyAll(){
+    grids.forEach(grid => {
+      itemsIn(grid).forEach(el => {
+        if(el === active || !el._cell) return;
+        setPos(el, el._cell, grid);
       });
     });
   }
@@ -353,7 +501,9 @@ function escHtml(s){
       item.addEventListener("contextmenu", e => e.preventDefault());
       item.addEventListener("pointerdown", e => {
         if(e.button !== undefined && e.button !== 0) return;
-        if(e.target && e.target.closest && e.target.closest('[contenteditable="true"],input,textarea')) return;
+        if(e.target && e.target.closest && e.target.closest('[contenteditable="true"],input,textarea,select,a')) return;
+        const btn = e.target && e.target.closest ? e.target.closest("button") : null;
+        if(btn && btn !== item) return;
         pointerId = e.pointerId;
         startX = e.clientX; startY = e.clientY;
         clearPress();
@@ -390,7 +540,17 @@ function escHtml(s){
     longPressed = false;
   }, true);
 
+  let resizeT = null;
+  window.addEventListener("resize", () => {
+    if(active) return;
+    clearTimeout(resizeT);
+    resizeT = setTimeout(applyAll, 120);
+  });
+  window.__phoneLayoutRefresh = applyAll;
+
   restoreLayout();
+  requestAnimationFrame(applyAll);
+  setTimeout(applyAll, 80);
 })();
 
 /* =========================
@@ -3149,12 +3309,14 @@ function enterChar(c, id){
   phoneHome.style.display = "grid";
   document.getElementById("checkInnerTitle").textContent = charName(c) + " 的手机";
   applyCharCustom(id);
+  updateHomeWidgets();
 }
 function leaveChar(){
   innerTop.style.display = "none";
   phoneHome.style.display = "grid";
   selectPage.classList.remove("hidden");
   currentChar = null;
+  updateHomeWidgets();
 }
 
 function exitPhone(){
@@ -3171,7 +3333,7 @@ function exitPhone(){
 document.getElementById("checkBack").onclick = exitPhone;
 document.getElementById("checkInnerBack").onclick = leaveChar;
 
-const NON_REFRESH_APPS = ["settings","widget_polaroid","chat_widget"];
+  const NON_REFRESH_APPS = ["settings","widget_polaroid","chat_widget","music_widget","profile_widget","calendar_widget"];
 
 function getAppsForRefresh(){
   return [...document.querySelectorAll('#phoneHome [data-app]')]
@@ -3267,7 +3429,7 @@ const MULTI_COUNT = {
   wallet:"wallet：transactions 10 条左右（收入 2-3 条、支出 7-8 条），balance 为余额"
 };
 
-function buildMultiPrompt(ids, char, ctx){
+async function buildMultiPrompt(ids, char, ctx){
   // 输出太长时模型会从后往前截断；把钱包 / 相册 / 备忘 / 浏览器这些容易被截掉的 App 排到最前面。
   const PREFERRED_ORDER = ["wallet","album","memo","browser","mapcal","taobao","store","health","game","private","doubao","chat","mail","diary","video"];
   const orderedIds = ids.slice().sort((a, b) => {
@@ -3279,13 +3441,33 @@ function buildMultiPrompt(ids, char, ctx){
   const matureLine = "【成人向】内容面向成年读者，成人向内容不限角色；禁止血腥暴力和违法内容。\n";
   let walletContext = "";
   if(ids.includes("wallet")){
+    const wkey = "nano_char_wallet_" + (char && char.id || "");
     let w = null;
-    try{ w = JSON.parse(localStorage.getItem("nano_char_wallet_" + (char && char.id || "")) || "null"); }catch(e){}
-    const bal = (w && typeof w.balance === "number") ? w.balance : 20000;
+    try{ w = JSON.parse(localStorage.getItem(wkey) || "null"); }catch(e){}
+    if(!w && window.NanoIDB){
+      try{
+        const saved = await NanoIDB.get(wkey);
+        if(saved && typeof saved === "object"){ w = saved; saveCharWallet(wkey, w); }
+      }catch(e){}
+    }
+    let profile = null;
+    try{
+      if(window.NanoCharWealth){
+        profile = NanoCharWealth.profileFor((char && (char.setting || char.desc)) || "", (char && char.name) || "");
+        NanoCharWealth.saveProfile(char && char.id, profile);
+      }
+    }catch(e){}
+    let bal = (w && typeof w.balance === "number") ? w.balance : (profile ? profile.balance : 5000);
+    if(profile && (!w || w.seedVersion !== 2 || w.wealthTier !== profile.tier || !!w.lowFamily !== !!profile.lowFamily || !!w.veryPoor !== !!profile.veryPoor)){
+      bal = profile.balance;
+      w = { balance: bal, transactions: [], wealthTier: profile.tier, wealthLabel: profile.label, lowFamily: !!profile.lowFamily, veryPoor: !!profile.veryPoor, seedVersion: 2 };
+      saveCharWallet(wkey, w);
+    }
     const recent = (w && Array.isArray(w.transactions) && w.transactions.length)
       ? w.transactions.slice(0, 5).map(t => (t.type === "income" ? "+" : "-") + "¥" + t.amount + " " + (t.desc || "") + " " + (t.time || "")).join("\n")
       : "（暂无）";
-    walletContext = `\n【当前银行卡余额】¥${bal}\n【最近流水】\n${recent}\nwallet 的 balance 必须等于当前余额 + 收入合计 - 支出合计；流水时间在最近 7 天内，按从新到旧排列；收入 2-3 条、支出 7-8 条，至少 1-2 条自然涉及用户。\n`;
+    const wealth = (profile && window.NanoCharWealth) ? ("\n" + NanoCharWealth.promptBlock(profile) + "\n") : "";
+    walletContext = wealth + `\n【当前银行卡余额】¥${bal}\n【最近流水】\n${recent}\nwallet 的 balance 必须等于当前余额 + 收入合计 - 支出合计；流水时间在最近 7 天内，按从新到旧排列；收入 2-3 条、支出 7-8 条，至少 1-2 条自然涉及用户。收入类型、消费场所和金额必须符合上面的财富阶层，学生不能出现项目尾款/分红/股权/公司报销。\n`;
   }
   return `你是「${char.name}」的手机数据生成器。
 ${ctx}
@@ -3318,7 +3500,7 @@ ${ids.includes("private") ? "- private.preview：一句隐晦的概述；detail�
 - doubao：8-10 条，char 提问与 ai 回答交替；问题贴合角色当下生活与困惑，ai 回答口语化、可带分点，单条 20-60 字。
 - taobao / store：商品名、店铺、规格、价格要像真实电商；外卖写清店名、菜品、时间与配送状态；cart/orders/food 都要有数据。
 - mapcal.places：写角色搜索或导航过的、有真实感的地点；events：写接下来的日程，含时间、地点、类型标签。
-${ids.includes("wallet") ? "- wallet：10 条左右收支，收入 2-3 条（工资、稿费、项目结款、分红、报销、退款、红包等），支出 7-8 条；金额、店铺、时间必须符合角色的身份与消费水平；至少 1-2 条自然涉及用户；时间在最近 7 天内，按从新到旧排列；balance 与流水收支一致，不能为负。\n" : ""}
+${ids.includes("wallet") ? "- wallet：10 条左右收支，收入 2-3 条，收入来源必须严格符合角色的财富阶层（学生只能是生活费/兼职/奖学金/红包/退款；穷人只能是日结/兼职/红包/退款/补助；富人才可以有分红/投资/项目结款），支出 7-8 条；金额、店铺、时间必须符合角色的身份与消费水平；至少 1-2 条自然涉及用户；时间在最近 7 天内，按从新到旧排列；balance 与流水收支一致，不能为负。\n" : ""}
 每个 App 的数据格式必须严格符合示例字段名，只输出一个 JSON 对象，不要解释、不要代码块。
 输出必须是合法 JSON：只输出一个 JSON 对象，不要代码块、注释或多余文字；字符串内部不要出现真实换行，需要分段时写成 \\n；字段之间可以不留空格，但不要为了「紧凑」省略上面要求的内容。`;
 }
@@ -3382,7 +3564,7 @@ function sseRawToEnvelope(raw){
 
 async function genMulti(api, char, ids, opts){
   const ctx = (opts && opts.lite) ? buildLiteContext(char) : await buildCharContext(char);
-  const user = buildMultiPrompt(ids, char, ctx);
+  const user = await buildMultiPrompt(ids, char, ctx);
   const endpoint = buildChatEndpoint(api.url);
   let __sysJson = SYS_JSON;
   try {
@@ -3591,16 +3773,33 @@ async function reRenderCurrentApp(){
 // 把生成的钱包流水合并进角色银行卡（亲属卡「他的」共用同一份数据）
 function mergeWalletForChar(charId, data) {
   const key = "nano_char_wallet_" + (charId || "default");
-  let cur = { balance: 20000, transactions: [] };
+  const charInfo = (typeof currentChar !== "undefined" && currentChar) || {};
+  let profile = null;
+  try{
+    if(window.NanoCharWealth){
+      profile = NanoCharWealth.profileFor(charInfo.setting || charInfo.desc || "", charInfo.name || "");
+      NanoCharWealth.saveProfile(charId, profile);
+    }
+  }catch(e){}
+  let cur = { balance: profile ? profile.balance : 5000, transactions: [], seedVersion: 2, wealthTier: profile ? profile.tier : "", wealthLabel: profile ? profile.label : "", lowFamily: profile ? !!profile.lowFamily : false, veryPoor: profile ? !!profile.veryPoor : false };
   try{
     const w = JSON.parse(localStorage.getItem(key) || "null");
     if(w && typeof w === "object"){
-      cur.balance = Number(w.balance) || 0;
-      cur.transactions = Array.isArray(w.transactions) ? w.transactions : [];
+      if(w.seedVersion !== 2 || (profile && w.wealthTier !== profile.tier) || (profile && !!w.lowFamily !== !!profile.lowFamily) || (profile && !!w.veryPoor !== !!profile.veryPoor)){
+        cur = { balance: profile ? profile.balance : (Number(w.balance) || 0), transactions: [], seedVersion: 2, wealthTier: profile ? profile.tier : "", wealthLabel: profile ? profile.label : "", lowFamily: profile ? !!profile.lowFamily : false, veryPoor: profile ? !!profile.veryPoor : false };
+      }else{
+        cur.balance = Number(w.balance) || 0;
+        cur.transactions = Array.isArray(w.transactions) ? w.transactions : [];
+        cur.seedVersion = 2;
+        cur.wealthTier = w.wealthTier || "";
+        cur.wealthLabel = w.wealthLabel || "";
+        cur.lowFamily = !!w.lowFamily;
+        cur.veryPoor = !!w.veryPoor;
+      }
     }
   }catch(e){}
   const now = Date.now();
-  const txs = [];
+  let txs = [];
   (Array.isArray(data && data.transactions) ? data.transactions : []).forEach(function(t, i){
     if(!t || typeof t !== "object") return;
     const type = t.type === "income" ? "income" : "expense";
@@ -3617,12 +3816,13 @@ function mergeWalletForChar(charId, data) {
       time: time
     });
   });
+  try{ if(profile && window.NanoCharWealth) txs = NanoCharWealth.sanitizeTransactions(profile, txs, { balance: cur.balance }); }catch(e){}
   txs.sort(function(a, b){ return new Date(b.time) - new Date(a.time); });
   let net = 0;
   txs.forEach(function(t){ net += (t.type === "income" ? t.amount : -t.amount); });
   const balance = Math.max(0, Math.round((cur.balance + net) * 100) / 100);
-  const merged = { balance: balance, transactions: txs.slice(0, 500) };
-  try{ localStorage.setItem(key, JSON.stringify(merged)); }catch(e){}
+  const merged = { balance: balance, transactions: txs.slice(0, 500), seedVersion: 2, wealthTier: profile ? profile.tier : "", wealthLabel: profile ? profile.label : "", lowFamily: profile ? !!profile.lowFamily : false, veryPoor: profile ? !!profile.veryPoor : false };
+  saveCharWallet(key, merged);
   return merged;
 }
 
@@ -3820,9 +4020,30 @@ function openDoubao(){ return openHostedApp("doubao", "doubao.html", "renderDoub
 function openTaobao(){ return openHostedApp("taobao", "taobao.html", "renderCharShopping"); }
 function openStore(){ return openHostedApp("store", "taobao.html", "renderCharShopping"); }
 function openMapcal(){ return openHostedApp("mapcal", "mapcal.html", "renderCharMapCalendar"); }
-function openWallet(){
+async function openWallet(){
   const id = currentChar ? currentChar.id : "";
   const nm = currentChar ? currentChar.name : "";
+  try{
+    if(id && window.NanoCharWealth){
+      const profile = NanoCharWealth.profileFor((currentChar && (currentChar.setting || currentChar.desc)) || "", nm);
+      NanoCharWealth.saveProfile(id, profile);
+      const key = "nano_char_wallet_" + id;
+      let w = null;
+      try{ w = JSON.parse(localStorage.getItem(key) || "null"); }catch(e){}
+      if(!w && window.NanoIDB){
+        try{
+          const saved = await NanoIDB.get(key);
+          if(saved && typeof saved === "object"){ w = saved; saveCharWallet(key, w); }
+        }catch(e){}
+      }
+      if(!w || w.seedVersion !== 2 || w.wealthTier !== profile.tier || !!w.lowFamily !== !!profile.lowFamily || !!w.veryPoor !== !!profile.veryPoor){
+        saveCharWallet(key, {
+          balance: profile.balance, transactions: [], seedVersion: 2,
+          wealthTier: profile.tier, wealthLabel: profile.label, lowFamily: !!profile.lowFamily, veryPoor: !!profile.veryPoor
+        });
+      }
+    }
+  }catch(e){}
   return openHostedApp("wallet", "phone-wallet.html?chat=" + encodeURIComponent(id) + "&name=" + encodeURIComponent(nm), "renderCharWallet");
 }
 
@@ -3912,3 +4133,4 @@ document.querySelectorAll('#phoneHome .app[data-app], #phoneHome .dock-slot[data
 });
 
 renderChars();
+updateHomeWidgets();

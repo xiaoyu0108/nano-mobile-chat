@@ -42,6 +42,16 @@
   function getCharName() {
     try { return String(new URLSearchParams(location.search).get('name') || ''); } catch (e) { return ''; }
   }
+  // 只有开启「允许生图」的角色才能生成日程报备照片。
+  function charAllowsImage(id) {
+    try {
+      var raw = localStorage.getItem('chat_setting_allowImage_' + String(id || ''));
+      if (raw === null) return false;
+      var v = raw;
+      try { v = JSON.parse(raw); } catch (e) {}
+      return v === true || v === 1 || v === 'true' || v === '1';
+    } catch (e) { return false; }
+  }
 
   function idbOpen() {
     return new Promise(function (resolve, reject) {
@@ -891,6 +901,8 @@
     opts = opts || {};
     var id = String(opts.charId || getCharId() || '');
     var name = String(opts.charName || getCharName() || '');
+    // 未开启「允许生图」的 char：不生成日程照片。
+    if (!charAllowsImage(id)) return Promise.resolve({ ok: true, skipped: true });
     return readStore().then(function (store) {
       var data = findData(store, id, name);
       if (!data || !Array.isArray(data.events)) return { ok: true, skipped: true };

@@ -70,6 +70,10 @@
     function autoMsgOn(chatId) {
         try { return JSON.parse(localStorage.getItem('chat_setting_autoMsg_' + chatId)) === true; } catch (e) { return false; }
     }
+    // 角色已进入线下：未退出线下前，线上 pending 的主动消息一律丢弃，不再补发/弹通知。
+    function isChatOffline(chatId) {
+        try { return String(localStorage.getItem('nano_chat_mode_' + chatId) || '') === 'offline'; } catch (e) { return false; }
+    }
     function pushToken() {
         try { return localStorage.getItem('nano_push_token') || ''; } catch (e) { return ''; }
     }
@@ -305,6 +309,8 @@
             messages.forEach(function (m) {
                 if (!m || !m.id || !m.chatId) { if (m && m.id) handledMsgIds.push(m.id); return; }
                 if (charIds && !charIds[String(m.chatId)]) { handledMsgIds.push(m.id); return; }
+                // 进入线下的角色：线上不再收主动消息（丢弃并 ack，避免退出线下后集体补发）。
+                if (isChatOffline(String(m.chatId))) { handledMsgIds.push(m.id); return; }
                 // 这个角色已经关闭主动消息：丢弃并 ack，避免关掉后还继续收到旧 pending。
                 if (!autoMsgOn(m.chatId)) { handledMsgIds.push(m.id); return; }
                 var wasSeen = seenIds.indexOf(m.id) >= 0;

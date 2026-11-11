@@ -110,6 +110,36 @@
         } catch(e) {}
     }
     function saveMsgs(){ try { localStorage.setItem(MSG_KEY, JSON.stringify(messages.slice(-400))); } catch(e){} notifyGroupListPreview(); }
+    function consumePendingGroupCards(){
+        if (typeof messages === 'undefined' || !Array.isArray(messages)) return;
+        var q = null;
+        try { q = JSON.parse(localStorage.getItem('nano_pending_group_cards') || 'null'); } catch(e) {}
+        if (!q || !Array.isArray(q[chatId]) || !q[chatId].length) return;
+        var list = q[chatId].slice();
+        delete q[chatId];
+        try {
+            if (Object.keys(q).length) localStorage.setItem('nano_pending_group_cards', JSON.stringify(q));
+            else localStorage.removeItem('nano_pending_group_cards');
+        } catch(e) {}
+        list.forEach(function(p){
+            if (!p) return;
+            if (p.mode === 'split' && p.card && Array.isArray(p.card.items)) {
+                p.card.items.forEach(function(it){
+                    if (!it || !it.text) return;
+                    pushMsg({ type:'right', senderId:'me', isCard:false, text: String(it.text), time: it.time || '' });
+                });
+            } else if (p.card) {
+                pushMsg({ type:'right', senderId:'me', isCard:true, cardData:p.card });
+            } else if (p.text) {
+                pushMsg({ type:'right', senderId:'me', isCard:false, text:String(p.text) });
+            }
+        });
+    }
+    try {
+        window.addEventListener('storage', function(e){
+            if (e && e.key === 'nano_pending_group_cards') { try { consumePendingGroupCards(); } catch(err) {} }
+        });
+    } catch(e) {}
 
     var group = loadGroup();
     var settings = loadSettings();
@@ -815,21 +845,59 @@
     }
 
     // 群成员资料 / 加 NPC 为好友
+    function openPrivateChatFromGroup(who, rec){
+        var cid = String((rec && rec.id) || who.id || '');
+        if (!cid) return;
+        var nm = (rec && rec.name) || who.nick || who.name || '角色';
+        var avatar = (rec && rec.avatar) || who.avatar || '';
+        try {
+            if (window.parent !== window) {
+                window.parent.postMessage({ type: 'openChat', chatId: cid, chatName: nm, chatAvatar: avatar }, '*');
+                return;
+            }
+        } catch (e) {}
+        location.href = 'chat_inner.html?chat=' + encodeURIComponent(cid) + '&name=' + encodeURIComponent(nm);
+    }
     function openMemberProfile(who){
         if (!who) return;
         var name = who.nick || who.name || '成员';
         var av = who.avatar ? '<img src="' + who.avatar + '" style="width:100%;height:100%;object-fit:cover;">' : (who.initial || name.charAt(0));
         var setting = (who.setting && String(who.setting).trim()) ? String(who.setting).trim() : '';
-        var body = '<div style="text-align:center;padding:8px 0;">' +
-            '<div style="width:64px;height:64px;border-radius:50%;margin:0 auto 10px;background:' + (who.bg||'#8e8e93') + ';color:#fff;display:flex;align-items:center;justify-content:center;font-size:24px;overflow:hidden;">' + av + '</div>' +
-            '<div style="font-size:17px;font-weight:600;color:#1c1c1e;">' + name + '</div>' +
-            (who.title ? '<div style="font-size:12px;color:#8e8e93;margin-top:4px;">' + who.title + '</div>' : '') +
-            (setting
-                ? '<div style="text-align:left;font-size:13px;line-height:1.6;color:#3c3c43;margin-top:12px;padding:10px 12px;background:rgba(120,120,128,0.08);border-radius:12px;max-height:180px;overflow-y:auto;">' + setting + '</div>'
-                : '<div style="font-size:12px;color:#8e8e93;margin-top:10px;">（暂无详细人设）</div>') +
-            '<div style="font-size:12px;color:#8e8e93;margin-top:10px;">点击“确定”把他/她加为好友，之后可在聊天页私聊</div>' +
-            '</div>';
-        openActionPopup({ title: '群成员', subtitle: '', body: body, onConfirm: function(){ addNpcFriend(who); } });
+        var mask = getCurrentMask();
+        var mid = mask && mask.id != null ? String(mask.id) : '';
+        getCharactersFromDB().then(function(chars){
+            var rec = null;
+            (chars || []).forEach(function(c){
+                if (!c) return;
+                if (!rec && String(c.id) === String(who.id)) rec = c;
+            });
+            if (!rec) {
+                (chars || []).forEach(function(c){
+                    if (!c) return;
+                    if (!rec && (c.name === who.nick || c.name === who.name)) rec = c;
+                });
+            }
+            var isFriend = !!(rec && !rec.nanoAssistant && (!rec.bindUser || !mid || String(rec.bindUser) === mid));
+            var hint = isFriend
+                ? '你们已经是好友，点击“进入私聊”继续聊天'
+                : '点击“加好友”把 TA 加为好友，之后可在聊天页私聊';
+            var body = '<div style="text-align:center;padding:8px 0;">' +
+                '<div style="width:64px;height:64px;border-radius:50%;margin:0 auto 10px;background:' + (who.bg||'#8e8e93') + ';color:#fff;display:flex;align-items:center;justify-content:center;font-size:24px;overflow:hidden;">' + av + '</div>' +
+                '<div style="font-size:17px;font-weight:600;color:#1c1c1e;">' + name + '</div>' +
+                (who.title ? '<div style="font-size:12px;color:#8e8e93;margin-top:4px;">' + who.title + '</div>' : '') +
+                (setting
+                    ? '<div style="text-align:left;font-size:13px;line-height:1.6;color:#3c3c43;margin-top:12px;padding:10px 12px;background:rgba(120,120,128,0.08);border-radius:12px;max-height:180px;overflow-y:auto;">' + setting + '</div>'
+                    : '<div style="font-size:12px;color:#8e8e93;margin-top:10px;">（暂无详细人设）</div>') +
+                '<div style="font-size:12px;color:#8e8e93;margin-top:10px;">' + hint + '</div>' +
+                '</div>';
+            openActionPopup({
+                title: '群成员',
+                subtitle: '',
+                body: body,
+                confirmText: isFriend ? '进入私聊' : '加好友',
+                onConfirm: isFriend ? function(){ openPrivateChatFromGroup(who, rec); } : function(){ addNpcFriend(who); }
+            });
+        });
     }
     function addNpcFriend(who){
         if (!who) return;
@@ -1617,6 +1685,12 @@
             if (cd.cardType === 'notice') {
                 var c = Object.keys(cd.confirmed || {}).length;
                 return who + '发布群公告：' + (cd.text || '') + '（' + c + '人已确认）';
+            }
+            if (cd.cardType === 'forwardBundle') {
+                var fwLines = (Array.isArray(cd.items) ? cd.items : []).slice(0, 20).map(function (it) {
+                    return (it.who || '') + '：' + (it.text || '');
+                }).join('\n');
+                return who + '转发来一段聊天记录（' + (cd.sub || '聊天记录') + '，共 ' + (cd.count || 0) + ' 条）：\n' + fwLines;
             }
             return who + '发送了一条卡片消息';
         }
@@ -2701,6 +2775,7 @@
         $('apTitle').textContent = opts.title;
         $('apSubtitle').textContent = opts.subtitle || '';
         $('apBody').innerHTML = opts.body || '';
+        $('apConfirm').textContent = opts.confirmText || '确定';
         apCurrentAction = opts.onConfirm;
         apPopup.classList.add('active');
         if (opts.onOpen) opts.onOpen();
@@ -3180,6 +3255,44 @@ function updateMsCount(){
 
 $('msCancel').addEventListener('click', exitMultiSelect);
 
+var msForwardBtn = $('msForward');
+if (msForwardBtn) msForwardBtn.addEventListener('click', function(){
+    if (selectedIds.size === 0) return;
+    var picked = messages.filter(function(m){ return m && selectedIds.has(m.id); });
+    var items = picked.map(function(m){
+        var text = String(m.text || '').trim();
+        if (m.isImage) text = '[图片] ' + String((m.imageData && m.imageData.desc) || '');
+        else if (m.isVoice) text = '[语音] ' + String(m.transcript || '');
+        else if (m.isCard) text = '[卡片] ' + String((m.cardData && (m.cardData.title || m.cardData.sub)) || '');
+        var who = '我';
+        if (m.type !== 'right') {
+            var mem = getMember(m.senderId);
+            who = mem ? (mem.nick || mem.name || '成员') : '成员';
+        } else {
+            who = settings.myNick || '我';
+        }
+        return { who: who, text: text.slice(0, 400), time: String(m.time || '') };
+    });
+    if (!items.length) return;
+    exitMultiSelect();
+    if (window.NanoForward) {
+        var rg = loadRegistryGroup();
+        window.NanoForward.open({
+            sourceName: group.name || '群聊',
+            sourceKind: 'group',
+            currentId: chatId,
+            owner: String((rg && (rg.createdBy || rg.ownerUid)) || ''),
+            items: items
+        });
+    } else {
+        var tip = document.createElement('div');
+        tip.textContent = '转发组件未加载，请刷新页面后重试';
+        tip.style.cssText = 'position:fixed;left:50%;bottom:100px;transform:translateX(-50%);z-index:99999;padding:10px 16px;border-radius:12px;background:rgba(28,28,30,.92);color:#fff;font-size:14px;';
+        document.body.appendChild(tip);
+        setTimeout(function(){ try { tip.remove(); } catch(e) {} }, 1800);
+    }
+});
+
 $('msDelete').addEventListener('click', function(){
     if (selectedIds.size === 0) return;
     messages = messages.filter(function(m){ return !selectedIds.has(m.id); });
@@ -3205,6 +3318,15 @@ messageContainer.addEventListener('click', function(e){
 
     // ========== 卡片点击 ==========
     messageContainer.addEventListener('click', function(e){
+        var fwCard = e.target.closest('.bubble-card.forwardBundle');
+        if (fwCard) {
+            var fwRow = fwCard.closest('.message-row');
+            var fwMsg = fwRow ? messages.find(function(m){ return m.id === fwRow.dataset.id; }) : null;
+            if (fwMsg && fwMsg.cardData) {
+                if (window.NanoForward && window.NanoForward.openViewer) window.NanoForward.openViewer(fwMsg.cardData);
+            }
+            return;
+        }
         var rpCard = e.target.closest('.bubble-card.redpacket');
         if (rpCard) {
             var row = rpCard.closest('.message-row');
@@ -3372,7 +3494,7 @@ messageContainer.addEventListener('click', function(e){
         showGroupTyping();
         setTimeout(function(){ requestGroupReply(); }, 400);
     }
-    resolveIdentities().then(function(){ renderHeader(); renderMessages(); });
+    resolveIdentities().then(function(){ renderHeader(); renderMessages(); try { consumePendingGroupCards(); } catch(e) {} });
 })();
 
 /* iOS 键盘：收缩群聊容器，让输入栏位于键盘（含附属栏）上方；父页面也会 postMessage 同步 */

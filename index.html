@@ -10,7 +10,7 @@
     // 造成每次打开都清缓存 + 反复 reload。
     // build 号保持最新即可，但不要再用 reload 强制更新：reload + 旧 SW 的 HTML 缓存
     // 会让新旧 build 号互相触发，开屏动画无限循环。现在只清缓存，不自动 reload。
-    window.__NANO_BUILD__ = 'nano-2026-11-11-08';
+    window.__NANO_BUILD__ = 'nano-2026-11-12-3';
     (function () {
         try {
             var KEY = 'nano_build';
@@ -51,8 +51,8 @@
     <link rel="preload" as="script" href="js/nano-push.js?v=20261106a">
     <link rel="preload" as="script" href="js/keep-alive.js?v=20261023a">
     <link rel="preload" as="script" href="js/char-takeover.js?v=20261107a">
-    <link rel="preload" as="script" href="js/online-catchup.js?v=20261108b">
-    <link rel="preload" as="script" href="js/auto-push-bridge.js?v=20261106a">
+    <link rel="preload" as="script" href="js/online-catchup.js?v=20261112a">
+    <link rel="preload" as="script" href="js/auto-push-bridge.js?v=20261112a">
     <!-- 聊天/通话/设置页会同步加载 localforage；在这里提前拉，避免它们卡在 CDN 往返上 -->
     <link rel="preload" as="script" href="js/localforage.min.js">
     <link rel="dns-prefetch" href="https://unpkg.com">
@@ -1102,7 +1102,7 @@
   // 开场动画只在「大退后重新进入」时出现；App 内切换页面不会重载首页，所以不会反复播放。
   // 时长压到 0.75 秒，点屏幕 / 按 Esc 可立即加速结束；
   // 淡出开始时就先显示桌面，让首页在动画遮罩下面先画出来，避免淡出结束后再等一帧。
-  var DUR = 750, READY_HOLD = 80;
+  var DUR = 420, READY_HOLD = 40;
   var t0 = performance.now(), lastSp = 0, burst = false, done = false, raf = 0;
   var G = ['♡', '✦', '✧', '●'], COL = ['#ffc2d9', '#ffd7a8', '#cfe4ff', '#fff', '#e2d6ff'];
 
@@ -1174,6 +1174,16 @@
 
   root.addEventListener('pointerdown', skip);
   window.addEventListener('keydown', function (e) { if (e.key === 'Escape') skip(); });
+  // 首页 iframe 画好后会主动通知：能提前结束就提前结束，不再死等固定时长。
+  window.addEventListener('message', function (e) {
+    var d = e && e.data;
+    if (!d || d.type !== 'nanoHomeReady') return;
+    try {
+      var f = document.getElementById('homeFrame');
+      if (f && e.source && e.source !== f.contentWindow) return;
+    } catch (err) {}
+    skip();
+  });
   window.NanoSplash = { skip: skip, done: removeSplash };
   raf = requestAnimationFrame(frame);
 })();
@@ -3108,8 +3118,7 @@ setTimeout(function () {
             }
             if (target.indexOf('offline:') === 0) {
                 const oid = target.slice(8);
-                // 线上 → 线下：系统提示「已进入线下」
-                try { if (window.__nanoShell) window.__nanoShell.postToChat({ type: 'NANO_SYS_NOTICE', text: '已进入线下' }); } catch (e) {}
+                // 进入线下：offline.html 加载后会标记状态并通知线上聊天补「已进入线下」。
                 openFullscreen('offline.html?chat=' + encodeURIComponent(oid), '线下聊天', false, 'main');
                 return;
             }
@@ -4040,6 +4049,15 @@ setTimeout(function () {
                 broadcastToChatFrames(data);
             }
 
+            // 线下：进入时立刻标记该会话，通知线上聊天「已进入线下」，
+            // 并让自动消息配置同步时排除这个角色（未退出线下前不再发线上消息）。
+            if (data.type === 'nanoOfflineEntered') {
+                const cid = String(data.chatId || '');
+                if (cid) { try { localStorage.setItem('nano_chat_mode_' + cid, 'offline'); } catch (e) {} }
+                try { broadcastToChatFrames({ type: 'NANO_OFFLINE_STATE', chatId: cid, offline: true }); } catch (e) {}
+                return;
+            }
+
             // 线下 → 直接退出：私聊回到「好友」，群聊回到「群聊」列表
             if (data.type === 'nanoOfflineExitToChat') {
                 try { localStorage.setItem('nano_chat_mode_' + (data.chatId || 'default'), 'offline'); } catch (e) {}
@@ -4133,6 +4151,7 @@ setTimeout(function () {
                     if (!win) return;
                     try {
                         win.postMessage({ type: 'NANO_SYS_NOTICE', text: '已结束线下' }, '*');
+                        win.postMessage({ type: 'NANO_OFFLINE_STATE', chatId: chatId, offline: false }, '*');
                         if (chatId && (lu || lc || (rounds && rounds.length))) win.postMessage({ type: 'NANO_OFFLINE_ROUND', chatId: chatId, lastUser: lu, lastChar: lc, rounds: rounds }, '*');
                     } catch (e) {}
                 };
@@ -4758,8 +4777,8 @@ setTimeout(function () {
 <script src="js/nano-prompts.js?v=20261108a"></script>
 <script src="js/screen-share.js?v=20261027a"></script>
 <script src="js/ios-bridge.js?v=20261027k"></script>
-<script src="js/auto-push-bridge.js?v=20261106a"></script>
-<script src="js/online-catchup.js?v=20261108b"></script>
+<script src="js/auto-push-bridge.js?v=20261112a"></script>
+<script src="js/online-catchup.js?v=20261112a"></script>
 <script src="js/whisper-store.js?v=20261026a"></script>
 <script src="js/char-secret-chat.js?v=20261029f"></script>
 </div>

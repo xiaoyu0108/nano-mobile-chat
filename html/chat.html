@@ -1330,8 +1330,18 @@
     }).catch(function () { return false; });
   }
 
+  let __charsCache = null;
+  let __charsCacheAt = 0;
   function getCharacters() {
-    return dbGetAll('nano_characters_db', 1, 'characters', [{ name: 'characters', keyPath: 'id' }]);
+    const now = Date.now();
+    // 15 秒内复用角色库：来一条消息就 getAll 一次整个角色库太浪费；
+    // 角色被改名/删除后（角色页会带 chars 或 nanoCharUpdated）会立即失效。
+    if (__charsCache && now - __charsCacheAt < 15000) return Promise.resolve(__charsCache);
+    return dbGetAll('nano_characters_db', 1, 'characters', [{ name: 'characters', keyPath: 'id' }]).then(function (rows) {
+      __charsCache = Array.isArray(rows) ? rows : [];
+      __charsCacheAt = Date.now();
+      return __charsCache;
+    });
   }
 
   function getMaskAvatar(id) {
@@ -1967,9 +1977,13 @@
     if (!confirm('删除该角色？其聊天记录也会一并删除。')) return;
     await dbDelete('nano_characters_db', 1, 'characters', id, [{ name: 'characters', keyPath: 'id' }]);
     try { localStorage.removeItem('chat_messages_' + id); } catch (e) {}
+    try { localStorage.removeItem('chat_hot_' + id); } catch (e) {}
     try { localStorage.removeItem('chat_setting_remark_' + id); } catch (e) {}
+    __charsCache = null;
+    __charsCacheAt = 0;
     if (window.localforage) {
       try { localforage.removeItem('chat_messages_' + id).catch(function () {}); } catch (e) {}
+      try { localforage.removeItem('chat_hot_' + id).catch(function () {}); } catch (e) {}
     }
     savePinnedIds(getPinnedIds().filter(function (x) { return String(x) !== String(id); }));
     await loadFriends();
@@ -2336,6 +2350,14 @@
         renderProfile();
       }
       if (d.type === 'contactsDataUpdated' || d.type === 'nanoCharUpdated') {
+        // 角色页会带上完整 chars；聊天页自己发的消息更新不带 data，直接复用缓存，
+        // 避免每来一条消息就把整个角色库从 IndexedDB 重新读一遍。
+        if (d.data && Array.isArray(d.data.chars)) {
+          __charsCache = d.data.chars;
+          __charsCacheAt = Date.now();
+        } else if (d.type === 'nanoCharUpdated') {
+          __charsCache = null;
+        }
         loadFriends().then(function () { if (currentTab === 'friends') renderCurrent(); renderProfile(); });
       }
       if (d.type === 'nanoUnreadUpdated') {

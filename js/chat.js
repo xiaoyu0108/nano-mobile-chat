@@ -331,9 +331,11 @@
         savePinnedIds(pinned);
         pruneCharFromWorldbooks(charId);
         try { localStorage.removeItem('chat_messages_' + charId); } catch (e) {}
+        try { localStorage.removeItem('chat_hot_' + charId); } catch (e) {}
         try { localStorage.removeItem('chat_setting_remark_' + charId); } catch (e) {}
         if (typeof localforage !== 'undefined') {
             localforage.removeItem('chat_messages_' + charId).catch(function() {});
+            localforage.removeItem('chat_hot_' + charId).catch(function() {});
         }
         try {
             window.parent.postMessage({ type: 'contactsDataUpdated', data: { chars: [] } }, '*');

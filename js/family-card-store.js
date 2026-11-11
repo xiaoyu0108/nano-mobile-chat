@@ -28,7 +28,9 @@
     }
 
     function write(chatId, list) {
-        try { localStorage.setItem(key(chatId), JSON.stringify(list || [])); } catch (e) {}
+        list = list || [];
+        try { localStorage.setItem(key(chatId), JSON.stringify(list)); } catch (e) {}
+        try { if (window.NanoIDB) NanoIDB.set(key(chatId), list).catch(function () {}); } catch (e) {}
     }
 
     function genId() { return 'fc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6); }
@@ -92,8 +94,43 @@
         });
     }
 
+    function round2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
+
+    function newCardId() { return 'card_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6); }
+
+    function normalizeWallet(wd) {
+        wd = (wd && typeof wd === 'object') ? wd : {};
+        if (typeof wd.balance !== 'number') wd.balance = 0;
+        if (!Array.isArray(wd.transactions)) wd.transactions = [];
+        if (!Array.isArray(wd.cards) || !wd.cards.length) {
+            wd.cards = [{
+                id: newCardId(),
+                bankId: wd.bankId || 'gray',
+                bankName: wd.bankName || '',
+                cardNumber: wd.cardNumber || '',
+                balance: wd.balance
+            }];
+        }
+        wd.cards = wd.cards.map(function (c, i) {
+            c = (c && typeof c === 'object') ? c : {};
+            if (!c.id) c.id = newCardId() + i;
+            c.bankId = c.bankId || 'gray';
+            c.bankName = c.bankName || '';
+            c.cardNumber = c.cardNumber || '';
+            if (typeof c.balance !== 'number') c.balance = 0;
+            return c;
+        });
+        var active = wd.cards.filter(function (c) { return String(c.id) === String(wd.activeCardId); })[0] || wd.cards[0];
+        wd.activeCardId = active.id;
+        wd.balance = active.balance;
+        wd.bankId = active.bankId;
+        wd.bankName = active.bankName;
+        wd.cardNumber = active.cardNumber;
+        return wd;
+    }
+
     function defaultWallet() {
-        return { balance: 5000, cardNumber: '', bankName: '', transactions: [] };
+        return normalizeWallet({ balance: 5000, cardNumber: '', bankName: '', cards: [], activeCardId: '', transactions: [] });
     }
 
     function readWallet() {
@@ -113,17 +150,13 @@
                                 r2.onsuccess = function () {
                                     var v2 = r2.result && r2.result.value;
                                     if (!v2 || typeof v2 !== 'object') { resolve(defaultWallet()); return; }
-                                    if (typeof v2.balance !== 'number') v2.balance = 0;
-                                    if (!Array.isArray(v2.transactions)) v2.transactions = [];
-                                    resolve(v2);
+                                    resolve(normalizeWallet(v2));
                                 };
                                 r2.onerror = function () { resolve(defaultWallet()); };
                             } catch (e2) { resolve(defaultWallet()); }
                             return;
                         }
-                        if (typeof v.balance !== 'number') v.balance = 0;
-                        if (!Array.isArray(v.transactions)) v.transactions = [];
-                        resolve(v);
+                        resolve(normalizeWallet(v));
                     };
                     r.onerror = function () { resolve(defaultWallet()); };
                 } catch (e) { resolve(defaultWallet()); }
@@ -131,19 +164,30 @@
         });
     }
 
-    // 记一笔支出：扣余额 + 写流水（desc 里带「亲属卡」便于区分）
-    function spend(desc, amount) {
-        var amt = Math.round((parseFloat(amount) || 0) * 100) / 100;
+    function spend(desc, amount, cardId, meta) {
+        var amt = round2(amount);
         if (amt <= 0) return Promise.resolve(null);
         return readWallet().then(function (wd) {
-            wd.balance = Math.max(0, (Number(wd.balance) || 0) - amt);
+            wd = normalizeWallet(wd);
+            var card = wd.cards.filter(function (c) { return String(c.id) === String(cardId || wd.activeCardId); })[0] || wd.cards[0];
+            if (!card) throw new Error('没有可用的银行卡');
+            if ((Number(card.balance) || 0) < amt) throw new Error('银行卡余额不足');
+            card.balance = round2((Number(card.balance) || 0) - amt);
+            if (String(card.id) === String(wd.activeCardId)) wd.balance = card.balance;
             wd.transactions = Array.isArray(wd.transactions) ? wd.transactions : [];
+            meta = meta || {};
             wd.transactions.unshift({
                 id: 'tx_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
                 type: 'expense',
                 amount: amt,
                 desc: desc || '亲属卡消费',
-                time: new Date().toISOString()
+                time: new Date().toISOString(),
+                cardId: card.id,
+                cardLast4: String(card.cardNumber || '').replace(/\s/g, '').slice(-4),
+                bankName: card.bankName || '',
+                familyId: meta.familyId || '',
+                familyCardId: meta.familyCardId || '',
+                charName: meta.charName || ''
             });
             if (wd.transactions.length > 500) wd.transactions = wd.transactions.slice(0, 500);
             return openWalletDb().then(function (db) {
@@ -152,30 +196,42 @@
                         var tx = db.transaction('wallet_data', 'readwrite');
                         tx.objectStore('wallet_data').put({ key: walletKey(), value: wd });
                     } catch (e) {}
-                    try { window.parent.postMessage({ type: 'walletUpdated', data: { balance: wd.balance, transactions: wd.transactions } }, '*'); } catch (e) {}
+                    try {
+                        window.parent.postMessage({
+                            type: 'walletUpdated',
+                            data: { balance: wd.balance, transactions: wd.transactions, cards: wd.cards, activeCardId: wd.activeCardId }
+                        }, '*');
+                    } catch (e) {}
                     resolve(wd);
                 });
             });
         });
     }
 
-    // ---- 对方的银行卡（亲属卡的出资方可能是对方）----
-    // 存在 localStorage：nano_char_wallet_<chatId>，默认给一个初始余额，独立于用户银行卡
     function charKey(chatId) { return 'nano_char_wallet_' + (chatId || 'default'); }
+    function charProfile(chatId) {
+        try { if (window.NanoCharWealth) return NanoCharWealth.readProfile(chatId); } catch (e) {}
+        return null;
+    }
     function readCharWallet(chatId) {
         try {
             var w = JSON.parse(localStorage.getItem(charKey(chatId)) || 'null');
-            if (!w || typeof w !== 'object') return { balance: 20000, transactions: [] };
+            if (!w || typeof w !== 'object') {
+                return { balance: 5000, transactions: [], seedVersion: 2 };
+            }
             if (typeof w.balance !== 'number') w.balance = 0;
             if (!Array.isArray(w.transactions)) w.transactions = [];
             return w;
-        } catch (e) { return { balance: 20000, transactions: [] }; }
+        } catch (e) {
+            return { balance: 5000, transactions: [], seedVersion: 2 };
+        }
     }
     function writeCharWallet(chatId, w) {
         try { localStorage.setItem(charKey(chatId), JSON.stringify(w)); } catch (e) {}
+        try { if (window.NanoIDB) NanoIDB.set(charKey(chatId), w).catch(function () {}); } catch (e) {}
     }
     function bumpCharTx(w, type, desc, amount) {
-        var amt = Math.round((parseFloat(amount) || 0) * 100) / 100;
+        var amt = round2(amount);
         if (amt <= 0) return false;
         w.balance = Math.max(0, (Number(w.balance) || 0) + (type === 'income' ? amt : -amt));
         w.transactions.unshift({
@@ -196,48 +252,89 @@
         return Promise.resolve(w);
     }
 
-    // 首次进入时读取人设，据此确定对方的初始银行卡余额（无上限，人设越“多金”越高）
-    function seedCharWallet(chatId, personaText) {
+    function seedCharWallet(chatId, personaText, name) {
         try {
             var k = charKey(chatId);
-            if (localStorage.getItem(k)) return readCharWallet(chatId);
-            var s = String(personaText || 'char');
-            // FNV-1a 哈希，保证同一个人设每次结果一致
-            var h = 2166136261 >>> 0;
-            for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
-            var w = { balance: Math.round(20000 + (h % 3000000)), transactions: [] };
+            var raw = localStorage.getItem(k);
+            var old = raw ? JSON.parse(raw) : null;
+            var profile = null;
+            try {
+                if (window.NanoCharWealth) {
+                    profile = NanoCharWealth.profileFor(personaText, name);
+                    NanoCharWealth.saveProfile(chatId, profile);
+                }
+            } catch (e) {}
+            if (!profile) {
+                return readCharWallet(chatId);
+            }
+            if (old && old.seedVersion === 2 && old.wealthTier === profile.tier &&
+                !!old.lowFamily === !!profile.lowFamily && !!old.veryPoor === !!profile.veryPoor &&
+                typeof old.balance === 'number') {
+                return readCharWallet(chatId);
+            }
+            var w = {
+                balance: round2(profile.balance),
+                transactions: [],
+                wealthTier: profile.tier,
+                wealthLabel: profile.label,
+                lowFamily: !!profile.lowFamily,
+                veryPoor: !!profile.veryPoor,
+                seedVersion: 2
+            };
             writeCharWallet(chatId, w);
             return w;
         } catch (e) { return readCharWallet(chatId); }
     }
 
-    // 刷新：随机产生 1~3 笔对方的收入/支出，模拟对方银行卡的动态
-    var CHAR_DESC_IN = ['兼职收入', '红包收入', '报销到账', '项目结款', '卖闲置收入', '稿费'];
-    var CHAR_DESC_OUT = ['咖啡', '外卖', '打车', '买书', '电影票', '超市采购', '奶茶', '话费充值'];
     function bumpCharWallet(chatId) {
         var w = readCharWallet(chatId);
+        var profile = charProfile(chatId);
+        try { if (!profile && window.NanoCharWealth) profile = NanoCharWealth.profileFor('', '角色'); } catch (e) {}
         var n = 1 + Math.floor(Math.random() * 3);
-        for (var i = 0; i < n; i++) {
-            var income = Math.random() < 0.45;
-            var amt = Math.round((income ? (200 + Math.random() * 5000) : (20 + Math.random() * 1500)) * 100) / 100;
-            w.balance = Math.max(0, (Number(w.balance) || 0) + (income ? amt : -amt));
-            var pool = income ? CHAR_DESC_IN : CHAR_DESC_OUT;
-            w.transactions.unshift({
-                id: 'ctx_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5),
-                type: income ? 'income' : 'expense',
-                amount: amt,
-                desc: pool[Math.floor(Math.random() * pool.length)],
-                time: new Date().toISOString()
+        var txs = profile && window.NanoCharWealth
+            ? NanoCharWealth.randomWalletTransactions(profile, n, '', { balance: w.balance })
+            : [];
+        if (txs.length) {
+            txs.forEach(function (t) {
+                w.balance = Math.max(0, round2((Number(w.balance) || 0) + (t.type === 'income' ? t.amount : -t.amount)));
+                w.transactions.unshift(t);
             });
+        } else {
+            for (var i = 0; i < n; i++) bumpCharTx(w, 'expense', '日常支出', 20 + Math.random() * 100);
         }
         if (w.transactions.length > 500) w.transactions = w.transactions.slice(0, 500);
         writeCharWallet(chatId, w);
         return w;
     }
 
+    // localStorage 被清理 / 写入失败时，从 IndexedDB 把亲属卡和角色银行卡补回来。
+    // 不覆盖本地已有数据，避免旧 IDB 快照盖掉刚写入的新流水。
+    function hydrate(chatId) {
+        if (!window.NanoIDB) return Promise.resolve(false);
+        return Promise.all([
+            NanoIDB.get(key(chatId)),
+            NanoIDB.get(charKey(chatId))
+        ]).then(function (r) {
+            var changed = false;
+            if (Array.isArray(r[0]) && r[0].length && !read(chatId).length) {
+                try { localStorage.setItem(key(chatId), JSON.stringify(r[0])); changed = true; } catch (e) {}
+            }
+            if (r[1] && typeof r[1] === 'object' && !localStorage.getItem(charKey(chatId))) {
+                try { localStorage.setItem(charKey(chatId), JSON.stringify(r[1])); changed = true; } catch (e) {}
+            }
+            return changed;
+        }).catch(function () { return false; });
+    }
+
+    function getCard(wd, cardId) {
+        wd = normalizeWallet(wd);
+        return wd.cards.filter(function (c) { return String(c.id) === String(cardId || wd.activeCardId); })[0] || wd.cards[0] || null;
+    }
+
     window.NanoFamilyCardStore = {
         read: read,
         write: write,
+        hydrate: hydrate,
         add: add,
         update: update,
         remove: remove,
@@ -245,6 +342,8 @@
         latestPending: latestPending,
         genId: genId,
         readWallet: readWallet,
+        normalizeWallet: normalizeWallet,
+        getCard: getCard,
         spend: spend,
         readCharWallet: readCharWallet,
         writeCharWallet: writeCharWallet,

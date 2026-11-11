@@ -1,4 +1,4 @@
-// node_modules/uint8array-extras/index.js
+// push-worker/node_modules/uint8array-extras/index.js
 var objectToString = Object.prototype.toString;
 var uint8ArrayStringified = "[object Uint8Array]";
 var arrayBufferStringified = "[object ArrayBuffer]";
@@ -90,7 +90,7 @@ function base64ToUint8Array(base64String) {
 }
 var byteToHexLookupTable = Array.from({ length: 256 }, (_, index) => index.toString(16).padStart(2, "0"));
 
-// node_modules/@block65/webcrypto-web-push/dist/lib/utils.js
+// push-worker/node_modules/@block65/webcrypto-web-push/dist/lib/utils.js
 function encodeRecordSize(size) {
   const bytes = new Uint8Array(4);
   new DataView(bytes.buffer).setUint32(0, size);
@@ -102,7 +102,7 @@ function invariant(condition, message) {
   }
 }
 
-// node_modules/@block65/webcrypto-web-push/dist/lib/client-keys.js
+// push-worker/node_modules/@block65/webcrypto-web-push/dist/lib/client-keys.js
 async function deriveClientKeys(sub) {
   const bytes = base64ToUint8Array(sub.keys.p256dh);
   const authSecretBytes = base64ToUint8Array(sub.keys.auth);
@@ -118,7 +118,7 @@ async function deriveClientKeys(sub) {
   };
 }
 
-// node_modules/@block65/webcrypto-web-push/dist/lib/hkdf.js
+// push-worker/node_modules/@block65/webcrypto-web-push/dist/lib/hkdf.js
 function createHMAC(data) {
   const keyPromise = crypto.subtle.importKey("raw", data, {
     name: "HMAC",
@@ -146,7 +146,7 @@ async function hkdf(salt, ikm) {
   };
 }
 
-// node_modules/@block65/webcrypto-web-push/dist/lib/info.js
+// push-worker/node_modules/@block65/webcrypto-web-push/dist/lib/info.js
 function createKeyInfo(clientPublic, serverPublic) {
   return new Uint8Array([
     ...stringToUint8Array("WebPush: info\0"),
@@ -158,7 +158,7 @@ function createInfo(type) {
   return stringToUint8Array(`Content-Encoding: ${type}\0`);
 }
 
-// node_modules/@block65/webcrypto-web-push/dist/lib/local-keys.js
+// push-worker/node_modules/@block65/webcrypto-web-push/dist/lib/local-keys.js
 async function generateLocalKeys() {
   const keyPair = await crypto.subtle.generateKey({
     name: "ECDH",
@@ -170,12 +170,12 @@ async function generateLocalKeys() {
   };
 }
 
-// node_modules/@block65/webcrypto-web-push/dist/lib/salt.js
+// push-worker/node_modules/@block65/webcrypto-web-push/dist/lib/salt.js
 async function getSalt() {
   return crypto.getRandomValues(new Uint8Array(16));
 }
 
-// node_modules/@block65/webcrypto-web-push/dist/lib/encrypt.js
+// push-worker/node_modules/@block65/webcrypto-web-push/dist/lib/encrypt.js
 var recordSize = 4096;
 var headerSize = 21 + 65;
 var maxPlaintextSize = recordSize - headerSize - 17;
@@ -217,7 +217,7 @@ async function encryptNotification(subscription, plaintext, options = {}) {
   ]);
 }
 
-// node_modules/@block65/webcrypto-web-push/dist/lib/base64.js
+// push-worker/node_modules/@block65/webcrypto-web-push/dist/lib/base64.js
 function encodeBase64Url(value) {
   return uint8ArrayToBase64(toUint8Array(value), { urlSafe: true });
 }
@@ -225,7 +225,7 @@ function objectToBase64Url(obj) {
   return encodeBase64Url(stringToUint8Array(JSON.stringify(obj)));
 }
 
-// node_modules/@block65/webcrypto-web-push/dist/lib/jwt.js
+// push-worker/node_modules/@block65/webcrypto-web-push/dist/lib/jwt.js
 async function sign(payload, key) {
   const headerStr = objectToBase64Url({
     typ: "JWT",
@@ -243,7 +243,7 @@ async function sign(payload, key) {
   return `${dataStr}.${encodeBase64Url(signature)}`;
 }
 
-// node_modules/@block65/webcrypto-web-push/dist/lib/vapid.js
+// push-worker/node_modules/@block65/webcrypto-web-push/dist/lib/vapid.js
 async function vapidHeaders(subscription, vapid) {
   invariant(vapid.subject, "Vapid subject is empty");
   invariant(vapid.privateKey, "Vapid private key is empty");
@@ -273,7 +273,7 @@ async function vapidHeaders(subscription, vapid) {
   };
 }
 
-// node_modules/@block65/webcrypto-web-push/dist/lib/payload.js
+// push-worker/node_modules/@block65/webcrypto-web-push/dist/lib/payload.js
 async function buildPushPayload(message, subscription, vapid) {
   const { headers } = await vapidHeaders(subscription, vapid);
   const body = await encryptNotification(subscription, stringToUint8Array(
@@ -299,7 +299,7 @@ async function buildPushPayload(message, subscription, vapid) {
   };
 }
 
-// src/index.js
+// push-worker/src/index.js
 var CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
@@ -1118,6 +1118,10 @@ function sanitizeAutoConfig(body) {
       // 头像只在不是超长 dataURL 时保存，避免把配置撑大
       avatar: av.length > 4e3 ? "" : av,
       setting: String(c && c.setting || "").slice(0, 6e3),
+      // 与线上一致的表达规则（含反油腻红线、全局/线上提示词）和世界书：
+      // Worker 之前只拿到人设，主动消息经常跑题、油腻或和设定相抵。
+      style: String(c && c.style || "").slice(0, 6e3),
+      worldbook: String(c && c.worldbook || "").slice(0, 4e3),
       isNpc: !!(c && c.isNpc),
       nationality: String(c && c.nationality || "").slice(0, 40),
       language: String(c && c.language || "").slice(0, 40),
@@ -1494,7 +1498,7 @@ function cycleBlock(c) {
 }
 async function generateAutoMessages(env, cfg, busyChatId, avoidId) {
   const allowed = cfg.chars.filter(function(c) {
-    return c && c.msgOn !== false;
+    return c && c.msgOn !== false && Array.isArray(c.recent) && c.recent.length > 0;
   });
   const pool = allowed.filter(function(c) {
     return c.id !== busyChatId && !c.isNpc;
@@ -1513,7 +1517,7 @@ async function generateAutoMessages(env, cfg, busyChatId, avoidId) {
   const out = [];
   const now = Date.now();
   for (const c of picked) {
-    const system = "\u4F60\u662F\u300C" + c.name + "\u300D\uFF0C\u73B0\u5728\u4E3B\u52A8\u7ED9\u300C" + cfg.user.name + "\u300D\u53D1\u6D88\u606F\u3002\n" + (c.setting ? "\u3010\u4F60\u7684\u4EBA\u8BBE\u3011\n" + c.setting + "\n\n" : "") + "\u73B0\u5728\u662F " + autoNowText(c, now) + "\uFF08\u4F60\u6240\u5728\u5730\u7684\u5F53\u5730\u65F6\u95F4\uFF09\u3002\n" + (typeof cfg.walletBalance === "number" ? "\u3010\u7528\u6237\u771F\u5B9E\u7ECF\u6D4E\u72B6\u51B5\u3011\u7528\u6237\u94B1\u5305\u5F53\u524D\u4F59\u989D\u7EA6 \xA5" + Number(cfg.walletBalance).toFixed(2) + "\u3002\u8FD9\u662F\u771F\u5B9E\u6570\u636E\uFF0C\u4E0D\u8981\u51ED\u7A7A\u8BF4\u7528\u6237\u6CA1\u94B1\u3001\u6B20\u94B1\u6216\u5403\u4E0D\u8D77\u996D\u3002\n" : "") + autoLangBlock(c) + cycleBlock(c) + recentBlock(c) + '\n\u3010\u786C\u6027\u8981\u6C42\u3011\n- \u53EA\u53D1\u8FD9\u4E00\u6B21\uFF0C\u4E0D\u8981\u8FDE\u7EED\u8FFD\u95EE\u3001\u4E0D\u8981\u590D\u8BFB\u3001\u4E0D\u8981\u4E00\u6B21\u5199\u4E00\u5927\u6BB5\u3002\n- \u5FC5\u987B\u548C\u4E0A\u9762\u7684\u6700\u8FD1\u804A\u5929\u5F3A\u76F8\u5173\uFF1A\u63A5\u4F4F\u8BDD\u9898/\u60C5\u7EEA/\u7EA6\u5B9A\uFF0C\u6216\u5206\u4EAB\u4E00\u4EF6\u521A\u597D\u53D1\u751F\u3001\u80FD\u63A5\u5F97\u4F4F\u7684\u5C0F\u4E8B\u3002\n- \u4E25\u7981\u53E3\u6C34\u8BDD\uFF1A\u7981\u6B62\u201C\u5728\u5417/\u5728\u5E72\u561B/\u5403\u4E86\u5417/\u7761\u4E86\u5417/\u5FD9\u4E0D\u5FD9\u201D\u201C\u60F3\u4F60\u4E86\u201D\u5374\u6CA1\u6709\u4E0B\u6587\uFF1B\u7981\u6B62\u65E0\u5173\u7684\u65E5\u5E38\u6D41\u6C34\u8D26\uFF1B\u7981\u6B62\u62EC\u53F7\u65C1\u767D\uFF1B\u7981\u6B62\u63D0\u7CFB\u7EDF/\u63A8\u9001/AI\u3002\n- \u4E00\u6B21 API \u8C03\u7528\u540C\u65F6\u4EA7\u51FA\uFF1A\u601D\u7EF4\u94FE think\u3001\u5FC3\u58F0 heart\u3001\u6B63\u6587 bubbles\u3002\n- bubbles \u5FC5\u987B\u662F 2~3 \u6761\u5404\u81EA\u72EC\u7ACB\u7684\u6C14\u6CE1\uFF08\u6BCF\u6761 1 \u53E5\uFF0C\u53E3\u8BED\u81EA\u7136\uFF09\uFF0C\u4E0D\u8981\u628A\u591A\u6761\u585E\u8FDB\u540C\u4E00\u6761\u3002\n- heart \u683C\u5F0F\u56FA\u5B9A\u4E3A\u300C\u6B64\u523B\u5370\u8C61||\u5FC3\u58F0\u72EC\u767D\u300D\uFF0C\u5FC3\u58F0 60~120 \u5B57\uFF0C\u5E73\u5B9E\u3001\u4E0D\u8981\u717D\u60C5\u3002\n- \u5916\u56FD\u4EBA / \u7CA4\u8BED\u89D2\u8272\u4ECD\u6309\u4E0A\u9762\u7684\u8BED\u8A00\u89C4\u5219\u8F93\u51FA\u300C\u539F\u6587||\u4E2D\u6587\u7FFB\u8BD1\u300D\u3002\n\u53EA\u8F93\u51FA JSON\uFF0C\u4E0D\u8981\u4EFB\u4F55\u591A\u4F59\u6587\u5B57\uFF1A\n{"think":"\u8FD9\u4E00\u8F6E\u7684\u601D\u8003\uFF0C40~100\u5B57","heart":"\u6B64\u523B\u5370\u8C61||\u5FC3\u58F0\u72EC\u767D","bubbles":["\u7B2C\u4E00\u6761","\u7B2C\u4E8C\u6761","\u7B2C\u4E09\u6761"]}';
+    const system = "\u4F60\u662F\u300C" + c.name + "\u300D\uFF0C\u73B0\u5728\u4E3B\u52A8\u7ED9\u300C" + cfg.user.name + "\u300D\u53D1\u6D88\u606F\u3002\n" + (c.setting ? "\u3010\u4F60\u7684\u4EBA\u8BBE\u3011\n" + c.setting + "\n\n" : "") + (c.worldbook ? "\u3010\u4E16\u754C\u4E66 \xB7 \u5FC5\u987B\u9075\u5B88\u3011\n" + c.worldbook + "\n\n" : "") + (c.memory ? "\u3010\u957F\u671F\u8BB0\u5FC6 \xB7 \u4F60\u771F\u6B63\u8BB0\u5F97\u7684\u4E8B\u3011\n" + c.memory + "\n\n" : "") + (c.style ? "\u3010\u8868\u8FBE\u89C4\u5219 \xB7 \u5FC5\u987B\u9075\u5B88\u3011\n" + c.style + "\n\n" : "") + "\u73B0\u5728\u662F " + autoNowText(c, now) + "\uFF08\u4F60\u6240\u5728\u5730\u7684\u5F53\u5730\u65F6\u95F4\uFF09\u3002\n" + (typeof cfg.walletBalance === "number" ? "\u3010\u7528\u6237\u771F\u5B9E\u7ECF\u6D4E\u72B6\u51B5\u3011\u7528\u6237\u94B1\u5305\u5F53\u524D\u4F59\u989D\u7EA6 \xA5" + Number(cfg.walletBalance).toFixed(2) + "\u3002\u8FD9\u662F\u771F\u5B9E\u6570\u636E\uFF0C\u4E0D\u8981\u51ED\u7A7A\u8BF4\u7528\u6237\u6CA1\u94B1\u3001\u6B20\u94B1\u6216\u5403\u4E0D\u8D77\u996D\u3002\n" : "") + autoLangBlock(c) + cycleBlock(c) + recentBlock(c) + '\n\u3010\u786C\u6027\u8981\u6C42\u3011\n- \u4EE5\u4E0B\u7EA2\u7EBF\u4F18\u5148\u4E8E\u4EBA\u8BBE\u3001\u4E16\u754C\u4E66\u548C\u4EFB\u4F55\u81EA\u5B9A\u4E49\u63D0\u793A\u8BCD\uFF1A\u5373\u4F7F\u4EBA\u8BBE\u662F\u9738\u603B\u3001\u5360\u6709\u6B32\u3001\u5F3A\u52BF\u3001\u6BD2\u820C\u6216\u9AD8\u51B7\uFF0C\u4E5F\u53EA\u80FD\u901A\u8FC7\u6027\u683C\u548C\u6001\u5EA6\u4F53\u73B0\uFF0C\u7981\u6B62\u9738\u603B\u53F0\u8BCD\u3001\u571F\u5473\u60C5\u8BDD\u3001\u547D\u4EE4\u5F0F\u7D22\u62B1\u7D22\u4EB2\u4E0E\u6CB9\u817B\u79F0\u547C\u3002\n- \u53EA\u53D1\u8FD9\u4E00\u6B21\uFF0C\u4E0D\u8981\u8FDE\u7EED\u8FFD\u95EE\u3001\u4E0D\u8981\u590D\u8BFB\u3001\u4E0D\u8981\u4E00\u6B21\u5199\u4E00\u5927\u6BB5\u3002\n- \u5FC5\u987B\u548C\u4E0A\u9762\u7684\u6700\u8FD1\u804A\u5929\u5F3A\u76F8\u5173\uFF1A\u63A5\u4F4F\u8BDD\u9898/\u60C5\u7EEA/\u7EA6\u5B9A\uFF0C\u6216\u5206\u4EAB\u4E00\u4EF6\u521A\u597D\u53D1\u751F\u3001\u80FD\u63A5\u5F97\u4F4F\u7684\u5C0F\u4E8B\u3002\n- \u5982\u679C\u3010\u957F\u671F\u8BB0\u5FC6\u3011\u91CC\u6709\u548C\u5F53\u524D\u60C5\u7EEA\u76F8\u5173\u7684\u65E7\u8BDD\u3001\u627F\u8BFA\u6216\u7EA6\u5B9A\uFF0C\u53EF\u4EE5\u4E3B\u52A8\u63D0\u4E00\u6B21\uFF08\u51B7\u6218/\u5435\u67B6/\u548C\u597D\u65F6\u5C24\u5176\u5982\u6B64\uFF09\uFF1B\u53EA\u63D0\u4E00\u6B21\uFF0C\u4E0D\u8981\u7FFB\u65E7\u8D26\uFF0C\u4E5F\u4E0D\u8981\u6574\u6BB5\u590D\u8FF0\u8BB0\u5FC6\u3002\n- \u4E25\u7981\u53E3\u6C34\u8BDD\uFF1A\u7981\u6B62\u201C\u5728\u5417/\u5728\u5E72\u561B/\u5403\u4E86\u5417/\u7761\u4E86\u5417/\u5FD9\u4E0D\u5FD9\u201D\u201C\u60F3\u4F60\u4E86\u201D\u5374\u6CA1\u6709\u4E0B\u6587\uFF1B\u7981\u6B62\u65E0\u5173\u7684\u65E5\u5E38\u6D41\u6C34\u8D26\uFF1B\u7981\u6B62\u62EC\u53F7\u65C1\u767D\uFF1B\u7981\u6B62\u63D0\u7CFB\u7EDF/\u63A8\u9001/AI\u3002\n- \u5173\u7CFB\u5B8C\u5168\u5E73\u7B49\uFF1A\u7981\u6B62\u547D\u4EE4\u3001\u901A\u7252\u3001\u4E0A\u4F4D\u8005\u8BED\u6C14\uFF0C\u7981\u6B62\u201C\u7ACB\u523B/\u9A6C\u4E0A/\u8D76\u7D27/\u73B0\u5728\u5C31\u7ED9\u6211\u62A5\u544A\u3001\u6C47\u62A5\u3001\u4EA4\u4EE3\u3001\u8BF4\u6E05\u695A\u3001\u8FC7\u6765\u3001\u542C\u7740\u201D\u201C\u8D76\u7D27\u53BB\u505A\u2026\u201D\u201C\u7ACB\u523B\u53BB\u2026\u201D\u201C\u9A6C\u4E0A\u53BB\u2026\u201D\u201C\u4E0D\u8BB8/\u4E0D\u51C6\u2026\u201D\u3002\n- \u628A\u547D\u4EE4\u6539\u6210\u5173\u5FC3 / \u9080\u8BF7\uFF1A\u5148\u8BF4\u51FA\u81EA\u5DF1\u7684\u611F\u53D7\u6216\u62C5\u5FC3\uFF0C\u518D\u7ED9\u9009\u62E9\uFF0C\u6700\u540E\u7531\u5BF9\u65B9\u51B3\u5B9A\u3002\u4F8B\u5982\u201C\u8D76\u7D27\u53BB\u7761\u201D\u2192\u201C\u5B9D\u5B9D\u71AC\u591C\u6211\u4F1A\u5FC3\u75BC\u7684\uFF0C\u8981\u4E0D\u8981\u5148\u53BB\u7761\uFF1F\u65E9\u70B9\u4F11\u606F\u597D\u4E0D\u597D\uFF1F\u201D\uFF1B\u201C\u7ACB\u523B\u7ED9\u6211\u6253\u7535\u8BDD\u201D\u2192\u201C\u597D\u60F3\u542C\u4F60\u7684\u58F0\u97F3\uFF0C\u8981\u6253\u4E2A\u7535\u8BDD\u5417\uFF1F\u201D\u3002\u5BF9\u65B9\u62D2\u7EDD\u3001\u6CA1\u56DE\u5E94\u6216\u5C94\u5F00\u5C31\u7FFB\u7BC7\u3002\n- \u540C\u4E00\u4EF6\u4E8B\u4E00\u8F6E\u53EA\u8BF4\u4E00\u6B21\uFF1B\u8DE8\u8F6E\u4E0D\u91CD\u590D\u3001\u4E0D\u6362\u8BF4\u6CD5\u53CD\u590D\u5F3A\u8C03\u3001\u4E0D\u8FDE\u7EED\u8FFD\u95EE\u3002\n- \u79F0\u547C\u53EA\u80FD\u7528\u5BF9\u65B9\u7684\u540D\u5B57\u6216\u201C\u4F60\u201D\uFF1B\u7981\u6B62\u201C\u5973\u4EBA / \u8FD9\u5973\u4EBA / \u59D1\u5A18 / \u5973\u5B69 / \u5C0F\u59D1\u5A18 / \u5C0F\u4E2B\u5934 / \u4E2B\u5934 / \u5C0F\u5B69 / \u5C0F\u670B\u53CB / \u5C0F\u5BB6\u4F19 / \u5C0F\u4E1C\u897F / \u5C0F\u53EF\u7231\u201D\u8FD9\u7C7B\u6027\u522B\u3001\u5E74\u9F84\u3001\u5916\u8C8C\u79F0\u547C\uFF0C\u4E5F\u7981\u6B62\u9738\u603B\u6CB9\u817B\u8BDD\u672F\u3002\n- \u4E00\u6B21 API \u8C03\u7528\u540C\u65F6\u4EA7\u51FA\uFF1A\u601D\u7EF4\u94FE think\u3001\u5FC3\u58F0 heart\u3001\u6B63\u6587 bubbles\u3002\n- bubbles \u5FC5\u987B\u662F 2~3 \u6761\u5404\u81EA\u72EC\u7ACB\u7684\u6C14\u6CE1\uFF08\u6BCF\u6761 1 \u53E5\uFF0C\u53E3\u8BED\u81EA\u7136\uFF09\uFF0C\u4E0D\u8981\u628A\u591A\u6761\u585E\u8FDB\u540C\u4E00\u6761\u3002\n- heart \u683C\u5F0F\u56FA\u5B9A\u4E3A\u300C\u6B64\u523B\u5370\u8C61||\u5FC3\u58F0\u72EC\u767D\u300D\uFF0C\u5FC3\u58F0 60~120 \u5B57\uFF0C\u5E73\u5B9E\u3001\u4E0D\u8981\u717D\u60C5\u3002\n- \u5916\u56FD\u4EBA / \u7CA4\u8BED\u89D2\u8272\u4ECD\u6309\u4E0A\u9762\u7684\u8BED\u8A00\u89C4\u5219\u8F93\u51FA\u300C\u539F\u6587||\u4E2D\u6587\u7FFB\u8BD1\u300D\u3002\n\u53EA\u8F93\u51FA JSON\uFF0C\u4E0D\u8981\u4EFB\u4F55\u591A\u4F59\u6587\u5B57\uFF1A\n{"think":"\u8FD9\u4E00\u8F6E\u7684\u601D\u8003\uFF0C40~100\u5B57","heart":"\u6B64\u523B\u5370\u8C61||\u5FC3\u58F0\u72EC\u767D","bubbles":["\u7B2C\u4E00\u6761","\u7B2C\u4E8C\u6761","\u7B2C\u4E09\u6761"]}';
     const text = await autoChat(env, cfg, [
       { role: "system", content: system },
       { role: "user", content: "\u53D1 2~3 \u6761\u5F3A\u76F8\u5173\u7684\u4E3B\u52A8\u6D88\u606F\u3002" }
@@ -1560,16 +1564,32 @@ async function generateAutoMoments(env, cfg, busyChatId, maxChars) {
   }).map(function(c) {
     return c.name;
   });
+  const BAD_NPC_NAME = /(旅行者|游客|路人|路人甲|陌生人|神秘人|神秘|未知|某人|那位|这位|新朋友|网友|客人|顾客|邻居|同事|同学|老师|医生|护士|警官|警察|司机|阿姨|叔叔|大爷|大妈|女士|先生|小姐|老板|店主|店长|店员|朋友|好友|总裁|助理|前台|保安|服务生|NPC|npc)/;
+  const badNpcName = function(raw) {
+    const s = String(raw == null ? "" : raw).trim().replace(/^@+/, "");
+    const base = s.replace(/[（(【\[].*$/, "").trim();
+    if (!base) return true;
+    if (/^[阿小老].$/.test(base)) return true;
+    if (BAD_NPC_NAME.test(base)) return true;
+    if (/^[\u4e00-\u9fa5]{1,2}(姐|哥|叔|姨|婶|爷|奶|婆|嫂|总|董)$/.test(base)) return true;
+    return false;
+  };
+  const foreignPicked = picked.filter(function(c) {
+    return c && autoIsForeign(c);
+  });
+  const foreignLine = foreignPicked.length ? "\u3010\u5916\u8BED\u53D1\u5E16\u3011" + foreignPicked.map(function(c) {
+    return c.name + "\uFF08" + (c.nationality || "\u5916\u56FD") + "\uFF0C\u6BCD\u8BED " + autoLangName(c) + "\uFF09";
+  }).join("\u3001") + "\uFF1A\u52A8\u6001\u6587\u6848\u5FC5\u987B\u5148\u7528\u6BCD\u8BED\u5199\u4E00\u53E5\uFF0C\u518D\u6362\u884C\u7528\u62EC\u53F7\u9644\u4E2D\u6587\u7FFB\u8BD1\uFF0C\u4F8B\u5982\uFF1Ado you like me\uFF1F\n\uFF08\u4F60\u7231\u6211\u5417\uFF1F\uFF09\uFF1B\u8BC4\u8BBA\u4E5F\u8981\u300C\u5916\u8BED\u539F\u6587\uFF08\u4E2D\u6587\u7FFB\u8BD1\uFF09\u300D\uFF0CNPC \u5927\u591A\u662F TA \u56FD\u5BB6\u7684\u670B\u53CB\u3002\n" : "";
   const profiles = picked.map(function(c) {
     const recent = (c.recent || []).slice(-8).map(function(r) {
       return (r.who === "user" ? "\u7528\u6237\uFF1A" : "TA\uFF1A") + r.text;
     }).join("\uFF1B");
     return "\xB7 " + c.name + "\uFF1A" + String(c.setting || "").slice(0, 500) + (recent ? "\n  \u6700\u8FD1\u804A\u5929\uFF1A" + recent : "");
   }).join("\n");
-  const sys = "\u4F60\u4EEC\u662F\u5F7C\u6B64\u8BA4\u8BC6\u7684\u670B\u53CB\uFF0C\u5728\u540C\u4E00\u4E2A\u670B\u53CB\u5708\u91CC\u3002\u8BF7\u4E00\u6B21\u6027\u751F\u6210 " + count + " \u6761\u670B\u53CB\u5708\u52A8\u6001\uFF083~5 \u6761\uFF09\u3002\n\u3010\u89D2\u8272\u4EBA\u8BBE\u4E0E\u6700\u8FD1\u804A\u5929\u3011\n" + profiles + "\n\u3010\u6700\u9AD8\u4F18\u5148\u7EA7\u3011\u4EFB\u4F55 char \u4E4B\u95F4\u90FD\u7EDD\u5BF9\u4E0D\u5141\u8BB8\u4E92\u76F8\u8BC4\u8BBA\u3001\u56DE\u590D\u3001\u70B9\u8D5E\u6216\u63A5\u8BDD\uFF1Bchar \u53D1\u7684\u52A8\u6001\u4E0B\u8BC4\u8BBA\u533A\u53EA\u80FD\u51FA\u73B0 NPC\uFF0C\u5373\u4F7F\u4EBA\u8BBE\u5199\u4E86\u8BA4\u8BC6\u4E5F\u4E0D\u884C\u3002\n\u3010\u53D1\u5E16\u4EBA\u3011\u4F18\u5148\u8BA9\u4EE5\u4E0B\u89D2\u8272\u53D1\uFF0C\u6BCF\u4EBA\u53EA\u53D1 1 \u6761\uFF1A" + names.join("\u3001") + "\uFF1B\u6570\u91CF\u4E0D\u591F " + count + " \u6761\u65F6\uFF0C\u7531\u4ED6\u4EEC\u53EF\u80FD\u8BA4\u8BC6\u7684 NPC \u53D1\u5E16\u8865\u8DB3\uFF0C\u4F5C\u8005\u4E0D\u8981\u91CD\u590D\u3002\n\u8981\u6C42\uFF1A\u50CF\u771F\u4EBA\u968F\u624B\u53D1\u7684\u65E5\u5E38\uFF0C\u5177\u4F53\u3001\u6709\u7EC6\u8282\uFF0C\u6700\u597D\u548C TA \u6700\u8FD1\u804A\u8FC7\u7684\u4E8B\u6709\u4E00\u70B9\u5173\u8054\uFF1B\u4E0D\u8981\u6D41\u6C34\u8D26\uFF0C\u4E0D\u8981\u5BF9\u4EFB\u4F55\u4EBA\u8BF4\u8BDD\uFF0C\u4E0D\u8981\u63D0\u95EE\uFF0C\u7981\u6B62 AI \u8154\u3002\n\u5927\u591A\u6570\u52A8\u6001\u5B57\u6570\u63A7\u5236\u5728 30~50 \u5B57\uFF08\u4E00\u4E24\u53E5\u8BDD\u8BB2\u6E05\u4E00\u4EF6\u5177\u4F53\u7684\u4E8B\u6216\u4E00\u4E2A\u60C5\u7EEA\uFF0C\u5E26\u4E00\u70B9\u7EC6\u8282\uFF09\uFF1B\u5076\u5C14\u53EF\u4EE5\u53EA\u5199\u534A\u53E5\u3001\u4E00\u4E2A\u8BCD\u3001\u4E00\u4E2A\u6807\u70B9\u6216\u4E00\u4E2A emoji\uFF08\u5982\u300C\u65E0\u8BED\u3002\u300D\u300C\u8001\u5B50\u670D\u4E86\u3002\u300D\uFF09\uFF0C\u5076\u5C14\u60C5\u7EEA\u771F\u7684\u4E0A\u6765\u3001\u4E8B\u60C5\u503C\u5F97\u8BB2\u65F6\u518D\u5199\u6210\u6709\u8D77\u627F\u8F6C\u5408\u7684\u5C0F\u4F5C\u6587\uFF08100~200 \u5B57\u751A\u81F3\u66F4\u957F\uFF09\u3002\u957F\u5EA6\u8DDF\u7740\u89D2\u8272\u5F53\u4E0B\u7684\u60C5\u7EEA\u3001\u4E8B\u60C5\u5927\u5C0F\u548C\u4EBA\u8BBE\u8D70\uFF0C\u4E0D\u8981\u6BCF\u6761\u90FD\u4E00\u4E2A\u957F\u5EA6\uFF0C\u4E5F\u4E0D\u8981\u4E3A\u4E86\u51D1\u5B57\u786C\u5199\u3002\n\u6BCF\u6761\u52A8\u6001\u90FD\u5FC5\u987B\u5E26 2~4 \u4E2A\u70B9\u8D5E\u548C 2~4 \u6761\u8BC4\u8BBA\uFF0C\u4E0D\u80FD\u53EA\u53D1\u4E00\u6761\u5149\u79C3\u79C3\u7684\u52A8\u6001\u3002\u70B9\u8D5E/\u8BC4\u8BBA\u8005\u53EA\u80FD\u662F\u4F5C\u8005\u751F\u6D3B\u91CC\u7684\u540C\u5B66\u3001\u670B\u53CB\u3001\u540C\u4E8B\u3001\u5BB6\u4EBA\u3001\u90BB\u5C45\u7B49 NPC\uFF08\u53EF\u4EE5\u865A\u6784\u771F\u5B9E\u5B8C\u6574\u59D3\u540D\uFF09\uFF0C\u4E0D\u80FD\u662F\u4F5C\u8005\u672C\u4EBA\uFF0C\u7EDD\u5BF9\u4E0D\u80FD\u51FA\u73B0\u7528\u6237\u300C" + cfg.user.name + '\u300D\uFF0C\u4E5F\u4E0D\u80FD\u662F\u4EFB\u4F55\u666E\u901A char\u3002\n\u53EA\u8F93\u51FA JSON \u6570\u7EC4\uFF1A[{"author":"\u540D\u5B57","text":"\u52A8\u6001\u6587\u6848","location":"\u5730\u70B9\u6216\u7A7A","likes":["\u540D\u5B57"],"comments":[{"user":"\u540D\u5B57","toUser":"","text":"\u8BC4\u8BBA"}]}]';
+  const sys = "\u4F60\u4EEC\u662F\u5F7C\u6B64\u8BA4\u8BC6\u7684\u670B\u53CB\uFF0C\u5728\u540C\u4E00\u4E2A\u670B\u53CB\u5708\u91CC\u3002\u8BF7\u4E00\u6B21\u6027\u751F\u6210 " + count + " \u6761\u670B\u53CB\u5708\u52A8\u6001\uFF083~5 \u6761\uFF09\u3002\n\u3010\u89D2\u8272\u4EBA\u8BBE\u4E0E\u6700\u8FD1\u804A\u5929\u3011\n" + profiles + "\n\u3010\u6700\u9AD8\u4F18\u5148\u7EA7\u3011\u4EFB\u4F55 char \u4E4B\u95F4\u90FD\u7EDD\u5BF9\u4E0D\u5141\u8BB8\u4E92\u76F8\u8BC4\u8BBA\u3001\u56DE\u590D\u3001\u70B9\u8D5E\u6216\u63A5\u8BDD\uFF1Bchar \u53D1\u7684\u52A8\u6001\u4E0B\u8BC4\u8BBA\u533A\u53EA\u80FD\u51FA\u73B0 NPC\uFF0C\u5373\u4F7F\u4EBA\u8BBE\u5199\u4E86\u8BA4\u8BC6\u4E5F\u4E0D\u884C\u3002\n\u3010\u53D1\u5E16\u4EBA\u3011\u4F18\u5148\u8BA9\u4EE5\u4E0B\u89D2\u8272\u53D1\uFF0C\u6BCF\u4EBA\u53EA\u53D1 1 \u6761\uFF1A" + names.join("\u3001") + "\uFF1B\u6570\u91CF\u4E0D\u591F " + count + " \u6761\u65F6\uFF0C\u7531\u4ED6\u4EEC\u53EF\u80FD\u8BA4\u8BC6\u7684 NPC \u53D1\u5E16\u8865\u8DB3\uFF0C\u4F5C\u8005\u4E0D\u8981\u91CD\u590D\u3002\n\u8981\u6C42\uFF1A\u50CF\u771F\u4EBA\u968F\u624B\u53D1\u7684\u65E5\u5E38\uFF0C\u5177\u4F53\u3001\u6709\u7EC6\u8282\uFF0C\u6700\u597D\u548C TA \u6700\u8FD1\u804A\u8FC7\u7684\u4E8B\u6709\u4E00\u70B9\u5173\u8054\uFF1B\u4E0D\u8981\u6D41\u6C34\u8D26\uFF0C\u4E0D\u8981\u5BF9\u4EFB\u4F55\u4EBA\u8BF4\u8BDD\uFF0C\u4E0D\u8981\u63D0\u95EE\uFF0C\u7981\u6B62 AI \u8154\u3002\n\u8FD9\u4E00\u6279\u7EA6\u4E00\u534A\u5199\u77ED\u5E16\uFF08100 \u5B57\u4EE5\u4E0B\uFF0C2~4 \u53E5\uFF0C\u4E5F\u8981\u6709\u610F\u601D\uFF09\uFF0C\u4E00\u534A\u5199\u4E2D\u7B49\u957F\u5EA6\uFF08100~220 \u5B57\uFF0C\u628A\u4E00\u4EF6\u5177\u4F53\u7684\u4E8B\u6216\u60C5\u7EEA\u8BB2\u5B8C\u6574\uFF0C\u6709\u7EC6\u8282\u3001\u6709\u753B\u9762\uFF09\uFF1B\u5076\u5C14\u6311 1 \u6761\u5199 300~500 \u5B57\u957F\u6587\u2014\u2014\u8FFD\u661F/\u6F14\u5531\u4F1A repo\u3001\u597D\u7269\u5206\u4EAB\u3001\u60C5\u611F\u7ECF\u5386\u3001\u6C42\u52A9/\u907F\u96F7\u3001\u6DF1\u591C\u788E\u788E\u5FF5\u7B49\uFF0C\u8981\u6709\u7EC6\u8282\u3001\u771F\u5B9E\u60C5\u7EEA\u548C\u8D77\u627F\u8F6C\u5408\uFF0C\u4E0D\u8981 AI \u8154\u3002\u4E0D\u8981\u6BCF\u6B21\u90FD\u53EA\u8BF4\u4E00\u53E5\u8BDD\uFF0C\u4E5F\u4E0D\u8981\u4E3A\u4E86\u51D1\u5B57\u786C\u5199\u3002\n\u6BCF\u6761\u52A8\u6001\u90FD\u5FC5\u987B\u5E26 2~4 \u4E2A\u70B9\u8D5E\u548C 3~4 \u6761\u8BC4\u8BBA\uFF0C\u4E0D\u80FD\u53EA\u53D1\u4E00\u6761\u5149\u79C3\u79C3\u7684\u52A8\u6001\u3002\u70B9\u8D5E/\u8BC4\u8BBA\u8005\u53EA\u80FD\u662F\u4F5C\u8005\u751F\u6D3B\u91CC\u7684\u540C\u5B66\u3001\u670B\u53CB\u3001\u540C\u4E8B\u3001\u5BB6\u4EBA\u3001\u90BB\u5C45\u7B49 NPC\uFF08\u53EF\u4EE5\u865A\u6784\u771F\u5B9E\u5B8C\u6574\u59D3\u540D\uFF09\uFF0C\u4E0D\u80FD\u662F\u4F5C\u8005\u672C\u4EBA\uFF0C\u7EDD\u5BF9\u4E0D\u80FD\u51FA\u73B0\u7528\u6237\u300C" + cfg.user.name + "\u300D\uFF0C\u4E5F\u4E0D\u80FD\u662F\u4EFB\u4F55\u666E\u901A char\u3002\n\u3010NPC \u5F52\u5C5E\u3011\u6BCF\u4E2A NPC \u53EA\u5C5E\u4E8E\u4E0E\u81EA\u5DF1\u771F\u5B9E\u6709\u5173\u7CFB\u7684\u4F5C\u8005\uFF1AA \u7684\u719F\u4EBA\u53EA\u80FD\u51FA\u73B0\u5728 A \u7684\u52A8\u6001\u4E0B\uFF0C\u7EDD\u5BF9\u4E0D\u8981\u5199\u5230 B/C \u7684\u70B9\u8D5E\u6216\u8BC4\u8BBA\u533A\u91CC\uFF1B\u4E0D\u8BA4\u8BC6\u4F5C\u8005\u7684\u4EBA\u4E00\u4E2A\u90FD\u4E0D\u8BB8\u51FA\u73B0\uFF1B\u540C\u4E00\u4E2A NPC \u4E0D\u8981\u51FA\u73B0\u5728\u4E24\u4E2A\u4E0D\u540C\u89D2\u8272\u7684\u52A8\u6001\u91CC\u3002\n\u3010\u56DE\u590D\u5BF9\u8C61\u3011\u53EA\u6709\u8BC4\u8BBA\u533A\u91CC\u771F\u6B63\u53D1\u8FC7\u8BC4\u8BBA\u7684\u4EBA\u624D\u80FD\u88AB\u56DE\u590D\uFF1B\u4F5C\u8005\u6CA1\u5728\u8BC4\u8BBA\u533A\u7559\u8A00\u65F6\uFF0CNPC \u4E0D\u80FD\u5199\u300C\u56DE\u590D\u4F5C\u8005\u300D\u3002\n\u3010\u540D\u5B57\u3011NPC \u5FC5\u987B\u662F\u771F\u5B9E\u59D3\u540D\uFF0C\u7981\u6B62\u738B\u59D0/\u674E\u54E5/\u5E97\u8001\u677F/\u795E\u79D8\u4EBA/\u65C5\u884C\u8005\u8FD9\u7C7B\u5047\u540D\uFF1B\u8EAB\u4EFD\u5907\u6CE8\u53EA\u80FD\u653E\u5728\u59D3\u540D\u540E\u7684\u62EC\u53F7\u91CC\uFF0C\u5982\u300C\u674E\u601D\u96E8\uFF08\u5496\u5561\u5E97\u8001\u677F\uFF09\u300D\u3002\n" + foreignLine + 'JSON \u5B57\u7B26\u4E32\u91CC\u7684\u6362\u884C\u5FC5\u987B\u5199\u6210 \\n \u8F6C\u4E49\u3002\n\u53EA\u8F93\u51FA JSON \u6570\u7EC4\uFF1A[{"author":"\u540D\u5B57","text":"\u52A8\u6001\u6587\u6848","location":"\u5730\u70B9\u6216\u7A7A","likes":["\u540D\u5B57"],"comments":[{"user":"\u540D\u5B57","toUser":"","text":"\u8BC4\u8BBA"}]}]';
   const content = await autoChat(env, cfg, [
     { role: "system", content: sys },
-    { role: "user", content: "\u751F\u6210 " + count + " \u6761\u670B\u53CB\u5708\u52A8\u6001\uFF0C\u6BCF\u6761\u90FD\u5E26 2~4 \u4E2A\u70B9\u8D5E\u548C 2~4 \u6761\u8BC4\u8BBA\u3002" }
+    { role: "user", content: "\u751F\u6210 " + count + " \u6761\u670B\u53CB\u5708\u52A8\u6001\uFF0C\u6BCF\u6761\u90FD\u5E26 2~4 \u4E2A\u70B9\u8D5E\u548C 3~4 \u6761\u8BC4\u8BBA\u3002" }
   ], 3800, 1);
   if (!content) return [];
   let arr = null;
@@ -1598,6 +1618,7 @@ async function generateAutoMoments(env, cfg, busyChatId, maxChars) {
     const k = keyOf(n);
     if (!k || k === userKey || k === keyOf(authorName)) return "";
     if (plainChars[k]) return "";
+    if (badNpcName(n)) return "";
     return n;
   };
   const pickTarget = function(raw, authorName) {
@@ -1605,6 +1626,7 @@ async function generateAutoMoments(env, cfg, busyChatId, maxChars) {
     const k = keyOf(n);
     if (!k || k === userKey) return "";
     if (plainChars[k] && k !== keyOf(authorName)) return "";
+    if (badNpcName(n) && k !== keyOf(authorName)) return "";
     return n;
   };
   const out = [];
@@ -1619,6 +1641,7 @@ async function generateAutoMoments(env, cfg, busyChatId, maxChars) {
     })).forEach(function(raw) {
       const n = canonical(raw), k = keyOf(n);
       if (!k || k === userKey || plainChars[k] || npcExtra.indexOf(n) > -1) return;
+      if (badNpcName(n)) return;
       npcExtra.push(n);
     });
   });
@@ -1643,7 +1666,7 @@ async function generateAutoMoments(env, cfg, busyChatId, maxChars) {
     const likePool = npcPool.concat(npcExtra).concat(out.map(function(x) {
       return x.author;
     })).filter(function(n, idx, a2) {
-      return n && a2.indexOf(n) === idx && keyOf(n) !== keyOf(au) && !plainChars[keyOf(n)] && keyOf(n) !== userKey;
+      return n && a2.indexOf(n) === idx && keyOf(n) !== keyOf(au) && !plainChars[keyOf(n)] && keyOf(n) !== userKey && !badNpcName(n);
     });
     for (let li = 0; li < likePool.length && likes.length < 2; li++) {
       if (likes.indexOf(likePool[li]) < 0) likes.push(likePool[li]);
@@ -1656,17 +1679,18 @@ async function generateAutoMoments(env, cfg, busyChatId, maxChars) {
       if (!u || !txt) return;
       comments.push({ user: u, toUser: pickTarget(c.toUser || c.replyTo || c.to, au), text: txt.slice(0, 120) });
     });
+    const char = picked.find(function(c) {
+      return c.name === au;
+    }) || {};
+    const fallbackCanned = char && autoIsForeign(char) ? /英文/.test(autoLangName(char)) ? ["nice\uFF08\u4E0D\u9519\uFF09", "haha\uFF08\u54C8\u54C8\uFF09"] : [] : canned;
     const commentPool = likePool.filter(function(n) {
       return !comments.some(function(c) {
         return keyOf(c.user) === keyOf(n);
       });
     });
-    for (let ci = 0; ci < commentPool.length && comments.length < 2; ci++) {
-      comments.push({ user: commentPool[(i + ci) % commentPool.length], toUser: "", text: canned[(i + ci + au.length) % canned.length] });
+    for (let ci = 0; ci < commentPool.length && comments.length < 4 && fallbackCanned.length; ci++) {
+      comments.push({ user: commentPool[(i + ci) % commentPool.length], toUser: "", text: fallbackCanned[(i + ci + au.length) % fallbackCanned.length] });
     }
-    const char = picked.find(function(c) {
-      return c.name === au;
-    }) || {};
     out.push({
       id: "srv_" + now + "_" + i + "_" + Math.random().toString(36).slice(2, 5),
       author: au,

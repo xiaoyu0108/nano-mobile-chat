@@ -302,6 +302,7 @@
         if (cap) clearTimeout(cap);
         try { window.removeEventListener('storage', onStorage); } catch (e) {}
         try { window.removeEventListener('message', onMsg); } catch (e) {}
+        try { window.removeEventListener('message', onStream); } catch (e) {}
         try { localStorage.removeItem(resultKey); } catch (e) {}
         resolve(r || { ok: false, status: 0, error: 'API 请求失败' });
       }
@@ -321,8 +322,15 @@
         if (v) { try { parsed = JSON.parse(v); } catch (err) {} }
         finish(parsed || { ok: false, status: 0, error: '未取到 API 结果' });
       }
+      function onStream(e) {
+        var d = e && e.data;
+        if (!d || d.type !== 'chatApiStream' || d.token !== token) return;
+        if (typeof payload.onDelta !== 'function') return;
+        try { payload.onDelta(String(d.delta || '')); } catch (err) {}
+      }
       window.addEventListener('storage', onStorage);
       window.addEventListener('message', onMsg);
+      if (typeof payload.onDelta === 'function') window.addEventListener('message', onStream);
       // 只有「父页面就是最外层」时才走父页面代理（正常全屏 App 都是这样）。
       // 这样可以避开 CORS / 某些中转站只认主页面请求的问题。
       var useProxy = false;
@@ -331,12 +339,21 @@
         try {
           window.parent.postMessage({
             type: 'chatApiFetch', token: token, resultKey: resultKey,
-            url: payload.url, method: 'POST', headers: payload.headers, body: payload.body
+            url: payload.url, method: 'POST', headers: payload.headers, body: payload.body,
+            stream: !!payload.stream
           }, '*');
         } catch (e) { useProxy = false; }
       }
       if (!useProxy) {
-        fetch(payload.url, { method: 'POST', headers: payload.headers, body: payload.body })
+        var body = payload.body;
+        if (payload.stream) {
+          try {
+            var obj = JSON.parse(body);
+            delete obj.stream;
+            body = JSON.stringify(obj);
+          } catch (e) {}
+        }
+        fetch(payload.url, { method: 'POST', headers: payload.headers, body: body })
           .then(function (r) {
             return r.text().then(function (t) { return { ok: r.ok, status: r.status, text: t }; });
           })
@@ -447,7 +464,12 @@
       max_tokens: limit,
       temperature: opts.temperature != null ? opts.temperature : 0.9
     };
-    var res = await sendApiRequest({ url: url, headers: headers, body: JSON.stringify(body) });
+    var useProxy = false;
+    try { useProxy = !!(window.parent && window.parent !== window && window.parent === window.top); } catch (e) { useProxy = false; }
+    var wantStream = !!opts.onDelta && useProxy;
+    if (wantStream) body.stream = true;
+    var sendOpts = { url: url, headers: headers, body: JSON.stringify(body), stream: wantStream, onDelta: opts.onDelta };
+    var res = await sendApiRequest(sendOpts);
     var tries = 0;
     var trimBudget = 0;
     var lastResort = false;
@@ -518,7 +540,10 @@
       try {
         console.warn('[Fanfic API] retry', tries + 1, 'status', res.status, 'max_tokens', body.max_tokens || body.max_completion_tokens, 'trim', trimBudget, 'reason', msg.slice(0, 160));
       } catch (e) {}
-      res = await sendApiRequest({ url: url, headers: headers, body: JSON.stringify(body) });
+      res = await sendApiRequest({
+        url: url, headers: headers, body: JSON.stringify(body),
+        stream: wantStream, onDelta: opts.onDelta
+      });
       tries++;
     }
     if (!res || !res.ok) {

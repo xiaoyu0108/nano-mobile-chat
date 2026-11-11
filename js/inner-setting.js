@@ -262,6 +262,8 @@
     var voicePreview = document.getElementById('voicePreview');
     var voiceModal = document.getElementById('voiceModal');
     var voicePresetSelect = document.getElementById('voicePresetSelect');
+    var voicePromptInput = document.getElementById('voicePromptInput');
+    var voiceUseWorldbook = document.getElementById('voiceUseWorldbook');
     var voiceConfirm = document.getElementById('voiceConfirm');
     var voiceCancel = document.getElementById('voiceCancel');
     var ttsEnableToggle = document.getElementById('ttsEnableToggle');
@@ -1372,11 +1374,15 @@
         } else {
             fill([]);
         }
+        if (voicePromptInput) voicePromptInput.value = String(getSetting('ttsPrompt', '') || '');
+        if (voiceUseWorldbook) voiceUseWorldbook.checked = getSetting('ttsUseWorldbook', true) !== false;
         voiceModal.classList.add('active');
     }
     function saveVoice() {
         var val = (voicePresetSelect && voicePresetSelect.value) || '';
         setSetting('ttsPreset', val);
+        setSetting('ttsPrompt', voicePromptInput ? String(voicePromptInput.value || '').trim() : '');
+        setSetting('ttsUseWorldbook', voiceUseWorldbook ? !!voiceUseWorldbook.checked : true);
         if (voicePreview) voicePreview.textContent = val ? val : '跟随全局';
         if (window.parent !== window) {
             try { window.parent.postMessage({ type: 'ttsVoiceChanged', chatId: chatId, ttsPreset: val }, '*'); } catch (e) {}

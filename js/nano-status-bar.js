@@ -98,6 +98,37 @@
     });
   }
 
+  var _observer = null;
+  var _raf = 0;
+  function scheduleEnhance() {
+    if (_raf) return;
+    _raf = (window.requestAnimationFrame || function (fn) { return setTimeout(fn, 16); })(function () {
+      _raf = 0;
+      enhance(document);
+    });
+  }
+  function observe(root) {
+    if (!window.MutationObserver || _observer) return;
+    _observer = new MutationObserver(function (mutations) {
+      for (var i = 0; i < mutations.length; i++) {
+        var added = mutations[i] && mutations[i].addedNodes;
+        if (!added || !added.length) continue;
+        for (var j = 0; j < added.length; j++) {
+          var node = added[j];
+          if (node && node.nodeType === 1 && (node.classList && node.classList.contains('nano-status') || (node.querySelector && node.querySelector('.nano-status')))) {
+            scheduleEnhance();
+            return;
+          }
+        }
+      }
+    });
+    try { _observer.observe(root || document.body, { childList: true, subtree: true }); } catch (e) {}
+  }
+  function init(root) {
+    enhance(root || document);
+    observe(root && root.nodeType === 1 ? root : document.body);
+  }
+
   // 事件委托：任何 .nano-status-head 被点击/回车都折叠/展开
   document.addEventListener('click', function (e) {
     var head = e.target && e.target.closest ? e.target.closest('.nano-status-head') : null;
@@ -128,10 +159,17 @@
   window.NanoStatusBar = {
     html: html,
     enhance: enhance,
+    init: init,
+    refresh: function () { enhance(document); },
     toggle: toggle,
     getCollapsed: getCollapsed,
     setCollapsed: setCollapsed,
     esc: esc,
     TEMPLATE: TEMPLATE
   };
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () { init(document); });
+  } else {
+    init(document);
+  }
 })();

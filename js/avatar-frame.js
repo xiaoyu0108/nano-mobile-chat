@@ -34,8 +34,8 @@
     function savePresets(list) { try { localStorage.setItem(PRESET_KEY, JSON.stringify((list || []).slice(-60))); } catch (e) {} }
 
     function selectors(scope) {
-        if (scope === 'offline') return ['.identity-row .avatar'];
-        if (scope === 'chat') return ['.message-avatar'];
+        if (scope === 'offline') return ['.identity-row .avatar', '.gs-avatar-wrap .avatar'];
+        if (scope === 'chat') return ['.message-avatar', '.msg-avatar'];
         if (scope === 'heart') return ['.nano-voice-modal .iv-avatar', '.iv-avatar'];
         return [];
     }
@@ -65,7 +65,12 @@
             if (scope === 'heart') css += '.nano-voice-modal{--iv-avatar-radius:' + r + '% !important}';
             css += base + '{border-radius:' + r + '%!important;overflow:hidden}';
         }
-        css += base + '{position:relative}';
+        if (scope === 'offline') {
+            var relSels = sels.filter(function (s) { return s.indexOf('.gs-avatar-wrap') === -1; });
+            if (relSels.length) css += relSels.join(',') + '{position:relative}';
+        } else {
+            css += base + '{position:relative}';
+        }
         // 头像图片始终铺满并继承头像的方圆（否则图片自带的 50% 会盖住方角 / 固定尺寸会让大小调节失效）
         if (needRadius || needAvatar) css += imgs + '{width:100%!important;height:100%!important;border-radius:inherit!important}';
         // 「框大小」：只改头像框（PNG 叠加层）的大小
@@ -84,16 +89,19 @@
             var id = 'nano-frame-' + scope;
             var tag = document.getElementById(id);
             var css = buildCss(scope, get(scope), getSize(scope), getRadius(scope), getAvatarSize(scope));
-            if (!css) { if (tag) tag.textContent = ''; return; }
+            if (!css) { if (tag && tag.textContent) tag.textContent = ''; return; }
             if (!tag) { tag = document.createElement('style'); tag.id = id; document.head.appendChild(tag); }
-            tag.textContent = css;
+            if (tag.textContent !== css) tag.textContent = css;
         } catch (e) {}
     }
     function applyAllForPage() {
         var p = '';
         try { p = location.pathname || ''; } catch (e) {}
-        if (/offline\.html$/i.test(p)) apply('offline');
+        var pd = p;
+        try { pd = decodeURIComponent(p); } catch (e) { pd = p; }
+        if (/offline\.html$/i.test(p) || /灰樱\.html$/i.test(pd)) apply('offline');
         if (/chat_inner\.html$/i.test(p)) { apply('chat'); apply('heart'); }
+        if (/heart-setting\.html$/i.test(p)) apply('heart');
         if (/groups\.html$/i.test(p)) apply('chat');
     }
 
@@ -249,9 +257,26 @@
         }
     }
 
+    var _afTimer = 0;
+    function scheduleApplyAll() {
+        clearTimeout(_afTimer);
+        _afTimer = setTimeout(function () { applyAllForPage(); }, 120);
+    }
+    window.addEventListener('storage', function (e) {
+        if (e && e.key && /^avatar_frame_/.test(e.key)) scheduleApplyAll();
+    });
+    window.addEventListener('pageshow', scheduleApplyAll);
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) scheduleApplyAll(); });
+    try {
+        if (window.MutationObserver) {
+            new MutationObserver(scheduleApplyAll).observe(document.body || document.documentElement, { childList: true, subtree: true });
+        }
+    } catch (e) {}
+
     window.NanoAvatarFrame = {
         get: get, set: set, buildCss: buildCss, apply: apply, applyAllForPage: applyAllForPage,
-        getPresets: getPresets, getSize: getSize, getRadius: getRadius, getAvatarSize: getAvatarSize, openUI: openUI
+        getPresets: getPresets, getSize: getSize, getRadius: getRadius, getAvatarSize: getAvatarSize, openUI: openUI,
+        refresh: scheduleApplyAll
     };
 
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', applyAllForPage);

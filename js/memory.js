@@ -33,6 +33,7 @@
     const modalTextarea = document.getElementById('modalTextarea');
     const modalDate = document.getElementById('modalDate');
     const modalMemType = document.getElementById('modalMemType');
+    const modalImportance = document.getElementById('modalImportance');
     const modalRelatedChar = document.getElementById('modalRelatedChar');
     const modalVectorStatus = document.getElementById('modalVectorStatus');
 
@@ -634,7 +635,7 @@
     // 模型没给重要度时的兜底：按内容/类型粗略分级，避免整库清一色 3 星
     function guessMemoryImportance(type, content) {
         const t = String(type || '') + ' ' + String(content || '');
-        if (/约定|承诺|答应|表白|分手|和好|吵架|纪念日|生日|求婚|结婚|秘密|禁忌|第一次/.test(t)) return 5;
+        if (/约定|承诺|答应|表白|分手|和好|吵架|纪念日|生日|求婚|结婚|秘密|禁忌|第一次|原话/.test(t)) return 5;
         if (/重要事件|情感|关系|家人|朋友|身世|过往|愿望|梦想/.test(String(type || ''))) return 4;
         if (/偏好|口味|习惯|作息|喜欢|讨厌|不吃|过敏|口头禅/.test(t)) return 2;
         if (String(content || '').length > 120) return 4;
@@ -701,12 +702,14 @@
 4. 地理位置：我和${currentUser}各自所在的城市/地点，尤其是异地恋时双方的位置。
 5. 社交关系：我们认识的人、家人、朋友、同事等关系网。
 6. 情感状态与承诺：说过的重要的话、答应过的事、情绪变化。
-7. 其他值得记住的细节。
+7. 重要原话：${currentUser}或我说过的、将来会被翻出来回味的原话（表白、承诺、道歉、吵架时说的话、约定）。引号里的原句必须逐字保留，不要改写成总结。
+8. 其他值得记住的细节。
 
 格式：每条独立一行，以【类型|重要度】开头，重要度用 1~5 表示：
 【重要事件|5】我和${currentUser}约好下周在长沙见面。我住在岳麓区，TA住在五一广场附近；TA说会提前一天过来，我嘴上说不用，其实已经把那天下午空出来了。
 【${currentUser}偏好|2】${currentUser}喜欢喝冰美式，不吃香菜，习惯凌晨一点睡。我记住了这些，点单时会下意识避开香菜。
 【地理位置|3】我在长沙，${currentUser}在上海。我们隔着大约900公里，所以每一次见面都要提前很久计划。
+【原话承诺|5】${currentUser}在2025年3月说过“我会爱你一辈子”。我当时只是笑了一下，没接话，但这句话我一直记得；后来每次吵架，我都会想起它。
 
 重要度必须由我根据这条记忆对我们关系的长期影响自己判断，不能全部写 3：
 - 5 = 刻骨铭心 / 改变关系走向（重大约定、表白、分手、和好、秘密、禁忌）
@@ -718,7 +721,8 @@
 要求：
 - 每条必须写够 60~160 字，至少包含：当时的具体场景或对话细节 + 我当时的感受/反应 + 这件事对我和TA意味着什么。
 - 是事后回想的提炼，不是逐句复述聊天；不要把整段对话照抄进记忆，也不要只写一句空结论。
-- 保留名字、地点、数字、具体物品，但不一定要原文照录。
+- 但「原话承诺 / 重要原话」类必须逐字保留引号里的原句，可以在引号外补场景和感受；这类记忆的重要度至少 4，能改变关系走向的标 5。
+- 保留名字、地点、数字、具体物品，但不一定要原文照录（原话类除外）。
 - 【语言】记忆正文必须用简体中文写。如果原对话是韩语/英语/日语等外语，只保留少量关键原话，并在后面用「（中文：……）」附上翻译；绝对不能只输出外语。
 - 只输出有实质内容的记忆，不要泛泛而谈。
 - 同一批记忆的重要度要有高有低，不要整批都是 3。` },
@@ -1163,11 +1167,19 @@
                 typeTag.textContent = item.type || '其他';
                 typeTag.style.color = typeColors[item.type] || '#8e8e93';
 
+                const impTag = document.createElement('span');
+                impTag.className = 'memory-type-tag';
+                const _imp = Number(item.importance) || 0;
+                impTag.textContent = _imp > 0 ? ('★' + _imp) : '—';
+                impTag.title = _imp >= 4 ? '重要：每轮都会带进上下文' : '普通记忆：按最近顺序带入';
+                impTag.style.color = _imp >= 4 ? '#ff9500' : '#8e8e93';
+
                 const vecBadge = document.createElement('span');
                 vecBadge.className = 'memory-vector-badge' + (item.hasVector ? '' : ' off');
                 vecBadge.textContent = item.hasVector ? '向量' : '文本';
 
                 tags.appendChild(typeTag);
+                tags.appendChild(impTag);
                 tags.appendChild(vecBadge);
                 header.appendChild(date);
                 header.appendChild(tags);
@@ -1216,6 +1228,7 @@
         modalTextarea.value = item.content || '';
         modalDate.textContent = memTs(item) ? new Date(memTs(item)).toLocaleString('zh-CN') : (item.time || '—');
         modalMemType.textContent = (item.type || '其他') + ' · ' + (item.source === 'auto' ? '自动' : '手动');
+        if (modalImportance) modalImportance.value = String(item.importance || 3);
         modalRelatedChar.textContent = item.relatedChar || '未知';
         modalVectorStatus.textContent = item.hasVector ? '已向量化 (' + (item.embedding?.length || 0) + '维)' : '未向量化（纯文本）';
         document.getElementById('editModal').classList.add('active');
@@ -1237,6 +1250,10 @@
         if (!item) return;
         try {
             item.content = content;
+            if (modalImportance) {
+                const imp = parseInt(modalImportance.value, 10);
+                if (imp >= 1 && imp <= 5) item.importance = imp;
+            }
 
             // 尝试重新向量化
             const hasVector = !!(embUrl.value.trim() && embKey.value.trim() && embModelSelect.value);

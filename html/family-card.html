@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#ffffff">
 <title>亲属卡</title>
-    <link rel="stylesheet" href="../css/family-card.css?v=20261024c">
+    <link rel="stylesheet" href="../css/family-card.css?v=20261111a">
 <script src="../js/appearance.js?v=20261110c"></script>
 </head>
 <body class="nano-family-card">
@@ -46,7 +46,7 @@
         <section class="fc-section">
             <div class="fc-section-head">
                 <span class="fc-section-title">亲属卡</span>
-                <button class="fc-add" id="inviteBtn">邀请开卡</button>
+                <button class="fc-add" id="inviteBtn">给他开卡</button>
             </div>
             <div class="fc-list" id="fcList"></div>
         </section>
@@ -62,8 +62,8 @@
 
 <div class="fc-modal" id="inviteModal">
     <div class="fc-modal-card">
-        <div class="fc-modal-title">邀请对方开启亲属卡</div>
-        <div class="fc-modal-desc">由你出资、对方使用，额度可随时调整。发出后由对方决定是否接受。</div>
+        <div class="fc-modal-title">给对方开一张亲属卡</div>
+        <div class="fc-modal-desc">由你出资、对方使用，额度不能超过你选择的银行卡余额；发出后由对方决定是否接受。</div>
         <div class="fc-banks-label">开卡银行</div>
         <div class="fc-banks" id="inviteBanks"></div>
         <input class="fc-input" id="inviteLimit" type="number" inputmode="decimal" placeholder="额度，例如 2000">
@@ -119,10 +119,12 @@
 
 <div class="fc-toast" id="fcToast"></div>
 
+<script src="../js/nano-idb.js?v=20261112a"></script>
 <script src="../js/bank-theme.js?v=20261006a"></script>
-<script src="../js/family-card-store.js?v=20261006a"></script>
+<script src="../js/char-wealth.js?v=20261112a"></script>
+<script src="../js/family-card-store.js?v=20261112a"></script>
 <script src="../js/char-context.js?v=20261029a"></script>
-<script src="../js/family-card.js?v=20261024i"></script>
+<script src="../js/family-card.js?v=20261112a"></script>
 <script src="../swipe-back.js"></script>
 </body>
 </html>

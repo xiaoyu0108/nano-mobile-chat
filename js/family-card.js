@@ -16,6 +16,7 @@
 
     var chatId = getQuery('chat');
     var contactName = getQuery('name');
+    var focusCardId = getQuery('card') || '';
     if (!chatId || !contactName) {
         try {
             var info = JSON.parse(sessionStorage.getItem('inner_setting_info') || 'null') ||
@@ -70,22 +71,56 @@
     var charData = null;
     var refreshRun = 0;
 
-    // 开卡银行选择（决定亲属卡颜色）
+    // 开卡银行选择：只列用户真实持有的银行卡，额度不能超过该卡余额
     var inviteBanks = $('inviteBanks');
-    var _bankId = (window.NanoBank && NanoBank.DEFAULT) || 'gray';
-    (function renderBankPicker() {
-        if (!inviteBanks || !window.NanoBank) return;
-        inviteBanks.innerHTML = NanoBank.list.map(function (b) {
-            return '<button type="button" class="fc-bank' + (b.id === _bankId ? ' sel' : '') + '" data-bank="' + b.id + '">' +
-                '<span class="sw" style="background:' + b.bg + '"></span><span class="nm">' + b.name + '</span></button>';
+    var inviteCards = [];
+    var _fundingCardId = '';
+    function cardTheme(card) {
+        try { return (window.NanoBank && NanoBank.get(card.bankId)) || { bg: 'linear-gradient(135deg,#3d434a,#22262b)' }; } catch (e) { return { bg: 'linear-gradient(135deg,#3d434a,#22262b)' }; }
+    }
+    function last4(card) {
+        var n = String((card && card.cardNumber) || '').replace(/\s/g, '');
+        return n ? n.slice(-4) : '0000';
+    }
+    function renderInviteBanks() {
+        if (!inviteBanks) return;
+        if (!inviteCards.length) {
+            inviteBanks.innerHTML = '<div class="fc-banks-empty">还没有银行卡，请先到钱包添加</div>';
+            return;
+        }
+        inviteBanks.innerHTML = inviteCards.map(function (c) {
+            var bank = cardTheme(c);
+            var name = c.bankName || ((window.NanoBank && NanoBank.get(c.bankId).name) || '银行卡');
+            return '<button type="button" class="fc-bank' + (c.id === _fundingCardId ? ' sel' : '') + '" data-card="' + esc(c.id) + '">' +
+                '<span class="sw" style="background:' + bank.bg + '"></span><span class="nm">' + esc(name) + '</span>' +
+                '<span class="sub">尾号 ' + esc(last4(c)) + ' · ' + moneyCompact(c.balance) + '</span></button>';
         }).join('');
-        Array.prototype.forEach.call(inviteBanks.querySelectorAll('.fc-bank'), function (btn) {
-            btn.addEventListener('click', function () {
-                _bankId = btn.getAttribute('data-bank');
-                Array.prototype.forEach.call(inviteBanks.querySelectorAll('.fc-bank'), function (b) { b.classList.toggle('sel', b === btn); });
+    }
+    function loadInviteBanks() {
+        if (!S) return Promise.resolve([]);
+        return S.readWallet().then(function (wd) {
+            wd = S.normalizeWallet(wd);
+            inviteCards = (wd.cards || []).map(function (c) {
+                return { id: c.id, bankId: c.bankId, bankName: c.bankName, cardNumber: c.cardNumber, balance: Number(c.balance) || 0, active: String(c.id) === String(wd.activeCardId) };
+            });
+            if (!_fundingCardId || !inviteCards.some(function (c) { return c.id === _fundingCardId; })) {
+                var active = inviteCards.filter(function (c) { return c.active; })[0] || inviteCards[0];
+                _fundingCardId = active ? active.id : '';
+            }
+            renderInviteBanks();
+            return inviteCards;
+        }).catch(function () { renderInviteBanks(); return []; });
+    }
+    if (inviteBanks) {
+        inviteBanks.addEventListener('click', function (e) {
+            var btn = e.target.closest('.fc-bank');
+            if (!btn) return;
+            _fundingCardId = btn.getAttribute('data-card') || '';
+            Array.prototype.forEach.call(inviteBanks.querySelectorAll('.fc-bank'), function (b) {
+                b.classList.toggle('sel', b === btn);
             });
         });
-    })();
+    }
 
     function money(n) {
         n = Number(n) || 0;
@@ -137,7 +172,7 @@
             var cls = 'fc-card' + (!mine ? ' received' : '') + (pending ? ' pending' : '') + (rejected ? ' rejected' : '');
             var typeLabel = mine ? ('我开给 ' + contactName) : (contactName + ' 开给我');
             var badge = active ? '使用中' : (pending ? '待处理' : '已拒绝');
-            var used = Number(c.spent || 0);
+            var used = Number(c.monthlySpent != null ? c.monthlySpent : (c.spent || 0));
             var remain = Math.max(0, Number(c.limit || 0) - used);
             var actions = '';
             if (pending && !mine) {
@@ -191,7 +226,7 @@
             return wrap('<path d="M5 8h11v6a5 5 0 0 1-5 5h-1a5 5 0 0 1-5-5V8Z"/><path d="M16 9h2a3 3 0 0 1 0 6h-2"/><path d="M7 3v2M10 3v2M13 3v2"/>');
         }
         if (/外卖|餐|饭|火锅|烧烤|麻辣烫|甜品|蛋糕|面|粉|食/.test(d)) {
-            return wrap('<path d="M7 3v8M5 3v4a2 2 0 0 0 4 0V3"/><path d="M17 3c-2 3-2 6 0 8v10"/>');
+            return wrap('<path d="M7 3v7"/><path d="M4.5 3v4a2.5 2.5 0 0 0 5 0V3"/><path d="M7 10v11"/><path d="M16.5 3c-1.6 2.2-2.4 4.7-2.4 7.5h4.8c0-2.8-.8-5.3-2.4-7.5Z"/><path d="M16.5 10.5V21"/>');
         }
         if (/地铁|公交|打车|滴滴|出行|机票|火车|高铁|加油|停车|车/.test(d)) {
             return wrap('<rect x="5" y="3" width="14" height="14" rx="3"/><path d="M5 10h14M9 17l-2 4M15 17l2 4"/><path d="M8.5 13.5h.01M15.5 13.5h.01"/>');
@@ -235,11 +270,22 @@
     function refresh() {
         var all = S ? S.read(chatId) : [];
         var mine = currentTab === 'mine';
+        var monthKey = new Date().toISOString().slice(0, 7);
+        all.forEach(function (c) {
+            if (c && c.status === 'active' && c.monthKey !== monthKey) {
+                c.monthKey = monthKey;
+                c.monthlySpent = 0;
+                if (S) S.update(chatId, c.id, { monthKey: monthKey, monthlySpent: 0 });
+            }
+        });
         // 我的 = 我出资的卡；他的 = 对方出资的卡
         var cards = all.filter(function (c) { return (c.issuer === 'user') === mine; });
         var total = 0, used = 0;
         cards.forEach(function (c) {
-            if (c.status === 'active') { total += Number(c.limit || 0); used += Number(c.spent || 0); }
+            if (c.status === 'active') {
+                total += Number(c.limit || 0);
+                used += Number(c.monthlySpent != null ? c.monthlySpent : (c.spent || 0));
+            }
         });
         fcTotal.textContent = moneyCompact(total);
         fcUsed.textContent = moneyCompact(used);
@@ -250,7 +296,12 @@
         if (mine) {
             S.readWallet().then(function (wd) {
                 fcBalance.textContent = moneyCompact(wd.balance);
-                renderFlow(wd.transactions || []);
+                var txs = wd.transactions || [];
+                if (focusCardId) {
+                    var hit = txs.filter(function (t) { return t && (String(t.familyCardId || '') === String(focusCardId) || String(t.familyId || '') === String(focusCardId)); });
+                    if (hit.length) txs = hit;
+                }
+                renderFlow(txs);
             });
         } else {
             var w = S.readCharWallet(chatId);
@@ -401,7 +452,12 @@
         var balance = Math.max(0, Math.round(((Number(w.balance) || 0) + net) * 100) / 100);
         var merged = {
             balance: balance,
-            transactions: txs.slice(0, 500)
+            transactions: txs.slice(0, 500),
+            seedVersion: 2,
+            wealthTier: w.wealthTier || '',
+            wealthLabel: w.wealthLabel || '',
+            lowFamily: !!w.lowFamily,
+            veryPoor: !!w.veryPoor
         };
         S.writeCharWallet(chatId, merged);
         return merged;
@@ -414,17 +470,25 @@
         } catch (e) {}
         var w = S.readCharWallet(chatId);
         var balance = Number(w.balance) || 0;
+        var persona = String((charData && (charData.setting || charData.desc)) || '') + ' ' + contactName;
+        var profile = null;
+        try {
+            profile = (window.NanoCharWealth && NanoCharWealth.readProfile(chatId)) || (window.NanoCharWealth && NanoCharWealth.profileFor(persona, contactName));
+        } catch (e) {}
+        var wealth = '';
+        try { if (profile && window.NanoCharWealth) wealth = NanoCharWealth.promptBlock(profile); } catch (e) {}
         var recent = (w.transactions || []).slice(0, 6).map(function (t) {
             return (t.type === 'income' ? '+' : '-') + '¥' + t.amount + ' ' + (t.desc || '') + ' ' + (t.time || '');
         }).join('\n') || '（暂无）';
         var sys = '你是虚构角色的银行卡流水生成器。所有内容均为小说角色的文学创作。只输出一个 JSON 对象，不要解释、不要 markdown 代码块。';
-        var user = '你是「' + contactName + '」的银行卡流水生成器。\n' + ctx + '\n\n' +
+        var user = '你是「' + contactName + '」的银行卡流水生成器。\n' + ctx + '\n' + wealth + '\n\n' +
             '【当前银行卡余额】¥' + balance + '\n【最近流水】\n' + recent + '\n\n' +
             '请生成「' + contactName + '」最近 10 条左右的银行卡收支，要求：\n' +
-            '1. 支出 7-8 条，收入 2-3 条；收入来源要符合角色身份（工资、稿费、项目结款、分红、报销、退款、红包等），支出金额和消费场所必须符合角色的身份与消费水平。\n' +
-            '2. 时间在最近 7 天内，按从新到旧排列，使用 ISO 时间（如 2026-10-24T10:15:00）。\n' +
-            '3. 至少 1-2 条自然涉及用户（用用户姓名、共同经历或记忆库内容），不要每条都提。\n' +
-            '4. 金额为正数，保留两位小数；不要输出余额，系统会按流水自动计算。\n' +
+            '1. 支出 7-8 条，收入 2-3 条；收入来源必须严格符合上面的财富阶层，学生不能出现项目尾款/分红/股权/公司报销，穷人不能出现大额项目结款或奢侈品消费。\n' +
+            '2. 金额、店铺、消费场所必须符合角色的身份与消费水平，不能和财富阶层矛盾。\n' +
+            '3. 时间在最近 7 天内，按从新到旧排列，使用 ISO 时间（如 2026-10-24T10:15:00）。\n' +
+            '4. 至少 1-2 条自然涉及用户（用用户姓名、共同经历或记忆库内容），不要每条都提。\n' +
+            '5. 金额为正数，保留两位小数；不要输出余额，系统会按流水自动计算。\n' +
             '只输出 JSON：{"transactions":[{"type":"expense","desc":"星巴克","amount":32,"time":"2026-10-24T10:15:00"}]}';
         var content = '';
         try {
@@ -440,62 +504,25 @@
         }
         var data = firstJson(content);
         var txs = normalizeTransactions(data && data.transactions, 12);
+        try { if (profile && window.NanoCharWealth) txs = NanoCharWealth.sanitizeTransactions(profile, txs, { balance: S.readCharWallet(chatId).balance }); } catch (e) {}
         if (txs.length < 5) throw new Error('API 返回的有效流水不足');
         return txs;
     }
 
     function randomWalletTransactions() {
-        var w = S.readCharWallet(chatId);
-        var balance = Math.max(0, Number(w.balance) || 0);
         var persona = String((charData && (charData.setting || charData.desc)) || '') + ' ' + contactName;
-        var wealthHigh = /总裁|董事长|豪门|财阀|明星|顶流|富豪|老板|CEO|继承人|贵族|巨星|影帝|影后|富二代/.test(persona);
-        var wealthLow = /学生|高中生|大学生|打工|兼职|实习|贫穷|普通|社畜|便利店|服务员/.test(persona);
-        var factor = Math.max(0.7, Math.min(2.2, balance / 60000));
-        if (wealthHigh) factor = 2.2;
-        if (wealthLow) factor = Math.min(factor, 1.0);
-        var expensePool = [
-            ['星巴克', 28, 48], ['瑞幸咖啡', 15, 30], ['便利店', 12, 60],
-            ['盒马鲜生', 80, 260], ['外卖', 25, 78], ['火锅', 120, 380],
-            ['地铁出行', 4, 20], ['打车', 18, 80], ['房租', 1800, 5200],
-            ['水电费', 120, 480], ['电影票', 35, 90], ['淘宝购物', 60, 520],
-            ['书店', 40, 160], ['药店', 18, 120], ['宠物用品', 30, 260],
-            ['给 TA 买礼物', 99, 899]
+        var profile = null;
+        try {
+            profile = (window.NanoCharWealth && NanoCharWealth.readProfile(chatId)) || (window.NanoCharWealth && NanoCharWealth.profileFor(persona, contactName));
+        } catch (e) {}
+        if (window.NanoCharWealth && profile) {
+            var wallet = S.readCharWallet(chatId);
+            return NanoCharWealth.randomWalletTransactions(profile, 10, contactName, { balance: wallet.balance });
+        }
+        return [
+            { id: 'ctx_' + Date.now() + '_1', type: 'income', amount: 1200, desc: '兼职收入', time: new Date().toISOString() },
+            { id: 'ctx_' + Date.now() + '_2', type: 'expense', amount: 25, desc: '食堂', time: new Date().toISOString() }
         ];
-        var incomePool = [
-            ['工资入账', 6000, 18000], ['稿费到账', 500, 4000], ['项目结款', 1000, 8000],
-            ['报销到账', 200, 1800], ['红包收入', 50, 600], ['退款到账', 20, 300],
-            ['TA 发来的红包', 52, 520]
-        ];
-        var used = {};
-        function pick(pool) {
-            for (var k = 0; k < 8; k++) {
-                var it = pool[Math.floor(Math.random() * pool.length)];
-                if (!used[it[0]]) { used[it[0]] = 1; return it; }
-            }
-            return pool[Math.floor(Math.random() * pool.length)];
-        }
-        function amt(range, scale) {
-            var v = (range[1] + Math.random() * (range[2] - range[1])) * scale;
-            return Math.round(v * 100) / 100;
-        }
-        var txs = [];
-        var count = 9 + Math.floor(Math.random() * 3); // 9-11
-        var incomeCount = 2 + (Math.random() < 0.55 ? 1 : 0);
-        for (var i = 0; i < count; i++) {
-            var isIncome = i < incomeCount;
-            var item = pick(isIncome ? incomePool : expensePool);
-            var ago = Math.floor(Math.random() * 7 * 24 * 60);
-            var when = new Date(Date.now() - ago * 60000);
-            txs.push({
-                id: 'ctx_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
-                type: isIncome ? 'income' : 'expense',
-                amount: amt(item, factor),
-                desc: item[0],
-                time: when.toISOString()
-            });
-        }
-        txs.sort(function (a, b) { return new Date(b.time) - new Date(a.time); });
-        return txs;
     }
 
     function setRefreshBusy(busy) {
@@ -522,15 +549,29 @@
 
     // ===== 操作 =====
     function invite(limit) {
-        if (!S) return;
+        if (!S) return false;
         var lim = Math.max(0, Math.round((parseFloat(limit) || 0) * 100) / 100);
-        if (lim > 1e9) lim = 1e9; // 上限十亿（以亿为单位）
-        if (lim <= 0) { toast('请输入正确的额度'); return; }
-        var bank = (window.NanoBank && NanoBank.get(_bankId)) || { id: 'gray', name: '储蓄卡' };
-        S.add(chatId, { issuer: 'user', holder: 'char', limit: lim, spent: 0, status: 'pending', note: '', bankId: bank.id, bankName: bank.name });
-        postToParent({ type: 'NANO_FAMILY_CARD_SUBMIT', chatId: chatId, name: contactName, limit: lim, bankId: bank.id, bankName: bank.name });
+        if (lim > 1e9) lim = 1e9;
+        if (lim <= 0) { toast('请输入正确的额度'); return false; }
+        var card = inviteCards.filter(function (c) { return String(c.id) === String(_fundingCardId); })[0];
+        if (!card) { toast('请先选择一张开卡银行卡'); return false; }
+        if (lim > Number(card.balance || 0)) { toast('额度不能超过这张银行卡的余额 ' + money(card.balance)); return false; }
+        var bank = (window.NanoBank && NanoBank.get(card.bankId)) || { id: 'gray', name: '储蓄卡' };
+        var bankName = card.bankName || bank.name;
+        var created = S.add(chatId, {
+            issuer: 'user', holder: 'char', limit: lim, spent: 0, monthlySpent: 0,
+            monthKey: new Date().toISOString().slice(0, 7), status: 'pending', note: '',
+            bankId: card.bankId, bankName: bankName, fundingCardId: card.id,
+            cardLast4: last4(card)
+        });
+        postToParent({
+            type: 'NANO_FAMILY_CARD_SUBMIT', chatId: chatId, name: contactName, limit: lim,
+            bankId: card.bankId, bankName: bankName, fundingCardId: card.id, cardLast4: last4(card),
+            familyId: created.id
+        });
         toast('邀请已发出，等待对方回应');
         refresh();
+        return true;
     }
 
     function accept(id) {
@@ -558,27 +599,38 @@
         if (!S) return;
         var c = S.find(chatId, id);
         if (!c) return;
-        var remain = Math.max(0, Number(c.limit || 0) - Number(c.spent || 0));
-        if (remain <= 0) { toast('额度已用完'); return; }
-        var input = window.prompt('输入消费金额（剩余 ' + money(remain) + '）', '');
+        var used = Number(c.monthlySpent != null ? c.monthlySpent : (c.spent || 0));
+        var remain = Math.max(0, Number(c.limit || 0) - used);
+        if (remain <= 0) { toast('本月额度已用完'); return; }
+        var input = window.prompt('输入消费金额（本月剩余 ' + money(remain) + '）', '');
         if (input == null) return;
         var amt = Math.round((parseFloat(input) || 0) * 100) / 100;
         if (amt <= 0) { toast('金额无效'); return; }
-        if (amt > remain) { toast('超出剩余额度'); return; }
+        if (amt > remain) { toast('超出本月剩余额度'); return; }
         var mine = c.issuer === 'user';
-        // 出资方决定扣谁的钱：我出资 → 扣我的银行卡；对方出资 → 扣对方的银行卡，并让对方知道
         var pay = mine
-            ? S.spend('亲属卡消费 · ' + contactName, amt)
+            ? S.spend('亲属卡消费 · ' + contactName, amt, c.fundingCardId, { familyId: id, familyCardId: id, charName: contactName })
             : S.charSpend(chatId, '亲属卡消费 · 你支付', amt);
         (pay || Promise.resolve()).then(function () {
             var latest = S.find(chatId, id);
-            S.update(chatId, id, { spent: Number((latest && latest.spent) || 0) + amt });
+            var monthKey = new Date().toISOString().slice(0, 7);
+            var base = latest && latest.monthKey === monthKey ? Number(latest.monthlySpent || 0) : 0;
+            var baseAll = Number((latest && latest.spent) || 0);
+            S.update(chatId, id, { spent: baseAll + amt, monthlySpent: base + amt, monthKey: monthKey });
             if (!mine) {
-                // 花的是对方的钱：通知对方（偶尔提及即可，由角色自行决定）
                 postToParent({ type: 'NANO_FAMILY_SPEND_NOTICE', chatId: chatId, amount: amt, cardId: id, issuer: 'char' });
+            }
+            var after = S.find(chatId, id);
+            if (after && Number(after.monthlySpent || 0) >= Number(after.limit || 0)) {
+                postToParent({
+                    type: 'NANO_FAMILY_LIMIT_REACHED', chatId: chatId, cardId: id,
+                    limit: Number(after.limit || 0), spent: Number(after.monthlySpent || 0)
+                });
             }
             toast('消费成功');
             refresh();
+        }).catch(function (e) {
+            toast((e && e.message) || '消费失败');
         });
     }
 
@@ -597,7 +649,7 @@
             if (!c) return;
             editingId = id;
             limitInput.value = c.limit || '';
-            $('limitDesc').textContent = '当前已用 ' + money(c.spent || 0) + '，调整后立即生效。';
+            $('limitDesc').textContent = '本月已用 ' + money(c.monthlySpent != null ? c.monthlySpent : (c.spent || 0)) + '，调整后立即生效。';
             limitModal.classList.add('active');
             setTimeout(function () { limitInput.focus(); }, 100);
         }
@@ -606,12 +658,15 @@
     $('inviteBtn').addEventListener('click', function () {
         inviteLimit.value = '';
         inviteModal.classList.add('active');
-        setTimeout(function () { inviteLimit.focus(); }, 100);
+        loadInviteBanks().then(function () {
+            var card = inviteCards.filter(function (c) { return String(c.id) === String(_fundingCardId); })[0];
+            inviteLimit.placeholder = card ? ('额度，最高 ' + money(card.balance)) : '额度，例如 2000';
+            setTimeout(function () { inviteLimit.focus(); }, 100);
+        });
     });
     $('inviteCancel').addEventListener('click', function () { inviteModal.classList.remove('active'); });
     $('inviteConfirm').addEventListener('click', function () {
-        invite(inviteLimit.value);
-        inviteModal.classList.remove('active');
+        if (invite(inviteLimit.value)) inviteModal.classList.remove('active');
     });
     inviteModal.addEventListener('click', function (e) { if (e.target === inviteModal) inviteModal.classList.remove('active'); });
 
@@ -619,8 +674,24 @@
     $('limitConfirm').addEventListener('click', function () {
         if (!S || !editingId) { limitModal.classList.remove('active'); return; }
         var lim = Math.max(0, Math.round((parseFloat(limitInput.value) || 0) * 100) / 100);
-        if (lim > 1e9) lim = 1e9; // 上限十亿（以亿为单位）
+        if (lim > 1e9) lim = 1e9;
         if (lim <= 0) { toast('请输入正确的额度'); return; }
+        var card = S.find(chatId, editingId);
+        if (card && card.issuer === 'user' && card.fundingCardId) {
+            var hit = inviteCards.filter(function (c) { return String(c.id) === String(card.fundingCardId); })[0];
+            if (!hit) {
+                S.readWallet().then(function (wd) {
+                    var c2 = S.getCard(wd, card.fundingCardId);
+                    if (c2 && lim > Number(c2.balance || 0)) { toast('额度不能超过这张银行卡的余额 ' + money(c2.balance)); return; }
+                    S.update(chatId, editingId, { limit: lim });
+                    limitModal.classList.remove('active');
+                    toast('额度已更新');
+                    refresh();
+                });
+                return;
+            }
+            if (lim > Number(hit.balance || 0)) { toast('额度不能超过这张银行卡的余额 ' + money(hit.balance)); return; }
+        }
         S.update(chatId, editingId, { limit: lim });
         limitModal.classList.remove('active');
         toast('额度已更新');
@@ -699,7 +770,11 @@
         if (ch) {
             try { persona = JSON.stringify(ch).slice(0, 6000); } catch (e) { persona = contactName; }
         }
-        if (S) S.seedCharWallet(chatId, persona);
-        refresh();
+        var done = function () {
+            if (S) S.seedCharWallet(chatId, persona, contactName || (ch && ch.name) || '');
+            refresh();
+        };
+        if (S && S.hydrate) S.hydrate(chatId).then(done, done);
+        else done();
     });
 })();

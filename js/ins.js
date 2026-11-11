@@ -250,6 +250,16 @@ function loadImageSettings() {
 function saveImageSettings() {
   try { localStorage.setItem(IMG_SETTINGS_KEY, JSON.stringify(insImageSettings)); } catch (e) {}
 }
+// 只有开启「允许生图」的角色才能在任何 App 里生图（Ins / 朋友圈 / 日程 / 旅途等）。
+function charAllowsImage(id) {
+  try {
+    const raw = localStorage.getItem('chat_setting_allowImage_' + String(id || ''));
+    if (raw === null) return false;
+    let v = raw;
+    try { v = JSON.parse(raw); } catch (e) {}
+    return v === true || v === 1 || v === 'true' || v === '1';
+  } catch (e) { return false; }
+}
 
 const TAG_DESC_KEY = 'nano_ins_tag_descriptions';
 const RECOMMEND_TAGS_KEY = 'nano_ins_recommend_tags';
@@ -488,7 +498,9 @@ async function maybeGeneratePostImages(made) {
   const charIds = insImageSettings.chars || [];
   const enabledChars = {};
   getSelectableChars().forEach(c => {
-    if (c && charIds.indexOf(String(c.id || c.name)) > -1) enabledChars[normName(c.name)] = 1;
+    if (!c) return;
+    const cid = String(c.id || c.name);
+    if (charIds.indexOf(cid) > -1 && charAllowsImage(cid)) enabledChars[normName(c.name)] = 1;
   });
   const strangerNames = {};
   strangerRosterList().forEach(s => { strangerNames[normName(s.name)] = 1; });
@@ -1218,6 +1230,32 @@ function fallbackNpcRoster() {
   return [];
 }
 
+// 同一个角色反复生成时，模型总爱用同样几个名字。把用过的 NPC 名字持久化，
+// 下次生成时写进提示词并过滤，保证每次都是新面孔。
+const NPC_USED_PREFIX = 'nano_ins_npc_used_';
+function usedNpcKey(scope) {
+  return NPC_USED_PREFIX + currentMaskId() + '_' + normalizeRosterScope(scope);
+}
+function loadUsedNpcNames(scope) {
+  try {
+    const raw = localStorage.getItem(usedNpcKey(scope));
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr.filter(Boolean) : [];
+  } catch (e) { return []; }
+}
+function rememberUsedNpcNames(scope, names) {
+  try {
+    const seen = {}, out = [];
+    loadUsedNpcNames(scope).concat(names || []).forEach(function (n) {
+      const s = String(n || '').trim();
+      const k = normName(s);
+      if (!k || seen[k]) return;
+      seen[k] = 1; out.push(s);
+    });
+    localStorage.setItem(usedNpcKey(scope), JSON.stringify(out.slice(-100)));
+  } catch (e) {}
+}
+
 function loadWorldbookText(boundIds, chars) {
   const out = [];
   try {
@@ -1527,21 +1565,28 @@ async function generateNpcRoster(chars, want, scope) {
   const system = '你是一个世界观设定助手，只负责根据角色人设、世界书与长期记忆，推断与该角色/用户有现实社会关系的具体人物（朋友、同学、同事、家人、邻居等）。必须给出真实感强的完整姓名，严禁使用「旅行者、咖啡店老板、新朋友、路人、X女士、阿明」这类通用占位称呼。所有人物均为成年人。' + ADULT_PLATFORM_NOTE;
   const allCharNames = getSelectableChars().map(c => c && c.name).filter(Boolean);
   const allCharKeys = new Set(allCharNames.map(normName));
+  // 历史用过的名字（同一角色/同一 scope）：必须换新，不要让同一批人反复出现。
+  const usedNames = loadUsedNpcNames(scope);
+  const usedKeys = new Set(usedNames.map(normName));
   const userMsg = persona +
     '\n\n请列出 ' + (want || 5) + ' 个与上面这些角色或用户本人真实相识的具体人物（他们可能是同事/同学/朋友/家人/邻居/合作方等），供社交论坛互动使用。\n' +
     '要求：\n' +
     '- 每个名字必须是现实中正常的完整姓名（如「李思雨」「刘媛」「陈子豪」），不要用职业或关系当名字；\n' +
     '- 必须贴合上面的世界观、人设与记忆，优先使用记忆/世界书里已经出现过的人；全新人物也要说明 TA 与哪个角色、什么关系；\n' +
     '- 不要与上面已有的角色重名；也绝对不能使用这些已有角色名：' + (allCharNames.join('、') || '（无）') + '；\n' +
+    (usedNames.length ? ('- 必须换一批新面孔，不要使用这些已经出现过的名字：' + usedNames.slice(-60).join('、') + '；\n') : '') +
     '- 不要与最近出现过的网友/朋友重名。\n\n' +
     '严格输出 JSON 数组（不要 markdown、不要解释），格式：\n' +
     '[{"name":"李思雨","relation":"XX的大学同学","setting":"一句话性格与背景","gender":"女"}]';
   const raw = await callChatApi([{ role: 'system', content: system }, { role: 'user', content: userPersonaBlock() + '\n\n' + userMsg }], 'sub');
   // 生成时排除所有绑定角色（char/NPC/小号），否则评论会被当成「char 互评」过滤掉。
-  const list = parseNpcRoster(raw, chars).filter(n => n && !allCharKeys.has(normName(n.name)));
+  let list = parseNpcRoster(raw, chars).filter(n => n && !allCharKeys.has(normName(n.name)));
+  // 模型没按要求避开时，本地再过滤一次，保证不会一直是同几个人。
+  if (usedKeys.size) list = list.filter(n => !usedKeys.has(normName(n.name)));
   // 不再写入固定 NPC 库：每次生成只把这批随机 NPC 用于本次调用。
   // 仅保留一个页面内存池，方便当前页面的评论头像/资料查找；刷新/重开即丢失。
   if (list.length) {
+    rememberUsedNpcNames(scope, list.map(function (n) { return n && n.name; }).filter(Boolean));
     list.forEach(function (n) {
       if (!n || !n.name) return;
       var key = normName(n.name);

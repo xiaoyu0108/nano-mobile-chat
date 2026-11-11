@@ -64,6 +64,7 @@
     }
     function lastActive(id) { try { return parseInt(localStorage.getItem('nano_last_ai_' + id) || '0', 10) || 0; } catch (e) { return 0; } }
     function autoMsgOn(id) { try { var v = localStorage.getItem('chat_setting_autoMsg_' + id); if (v == null) return false; return JSON.parse(v) === true; } catch (e) { return false; } }
+    function isChatOffline(id) { try { return String(localStorage.getItem('nano_chat_mode_' + id) || '') === 'offline'; } catch (e) { return false; } }
 
     // 打开该角色的会话并取回人设 / 世界书 / 记忆 / 最近对话 / API 配置
     function fetchContext(info) {
@@ -259,7 +260,7 @@
             var done = readJSON(DONE_KEY, {}) || {};
             var now = Date.now();
             var cand = chars.filter(function (c) {
-                return c && c.id && !c.nanoAssistant && autoMsgOn(c.id) &&
+                return c && c.id && !c.nanoAssistant && autoMsgOn(c.id) && !isChatOffline(c.id) &&
                     (now - lastActive(c.id) < RECENT_MS) &&
                     !(done[c.id] && (now - done[c.id] < PER_CHAR_MS));
             });

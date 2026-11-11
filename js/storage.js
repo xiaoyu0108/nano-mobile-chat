@@ -22,9 +22,9 @@ function utf16Bytes(str) { return str ? str.length * 2 : 0; }
 const APP_CATEGORIES = [
     {
         id: 'chat', label: '单聊', color: '#007aff',
-        ls: ['chat_messages_', 'chat_setting_', 'chat_reply_pending_', 'chat_req_', 'chat_api_result_', 'chat_cleared_', 'nano_pinned_data', 'nano_cot_presets', 'nano_moment_img_round_', 'nano_auto_pending_msgs'],
+        ls: ['chat_messages_', 'chat_hot_', 'chat_setting_', 'chat_reply_pending_', 'chat_req_', 'chat_api_result_', 'chat_cleared_', 'nano_pinned_data', 'nano_cot_presets', 'nano_moment_img_round_', 'nano_auto_pending_msgs'],
         idb: [
-            { db: 'localforage', store: 'keyvaluepairs', key: ['chat_messages_', 'chat_setting_'] },
+            { db: 'localforage', store: 'keyvaluepairs', key: ['chat_messages_', 'chat_hot_', 'chat_setting_'] },
             { db: 'nano_vector_memory_db', store: 'chat_messages' },
             { db: 'nano_vector_memory_db', store: 'chat_state' }
         ]
@@ -126,7 +126,7 @@ const APP_CATEGORIES = [
     {
         id: 'fanfic', label: '同人文', color: '#8b5cf6',
         ls: ['nano_fanfic_'],
-        idb: []
+        idb: [{ db: 'nano_fanfic_db' }]
     },
     {
         id: 'cycle', label: '月潮', color: '#e05a7a',
@@ -145,8 +145,8 @@ const APP_CATEGORIES = [
     },
     {
         id: 'family', label: '亲属卡', color: '#f08a3c',
-        ls: ['nano_family_cards_'],
-        idb: []
+        ls: ['nano_family_cards_', 'nano_char_wallet_'],
+        idb: [{ db: 'nano_app_storage', store: 'kv', key: ['nano_family_cards__', 'nano_char_wallet_'] }]
     },
     {
         id: 'appstore', label: 'App Store', color: '#4a6cf7',
@@ -156,7 +156,7 @@ const APP_CATEGORIES = [
     {
         id: 'mall', label: '商城', color: '#111111',
         ls: ['nano_mall_data_'],
-        idb: []
+        idb: [{ db: 'nano_app_storage', store: 'kv', key: ['nano_mall_store__'] }]
     },
     {
         id: 'halo', label: 'Halo', color: '#5e5ce6',
@@ -170,8 +170,8 @@ const APP_CATEGORIES = [
     },
     {
         id: 'phone', label: '手机', color: '#a2845e',
-        ls: ['glass_phone_'],
-        idb: [{ db: 'check_phone_db' }]
+        ls: ['glass_phone_', 'mpLayout4', 'mpImgs3'],
+        idb: [{ db: 'check_phone_db' }, { db: 'nano_app_storage', store: 'kv', key: ['nano_widget_layout_v1', 'nano_widget_images_v1', 'nano_desktop_bg', 'nano_app_custom'] }]
     },
     {
         id: 'user', label: '用户资料', color: '#8e8e93',
@@ -186,7 +186,7 @@ const APP_CATEGORIES = [
     {
         id: 'qa', label: 'Q&A', color: '#5ac8fa',
         ls: ['nano_qa_', 'nano_qb_', 'qb4_'],
-        idb: []
+        idb: [{ db: 'qbox' }]
     },
     {
         id: 'nano', label: '纳米', color: '#2c2c2e',

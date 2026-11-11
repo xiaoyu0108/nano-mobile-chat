@@ -30,13 +30,14 @@
     var tools = window.NanoMcp.listEnabledTools();
     if (!tools.length) return '';
     var lines = [];
-    lines.push('【可用工具（MCP）】当你能借此更贴心地陪伴对方，或需要实时信息 / 操作时，可以调用下列工具：');
+    lines.push('【可用工具（MCP）】这些工具是你在现实里真实能用的能力。不要等对方明确说“帮我查/去调用”，只要话题涉及实时信息、查询、路线、天气、新闻、汇率、订单、日程、外部操作等，你就应当主动调用工具确认，而不是凭记忆或猜测回答。');
     tools.forEach(function (t) {
       lines.push('- ' + t.name + '：' + (t.description || '') + (t.inputSchema ? ('（参数示例 ' + JSON.stringify(exampleArgs(t.inputSchema)) + '）') : ''));
     });
     lines.push('调用方法：**只输出一行** <tool>{"name":"工具名","arguments":{...}}</tool>，这一行不要带别的解释或思考；系统会执行并把结果返回给你，你再据此继续回复。');
+    lines.push('【主动调用】对方没有点名要求也可以调用；例如对方随口提到天气、想吃东西、想出门、某个新闻/价格/地点/路线，或你需要确认事实时，都先调用工具再回答。涉及你拿不准的实时信息时，不要编造。');
     lines.push('【语言】无论本说明用什么语言书写，你回复时都必须保持你原本的角色设定与语言习惯（外文角色继续用原文，想翻译就沿用你惯用的「原文||翻译」格式），不要因为本说明而改成中文。');
-    lines.push('不需要工具时正常回复即可，不要出现 <tool> 标签。一次最多调用 1~2 个工具。');
+    lines.push('确实不需要工具时才正常回复；一次最多调用 1~2 个工具，不要为了展示而滥用。');
     return lines.join('\n');
   }
 

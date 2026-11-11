@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>聊天</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" media="print" onload="this.media='all'">
-    <link rel="stylesheet" href="../css/chat-inner.css?v=20261110b">
+    <link rel="stylesheet" href="../css/chat-inner.css?v=20261111b">
     <link rel="stylesheet" href="../css/heart.css?v=20261110b">
 
     <link rel="dns-prefetch" href="https://unpkg.com">
@@ -53,6 +53,7 @@
         <div class="ms-left"><span class="ms-count" id="msCount">已选 0 条</span></div>
         <div class="ms-right">
             <button class="ms-cancel" id="msCancel">取消</button>
+            <button class="ms-forward" id="msForward">转发</button>
             <button class="ms-delete" id="msDelete">删除</button>
         </div>
     </div>
@@ -492,26 +493,29 @@
 </div>
 
 <!-- ===== 引入拆分后的 JS 文件 ===== -->
-    <script defer src="../js/nano-tts.js?v=20261024e"></script>
+    <script defer src="../js/nano-tts.js?v=20261111a"></script>
 <script defer src="../js/nano-assistant-knowledge.js?v=20261025b"></script>
 <script defer src="../js/nano-files.js?v=20261023a"></script>
 <script defer src="../js/nano-assistant-tools.js?v=20261102a"></script>
-<script defer src="../js/family-card-store.js?v=20261006a"></script>
+<script defer src="../js/nano-idb.js?v=20261112a"></script>
+<script defer src="../js/char-wealth.js?v=20261112a"></script>
+<script defer src="../js/family-card-store.js?v=20261112a"></script>
 <script defer src="../js/nano-pay.js?v=20261020j"></script>
-    <script defer src="../js/mem-link.js?v=20261006a"></script>
+    <script defer src="../js/mem-link.js?v=20261111a"></script>
     <script defer src="../js/nano-holiday.js?v=20261029a"></script>
 <script defer src="../js/builtin-worldbook.js?v=20261013a"></script>
 <script defer src="../js/nano-mcp-runtime.js?v=20261021d"></script>
-<script defer src="../js/nano-mcp-chat.js?v=20261102a"></script>
-<script defer src="../js/schedule-bridge.js?v=20261029a"></script>
-        <script defer src="../js/nano-card-ui.js?v=20261106a"></script>
+<script defer src="../js/nano-mcp-chat.js?v=20261111a"></script>
+<script defer src="../js/schedule-bridge.js?v=20261112a"></script>
+        <script defer src="../js/nano-card-ui.js?v=20261112a"></script>
+        <script defer src="../js/chat-forward.js?v=20261111b"></script>
     <script defer src="../js/nano-prompts.js?v=20261108c"></script>
 <script defer src="../js/social-graph.js?v=20261027k"></script>
     <script defer src="../js/nano-translate.js?v=20261026d"></script>
-    <script defer fetchpriority="high" src="../js/chat-core.js?v=20261108g"></script>
-    <script defer src="../js/travel-store.js?v=20261109a"></script>
+    <script defer fetchpriority="high" src="../js/chat-core.js?v=20261112a"></script>
+    <script defer src="../js/travel-store.js?v=20261111a"></script>
     <script defer src="../js/travel-api.js?v=20261106a"></script>
-    <script defer src="../js/travel-bridge.js?v=20261109c"></script>
+    <script defer src="../js/travel-bridge.js?v=20261112a"></script>
     <script defer src="../js/roleplay-prompt.js?v=20261108b"></script>
 <script defer src="../js/chat-transfer.js?v=20261020j"></script>
 <script defer src="../js/chat-gift.js"></script>
@@ -521,7 +525,7 @@
 <script defer src="../js/chat-voice.js"></script>
     <script defer src="../js/nano-export.js?v=20261015a"></script>
     <script defer src="../js/nano-heart-builtin.js?v=20261110l"></script>
-    <script defer src="../js/heart.js?v=20261110b"></script>
+    <script defer src="../js/heart.js?v=20261111a"></script>
 
 
 <!-- ===== 心声弹窗 ===== -->
@@ -643,6 +647,7 @@
           </div>
           <div class="iv-quick iv-quick-frame">
             <button class="iv-template-btn primary iv-block-btn" type="button" onclick="window.NanoAvatarFrame&&NanoAvatarFrame.openUI('heart')">设置头像框 / 预设</button>
+            <button class="iv-template-btn iv-block-btn" type="button" style="margin-top:6px" onclick="window.NanoAvatarFrame&&NanoAvatarFrame.openUI('chat')">设置聊天头像框</button>
           </div>
         </div>
 
@@ -691,7 +696,7 @@
 // 顶栏昵称（#chatTitle）的点击由 js/chat-core.js 绑定：打开心声弹窗，
 // 没有可展示的心声时回退为「返回聊天列表」。这里不再重复绑定，避免冲突。
 </script>
-<script defer src="../js/avatar-frame.js?v=20261010a"></script>
+<script defer src="../js/avatar-frame.js?v=20261111b"></script>
 <script defer src="../swipe-back.js"></script>
 <script>
 // iOS / 安卓键盘：收缩聊天容器，让输入栏紧贴键盘上沿（父页面也会 postMessage 同步）

@@ -146,6 +146,31 @@
     function setChatPresetName(chatId, name) {
         writeChatSetting(chatId, 'ttsPreset', String(name || '').trim());
     }
+    function getChatTtsPrompt(chatId) {
+        return String(chatSetting(chatId, 'ttsPrompt', '') || '').trim();
+    }
+    function getChatVoiceGuide(chatId) {
+        return String(chatSetting(chatId, 'ttsGuide', '') || '').trim();
+    }
+    function setChatVoiceGuide(chatId, guide) {
+        writeChatSetting(chatId, 'ttsGuide', String(guide || '').slice(0, 4000));
+    }
+    function resolveChatInstructions(chatId, opts) {
+        opts = opts || {};
+        var parts = [];
+        if (opts.instructions) parts.push(String(opts.instructions));
+        var guide = getChatVoiceGuide(chatId);
+        if (guide) parts.push(guide);
+        var prompt = getChatTtsPrompt(chatId);
+        if (prompt) parts.push('【朗读规范】\n' + prompt);
+        var seen = {};
+        var out = [];
+        parts.forEach(function (p) {
+            var s = String(p || '').trim();
+            if (s && !seen[s]) { seen[s] = 1; out.push(s); }
+        });
+        return out.join('\n\n').slice(0, 4000);
+    }
     function resolveChatConfig(chatId, presetOverride) {
         var name = (presetOverride === undefined || presetOverride === null)
             ? getChatPresetName(chatId)
@@ -182,6 +207,17 @@
         return s;
     }
 
+    function toneFromDirection(dir) {
+        var s = String(dir || '');
+        var speed = 1;
+        var pitch = 0;
+        if (/(慢|放缓|舒缓|拖长|停顿)/.test(s)) speed = 0.92;
+        else if (/(快|加快|急促|连珠)/.test(s)) speed = 1.08;
+        if (/(低沉|压低|低音|沙哑)/.test(s)) pitch = -2;
+        else if (/(高|尖|上扬|明亮)/.test(s)) pitch = 2;
+        return { speed: speed, pitch: pitch };
+    }
+
     function hexToBytes(hex) {
         var h = String(hex || '').replace(/[^0-9a-fA-F]/g, '');
         if (!h || h.length % 2) return null;
@@ -207,10 +243,13 @@
         return fetch(p + '/ext-proxy?url=' + encodeURIComponent(url), opts);
     }
 
-    async function synth(text, cfg) {
+    async function synth(text, cfg, opts) {
+        opts = opts || {};
         var base = toV1(cfg.ttsUrl);
         var type = String(cfg.ttsType || 'openai').toLowerCase();
         if (type.indexOf('fish') === 0) type = 'fishaudio';
+        var instructions = String(opts.instructions || '').trim();
+        var tone = toneFromDirection(opts.direction);
         text = ttsScript(text, type);
         if (!text) throw new Error('这条语音没有可朗读的文字');
         if (type === 'minimax') {
@@ -222,7 +261,7 @@
                 model: cfg.ttsModel,
                 text: text,
                 stream: false,
-                voice_setting: { voice_id: cfg.ttsVoice || cfg.ttsModel, speed: 1, vol: 1, pitch: 0 },
+                voice_setting: { voice_id: cfg.ttsVoice || cfg.ttsModel, speed: tone.speed, vol: 1, pitch: tone.pitch },
                 audio_setting: { sample_rate: 32000, bitrate: 128000, format: 'mp3' }
             };
             var mmJson = null, mmLastErr = null;
@@ -411,11 +450,20 @@
             voice: cfg.ttsVoice || 'alloy',
             response_format: 'mp3'
         };
-        var resp = await fetch(base + '/audio/speech', {
-            method: 'POST',
-            headers: { 'Authorization': 'Bearer ' + cfg.ttsKey, 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
-        });
+        if (instructions) body.instructions = instructions.slice(0, 4000);
+        var doOpenAi = async function () {
+            return fetch(base + '/audio/speech', {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + cfg.ttsKey, 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+        };
+        var resp = await doOpenAi();
+        if (!resp.ok && body.instructions && (resp.status === 400 || resp.status === 422)) {
+            try { await resp.text(); } catch (e) {}
+            delete body.instructions;
+            resp = await doOpenAi();
+        }
         if (!resp.ok) {
             var msg = 'HTTP ' + resp.status;
             try { var d = await resp.json(); msg = (d.error && d.error.message) || d.message || msg; } catch (e) {}
@@ -548,7 +596,7 @@
             catch (e) { console.warn('[TTS] 浏览器语音不可用：', e && e.message ? e.message : e); return false; }
         }
         try {
-            var blob = await synth(t, cfg);
+            var blob = await synth(t, cfg, opts);
             lastError = '';
             return await playBlob(blob);
         } catch (e) {
@@ -567,17 +615,24 @@
         var cfg = await getConfig();
         if (opts.config) cfg = Object.assign({}, cfg, opts.config);
         if (!isConfigured(cfg)) throw new Error('配置不完整：需要 地址 + Key + 语音模型（Fish Audio / MiniMax 还需手动填写音色 ID）');
-        var blob = await synth(t, cfg);
+        var blob = await synth(t, cfg, opts);
         return await playBlob(blob);
     }
 
     // ===== 按角色合成 / 重roll / 下载 =====
+    function hashText(s) {
+        var h = 0;
+        s = String(s || '');
+        for (var i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+        return (h >>> 0).toString(36);
+    }
     function clipKeyFor(text, opts) {
         opts = opts || {};
         if (opts.key) return String(opts.key);
         var chatId = String(opts.chatId || '');
         var preset = (opts.preset === undefined || opts.preset === null) ? getChatPresetName(chatId) : String(opts.preset || '');
-        return chatId + '|' + preset + '|' + String(text || '').slice(0, 120);
+        var guideTag = chatId ? hashText(getChatVoiceGuide(chatId) + '|' + getChatTtsPrompt(chatId)) : '';
+        return chatId + '|' + preset + '|' + guideTag + '|' + String(text || '').slice(0, 120);
     }
     async function ensureVoiceBlob(text, opts) {
         opts = opts || {};
@@ -590,7 +645,10 @@
         var key = clipKeyFor(t, opts);
         var hit = voiceCache[key];
         if (!opts.fresh && hit && hit.blob) return { blob: hit.blob, key: key, cfg: cfg };
-        var blob = await synth(t, cfg);
+        var blob = await synth(t, cfg, {
+            instructions: resolveChatInstructions(chatId, opts),
+            direction: opts.direction || getChatTtsPrompt(chatId)
+        });
         if (!blob || !blob.size) throw new Error('TTS 没有返回音频');
         voiceCache[key] = { blob: blob, text: t, preset: opts.preset || '', at: Date.now() };
         return { blob: blob, key: key, cfg: cfg };
@@ -675,6 +733,9 @@
         getChatPreset: getChatPresetName,
         setChatPreset: setChatPresetName,
         activePreset: getChatPresetName,
+        setVoiceGuide: function (chatId, guide) { setChatVoiceGuide(chatId, guide); },
+        getVoicePrompt: getChatTtsPrompt,
+        getInstructions: function (chatId, opts) { return resolveChatInstructions(chatId, opts); },
         script: ttsScript,
         speakNative: function (text, opts) { return speakNative(text, opts).catch(function () { return false; }); },
         preview: function (text, opts) { return preview(text, opts); },

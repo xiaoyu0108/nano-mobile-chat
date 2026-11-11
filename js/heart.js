@@ -374,9 +374,19 @@ function setupThoughtExpand(el) {
   // ===== IndexedDB 工具 =====
   const DB_NAME = 'NanoVoiceDB';
   const STORE_NAME = 'templates';
+  const SELECTED_KEY = 'nano_heart_template_id';
   let db = null;
   let isInternalChange = false;
-  let currentTemplateId = 'default';
+  let currentTemplateId = (function () {
+    try { return localStorage.getItem(SELECTED_KEY) || 'default'; } catch (e) { return 'default'; }
+  })();
+
+  function rememberTemplateId(id) {
+    try {
+      if (id) localStorage.setItem(SELECTED_KEY, String(id));
+      else localStorage.removeItem(SELECTED_KEY);
+    } catch (e) {}
+  }
 
   function openDB() {
     return new Promise((resolve, reject) => {
@@ -490,12 +500,15 @@ function setupThoughtExpand(el) {
     if (exists) {
       select.value = currentVal;
       currentTemplateId = currentVal;
+      rememberTemplateId(currentVal);
     } else if (all.length > 0) {
       select.value = all[0].id;
       currentTemplateId = all[0].id;
+      rememberTemplateId(currentTemplateId);
     } else {
       select.value = '';
       currentTemplateId = '';
+      rememberTemplateId('');
     }
 
     const selected = all.find(t => t.id === select.value);
@@ -513,6 +526,7 @@ function setupThoughtExpand(el) {
     if (tpl) {
       $('ivCss').value = tpl.css;
       currentTemplateId = id;
+      rememberTemplateId(id);
       $('ivTemplateName').value = '';
       const select = $('ivTemplateSelect');
       if (select.value !== id) {
@@ -942,6 +956,7 @@ function setupThoughtExpand(el) {
       const select = $('ivTemplateSelect');
       if (select) select.value = '';
       currentTemplateId = '';
+      rememberTemplateId('');
       const styleTag = document.getElementById('nanoVoiceCustomCSS');
       if (styleTag) styleTag.textContent = '';
       if (window.NanoBeautifyRT) window.NanoBeautifyRT.clear('heart');
@@ -978,6 +993,7 @@ function setupThoughtExpand(el) {
       saveAppliedCss(css);
       const id = $('ivTemplateSelect').value;
       if (id) {
+        rememberTemplateId(id);
         await saveCurrentToTemplate();
       }
       refreshSectionsFromCss(css);
@@ -1076,6 +1092,7 @@ function setupThoughtExpand(el) {
           const select = $('ivTemplateSelect');
           if (select) select.value = '';
           currentTemplateId = '';
+          rememberTemplateId('');
         } catch (error) { alert('导入失败，请检查文件格式'); }
       };
       reader.readAsText(file);

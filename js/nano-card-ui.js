@@ -39,7 +39,7 @@
         book: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h12a4 4 0 0 1 4 4v12H8a4 4 0 0 0-4 4z"/><path d="M8 4v16"/><path d="M12 8h5M12 12h5"/></svg>',
         bell: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></svg>',
         list: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>',
-        utensil: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3v8M4 3v5a3 3 0 0 0 6 0V3M7 11v10"/><path d="M17 3c-1.5 2-2 4-2 7h4c0-3-.5-5-2-7zM17 10v11"/></svg>',
+        utensil: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3v7"/><path d="M4.5 3v4a2.5 2.5 0 0 0 5 0V3"/><path d="M7 10v11"/><path d="M16.5 3c-1.6 2.2-2.4 4.7-2.4 7.5h4.8c0-2.8-.8-5.3-2.4-7.5Z"/><path d="M16.5 10.5V21"/></svg>',
         truck: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h11v10H3zM14 10h4l3 3v4h-7z"/><circle cx="7" cy="18" r="2"/><circle cx="18" cy="18" r="2"/></svg>',
         redpacket: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M3 10h18"/><circle cx="12" cy="14" r="2"/></svg>',
         receipt: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h12v20l-3-2-3 2-3-2-3 2V2z"/><path d="M9 7h6M9 11h6M9 15h4"/></svg>',
@@ -365,7 +365,7 @@
             var lim = Number(cd.limit || 0);
             var used = Number(cd.spent || 0);
             var issuer = cd.issuer === 'char' ? 'char' : 'user';
-            var fHead = st === 'active' ? '亲属卡已开启' : (st === 'rejected' ? '亲属卡已拒绝' : (issuer === 'user' ? '亲属卡待接受' : '亲属卡邀请'));
+            var fHead = st === 'active' ? '亲属卡已开启' : (st === 'rejected' ? '亲属卡已拒绝' : (issuer === 'user' ? '你开出的亲属卡待接受' : '亲属卡邀请'));
             var fIcon = st === 'active' ? 'checkCircle' : (st === 'rejected' ? 'x' : 'clock');
             var fFoot = '';
             if (st === 'active') fFoot = statusFoot('已开启 · 已用 ¥' + used.toFixed(2));
@@ -708,10 +708,13 @@
                 [isReport ? '记录人' : '分享人', isReport ? (side === 'left' ? other : me) : (cd.fromName || (side === 'right' ? me : other)), 'user'],
                 ['状态', isReport ? '已同步' : '已分享', 'checkCircle']
             ];
+            var trThought = String(cd.thought || cd.note || '').trim();
+            var trThoughtZh = String(cd.thoughtZh || '').trim();
+            var trThoughtHtml = (trThought ? note(trThought) : '') + (trThoughtZh ? note(trThoughtZh) : '');
             html = header(isReport ? 'pin' : 'image', trHead, time) +
                 trImgHtml +
                 mainTitle(isReport ? 'pin' : 'image', trHead, trTitle, trSub) +
-                info(trRows, cd) + note(cd.thought || cd.note || '') + trFoot;
+                info(trRows, cd) + trThoughtHtml + trFoot;
         } else if (type === 'cycle') {
             html = header('calendar', cd.title || '经期提醒', time) +
                 mainTitle('calendar', '经期提醒', cd.sub || '', cd.date || '', cd) +
@@ -720,6 +723,23 @@
                     ['周期', cd.cycle || '—', 'clock'],
                     ['提醒', cd.note || '记得照顾好自己', 'heart']
                 ]) + statusFoot(cd.footer || '');
+        } else if (type === 'memoryRecall') {
+            var mrText = String(cd.text || cd.quote || cd.sub || '').trim();
+            html = header('book', cd.footer || '翻到一条旧记录', time) +
+                mainTitle('book', cd.title || '旧记录', '你还说过这样的话', cd.date || '', cd) +
+                note('「' + mrText + '」') +
+                info([
+                    ['时间', cd.date || '很久以前', 'calendar'],
+                    ['说话人', cd.speaker || other, 'user'],
+                    ['类型', '原话 / 承诺', 'hash']
+                ]) + statusFoot(cd.footer || '');
+        } else if (type === 'forwardBundle') {
+            var fwItems = Array.isArray(cd.items) ? cd.items : [];
+            html = header('box', cd.footer || '转发聊天记录', time) +
+                mainTitle('box', '转发聊天记录', cd.title || '聊天记录', cd.sub || '', cd) +
+                '<div class="card-note fw-box">' +
+                '<div class="fw-open-hint">共 ' + (Number(cd.count) || fwItems.length) + ' 条 · 点击查看完整聊天记录</div></div>' +
+                statusFoot('点击卡片查看');
         } else {
             html = header('box', cd.title || '卡片', time) +
                 mainTitle('box', '卡片消息', cd.title || '卡片', cd.sub || '') +

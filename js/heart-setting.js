@@ -13,8 +13,19 @@
   var DB_NAME = 'NanoVoiceDB';
   var STORE_NAME = 'templates';
   var APPLIED_KEY = 'nano_voice_applied_css';
+  var SELECTED_KEY = 'nano_heart_template_id';
   var PROMPT_KEY = 'nano_heart_builtin_prompt';
   var $ = function (id) { return document.getElementById(id); };
+
+  function savedTemplateId() {
+    try { return localStorage.getItem(SELECTED_KEY) || ''; } catch (e) { return ''; }
+  }
+  function rememberTemplateId(id) {
+    try {
+      if (id) localStorage.setItem(SELECTED_KEY, String(id));
+      else localStorage.removeItem(SELECTED_KEY);
+    } catch (e) {}
+  }
 
   var db = null;
   function openDB() {
@@ -249,9 +260,9 @@
       o.value = t.id; o.textContent = t.name;
       sel.appendChild(o);
     });
-    var want = selectedId || currentId;
-    if (all.some(function (t) { return t.id === want; })) { sel.value = want; currentId = want; }
-    else if (all.length) { sel.value = all[0].id; currentId = all[0].id; }
+    var want = selectedId || savedTemplateId() || currentId;
+    if (all.some(function (t) { return t.id === want; })) { sel.value = want; currentId = want; rememberTemplateId(want); }
+    else if (all.length) { sel.value = all[0].id; currentId = all[0].id; rememberTemplateId(currentId); }
     return all;
   }
   async function loadToEditor(id) {
@@ -259,6 +270,7 @@
     var t = all.find(function (x) { return x.id === id; });
     if (!t) return;
     currentId = id;
+    rememberTemplateId(id);
     $('hsCss').value = t.css || '';
     $('hsTemplateName').value = '';
     $('hsTemplateSelect').value = id;
@@ -274,6 +286,7 @@
     var css = $('hsCss').value;
     var id = $('hsTemplateSelect').value;
     if (id) {
+      rememberTemplateId(id);
       try {
         var cur = (await allTemplates()).find(function (t) { return t.id === id; });
         await putTemplate(id, cur ? cur.name : '默认模板（完整）', css);
@@ -317,6 +330,7 @@
           var newId = 'tpl_' + Date.now();
           await putTemplate(newId, name, css);
           currentId = newId;
+          rememberTemplateId(newId);
           await renderSelect(newId);
         }
         $('hsTemplateName').value = '';
@@ -389,6 +403,7 @@
       $('hsCss').value = def.css || '';
       currentId = 'default';
       $('hsTemplateSelect').value = 'default';
+      rememberTemplateId('default');
       try { localStorage.setItem(APPLIED_KEY, def.css || ''); } catch (e) {}
       applyLive(def.css || '');
       toast('已还原默认模板');
@@ -431,10 +446,17 @@
 
   async function init() {
     try { bind(); } catch (e) { try { console.warn('[heart-setting] bind 失败', e); } catch (e2) {} }
-    try { await renderSelect('default'); } catch (e) {}
-    // 优先显示已应用；没有则显示默认模板
     var applied = '';
     try { applied = localStorage.getItem(APPLIED_KEY) || ''; } catch (e) {}
+    var pick = savedTemplateId();
+    if (applied) {
+      try {
+        var allNow = await allTemplates();
+        var hit = allNow.find(function (t) { return String(t.css || '').trim() === applied.trim(); });
+        if (hit) pick = hit.id;
+      } catch (e) {}
+    }
+    try { await renderSelect(pick || 'default'); } catch (e) {}
     try {
       if (applied) { $('hsCss').value = applied; }
       else {

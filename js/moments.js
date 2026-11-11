@@ -419,6 +419,32 @@
         return [];
     }
 
+    // 同一个角色反复生成时，模型很容易一直给出同样几个名字。
+    // 把「已经用过的 NPC 名字」持久化下来，下次生成时作为排除项传回去，强制换新面孔。
+    var NPC_USED_PREFIX = 'nano_moments_npc_used_';
+    function usedNpcKey(scope) {
+        return NPC_USED_PREFIX + currentMaskId() + '_' + rosterScopeToken(scope);
+    }
+    function loadUsedNpcNames(scope) {
+        try {
+            var raw = localStorage.getItem(usedNpcKey(scope));
+            var arr = raw ? JSON.parse(raw) : [];
+            return Array.isArray(arr) ? arr.filter(Boolean) : [];
+        } catch (e) { return []; }
+    }
+    function rememberUsedNpcNames(scope, names) {
+        try {
+            var seen = {}, out = [];
+            loadUsedNpcNames(scope).concat(names || []).forEach(function (n) {
+                var s = String(n || '').trim();
+                var k = normName(s);
+                if (!k || seen[k]) return;
+                seen[k] = 1; out.push(s);
+            });
+            localStorage.setItem(usedNpcKey(scope), JSON.stringify(out.slice(-80)));
+        } catch (e) {}
+    }
+
     // ===== 顶部生成中提示 =====
     function showMomentsLoading(text) {
         var el = document.getElementById('momentsLoading');
@@ -2257,6 +2283,9 @@
                 if (c && c.name) exclude.push(c.name);
             });
         } catch (e) {}
+        // 历史用过的名字也一起排除：模型在相同人设下很容易给出同一批名字。
+        var usedNames = loadUsedNpcNames(scope);
+        usedNames.forEach(function(n) { if (n) exclude.push(n); });
         var foreignInfo = (chars || []).map(function(c) { return { name: c && c.name, info: charForeignInfo(c) }; }).filter(function(x) { return x.name && x.info && x.info.foreign; });
         var system = '你是一个世界观设定助手，只负责根据角色人设、世界书与长期记忆，推断与该角色/用户有现实社会关系的具体人物（朋友、同学、同事、家人、邻居等）。必须给出真实感强的完整姓名，严禁使用「旅行者、神秘人、路人、新朋友、王姐、李哥、张老板、店老板、X女士、阿明」这类通用占位称呼。';
         var userMsg = persona +
@@ -2268,7 +2297,7 @@
             (foreignInfo.length
                 ? ('- 外国角色（' + foreignInfo.map(function(x) { return x.name + '：' + (x.info.nat || '外国') + '，母语 ' + x.info.lang; }).join('；') + '）的朋友要大多来自 TA 自己的国家/文化圈，使用该国常见的真实姓名（可用外文原名），不要全是中国朋友；\n')
                 : '') +
-            '- 不要与上面已有的角色重名。' + (exclude.length ? ('\n- 这次请换一批新面孔，避开这些已经出现过的人名：' + exclude.slice(0, 24).join('、') + '。') : '') + '\n\n' +
+            '- 不要与上面已有的角色重名。' + (exclude.length ? ('\n- 这次必须换一批新面孔，避开这些已经出现过的人名：' + exclude.slice(0, 40).join('、') + '。') : '') + '\n\n' +
             '严格输出 JSON 数组（不要 markdown、不要解释），格式：\n' +
             '[{"name":"李思雨","relation":"XX的大学同学","setting":"一句话性格与背景","gender":"女"}]';
 
@@ -2292,6 +2321,8 @@
                 seen[k] = 1; return true;
             });
             saveNpcRoster(merged.slice(0, 24), ids, scope);
+            // 记录本次真正生成的 NPC 名字，保证下一次一定换人。
+            rememberUsedNpcNames(scope, list.map(function(n) { return n && n.name; }).filter(Boolean));
         }
         return list;
     }
@@ -2818,7 +2849,9 @@
         } catch (e) { return defVal; }
     }
     function charMomentImageAllowed(charId) {
-        return !!charChatSetting(charId, 'allowMomentImage', false);
+        // 必须同时开启角色私聊里的「允许生图」和「允许朋友圈生图」，
+        // 没开「允许生图」的角色不会在朋友圈、Ins、日程、旅途等任何地方生图。
+        return !!charChatSetting(charId, 'allowImage', false) && !!charChatSetting(charId, 'allowMomentImage', false);
     }
     // 每经过一次该角色的动态即为“一轮”，到点返回 true
     function momentImageRoundDue(charId) {

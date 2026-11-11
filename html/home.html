@@ -5,7 +5,7 @@
 <meta charset="UTF-8">
 <script src="../js/nano-idb.js"></script>
 <script>window.__NANO_FONT_ONLY = true;</script>
-<script src="../js/appearance.js?v=20261110c"></script>
+<script defer src="../js/appearance.js?v=20261112a"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#ffffff">
 <link rel="icon" href="../icons/icon-192.png">
@@ -860,6 +860,7 @@ function loadBuiltinTemplates(){
    状态
 ===================================================== */
 const COLS=4, KEY='mpLayout4', IKEY='mpImgs3', IDB_LAYOUT='nano_widget_layout_v1', IDB_IMGS='nano_widget_images_v1', IDB_BG='nano_desktop_bg', IDB_CUSTOM='nano_app_custom', LS_BG='nano_desktop_bg_ls', LS_CUSTOM='nano_app_custom_ls';
+const LAYOUT_REV='2026-11-12-home-3page';
 let DESKTOP_BG=null, APP_CUSTOM={};
 const DOCK_DEFAULT=['chat','api','phone','settings'];
 const APPITEM={}; APPS.forEach(a=>APPITEM[a.id]={id:a.id,c:0,r:0});
@@ -924,34 +925,27 @@ function placeAnywhere(it,start=0){
 function newWidget(t){return {id:'w'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),t,c:0,r:0,d:{}}}
 function defaultState(){
   const lib=S.lib||[];
-  S={pages:[[],[],[],[]],dock:[...DOCK_DEFAULT],rows:ROWS,lib};
+  S={pages:[[],[],[]],dock:[...DOCK_DEFAULT],rows:ROWS,lib};
   const put=(p,it,c,r)=>{it.c=c;it.r=r;S.pages[p].push(it)};
   const row=(p,ids,c0,r)=>ids.forEach((id,i)=>put(p,APPITEM[id],c0+i,r));
   const bt=name=>{const t=BUILTIN_TEMPLATES.find(x=>x.name===name),it=newWidget(t.type);it.d={code:BT_CODE[t.file]||'',live:true};it.w=t.w;it.h=t.h;try{if(t.copy)localStorage.setItem('nanoTxt_'+it.id,JSON.stringify(t.copy))}catch(e){}return it};
   const wd=(t,w,h)=>{const it=newWidget(t);if(w){it.w=w;it.h=h}return it};
-  /* 第1页：迷你播放器 + 文字消息 + 4 个图标 + 气泡头像 */
-  const mini=wd('miniplayer');mini.d={title:'NANO'};put(0,mini,0,0);
-  put(0,bt('text-message'),0,0.5);
+  /* 第1页：双拍立得 + 8 个 App */
+  put(0,wd('polaroid2'),0,0);
   row(0,['instagram','together','couple','halo'],0,3);
-  const bub=wd('bubbles');bub.d.t1='○ㅁ○';put(0,bub,2,4);
-  /* 第2页：来电 + 最新 App + 在线名片 + 灰粉对话 */
-  put(1,wd('call'),0,0);
-  put(1,APPITEM.imessage,2,0);put(1,APPITEM.schedule,3,0);
-  put(1,APPITEM.memory,2,1);put(1,APPITEM.tide,3,1);
-  put(1,APPITEM.shop,0,2);put(1,APPITEM.music,1,2);
-  put(1,APPITEM.market,0,3);put(1,APPITEM.mcp,1,3);
-  put(1,wd('online'),2,2);
-  put(1,bt('gray-pink'),0,4);
-  /* 第3页：发送 + 4 个图标 + 关于我 + 便签 */
-  put(2,wd('send'),0,0);
-  put(2,APPITEM.store,0,2);put(2,APPITEM.book,1,2);
-  put(2,APPITEM.fanfic,0,3);put(2,APPITEM.beauty,1,3);
-  put(2,wd('about'),2,2);
-  put(2,bt('strip1-note'),0,4);
-  /* 第4页：胶囊 + 朋友圈 + 窥屏 / Q&A / Nano / 番茄钟 */
-  put(3,wd('capsule'),0,0);
-  put(3,wd('moment'),0,0.5);
-  row(3,['peek','qa','nano','pomodoro'],0,4.5);
+  row(0,['imessage','schedule','memory','tide'],0,4);
+  /* 第2页：胶囊 + 拍立得相纸（左） / 4 App（右） + 4 App（左） / 关于我（右） */
+  put(1,wd('capsule'),0,0);
+  put(1,wd('polaroidmini'),0,0.75);
+  put(1,APPITEM.shop,2,0.75);put(1,APPITEM.music,3,0.75);
+  put(1,APPITEM.market,2,1.75);put(1,APPITEM.mcp,3,1.75);
+  put(1,wd('about'),2,3);
+  put(1,APPITEM.store,0,3);put(1,APPITEM.book,1,3);
+  put(1,APPITEM.fanfic,0,4);put(1,APPITEM.beauty,1,4);
+  /* 第3页：冬日纪念 + 剩余 App */
+  put(2,bt('winter-anniversary'),0,0);
+  row(2,['qa','pomodoro','nano','peek'],0,2.5);
+  put(2,APPITEM.travel,0,3.5);
 }
 function isOldInitialLayout(){
   try{ if(localStorage.getItem('nanoHomeLayoutV2')==='1') return false; }catch(e){}
@@ -1724,21 +1718,32 @@ function init(){
   applyDesktopBg();
   render();
   loadBuiltinTemplates();
+  // 先让外壳收起开屏动画，再在后台补完 IndexedDB 数据。
+  try{ parent.postMessage({type:'nanoHomeReady'},'*'); }catch(e){}
   (async function hydrate(){
     try{
       // 布局、图片、桌面背景、自定义图标同时读，避免 4 次 IndexedDB 串行等待；
       // 读完只重绘一次，减少开屏期间整页 DOM 的重建次数。
       const got=await Promise.all([loadState().catch(function(){return false}),loadDesktopCustom()]);
-      const ok=!!got[0];
-      if(!ok) defaultState();
-      else if(isOldInitialLayout()){
-        // 老用户的「初始布局」还是旧版 5 页结构：只迁移完全没有改动过的默认布局。
+      let rev='';
+      try{ rev=localStorage.getItem('nanoHomeLayoutRev')||''; }catch(e){}
+      if(rev!==LAYOUT_REV){
         defaultState();
-        try{ localStorage.setItem('nanoHomeLayoutV2','1'); }catch(e) {}
+        save();
+        try{ localStorage.setItem('nanoHomeLayoutRev',LAYOUT_REV); }catch(e){}
+      }else{
+        const ok=!!got[0];
+        if(!ok){ defaultState(); save(); }
+        else if(isOldInitialLayout()){
+          // 老用户的「初始布局」还是旧版 5 页结构：只迁移完全没有改动过的默认布局。
+          defaultState();
+          try{ localStorage.setItem('nanoHomeLayoutV2','1'); }catch(e) {}
+          save();
+        }
       }
-      save();
       applyDesktopBg();
       render();
+      try{ parent.postMessage({type:'nanoHomeReady'},'*'); }catch(e){}
     }catch(e){}
   })();
 }

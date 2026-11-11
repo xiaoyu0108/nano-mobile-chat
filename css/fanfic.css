@@ -304,6 +304,15 @@ a { color: inherit; text-decoration: none; }
 @keyframes ffSpin { to { transform: rotate(360deg); } }
 .ff-loading-text { font-size: 11px; letter-spacing: .1em; color: #55555a; }
 .ff-loading-sub { font-size: 9.5px; color: #a3a3a7; }
+.ff-loading-preview {
+  width: min(82vw, 560px); max-height: 34vh; overflow: hidden;
+  margin-top: 4px; padding: 12px 14px;
+  border-top: 1px solid #e8e8e8; border-bottom: 1px solid #e8e8e8;
+  color: #3a3a3d; font-size: 12px; line-height: 1.85; text-align: left;
+  white-space: pre-wrap; word-break: break-word;
+  background: rgba(255,255,255,.72);
+}
+.ff-loading-preview:empty { display: none; }
 .ff-toast {
   position: fixed; left: 50%; bottom: calc(28px + env(safe-area-inset-bottom, 0px));
   z-index: 3000; transform: translate(-50%, 12px);

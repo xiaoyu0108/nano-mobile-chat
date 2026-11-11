@@ -241,6 +241,23 @@ if ($fixedNames -gt 0) {
     Write-Host "  资源路径正常，无需修改"
 }
 
+# 构建后自检：只要还有反斜杠路径，或缺少入口页，就直接失败，避免再产出“打开 404”的 APK。
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$checkZip = [System.IO.Compression.ZipFile]::OpenRead((Join-Path $BuildDir "base.apk"))
+try {
+    $badEntries = @($checkZip.Entries | Where-Object { $_.FullName -match '\\' })
+    $hasIndex = @($checkZip.Entries | Where-Object { $_.FullName -eq 'assets/www/index.html' }).Count -gt 0
+} finally {
+    $checkZip.Dispose()
+}
+if ($badEntries.Count -gt 0) {
+    throw "APK 仍有 $($badEntries.Count) 个反斜杠路径，Android 会 404。请检查 aapt2 版本或 assets 复制方式。"
+}
+if (!$hasIndex) {
+    throw "APK 缺少 assets/www/index.html，入口页没有被正确打包。"
+}
+Write-Host "  校验通过：assets/www/index.html 存在，路径全部为正斜杠"
+
 Write-Host "对齐…"
 & $zipalign -f -p 4 (Join-Path $BuildDir "base.apk") (Join-Path $BuildDir "aligned.apk")
 if ($LASTEXITCODE -ne 0) { throw "zipalign 失败" }

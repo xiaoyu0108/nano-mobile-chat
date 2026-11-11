@@ -38,6 +38,26 @@
     if (el) el.classList.remove('show');
     var bar = $('ffLoadingProgress');
     if (bar) setTimeout(function () { bar.style.width = '0%'; }, 260);
+    var pv = $('ffLoadingPreview');
+    if (pv) pv.textContent = '';
+  }
+  function setLivePreview(base, delta) {
+    var el = $('ffLoadingPreview');
+    if (!el) return;
+    var text = String(base || '') + String(delta || '');
+    el.textContent = text.length > 900 ? ('…' + text.slice(-900)) : text;
+  }
+  function liveDelta(base, onTick) {
+    var buf = '';
+    var last = 0;
+    return function (d) {
+      buf += String(d || '');
+      var now = Date.now();
+      if (now - last < 110) return;
+      last = now;
+      setLivePreview(base, buf);
+      try { if (onTick) onTick(wordCount(base) + wordCount(buf)); } catch (e) {}
+    };
   }
   function wordCount(s) { return String(s || '').replace(/\s/g, '').length; }
   function chapterParaCount(text) {
@@ -333,6 +353,10 @@
         ? '第 ' + nextNo + ' 章已有未完成草稿（已写 ' + wordCount(draft.text) + ' 字），点击会接着写，不会重头开始。'
         : (reached ? '已到计划篇幅，可以勾选“大结局”收尾。' : '计划共约 ' + planned + ' 章。每章正文生成完成后，才会追加段评和章评。')) + '</p>' +
     '</section>';
+    if (busy) {
+      var bc = $('ffContinue');
+      if (bc) { bc.disabled = true; bc.textContent = '生成中…'; }
+    }
   }
 
   function renderAll() {
@@ -460,10 +484,8 @@
   function isTokenLimitError(msg) {
     return /max.?tokens|too large|maximum.*tokens|token.*limit|context.*length|exceed.*token/i.test(String(msg || ''));
   }
-  async function callBody(prompt, words) {
-    // 提示词里不写任何字数 / token 限制；输出预算只放在接口参数里。
-    // 4096 是主聊天同款量级、绝大多数模型都能接受；10k 字靠分段继续写，不在 prompt 里提长度。
-    return await F.callApi([{ role: 'system', content: prompt }], { maxTokens: 4096, temperature: 0.92 });
+  async function callBody(prompt, words, onDelta) {
+    return await F.callApi([{ role: 'system', content: prompt }], { maxTokens: 8192, temperature: 0.92, onDelta: onDelta });
   }
 
   function cleanContinuation(raw) {
@@ -530,14 +552,18 @@
     if (!acc) {
       var prompt = buildBodyPrompt(no, direction, finale);
       showLoading('正在写第 ' + no + ' 章', finale ? '大结局 · 正文优先' : '正文优先，写完后补段评和章评', 12);
-      var raw = await callBody(prompt, target);
+      var raw = await callBody(prompt, target, liveDelta('', function (n) {
+        showLoading('正在写第 ' + no + ' 章', '流式接收中 · 已写约 ' + n + ' 字', 12 + Math.min(54, Math.round((n / Math.max(1, target)) * 54)));
+      }));
       var parsed = parseChapter(raw);
       novelTitle = parsed.novelTitle || '';
       chapterTitle = parsed.chapterTitle || '';
       acc = parsed.body || '';
       if (wordCount(acc) < 200) {
         showLoading('正在重写第 ' + no + ' 章', '开头没有完整展开，正在重写', 30);
-        raw = await callBody(prompt + '\n【补充要求】正文过短，请重新写这一章的开头，充分展开场景和对话。', target);
+        raw = await callBody(prompt + '\n【补充要求】正文过短，请重新写这一章的开头，充分展开场景和对话。', target, liveDelta('', function (n) {
+          showLoading('正在重写第 ' + no + ' 章', '流式接收中 · 已写约 ' + n + ' 字', 30 + Math.min(36, Math.round((n / Math.max(1, target)) * 36)));
+        }));
         parsed = parseChapter(raw);
         novelTitle = parsed.novelTitle || novelTitle;
         chapterTitle = parsed.chapterTitle || chapterTitle;
@@ -558,7 +584,9 @@
       var pct = 12 + Math.min(72, Math.round((total / Math.max(1, target)) * 72));
       showLoading('正在续写第 ' + no + ' 章', '已写 ' + total + ' 字 / 目标约 ' + target + ' 字', pct);
       var cont = buildContinuePrompt(no, direction, finale, acc.slice(-1900), chunkWords, isFinal);
-      var raw2 = await callBody(cont, chunkWords);
+      var raw2 = await callBody(cont, chunkWords, liveDelta(acc, function (n) {
+        showLoading('正在续写第 ' + no + ' 章', '流式接收中 · 已写约 ' + n + ' 字 / 目标约 ' + target + ' 字', 12 + Math.min(72, Math.round((n / Math.max(1, target)) * 72)));
+      }));
       var cleaned = cleanContinuation(raw2);
       cleaned = trimOverlap(acc, cleaned);
       if (!cleaned || wordCount(cleaned) < 20) break;
@@ -704,24 +732,17 @@
         var firstLine = String(parsed.body).replace(/\s+/g, ' ').split(/[。！？!?…]/)[0].trim();
         parsed.chapterTitle = firstLine.slice(0, 16) || '未命名';
       }
-      showLoading('正在整理小说标题和读者反应', '正文已经写好，正在生成标题、段评和章评', 62);
-      await new Promise(function (r) { setTimeout(r, 180); });
-      if (!story.title) story.title = await generateStoryTitle(parsed);
-      showLoading('正在生成段评和章评', '正文已经写好，正在整理读者反应', 74);
-      var comments = { summary: '', paraComments: [], chapterComments: [] };
-      var commentsOk = true;
-      try {
-        comments = await generateComments(parsed.body, no);
-      } catch (e) {
-        commentsOk = false;
-      }
+      var needTitle = !story.title;
+      var titlePromise = needTitle
+        ? generateStoryTitle(parsed).catch(function () { return ''; })
+        : Promise.resolve(story.title || '');
       var ch = {
         no: no,
         title: parsed.chapterTitle || ('第 ' + no + ' 章'),
         text: parsed.body,
-        paraComments: comments.paraComments,
-        chapterComments: comments.chapterComments,
-        summary: comments.summary,
+        paraComments: [],
+        chapterComments: [],
+        summary: '',
         finale: finale,
         ts: Date.now(),
         wordCount: wordCount(parsed.body)
@@ -738,8 +759,29 @@
       current = story.chapters.length - 1;
       openPara = 0;
       renderAll();
-      showLoading('完成', '这一章已经写好了', 100);
-      try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) {}
+      hideLoading();
+      try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) { try { window.scrollTo(0, 0); } catch (e2) {} }
+      var bAfter = $('ffContinue');
+      if (bAfter) { bAfter.disabled = true; bAfter.textContent = '补评论中…'; }
+      toast('正文已生成，段评/章评后台补上', 2600);
+      var commentsOk = true;
+      var commentsPromise = generateComments(parsed.body, no).catch(function () {
+        commentsOk = false;
+        return { summary: '', paraComments: [], chapterComments: [] };
+      });
+      var results = await Promise.all([titlePromise, commentsPromise]);
+      var finalTitle = String(results[0] || '').trim();
+      if (finalTitle) story.title = finalTitle;
+      var comments = results[1] || {};
+      ch.paraComments = comments.paraComments || [];
+      ch.chapterComments = comments.chapterComments || [];
+      ch.summary = comments.summary || '';
+      story.updatedAt = Date.now();
+      try { await F.saveAsync(story); } catch (e) {}
+      try {
+        if (current === story.chapters.length - 1) rerenderKeepScroll();
+        else renderTop();
+      } catch (e) {}
       if (!commentsOk) toast('正文已生成，段评/章评这次没拿到');
     } catch (e) {
       if (story.draft) {

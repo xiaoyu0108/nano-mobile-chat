@@ -706,9 +706,26 @@ function dropChatLS(id) {
   try { localStorage.removeItem(lsChatKey(id)); } catch (e) {}
   try { writeLSIndex(readLSIndex().filter(x => x !== id)); } catch (e) {}
 }
+function mirrorImRecent(chat) {
+  if (!chat || chat.kind !== 'char' || !chat.charId) return;
+  try {
+    const recent = (chat.history || []).filter(function (m) {
+      return m && !m.recalled && m.text && m.type !== 'system' && (m.type === 'left' || m.type === 'right' || m.who);
+    }).slice(-24).map(function (m) {
+      return {
+        who: isMine(m) ? 'user' : 'char',
+        text: String(m.text || '').replace(/\s+/g, ' ').trim().slice(0, 260),
+        time: m.time || ''
+      };
+    }).filter(function (x) { return x.text; });
+    if (recent.length) localStorage.setItem('nano_imessage_recent_' + chat.charId, JSON.stringify(recent));
+    else localStorage.removeItem('nano_imessage_recent_' + chat.charId);
+  } catch (e) {}
+}
 function saveChat(chat) {
   const p = (imdb && chat) ? dbPut(imdb, 'chats', chat) : Promise.resolve(false);
   try { mirrorChat(chat); } catch (e) {}
+  try { mirrorImRecent(chat); } catch (e) {}
   return p;
 }
 function persistCurrent(opts) {
@@ -1008,7 +1025,7 @@ function appendToChat(chat, msgs) {
   return saveChat(chat);
 }
 // 角色在 iMessage 里说要把你加回微信 → 往 Meet 好友申请中心推一条（同意即解除拉黑）
-function maybePushMeetReadd(charId, charName, chat) {
+function maybePushMeetReadd(charId, charName, chat, greeting) {
   if (!charId) return;
   try {
     var KEY = 'nano_friend_requests';
@@ -1023,14 +1040,19 @@ function maybePushMeetReadd(charId, charName, chat) {
     if (!owner) owner = 'default';
     var ch = null;
     try { ch = state.chars.find(function (x) { return String(x.id) === String(charId); }); } catch (e) {}
+    var blocked = false;
+    try { blocked = getSetting(charId, 'blocked', false); } catch (e) {}
+    var say = String(greeting || '').replace(/\[[^\]]*\]/g, '').replace(/\s+/g, ' ').trim().slice(0, 60);
+    if (!say) say = blocked ? '在吗？我想在微信上把你加回来。' : '在吗？想加你微信。';
     all.push({
       id: 'fr_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 5),
       owner: owner, name: (ch && ch.name) || charName || '角色', avatar: (ch && ch.avatar) || '',
-      source: 'other', setting: '在吗？我想在微信上把你加回来。', originId: '', altOriginId: '',
-      requestNote: '想把你加回来', unblockCharId: charId, ts: Date.now(), status: 'pending'
+      source: 'other', setting: say, originId: '', altOriginId: '',
+      requestNote: blocked ? '想把你加回来' : '想加你为好友', unblockCharId: charId, ts: Date.now(), status: 'pending'
     });
     try { localStorage.setItem(KEY, JSON.stringify(all.slice(-400))); } catch (e) {}
     try { window.parent.postMessage({ type: 'homeDataUpdated' }, '*'); } catch (e) {}
+    try { window.dispatchEvent(new CustomEvent('nanoFriendRequestsChanged')); } catch (e) {}
   } catch (e) {}
 }
 
@@ -1054,7 +1076,7 @@ async function doReply() {
   if (c.kind === 'char') {
     if (/\[加回我\]|\[取消拉黑\]|\[unblockuser\]/.test(out.raw || '')) { setSetting(c.charId, 'charBlocked', false); try { window.parent.postMessage({ type: 'nanoCharUnblocked', chatId: c.charId }, '*'); } catch (e) {} }
     if (/\[继续拉黑\]|\[blockuser\]/.test(out.raw || '')) { setSetting(c.charId, 'charBlocked', true); try { window.parent.postMessage({ type: 'nanoCharBlocked', chatId: c.charId }, '*'); } catch (e) {} }
-    if (/\[(加好友|加微信|加回我|加我)\]/.test(out.raw || '')) maybePushMeetReadd(c.charId, c.name, c);
+    if (/\[(加好友|加微信|加回我|加我)\]/i.test(out.raw || '')) maybePushMeetReadd(c.charId, c.name, c, (out.bubbles || []).join(' '));
     if (state.current && state.current.id === c.id) renderBanner(c);
     try { maybeSummarize(c.charId, c.name, c.history); } catch (e) {}
   }
@@ -1100,7 +1122,7 @@ async function genCharReply(c) {
   sys += ctx;
   if (getSetting(c.charId, 'blocked', false)) sys += '【状态】用户把你在线上聊天里拉黑了，但这里是 iMessage，你们仍能正常聊天。你可以主动一点，试着沟通、解释或挽回。\n';
   if (getSetting(c.charId, 'charBlocked', false)) sys += '【状态】你之前关掉了线上聊天（拉黑了用户）。你可以决定是否加回：愿意就单独输出一行 [加回我]，否则输出 [继续拉黑]。\n';
-  sys += '【加回微信】如果你愿意重新在微信/Meet 里把 TA 加为好友（会把好友申请发到 TA 的 Meet），单独输出一行 [加好友]。\n';
+  sys += '【加好友】如果你想在微信/Meet 里主动把 TA 加为好友或加回来（会把好友申请发到 TA 的 Meet，由 TA 决定是否同意），单独输出一行 [加好友]，并配一句自然的招呼；不想加就不要输出。\n';
   sys += '【表情包】用户可能发来 [表情包：名称]。它只是随手一张图，最多表示一点模糊的情绪；看懂大致气氛就行，不要逐字解读、不要当成用户真的去做了什么，也不用追问或刻意提起。（不需要自己也发表情标签）。\n';
   sys += '【短信风格】像真人连发消息那样：把想说的话自然拆成 2-5 条短消息，每条独立成行，每条约 5-25 字；不要把一整段塞进一条，也不要只蹦几个字让意思不完整。\n';
   sys += '【务必完整】每条消息都要是一句完整的话，不要说到一半就断掉；整体意思要表达完。';
@@ -1214,6 +1236,21 @@ async function charContextText(ch, msgs) {
   if (wb.middle) s += wb.middle;
   if (uSetting) s += '\n【对方的设定 · 你正在聊天的人（' + userName + '）】\n' + uSetting.slice(0, 4000) + '\n';
   if (mem) s += '\n【长期记忆 · 你应当记得的事】\n' + mem + '\n';
+  try {
+    const onlineRaw = localStorage.getItem('nano_recent_text_' + ((ch && ch.id) || ''));
+    if (onlineRaw) {
+      const onlineArr = JSON.parse(onlineRaw) || [];
+      const onlineLines = (Array.isArray(onlineArr) ? onlineArr : []).slice(-16).map(function (m) {
+        const t = String((m && m.text) || '').trim();
+        if (!t) return '';
+        return (m.who === 'user' ? (userName + '：') : ((ch && ch.name) || '你') + '：') + t;
+      }).filter(Boolean);
+      if (onlineLines.length) {
+        s += '\n【线上聊天 App 最近的对话 · 与 iMessage 互通】\n' + onlineLines.join('\n') + '\n';
+        s += '以上是你们刚刚在线上聊天里说过的话。iMessage 和线上是同一个人、同一段关系，你必须记得这些内容和承诺，自然承接，不能失忆。\n';
+      }
+    }
+  } catch (e) {}
   if (wb.back) s += wb.back;
   s += '\n称呼对方用 TA 的名字「' + userName + '」或自然亲昵的称呼，禁止用“对方/这女人/那丫头/这姑娘”等泛称。\n';
   if (isForeignChar(ch)) {
@@ -1379,7 +1416,9 @@ async function applyRefreshRaw(raw, picks) {
     const chat = ensureCharChat(ch);
     const text = await proactiveCharText(ch, isBlocked, chat.history);
     if (!text) continue;
-    const rawLines = String(text).split(/\n+/).map(s => s.replace(/^["'「]|["'」]$/g, '').trim()).filter(Boolean).slice(0, 3);
+    const rawText = String(text);
+    if (/\[(加好友|加微信|加回我|加我)\]/i.test(rawText)) maybePushMeetReadd(ch.id, ch.name, chat, rawText.replace(/\[[^\]]*\]/g, ' '));
+    const rawLines = rawText.replace(/\[(加好友|加微信|加回我|加我)\]/gi, '').split(/\n+/).map(s => s.replace(/^["'「]|["'」]$/g, '').trim()).filter(Boolean).slice(0, 3);
     if (!rawLines.length) continue;
     const lines = await ensureTranslatedLines(ch, rawLines); // 外语角色补中文翻译
     const msgs = bubblesToMessages(lines, 'char');
@@ -1462,7 +1501,11 @@ async function proactiveCharText(ch, isBlocked, msgs) {
   const ctx = await charContextText(ch, msgs || []);
   let sys = '你是「' + ch.name + '」。用 iMessage 主动给「' + userName + '」发 1-2 条短消息（主动找 TA，不要等 TA 先说），每条独立一行，每条约 5-25 字，不要标签旁白。\n';
   sys += ctx;
-  if (isBlocked) sys += '\n【状态】用户刚刚在线上把你拉黑了，你只能通过短信联系 TA，你非常在意这件事。这轮消息必须围绕「被拉黑 / 被冷落 / 想挽回或质问」展开，不要聊无关内容。';
+  const charBlocked = getSetting(ch.id, 'charBlocked', false);
+  if (isBlocked || charBlocked) {
+    sys += '\n【状态】' + (isBlocked ? '用户刚刚在线上把你拉黑了，你只能通过短信联系 TA，你非常在意这件事。' : '你之前关掉了线上聊天，现在只能在短信里联系 TA。') + '这轮消息要围绕「被拉黑 / 被冷落 / 想挽回或质问」展开，不要聊无关内容。\n';
+    sys += '如果你愿意重新在微信 / Meet 里把 TA 加为好友，可以在最后单独一行输出 [加好友]；愿意解除自己这边的拉黑就输出 [加回我]。';
+  }
   const raw = await callApi([{ role: 'system', content: sys }], { maxTokens: 260, temperature: 0.95 });
   if (!raw) return '';
   return String(raw).split(/\n+/).map(s => s.trim()).filter(Boolean).slice(0, 2).join('\n');
@@ -1488,7 +1531,7 @@ function buildRefreshReq() {
 async function applyReplyRaw(chatId, raw) {
   const c = state.chats.find(x => x.id === chatId);
   if (!c) return;
-  const body = String(raw || '').replace(/\[(加回我|取消拉黑|解除拉黑|unblockuser|继续拉黑|拉黑用户|拉黑我|blockuser)\]/g, '');
+  const body = String(raw || '').replace(/\[(加回我|取消拉黑|解除拉黑|unblockuser|继续拉黑|拉黑用户|拉黑我|blockuser|加好友|加微信|加我)\]/g, '');
   let lines = splitBubbles(body);
   if (c.kind === 'char') {
     const ch = state.chars.find(x => x.id === c.charId);
@@ -1503,7 +1546,7 @@ async function applyReplyRaw(chatId, raw) {
   if (c.kind === 'char') {
     if (/\[加回我\]|\[取消拉黑\]|\[unblockuser\]/.test(String(raw))) { setSetting(c.charId, 'charBlocked', false); try { window.parent.postMessage({ type: 'nanoCharUnblocked', chatId: c.charId }, '*'); } catch (e) {} }
     if (/\[继续拉黑\]|\[blockuser\]/.test(String(raw))) { setSetting(c.charId, 'charBlocked', true); try { window.parent.postMessage({ type: 'nanoCharBlocked', chatId: c.charId }, '*'); } catch (e) {} }
-    if (/\[(加好友|加微信|加回我|加我)\]/.test(String(raw))) maybePushMeetReadd(c.charId, c.name, c);
+    if (/\[(加好友|加微信|加回我|加我)\]/i.test(String(raw))) maybePushMeetReadd(c.charId, c.name, c, lines.join(' '));
   }
   saveChat(c);
   if (state.current && state.current.id === c.id) { state.messages = c.history; renderMessages(); renderBanner(c); }

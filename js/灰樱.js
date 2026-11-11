@@ -939,6 +939,7 @@ function buildGroupOfflinePrompt() {
     }
   });
   p += '\n【用户】' + user + '。\n';
+  if (!offlineSelectedStyle) {
   p += '\n【内置文风 · 群像小说式长文（强制执行）】\n';
   p += '把这段群聊写成一段多人群像小说，而不是机械地报名字。要求：\n';
   p += '1. 严禁使用「名字：内容」这种格式。要把人物名字自然融进叙述里：谁在做什么、什么表情、谁抢了谁的话、谁和谁打闹、谁在旁边起哄，再顺势带出对白。例如：B 不知轻重地和 A 打闹，不想这下真把 A 惹恼了，「你打痛我了」A 皱眉瞪他；B 也不肯低头，「你也打了我啊！吼什么？」C 赶紧上来劝架。\n';
@@ -955,6 +956,7 @@ function buildGroupOfflinePrompt() {
   p += '8. 对白流动：角色之间你来我往、有停顿、有潜台词、有答非所问；不同角色的句子长短和标点习惯都不一样。\n';
   p += '9. 感官具体：至少覆盖视觉、听觉、触觉/嗅觉中的两三种，让读者仿佛就在现场；心理不要用“他意识到”“她明白了”这类总结句点破，把情绪留在动作与语气里。\n';
   p += '10. 长短句交错：长句铺陈、短句收束，不要每段都一样长，也不要通篇华丽。\n';
+  }
   p += '\n【群像的写法】\n';
   p += '- 在场角色不必都围着用户转：他们有各自的心思和状态，彼此之间也会互动（接话、打趣、争执、沉默、递东西、交换眼神）。\n';
   p += '- 不是每个角色每段都必须出场。谁在这一刻有反应谁出场，其他人可以在背景里做自己的事，但要保持存在感。\n';
@@ -2732,6 +2734,7 @@ ${offlineStyleLibrary()}
 
     // 进入线下时自动读取：本角色记忆库 + 线上最近 20 条对话（线上线下互通）
     let memBlock = '';
+    let anchorBlock = '';
     try {
       let list;
       if (window.NanoMemLink && window.NanoMemLink.readList) {
@@ -2741,9 +2744,19 @@ ${offlineStyleLibrary()}
         list = (mem && Array.isArray(mem.value)) ? mem.value : [];
       }
       list = Array.isArray(list) ? list : [];
-      const lines = list.slice().sort(function (a, b) { return offMemTs(b) - offMemTs(a); }).slice(0, 12)
-        .map(function (it) { return '· ' + String((it && it.content) || '').trim(); }).filter(function (s) { return s.length > 2; });
+      const query = history.slice(-6).map(function (h) { return String(h.content || '').slice(0, 80); }).join(' ');
+      let picked = [], anchors = [];
+      if (window.NanoMemLink && window.NanoMemLink.buildRecall) {
+        const recall = window.NanoMemLink.buildRecall(list, { query: query, maxItems: 40, maxAnchors: 10, includeGroups: true });
+        picked = recall.items || [];
+        anchors = recall.anchors || [];
+      } else {
+        picked = list.slice().sort(function (a, b) { return offMemTs(b) - offMemTs(a); }).slice(0, 12);
+      }
+      const lines = picked.map(function (it) { return '· ' + String((it && it.content) || '').trim(); }).filter(function (s) { return s.length > 2; });
       if (lines.length) memBlock = '【长期记忆 · 务必当作已知事实（按时间从新到旧）】\n' + lines.join('\n') + '\n\n';
+      const anchorLines = anchors.map(function (it) { return '· ' + String((it && it.content) || '').trim(); }).filter(function (s) { return s.length > 2; });
+      if (anchorLines.length) anchorBlock = '【关系锚点 · 你们的关键原话 / 承诺 / 约定（不是台词，会影响此刻态度）】\n' + anchorLines.join('\n') + '\n\n';
     } catch (e) {}
     let onlineBlock = '';
     try {
@@ -2803,7 +2816,7 @@ ${offlineStyleLibrary()}
         if (scheduleBlock) scheduleBlock = scheduleBlock + '\n\n';
       }
     } catch (e) {}
-    const systemPromptStr = wb.front + timeBlock + scheduleBlock + memBlock + onlineBlock + openingBlock + (offlineIsGroup
+    const systemPromptStr = wb.front + timeBlock + scheduleBlock + anchorBlock + memBlock + onlineBlock + openingBlock + (offlineIsGroup
       ? (buildGroupOfflinePrompt() + (rules.length
           ? ('\n\n【额外规则 · 强制遵守】\n' + rules.map((r, i) => `${i + 1}. ${r}`).join('\n'))
           : ''))
@@ -2848,6 +2861,10 @@ ${offlineStyleLibrary()}
         + '- 保持同一人称、视角、文风和尺度；如果上一段停在动作、对白或半句话，就顺着写下去。\n'
         + '- 不要在正文里回应「继续」这个指令，不要写“好的/我继续”之类的话，不要问用户问题。\n'
         + '- 结尾照常输出 [thinking:…] [heart:…] [plot:…] 三段。';
+    }
+    if (offlineSelectedStyle) {
+      finalSystemPrompt += '\n\n【本轮文风 · 最高优先级（覆盖前面所有默认写法与模板）】\n' + offlineSelectedStyle
+        + '\n本轮只能使用这一种文风；不要混用其它文风、不要套用群像小说模板或默认写作习惯。正文、对白、心理、动作描写都必须体现这种文风。';
     }
     const promptStr = finalSystemPrompt + '\n\n' + chatText;
 
@@ -2962,7 +2979,9 @@ ${offlineStyleLibrary()}
   }
 }
 
+var offlineSelectedStyle = '';
 async function loadRulesFromDB() {
+  offlineSelectedStyle = '';
   try {
     const db = await openDB();
     return new Promise((resolve) => {
@@ -2984,6 +3003,7 @@ async function loadRulesFromDB() {
               enabled.forEach(r => rules.push(r.content || ''));
             }
           });
+          offlineSelectedStyle = selectedStyle || '';
           if (selectedStyle) {
             rules.unshift('【本轮线下文风 · 必须严格执行（只认这一条，不要混用其它文风）】\n' + selectedStyle);
           }
@@ -3197,7 +3217,7 @@ async function omRunTidy(ov, fromEl, toEl, delEl) {
       const m = o.m;
       return (m.role === 'user' ? (settings.userName || '用户') : (m.name || settings.charName || '角色')) + '：' + String(m.content || '').slice(0, 900);
     }).join('\n');
-    const n = await summarizeTextToMemory(chatText, offlineChatId);
+    const n = await summarizeTextToMemory(chatText, offlineChatId, picked.map(function (o) { return o.m; }));
     if (!n) { omToast('总结失败或没有提取到记忆'); if (btn) { btn.disabled = false; btn.textContent = '开始整理'; } return; }
     if (delEl && delEl.checked) {
       const delSet = {};
@@ -3667,12 +3687,47 @@ async function offEmbedMany(texts) {
   } catch (e) { return arr.map(function () { return null; }); }
 }
 
+function offExtractQuoteEntries(msgs, chatId) {
+  const special = /一直|永远|一辈子|下辈子|爱你|喜欢你|想你|在乎你|等你|别走|别离开|对不起|原谅|分手|和好|结婚|嫁给我|娶你|答应我|答应你|承诺|约定|说好|保证|不会离开|陪你|生日|纪念日|秘密|只有你|离不开你/;
+  const out = [], seen = {};
+  (Array.isArray(msgs) ? msgs : []).forEach(function (m, idx) {
+    if (!m || !m.content) return;
+    const text = String(m.content).trim();
+    if (!text || text.length < 2 || text.length > 160 || !special.test(text)) return;
+    const k = text.replace(/\s+/g, '');
+    if (seen[k]) return;
+    seen[k] = 1;
+    if (out.length >= 8) return;
+    const isUser = m.role === 'user';
+    const who = isUser ? (settings.userName || '用户') : (m.name || settings.charName || '角色');
+    const ts = Number(m.ts) || Date.now() + idx;
+    out.push({
+      id: 'gmq' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+      time: new Date(ts).toLocaleString('zh-CN'),
+      ts: ts,
+      date: new Date(ts).toISOString(),
+      type: '原话',
+      importance: 5,
+      chatId: chatId || offlineChatId,
+      relatedChar: settings.charName || '',
+      content: who + '说过：「' + text + '」',
+      sourceText: text,
+      sourceSpeaker: isUser ? 'user' : 'char',
+      sourceMsgId: m.id || '',
+      embedding: null,
+      hasVector: false
+    });
+  });
+  return out;
+}
 // 通用：把一段文本（可能跨多个楼层）一次性总结成记忆并入库。返回写入条数。
-async function summarizeTextToMemory(chatText, chatId) {
+async function summarizeTextToMemory(chatText, chatId, seg) {
   if (!chatText || !String(chatText).trim()) return 0;
   const summary = await offExtractViaMain(chatText);
   if (!summary) return 0;
   const entries = await offBuildMemoryEntries(summary, chatId || offlineChatId);
+  const quotes = offExtractQuoteEntries(seg || [], chatId || offlineChatId);
+  if (quotes.length) entries.push.apply(entries, quotes);
   if (!entries.length) return 0;
   if (window.NanoMemLink && window.NanoMemLink.append) {
     await window.NanoMemLink.append(chatId || offlineChatId, entries);   // 小号记忆计入大号记忆库
@@ -3714,7 +3769,7 @@ async function summarizeOfflineMemories(force) {
     const take = seg.slice(0, 12);   // 从未总结的最早一段开始，避免跳过中间楼层
     const chatText = take.map(m => ((m.role === 'user' ? (settings.userName || '用户') : (m.name || settings.charName || '角色')) + '：' + String(m.content || '').slice(0, 900))).join('\n');
     if (!chatText.trim()) return;
-    const n = await summarizeTextToMemory(chatText, offlineChatId);
+    const n = await summarizeTextToMemory(chatText, offlineChatId, take);
     if (!n) return;
     const lastIdx = rel.indexOf(take[take.length - 1]);
     localStorage.setItem(offMemCountKey(), String(Math.max(count, lastIdx + 1)));
@@ -3803,6 +3858,26 @@ async function init() {
   }
 
   try { if (window.NanoBadge && offlineChatId) window.NanoBadge.setContext(offlineChatId); } catch (e) {}
+
+  // 进入线下：立刻标记该会话为线下。没退出线下之前，线上不再主动发消息；
+  // 首次从线上进入时通知外壳给线上聊天补一条「已进入线下」系统提示。
+  if (offlineChatId) {
+    let __wasOffline = false;
+    try { __wasOffline = localStorage.getItem('nano_chat_mode_' + offlineChatId) === 'offline'; } catch (e) {}
+    try { localStorage.setItem('nano_chat_mode_' + offlineChatId, 'offline'); } catch (e) {}
+    if (!__wasOffline) {
+      try {
+        if (window.parent && window.parent !== window) {
+          window.parent.postMessage({
+            type: 'nanoOfflineEntered',
+            chatId: offlineChatId,
+            isGroup: !!offlineIsGroup,
+            name: settings.charName || ''
+          }, '*');
+        }
+      } catch (e) {}
+    }
+  }
 
   // 给历史消息补上 chatId / scene（便于线上线下记忆互通、场景隔离）
   if (offlineChatId) {

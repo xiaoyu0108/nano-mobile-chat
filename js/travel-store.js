@@ -641,6 +641,13 @@
     } catch (e) {}
     try { window.dispatchEvent(new CustomEvent('nanoTravelCardAdded', { detail: { charId: String(charId), message: msg } })); } catch (e) {}
   }
+  function enqueueChatEntry(charId, entry) {
+    var q = {};
+    try { q = JSON.parse(localStorage.getItem('nano_pending_store_cards') || '{}') || {}; } catch (e) { q = {}; }
+    if (!Array.isArray(q[charId])) q[charId] = [];
+    q[charId].push(entry);
+    localStorage.setItem('nano_pending_store_cards', JSON.stringify(q));
+  }
   function appendChatMessage(charId, msg) {
     if (!charId || !msg) return Promise.resolve(false);
     return readChatMessages(charId).then(function (list) {
@@ -687,13 +694,11 @@
     var mask = getMask();
     var place = String(trip.place || trip.to || trip.title || '');
     var note = String(opts.message || '').trim();
-    // 分享旅程前一定先说一句“为什么发”，不能只孤零零甩一张卡片。
-    var say = note || (place
-      ? ('刚从' + place + '回来，给你看看这趟的记录。')
-      : '把最近这趟旅程整理好了，给你看看。');
     var imageSrc = String(trip.polaroid || '');
     var imageReady = (imageSrc && /^https?:\/\//i.test(imageSrc) && window.NanoImageCache && NanoImageCache.toDataUrl)
-      ? NanoImageCache.toDataUrl(imageSrc).catch(function () { return imageSrc; })
+      ? NanoImageCache.toDataUrl(imageSrc).then(function (u) {
+          return (u && u.length < 300000) ? u : imageSrc;
+        }).catch(function () { return imageSrc; })
       : Promise.resolve(imageSrc);
     return imageReady.then(function (img) {
       var card = {
@@ -706,17 +711,17 @@
         place: place,
         date: String(trip.date || ''),
         thought: String(opts.thought || trip.noteMe || trip.noteChar || trip.thought || trip.note || ''),
+        thoughtZh: String(opts.thoughtZh || trip.thoughtZh || ''),
         caption: String(trip.caption || ''),
         img: String(img || ''),
-        note: note,
+        note: '',
         fromName: String(opts.fromName || mask.name || '我'),
         sharedAt: now()
       };
-      var textMsg = baseMessage({ type: 'right', text: say, isCard: false, cardData: {} });
       var msg = baseMessage({ type: 'right', cardData: card, text: '' });
-      return appendChatMessage(cid, textMsg)
-        .then(function () { return appendChatMessage(cid, msg); })
-        .then(function () { return msg; });
+      if (note) enqueueChatEntry(cid, { text: note, side: 'right' });
+      enqueueChatEntry(cid, { card: card, side: 'right' });
+      return Promise.resolve(msg);
     });
   }
   function sendInvite(opts) {

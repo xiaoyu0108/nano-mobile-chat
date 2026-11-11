@@ -16,7 +16,8 @@ const ROOMS=[
   {id:'wish', seal:'愿', name:'愿望梦想'},
   {id:'past', seal:'昔', name:'身世过往'},
   {id:'taste', seal:'味', name:'饮食口味'},
-  {id:'secret', seal:'密', name:'秘密'}
+  {id:'secret', seal:'密', name:'秘密'},
+  {id:'group', seal:'群', name:'群聊记忆'}
 ];
 const MOODS={'甜蜜':'#f2799a','安心':'#f2a98e','酸涩':'#be9ad0','刺痛':'#b04f6c','平淡':'#d8c0c8'};
 const TIER=['遗忘','淡忘','依稀','记得','牢记','刻骨铭心'];
@@ -167,13 +168,15 @@ function mapItemToMem(it){
   const numImp=typeof rawImp==='number'?rawImp:parseInt(rawImp,10);
   return {
     id:it.id||uid(),
-    room:roomOfType(it.type),
+    room:it.groupId?'group':roomOfType(it.type),
     text:it.content||it.text||'',
     tags:memTags(it),
     date:it.date||it.time||'',
-    mood:it.mood||'骞虫贰',
+    mood:it.mood||'平淡',
     imp:(Number.isFinite(numImp)&&numImp>0)?Math.max(1,Math.min(5,numImp)):guessMemoryImportance(it),
     _type:it.type||roomOf(it.room).name,
+    _groupId:it.groupId||'',
+    _chatId:it.chatId||'',
     _raw:it
   };
 }
@@ -321,12 +324,25 @@ function renderRails(){
   $('#roomRail').innerHTML=h;
 }
 
+function memHay(m){
+  return [m.text,m.tags.join(' '),(m._type||''),(m.mood||''),(m.date||''),roomOf(m.room).name,roomOf(m.room).seal]
+    .join(' ').toLowerCase();
+}
 function filtered(){
-  const q=F.q.trim().toLowerCase();
+  const qRaw=F.q.trim().toLowerCase();
+  const qTokens=qRaw?qRaw.split(/[\s,，、;；:：]+/).filter(Boolean):[];
   return W.mems.filter(m=>{
     if(F.room==='__star4'){ if(!(Number(m.imp)>=4))return false; }
     else if(F.room&&m.room!==F.room)return false;
-    if(q&&!(m.text+' '+m.tags.join(' ')+' '+(m.date||'')+' '+roomOf(m.room).name).toLowerCase().includes(q))return false;
+    if(qTokens.length){
+      const hay=memHay(m);
+      let hit=0;
+      qTokens.forEach(t=>{ if(t&&hay.indexOf(t)>-1)hit++; });
+      if(hit<qTokens.length)return false;
+      m._searchScore=hit*10+(Number(m.imp)||0)*2;
+    }else{
+      delete m._searchScore;
+    }
     return true;
   });
 }
@@ -351,7 +367,11 @@ function memTime(m){
 }
 function renderList(){
   // 记忆宫殿最新总结置顶；时间相同的按原顺序稳定展示
-  const list=filtered().slice().sort((a,b)=>memTime(b)-memTime(a));
+  const list=filtered().slice().sort((a,b)=>{
+    const sa=Number(a._searchScore)||0, sb=Number(b._searchScore)||0;
+    if(sa!==sb)return sb-sa;
+    return memTime(b)-memTime(a);
+  });
   if(!W.mems.length){
     $('#list').innerHTML='<div class="empty">这里还没有记忆。<br>点击下方“存入记忆”，写下第一条。</div>';return;
   }
@@ -438,10 +458,9 @@ async function saveAll(){
   if(!ch)return;
   const origList=Array.isArray(ch._rawList)?ch._rawList:[];
   const origById={};
-  origList.forEach(it=>{if(it&&!it.groupId)origById[it.id]=it;});
-  const groups=origList.filter(it=>it&&it.groupId);
+  origList.forEach(it=>{if(it)origById[it.id]=it;});
   const rebuilt=W.mems.map(m=>applyMemToItem(m,origById[m.id]||null,ch));
-  const out=rebuilt.concat(groups);
+  const out=rebuilt;
   const ok=await dbPut(memDb,'config',{key:'memlist_'+ch.id,value:out});
   if(!ok){toast('保存失败，请重试');return;}
   ch._rawList=out;
@@ -727,7 +746,7 @@ async function boot(){
       rawList=(rec&&Array.isArray(rec.value))?rec.value:[];
     }
     if(!Array.isArray(rawList))rawList=[];
-    const mems=rawList.filter(it=>it&&!it.groupId).map(mapItemToMem);
+    const mems=rawList.filter(Boolean).map(mapItemToMem);
     let hearts=await loadHearts(memDb,c.id,c.name);
     // 合并该角色名下所有小号的历史心声
     try{

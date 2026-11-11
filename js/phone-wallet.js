@@ -102,13 +102,20 @@
     function writeWallet(w) {
         try { localStorage.setItem(key, JSON.stringify(w)); } catch (e) {}
     }
+    function profileBalance() {
+        try {
+            var p = JSON.parse(localStorage.getItem('nano_char_wealth_' + chatId) || 'null');
+            if (p && typeof p.balance === 'number') return p.balance;
+        } catch (e) {}
+        return 5000;
+    }
     function ensureWallet(fallback) {
         var w = readWallet();
         if (w) return w;
         if (fallback && typeof fallback.balance === 'number') {
             w = { balance: round2(fallback.balance), transactions: Array.isArray(fallback.transactions) ? fallback.transactions : [] };
         } else {
-            w = { balance: 20000, transactions: [] };
+            w = { balance: round2(profileBalance()), transactions: [] };
         }
         writeWallet(w);
         return w;
