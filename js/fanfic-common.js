@@ -270,16 +270,155 @@
   }
 
   function apiBase(u) {
-    var base = String(u || '').trim().replace(/\/+$/, '').replace(/\/chat\/completions$/i, '');
+    var s = String(u || '').trim().replace(/\/+$/, '').replace(/([^:])\/{2,}/g, '$1/');
     try {
-      var url = new URL(base);
-      if (/^(localhost|127\.0\.0\.1)$/i.test(url.hostname) && location.hostname && !/^(localhost|127\.0\.0\.1)$/i.test(location.hostname)) {
-        url.hostname = location.hostname;
-        base = url.origin + url.pathname.replace(/\/+$/, '');
+      var url = new URL(s);
+      var host = url.hostname;
+      var cur = window.location.hostname;
+      var isLan = cur && (/^(localhost|127\.0\.0\.1|\[::1\]|::1)$/i.test(cur) || /^10\./.test(cur) || /^192\.168\./.test(cur) || /^172\.(1[6-9]|2\d|3[01])\./.test(cur) || /\.local$/i.test(cur));
+      // 只有页面本身也在本地 / 局域网时，才把 localhost 换成当前主机；
+      // 公网部署下保留原地址，避免把用户的本机 API 地址改成不可达的公网域名。
+      if ((host === 'localhost' || host === '127.0.0.1' || host === '[::1]') && isLan) {
+        url.hostname = cur;
+        s = url.toString().replace(/\/+$/, '').replace(/([^:])\/{2,}/g, '$1/');
       }
     } catch (e) {}
-    if (base && !/\/v1$/i.test(base)) base += '/v1';
-    return base;
+    s = s.replace(/\/chat\/completions$/i, '').replace(/\/embeddings$/i, '').replace(/\/images\/(generations|edits)$/i, '/v1');
+    if (!/\/v1$/i.test(s)) s += '/v1';
+    return s;
+  }
+
+  function sendApiRequest(payload) {
+    return new Promise(function (resolve) {
+      var token = 'ff' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+      var resultKey = 'chat_api_result_' + token;
+      var done = false;
+      var poll = null;
+      var cap = null;
+      function finish(r) {
+        if (done) return;
+        done = true;
+        if (poll) clearInterval(poll);
+        if (cap) clearTimeout(cap);
+        try { window.removeEventListener('storage', onStorage); } catch (e) {}
+        try { window.removeEventListener('message', onMsg); } catch (e) {}
+        try { localStorage.removeItem(resultKey); } catch (e) {}
+        resolve(r || { ok: false, status: 0, error: 'API 请求失败' });
+      }
+      function onStorage(e) {
+        if (!e || e.key !== resultKey || !e.newValue) return;
+        var r = null;
+        try { r = JSON.parse(e.newValue); } catch (err) {}
+        if (r) finish(r);
+      }
+      function onMsg(e) {
+        var d = e && e.data;
+        if (!d || d.type !== 'chatApiDone' || d.token !== token) return;
+        if (d.result) { finish(d.result); return; }
+        var v = null;
+        var parsed = null;
+        try { v = localStorage.getItem(resultKey); } catch (err) {}
+        if (v) { try { parsed = JSON.parse(v); } catch (err) {} }
+        finish(parsed || { ok: false, status: 0, error: '未取到 API 结果' });
+      }
+      window.addEventListener('storage', onStorage);
+      window.addEventListener('message', onMsg);
+      // 只有「父页面就是最外层」时才走父页面代理（正常全屏 App 都是这样）。
+      // 这样可以避开 CORS / 某些中转站只认主页面请求的问题。
+      var useProxy = false;
+      try { useProxy = !!(window.parent && window.parent !== window && window.parent === window.top); } catch (e) { useProxy = false; }
+      if (useProxy) {
+        try {
+          window.parent.postMessage({
+            type: 'chatApiFetch', token: token, resultKey: resultKey,
+            url: payload.url, method: 'POST', headers: payload.headers, body: payload.body
+          }, '*');
+        } catch (e) { useProxy = false; }
+      }
+      if (!useProxy) {
+        fetch(payload.url, { method: 'POST', headers: payload.headers, body: payload.body })
+          .then(function (r) {
+            return r.text().then(function (t) { return { ok: r.ok, status: r.status, text: t }; });
+          })
+          .then(finish)
+          .catch(function (err) {
+            finish({ ok: false, status: 0, error: String((err && err.message) || err) });
+          });
+        return;
+      }
+      poll = setInterval(function () {
+        try {
+          var v = localStorage.getItem(resultKey);
+          if (!v) return;
+          var r = JSON.parse(v);
+          if (r) finish(r);
+        } catch (e) {}
+      }, 400);
+      cap = setTimeout(function () { finish({ ok: false, status: 0, error: 'API 请求超时' }); }, 180000);
+    });
+  }
+
+  function apiMessage(res) {
+    var text = String((res && res.text) || '');
+    var msg = '';
+    try {
+      var j = JSON.parse(text);
+      var e = j && j.error;
+      if (typeof e === 'string') msg = e;
+      else if (e && e.message) msg = e.message;
+      if (!msg && j) msg = j.message || j.detail || j.msg || j.error_msg || '';
+      if (msg && typeof msg !== 'string') msg = JSON.stringify(msg);
+    } catch (e) {}
+    if (!msg) msg = text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 500);
+    if (!msg && res && res.error) msg = String(res.error);
+    return msg;
+  }
+  function apiError(res) {
+    var msg = apiMessage(res);
+    if (!msg && res && (res.status === 400 || res.status === 422)) {
+      msg = '参数被接口拒绝（已自动改用保守参数）；可换个模型或查看控制台日志';
+    }
+    if (res && (res.status === 400 || res.status === 422)) {
+      return new Error('接口拒绝了这次请求' + (msg ? ('：' + msg) : '') + '（已自动尝试保守参数）');
+    }
+    var status = (res && res.status && res.status !== 200)
+      ? ('API ' + res.status)
+      : (res && res.status === 200 ? 'API 返回错误' : 'API 请求失败');
+    return new Error(status + (msg ? ('：' + msg) : ''));
+  }
+  function trimMessages(messages, budget) {
+    budget = Math.max(900, Number(budget) || 5200);
+    return (messages || []).map(function (m) {
+      var c = String((m && m.content) || '');
+      if (c.length <= budget) return { role: (m && m.role) || 'user', content: c };
+      // 保留开头（配对/题材/角色设定）和结尾（硬性要求/去油红线），
+      // 中间的长设定、前情摘要在小上下文模型上先牺牲。
+      var head = Math.max(260, Math.floor(budget * 0.42));
+      var tail = Math.max(320, budget - head - 20);
+      return {
+        role: (m && m.role) || 'user',
+        content: c.slice(0, head) + '\n\n……（中间省略）……\n\n' + c.slice(-tail)
+      };
+    });
+  }
+  function withoutSystem(messages) {
+    return (messages || []).map(function (m) {
+      var isSystem = m && m.role === 'system';
+      return {
+        role: isSystem ? 'user' : ((m && m.role) || 'user'),
+        content: isSystem ? ('【系统设定】\n' + String(m.content || '')) : String((m && m.content) || '')
+      };
+    });
+  }
+  function withUserMessage(messages) {
+    var arr = (messages || []).map(function (m) {
+      return { role: (m && m.role) || 'user', content: String((m && m.content) || '') };
+    });
+    // 有些接口不接受「只有 system、没有 user」的请求，直接 400。
+    if (!arr.some(function (m) { return m.role === 'user'; })) {
+      arr.push({ role: 'user', content: '请直接按上面的要求输出内容，不要解释。' });
+    }
+    return arr;
   }
 
   async function callApi(messages, opts) {
@@ -287,36 +426,121 @@
     var cfg = await readApiConfig();
     if (!cfg) throw new Error('未配置主 API，请先在 API 页面填写地址 / Key / 模型');
     var url = apiBase(cfg.mainUrl) + '/chat/completions';
-    var resp = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + String(cfg.mainKey || '').trim()
-      },
-      body: JSON.stringify({
-        model: cfg.mainModel,
-        messages: messages,
-        max_tokens: opts.maxTokens || 8192,
-        temperature: opts.temperature != null ? opts.temperature : 0.9
-      })
-    });
-    if (!resp.ok) {
-      var txt = '';
-      try { txt = await resp.text(); } catch (e) {}
-      var msg = '';
-      try {
-        var j = JSON.parse(txt);
-        msg = (j && j.error && j.error.message) || (j && j.message) || '';
-      } catch (e) {}
-      throw new Error('API ' + resp.status + (msg ? '：' + msg : ''));
+    var headers = {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + String(cfg.mainKey || '').trim()
+    };
+    // 第一次请求就必须足够小：很多模型是先看「输入 + max_tokens」再决定收不收，
+    // 提示词保持完整；这里只做一个 12000 字的极端保护，正常同人文设定远小于它。
+    // 不把字数 / token 限制写进 prompt 文本，输出预算只放在接口参数里。
+    var limit = Math.max(256, Math.min(Number(opts.maxTokens) || 8192, 16384));
+    var initialMessages = withUserMessage(messages);
+    var PROMPT_BUDGET = 12000;
+    var initialChars = initialMessages.reduce(function (n, m) { return n + String((m && m.content) || '').length; }, 0);
+    if (initialChars > PROMPT_BUDGET) {
+      initialMessages = trimMessages(initialMessages, PROMPT_BUDGET);
+      initialChars = initialMessages.reduce(function (n, m) { return n + String((m && m.content) || '').length; }, 0);
     }
-    var data = await resp.json();
+    var body = {
+      model: cfg.mainModel,
+      messages: initialMessages,
+      max_tokens: limit,
+      temperature: opts.temperature != null ? opts.temperature : 0.9
+    };
+    var res = await sendApiRequest({ url: url, headers: headers, body: JSON.stringify(body) });
+    var tries = 0;
+    var trimBudget = 0;
+    var lastResort = false;
+    var safeMode = false;
+    try {
+      console.info('[Fanfic API] prompt chars =', initialChars, 'max_tokens =', limit, 'url =', url);
+    } catch (e) {}
+    while (res && !res.ok && (res.status === 400 || res.status === 422) && tries < 6) {
+      var msg = apiMessage(res);
+      var changed = false;
+      // 1) 新模型要求 max_completion_tokens
+      if (body.max_tokens != null && /(max[_\s-]?tokens|max[_\s-]?completion[_\s-]?tokens)/i.test(msg) && /(max_completion_tokens|not supported|unsupported|不支持|only support)/i.test(msg)) {
+        body.max_completion_tokens = body.max_tokens;
+        delete body.max_tokens;
+        changed = true;
+      }
+      // 2) 模型不支持 temperature
+      else if (body.temperature != null && /temperature/i.test(msg) && /(not supported|unsupported|does not support|only support|invalid|不支持)/i.test(msg)) {
+        delete body.temperature;
+        changed = true;
+      }
+      // 3) 内容审核拦截：去掉提示词里的反例词 / 内容尺度，保留完整故事设定再试
+      else if (!safeMode && /content.?policy|content.?filter|flagged|safety|moderation|敏感|违规|审核|不安全/i.test(msg)) {
+        safeMode = true;
+        body.messages = (body.messages || []).map(function (m) {
+          var c = String((m && m.content) || '');
+          c = c.replace(/【全篇表达红线[\s\S]*$/, '');
+          c = c.replace(/【内容尺度】[^\n]*\n?/g, '');
+          c = c.replace(/【你的全局提示词[\s\S]*?(?=\n【|$)/, '');
+          return { role: (m && m.role) || 'user', content: c + '\n文风克制、具体、生活化；对话自然。\n' };
+        });
+        changed = true;
+      }
+      // 4) 输出预算 / 上下文超限：逐档减半，并逐档缩短提示词
+      else if (/(max[_\s-]?tokens|max[_\s-]?completion[_\s-]?tokens|maximum context|context length|token limit|too many tokens|上下文|超出.*长度)/i.test(msg)) {
+        var cur = Number(body.max_tokens != null ? body.max_tokens : body.max_completion_tokens) || limit;
+        if (cur > 512) {
+          var next = Math.max(512, Math.floor(cur / 2));
+          if (body.max_tokens != null) body.max_tokens = next;
+          else body.max_completion_tokens = next;
+          changed = true;
+        } else if (trimBudget < 1000) {
+          trimBudget = 1000;
+          body.messages = trimMessages(body.messages, 1000);
+          changed = true;
+        }
+        if (/(context|上下文|length|maximum|too many|超出)/i.test(msg)) {
+          trimBudget = trimBudget ? Math.max(900, Math.floor(trimBudget * 0.55)) : 5200;
+          body.messages = trimMessages(body.messages, trimBudget);
+          changed = true;
+        }
+      }
+      // 5) 个别模型不接受 system role
+      else if (/system/i.test(msg) && /(role|message)/i.test(msg) && /(not supported|unsupported|不支持|invalid)/i.test(msg)) {
+        body.messages = withoutSystem(body.messages);
+        changed = true;
+      }
+      // 6) 某些中转站只回一个笼统的 400：最后用最保守的参数再试一次
+      if (!changed && res.status === 400 && !lastResort) {
+        lastResort = true;
+        delete body.temperature;
+        delete body.max_completion_tokens;
+        body.max_tokens = 400;
+        body.messages = trimMessages(body.messages, 1000);
+        changed = true;
+      }
+      if (!changed) break;
+      try {
+        console.warn('[Fanfic API] retry', tries + 1, 'status', res.status, 'max_tokens', body.max_tokens || body.max_completion_tokens, 'trim', trimBudget, 'reason', msg.slice(0, 160));
+      } catch (e) {}
+      res = await sendApiRequest({ url: url, headers: headers, body: JSON.stringify(body) });
+      tries++;
+    }
+    if (!res || !res.ok) {
+      try { console.warn('[Fanfic API]', res && res.status, apiMessage(res)); } catch (e) {}
+      throw apiError(res);
+    }
+    var data = {};
+    try { data = JSON.parse(res.text || '{}'); } catch (e) {}
+    if (data && data.error) throw apiError({ ok: false, status: 200, text: res.text });
     var out = '';
     try {
       out = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
       if (!out) out = data.choices && data.choices[0] && data.choices[0].text;
-      if (!out) out = data.reply || data.text || '';
+      if (!out) out = data.reply || data.text || (data.output && data.output.text) || '';
     } catch (e) {}
+    if (Array.isArray(out)) {
+      out = out.map(function (p) { return typeof p === 'string' ? p : ((p && p.text) || ''); }).join('');
+    }
+    if (!String(out || '').trim()) {
+      try { console.warn('[Fanfic API] empty response', String(res.text || '').slice(0, 500)); } catch (e) {}
+      throw new Error('API 没有返回正文' + (res.text ? ('：' + String(res.text).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').slice(0, 300)) : ''));
+    }
     return String(out || '').trim();
   }
 

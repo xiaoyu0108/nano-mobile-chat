@@ -16,13 +16,13 @@
   var chapterCommentsOpen = false;
 
   function $(id) { return document.getElementById(id); }
-  function toast(text) {
+  function toast(text, ms) {
     var el = $('ffToast');
     if (!el) return;
     el.textContent = text;
     el.classList.add('show');
     clearTimeout(window.__ffToast);
-    window.__ffToast = setTimeout(function () { el.classList.remove('show'); }, 2200);
+    window.__ffToast = setTimeout(function () { el.classList.remove('show'); }, ms || 2200);
   }
   function showLoading(text, sub, pct) {
     var el = $('ffLoading');
@@ -374,30 +374,21 @@
       '3. 禁止 AI 八股和排比升华：“不是…而是…”“那一刻…”“空气突然安静”“心口一紧”“理智的弦断了”“连他自己都没察觉”。\n' +
       '4. 情绪靠具体动作、停顿、答非所问和场景细节表达，不靠形容词堆砌、金句总结、强行煽情。\n' +
       '5. 对话像真人：短句、口语、允许沉默和废话；不要每段都金句，不要每个人都像情感博主。\n' +
-      '6. 写之前自检：出现以上词句就整句删掉重写，不要只换同义词，也不要保留这些词做比喻；宁可少写一点，也不要硬加戏。\n';
+      '6. 写之前自检：出现以上词句就整句删掉重写，不要只换同义词，也不要保留这些词做比喻。\n';
   }
-  function buildBodyPrompt(no, direction, finale, chunkWords) {
-    var plan = story.plannedChapters || F.planFor(story.lengthType).planned;
-    var words = story.wordsPerChapter || 2000;
-    var part = Math.max(800, Number(chunkWords) || words);
-    var segmented = part < words;
+  function buildBodyPrompt(no, direction, finale) {
     var prev = story.chapters || [];
     var summaries = prev.map(function (c) {
       return '第' + (c.no || '') + '章《' + (c.title || '') + '》：' + (c.summary || String(c.text || '').slice(0, 120));
     }).join('\n');
     var tail = prev.length ? String(prev[prev.length - 1].text || '').slice(-1000) : '';
-    var finalLine = segmented
-      ? '这是本章的前半部分，不要在这一部分结尾写“未完待续”、作者的话或章节总结，后面还会继续展开。'
-      : (finale
-        ? '这是全书的最后一章（大结局）。必须收束主线、回应前文的伏笔，并落在 ' + (story.ending || 'HE') + ' 的结局方向上。'
-        : '这是连载中的一章。结尾留一个自然的钩子，但不要写“未完待续”或作者的话。');
+    var finalLine = finale
+      ? '这是全书的最后一章（大结局）。必须收束主线、回应前文的伏笔，并落在 ' + (story.ending || 'HE') + ' 的结局方向上。'
+      : '这是连载中的一章。请完整写完这一章，充分展开，不要压缩成梗概，也不要提前收束。';
     var style = String(story.customStyle || story.writingStyle || '').trim();
     var titleRule = story.title
       ? '小说已有标题《' + story.title + '》，不要另起小说标题。'
       : '这是第 1 章，你必须先输出「小说标题：……」，给整篇小说起一个正式、好记、有文学感的标题，然后再输出章节标题。';
-    var lengthLine = segmented
-      ? '全书约 ' + plan + ' 章，本章篇幅较长（约 ' + words + ' 字）。这一次先写开头约 ' + part + ' 字，在自然段落处停住；如果这次已经写到目标字数附近，就让这一部分自然收束本章，否则不要提前收束全章。'
-      : '全书约 ' + plan + ' 章，本章约 ' + words + ' 字。';
     return '你是一个中文同人文作者。请写《' + (story.title || '未命名') + '》第 ' + no + ' 章。\n' +
       '【配对】' + (story.userName || '我') + ' × ' + (story.charName || '角色') + '\n' +
       '【题材】' + ((story.genres || []).join('、') || '未指定') + '\n' +
@@ -405,9 +396,9 @@
       (story.customSetting ? ('【额外设定】\n' + story.customSetting + '\n') : '') +
       (charSetting ? ('【角色设定】\n' + charSetting.slice(0, 3000) + '\n') : '') +
       '【文风】' + (style || '由你根据题材选择最合适的文风，保持整篇统一') + '\n' +
-      '【内容尺度】允许成人向 / NSFW 描写。亲密、欲望、身体反应都可以写，但要服务于人物关系和剧情推进，不要为了露骨而露骨。\n' +
+      '【内容尺度】亲密关系可以写得成熟、细腻，有情感张力和身体反应，但必须服务于人物关系和剧情推进；不要为了露骨而露骨，也不要使用低俗直白的词。\n' +
       '【结局方向】' + (story.ending || 'HE') + '\n' +
-      '【篇幅计划】' + lengthLine + '\n' +
+      '【篇幅】请完整写完这一章，充分展开，不要压缩成梗概，也不要提前收束。\n' +
       (summaries ? ('【前情摘要】\n' + summaries + '\n') : '') +
       (tail ? ('【上一章结尾】\n' + tail + '\n') : '') +
       (direction ? ('【本章方向】\n' + direction + '\n') : '') +
@@ -417,7 +408,7 @@
       '3. 第一行输出「小说标题：……」（仅第 1 章且未定标题时），下一行输出「章节标题：……」，然后空一行开始正文。\n' +
       '4. 正文分段，段与段之间空一行；充分展开场景、对话和人物心理，不要用概括代替具体描写。\n' +
       '5. 文风严格服从【文风】；不要堆砌形容词，不要用“综上所述/总而言之”这类总结句。\n' +
-      '6. 以上【配对】【题材】【自定义题材说明】【额外设定】【角色设定】【文风】【结局方向】【篇幅计划】【前情摘要】【本章方向】全部有效，必须逐条落实，不得擅自更改人物关系、人物设定或结局。\n' +
+      '6. 以上【配对】【题材】【自定义题材说明】【额外设定】【角色设定】【文风】【结局方向】【前情摘要】【本章方向】全部有效，必须逐条落实，不得擅自更改人物关系、人物设定或结局。\n' +
       '7. ' + finalLine + '\n\n' + styleGuard();
   }
 
@@ -470,19 +461,9 @@
     return /max.?tokens|too large|maximum.*tokens|token.*limit|context.*length|exceed.*token/i.test(String(msg || ''));
   }
   async function callBody(prompt, words) {
-    var limits = [8192, 4096, 2048];
-    var last = null;
-    for (var i = 0; i < limits.length; i++) {
-      try {
-        return await F.callApi([{ role: 'system', content: prompt }], { maxTokens: limits[i], temperature: 0.92 });
-      } catch (e) {
-        last = e;
-        var msg = String((e && e.message) || e || '');
-        if (!isTokenLimitError(msg)) throw e;
-      }
-    }
-    if (last && !isTokenLimitError(last.message)) throw last;
-    throw new Error('这次生成被中断了，已保留写好的部分，可以再点一次继续');
+    // 提示词里不写任何字数 / token 限制；输出预算只放在接口参数里。
+    // 4096 是主聊天同款量级、绝大多数模型都能接受；10k 字靠分段继续写，不在 prompt 里提长度。
+    return await F.callApi([{ role: 'system', content: prompt }], { maxTokens: 4096, temperature: 0.92 });
   }
 
   function cleanContinuation(raw) {
@@ -521,14 +502,14 @@
       '【配对】' + (story.userName || '我') + ' × ' + (story.charName || '角色') + '\n' +
       '【题材】' + ((story.genres || []).join('、') || '未指定') + '\n' +
       ((story.genreNotes && story.genreNotes.length) ? ('【自定义题材说明】\n' + story.genreNotes.join('\n') + '\n') : '') +
-      (story.customSetting ? ('【额外设定】\n' + story.customSetting.slice(0, 1200) + '\n') : '') +
+      (story.customSetting ? ('【额外设定】\n' + story.customSetting + '\n') : '') +
       (charSetting ? ('【角色设定】\n' + charSetting.slice(0, 2200) + '\n') : '') +
       '【文风】' + (style || '沿用上文的文风，保持全篇统一') + '\n' +
       '【结局方向】' + (story.ending || 'HE') + '\n' +
       (direction ? ('【本章方向】\n' + direction + '\n') : '') +
       '【已有正文结尾】\n' + String(tail || '').slice(-1900) + '\n\n' +
       '【本次要求】\n' +
-      '1. 紧接上文继续写约 ' + Math.round(chunkWords) + ' 字，在自然段落处停住。\n' +
+      '1. 紧接上文继续写下去，直到本章自然结束；充分展开，不要压缩成梗概。\n' +
       '2. 不要重复已有内容，不要重写开头，不要输出章节标题或小说标题，不要解释，不要总结，不要作者的话。\n' +
       '3. 保持人物、场景、语气和叙事视角与上文一致；以上全部设定与文风继续有效，不要因为分段而改变。\n' +
       (isFinal
@@ -544,11 +525,10 @@
     var novelTitle = draft ? String(draft.novelTitle || '') : '';
     var chapterTitle = draft ? String(draft.chapterTitle || '') : '';
     var rounds = 0;
-    var maxRounds = Math.min(60, Math.ceil(target / 1600) + 5);
+    var maxRounds = Math.min(20, Math.ceil(target / 4000) + 4);
 
     if (!acc) {
-      var firstPart = Math.min(target, 3000);
-      var prompt = buildBodyPrompt(no, direction, finale, firstPart);
+      var prompt = buildBodyPrompt(no, direction, finale);
       showLoading('正在写第 ' + no + ' 章', finale ? '大结局 · 正文优先' : '正文优先，写完后补段评和章评', 12);
       var raw = await callBody(prompt, target);
       var parsed = parseChapter(raw);
@@ -573,7 +553,7 @@
     while (wordCount(acc) < target * 0.94 && rounds < maxRounds) {
       var total = wordCount(acc);
       var remaining = Math.max(600, target - total);
-      var chunkWords = Math.min(3200, Math.max(1200, remaining));
+      var chunkWords = Math.min(6000, Math.max(1500, remaining));
       var isFinal = (total + chunkWords) >= (target * 0.9);
       var pct = 12 + Math.min(72, Math.round((total / Math.max(1, target)) * 72));
       showLoading('正在续写第 ' + no + ' 章', '已写 ' + total + ' 字 / 目标约 ' + target + ' 字', pct);
@@ -596,13 +576,13 @@
 
   function chapterTextForComments(body) {
     var full = String(body || '');
-    if (full.length <= 20000) return full;
-    return full.slice(0, 7000) + '\n\n……（中间省略）……\n\n' + full.slice(-12000);
+    if (full.length <= 2200) return full;
+    return full.slice(0, 700) + '\n\n……（中间省略）……\n\n' + full.slice(-1300);
   }
 
   async function generateComments(body, no) {
     var paras = String(body || '').split(/\n{2,}/).map(function (p) { return p.trim(); }).filter(Boolean);
-    var numbered = paras.map(function (p, i) { return (i + 1) + '. ' + p; }).join('\n\n').slice(0, 20000);
+    var numbered = paras.map(function (p, i) { return (i + 1) + '. ' + p; }).join('\n\n').slice(0, 2200);
     var sys = '你是一群真实的中文网文读者。请针对下面这一章给出读者反应。\n' +
       '【正文（段落已编号）】\n' + numbered + '\n\n' +
       '【输出】只输出一个 JSON 对象，不要 markdown，不要解释：\n' +
@@ -614,7 +594,7 @@
       '4. 读者名用 2-6 个字的中文昵称，不要重复太多。\n' +
       '5. quote 必须真的出现在对应段落里，6-24 字。';
     var raw = '';
-    var limits = [8192, 4096, 2048];
+    var limits = [4096, 2048, 1200];
     var last = null;
     for (var i = 0; i < limits.length; i++) {
       try {
@@ -631,14 +611,14 @@
   }
 
   async function generateChapterCommentsOnly(body, existingTexts) {
-    var existing = (existingTexts || []).slice(-20).join('\n').slice(0, 3000);
+    var existing = (existingTexts || []).slice(-12).join('\n').slice(0, 800);
     var sys = '你是一群真实的中文网文读者。请只针对这一章写新的章评，不要写段评。\n' +
       '【正文】\n' + chapterTextForComments(body) + '\n\n' +
       (existing ? ('【已有的章评（不要重复这些观点和句子）】\n' + existing + '\n\n') : '') +
       '【输出】只输出 JSON：{"chapterComments":[{"user":"读者名","text":"评论"}]}\n' +
       '要求：8-12 条，像真实读者，可以夸、吐槽、猜剧情、催更、讨论人物关系；口语化，不要 emoji，不要剧透后文；读者名 2-6 个中文字，不要重复太多。';
     var raw = '';
-    var limits = [8192, 4096, 2048];
+    var limits = [4096, 2048, 1200];
     var last = null;
     for (var i = 0; i < limits.length; i++) {
       try { raw = await F.callApi([{ role: 'system', content: sys }], { maxTokens: limits[i], temperature: 0.78 }); break; }
@@ -657,8 +637,10 @@
     var paras = String(body || '').split(/\n{2,}/).map(function (p) { return p.trim(); }).filter(Boolean);
     var target = paras[Number(para) - 1] || '';
     if (!target) return { groups: [], summary: '' };
-    var existing = (existingTexts || []).slice(-12).join('\n').slice(0, 2000);
-    var ctx = paras.map(function (p, i) { return (i + 1) + '. ' + p; }).join('\n\n').slice(0, 14000);
+    var existing = (existingTexts || []).slice(-8).join('\n').slice(0, 800);
+    var pnum = Number(para) || 1;
+    var from = Math.max(0, pnum - 3), to = Math.min(paras.length, pnum + 2);
+    var ctx = paras.slice(from, to).map(function (p, i) { return (from + i + 1) + '. ' + p; }).join('\n\n').slice(0, 1800);
     var sys = '你是一群真实的中文网文读者。请只针对第 ' + para + ' 段写新的段评，不要写章评。\n' +
       '【全文（段落已编号）】\n' + ctx + '\n\n' +
       '【目标段落】第 ' + para + ' 段：' + target + '\n\n' +
@@ -766,7 +748,7 @@
       }
       var msg = String((e && e.message) || e || '生成失败');
       if (story.draft) msg += '（未完成的草稿已保留，可再点一次继续）';
-      toast(msg);
+      toast(msg, 6500);
       try { renderBottom(); } catch (e3) {}
     } finally {
       busy = false;
