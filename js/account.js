@@ -78,12 +78,17 @@
     } catch (e) {}
   }
 
+  var _deviceIdCache = '';
   function deviceId() {
+    if (_deviceIdCache) return _deviceIdCache;
     var id = lsGet('nano_device_id');
     if (!id) {
-      id = 'dev_' + rand(10);
-      lsSet('nano_device_id', id);
+      var n = nativeSession();
+      if (n && n.deviceId) id = n.deviceId;
     }
+    if (!id) id = 'dev_' + rand(10);
+    lsSet('nano_device_id', id);
+    _deviceIdCache = id;
     return id;
   }
 
@@ -105,9 +110,33 @@
     return os + ' · ' + br;
   }
 
+  function nativeApp() {
+    try { return window.NanoApp || (window.top !== window && window.top.NanoApp) || null; } catch (e) { return null; }
+  }
+
+  function nativeSession() {
+    try {
+      var app = nativeApp();
+      if (!app || !app.getSession) return null;
+      var raw = app.getSession();
+      if (!raw) return null;
+      var s = JSON.parse(raw);
+      return (s && s.token && s.username) ? s : null;
+    } catch (e) { return null; }
+  }
+
   function currentAuth() {
     var token = lsGet(LS_TOKEN);
     var username = lsGet(LS_USER);
+    if (!token || !username) {
+      // APK：localStorage 被 ROM 清理或配额写满时，用原生备份补回登录态。
+      var n = nativeSession();
+      if (n) {
+        token = n.token;
+        username = n.username;
+        try { lsSet(LS_TOKEN, token); lsSet(LS_USER, username); } catch (e) {}
+      }
+    }
     if (!token || !username) return null;
     return { token: token, username: username, sid: lsGet(LS_SID) };
   }
@@ -162,6 +191,10 @@
     lsSet(LS_CHECKED, Date.now());
     lsDel(LS_LOCAL);
     if (data.sessions) applySessions(data.sessions);
+    try {
+      var app = nativeApp();
+      if (app && app.saveSession) app.saveSession(data.token, data.username, deviceId());
+    } catch (e) {}
   }
 
   function applySessions(data) {
@@ -184,6 +217,10 @@
     lsDel(LS_DEVICE);
     lsDel(LS_NEEDS);
     try { localStorage.removeItem('nano_account_saved'); } catch (e) {}
+    try {
+      var app = nativeApp();
+      if (app && app.clearSession) app.clearSession();
+    } catch (e) {}
   }
 
   function toast(msg, ms) {

@@ -2,7 +2,7 @@
 <html lang="zh">
 <head>
     <meta charset="UTF-8">
-    <script src="js/nano-runtime.js?v=20261028e"></script>
+    <script src="js/nano-runtime.js?v=20261112a"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <script>
     // 全站唯一构建号：下面的自愈逻辑、iframe 的 nb= 参数都用它。
@@ -10,7 +10,7 @@
     // 造成每次打开都清缓存 + 反复 reload。
     // build 号保持最新即可，但不要再用 reload 强制更新：reload + 旧 SW 的 HTML 缓存
     // 会让新旧 build 号互相触发，开屏动画无限循环。现在只清缓存，不自动 reload。
-    window.__NANO_BUILD__ = 'nano-2026-11-12-3';
+    window.__NANO_BUILD__ = 'nano-2026-11-12-5';
     (function () {
         try {
             var KEY = 'nano_build';
@@ -48,8 +48,8 @@
     <link rel="dns-prefetch" href="https://nanopush.nano315.online">
     <link rel="dns-prefetch" href="https://music.nano315.online">
     <!-- 底部脚本很多，提前并行下载，避免解析到底部才开始请求 -->
-    <link rel="preload" as="script" href="js/nano-push.js?v=20261106a">
-    <link rel="preload" as="script" href="js/keep-alive.js?v=20261023a">
+    <link rel="preload" as="script" href="js/nano-push.js?v=20261112a">
+    <link rel="preload" as="script" href="js/keep-alive.js?v=20261112a">
     <link rel="preload" as="script" href="js/char-takeover.js?v=20261107a">
     <link rel="preload" as="script" href="js/online-catchup.js?v=20261112a">
     <link rel="preload" as="script" href="js/auto-push-bridge.js?v=20261112a">
@@ -1263,7 +1263,11 @@ setTimeout(function () {
             try { custom = parseFloat(localStorage.getItem('nano_top_inset')); } catch (e) {}
             try {
                 var val;
-                if (topInsetEnabled() && isFinite(custom) && custom >= 0) {
+                var nativeTop = window.__NANO_NATIVE_TOP_INSET__;
+                if (isFinite(nativeTop) && nativeTop >= 0) {
+                    // APK 全屏后由原生给出刘海安全区；否则网页会以为自己在状态栏下面
+                    val = nativeTop + 'px';
+                } else if (topInsetEnabled() && isFinite(custom) && custom >= 0) {
                     val = custom + 'px';                         // 用户自定义，优先
                 } else if (topInsetEnabled() && isStandalonePWA() && isIOSDevice()) {
                     // 已安装全屏 PWA（iOS）：env 报 0 时兜底 48px（刚好越过灵动岛），报得再大也夹到 54px
@@ -1811,7 +1815,7 @@ setTimeout(function () {
                 document.body.appendChild(probe);
                 const cs = getComputedStyle(probe);
                 let top = parseFloat(cs.paddingTop) || 0;
-                const bottom = parseFloat(cs.paddingBottom) || 0;
+                let bottom = parseFloat(cs.paddingBottom) || 0;
                 probe.parentNode.removeChild(probe);
                 // 把顶部安全区夹在 48~54px：
                 //  · 报成 0 的 WebView → 48（刚好越过灵动岛）
@@ -1820,11 +1824,15 @@ setTimeout(function () {
                 // 注意：关闭开关时不写死 0，而是保留浏览器真实安全区 —— 否则全屏 PWA 下按钮会跑到灵动岛里
                 var _customTop = NaN;
                 try { _customTop = parseFloat(localStorage.getItem('nano_top_inset')); } catch (e) {}
-                if (isFinite(_customTop) && _customTop >= 0) { top = _customTop; }
+                var _nativeTop = window.__NANO_NATIVE_TOP_INSET__;
+                var _nativeBottom = window.__NANO_NATIVE_BOTTOM_INSET__;
+                if (isFinite(_nativeTop) && _nativeTop >= 0) { top = _nativeTop; }   // APK 原生刘海安全区
+                else if (isFinite(_customTop) && _customTop >= 0) { top = _customTop; }
                 else if (top > 0) { top = Math.min(top, 54); }                 // 真实安全区（全屏 PWA）→ 直接用，封顶 54
                 else if (topInsetEnabled() && isStandalonePWA() && isIOSDevice()) { top = 48; }  // 全屏 PWA(iOS) 却报 0 → 兜底 48
                 else if (topInsetEnabled() && isStandalonePWA() && isAndroidDevice()) { top = 40; } // 安卓全屏 PWA 的 env 常报 0 → 兜底 40
                 else { top = 0; }                                              // 非全屏 / 非 iOS / 无安全区 → 0，不凭空留白
+                if (isFinite(_nativeBottom) && _nativeBottom >= 0) bottom = _nativeBottom;
                 return { top: top, bottom: bottom };
             } catch (e) { return { top: 0, bottom: 0 }; }
         }
@@ -4769,10 +4777,10 @@ setTimeout(function () {
 <script src="js/mem-link.js?v=20261006a"></script>
 <script src="js/aux-memory.js?v=20261029d"></script>
 <script src="js/user-scope.js?v=20261020j"></script>
-<script src="js/nano-notify.js?v=20261102a"></script>
-<script src="js/nano-push.js?v=20261106a"></script>
+<script src="js/nano-notify.js?v=20261112a"></script>
+<script src="js/nano-push.js?v=20261112a"></script>
 <script src="swipe-back.js"></script>
-<script src="js/keep-alive.js?v=20261023a"></script>
+<script src="js/keep-alive.js?v=20261112a"></script>
 <script src="js/char-takeover.js?v=20261107a"></script>
 <script src="js/nano-prompts.js?v=20261108a"></script>
 <script src="js/screen-share.js?v=20261027a"></script>
@@ -4916,7 +4924,7 @@ setTimeout(function () {
     })();
     </script>
 <script src="js/adult-gate.js?v=20261025g"></script>
-<script src="js/account.js?v=20261026f"></script>
+<script src="js/account.js?v=20261112a"></script>
 <script>
 // 自动备份调度：只有开启后才加载一个隐藏的备份页，在 App 打开期间按间隔上传。
 // 完全退出 App 后网页无法后台运行，下次打开会补一次。

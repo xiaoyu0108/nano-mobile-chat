@@ -3,12 +3,15 @@ package online.nano315.nano;
 import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.app.AlarmManager;
 import android.app.AlertDialog;
 import android.app.DownloadManager;
+import android.app.PendingIntent;
 import android.content.ClipData;
 import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.net.Uri;
@@ -17,11 +20,16 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.os.Message;
 import android.provider.MediaStore;
+import android.provider.Settings;
 import android.util.Base64;
 import android.util.Log;
+import android.view.DisplayCutout;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
+import android.view.WindowInsets;
+import android.view.WindowInsetsController;
+import android.view.WindowManager;
 import android.webkit.CookieManager;
 import android.webkit.GeolocationPermissions;
 import android.webkit.JavascriptInterface;
@@ -56,6 +64,13 @@ public class MainActivity extends Activity {
     private static final int REQ_MEDIA = 1002;
     private static final int REQ_GEO = 1003;
     private static final int REQ_STORAGE = 1004;
+    private static final int REQ_NOTIFY = 1005;
+
+    static final String EXTRA_TARGET = "nano_notify_target";
+    private static final String PREFS = "nano_native_prefs";
+    private static final String PREF_TOKEN = "account_token";
+    private static final String PREF_USER = "account_user";
+    private static final String PREF_DEVICE = "device_id";
 
     private static final String DOWNLOAD_HOOK_JS =
             "(function(){" +
@@ -83,20 +98,20 @@ public class MainActivity extends Activity {
     private GeolocationPermissions.Callback pendingGeoCallback;
     private String pendingGeoOrigin;
     private Map<String, String> assetNameCache;
+    private String pendingNotifyTarget;
+    private boolean pageReady;
+    private String pendingNotificationJson;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        Window window = getWindow();
-        window.setStatusBarColor(Color.WHITE);
-        window.setNavigationBarColor(Color.WHITE);
-        int ui = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            ui |= View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
-        }
-        window.getDecorView().setSystemUiVisibility(ui);
+        NanoNotifications.ensureChannels(this);
+        applyFullscreen();
+
+        Intent launch = getIntent();
+        if (launch != null) pendingNotifyTarget = launch.getStringExtra(EXTRA_TARGET);
 
         FrameLayout root = new FrameLayout(this);
         root.setLayoutParams(new ViewGroup.LayoutParams(
@@ -108,6 +123,16 @@ public class MainActivity extends Activity {
         webView.setLayoutParams(new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         root.addView(webView);
+
+        if (Build.VERSION.SDK_INT >= 28) {
+            root.setOnApplyWindowInsetsListener((v, insets) -> {
+                DisplayCutout cutout = insets.getDisplayCutout();
+                int top = cutout == null ? 0 : Math.max(0, cutout.getSafeInsetTop());
+                applyNativeInsets(top);
+                return insets;
+            });
+            try { root.requestApplyInsets(); } catch (Exception ignored) {}
+        }
 
         WebSettings s = webView.getSettings();
         s.setJavaScriptEnabled(true);
@@ -146,6 +171,15 @@ public class MainActivity extends Activity {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 return handleUrl(request.getUrl());
+            }
+
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                pageReady = true;
+                final String target = pendingNotifyTarget;
+                if (target != null && !target.isEmpty()) {
+                    view.postDelayed(() -> dispatchNotifyTarget(target), 650);
+                }
             }
         });
 
@@ -501,6 +535,171 @@ public class MainActivity extends Activity {
         return true;
     }
 
+    private void applyNativeInsets(int top) {
+        if (webView == null) return;
+        final int t = Math.max(0, top);
+        String js = "try{window.__NANO_NATIVE_TOP_INSET__=" + t +
+                ";document.documentElement.style.setProperty('--safe-inset-top','" + t + "px');" +
+                "window.dispatchEvent(new Event('resize'));}catch(e){}";
+        try {
+            webView.post(() -> {
+                try { webView.evaluateJavascript(js, null); } catch (Exception ignored) {}
+            });
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void applyFullscreen() {
+        Window window = getWindow();
+        if (Build.VERSION.SDK_INT >= 28) {
+            WindowManager.LayoutParams lp = window.getAttributes();
+            lp.layoutInDisplayCutoutMode =
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+            window.setAttributes(lp);
+        }
+        window.setStatusBarColor(Color.TRANSPARENT);
+        window.setNavigationBarColor(Color.WHITE);
+        if (Build.VERSION.SDK_INT >= 30) {
+            try {
+                window.setDecorFitsSystemWindows(true);
+                WindowInsetsController c = window.getInsetsController();
+                if (c != null) {
+                    c.hide(WindowInsets.Type.statusBars());
+                    c.setSystemBarsBehavior(
+                            WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                    c.setSystemBarsAppearance(
+                            WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS,
+                            WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS);
+                }
+            } catch (Exception ignored) {
+            }
+        } else {
+            int ui = View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_FULLSCREEN;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                ui |= View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+            }
+            window.getDecorView().setSystemUiVisibility(ui);
+        }
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus) applyFullscreen();
+    }
+
+    private void requestNotifyPermission(String pendingJson) {
+        if (pendingJson != null) pendingNotificationJson = pendingJson;
+        if (Build.VERSION.SDK_INT < 33) {
+            showPendingNotification();
+            return;
+        }
+        if (NanoNotifications.allowed(this)) {
+            showPendingNotification();
+            return;
+        }
+        try {
+            getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                    .putBoolean("notify_requested", true).apply();
+        } catch (Exception ignored) {
+        }
+        requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQ_NOTIFY);
+    }
+
+    private void showPendingNotification() {
+        String raw = pendingNotificationJson;
+        pendingNotificationJson = null;
+        if (raw == null || raw.isEmpty()) return;
+        try {
+            org.json.JSONObject o = new org.json.JSONObject(raw);
+            String title = o.optString("title", "Nano");
+            String body = o.optString("body", "");
+            String target = o.optString("target", "");
+            String channel = o.optString("channel", "");
+            int id = (title + "|" + body + "|" + target).hashCode() & 0x7fffffff;
+            NanoNotifications.show(this, title, body, target, channel, id);
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void scheduleNativeNotification(String id, long at, String title, String body,
+                                             String target, String channel) {
+        try {
+            String key = (id == null || id.isEmpty())
+                    ? ("nano-" + at + "-" + String.valueOf(title)) : id;
+            int requestCode = key.hashCode() & 0x7fffffff;
+            String channelId = NanoNotifications.safeChannel(channel);
+            Intent intent = new Intent(this, NotifyReceiver.class);
+            intent.putExtra(NotifyReceiver.EXTRA_ID, requestCode);
+            intent.putExtra(NotifyReceiver.EXTRA_TITLE, title == null ? "Nano" : title);
+            intent.putExtra(NotifyReceiver.EXTRA_BODY, body == null ? "" : body);
+            intent.putExtra(NotifyReceiver.EXTRA_TARGET, target == null ? "" : target);
+            intent.putExtra(NotifyReceiver.EXTRA_CHANNEL, channelId);
+            int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+            if (Build.VERSION.SDK_INT >= 23) flags |= PendingIntent.FLAG_IMMUTABLE;
+            PendingIntent pi = PendingIntent.getBroadcast(this, requestCode, intent, flags);
+            AlarmManager am = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
+            if (am == null) return;
+            if (Build.VERSION.SDK_INT >= 21 && "pomodoro".equalsIgnoreCase(String.valueOf(channel))) {
+                am.setAlarmClock(new AlarmManager.AlarmClockInfo(at, pi), pi);
+                return;
+            }
+            if (Build.VERSION.SDK_INT >= 31 && !am.canScheduleExactAlarms()) {
+                am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi);
+            } else if (Build.VERSION.SDK_INT >= 23) {
+                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi);
+            } else {
+                am.setExact(AlarmManager.RTC_WAKEUP, at, pi);
+            }
+        } catch (Exception e) {
+            try {
+                AlarmManager am = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
+                if (am != null) am.set(AlarmManager.RTC_WAKEUP, at, PendingIntent.getBroadcast(
+                        this, (id == null ? "" : id).hashCode() & 0x7fffffff,
+                        new Intent(this, NotifyReceiver.class), 0));
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
+    private void cancelNativeNotification(String id) {
+        try {
+            int requestCode = (id == null ? "" : id).hashCode() & 0x7fffffff;
+            Intent intent = new Intent(this, NotifyReceiver.class);
+            int flags = PendingIntent.FLAG_NO_CREATE;
+            if (Build.VERSION.SDK_INT >= 23) flags |= PendingIntent.FLAG_IMMUTABLE;
+            PendingIntent pi = PendingIntent.getBroadcast(this, requestCode, intent, flags);
+            if (pi != null) {
+                AlarmManager am = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
+                if (am != null) am.cancel(pi);
+                pi.cancel();
+            }
+            NanoNotifications.cancel(this, requestCode);
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void dispatchNotifyTarget(String target) {
+        if (target == null || target.isEmpty() || webView == null) return;
+        pendingNotifyTarget = null;
+        String js = "try{window.postMessage({type:'notifyOpen',target:"
+                + org.json.JSONObject.quote(target) + "},'*');}catch(e){}";
+        try {
+            webView.evaluateJavascript(js, null);
+        } catch (Exception ignored) {
+        }
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        String target = intent == null ? null : intent.getStringExtra(EXTRA_TARGET);
+        if (target == null || target.isEmpty()) return;
+        if (pageReady) dispatchNotifyTarget(target);
+        else pendingNotifyTarget = target;
+    }
+
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         if (requestCode == REQ_FILE) {
@@ -528,7 +727,10 @@ public class MainActivity extends Activity {
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == REQ_MEDIA && pendingPermissionRequest != null) {
+        if (requestCode == REQ_NOTIFY) {
+            if (NanoNotifications.allowed(this)) showPendingNotification();
+            else pendingNotificationJson = null;
+        } else if (requestCode == REQ_MEDIA && pendingPermissionRequest != null) {
             boolean ok = true;
             for (int r : grantResults) {
                 if (r != PackageManager.PERMISSION_GRANTED) {
@@ -618,6 +820,154 @@ public class MainActivity extends Activity {
             } catch (Exception e) {
                 toast("保存失败：" + e.getMessage());
             }
+        }
+
+        @JavascriptInterface
+        public String getSession() {
+            try {
+                SharedPreferences sp = getSharedPreferences(PREFS, MODE_PRIVATE);
+                String token = sp.getString(PREF_TOKEN, "");
+                String user = sp.getString(PREF_USER, "");
+                if (token.isEmpty() || user.isEmpty()) return "";
+                org.json.JSONObject o = new org.json.JSONObject();
+                o.put("token", token);
+                o.put("username", user);
+                o.put("deviceId", sp.getString(PREF_DEVICE, ""));
+                return o.toString();
+            } catch (Exception e) {
+                return "";
+            }
+        }
+
+        @JavascriptInterface
+        public void saveSession(String token, String user, String deviceId) {
+            try {
+                if (token == null || token.isEmpty() || user == null || user.isEmpty()) return;
+                getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                        .putString(PREF_TOKEN, token)
+                        .putString(PREF_USER, user)
+                        .putString(PREF_DEVICE, deviceId == null ? "" : deviceId)
+                        .commit();
+            } catch (Exception ignored) {
+            }
+        }
+
+        @JavascriptInterface
+        public void clearSession() {
+            try {
+                getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                        .remove(PREF_TOKEN).remove(PREF_USER).commit();
+            } catch (Exception ignored) {
+            }
+        }
+
+        @JavascriptInterface
+        public String getInsets() {
+            int top = 0;
+            try {
+                if (Build.VERSION.SDK_INT >= 28) {
+                    WindowInsets ins = getWindow().getDecorView().getRootWindowInsets();
+                    if (ins != null) {
+                        DisplayCutout cutout = ins.getDisplayCutout();
+                        if (cutout != null) top = Math.max(0, cutout.getSafeInsetTop());
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+            return "{\"top\":" + top + ",\"bottom\":0}";
+        }
+
+        @JavascriptInterface
+        public String notificationState() {
+            if (Build.VERSION.SDK_INT < 33) return "granted";
+            if (NanoNotifications.allowed(MainActivity.this)) return "granted";
+            boolean asked = getSharedPreferences(PREFS, MODE_PRIVATE)
+                    .getBoolean("notify_requested", false);
+            return asked ? "denied" : "default";
+        }
+
+        @JavascriptInterface
+        public void requestNotificationPermission() {
+            runOnUiThread(() -> requestNotifyPermission(null));
+        }
+
+        @JavascriptInterface
+        public void openNotificationSettings() {
+            runOnUiThread(() -> {
+                try {
+                    Intent i;
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        i = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
+                        i.putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName());
+                    } else {
+                        i = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                        i.setData(Uri.parse("package:" + getPackageName()));
+                    }
+                    i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(i);
+                } catch (Exception e) {
+                    toast("无法打开通知设置");
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void notifyNow(String title, String body, String optsJson) {
+            String target = "";
+            String channel = "";
+            try {
+                if (optsJson != null && !optsJson.isEmpty()) {
+                    org.json.JSONObject o = new org.json.JSONObject(optsJson);
+                    target = o.optString("target", "");
+                    channel = o.optString("channel", "");
+                    if (channel.isEmpty()) channel = o.optString("app", "");
+                }
+            } catch (Exception ignored) {
+            }
+            final String fTarget = target;
+            final String fChannel = channel;
+            final String fTitle = title;
+            final String fBody = body;
+            final String pending = "{\"title\":" + org.json.JSONObject.quote(title == null ? "" : title)
+                    + ",\"body\":" + org.json.JSONObject.quote(body == null ? "" : body)
+                    + ",\"target\":" + org.json.JSONObject.quote(fTarget)
+                    + ",\"channel\":" + org.json.JSONObject.quote(fChannel) + "}";
+            runOnUiThread(() -> {
+                if (!NanoNotifications.allowed(MainActivity.this)) {
+                    pendingNotificationJson = pending;
+                    requestNotifyPermission(null);
+                    return;
+                }
+                int id = (fTitle + "|" + fBody + "|" + fTarget).hashCode() & 0x7fffffff;
+                NanoNotifications.show(MainActivity.this, fTitle, fBody, fTarget, fChannel, id);
+            });
+        }
+
+        @JavascriptInterface
+        public void scheduleNotify(String id, String atMillis, String title, String body,
+                                   String target, String channel) {
+            long at = 0;
+            try { at = Long.parseLong(String.valueOf(atMillis)); } catch (Exception ignored) {}
+            if (at <= 0) at = System.currentTimeMillis() + 1000;
+            final long when = at;
+            final String fId = String.valueOf(id == null ? "" : id);
+            final String fTitle = title;
+            final String fBody = body;
+            final String fTarget = target;
+            final String fChannel = channel;
+            runOnUiThread(() -> scheduleNativeNotification(fId, when, fTitle, fBody, fTarget, fChannel));
+        }
+
+        @JavascriptInterface
+        public void cancelNotify(String id) {
+            final String fId = String.valueOf(id == null ? "" : id);
+            runOnUiThread(() -> cancelNativeNotification(fId));
+        }
+
+        @JavascriptInterface
+        public void setKeepAlive(boolean on) {
+            if (on) KeepAliveService.start(MainActivity.this);
+            else KeepAliveService.stop(MainActivity.this);
         }
     }
 

@@ -1,4 +1,4 @@
-// push-worker/node_modules/uint8array-extras/index.js
+// node_modules/uint8array-extras/index.js
 var objectToString = Object.prototype.toString;
 var uint8ArrayStringified = "[object Uint8Array]";
 var arrayBufferStringified = "[object ArrayBuffer]";
@@ -90,7 +90,7 @@ function base64ToUint8Array(base64String) {
 }
 var byteToHexLookupTable = Array.from({ length: 256 }, (_, index) => index.toString(16).padStart(2, "0"));
 
-// push-worker/node_modules/@block65/webcrypto-web-push/dist/lib/utils.js
+// node_modules/@block65/webcrypto-web-push/dist/lib/utils.js
 function encodeRecordSize(size) {
   const bytes = new Uint8Array(4);
   new DataView(bytes.buffer).setUint32(0, size);
@@ -102,7 +102,7 @@ function invariant(condition, message) {
   }
 }
 
-// push-worker/node_modules/@block65/webcrypto-web-push/dist/lib/client-keys.js
+// node_modules/@block65/webcrypto-web-push/dist/lib/client-keys.js
 async function deriveClientKeys(sub) {
   const bytes = base64ToUint8Array(sub.keys.p256dh);
   const authSecretBytes = base64ToUint8Array(sub.keys.auth);
@@ -118,7 +118,7 @@ async function deriveClientKeys(sub) {
   };
 }
 
-// push-worker/node_modules/@block65/webcrypto-web-push/dist/lib/hkdf.js
+// node_modules/@block65/webcrypto-web-push/dist/lib/hkdf.js
 function createHMAC(data) {
   const keyPromise = crypto.subtle.importKey("raw", data, {
     name: "HMAC",
@@ -146,7 +146,7 @@ async function hkdf(salt, ikm) {
   };
 }
 
-// push-worker/node_modules/@block65/webcrypto-web-push/dist/lib/info.js
+// node_modules/@block65/webcrypto-web-push/dist/lib/info.js
 function createKeyInfo(clientPublic, serverPublic) {
   return new Uint8Array([
     ...stringToUint8Array("WebPush: info\0"),
@@ -158,7 +158,7 @@ function createInfo(type) {
   return stringToUint8Array(`Content-Encoding: ${type}\0`);
 }
 
-// push-worker/node_modules/@block65/webcrypto-web-push/dist/lib/local-keys.js
+// node_modules/@block65/webcrypto-web-push/dist/lib/local-keys.js
 async function generateLocalKeys() {
   const keyPair = await crypto.subtle.generateKey({
     name: "ECDH",
@@ -170,12 +170,12 @@ async function generateLocalKeys() {
   };
 }
 
-// push-worker/node_modules/@block65/webcrypto-web-push/dist/lib/salt.js
+// node_modules/@block65/webcrypto-web-push/dist/lib/salt.js
 async function getSalt() {
   return crypto.getRandomValues(new Uint8Array(16));
 }
 
-// push-worker/node_modules/@block65/webcrypto-web-push/dist/lib/encrypt.js
+// node_modules/@block65/webcrypto-web-push/dist/lib/encrypt.js
 var recordSize = 4096;
 var headerSize = 21 + 65;
 var maxPlaintextSize = recordSize - headerSize - 17;
@@ -217,7 +217,7 @@ async function encryptNotification(subscription, plaintext, options = {}) {
   ]);
 }
 
-// push-worker/node_modules/@block65/webcrypto-web-push/dist/lib/base64.js
+// node_modules/@block65/webcrypto-web-push/dist/lib/base64.js
 function encodeBase64Url(value) {
   return uint8ArrayToBase64(toUint8Array(value), { urlSafe: true });
 }
@@ -225,7 +225,7 @@ function objectToBase64Url(obj) {
   return encodeBase64Url(stringToUint8Array(JSON.stringify(obj)));
 }
 
-// push-worker/node_modules/@block65/webcrypto-web-push/dist/lib/jwt.js
+// node_modules/@block65/webcrypto-web-push/dist/lib/jwt.js
 async function sign(payload, key) {
   const headerStr = objectToBase64Url({
     typ: "JWT",
@@ -243,7 +243,7 @@ async function sign(payload, key) {
   return `${dataStr}.${encodeBase64Url(signature)}`;
 }
 
-// push-worker/node_modules/@block65/webcrypto-web-push/dist/lib/vapid.js
+// node_modules/@block65/webcrypto-web-push/dist/lib/vapid.js
 async function vapidHeaders(subscription, vapid) {
   invariant(vapid.subject, "Vapid subject is empty");
   invariant(vapid.privateKey, "Vapid private key is empty");
@@ -273,7 +273,7 @@ async function vapidHeaders(subscription, vapid) {
   };
 }
 
-// push-worker/node_modules/@block65/webcrypto-web-push/dist/lib/payload.js
+// node_modules/@block65/webcrypto-web-push/dist/lib/payload.js
 async function buildPushPayload(message, subscription, vapid) {
   const { headers } = await vapidHeaders(subscription, vapid);
   const body = await encryptNotification(subscription, stringToUint8Array(
@@ -299,7 +299,7 @@ async function buildPushPayload(message, subscription, vapid) {
   };
 }
 
-// push-worker/src/index.js
+// src/index.js
 var CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
@@ -2215,6 +2215,22 @@ function linkLooksBlocked(finalUrl, data) {
   if (/滑动验证|请登录|安全验证|访问异常|captcha|想了解些什么|登录后|扫码登录|登录小红书|亲，请登录|扫码查看|商品不存在|商品已下架|您查看的宝贝不存在|页面不存在/i.test(content)) return true;
   return false;
 }
+function linkCoverOnly(data, url) {
+  if (!data || !Array.isArray(data.images) || !data.images.length) return null;
+  let title = String(data.title || "").trim();
+  if (/^(小红书|抖音|快手|微博|哔哩哔哩|B站|淘宝|天猫|京东)\s*$/i.test(title) || /滑动验证|请登录|安全验证|访问异常|captcha|登录后|扫码登录|扫码查看/i.test(title)) {
+    title = "";
+  }
+  return {
+    url: String(url || ""),
+    via: "cover-only",
+    title: title.slice(0, 120),
+    desc: "",
+    content: "",
+    images: data.images.slice(0, 6),
+    price: ""
+  };
+}
 function xhsDirectUrls(finalUrl) {
   const out = [];
   try {
@@ -2299,6 +2315,8 @@ async function fetchLinkPreview(url) {
     if (ok) {
       return Object.assign({ url: first.resp.url || u.href }, data);
     }
+    const cover = linkCoverOnly(data, first.resp.url || u.href);
+    if (cover) return cover;
     firstOk = false;
   }
   if (!firstOk && /douyin|iesdouyin|taobao|tb\.cn|tmall/i.test(u.hostname)) {
@@ -2313,6 +2331,8 @@ async function fetchLinkPreview(url) {
       if ((d2.title || d2.content || d2.images && d2.images.length) && !linkLooksBlocked(desk.resp.url || u.href, d2)) {
         return Object.assign({ url: desk.resp.url || u.href, via: "desktop" }, d2);
       }
+      const cover2 = linkCoverOnly(d2, desk.resp.url || u.href);
+      if (cover2) return cover2;
     }
   }
   const directUrls = xhsDirectUrls(first && first.resp ? first.resp.url : u.href);
@@ -2328,6 +2348,8 @@ async function fetchLinkPreview(url) {
       if ((data.title || data.content) && !linkLooksBlocked(r.resp.url || direct, data)) {
         return Object.assign({ url: r.resp.url || direct, via: "xhs-direct" }, data);
       }
+      const cover3 = linkCoverOnly(data, r.resp.url || direct);
+      if (cover3) return cover3;
     }
   }
   if (/douyin|iesdouyin/i.test(u.hostname)) {
@@ -2378,6 +2400,8 @@ async function fetchLinkPreview(url) {
         if ((td.title || td.content || td.images && td.images.length) && !linkLooksBlocked(tb.resp.url || taobaoSource, td)) {
           return Object.assign({ url: tb.resp.url || taobaoSource, via: "taobao-h5" }, td);
         }
+        const cover4 = linkCoverOnly(td, tb.resp.url || taobaoSource);
+        if (cover4) return cover4;
       }
     }
   }
@@ -2409,6 +2433,8 @@ async function fetchLinkPreview(url) {
       }
       return out;
     }
+    const cover5 = linkCoverOnly(data, u.href);
+    if (cover5) return cover5;
   }
   return null;
 }

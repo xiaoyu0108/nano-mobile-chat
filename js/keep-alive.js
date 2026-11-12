@@ -51,6 +51,15 @@
     var MAX_TASKS = 50;        // 队列上限，防止 localStorage 被写满
 
     var isTop = (window.parent === window);
+
+    function nativeApp() {
+        try {
+            if (window.NanoApp) return window.NanoApp;
+            if (window.top && window.top !== window && window.top.NanoApp) return window.top.NanoApp;
+            if (window.parent && window.parent !== window && window.parent.NanoApp) return window.parent.NanoApp;
+        } catch (e) {}
+        return null;
+    }
     var audioEl = null;
     var audioUrl = '';
     var wakeLock = null;
@@ -409,6 +418,14 @@
             list = list.slice(0, MAX_TASKS);
         }
         writeTasks(list);
+        // APK：通知类任务同时排进 Android AlarmManager，App 被杀掉也能到点弹通知。
+        try {
+            var na = nativeApp();
+            if (na && na.scheduleNotify && t.type !== 'generate') {
+                na.scheduleNotify(String(t.id), String(t.at), t.title || 'Nano',
+                    t.body || '', t.target || '', t.channel || '');
+            }
+        } catch (e) {}
         if (enabled()) { ensureLoop(); runDueTasks(Date.now()); }
         return t;
     }
@@ -423,6 +440,10 @@
     function cancel(id) {
         if (!id) return;
         writeTasks(readTasks().filter(function (x) { return x && x.id !== id; }));
+        try {
+            var na = nativeApp();
+            if (na && na.cancelNotify) na.cancelNotify(String(id));
+        } catch (e) {}
     }
     function tasks() { return readTasks(); }
     function clear() { writeTasks([]); }
@@ -435,6 +456,11 @@
         setMediaSession();
         requestWakeLock();
         ensureLoop();
+        // APK：前台服务 + WakeLock，避免 WebView 被系统冻结/回收。
+        try {
+            var na = nativeApp();
+            if (na && na.setKeepAlive) na.setKeepAlive(true);
+        } catch (e) {}
     }
 
     function start() {
@@ -454,6 +480,10 @@
         releaseWakeLock();
         try { if (navigator.mediaSession) navigator.mediaSession.playbackState = 'paused'; } catch (e) {}
         try { if (audioEl) audioEl.pause(); } catch (e) {}
+        try {
+            var na = nativeApp();
+            if (na && na.setKeepAlive) na.setKeepAlive(false);
+        } catch (e) {}
         if (!isTop) {
             try { window.parent.postMessage({ type: 'keepAlive', enabled: false }, '*'); } catch (e) {}
         }

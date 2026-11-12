@@ -668,7 +668,7 @@ function likesLineHTML(p) {
 function postInnerHTML(p) {
   if (p.image) {
     return `
-      <img class="post-media" src="${p.image}" data-fb="${escapeHtml((p.title || p.body || '记录').slice(0, 40))}" onerror="insImgFallback(this)" onclick="openDetail(${p.id},'home')">
+      <img class="post-media" src="${p.image}" data-fb="${escapeHtml((p.title || p.body || '记录').slice(0, 40))}" onerror="insImgFallback(this)" onclick="event.stopPropagation();openInsImageViewer(${p.id})">
       ${p.title ? `<div class="post-img-title">${p.title}</div>` : ''}
       <div class="post-body">
         <div class="actions">
@@ -704,6 +704,128 @@ function postInnerHTML(p) {
     </div>
   `;
 }
+
+// ==================== 图片大图查看器 ====================
+let insViewPostId = '';
+let insViewPrompt = '';
+function insPostById(id) {
+  return posts.find(function (p) { return p && String(p.id) === String(id); }) || null;
+}
+function insPromptForPost(p) {
+  const saved = String((p && (p.genPrompt || p.imagePrompt)) || '').trim();
+  return saved || buildPostImagePrompt(p || {});
+}
+function openInsImageViewer(id) {
+  const p = insPostById(id);
+  if (!p || !p.image) return;
+  const viewer = document.getElementById('insImageViewer');
+  const img = document.getElementById('insIvImg');
+  if (!viewer || !img) return;
+  insViewPostId = p.id;
+  insViewPrompt = insPromptForPost(p);
+  img.src = p.image;
+  viewer.classList.add('show');
+}
+function closeInsImageViewer() {
+  const viewer = document.getElementById('insImageViewer');
+  if (viewer) viewer.classList.remove('show');
+  closeInsIvSheet();
+}
+function openInsIvSheet() {
+  const p = insPostById(insViewPostId);
+  if (!p) return;
+  const ta = document.getElementById('insIvPromptInput');
+  if (ta) ta.value = insPromptForPost(p);
+  const sheet = document.getElementById('insIvSheet');
+  if (sheet) sheet.classList.add('show');
+  if (ta) setTimeout(function () { try { ta.focus(); } catch (e) {} }, 80);
+}
+function closeInsIvSheet() {
+  const sheet = document.getElementById('insIvSheet');
+  if (sheet) sheet.classList.remove('show');
+}
+async function rerollInsImage() {
+  const p = insPostById(insViewPostId);
+  if (!p) return;
+  const ta = document.getElementById('insIvPromptInput');
+  const prompt = String((ta && ta.value) || '').trim() || insPromptForPost(p);
+  closeInsIvSheet();
+  showLoading('正在重新生成图片…');
+  try {
+    const author = getSelectableChars().find(function (c) { return normName(c.name) === normName(p.user); });
+    const opts = author ? { charId: String(author.id || author.name), char: author } : null;
+    const url = await generateInsImage(prompt, opts);
+    if (!url) throw new Error('生图接口没有返回图片');
+    p.image = url;
+    p.genPrompt = prompt;
+    const img = document.getElementById('insIvImg');
+    if (img) img.src = url;
+    insViewPrompt = prompt;
+    saveInsChatState();
+    try { renderFeed(); } catch (e) {}
+    try { if (currentPost && String(currentPost.id) === String(p.id)) renderDetail(); } catch (e) {}
+    showToast('已重新生成');
+  } catch (e) {
+    showError('生图失败', (e && e.message) ? e.message : String(e));
+  } finally {
+    hideLoading();
+  }
+}
+async function downloadInsViewerImage() {
+  const p = insPostById(insViewPostId);
+  const src = p && p.image;
+  if (!src) return;
+  try {
+    let blob = null;
+    if (/^data:image\//i.test(src)) {
+      const r = await fetch(src);
+      blob = await r.blob();
+    } else {
+      const r = await fetch(src, { mode: 'cors', cache: 'no-store' });
+      if (r.ok) blob = await r.blob();
+    }
+    if (blob && blob.size) {
+      const type = blob.type || 'image/jpeg';
+      const ext = (type.split('/')[1] || 'jpg').replace('jpeg', 'jpg');
+      const file = new File([blob], 'ins-image-' + Date.now() + '.' + ext, { type: type });
+      if (navigator.canShare && navigator.share && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file] });
+        return;
+      }
+      const href = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = href; a.download = file.name;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { try { URL.revokeObjectURL(href); } catch (e) {} }, 4000);
+      showToast('已保存图片');
+      return;
+    }
+  } catch (e) {}
+  try {
+    const a = document.createElement('a');
+    a.href = src; a.download = 'ins-image.jpg'; a.target = '_blank'; a.rel = 'noopener';
+    document.body.appendChild(a); a.click(); a.remove();
+  } catch (e) {
+    showToast('保存失败');
+  }
+}
+(function bindInsImageViewer() {
+  const on = function (id, fn) {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('click', fn);
+  };
+  on('insIvClose', closeInsImageViewer);
+  on('insIvView', openInsIvSheet);
+  on('insIvReroll', openInsIvSheet);
+  on('insIvDownload', downloadInsViewerImage);
+  on('insIvSheetClose', closeInsIvSheet);
+  on('insIvCancel', closeInsIvSheet);
+  on('insIvGo', rerollInsImage);
+  const viewer = document.getElementById('insImageViewer');
+  if (viewer) viewer.addEventListener('click', function (e) { if (e.target === viewer) closeInsImageViewer(); });
+  const sheet = document.getElementById('insIvSheet');
+  if (sheet) sheet.addEventListener('click', function (e) { if (e.target === sheet) closeInsIvSheet(); });
+})();
 
 function renderFeed() {
   document.getElementById('feed').innerHTML = posts.map(p => `
@@ -2474,7 +2596,7 @@ function renderProfileGrid() {
   const grid = document.getElementById('profileGrid');
   if (!grid) return;
   const renderThumb = (p, from) => {
-    if (p.image) return `<img src="${p.image}" data-fb="${escapeHtml((p.title || p.body || '记录').slice(0, 40))}" onerror="insImgFallback(this)" onclick="openDetail(${p.id},'${from}')">`;
+    if (p.image) return `<img src="${p.image}" data-fb="${escapeHtml((p.title || p.body || '记录').slice(0, 40))}" onerror="insImgFallback(this)" onclick="event.stopPropagation();openInsImageViewer(${p.id})">`;
     return `<div class="text-thumb" onclick="openDetail(${p.id},'${from}')">${(p.title || p.body || '').slice(0, 40)}</div>`;
   };
   if (profileTab === 'posts') {
@@ -2613,7 +2735,7 @@ function renderCharProfileView() {
   if (!grid) return;
   if (!myPosts.length) { grid.innerHTML = '<div class="profile-empty">还没有发布帖子</div>'; return; }
   grid.innerHTML = myPosts.map(p => {
-    if (p.image) return `<img src="${p.image}" data-fb="${escapeHtml((p.title || p.body || '记录').slice(0, 40))}" onerror="insImgFallback(this)" onclick="openDetail(${p.id},'charProfile')">`;
+    if (p.image) return `<img src="${p.image}" data-fb="${escapeHtml((p.title || p.body || '记录').slice(0, 40))}" onerror="insImgFallback(this)" onclick="event.stopPropagation();openInsImageViewer(${p.id})">`;
     return `<div class="text-thumb" onclick="openDetail(${p.id},'charProfile')">${escapeHtml((p.title || p.body || '').slice(0, 40))}</div>`;
   }).join('');
 }
@@ -4121,6 +4243,8 @@ window.openHome = openHome;
 window.backToDiscover = backToDiscover;
 window.openPublish = openPublish;
 window.openDetail = openDetail;
+window.openInsImageViewer = openInsImageViewer;
+window.closeInsImageViewer = closeInsImageViewer;
 window.detailBack = detailBack;
 window.openCharProfile = openCharProfile;
 window.charProfileBack = charProfileBack;

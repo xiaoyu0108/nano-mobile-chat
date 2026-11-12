@@ -4161,7 +4161,7 @@
                 tib.style.cursor = 'pointer';
                 tib.addEventListener('click', function(e) {
                     e.stopPropagation();
-                    openImageViewer('', id, { text: text || (imageData && imageData.desc) || '' });
+                    openImageViewer('', rowId, { text: text || (imageData && imageData.desc) || '' });
                 });
                 content.appendChild(tib);
             } else if (imageData && imageData.video && imageData.url) {
@@ -4238,7 +4238,7 @@
                     wrap.addEventListener('click', function(e) {
                         e.stopPropagation();
                         if (Date.now() - lastSwipeTs < 350) return; // 刚滑过就不当成点击
-                        openImageViewer(urls[idx], id, { urls: urls, index: idx });
+                        openImageViewer(urls[idx], rowId, { urls: urls, index: idx });
                     });
                     content.appendChild(wrap);
                     render();
@@ -4272,7 +4272,7 @@
                     ib.appendChild(img);
                     ib.addEventListener('click', function(e) {
                         e.stopPropagation();
-                        openImageViewer(imageData.url, id);
+                        openImageViewer(imageData.url, rowId);
                     });
                     content.appendChild(ib);
                 }
@@ -8774,29 +8774,40 @@
     // 重新抓一次帖图/商品图，抓到后原地升级。只处理最近 5 张，避免一次请求太多。
     let linkImgRefreshBusy = false;
     const linkImgTried = new Set();
-    async function refreshStaleLinkPreviewImages(limit) {
+    async function refreshStaleLinkPreviewImages(limit, force) {
         if (linkImgRefreshBusy) return;
         const targets = [];
         for (let i = messages.length - 1; i >= 0 && targets.length < (limit || 5); i--) {
             const m = messages[i];
             const lp = m && m.linkPreview;
-            if (m && !m.recalled && m.type === 'right' && lp && lp.url && !lp.image &&
-                !lp.imageMsgId && !linkImgTried.has(String(m.id))) {
-                // 只在本次会话里记“试过”，不要把标记写进消息，否则一次失败就永远不重试。
-                linkImgTried.add(String(m.id));
-                targets.push(m);
-            }
+            if (!m || m.recalled || m.type !== 'right' || !lp || !lp.url) continue;
+            // 旧卡片可能“有图但没正文”，也可能“有正文但封面丢了”；两种都要补。
+            const need = !lp.image || (!lp.content && !lp.desc);
+            if (!need) continue;
+            if (!force && linkImgTried.has(String(m.id))) continue;
+            // 只在本次会话里记“试过”，不要把标记写进消息，否则一次失败就永远不重试。
+            linkImgTried.add(String(m.id));
+            targets.push(m);
         }
         if (!targets.length) return;
         linkImgRefreshBusy = true;
         let changed = false;
         try {
             for (const m of targets) {
-                const p = await fetchLinkPreview(m.linkPreview.url);
-                if (p && p.image) {
-                    m.linkPreview = Object.assign({}, m.linkPreview, p);
-                    changed = true;
-                }
+                const old = m.linkPreview || {};
+                const p = await fetchLinkPreview(old.url, { force: !!force });
+                if (!p || !(p.image || p.content || p.desc)) continue;
+                const title = (p.title && !/^(小红书|抖音|快手|微博|哔哩哔哩|B站|淘宝|天猫|京东)\s*$/i.test(p.title))
+                    ? p.title : (old.title || p.title || '');
+                m.linkPreview = Object.assign({}, old, p, {
+                    title: title,
+                    image: p.image || old.image || '',
+                    content: p.content || old.content || '',
+                    desc: p.desc || old.desc || '',
+                    price: p.price || old.price || '',
+                    imageMsgId: p.image ? '' : (old.imageMsgId || '')
+                });
+                changed = true;
             }
         } catch (e) {}
         linkImgRefreshBusy = false;
@@ -8843,10 +8854,18 @@
             // 新一次抓取没拿到封面时，不要覆盖掉旧封面（尤其是之前抓到的真实帖图）。
             if (!preview.image && msg.linkPreview && msg.linkPreview.image) preview.image = msg.linkPreview.image;
             if (msg.linkPreview && msg.linkPreview.imageMsgId && !preview.image) preview.imageMsgId = msg.linkPreview.imageMsgId;
+            // 抓取结果只有站点名、没有正文时，把分享文案补进去，别让角色只看到“小红书”。
+            if (!preview.desc && (!preview.content || preview.content.length < 20)) {
+                preview.desc = linkShareText(sourceText, url).slice(0, 160);
+            }
             msg.linkPreview = preview;
             saveMessages();
             renderMessages();
             if (stick) scrollToBottom();
+            // 小红书/抖音的封面经常第一次抓不到，稍后强制再补一次；卡片和正文已经能看，不影响先回复。
+            if (!preview.image) {
+                setTimeout(function () { try { refreshStaleLinkPreviewImages(3, true); } catch (e) {} }, 1600);
+            }
         }).catch(function () {});
     }
 
@@ -9564,23 +9583,30 @@
     }
     // 同一轮回复里抓过的链接内容缓存起来，发送时抓一次、角色回复时不再重复请求。
     var __linkPreviewCache = {};
-    function fetchLinkPreview(url) {
+    function fetchLinkPreview(url, opts) {
         url = String(url || '').trim();
+        opts = opts || {};
         if (!url) return Promise.resolve(null);
-        if (__linkPreviewCache[url]) return Promise.resolve(__linkPreviewCache[url]);
+        if (!opts.force && __linkPreviewCache[url]) return Promise.resolve(__linkPreviewCache[url]);
         return fetchLinkContent(url).then(function (c) {
             // 被登录/滑块页拦截时，如果还是抓到了帖子配图/商品主图，也保留图片做卡片；
             // 只有既没有正文也没有图时才彻底放弃。
-            if (isBlockedLinkContent(c) && !(c && c.images && c.images.length)) return null;
-            var content = String(c.content || c.desc || '');
+            var blocked = isBlockedLinkContent(c);
+            var hasImages = !!(c && c.images && c.images.length);
+            if (blocked && !hasImages) return null;
+            var content = blocked ? '' : String(c.content || c.desc || '');
             var firstLine = content.split(/\n+/).map(function (s) { return s.trim(); }).filter(Boolean)[0] || '';
+            var title = blocked ? '' : String(c.title || firstLine || '');
+            if (!title && !/^(小红书|抖音|快手|微博|哔哩哔哩|B站|淘宝|天猫|京东)\s*$/i.test(String(c.title || ''))) {
+                title = String(c.title || '');
+            }
             var preview = {
                 url: url,
                 site: linkSiteLabel(url),
-                title: String(c.title || firstLine || linkSiteLabel(url)).replace(/\s+/g, ' ').slice(0, 120),
-                desc: String(c.desc || content.replace(/\s+/g, ' ')).replace(/\s+/g, ' ').slice(0, 160),
+                title: String(title || firstLine || linkSiteLabel(url)).replace(/\s+/g, ' ').slice(0, 120),
+                desc: blocked ? '' : String(c.desc || content.replace(/\s+/g, ' ')).replace(/\s+/g, ' ').slice(0, 160),
                 image: (c.images && c.images[0]) || '',
-                price: c.price || '',
+                price: blocked ? '' : (c.price || ''),
                 content: content.slice(0, 7000),
                 at: Date.now()
             };
@@ -9714,21 +9740,24 @@
                     var content = String(j.content || j.desc || '');
                     var images = Array.isArray(j.images) ? j.images.slice(0, 6) : [];
                     var title = String(j.title || '').slice(0, 120);
-                    if (!title && !content) throw new Error('empty');
+                    if (!title && !content && !images.length) throw new Error('empty');
                     // 小红书/抖音经常把云机房 IP 跳到登录/滑块页：这种结果不能当成正文，
-                    // 必须继续走 Jina / 代理，否则角色只会看到「小红书」三个字。
+                    // 但封面图仍然有用，先保留图片；没有图才继续走 Jina / 代理。
                     var generic = /^(小红书|抖音|快手|微博|哔哩哔哩|B站)\s*$/i.test(title);
-                    if (/website-login|captcha|verify|\/login|signin/i.test(String(j.url || '')) ||
+                    var looksBlocked = /website-login|captcha|verify|\/login|signin/i.test(String(j.url || '')) ||
                         /滑动验证|请登录|安全验证|访问异常|captcha|想了解些什么|登录后|扫码登录|登录小红书/i.test(content) ||
-                        (generic && content.replace(/\s+/g, '').length < 50 && !images.length)) {
-                        throw new Error('blocked');
+                        (generic && content.replace(/\s+/g, '').length < 50 && !images.length);
+                    if (looksBlocked) {
+                        if (!images.length) throw new Error('blocked');
+                        content = '';
+                        title = generic ? '' : title;
                     }
                     return {
                         title: title,
-                        desc: String(j.desc || content.replace(/\s+/g, ' ')).replace(/\s+/g, ' ').slice(0, 180),
+                        desc: looksBlocked ? '' : String(j.desc || content.replace(/\s+/g, ' ')).replace(/\s+/g, ' ').slice(0, 180),
                         content: content.slice(0, 7000),
                         images: images,
-                        price: String(j.price || '')
+                        price: looksBlocked ? '' : String(j.price || '')
                     };
                 });
         }
@@ -9791,12 +9820,9 @@
                 .catch(function () { return fromProxy(i + 1); });
         }
         return fromWorker()
-            .catch(function (e) {
-                // Worker 已确认是登录/反爬页：Jina 和公共代理在国内通常也连不上，
-                // 不再白等十几秒，直接用用户分享文案兜底。
-                if (e && e.blocked) return null;
-                return fromJina();
-            })
+            // Worker 被登录/反爬页拦住时，仍然继续试 Jina / 公共代理：
+            // 它们有时能拿到正文和封面，不能因为 Worker 一次失败就放弃整张卡片。
+            .catch(function () { return fromJina(); })
             .catch(function () { return fromProxy(0); })
             .catch(function () { return null; });
     }
@@ -9847,6 +9873,13 @@
         for (var i = 0; i < Math.min(links.length, 2); i++) {
             var c = null;
             try { c = await fetchLinkPreview(links[i]); } catch (e) {}
+            // 缓存里可能只有封面、没有正文；本轮强制再抓一次，保证角色能看到帖子内容。
+            if (!c || (!c.content && !c.desc)) {
+                try {
+                    var c2 = await fetchLinkPreview(links[i], { force: true });
+                    if (c2 && (c2.content || c2.desc || c2.image)) c = c2;
+                } catch (e) {}
+            }
             var share = linkShareText(text, links[i]);
             var block = '链接：' + links[i];
             if (c) {
@@ -9855,6 +9888,11 @@
                 var body = c.content || c.desc || '';
                 if (body) block += '\n内容 / 文案（可能包含正文、评论或热评）：\n' + body;
                 if (share) block += '\n用户分享时附带的文字：' + share;
+                if (!body) {
+                    var guessedBody = guessLinkTitle(text, links[i]);
+                    if (guessedBody) block += '\n标题（来自分享文案）：' + guessedBody;
+                    block += '\n（网页正文被登录/反爬拦截，以上是分享文案和已抓到的标题/封面。不要回复“我打不开 / 需要登录 / 看不到”，直接根据已有信息自然回应。）';
+                }
                 if (c.image && images.indexOf(c.image) === -1) {
                     var safeImg = await linkImageForModel(c.image);
                     if (safeImg && images.indexOf(safeImg) === -1) images.push(safeImg);
@@ -14947,7 +14985,8 @@ if (callCard) {
             addMessage('right', '', timeStr, null, false, true,
                 { cardType: 'familycard', familyId: id, issuer: 'user', holder: 'char', limit: lim, status: 'pending', response: false });
             saveMessages();
-            try { triggerReply(); } catch (e) {}
+            // 卡片发出后不自动调用 API：等用户点右下角「回复」按钮再让角色读取并表态。
+            try { updateSendButtonMode(); } catch (e) {}
             return;
         }
 
@@ -15220,12 +15259,15 @@ if (data.type === 'NANO_VOICE_CALL_CARD' || data.type === 'NANO_VIDEO_CALL_CARD'
             // 启动主动发朋友圈定时（若之前已开启）
             try { setAutoMomentState(getChatSetting('autoMoment', false), getChatSetting('autoMomentInterval', 24), { first: shouldDoFirstAutoMoment() }); } catch (e) {}
             console.log('[Chat] 缓存加载完成，消息数:', messages.length);
-            // 旧链接卡片补封面（异步、只补最近 5 张）
-            setTimeout(function () { try { refreshStaleLinkPreviewImages(5); } catch (e) {} }, 1500);
+            // 旧链接卡片补封面/补正文（异步、只补最近 5 张；强制绕过缓存，避免一次失败后永不重试）
+            setTimeout(function () { try { refreshStaleLinkPreviewImages(5, true); } catch (e) {} }, 1500);
             setTimeout(function () { try { repairRemoteImages(12); } catch (e) {} }, 5000);
             // 回前台再补一轮：临时生图 URL 只要还没过期，就还有机会转存成本地图。
             document.addEventListener('visibilitychange', function () {
-                if (document.visibilityState === 'visible') setTimeout(function () { try { repairRemoteImages(12); } catch (e) {} }, 1200);
+                if (document.visibilityState === 'visible') {
+                    setTimeout(function () { try { repairRemoteImages(12); } catch (e) {} }, 1200);
+                    setTimeout(function () { try { refreshStaleLinkPreviewImages(3, true); } catch (e) {} }, 900);
+                }
             });
             refreshMemoryHints();
             try { if (window.NanoBadge) window.NanoBadge.setContext(chatId); } catch (e) {}

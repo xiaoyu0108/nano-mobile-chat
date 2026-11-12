@@ -1825,6 +1825,24 @@ function linkLooksBlocked(finalUrl, data) {
   if (/滑动验证|请登录|安全验证|访问异常|captcha|想了解些什么|登录后|扫码登录|登录小红书|亲，请登录|扫码查看|商品不存在|商品已下架|您查看的宝贝不存在|页面不存在/i.test(content)) return true;
   return false;
 }
+// 登录/滑块页里有时仍然带着真实封面。不要因为正文被拦截就把封面一起丢掉。
+function linkCoverOnly(data, url) {
+  if (!data || !Array.isArray(data.images) || !data.images.length) return null;
+  let title = String(data.title || '').trim();
+  if (/^(小红书|抖音|快手|微博|哔哩哔哩|B站|淘宝|天猫|京东)\s*$/i.test(title) ||
+      /滑动验证|请登录|安全验证|访问异常|captcha|登录后|扫码登录|扫码查看/i.test(title)) {
+    title = '';
+  }
+  return {
+    url: String(url || ''),
+    via: 'cover-only',
+    title: title.slice(0, 120),
+    desc: '',
+    content: '',
+    images: data.images.slice(0, 6),
+    price: ''
+  };
+}
 // 小红书短链被跳到登录/滑块页时，redirectPath 里仍然带着笔记 id 和 xsec_token。
 // 用 /explore/<id> 再试一次，部分机房 IP 能直接拿到公开笔记页。
 function xhsDirectUrls(finalUrl) {
@@ -1900,6 +1918,8 @@ async function fetchLinkPreview(url) {
     if (ok) {
       return Object.assign({ url: first.resp.url || u.href }, data);
     }
+    const cover = linkCoverOnly(data, first.resp.url || u.href);
+    if (cover) return cover;
     firstOk = false;
   }
   // 抖音/淘宝移动页经常只给登录弹窗；再用桌面 UA 抓一次，很多商品/视频详情
@@ -1916,6 +1936,8 @@ async function fetchLinkPreview(url) {
       if ((d2.title || d2.content || (d2.images && d2.images.length)) && !linkLooksBlocked(desk.resp.url || u.href, d2)) {
         return Object.assign({ url: desk.resp.url || u.href, via: 'desktop' }, d2);
       }
+      const cover2 = linkCoverOnly(d2, desk.resp.url || u.href);
+      if (cover2) return cover2;
     }
   }
   // 小红书被跳到登录/滑块页：用 redirectPath 里的笔记 id + xsec_token 换 /explore 地址再试。
@@ -1932,6 +1954,8 @@ async function fetchLinkPreview(url) {
       if ((data.title || data.content) && !linkLooksBlocked(r.resp.url || direct, data)) {
         return Object.assign({ url: r.resp.url || direct, via: 'xhs-direct' }, data);
       }
+      const cover3 = linkCoverOnly(data, r.resp.url || direct);
+      if (cover3) return cover3;
     }
   }
   // 抖音：短链跳转后的页面经常被跳登录页。用视频 id 走公开的 iteminfo 接口，
@@ -1987,6 +2011,8 @@ async function fetchLinkPreview(url) {
         if ((td.title || td.content || (td.images && td.images.length)) && !linkLooksBlocked(tb.resp.url || taobaoSource, td)) {
           return Object.assign({ url: tb.resp.url || taobaoSource, via: 'taobao-h5' }, td);
         }
+        const cover4 = linkCoverOnly(td, tb.resp.url || taobaoSource);
+        if (cover4) return cover4;
       }
     }
   }
@@ -2021,6 +2047,8 @@ async function fetchLinkPreview(url) {
       }
       return out;
     }
+    const cover5 = linkCoverOnly(data, u.href);
+    if (cover5) return cover5;
   }
   return null;
 }

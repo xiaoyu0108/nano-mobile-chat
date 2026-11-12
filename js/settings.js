@@ -527,6 +527,18 @@ const APP_ICONS = {
         if (toggle) toggle.checked = false;
         return;
       }
+      if (s.native) {
+        // APK 原生通知：不需要 Service Worker / 服务端订阅。
+        if (toggle) toggle.checked = !!s.subscribed;
+        if (btn) btn.textContent = s.subscribed ? '重新开启' : '开启';
+        if (status) {
+          if (s.permission === 'denied') status.textContent = '权限被拒绝（到系统设置允许 Nano 通知）';
+          else if (s.permission !== 'granted') status.textContent = '需要允许系统通知后开启';
+          else if (s.subscribed) status.textContent = '已开启 · APK 原生通知';
+          else status.textContent = '可开启 · APK 原生通知';
+        }
+        return;
+      }
       if (toggle) toggle.checked = !!s.subscribed;
       if (status) {
         if (s.permission === 'denied') status.textContent = '权限被拒绝（到系统设置允许 Nano 通知）';
@@ -930,6 +942,23 @@ const APP_ICONS = {
 
   async function enablePush() {
     if (!NP) { toast('推送模块未加载'); return false; }
+    // APK 内没有 Web Push：走 Android 原生通知（AlarmManager + 通知栏）。
+    var nativeBridge = null;
+    try { nativeBridge = window.NanoApp || (window.top && window.top !== window ? window.top.NanoApp : null) || null; } catch (e0) { nativeBridge = null; }
+    if (nativeBridge && nativeBridge.notifyNow) {
+      try { if (nativeBridge.requestNotificationPermission) nativeBridge.requestNotificationPermission(); } catch (e) {}
+      try {
+        await NP.enable(true);
+        try { localStorage.setItem('nano_notify_enabled', '1'); } catch (e) {}
+        refreshNotify();
+        refreshPush();
+        toast('已开启 APK 原生通知（不依赖 Google 推送）');
+        return true;
+      } catch (e) {
+        toast((e && e.message) ? e.message : '开启原生通知失败');
+        return false;
+      }
+    }
     // 安卓 Chrome 必须在用户手势里请求通知权限；放到 fetch 之后会丢失手势，
     // 表现为订阅失败（registration failed / push service error）。
     // 设置页在 iframe 里时，必须向顶层窗口请求，浏览器不认 iframe 的权限请求。

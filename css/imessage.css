@@ -6,7 +6,7 @@ button,input,textarea{font:inherit}button{border:0;background:none;color:inherit
 /* 隝藝滚动条 */
 ::-webkit-scrollbar{display:none;width:0;height:0}
 *{scrollbar-width:none;-ms-overflow-style:none}
-.app{position:relative;width:100%;height:100dvh;overflow:hidden}
+.app{position:relative;width:100%;height:100vh;height:100dvh;overflow:hidden}
 
 /* ================= 列表页 ================= */
 .list-screen{position:absolute;inset:0;background:#fff}

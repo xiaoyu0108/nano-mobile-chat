@@ -31,10 +31,37 @@
       localStorage.setItem(TOMB_KEY, JSON.stringify(map));
     } catch (e) {}
   }
+  function sessionDeletedMap(sess) {
+    if (!sess) return {};
+    if (!sess.deletedIds || typeof sess.deletedIds !== 'object' || Array.isArray(sess.deletedIds)) sess.deletedIds = {};
+    return sess.deletedIds;
+  }
+  function mergeDeletedMaps(target, source) {
+    target = (target && typeof target === 'object' && !Array.isArray(target)) ? target : {};
+    if (source && typeof source === 'object' && !Array.isArray(source)) {
+      Object.keys(source).forEach(function (k) {
+        if (k && (!target[k] || Number(source[k]) > Number(target[k]))) target[k] = source[k];
+      });
+    }
+    return target;
+  }
+  function collectDeleted(s) {
+    var map = readTombstones();
+    if (s && s.deleted && typeof s.deleted === 'object') mergeDeletedMaps(map, s.deleted);
+    ((s && s.sessions) || []).forEach(function (sess) {
+      if (sess && sess.deletedIds) mergeDeletedMaps(map, sess.deletedIds);
+    });
+    return map;
+  }
+  function persistTombstones(map) {
+    if (!idbReady()) return;
+    try { window.NanoIDB.set(TOMB_KEY, map || {}).catch(function () {}); } catch (e) {}
+  }
   function tombstoneItems(ids) {
     var map = readTombstones();
     var now = Date.now();
-    (ids || []).forEach(function (id) { if (id) map[id] = now; });
+    var added = {};
+    (ids || []).forEach(function (id) { if (id) { map[id] = now; added[id] = now; } });
     writeTombstones(map);
     // 同时把删除标记写进业务状态本身。localStorage 配额满/被清掉时，
     // 仅靠 TOMB_KEY 不够，旧快照会把删掉的消息又合并回来。
@@ -47,23 +74,30 @@
           keys.sort(function (a, b) { return (state.deleted[a] || 0) - (state.deleted[b] || 0); });
           keys.slice(0, keys.length - 3000).forEach(function (k) { delete state.deleted[k]; });
         }
+        // 再把删除标记放进对应窗口自己的记录里。这样即使设置页/旧 IDB 快照
+        // 覆盖了全局标记，窗口级标记仍会随该窗口一起保留。
+        (state.sessions || []).forEach(function (sess) {
+          if (!sess) return;
+          var relevant = sess.id === state.currentId || (sess.items || []).some(function (it) {
+            return it && added[it.id];
+          });
+          if (!relevant) return;
+          var own = sessionDeletedMap(sess);
+          Object.keys(added).forEach(function (id) { own[id] = added[id]; });
+        });
       }
     } catch (e) {}
+    persistTombstones(collectDeleted(state));
   }
   function applyTombstones(s) {
     if (!s) return s;
-    var map = readTombstones();
-    // 业务状态里的删除标记优先级不低于 localStorage，避免配额问题导致复活。
-    try {
-      if (s.deleted && typeof s.deleted === 'object') {
-        Object.keys(s.deleted).forEach(function (id) {
-          if (id && (!map[id] || Number(s.deleted[id]) > Number(map[id]))) map[id] = s.deleted[id];
-        });
-      }
-      s.deleted = map;
-    } catch (e) {}
+    var map = collectDeleted(s);
+    s.deleted = map;
     (s.sessions || []).forEach(function (sess) {
       if (!sess) return;
+      var own = mergeDeletedMaps({}, sess.deletedIds);
+      (sess.items || []).forEach(function (it) { if (it && map[it.id]) own[it.id] = map[it.id]; });
+      sess.deletedIds = own;
       sess.items = (sess.items || []).filter(function (it) { return it && !map[it.id]; });
     });
     return s;
@@ -211,6 +245,8 @@
     if (light.deleted && typeof light.deleted === 'object') Object.keys(light.deleted).forEach(function (k) {
       if (!mergedDeleted[k] || Number(light.deleted[k]) > Number(mergedDeleted[k])) mergedDeleted[k] = light.deleted[k];
     });
+    (heavy.sessions || []).forEach(function (hs) { if (hs && hs.deletedIds) mergeDeletedMaps(mergedDeleted, hs.deletedIds); });
+    (light.sessions || []).forEach(function (ls) { if (ls && ls.deletedIds) mergeDeletedMaps(mergedDeleted, ls.deletedIds); });
     // 本地更新，或同级但确实清空/改过窗口时，以本地为准；避免 IDB 旧记录顶掉刚清空的聊天。
     if (preferLight) {
       light.deleted = mergedDeleted;
@@ -218,7 +254,10 @@
       (heavy.sessions || []).forEach(function (hs) { if (hs && hs.id) heavyById[hs.id] = hs; });
       (light.sessions || []).forEach(function (ls) {
         var hs = ls && ls.id ? heavyById[ls.id] : null;
-        if (hs) fillHeavyMedia(ls, hs);
+        if (hs) {
+          ls.deletedIds = mergeDeletedMaps(mergeDeletedMaps({}, hs.deletedIds), ls.deletedIds);
+          fillHeavyMedia(ls, hs);
+        }
       });
       return normalize(light);
     }
@@ -231,9 +270,11 @@
       var lsEmpty = ls && !((ls.items || []).length);
       var hsHasItems = !!((hs.items || []).length);
       if (ls && (Number(ls.updatedAt) || 0) >= (Number(hs.updatedAt) || 0) && !(lsEmpty && hsHasItems)) {
+        ls.deletedIds = mergeDeletedMaps(mergeDeletedMaps({}, hs.deletedIds), ls.deletedIds);
         fillHeavyMedia(ls, hs);
         merged.push(ls);
       } else {
+        hs.deletedIds = mergeDeletedMaps(mergeDeletedMaps({}, ls && ls.deletedIds), hs.deletedIds);
         merged.push(hs);
       }
     });
@@ -261,6 +302,7 @@
       var ss = ms && ms.id ? byId[ms.id] : null;
       // 只接受存储里确实更新的窗口；设置页只改提示词时，不会用旧的 sessions 覆盖当前聊天。
       if (ss && (Number(ss.updatedAt) || 0) > (Number(ms.updatedAt) || 0)) {
+        ss.deletedIds = mergeDeletedMaps(mergeDeletedMaps({}, ms && ms.deletedIds), ss.deletedIds);
         memory.sessions[i] = ss;
       }
     });
@@ -271,16 +313,25 @@
   }
   var hydrated = false;
   var saveChain = Promise.resolve();
+  function mergeIdbTombstones(tomb) {
+    if (!tomb || typeof tomb !== 'object') return;
+    var cur = readTombstones();
+    mergeDeletedMaps(cur, tomb);
+    writeTombstones(cur);
+  }
   function hydrate() {
     return new Promise(function (resolve) {
       if (!idbReady()) { hydrated = true; resolve(); return; }
-      window.NanoIDB.get(KEY).then(function (heavy) {
+      Promise.all([window.NanoIDB.get(KEY), window.NanoIDB.get(TOMB_KEY)]).then(function (rows) {
+        var heavy = rows[0];
+        mergeIdbTombstones(rows[1]);
         var local = state; // 启动时已经读过 localStorage，不再重复解析大 JSON
         state = applyTombstones(heavy ? mergeHeavyLight(heavy, local) : local);
         hydrated = true;
         if (!heavy || (Number(local.savedAt) || 0) >= (Number(heavy.savedAt) || 0)) {
           try { window.NanoIDB.set(KEY, state); } catch (e) {}
         }
+        persistTombstones(state.deleted || {});
         writeLocal(state);
         resolve();
       }).catch(function () { hydrated = true; resolve(); });
@@ -292,11 +343,13 @@
     if (generating) return Promise.resolve();
     return saveChain.catch(function () {}).then(function () {
       if (!idbReady()) return;
-      return window.NanoIDB.get(KEY).then(function (heavy) {
+      return Promise.all([window.NanoIDB.get(KEY), window.NanoIDB.get(TOMB_KEY)]).then(function (rows) {
+        mergeIdbTombstones(rows[1]);
         // 以当前内存状态为准，只接受 localStorage/IDB 里确实更新的窗口。
         // 这样删除/新消息刚发生时，不会被旧记录顶掉；设置页清空后也能正确同步回来。
         var memory = mergeStoredIntoMemory(state, loadLocal());
-        state = applyTombstones(heavy ? mergeHeavyLight(heavy, memory) : memory);
+        state = applyTombstones(rows[0] ? mergeHeavyLight(rows[0], memory) : memory);
+        persistTombstones(state.deleted || {});
       }).catch(function () {});
     });
   }
@@ -423,6 +476,8 @@
     writeLocal(state);
     if (idbReady() && hydrated) {
       saveChain = saveChain.then(function () {
+        return window.NanoIDB.set(TOMB_KEY, state.deleted || {});
+      }).then(function () {
         return window.NanoIDB.set(KEY, state);
       }).catch(function () {});
     }
@@ -734,12 +789,12 @@
 
   function renderMode() {
     var input = $('niPrompt');
-    if (input) input.placeholder = '描述想生成的图片；也可以一次添加多张参考图…';
+    if (input) input.placeholder = '描述想生成的图片；发送后清空输入框，再点「回复」开始生成';
     syncSendButton();
     var empty = $('niEmpty');
     if (empty) {
       var b = empty.querySelector('b');
-      if (b) b.textContent = '直接说想画什么，或一次添加多张参考图';
+      if (b) b.textContent = '先描述想画什么，发送后点「回复」生成';
     }
   }
 
@@ -1048,9 +1103,9 @@
       closeSheet('niMoreSheet');
       closeMsgMenu();
       try { if (input) input.blur(); } catch (e) {}
-      // 点一次就落气泡并立刻开始生图；不允许重叠提交抢跑。
-      var userItem = await sendChat(text, images, quote);
-      if (userItem && userItem.id) await replyToUserItem(userItem.id);
+      // 发送只落气泡，不直接调用生图 API。
+      // 等输入框清空、按钮变成「回复」后，用户再点一次才生成。
+      await sendChat(text, images, quote);
     } finally {
       submitLock = false;
       syncSendButton();

@@ -1,6 +1,49 @@
 (function () {
   'use strict';
 
+  // APK 原生桥：把账号登录态备份到 SharedPreferences，并在冷启动时补回 localStorage。
+  // 部分安卓 ROM 清理 WebView 数据/配额写满时，localStorage 里的 token 可能丢失，
+  // 表现为“退出一次就要重新登录”；原生备份不受 localStorage 配额影响。
+  (function nativeBoot() {
+    var app = null;
+    try { app = window.NanoApp || (window.top !== window ? window.top.NanoApp : null); } catch (e) {}
+    if (!app) return;
+    window.__NANO_NATIVE__ = true;
+    try {
+      if (app.getSession) {
+        var raw = app.getSession();
+        if (raw) {
+          var s = JSON.parse(raw);
+          if (s && s.token && s.username) {
+            try { if (!localStorage.getItem('nano_account_token')) localStorage.setItem('nano_account_token', s.token); } catch (e) {}
+            try { if (!localStorage.getItem('nano_account_user')) localStorage.setItem('nano_account_user', s.username); } catch (e) {}
+          }
+          if (s && s.deviceId) {
+            try { if (!localStorage.getItem('nano_device_id')) localStorage.setItem('nano_device_id', s.deviceId); } catch (e) {}
+          }
+        }
+      }
+    } catch (e) {}
+    try {
+      if (app.getInsets) {
+        var ins = JSON.parse(app.getInsets() || '{}');
+        var top = Number(ins.top) || 0;
+        var bottom = Number(ins.bottom) || 0;
+        window.__NANO_NATIVE_TOP_INSET__ = top;
+        window.__NANO_NATIVE_BOTTOM_INSET__ = bottom;
+        var de = document.documentElement;
+        if (de) {
+          de.style.setProperty('--safe-inset-top', top + 'px');
+          de.style.setProperty('--safe-top', top + 'px');
+          de.style.setProperty('--safe-t', top + 'px');
+          de.style.setProperty('--safe-bottom', bottom + 'px');
+          de.style.setProperty('--safe-b', bottom + 'px');
+          de.style.setProperty('--nano-safe-bottom', bottom + 'px');
+        }
+      }
+    } catch (e) {}
+  })();
+
   // 旧测试 Worker（nano-test-ceshi / peek-test）仍在运行 Bark 推送和旧 KV 配额。
   // 一旦本机还保存着它们的地址，这里自动切回正式 Worker，避免继续往旧服务发请求。
   try {
@@ -443,11 +486,15 @@
     var custom = NaN;
     try { custom = parseFloat(localStorage.getItem('nano_top_inset')); } catch (e) {}
 
-    if (enabled() && isFinite(custom) && custom >= 0) top = custom;
+    var nativeTop = window.__NANO_NATIVE_TOP_INSET__;
+    var nativeBottom = window.__NANO_NATIVE_BOTTOM_INSET__;
+    if (isFinite(nativeTop) && nativeTop >= 0) top = nativeTop;
+    else if (enabled() && isFinite(custom) && custom >= 0) top = custom;
     else if (top > 0) top = Math.min(top, 54);
     else if (enabled() && standalone() && /iPhone|iPad|iPod/i.test(navigator.userAgent || '')) top = 48;
     else if (enabled() && standalone() && /Android/i.test(navigator.userAgent || '')) top = 40;
     else top = 0;
+    if (isFinite(nativeBottom) && nativeBottom >= 0) bottom = nativeBottom;
 
     return { top: Math.round(top), bottom: Math.round(bottom) };
   }

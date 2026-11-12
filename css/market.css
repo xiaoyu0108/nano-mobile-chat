@@ -39,6 +39,7 @@ img{display:block;max-width:100%}
 .app{
   max-width:720px;
   margin:0 auto;
+  min-height:100vh;
   min-height:100dvh;
   background:var(--bg);
   position:relative;

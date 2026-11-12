@@ -106,7 +106,22 @@
         return out;
     }
 
+    // APK（Android WebView）没有 PushManager / Web Notification：改用原生 AlarmManager + 通知栏。
+    function nativeApp() {
+        try {
+            if (window.NanoApp) return window.NanoApp;
+            if (window.top && window.top !== window && window.top.NanoApp) return window.top.NanoApp;
+            if (window.parent && window.parent !== window && window.parent.NanoApp) return window.parent.NanoApp;
+        } catch (e) {}
+        return null;
+    }
+    function isNative() {
+        var app = nativeApp();
+        return !!(app && app.notifyNow && app.scheduleNotify);
+    }
+
     function swSupported() {
+        if (isNative()) return true;
         return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
     }
 
@@ -125,7 +140,7 @@
         var p = platform();
         if (/push service error|Registration failed/i.test(raw)) {
             if (p.android) {
-                return '安卓没有可用的系统推送服务（Push service error）。Web Push 在安卓依赖 Chrome 与 Google Play 服务；国产浏览器 / 无 GMS 的设备无法建立订阅。请用 Chrome 打开并安装本应用后重试；仍失败时只能用「保活」在前台/后台运行时接收。';
+                return '安卓没有可用的系统推送服务（Push service error）。安卓 Web Push 依赖 Google Play 服务 / FCM：国产手机无 GMS、或国内网络访问不到 Google 时一定失败（Chrome、Edge 都一样，需要代理）。这不是服务端没做接口；APK 请使用原生通知，网页版可先用「保活」在前台/后台接收。';
             }
             return '浏览器没有可用的推送服务（Push service error），请换用 Chrome / Edge 后重试。';
         }
@@ -245,6 +260,12 @@
     }
 
     function enable(force) {
+        if (isNative()) {
+            var na = nativeApp();
+            try { if (na.requestNotificationPermission) na.requestNotificationPermission(); } catch (e) {}
+            try { localStorage.setItem('nano_push_native', '1'); } catch (e) {}
+            return Promise.resolve({ ok: true, native: true });
+        }
         var cfg = readConfig();
         if (!cfg.endpoint) {
             return Promise.reject(new Error('未配置推送服务器：请先 NanoPush.setup(服务器地址, VAPID公钥)'));
@@ -269,7 +290,7 @@
         if (!swSupported()) {
             var p0 = platform();
             return Promise.reject(new Error(p0.android
-                ? '当前安卓浏览器不支持 Web Push：请用 Chrome / Edge 打开，并确认设备有 Google Play 服务'
+                ? '当前环境不支持 Web Push：安卓网页需要 Chrome/Edge + Google Play 服务 + 能访问 FCM（国内网络通常不行）；APK 内请使用原生通知'
                 : '当前环境不支持后台推送（iOS 需先把网页「添加到主屏幕」后用 PWA 打开）'));
         }
         var p1 = platform();
@@ -349,6 +370,10 @@
     }
 
     function disable() {
+        if (isNative()) {
+            try { localStorage.removeItem('nano_push_native'); } catch (e) {}
+            return Promise.resolve(true);
+        }
         if (!swSupported()) return Promise.resolve(false);
         return navigator.serviceWorker.getRegistration().then(function (reg) {
             if (!reg) return false;
@@ -375,6 +400,20 @@
 
     // 预约一条/多条后台推送；at 为毫秒时间戳
     function schedule(items) {
+        if (isNative()) {
+            var na = nativeApp();
+            var list = (Array.isArray(items) ? items : [items]).filter(function (it) { return it && it.at; });
+            var ids = [];
+            list.forEach(function (it, i) {
+                var id = it.id || ('nano-native-' + Date.now() + '-' + i);
+                try {
+                    na.scheduleNotify(String(id), String(it.at), it.title || 'Nano',
+                        it.body || '', it.target || '', it.channel || it.target || '');
+                    ids.push(id);
+                } catch (e) {}
+            });
+            return Promise.resolve({ ok: true, count: ids.length, ids: ids, native: true });
+        }
         var cfg = readConfig();
         if (!cfg.endpoint) return Promise.reject(new Error('未配置推送服务器'));
         var list = (Array.isArray(items) ? items : [items]).filter(function (it) { return it && it.at; });
@@ -391,6 +430,14 @@
     }
 
     function cancel(ids) {
+        if (isNative()) {
+            var na = nativeApp();
+            var list = (Array.isArray(ids) ? ids : [ids]).filter(Boolean);
+            list.forEach(function (id) {
+                try { na.cancelNotify(String(id)); } catch (e) {}
+            });
+            return Promise.resolve({ ok: true, count: list.length, native: true });
+        }
         var cfg = readConfig();
         if (!cfg.endpoint) return Promise.resolve({ ok: true, count: 0 });
         var list = (Array.isArray(ids) ? ids : [ids]).filter(Boolean);
@@ -399,6 +446,23 @@
     }
 
     function status() {
+        if (isNative()) {
+            var na = nativeApp();
+            var perm = 'default';
+            try { if (na.notificationState) perm = na.notificationState() || 'default'; } catch (e) {}
+            var subbed = false;
+            try { subbed = localStorage.getItem('nano_push_native') === '1'; } catch (e) {}
+            return Promise.resolve({
+                configured: true,
+                native: true,
+                endpoint: readConfig().endpoint,
+                permission: perm,
+                subscribed: subbed,
+                appId: appId(),
+                deviceId: autoDeviceId(),
+                userId: currentAutoUserId()
+            });
+        }
         var cfg = readConfig();
         var permission = (typeof Notification !== 'undefined' ? Notification.permission : 'unsupported');
         try {
@@ -417,6 +481,7 @@
     // 已授权设备在启动时把 deviceId 补写到服务端；旧订阅也能自动升级成“按设备推送”
     function refreshSubscription() {
         try {
+            if (isNative()) return Promise.resolve(false);
             if (!swSupported()) return Promise.resolve(false);
             var perm = Notification.permission;
             try {
@@ -473,6 +538,16 @@
     }
 
     function test() {
+        if (isNative()) {
+            try {
+                nativeApp().notifyNow('Nano 通知测试',
+                    '原生通知已连接：关闭 App 后也能收到提醒。',
+                    JSON.stringify({ channel: 'default', target: '' }));
+                return Promise.resolve(true);
+            } catch (e) {
+                return Promise.reject(e);
+            }
+        }
         if (!swSupported()) return Promise.reject(new Error('当前环境不支持系统通知'));
         return registerSW().then(function (reg) {
             var opts = {
@@ -491,6 +566,7 @@
     // requestPermission / subscribe 被浏览器拒绝，最后显示成“补登记失败”。
     function syncSubscription() {
         try {
+            if (isNative()) return Promise.resolve(false);
             if (!swSupported()) return Promise.resolve(false);
             var cfg = readConfig();
             if (!cfg.endpoint) return Promise.resolve(false);
@@ -523,6 +599,7 @@
     // 浏览器不会报错但会静默收不到推送；启动时对一下公钥并自动重建订阅。
     function syncVapid() {
         try {
+            if (isNative()) return Promise.resolve(false);
             var cfg = readConfig();
             if (!cfg.endpoint) return Promise.resolve(false);
             var ctrl = null, timer = null;

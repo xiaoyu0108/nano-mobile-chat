@@ -15,7 +15,7 @@ button{cursor:pointer;-webkit-tap-highlight-color:transparent}
 svg{display:block;width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 img{display:block;max-width:100%}
 
-.app{max-width:720px;margin:0 auto;min-height:100dvh;padding-bottom:32px}
+.app{max-width:720px;margin:0 auto;min-height:100vh;min-height:100dvh;padding-bottom:32px}
 .topbar{
   height:64px;display:flex;align-items:center;justify-content:space-between;
   padding:0 22px;position:sticky;top:0;z-index:50;

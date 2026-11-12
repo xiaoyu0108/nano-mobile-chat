@@ -230,6 +230,16 @@
         document.addEventListener('click', _unlockOnce, true);
     } catch (e) {}
 
+    // APK 原生桥：WebView 不支持 Web Notification / Web Push，必须交给 Android 通知栏。
+    function nativeApp() {
+        try {
+            if (window.NanoApp) return window.NanoApp;
+            if (window.top && window.top !== window && window.top.NanoApp) return window.top.NanoApp;
+            if (window.parent && window.parent !== window && window.parent.NanoApp) return window.parent.NanoApp;
+        } catch (e) {}
+        return null;
+    }
+
     function notifyWindow() {
         try {
             if (window.top && window.top !== window && window.top.Notification) return window.top;
@@ -238,12 +248,22 @@
     }
     function notifyPermission() {
         try {
+            var na = nativeApp();
+            if (na && na.notificationState) {
+                var st = na.notificationState();
+                if (st) return st === 'granted' ? 'granted' : 'default';
+            }
             var w = notifyWindow();
             return (w.Notification && w.Notification.permission) || '';
         } catch (e) { return ''; }
     }
     function ensurePermission() {
         try {
+            var na = nativeApp();
+            if (na && na.requestNotificationPermission) {
+                na.requestNotificationPermission();
+                return;
+            }
             var w = notifyWindow();
             if (w.Notification && w.Notification.permission === 'default') {
                 w.Notification.requestPermission();
@@ -375,6 +395,19 @@
         systemNotify();
 
         function systemNotify() {
+        // APK（WebView）没有 Web Notification / PushManager：直接走原生通知栏。
+        var na = nativeApp();
+        if (na && na.notifyNow) {
+            try {
+                na.notifyNow(title || 'Nano', String(body || ''), JSON.stringify({
+                    target: opts.target || '',
+                    channel: opts.channel || opts.app || '',
+                    app: opts.app || '',
+                    tag: opts.tag || ''
+                }));
+                return;
+            } catch (e) {}
+        }
         // 已按要求去掉应用内的黑色横幅（appNotify）；前台只保留提示音 + 未读红点
         var payload = {
             body: String(body || '').slice(0, 120),

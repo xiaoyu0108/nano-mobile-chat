@@ -3,7 +3,7 @@
 
   // 把打包好的安装包放到站点 apk/nano.apk，本页会自动启用下载。
   // 也可以改成完整直链（https://.../nano.apk）；跨域地址不再检测文件是否存在。
-  var APK_URL = '../apk/nano.apk?v=2.1.1';
+  var APK_URL = '../apk/nano.apk?v=2.2.0';
   var IS_NANO_APP = /NanoApp/i.test(navigator.userAgent || '');
 
   var $ = function (id) { return document.getElementById(id); };
