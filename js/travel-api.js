@@ -285,12 +285,7 @@
       if (!opts.json) throw e;
       out = await once(false);
     }
-    if (out.finish === 'length' || !out.txt.trim()) {
-      try {
-        var retry = await once(false);
-        if (retry.txt && retry.txt.length >= out.txt.length) out = retry;
-      } catch (e) {}
-    }
+    // 一次调用生成完整内容；截断或空内容不再自动重复生成，交给上层提示用户重试。
     if (!out.txt.trim()) throw new Error('主 API 没有返回内容');
     return out.txt.trim();
   }

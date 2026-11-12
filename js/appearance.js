@@ -260,7 +260,23 @@
         '.chat-container>.topbar{padding-top:var(--chat-topbar-pad,var(--safe-top,0px)) !important;}' +
         '.bottom-bar{padding-bottom:var(--chat-bottom-pad,max(12px,var(--nano-safe-bottom,env(safe-area-inset-bottom,0px)))) !important;}' +
         // 键盘弹出时底部安全区（Home 条）被键盘盖住，不再需要留白，避免输入栏被顶到键盘外看不到字
-        'html.keyboard-open .bottom-bar{padding-bottom:8px !important;}';
+        'html.keyboard-open .bottom-bar{padding-bottom:8px !important;}' +
+        // 卡片内部不再用底色块/分割线切段：状态栏、主区、信息区、留言、清单、物流、底部提示
+        // 统一与卡片同底色，只保留文字与间距。放在美化 CSS 之后，用 !important 兜底旧模板。
+        'body.nano-chat-inner .bubble-card.bubble-card .card-header{background:transparent !important;border-bottom:0 !important;box-shadow:none !important;color:inherit !important;}' +
+        'body.nano-chat-inner .bubble-card.bubble-card .card-header .status svg{color:currentColor !important;opacity:.5 !important;}' +
+        'body.nano-chat-inner .bubble-card.bubble-card .card-header .time{color:inherit !important;opacity:.45 !important;}' +
+        'body.nano-chat-inner .bubble-card.bubble-card .main-section,body.nano-chat-inner .bubble-card.bubble-card .info-section,body.nano-chat-inner .bubble-card.bubble-card .card-footer,' +
+        'body.nano-chat-inner .bubble-card.bubble-card .card-image,body.nano-chat-inner .bubble-card.bubble-card .message-box,body.nano-chat-inner .bubble-card.bubble-card .card-note,' +
+        'body.nano-chat-inner .bubble-card.bubble-card .card-main,body.nano-chat-inner .bubble-card.bubble-card .chain-list,body.nano-chat-inner .bubble-card.bubble-card .gift-items,body.nano-chat-inner .bubble-card.bubble-card .card-ship,' +
+        'body.nano-chat-inner .bubble-card.bubble-card .fw-box{background:transparent !important;box-shadow:none !important;}' +
+        'body.nano-chat-inner .bubble-card.bubble-card .main-section,body.nano-chat-inner .bubble-card.bubble-card .card-footer,body.nano-chat-inner .bubble-card.bubble-card .card-image,' +
+        'body.nano-chat-inner .bubble-card.bubble-card .message-box,body.nano-chat-inner .bubble-card.bubble-card .chain-list,body.nano-chat-inner .bubble-card.bubble-card .gift-items,' +
+        'body.nano-chat-inner .bubble-card.bubble-card .card-ship{border-color:transparent !important;}' +
+        'body.nano-chat-inner .bubble-card.bubble-card .message-box,body.nano-chat-inner .bubble-card.bubble-card .chain-list,body.nano-chat-inner .bubble-card.bubble-card .gift-items,' +
+        'body.nano-chat-inner .bubble-card.bubble-card .card-ship,body.nano-chat-inner .bubble-card.bubble-card .fw-box{border-radius:0 !important;}' +
+        'body.nano-chat-inner .bubble-card.bubble-card .message-box{max-height:none !important;overflow:visible !important;}' +
+        'body.nano-chat-inner .bubble-card.bubble-card .card-hint{background:transparent !important;border:0 !important;box-shadow:none !important;}';
 
     // 悬浮顶/底栏结构（!important 强制）：消息区铺满整屏，顶/底栏悬浮其上且默认透明，
     // 气泡滑动时会从栏的下方穿过、清晰可见。美化的聊天 CSS 里常把 .message-scroll 写回

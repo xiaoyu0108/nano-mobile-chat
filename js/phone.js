@@ -3570,9 +3570,8 @@ async function genMulti(api, char, ids, opts){
   try {
     if (window.NanoPrompts && NanoPrompts.appendTo) __sysJson = NanoPrompts.appendTo(__sysJson, 'phone', { keepFormat: true });
   } catch (e) {}
-  // 一次生成全部 App 时输出很长；至少给 16384，低于这个值会被截断导致后面的 App（钱包/相册等）缺失。
-  // 如果接口不接受，下面的重试会自动减半到 8192 / 4096。
-  const maxTokens = Math.min(32768, Math.max(16384, Number(api.maxTokens) || 16384));
+  // 一次生成全部 App 时输出很长；默认给 16384。用户可在 API 设置里调低以兼容只支持小输出的模型。
+  const maxTokens = Math.min(32768, Math.max(4096, Number(api.maxTokens) || 16384));
   const baseBody = {
     model: api.model,
     messages: [{role:"system", content:__sysJson},{role:"user", content:user}],
@@ -3590,82 +3589,40 @@ async function genMulti(api, char, ids, opts){
   log.push({t:"", s:"Model: " + api.model});
   log.push({t:"", s:"Apps: " + ids.join(", ")});
 
-  let resp, rawText = "";
-  /* 不再默认发送 response_format：部分网关（如 AI Studio）开启抗截断后，
-     会和结构化输出冲突并直接返回 HTTP 400，整批 App 一个都生成不出来。
-     提示词已经要求只输出 JSON，解析端也能逐 App 抢救，所以这里用普通文本输出。 */
-  let useJsonFormat = false, tokens = maxTokens, lastErr = "";
-  let compatLevel = 0, structuredConflict = false;
+  /* 强制一次请求生成全部 App：不再自动做参数降级、流式兼容或任何重试。
+     失败就直接把错误交给用户，由用户自己点「重新生成」，避免一次点击偷偷扣多次 API。 */
+  let resp, rawText = "", lastErr = "";
   const post = async function(payload){
     return fetch(endpoint, {method:"POST", headers, body: JSON.stringify(payload)});
   };
-  for(let attempt = 0; attempt < 6; attempt++){
-    const payload = {
-      model: api.model,
-      messages: baseBody.messages,
-      temperature: api.temp
-    };
-    if(compatLevel === 0){
-      payload.max_tokens = tokens;
-      payload.presence_penalty = 0.4;
-      payload.frequency_penalty = 0.5;
-    }else if(compatLevel === 1){
-      /* 兼容模式 1：去掉惩罚项和超大 max_tokens，只保留最小请求体。 */
-      payload.max_tokens = Math.min(tokens, 8192);
-    }else{
-      /* 兼容模式 2：完全不传 max_tokens，并改用流式，绕开只对非流式请求生效的抗截断。 */
-      payload.stream = true;
-    }
-    if(useJsonFormat) payload.response_format = {type:"json_object"};
-    try{
-      resp = await post(payload);
-    }catch(e){
-      log.push({t:"err", s:"网络错误: " + e.message});
-      return {ok:{}, log, fatal:"网络错误：" + e.message};
-    }
-    try{ rawText = await resp.text(); }catch(e){ rawText = ""; }
-    // 流式响应用 SSE 返回时，转成普通 choices 结构，后面的解析逻辑完全复用。
-    if(resp.ok && (/text\/event-stream/i.test(resp.headers.get("content-type") || "") || /^\s*data:/.test(String(rawText || "")))){
-      rawText = sseRawToEnvelope(rawText);
-    }
-    // 网关地址填错时经常返回 200 + 登录页 HTML，看起来“API 调用了”，但其实没进模型。
-    // 直接给出明确错误，别让它伪装成 JSON 解析失败。
-    if(resp.ok && /^\s*<(?:!doctype\s+html|html[\s>])/i.test(String(rawText || ""))){
-      log.push({t:"err", s:"API 返回的是 HTML 网页，不是模型 JSON。请检查主 API 地址（应填到 /v1，不能有多余路径）。"});
-      return {ok:{}, log, fatal:"API 地址返回了网页，不是接口：\n" + endpoint};
-    }
-    if(resp.ok) break;
-    lastErr = "HTTP " + resp.status + (rawText ? "：" + rawText.slice(0,150) : "");
-    const conflict = /response_format|json_object|structured|结构化|抗截断|不能同时|参数无效|不兼容/i.test(rawText);
-    if(conflict) structuredConflict = true;
-    // 网关把请求当成结构化输出（AI Studio 的抗截断功能会和它冲突）：
-    // 已发普通文本后仍报这个错，就逐级降级：最小请求体 → 不传 max_tokens + 流式。
-    if(conflict && compatLevel < 2){
-      compatLevel++;
-      useJsonFormat = false;
-      log.push({t:"warn", s:"接口报「抗截断 / 结构化输出」冲突，已切换到兼容模式 " + compatLevel + " 重试"});
-      continue;
-    }
-    // 接口不支持 / 拒绝结构化输出：去掉 response_format 再试。
-    if(useJsonFormat && (resp.status === 400 || resp.status === 422 || conflict)){
-      log.push({t:"warn", s:"接口拒绝结构化输出，已改为普通 JSON 重试"});
-      useJsonFormat = false;
-      continue;
-    }
-    // 模型不支持这么大的 max_tokens：降到 4096 再试
-    if(tokens > 4096 && /max_tokens|max output|too large|invalid/i.test(rawText)){
-      const nextTokens = Math.max(4096, Math.floor(tokens / 2));
-      log.push({t:"warn", s:"接口不接受 max_tokens=" + tokens + "，已降到 " + nextTokens});
-      tokens = nextTokens;
-      continue;
-    }
-    break;
+  const payload = {
+    model: api.model,
+    messages: baseBody.messages,
+    temperature: api.temp,
+    max_tokens: maxTokens,
+    presence_penalty: 0.4,
+    frequency_penalty: 0.5
+  };
+  try{
+    resp = await post(payload);
+  }catch(e){
+    log.push({t:"err", s:"网络错误: " + e.message});
+    return {ok:{}, log, fatal:"网络错误：" + e.message};
   }
-  log.push({t: resp && resp.ok ? "ok" : "err", s:"HTTP " + (resp && resp.status)});
-  if(!resp || !resp.ok){
-    let fatal = lastErr || "请求失败";
-    if(structuredConflict) fatal += "\n\n该中转把请求识别成了「结构化输出」，同时又开启了「抗截断」，两者不兼容。App 已自动尝试普通文本、最小参数和流式三种方式；若仍失败，请在该中转后台关闭「抗截断」（或换一个渠道/模型）后再试。";
-    return {ok:{}, log, fatal};
+  try{ rawText = await resp.text(); }catch(e){ rawText = ""; }
+  // 流式响应用 SSE 返回时，转成普通 choices 结构，后面的解析逻辑完全复用。
+  if(resp.ok && (/text\/event-stream/i.test(resp.headers.get("content-type") || "") || /^\s*data:/.test(String(rawText || "")))){
+    rawText = sseRawToEnvelope(rawText);
+  }
+  // 网关地址填错时经常返回 200 + 登录页 HTML，看起来“API 调用了”，但其实没进模型。
+  if(resp.ok && /^\s*<(?:!doctype\s+html|html[\s>])/i.test(String(rawText || ""))){
+    log.push({t:"err", s:"API 返回的是 HTML 网页，不是模型 JSON。请检查主 API 地址（应填到 /v1，不能有多余路径）。"});
+    return {ok:{}, log, fatal:"API 地址返回了网页，不是接口：\n" + endpoint};
+  }
+  if(!resp.ok) lastErr = "HTTP " + resp.status + (rawText ? "：" + rawText.slice(0,150) : "");
+  log.push({t: resp.ok ? "ok" : "err", s:"HTTP " + resp.status});
+  if(!resp.ok){
+    return {ok:{}, log, fatal: lastErr || "请求失败"};
   }
 
   /* ⚠️ rawText 是 API 外层响应，必须取出 choices[0].message.content 才是模型内容 */
@@ -3846,8 +3803,6 @@ async function startGeneration(ids){
      改为弹出失败面板，由用户自己点「重新生成」再补，绝不在背后多扣 API。 */
   const okAll = {};
   const fatalMsgs = [];
-  let blockedSkipped = false;
-  let liteUsed = false;
   let wasTruncated = false;
   const partialIdSet = new Set();
 
@@ -3864,39 +3819,9 @@ async function startGeneration(ids){
     genState.log.push({t:"sec", s:label});
     (r.log || []).forEach(l => genState.log.push(l));
 
-    /* 生成服务的内容安全策略偶尔会把整段请求拦掉。
-       处理顺序：先去掉「私密」重试；如果还被拦，再用不含世界书/记忆的轻量上下文重试。
-       其它错误不自动重试，避免在背后多扣一次 API。 */
-    if(r.fatal && isContentBlocked(r.fatal)){
-      let retryBatch = batch;
-      if(retryBatch.indexOf("private") >= 0){
-        blockedSkipped = true;
-        retryBatch = retryBatch.filter(id => id !== "private");
-        genState.log.push({t:"warn", s:"内容被安全策略拦截，自动去掉「私密」再试一次…"});
-        if(retryBatch.length){
-          try{
-            r = await genMulti(api, currentChar, retryBatch);
-          }catch(e){
-            r = {ok:{}, log:[], fatal:(e && e.message) || String(e)};
-          }
-          genState.log.push({t:"sec", s:label + "（已跳过私密）"});
-          (r.log || []).forEach(l => genState.log.push(l));
-        }
-      }
-      if(r.fatal && isContentBlocked(r.fatal) && retryBatch.length){
-        liteUsed = true;
-        genState.log.push({t:"warn", s:"仍被拦截，改用轻量上下文（不含世界书 / 记忆）重试…"});
-        try{
-          r = await genMulti(api, currentChar, retryBatch, { lite: true });
-        }catch(e){
-          r = {ok:{}, log:[], fatal:(e && e.message) || String(e)};
-        }
-        genState.log.push({t:"sec", s:label + "（轻量上下文）"});
-        (r.log || []).forEach(l => genState.log.push(l));
-      }
-    }
-    /* 私密被拦时不拖垮整页：用本地个人随想补齐 */
-    if(batch.indexOf("private") >= 0 && !(r.ok && r.ok.private) && blockedSkipped){
+    /* 内容被拦截也不再自动重试：保持一次点击只调用一次 API。
+       私密缺失时用本地个人随想补齐，不消耗 API。 */
+    if(batch.indexOf("private") >= 0 && !(r.ok && r.ok.private)){
       if(!r.ok) r.ok = {};
       r.ok.private = { type: "private", data: genPrivateLocal(currentChar) };
       genState.log.push({t:"warn", s:"私密：已用本地个人随想补充（不消耗 API）"});
@@ -3949,7 +3874,6 @@ async function startGeneration(ids){
     if(retryBtn) retryBtn.textContent = done ? "继续生成" : "重新生成";
     const msg = (done ? `已保存 ${done} 个 App 的内容，未生成完的部分可以继续补。\n` : "") +
       (wasTruncated ? `本次输出达到上限被截断，已保留截断前生成的 App。\n` : "") +
-      ((blockedSkipped || liteUsed) ? `模型安全策略拦截了部分内容${blockedSkipped ? "，「私密」已用本地随想补充" : ""}${liteUsed ? "，并用轻量上下文重试" : ""}；如果仍有失败，可调整人设 / 世界书后再试。\n` : "") +
       (fatalMsgs.length ? fatalMsgs.join("\n") + "\n" : "") +
       `以下 App 未生成完整：${names.join("、")}\n` +
       `可点「${done ? "继续生成" : "重新生成"}」只补失败的部分。`;

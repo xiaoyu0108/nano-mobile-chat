@@ -827,7 +827,7 @@ body.nano-chat-inner .bubble-card .main-section {
   gap: 10px !important;
   padding: 12px !important;
   text-align: left !important;
-  border-bottom: 1px solid #f6ebef !important;
+  border-bottom: 0 !important;
 }
 body.nano-chat-inner .bubble-card .main-text {
   display: flex !important;
@@ -896,10 +896,10 @@ body.nano-chat-inner .bubble-card .main-sub {
 body.nano-chat-inner .bubble-card .info-section { display: none !important; }
 body.nano-chat-inner .bubble-card .message-box {
   margin: 0 !important;
-  padding: 8px 12px 9px !important;
-  background: #fbf7f8 !important;
+  padding: 6px 12px 9px !important;
+  background: transparent !important;
   border-radius: 0 !important;
-  font-size: 11px !important;
+  font-size: 11.5px !important;
   color: #8f8487 !important;
   max-height: 64px;
 }
@@ -910,8 +910,8 @@ body.nano-chat-inner .bubble-card.travelShare .card-image,
 body.nano-chat-inner .bubble-card.scheduleReport .card-image {
   display: block !important;
   padding: 0 !important;
-  border-bottom: 1px solid #f6ebef !important;
-  background: #f7f4f5 !important;
+  border-bottom: 0 !important;
+  background: transparent !important;
 }
 body.nano-chat-inner .bubble-card.travelReport .card-image img,
 body.nano-chat-inner .bubble-card.travelShare .card-image img,
@@ -924,8 +924,8 @@ body.nano-chat-inner .bubble-card.scheduleReport .card-image img {
 body.nano-chat-inner .bubble-card .card-footer {
   padding: 7px 10px !important;
   gap: 6px !important;
-  background: #fdfafb !important;
-  border-top: 1px solid #f6ebef !important;
+  background: transparent !important;
+  border-top: 0 !important;
 }
 body.nano-chat-inner .bubble-card .card-footer.status-only { padding: 8px 12px 9px !important; }
 body.nano-chat-inner .bubble-card .card-hint {

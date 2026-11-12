@@ -504,27 +504,28 @@ async function maybeGeneratePostImages(made) {
   });
   const strangerNames = {};
   strangerRosterList().forEach(s => { strangerNames[normName(s.name)] = 1; });
-  let budget = 3;
-  let firstErr = '';
+  // 一次刷新最多生成 1 张人物图：只挑 1 个候选，并且只调用一次生图 API
+  let target = null;
   for (const p of made) {
-    if (budget <= 0) break;
     const key = normName(p.user);
     let prob = 0;
     if (enabledChars[key]) prob = 0.6;
     else if (strangerNames[key]) prob = insImageSettings.stranger ? 0.3 : 0;
     else prob = insImageSettings.npc ? 0.22 : 0;
-    if (prob <= 0 || Math.random() > prob) continue;
-    try {
-      const authorChar = getSelectableChars().find(c => c && normName(c.name) === normName(p.user));
-      const genOpts = authorChar ? { charId: String(authorChar.id || authorChar.name), char: authorChar } : null;
-      const url = await generateInsImage(buildPostImagePrompt(p), genOpts);
-      if (url) {
-        p.image = url; p.genPrompt = p.title || p.body || ''; budget--;
-        try { if (window.NanoGallery) window.NanoGallery.add({ url: url, source: 'Ins', charName: p.user || '', prompt: p.genPrompt, generated: true }); } catch (e) {}
-      }
-    } catch (e) {
-      if (!firstErr) firstErr = (e && e.message ? e.message : String(e));
+    if (prob > 0 && Math.random() <= prob) { target = p; break; }
+  }
+  if (!target) return;
+  let firstErr = '';
+  try {
+    const authorChar = getSelectableChars().find(c => c && normName(c.name) === normName(target.user));
+    const genOpts = authorChar ? { charId: String(authorChar.id || authorChar.name), char: authorChar } : null;
+    const url = await generateInsImage(buildPostImagePrompt(target), genOpts);
+    if (url) {
+      target.image = url; target.genPrompt = target.title || target.body || '';
+      try { if (window.NanoGallery) window.NanoGallery.add({ url: url, source: 'Ins', charName: target.user || '', prompt: target.genPrompt, generated: true }); } catch (e) {}
     }
+  } catch (e) {
+    firstErr = (e && e.message ? e.message : String(e));
   }
   if (firstErr) showError('生图失败', '生图设置已开启，但调用生图接口出错：\n' + firstErr);
 }
@@ -973,32 +974,17 @@ async function refreshComments() {
     const scope = authorChar ? ('char_' + String(authorChar.id || authorChar.name))
       : (isUserAuthor ? 'user' : ('post_' + normName(post.user)));
     const bound = authorChar ? [authorChar] : (isUserAuthor ? allChars : []);
-    let npcs = [];
-    if (bound.length) {
-      // 每次刷新评论都让 AI 现场随机生成一批，不复用固定 NPC 库。
-      try {
-        const fresh = await generateNpcRoster(bound, 6, scope);
-        npcs = pickRandom(fresh, 3);
-      } catch (e) {}
-      // 生成失败时用上一批作者专属熟人兜底，避免评论区只剩作者自己。
-      if (!npcs.length) npcs = pickRandom(rosterNpcs(scope), 3);
-    }
-    // 所有绑定角色都不能被当成 NPC/陌生网友，否则会被 char 过滤规则删掉。
-    const exclude = allChars.map(c => c.name).concat(npcs.map(n => n.name));
-    // 陌生网友也只属于这个作者：每次刷新现场生成，绝不和其他角色共用同一批人。
-    await ensureStrangerRoster(bound, 8, exclude, scope, true);
-    const strangers = pickStrangers(5, [], scope);
-    if (!bound.length && !npcs.length && !strangers.length) {
+    // 一次 API 生成评论：不再单独调用 API 生成 NPC/陌生网友花名册。
+    // 本地有缓存就复用，没有则允许模型在本次评论输出里现场虚构。
+    const npcs = pickRandom(generateContextNPCs(scope), 3);
+    const strangers = pickRandom(strangerRosterList(scope), 5);
+    if (!bound.length && !npcs.length && !strangers.length && !post.user) {
       showToast('没有可互动的角色，请先绑定角色或配置 API');
       return;
     }
     let newCount = 0;
     try {
       newCount = await generateCommentsForPost(post, bound, npcs, strangers, 10);
-      // 单独刷新评论时每次生成 7~10 条；不够 7 条才补一次，避免一次刷出太多。
-      if (newCount < 7) {
-        try { newCount += await generateCommentsForPost(post, bound, npcs, strangers, 10 - newCount); } catch (e) {}
-      }
     } catch (e) {
       // 旧评论一直保留着，生成失败也不用回滚任何内容。
       showToast('评论生成失败');
@@ -1136,12 +1122,9 @@ function renderDiscover() {
 async function generateInsPosts(count, topic) {
   const chars = getSelectableChars();
   if (!chars.length) return [];
-  // 每次生成现场随机一批 NPC，不落固定库。
-  let npcs = [];
-  try {
-    const fresh = await generateNpcRoster(chars, 6, 'feed');
-    npcs = pickRandom(fresh, 4);
-  } catch (e) {}
+  // 一次 API 完成帖子+点赞+评论：不再单独调用 API 生成 NPC 花名册。
+  // 本地有熟人就复用，没有就让模型在本轮输出里虚构。
+  let npcs = pickRandom(generateContextNPCs('feed'), 4);
   // 默认 4 个作者；角色 >=4 时只让这些角色发帖，不足 4 个由可能认识的 NPC 补齐。
   const total = count || Math.max(4, chars.length);
   const charNames = chars.map(c => c.name).filter(Boolean);
@@ -1152,12 +1135,13 @@ async function generateInsPosts(count, topic) {
   const tagPool = topic ? [topic] : recommendTags;
   const sys = '你是一个活跃的开放社交平台用户群体（类似 Instagram），不是只给熟人看的朋友圈。请一次性生成 ' + total + ' 条有展示感、表达完整的帖子：这一批约一半写短帖（100 字以下，2~4 句，也要有意思），一半写中等长度（100~220 字，把一件具体的事/观点/心情讲完整，有细节、有画面）；偶尔挑 1 条写成 300~500 字长文；不要每次只说一句话。少写过度私密细节，多写生活方式、审美、旅行、美食、健身、作品、当下心情；可以中英混排、emoji 或定位。' +
     '每条自带 2~4 个点赞（likes 写 2~4 个名字）和 4 条左右评论互动（comments，3~4 条）；除作者本人外，至少 3 条评论必须来自 NPC/陌生网友，不能只有作者自己评论。评论者中陌生网友用网名/账号名、语气像公开平台路人，不必亲近；只有评论区里真正发过言的人才能被回复，作者没留言时不能回复作者；绝对不能替用户发言。' +
+    '如果给出的可用名单不足，允许你在这一轮里直接虚构 2~4 个与作者可能认识的 NPC 或陌生网友名字（真实姓名或网名），但绝对不能使用用户本人或任何已选角色。' +
     '只返回 JSON 数组，格式：[{"user":"用户名","location":"地点","title":"标题","body":"正文","tags":["话题1","话题2"],"likes":["名字1","名字2"],"comments":[{"user":"评论者","toUser":"回复对象或空","text":"内容"}]}]，' +
-    '不要 Markdown、不要解释、不要多余文字。user 必须从给定用户名里选。';
+    '不要 Markdown、不要解释、不要多余文字。user 优先从给定用户名里选；名单不足时可现场虚构真实姓名/网名的朋友 NPC 发帖。' + GLOBAL_PLATFORM_NOTE + DIVERSE_PLATFORM_NOTE;
   const userMsg = '话题方向：' + tagPool.join('、') +
     '\n已选角色（优先每人 1 条）：' + charNames.join('、') +
-    (npcQuota > 0 ? ('\n已选角色不足 ' + total + ' 条，剩余 ' + npcQuota + ' 条由朋友 NPC 补足：' + npcNames.join('、')) : '\n已选角色数量足够，全部由已选角色发帖') +
-    '\n评论者/点赞者可用：' + allowedNames.join('、') +
+    (npcQuota > 0 ? ('\n已选角色不足 ' + total + ' 条，剩余 ' + npcQuota + ' 条由朋友 NPC 补足' + (npcNames.length ? ('：' + npcNames.join('、')) : '（名单为空，可现场虚构真实姓名/网名）')) : '\n已选角色数量足够，全部由已选角色发帖') +
+    '\n评论者/点赞者可用：' + (allowedNames.length ? allowedNames.join('、') : '（无预设名单，可现场虚构真实姓名/网名）') +
     '\n【最高优先级】已选角色（char）之间绝对不允许互相评论、回复、点赞或接话，即使人设/世界书/角色关系明确写了认识也不行。char 只能和用户或 NPC/陌生网友互动；char 发的帖子下只允许 NPC/陌生网友和作者本人出现，作者本人只回复用户。' +
     '\n【NPC 归属】每个 NPC 只属于自己的关系角色：A 的熟人只能出现在 A 的帖子下，绝对不要把 A 的 NPC 写到 B / C 的评论区或点赞里。';
   let out = '';
@@ -1171,8 +1155,15 @@ async function generateInsPosts(count, topic) {
       const arr = JSON.parse(arrMatch[0]);
       (arr || []).slice(0, total).forEach((p, i) => {
         if (!p) return;
-        const name = matchAllowed(p.user, allowedNames);
-        if (!name || normName(name) === normName(userProfile.name)) return;
+        let name = matchAllowed(p.user, allowedNames);
+        if (!name) {
+          const rawName = String(p.user || '').trim().replace(/^@+/, '');
+          if (!rawName || normName(rawName) === normName(userProfile.name)) return;
+          if (getSelectableChars().some(c => c && normName(c.name) === normName(rawName))) return;
+          if (isGenericNpcName(rawName)) return;
+          name = rawName;
+        }
+        if (normName(name) === normName(userProfile.name)) return;
         const authorIsChar = charSet.has(normName(name));
         // 已选角色 >=4 时只让这些角色发帖，NPC 不能顶替。
         if (chars.length >= 4 && !authorIsChar) return;
@@ -1181,7 +1172,7 @@ async function generateInsPosts(count, topic) {
         const likePool = authorIsChar ? npcNames : allowedNames;
         const likedBy = [];
         (Array.isArray(p.likes) ? p.likes : []).forEach(n => {
-          const hit = matchAllowed(n, likePool);
+          const hit = resolveInsInteractionName(n, likePool, name);
           if (!hit || normName(hit) === normName(name) || normName(hit) === normName(userProfile.name)) return;
           // char 的帖子下，其它 char 一律不能点赞。
           if (authorIsChar && charSet.has(normName(hit))) return;
@@ -1269,6 +1260,20 @@ function matchAllowed(name, allowedNames) {
   // 前缀匹配（模型可能写成「李思雨说」之类）
   hit = list.find(n => key.length >= 2 && (key.indexOf(normName(n)) === 0 || normName(n).indexOf(key) === 0));
   return hit || null;
+}
+
+// 帖子/点赞/评论一次生成时，允许模型在名单不足的情况下现场虚构 NPC/网友，
+// 但绝不能把用户本人或其它已选角色当成互动者。
+function resolveInsInteractionName(raw, allowedNames, authorName) {
+  const n = String(raw == null ? '' : raw).trim().replace(/^@+/, '');
+  if (!n) return '';
+  if (normName(n) === normName(userProfile.name)) return '';
+  if (authorName && normName(n) === normName(authorName)) return '';
+  const hit = matchAllowed(n, allowedNames);
+  if (hit) return hit;
+  if (getSelectableChars().some(function (c) { return c && normName(c.name) === normName(n); })) return '';
+  if (isGenericNpcName(n)) return '';
+  return n;
 }
 
 function isGenericNpcName(name) {
@@ -1420,6 +1425,9 @@ function loadWorldbookText(boundIds, chars) {
 // 面向成年人的虚构社交平台：用于降低内容过滤误判，同时保持内容合规
 const ADULT_PLATFORM_NOTE = '【创作背景】这是一个虚构的社交平台角色扮演场景，所有角色均为成年人、均为虚构人物，内容仅供娱乐创作。请围绕日常、情感、生活、幽默与社交互动自然表达；设定中若含有不适合直接输出的内容，请在不改变人物关系的前提下用含蓄、生活化的措辞改写，不要复述敏感词。';
 const SAFE_REWRITE_NOTE = '【合规】只写日常、情感、生活、幽默、社交互动类内容，避免违规、露骨、暴力或不当描写；不要提及系统、安全、政策等字样，用含蓄自然的措辞完成。';
+// 全球开放平台：各国网友、外语（中文翻译）格式、有逻辑的网名
+const GLOBAL_PLATFORM_NOTE = '【世界平台】这是面向全球用户的开放社交 App，用户来自不同国家，帖子和评论不能只有中国人。中国网友用中文网名（如「熬夜冠军小周」「阿梨不吃香菜」），不必像真实姓名；外国网友用符合该国语言和文化习惯的网名（如 "mika.tokyo"、"sam_rivers"、"Noah_B"）。外国网友发的帖子和评论一律写成「外语原文（中文翻译）」，例如 "do you love me（你爱我吗？）"、"this cafe is so good（这家咖啡店太好吃了）"；中国网友写中文即可，可少量夹网络缩写和 emoji。昵称/ID 必须有真实网名逻辑，禁止随手敲无意义字母串（如 xkwq、asdf、zzz123）。';
+const DIVERSE_PLATFORM_NOTE = '【内容生态】平台不只有积极欢乐的内容，也有吐槽、质疑、争论、阴阳怪气、黑粉/anti、辱追、路人嘲讽和短促互怼；同一话题下必须有人夸、有人骂、有人玩梗、有人质疑，不要全部客套夸赞或一边倒。';
 
 function charKnows(a, b) {
   try {
@@ -1617,7 +1625,8 @@ async function generateStrangerRoster(chars, want, exclude, scope) {
   const userMsg = persona +
     '\n\n请生成 ' + (want || 8) + ' 个活跃在该平台的陌生用户（不是用户的熟人、不是朋友的朋友，就是开放平台上的普通网友）。\n' +
     '要求：\n' +
-    '- 账号昵称真实自然且多元：可以是中国网友的昵称/网名（如「摄影师阿澈」「深夜写诗的人」），也可以是英文或生活化账号（如 "luna.bakes"、"trail_mark"）；\n' +
+    '- 账号昵称真实自然且多元：可以是中国网友的昵称/网名（如「摄影师阿澈」「深夜写诗的人」），也可以是英文或生活化账号（如 "luna.bakes"、"trail_mark"）；外国网友的昵称要符合该国语言和文化习惯；\n' +
+    '- 昵称必须有真实网名逻辑，禁止随手敲无意义字母串（如 xkwq、asdf、zzz123）；\n' +
     '- 每个人设、兴趣、职业、地域都不同，覆盖摄影、美食、旅行、健身、读书、游戏、音乐、职场、宠物等多元话题；\n' +
     '- 严禁「陌生人、网友、路人甲、新朋友、某人、测试用户」这类占位名；\n' +
     '- 不要与这些已有名字重复：' + ((exclude || []).join('、') || '（无）') + '。\n\n' +
@@ -1842,18 +1851,17 @@ function filterCommentList(list, authorName, allowedNames, existingNames) {
   (existingNames || []).forEach(addTarget);
   (list || []).forEach(c => { if (c && c.user) addTarget(c.user); });
 
-  // 模型若写了不在名单里的名字，不直接丢弃内容，而是改挂到名单里的评论者，避免跑题兜底
-  const spareNames = allowedList.filter(n =>
-    normName(n) !== normName(userProfile.name) &&
-    (!authorName || normName(n) !== normName(authorName))
-  );
+  // 名单外的名字：优先接受模型现场虚构的 NPC/网友，避免为了花名册再调一次 API。
   const kept = [];
-  (list || []).forEach((c, idx) => {
+  (list || []).forEach((c) => {
     if (!c || !c.user || !String(c.text || '').trim()) return;
     let canonUser = matchAllowed(c.user, allowedList);
     if (!canonUser) {
-      if (!spareNames.length) return;
-      canonUser = spareNames[idx % spareNames.length];
+      const rawUser = String(c.user || '').trim().replace(/^@+/, '');
+      const knownChar = getSelectableChars().some(function (ch) { return ch && normName(ch.name) === normName(rawUser); });
+      if (!rawUser || knownChar || isGenericNpcName(rawUser)) return;
+      // 名单不足时允许模型现场虚构 NPC/网友，避免为了花名册再单独调用一次 API。
+      canonUser = rawUser;
     }
     if (normName(canonUser) === normName(userProfile.name)) return;
     let text = String(c.text || '').trim();
@@ -1865,7 +1873,14 @@ function filterCommentList(list, authorName, allowedNames, existingNames) {
     const o = { user: canonUser, text: text };
     if (to) {
       const canonTo = matchAllowed(to, allowedList);
-      const resolvedTo = targets[normName(to)] || (canonTo ? targets[normName(canonTo)] : null) || canonTo;
+      let resolvedTo = targets[normName(to)] || (canonTo ? targets[normName(canonTo)] : null) || canonTo;
+      if (!resolvedTo) {
+        const rawTo = String(to || '').trim().replace(/^@+/, '');
+        const knownChar = getSelectableChars().some(function (ch) { return ch && normName(ch.name) === normName(rawTo); });
+        if (rawTo && normName(rawTo) !== normName(userProfile.name) && !knownChar && !isGenericNpcName(rawTo)) {
+          resolvedTo = rawTo;
+        }
+      }
       if (resolvedTo && normName(resolvedTo) !== normName(canonUser)) o.toUser = resolvedTo;
     }
     kept.push(o);
@@ -1925,16 +1940,9 @@ async function ensureInsUserReply(post, parsed, pool, persona) {
   if (!expected) return parsed;
   const hasReply = (parsed || []).some(c => c && normName(c.toUser || '') === uk && normName(c.user || '') === normName(expected));
   if (hasReply) return parsed;
-  let text = '';
-  try {
-    const sys = '你正在扮演「' + expected + '」，在公开社交平台的评论区回复用户，语气自然、简短（25字以内），不要解释、不要引号、不要名字前缀。';
-    const usr = (persona || '') + '\n\n帖子：' + String(post.title || '') + '\n' + String(post.body || '') +
-      '\n用户评论：' + insUserCommentTexts(post).join('；') +
-      '\n请只输出回复内容本身。';
-    const raw = await callChatApi([{ role: 'system', content: sys }, { role: 'user', content: usr }], 'sub');
-    text = String(raw || '').replace(/```[a-zA-Z]*/g, '').replace(/^["“”'\s]+|["“”'\s]+$/g, '').split(/\r?\n/)[0].trim();
-  } catch (e) {}
-  if (!text) text = '哈哈哈';
+  // 不再为“必须有人回复用户”额外调用一次 API，直接用本地短句兜底。
+  const localReplies = ['看到啦', '哈哈哈', '好家伙', '这个我懂', '刚看到'];
+  const text = localReplies[Math.floor(Math.random() * localReplies.length)];
   return (parsed || []).concat([{ user: expected, toUser: userProfile.name, text: text }]);
 }
 
@@ -2069,6 +2077,7 @@ function sanitizeCharInteractionsIns() {
 async function generateCommentsForPost(post, bound, npcs, strangers, limit) {
   const pool = buildCommenterPool(post, bound, npcs, strangers);
   if (!pool.length) return 0;
+  const canInvent = pool.filter(n => normName(n) !== normName(post.user) && normName(n) !== normName(userProfile.name)).length < 3;
   const persona = buildPersonaBlock((bound || []).concat(npcs || []).concat(strangers || []));
   const existing = (post.comments || []).slice(-30).map(formatCommentLine).join('\n');
   const existingNames = postParticipantNames(post);
@@ -2076,9 +2085,10 @@ async function generateCommentsForPost(post, bound, npcs, strangers, limit) {
   const userCommentLines = insUserCommentTexts(post);
   const hasUserComment = userCommentLines.length > 0;
   const userTargets = insUserReplyTargets(post);
-  const system = '你是一个真实的人类，请同时扮演多个角色以及平台上的普通网友，在社交平台评论区自然地聊天。严格贴合各自人设、关系与世界书，保持活人感，绝不 OOC，禁止 AI 腔、解释和出戏。这是公开平台，评论可以来自熟人也可以来自陌生人：熟人更随意、更亲近；陌生人更直接、更爱玩梗或质疑，而且陌生网友大多用网名/账号名，不必表现得很熟。评论要短、口语、碎片化，像随手打字：可以玩梗、只回一句、只发一个表情或问一个具体细节；不要长评、客套话和升华总结。绝不能替用户发言；只有评论区里真正发过评论的人才能被回复。所有角色均为成年人。' + ADULT_PLATFORM_NOTE;
+  const system = '你是一个真实的人类，请同时扮演多个角色以及平台上的普通网友，在社交平台评论区自然地聊天。严格贴合各自人设、关系与世界书，保持活人感，绝不 OOC，禁止 AI 腔、解释和出戏。这是公开平台，评论可以来自熟人也可以来自陌生人：熟人更随意、更亲近；陌生人更直接、更爱玩梗或质疑，而且陌生网友大多用网名/账号名，不必表现得很熟。评论要短、口语、碎片化，像随手打字：可以玩梗、只回一句、只发一个表情或问一个具体细节；不要长评、客套话和升华总结。绝不能替用户发言；只有评论区里真正发过评论的人才能被回复。所有角色均为成年人。' + GLOBAL_PLATFORM_NOTE + DIVERSE_PLATFORM_NOTE + ADULT_PLATFORM_NOTE;
   const userMsg = userPersonaBlock() + '\n\n' + persona +
-    '\n\n【本帖子可以出现的评论者（只能使用这些名字，不要创造新名字）】\n' + pool.map(n => '· ' + n).join('\n') +
+    '\n\n【本帖子可以出现的评论者】\n' + pool.map(n => '· ' + n).join('\n') +
+    (canInvent ? '\n名单不足时，你可以为作者现场虚构 2~4 个与 TA 可能认识的 NPC 或陌生网友名字（真实姓名或网名），但绝不能使用用户本人或其它已选角色。' : '') +
     '\n\n【这条帖子（所有评论必须紧扣它的具体内容，禁止跑题）】\n作者：' + post.user +
     '\n标题：' + (post.title || '（无标题）') + '\n正文：' + (post.body || '（无正文）') +
     ((post.tags && post.tags.length) ? ('\n话题：' + post.tags.map(t => '#' + t).join(' ')) : '') +
@@ -2100,7 +2110,7 @@ async function generateCommentsForPost(post, bound, npcs, strangers, limit) {
       ? '- 角色可以评论用户；但 char 绝对不能回复、点名或评论另一个 char；NPC 可以评论任何参与者；\n'
       : '- 这条帖子的作者是角色或 NPC：评论区只能出现 NPC/陌生网友和作者本人；其它 char 一个都不许出现；作者本人可以回复评论区里真正发过言的人（用户/NPC/陌生网友）；\n') +
     '- 陌生网友用网名/账号名，语气更像公开平台路人，不要写成很熟的私聊；熟人可以更随意亲近；NPC/陌生网友之间也可以互相回复；\n' +
-    '- 评论者只能从上面的名字里选，名字原样使用；严禁以用户身份发言；\n' +
+    '- 评论者优先从上面的名字里选，名字原样使用；名单不足时可按上面的说明虚构 NPC/网友名字；严禁以用户身份发言；\n' +
     '- 每条不超过 25 字，口语化，像真人。\n\n' +
     '严格按下面格式输出（不要编号、不要解释）：\n评论者|回复对象|内容\n（不是回复别人时第二段留空，写成「评论者||内容」）';
   const raw = await callChatApi([{ role: 'system', content: system }, { role: 'user', content: userMsg }], 'sub');
@@ -2131,22 +2141,25 @@ function buildForumPrompt(chars, npcs, strangers, recent, opts) {
   const lines = [];
   lines.push('这是一个开放的社交平台（类似 Instagram）。平台上不只有用户的好友，还有大量陌生网友在这里发帖和互动。');
   lines.push('【平台气质 · 必须和朋友圈区分开】这里是面向所有人的公开主页，不是只给熟人看的朋友圈：文案要有展示感，但不要每次只写一句话。这一批约一半写短帖（100 字以下，2~4 句，也要有意思），一半写中等长度（100~220 字，把一件具体的事、一个观点或一种心情讲完整，有细节、有画面）；偶尔挑 1 条写成 300~500 字长文——追星/演唱会 repo、好物分享/测评、情感经历、事情求助/避雷等；少写过度私密的家庭/职场细节和纯负能量发泄，多展示生活方式、审美、旅行、美食、健身、作品、当下心情；可以中英混排、emoji 或定位，但不要每条都长，也不要旅行博主腔和硬广。');
+  lines.push(GLOBAL_PLATFORM_NOTE);
+  lines.push(DIVERSE_PLATFORM_NOTE);
+  lines.push('- 【话题必须多元】不要只写角色日常。本批帖子要像真实开放平台一样覆盖不同主题：追星/韩娱/内娱、idol 与演员、网红博主、普通打工人、学生、恋爱/情感、好物种草/测评、避雷/黑贴、旅行、美食、健身、宠物、游戏、职场吐槽、社会话题争论等，至少出现 2 种不同领域；');
+  lines.push('- 【有夸有骂】评论区别清一色夸赞：可以出现真爱粉、黑粉、辱追、路人质疑、阴阳怪气、玩梗和短促互怼，但用网络口语，不写极端仇恨和违法内容；');
   lines.push('请一次性生成 ' + count + ' 条帖子，每条自带 2~4 个点赞和 4 条左右初始评论（3~4 条）：');
-  lines.push('- 发帖人必须从上面列出的名字里选，名字原样使用；');
+  lines.push('- 发帖人优先从上面列出的名字里选，名字原样使用；名单不足时可现场虚构真实姓名/网名的朋友 NPC 发帖；');
   if (charQuota > 0) lines.push('- 【发帖人优先级】先让已选角色发帖：' + charList.slice(0, charQuota).map(c => c.name).join('、') + ' 每人至少 1 条，作者不要重复；');
   if (npcQuota > 0) {
-    lines.push('- 已选角色不足 ' + count + ' 条，剩下的 ' + npcQuota + ' 条必须由朋友（NPC）名单里的人发帖补足（' +
-      (npcList.slice(0, Math.max(npcQuota, 1)).map(c => c.name).join('、') || 'NPC') + '），不要空着，也不要重复作者；');
+    lines.push('- 已选角色不足 ' + count + ' 条，剩下的 ' + npcQuota + ' 条由平台网友补足' +
+      (npcList.length ? ('（可用名单：' + npcList.slice(0, Math.max(npcQuota, 1)).map(c => c.name).join('、') + '）') : '（名单为空，请现场虚构真实姓名/网名）') +
+      '，不要空着，也不要重复作者；其中至少 1 条来自与用户无关的平台网友（网红博主、idol/演员、普通打工人、学生、恋爱博主、种草/测评、避雷/黑贴、追星路人等都可以），不要全写成用户熟人；');
   } else {
     lines.push('- 已选角色数量足够，' + count + ' 条全部由已选角色发，挑 ' + count + ' 位不同的人，作者不要重复；');
   }
-  if (strangerList.length) {
-    lines.push('- 陌生网友（' + strangerList.map(s => s.name).join('、') + '）只作为评论者/点赞者，绝不发帖；不足的帖子必须由「可能认识的 NPC」名单补足；');
-  }
+  lines.push('- 陌生网友平时主要作为评论者/点赞者；需要补足平台网友帖时也可以发帖，但每批最多 1~2 条，绝不能是用户本人或已选角色；');
   if (tag) lines.push('- 所有帖子都必须围绕话题 #' + tag + '，并把它写进 TAGS；');
   if (desc) lines.push('- 话题描述与方向（必须严格符合）：' + desc + '；');
   lines.push('- 文案像真实的人在经营公开主页：这一批约一半短帖（100 字以下，2~4 句，也要有意思），一半中等（100~220 字，有具体细节和真实情绪）；偶尔挑 1 条写 300~500 字长文（追星/演唱会 repo、好物分享/测评、情感经历、求助/避雷）；不要每次只说一句话，也不要每条都长，不要旅行博主腔、硬广和每条都升华总结；');
-  lines.push('- 每条帖子必须配 2~4 个点赞（LIKES 写 2~4 个名字）和 4 条左右初始评论（3~4 条）；评论者只能从上面的名字里选，评论像随手打字，可以只回一句、发表情、歪楼，不要客服腔；除作者本人外，至少 3 条评论必须来自 NPC/陌生网友，不能只有作者自己评论；');
+  lines.push('- 每条帖子必须配 2~4 个点赞（LIKES 写 2~4 个名字）和 4 条左右初始评论（3~4 条）；评论者/点赞者优先从上面的名字里选，名单不足时可为作者现场虚构 NPC/陌生网友名字（真实姓名或网名），评论像随手打字，可以只回一句、发表情、歪楼，不要客服腔；除作者本人外，至少 3 条评论必须来自 NPC/陌生网友，不能只有作者自己评论；');
     lines.push('- 【最高优先级】已选角色（char）之间绝对不允许互相评论、回复、点赞或接话，即使人设/世界书/角色关系明确写了认识也不行。char 只能和用户或 NPC/陌生网友互动。');
     lines.push('- 【NPC 归属】每个 NPC 只属于自己的关系角色：A 的熟人只能出现在 A 的帖子下，绝对不要把 A 的 NPC 写到 B / C 的评论区或点赞里。');
   lines.push('- char 发的帖子：评论者/点赞者只能来自 NPC / 陌生网友和作者本人；其它 char 的名字一个都不许写。作者本人可以回复评论区里真正发过言的人；NPC/陌生网友之间可以自然接话，NPC 也可以回复作者。');
@@ -2161,6 +2174,58 @@ function buildForumPrompt(chars, npcs, strangers, recent, opts) {
     '\n\n' + lines.join('\n') +
     '\n\n严格按下面格式输出（不要 markdown、不要编号、不要多余解释）：\n' +
     '===POST===\nAUTHOR: 名字\nLOCATION: 地点（可留空）\nTITLE: 标题\nBODY: 正文\nTAGS: 话题1,话题2\nLIKES: 名字1,名字2（可留空）\nCOMMENT: 评论者|回复对象|内容\nCOMMENT: 评论者||内容\n\n（下一条帖子重复 ===POST=== 结构）';
+}
+
+// Tag 话题页专用：只生成平台网友的帖子，不出现任何已绑定角色
+function buildNetizenForumPrompt(npcs, strangers, recent, opts) {
+  opts = opts || {};
+  const tag = opts.tag || '';
+  const desc = opts.desc || '';
+  const count = opts.count != null ? opts.count : 4;
+  const netizens = (npcs || []).concat(strangers || []).filter(c => c && c.name);
+  const forbidden = getSelectableChars().map(c => c && c.name).filter(Boolean);
+  const forbiddenKeys = new Set(forbidden.map(normName).concat([normName(userProfile.name)]));
+  const seenNames = {};
+  const nameList = [];
+  netizens.forEach(c => {
+    const k = normName(c.name);
+    if (seenNames[k] || forbiddenKeys.has(k)) return;
+    seenNames[k] = 1; nameList.push(c.name);
+  });
+  const usableNetizens = netizens.filter(c => !forbiddenKeys.has(normName(c.name)));
+  const persona = usableNetizens.length
+    ? ('【本批网友（可参考，也可现场虚构）】\n' + usableNetizens.map(c => '· ' + c.name + ((c.setting || c.relation) ? ('：' + String(c.setting || c.relation).slice(0, 120)) : '')).join('\n'))
+    : '【本批网友】名单为空，请现场虚构不同国家、不同职业的网友。';
+  const lines = [];
+  lines.push('这是一个面向全球用户的开放社交平台（类似 Instagram）。现在是 #' + tag + ' 话题搜索结果页：所有发帖人都是平台上的普通网友，不是用户的好友、不是用户绑定的角色，也不是 AI。');
+  lines.push('【铁律】本批帖子、评论、点赞里绝对不能出现用户绑定的任何角色（char），也不能出现用户本人「' + userProfile.name + '」' +
+    (forbidden.length ? ('。禁止出现这些名字：' + forbidden.join('、')) : '') + '。char 不是网友，不能发帖、不能评论、不能点赞。');
+  lines.push('请一次性生成 ' + count + ' 条帖子，由 ' + count + ' 个不同网友各发 1 条，作者不要重复。');
+  lines.push('【作者与昵称】优先使用这些网友：' + (nameList.length ? nameList.join('、') : '（名单为空，请现场虚构）') + '；不够就现场虚构。中国网友用中文网名，外国网友用符合其国家语言习惯的网名；昵称必须有逻辑、像真人账号，禁止无意义字母串。');
+  lines.push(GLOBAL_PLATFORM_NOTE);
+  lines.push(DIVERSE_PLATFORM_NOTE);
+  lines.push('【内容必须多元】话题下不能只有一种帖子：网红博主、idol/演员、普通人、打工人、学生、恋爱博主、追星/韩娱/内娱、好物种草/测评、避雷/黑贴、旅行、美食、健身、宠物、游戏、职场吐槽、争议话题等，至少覆盖 3 种不同领域，不要全是同一种类型。');
+  lines.push('【有夸有骂】评论区不能全是夸：要有真爱粉、黑粉、辱追、路人质疑、阴阳怪气、玩梗、短促互怼和不同立场；用网络口语，不写极端仇恨和违法内容。');
+  lines.push('【帖子长度】约一半短帖（100 字以下，2~4 句），一半 100~220 字；允许中英混排、emoji 和定位，但不要每条都很长，也不要硬广和旅行博主腔。');
+  lines.push('【互动】每条帖子配 2~4 个点赞（LIKES 写 2~4 个名字）和 3~5 条初始评论；评论者用网友昵称，外国网友的评论必须写成「外语原文（中文翻译）」；评论要短、口语、碎片化，有夸有贬，可以只回一句、玩梗或质疑。');
+  lines.push('【回复对象】只有评论区里真正发过言的人才能被回复；不要回复只点赞的人，也不要替用户或任何 char 发言。');
+  if (tag) lines.push('- 所有帖子都必须围绕话题 #' + tag + '，并把它写进 TAGS；');
+  if (desc) lines.push('- 话题描述与方向（必须严格符合）：' + desc + '；');
+  return ADULT_PLATFORM_NOTE + '\n' + SAFE_REWRITE_NOTE + '\n\n' + persona +
+    '\n\n【最近出现过的帖子（不要重复）】\n' + (recent || '（暂无）') +
+    '\n\n' + lines.join('\n') +
+    '\n\n严格按下面格式输出（不要 markdown、不要编号、不要多余解释）：\n' +
+    '===POST===\nAUTHOR: 名字\nLOCATION: 地点（可留空）\nTITLE: 标题\nBODY: 正文\nTAGS: 话题1,话题2\nLIKES: 名字1,名字2（可留空）\nCOMMENT: 评论者|回复对象|内容\nCOMMENT: 评论者||内容\n\n（下一条帖子重复 ===POST=== 结构）';
+}
+
+async function requestTagNetizenPosts(npcs, strangers, recent, opts) {
+  const system = '你是全球社交平台上的真实网友群体。只扮演平台上的普通网友发帖和评论，绝不能出现用户绑定的角色（char），也不能替用户发言。帖子要像真实开放社区：不同国家、不同职业、不同立场，昵称像真人网名，外国网友统一用「外语原文（中文翻译）」格式。评论区要有夸有骂、有粉丝有黑粉、有路人玩梗和质疑，不能清一色客套夸赞。所有人物均为成年人。' + GLOBAL_PLATFORM_NOTE + DIVERSE_PLATFORM_NOTE + ADULT_PLATFORM_NOTE;
+  const userMsg = buildNetizenForumPrompt(npcs, strangers, recent, opts);
+  let raw = await callChatApi([{ role: 'system', content: system }, { role: 'user', content: userMsg }], 'main');
+  lastForumRaw = String(raw || '');
+  const refused = detectProviderRefusal(lastForumRaw);
+  if (refused && !/===POST===/i.test(lastForumRaw)) throw new Error(refused);
+  return parseForumPosts(raw);
 }
 
 function parseForumPosts(raw) {
@@ -2218,22 +2283,11 @@ function detectProviderRefusal(text) {
 }
 
 async function requestForumPosts(chars, npcs, strangers, recent, opts) {
-  const system = '你是社交平台上的真实人类。请发帖，评论区只能由 NPC 朋友、陌生网友和作者本人接话；已选角色（char）之间绝对不允许互相评论、回复、点赞或接话，即使人设/世界书/角色关系明确写了认识也不行。char 只能和用户或 NPC/陌生网友互动；char 发的帖子下，其它 char 一个都不许出现。作者可以回复评论区里真正发过言的人；只有发过评论的人才能被回复，作者/用户没留言时不能被回复；绝不能替用户发言。发帖要有公开平台的展示感：表达完整、有细节，这一批约一半短帖（100 字以下）、一半 100~220 字，偶尔 1 条 300~500 字长文，不要每次只说一句话；比朋友圈更少私密细节，允许陌生人参与。陌生网友多用网名/账号名，语气像公开平台路人，不必亲近。严格贴合各自人设、关系与世界书，保持活人感，绝不 OOC，禁止 AI 腔、解释和出戏。所有角色均为成年人。' + ADULT_PLATFORM_NOTE;
+  const system = '你是社交平台上的真实人类。请发帖，评论区只能由 NPC 朋友、陌生网友和作者本人接话；已选角色（char）之间绝对不允许互相评论、回复、点赞或接话，即使人设/世界书/角色关系明确写了认识也不行。char 只能和用户或 NPC/陌生网友互动；char 发的帖子下，其它 char 一个都不许出现。作者可以回复评论区里真正发过言的人；只有发过评论的人才能被回复，作者/用户没留言时不能被回复；绝不能替用户发言。发帖要有公开平台的展示感：表达完整、有细节，这一批约一半短帖（100 字以下）、一半 100~220 字，偶尔 1 条 300~500 字长文，不要每次只说一句话；比朋友圈更少私密细节，允许陌生人参与。陌生网友多用网名/账号名，语气像公开平台路人，不必亲近。严格贴合各自人设、关系与世界书，保持活人感，绝不 OOC，禁止 AI 腔、解释和出戏。所有角色均为成年人。' + GLOBAL_PLATFORM_NOTE + DIVERSE_PLATFORM_NOTE + ADULT_PLATFORM_NOTE;
   const userMsg = buildForumPrompt(chars, npcs, strangers, recent, opts);
   let raw = await callChatApi([{ role: 'system', content: system }, { role: 'user', content: userMsg }], 'main');
   lastForumRaw = String(raw || '');
-  let refused = detectProviderRefusal(lastForumRaw);
-  if (refused && !/===POST===/i.test(lastForumRaw)) {
-    // 被内容过滤时，按合规方向收紧提示后重试一次
-    try {
-      raw = await callChatApi([
-        { role: 'system', content: system + '\n' + SAFE_REWRITE_NOTE },
-        { role: 'user', content: userMsg + '\n\n' + SAFE_REWRITE_NOTE }
-      ], 'main');
-      lastForumRaw = String(raw || '');
-      refused = detectProviderRefusal(lastForumRaw);
-    } catch (e) { throw e; }
-  }
+  const refused = detectProviderRefusal(lastForumRaw);
   if (refused && !/===POST===/i.test(lastForumRaw)) throw new Error(refused);
   return parseForumPosts(raw);
 }
@@ -2256,6 +2310,10 @@ function explainInvalidPosts(parsed, allowedObjs) {
 function buildPostsFromParsed(parsed, chars, npcs, strangers, opts) {
   opts = opts || {};
   const made = [];
+  const netizenOnly = !!opts.netizenOnly;
+  const allowNetizenAuthors = !!opts.allowNetizenAuthors || netizenOnly;
+  const maxNetizenPosts = opts.maxNetizenPosts != null ? opts.maxNetizenPosts : (allowNetizenAuthors ? 2 : 0);
+  let netizenMade = 0;
   const allowedNames = (chars || []).concat(npcs || []).concat(strangers || []).map(c => c && c.name).filter(Boolean);
   const charNameSet = new Set((chars || []).map(c => c && c.name).filter(Boolean).map(normName));
   const friendPool = (npcs || []).concat(strangers || []).map(c => c && c.name).filter(Boolean);
@@ -2267,26 +2325,38 @@ function buildPostsFromParsed(parsed, chars, npcs, strangers, opts) {
     if (!author) {
       const n = String(p.author || '').trim();
       if (!n || normName(n) === normName(userProfile.name)) return;
-      if ((chars || []).length >= 4) return;
+      if ((chars || []).length >= 4 && !allowNetizenAuthors) return;
       if (getSelectableChars().some(c => c && normName(c.name) === normName(n))) return;
       author = { name: n, avatar: '', isNpc: true, setting: '', relation: '' };
     }
     if (!author || normName(author.name) === normName(userProfile.name)) return;
-    // 陌生网友只参与评论/点赞，不负责发帖；发帖补位必须用「可能认识的 NPC」。
-    if ((strangers || []).some(s => s && normName(s.name) === normName(author.name))) return;
+    // tag 话题页只允许网友发帖：模型若写回任何已绑定角色，直接丢弃。
+    if (netizenOnly && getSelectableChars().some(c => c && normName(c.name) === normName(author.name))) return;
+    // 陌生网友平时只参与评论/点赞；补足平台网友帖时才允许发帖。
+    if (!allowNetizenAuthors && (strangers || []).some(s => s && normName(s.name) === normName(author.name))) return;
     let tags = (p.tags || []).map(t => String(t).replace(/^#/, '').trim()).filter(Boolean);
     if (opts.forceTag && tags.indexOf(opts.forceTag) === -1) tags.unshift(opts.forceTag);
     if (!tags.length) tags = opts.forceTag ? [opts.forceTag] : ['随笔'];
     const authorIsChar = charNameSet.has(normName(author.name));
-    // 已选角色 >=4 时只让这些角色发帖，NPC 不能顶替。
-    if ((chars || []).length >= 4 && !authorIsChar) return;
+    // 已选角色 >=4 时，除预留的网友帖外，其余发帖人仍然只能是这些角色。
+    if (!authorIsChar) {
+      if (!netizenOnly && (chars || []).length >= 4 && !allowNetizenAuthors) return;
+      if (!netizenOnly && (chars || []).length >= 4 && netizenMade >= maxNetizenPosts) return;
+      netizenMade++;
+    }
     const hasImg = Math.random() > 0.45;
 
     function cleanNames(list, pool) {
       const out = [];
       (list || []).forEach(n => {
-        const hit = matchAllowed(n, pool);
-        if (!hit) return;
+        let hit = matchAllowed(n, pool);
+        if (!hit) {
+          const raw = String(n == null ? '' : n).trim().replace(/^@+/, '');
+          if (!raw || normName(raw) === normName(userProfile.name) || normName(raw) === normName(author.name)) return;
+          if (getSelectableChars().some(c => c && normName(c.name) === normName(raw))) return;
+          if (isGenericNpcName(raw)) return;
+          hit = raw; // 允许模型同一次输出里虚构 NPC/网友点赞
+        }
         if (normName(hit) === normName(userProfile.name) || normName(hit) === normName(author.name)) return;
         if (authorIsChar && charNameSet.has(normName(hit))) return;
         if (!out.some(x => normName(x) === normName(hit))) out.push(hit);
@@ -2378,7 +2448,7 @@ function confirmForumRefresh() {
   if (modal) modal.classList.remove('show');
   const bound = getSelectableChars();
   let picked = bound.filter(c => ids.indexOf(String(c.id || c.name)) > -1);
-  if (!picked.length) picked = bound;
+  if (!picked.length) { showToast('请至少勾选一个角色'); return; }
   runForumGenerate(picked);
 }
 
@@ -2387,29 +2457,25 @@ async function runForumGenerate(selected) {
   const boundAll = getSelectableChars();
   const picked = (selected && selected.length) ? selected : boundAll;
   if (!picked.length) { showToast('请先绑定角色再刷新帖子'); return; }
+  const pickedKeys = new Set(picked.map(c => normName(c.name)));
+  // 用户没勾选的角色（含 NPC / 小号）不能发帖、评论、点赞，也不能被当 NPC 补位。
+  const excludedKeys = new Set(boundAll.filter(c => c && c.name && !pickedKeys.has(normName(c.name))).map(c => normName(c.name)));
   insBusy.forum = true;
   try{ if(window.NanoRefresh) NanoRefresh.start({ key:'ins-forum', label:'刷新帖子' }); }catch(e){}
   showLoading('正在生成帖子…');
   try {
     const feedScope = 'forum_' + picked.map(c => String(c.id || c.name)).sort().join('_');
-    // NPC 每次现场随机生成，不复用固定池；只生成「已选角色可能认识」的 NPC。
-    let npcs = [];
-    try {
-      const fresh = await generateNpcRoster(picked, 6, feedScope);
-      npcs = pickRandom(fresh, 6);
-    } catch (e) {}
-    if (!npcs.length) npcs = pickRandom(rosterNpcs(feedScope), 6);
-    // 开放平台：陌生网友只参与评论/点赞，不负责发帖。
-    const exclude = boundAll.map(c => c.name).concat(npcs.map(n => n.name));
-    await ensureStrangerRoster(picked, 8, exclude, feedScope, true);
-    const strangers = pickStrangers(3, [], feedScope);
+    // 一次 API 生成帖子+点赞+评论：不再单独调用 API 生成 NPC/陌生网友花名册。
+    // 本地有缓存就复用，没有就在帖子生成时由模型一并虚构。
+    const npcs = pickRandom(generateContextNPCs(feedScope), 6).filter(n => n && !excludedKeys.has(normName(n.name)));
+    const strangers = pickRandom(strangerRosterList(feedScope), 3).filter(n => n && !excludedKeys.has(normName(n.name)));
 
     const recent = posts.slice(0, 5).map(p => '· ' + p.user + '：' + (p.title || p.body || '')).join('\n');
-    // 默认 4 个作者：已选角色不足 4 个由可能认识的 NPC 补齐；>=4 时只让已选角色发帖。
-    const total = Math.max(4, picked.length);
+    // 默认 4~6 个作者：已选角色各发一条，再额外加 1~2 条平台网友/路人帖，保证随机刷不单调。
+    const total = Math.min(6, Math.max(4, picked.length + 2));
     let parsed = [];
     try {
-      // 一次 API 生成正文 + 点赞 + 评论区互动；优先已选角色，不足由 NPC 补足。
+      // 一次 API 生成正文 + 点赞 + 评论区互动；优先已选角色，不足由网友补足。
       parsed = await requestForumPosts(picked, npcs, strangers, recent, { count: total, strangerCount: 3 });
     } catch (e) {
       showError('帖子生成失败', '调用文本 API 出错：\n' + (e && e.message ? e.message : String(e)));
@@ -2421,14 +2487,27 @@ async function runForumGenerate(selected) {
       try{ if(window.NanoRefresh) NanoRefresh.fail('没有生成有效帖子', { key:'ins-forum' }); }catch(err){}
       return;
     }
-    const made = buildPostsFromParsed(parsed, picked, npcs, strangers, {}).slice(0, total);
+    // 先排已选角色的帖子，确保额外网友帖不会挤掉角色帖。
+    parsed = parsed.filter(p => p && !excludedKeys.has(normName(p.author)));
+    parsed.forEach(p => {
+      p.likes = (p.likes || []).filter(n => n && !excludedKeys.has(normName(n)));
+      p.comments = (p.comments || []).filter(c => {
+        if (!c || !c.user || excludedKeys.has(normName(c.user))) return false;
+        if (c.toUser && excludedKeys.has(normName(c.toUser))) return false;
+        return true;
+      });
+    });
+    parsed.sort((a, b) => (pickedKeys.has(normName(b.author)) ? 1 : 0) - (pickedKeys.has(normName(a.author)) ? 1 : 0));
+    const made = buildPostsFromParsed(parsed, picked, npcs, strangers, {
+      allowNetizenAuthors: true, maxNetizenPosts: Math.max(1, total - picked.length)
+    }).slice(0, total);
     const allowedAll = picked.concat(npcs, strangers);
     if (!made.length) { showError('帖子作者无法匹配', explainInvalidPosts(parsed, allowedAll)); try{ if(window.NanoRefresh) NanoRefresh.fail('帖子作者无法匹配', { key:'ins-forum' }); }catch(err){} return; }
     await maybeGeneratePostImages(made, 'forum');
     posts = made.concat(posts);
     saveInsChatState();
     renderFeed(); renderProfileGrid();
-    await backfillUserPostComments(picked, npcs, strangers);
+    // 不再在刷新后自动给旧帖子补评论，避免一次刷新产生额外 API 调用。
     saveInsChatState();
     showToast('已生成 ' + made.length + ' 条帖子');
     notifyInsDone('Instagram', '帖子刷新完成，新增 ' + made.length + ' 条');
@@ -2484,26 +2563,121 @@ async function buildIncomingDM(name, setting, recent, charId) {
 }
 
 async function refreshFriendDMs(silent) {
-  if (!friends.length) return 0;
-  const picked = pickRandom(friends, Math.min(3, friends.length));
-  let count = 0;
-  for (const f of picked) {
-    const char = currentUserChars.find(c => c.id === f.id || c.name === f.name) || {};
+  const res = await refreshDMsSingleCall('auto', 0, silent);
+  return res.friends;
+}
+
+// 一次 API 同时生成好友私信 + 陌生人私信，保证一次刷新只调用一次文本 API
+async function refreshDMsSingleCall(friendPick, wantStrangers, silent) {
+  let pickedFriends = [];
+  if (friendPick === 'auto') pickedFriends = pickRandom(friends, Math.min(3, friends.length));
+  else if (Array.isArray(friendPick) && friendPick.length) {
+    const keys = {};
+    friendPick.forEach(x => { keys[String(x)] = 1; });
+    pickedFriends = friends.filter(f => keys[String(f.id)] || keys[String(f.name)]);
+  }
+  const want = Math.max(0, parseInt(wantStrangers, 10) || 0);
+  if (!pickedFriends.length && !want) return { friends: 0, strangers: 0 };
+
+  const friendBlocks = pickedFriends.map(f => {
+    const char = currentUserChars.find(c => c && (c.id === f.id || normName(c.name) === normName(f.name))) || {};
     const hist = chatHistories[f.id] || [];
     const recent = hist.filter(m => m.type !== 'post').slice(-6)
       .map(m => (m.from === 'out' ? userProfile.name : f.name) + '：' + (m.text || ''))
       .filter(Boolean).join('\n');
-    const text = await buildIncomingDM(f.name, char.setting || '', recent, char.id || f.id);
-    let preview = await deliverIncoming(f.id, text);
-    const st = await maybePushSticker(f.id, 0.4);
-    if (st) preview = st;
-    f.preview = preview.slice(0, 40);
-    f.time = '刚刚';
-    count++;
+    return '◇ ' + f.name + (char.gender && char.gender !== '未知' ? ('（' + char.gender + '）') : '') + '\n' +
+      ((char.setting && String(char.setting).trim()) ? String(char.setting).trim().slice(0, 500) : '（暂无详细设定，按名字与语境自然扮演）') +
+      (recent ? ('\n最近聊天：\n' + recent) : '');
+  }).join('\n\n');
+
+  const myPosts = posts.filter(p => p.user === userProfile.name);
+  const postText = myPosts.slice(0, 3).map(p => '· ' + (p.title || '') + ' ' + (p.body || '')).join('\n');
+  const excludeNames = friends.map(f => f.name).concat(strangers.map(s => s.name));
+  const excludeKeys = new Set(excludeNames.map(normName));
+  let emojiNames = [];
+  try { emojiNames = await getInsEmojiNames(); } catch (e) {}
+  const emojiHint = emojiNames.length
+    ? ('- 可以在私信末尾用 [emoji:表情名称] 附带一张表情包，可用名称：' + emojiNames.slice(0, 80).join('、') + '；\n')
+    : '';
+
+  const sys = '你正在同时扮演用户的好友和开放平台上的陌生网友，在社交 App 上给用户发主动私信。好友要贴合各自人设与最近聊天，口语化、自然；陌生网友是公开平台上看到用户后主动来搭话的人。所有人物均为成年人。' + GLOBAL_PLATFORM_NOTE + ADULT_PLATFORM_NOTE;
+  const userMsg = userPersonaBlock() +
+    '\n\n【要主动发私信的好友】\n' + (friendBlocks || '（无）') +
+    '\n\n【用户最近发的帖子】\n' + (postText || '（用户还没有发过帖子）') +
+    '\n\n请一次生成：\n' +
+    (pickedFriends.length ? ('- ' + pickedFriends.length + ' 条好友私信，每个好友 1 条，to 必须原样写好友名字；\n') : '') +
+    (want ? ('- ' + want + ' 个陌生网友的主动私信，昵称必须有真实网名逻辑，不能与已有好友/陌生人重复；\n') : '') +
+    '- 好友私信 1~2 句、30 字内，自然接住最近聊天；陌生人私信也要自然，可以提到用户的帖子或用户人设；\n' +
+    '- 外国好友/网友可以用「外语原文（中文翻译）」的格式，例如 "miss you（想你）"；中国好友/网友用中文即可；\n' +
+    '- 不要替用户发言，不要解释、不要旁白；\n' +
+    emojiHint +
+    '- 不要与这些名字重复：' + (excludeNames.join('、') || '（无）') + '。\n\n' +
+    '严格输出 JSON 数组（不要 markdown、不要解释）：\n' +
+    '[{"type":"friend","to":"好友名字","text":"私信内容"},{"type":"stranger","name":"网友昵称","gender":"女","setting":"一句话身份/性格","message":"私信内容"}]';
+
+  const raw = await callChatApi([{ role: 'system', content: sys }, { role: 'user', content: userMsg }], 'sub');
+  const text = String(raw || '').replace(/```[a-zA-Z]*/g, '').trim();
+  let arr = null;
+  const m = text.match(/\[[\s\S]*\]/);
+  if (m) { try { arr = JSON.parse(m[0]); } catch (e) { arr = null; } }
+  if (!Array.isArray(arr)) {
+    try {
+      const o = JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1));
+      arr = (o && (o.messages || o.list || o.data || o.items || o.result)) || null;
+    } catch (e) { arr = null; }
   }
+  if (!Array.isArray(arr) || !arr.length) throw new Error('这次没有生成私信，请重试（可能是接口返回格式异常）');
+
+  const out = { friends: 0, strangers: 0 };
+  const deliveredFriends = {};
+  const pickedFriendKeys = new Set(pickedFriends.map(f => normName(f.name)));
+  const boundKeys = new Set(getSelectableChars().map(c => c && c.name).filter(Boolean).map(normName));
+  for (const item of arr) {
+    if (!item) continue;
+    const type = String(item.type || '').toLowerCase();
+    if (type === 'friend' || (!type && item.to)) {
+      const to = String(item.to || '').trim();
+      const msg = String(item.text || item.message || '').trim();
+      if (!to || !msg) continue;
+      const f = pickedFriends.find(x => normName(x.name) === normName(to));
+      if (!f || deliveredFriends[f.id]) continue;
+      deliveredFriends[f.id] = 1;
+      let preview = await deliverIncoming(f.id, msg.slice(0, 160));
+      const st = await maybePushSticker(f.id, 0.4);
+      if (st) preview = st;
+      f.preview = preview.slice(0, 40);
+      f.time = '刚刚';
+      out.friends++;
+    } else {
+      const name = String(item.name || '').trim();
+      const msg = String(item.message || item.text || '').trim();
+      if (!name || !msg) continue;
+      if (isGenericNpcName(name) || normName(name) === normName(userProfile.name)) continue;
+      const nk = normName(name);
+      if (excludeKeys.has(nk)) continue;
+      // 没勾选的 char / NPC / 小号不能被当成陌生网友冒出来。
+      if (boundKeys.has(nk) && !pickedFriendKeys.has(nk)) continue;
+      excludeKeys.add(nk);
+      const id = 's_' + Date.now() + '_' + Math.floor(Math.random() * 999);
+      const stranger = {
+        id: id, name: name, handle: '@' + nk.toLowerCase(),
+        preview: msg.slice(0, 40), time: '刚刚', verified: false,
+        setting: String(item.setting || '').trim(), gender: String(item.gender || '').trim()
+      };
+      strangers.push(stranger);
+      chatHistories[id] = [];
+      let preview = await deliverIncoming(id, msg.slice(0, 160));
+      const st = await maybePushSticker(id, 0.5);
+      if (st) preview = st;
+      stranger.preview = preview.slice(0, 40);
+      out.strangers++;
+    }
+  }
+  strangers = strangers.slice(0, 40);
   saveInsChatState();
   if (!silent) renderDMList();
-  return count;
+  if (!out.friends && !out.strangers) throw new Error('这次没有生成私信，请重试');
+  return out;
 }
 
 function parseStrangers(raw, exclude) {
@@ -2556,7 +2730,7 @@ async function refreshStrangerDMs(silent, count) {
     '\n\n【用户发的帖子】\n' + (postText || '（用户还没有发过帖子）') +
     '\n\n请生成 ' + wantCount + ' 个不同的陌生人给「' + userProfile.name + '」发的私信。\n' +
     '要求：\n' +
-    '- 名字必须是真实感强的具体人名（中文角色用中文名，外国角色用该国真实姓名），不要「陌生人、网友、路人、新朋友」这类占位名；\n' +
+    '- 名字要有真实网名逻辑：中国网友多用中文网名，外国网友用符合该国语言和文化习惯的网名/姓名；禁止随手敲无意义字母串（如 xkwq、asdf、zzz123），不要「陌生人、网友、路人、新朋友」这类占位名；\n' +
     (postText ? '- 私信内容要自然提到或回应上面的某条帖子；\n' : '- 用户没有发帖，请根据用户人设编一个自然的搭讪/私信理由；\n') +
     '- 每个陌生人的私信不超过 30 字；\n' +
     emojiHint +
@@ -3006,7 +3180,8 @@ function openTagResult(tag) {
 
 function renderTagResult() {
   const list = document.getElementById('tagResultList');
-  const matched = posts.filter(p => p.tags && p.tags.includes(currentTag));
+  const charKeys = new Set(getSelectableChars().map(c => c && c.name).filter(Boolean).map(normName));
+  const matched = posts.filter(p => p.tags && p.tags.includes(currentTag) && !charKeys.has(normName(p.user)));
   if (!matched.length) {
     list.innerHTML = '<div class="tag-empty">还没有相关帖子<br><span style="font-size:12px;color:#ccc">点右上角刷新生成</span></div>';
     return;
@@ -3033,48 +3208,39 @@ async function refreshTagResult() {
   currentTagDesc = getTagDesc(currentTag);
   showLoading('正在生成 #' + currentTag + ' 的帖子…');
   try {
-    const bound = getSelectableChars();
-    let npcs = [];
-    if (bound.length) {
-      // 每次现场随机生成，不读固定 NPC 池
-      try {
-        const fresh = await generateNpcRoster(bound, 6);
-        npcs = pickRandom(fresh, 4);
-      } catch (e) {}
-    }
-    // 开放平台：话题下大量陌生网友参与
-    const exclude = bound.map(c => c.name).concat(npcs.map(n => n.name));
+    // 话题页只生成网友帖子：禁止出现任何已绑定角色（char）
     const tagScope = 'tag_' + String(currentTag || '');
-    await ensureStrangerRoster(bound, 10, exclude, tagScope, true);
-    const strangers = pickStrangers(5, [], tagScope);
+    // 不把用户绑定的 char / NPC 带进话题页；只用平台陌生网友池，名单不足时由模型现场虚构。
+    const npcs = [];
+    const strangers = pickRandom(strangerRosterList(tagScope), 8);
 
-    if (!bound.length && !npcs.length && !strangers.length) {
-      showToast('没有可生成帖子的角色，请先绑定角色或配置 API');
-      return;
-    }
     const recent = posts.slice(0, 5).map(p => '· ' + p.user + '：' + (p.title || p.body || '')).join('\n');
     const total = 4 + Math.floor(Math.random() * 2);
     let parsed = [];
     let made = [];
     try {
-      parsed = await requestForumPosts(bound, npcs, strangers, recent, {
-        count: total, tag: currentTag, desc: currentTagDesc, strangerCount: 4
+      parsed = await requestTagNetizenPosts(npcs, strangers, recent, {
+        count: total, tag: currentTag, desc: currentTagDesc
       });
-      made = buildPostsFromParsed(parsed, bound, npcs, strangers, { forceTag: currentTag }).slice(0, total);
+      made = buildPostsFromParsed(parsed, [], npcs, strangers, {
+        forceTag: currentTag, netizenOnly: true, allowNetizenAuthors: true
+      }).slice(0, total);
     } catch (e) {
       showError('话题帖子生成失败', '调用文本 API 出错：\n' + (e && e.message ? e.message : String(e)));
       made = [];
     }
-    const allowedAll = bound.concat(npcs, strangers);
+    const allowedAll = npcs.concat(strangers);
     if (!made.length && parsed.length) {
       showError('帖子作者无法匹配', explainInvalidPosts(parsed, allowedAll));
     }
+    const charKeys = new Set(getSelectableChars().map(c => c && c.name).filter(Boolean).map(normName));
+    made = made.filter(p => p && p.user && !charKeys.has(normName(p.user)) && normName(p.user) !== normName(userProfile.name));
     made = made.slice(0, 7);
     await maybeGeneratePostImages(made);
     posts = made.concat(posts);
     saveInsChatState();
     renderTagResult(); renderFeed();
-    showToast('已生成 ' + made.length + ' 条 #' + currentTag + ' 帖子');
+    showToast('已生成 ' + made.length + ' 条 #' + currentTag + ' 网友帖');
     notifyInsDone('Instagram', '#' + currentTag + ' 已生成 ' + made.length + ' 条帖子');
   } finally {
     insBusy.tag = false;
@@ -3253,12 +3419,11 @@ async function refreshDMWith(picked) {
   insBusy.dm = true;
   showLoading('正在刷新私信…');
   try {
-    let a = 0, b = 0;
-    if (picked && picked.length) { a = await refreshFriendDMs(true); }
-    b = await refreshStrangerDMs(true, 6);
+    // 一次点击只调用一次 API：好友私信和陌生人私信在同一次生成里完成
+    const res = await refreshDMsSingleCall(picked, (picked && picked.length) ? 2 : 6, true);
     renderDMList();
-    showToast('已刷新：好友 ' + a + ' 条，陌生人 ' + b + ' 条');
-    notifyInsDone('Instagram', '私信刷新完成：好友 ' + a + '，陌生人 ' + b);
+    showToast('已刷新：好友 ' + res.friends + ' 条，陌生人 ' + res.strangers + ' 条');
+    notifyInsDone('Instagram', '私信刷新完成：好友 ' + res.friends + '，陌生人 ' + res.strangers);
   } catch (e) {
     renderDMList();
     showError('刷新私信失败', e && e.message ? e.message : String(e));
@@ -3268,17 +3433,16 @@ async function refreshDMWith(picked) {
   }
 }
 
-// 总刷新：好友 + 陌生人一起刷新（同一时间只允许一次）
+// 总刷新：好友 + 陌生人一起刷新，同样只调用一次 API
 async function refreshDM() {
   if (insBusy.dm) { showToast('正在刷新中，请稍候…'); return; }
   insBusy.dm = true;
   showLoading('正在刷新私信…');
   try {
-    const a = await refreshFriendDMs(true);
-    const b = await refreshStrangerDMs(true);
+    const res = await refreshDMsSingleCall('auto', 6, true);
     renderDMList();
-    showToast('已刷新：好友 ' + a + ' 条，陌生人 ' + b + ' 条');
-    notifyInsDone('Instagram', '私信刷新完成：好友 ' + a + '，陌生人 ' + b);
+    showToast('已刷新：好友 ' + res.friends + ' 条，陌生人 ' + res.strangers + ' 条');
+    notifyInsDone('Instagram', '私信刷新完成：好友 ' + res.friends + '，陌生人 ' + res.strangers);
   } catch (e) {
     renderDMList();
     showError('刷新私信失败', e && e.message ? e.message : String(e));
@@ -3844,13 +4008,8 @@ async function generateChatReply(id, info) {
     content: chatHistoryContent(m)
   })).filter(m => m.content);
 
-  let reply = await callMainApi([{ role: 'system', content: sys }].concat(history));
-  let refused = detectProviderRefusal(reply);
-  if (refused) {
-    // 被内容过滤时，按合规方向收紧提示后重试一次
-    reply = await callMainApi([{ role: 'system', content: sys + '\n' + SAFE_REWRITE_NOTE }].concat(history));
-    refused = detectProviderRefusal(reply);
-  }
+  const reply = await callMainApi([{ role: 'system', content: sys }].concat(history));
+  const refused = detectProviderRefusal(reply);
   if (refused) throw new Error(refused);
   await deliverIncoming(id, (reply || '').trim() || '……');
   // 写回共享长期记忆：Instagram 私信也会被线上私聊 / Halo / iMessage 记住

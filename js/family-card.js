@@ -491,17 +491,7 @@
             '5. 金额为正数，保留两位小数；不要输出余额，系统会按流水自动计算。\n' +
             '只输出 JSON：{"transactions":[{"type":"expense","desc":"星巴克","amount":32,"time":"2026-10-24T10:15:00"}]}';
         var content = '';
-        try {
-            content = await callMainApi(sys, user, 4096);
-        } catch (e) {
-            // 角色设定 / 世界书可能触发模型安全策略：去掉上下文，用轻量提示重试一次
-            if (!ctx || !isBlocked(e && e.message)) throw e;
-            var safeUser = '你是「' + contactName + '」的银行卡流水生成器。\n' +
-                '【当前余额】¥' + balance + '\n' +
-                '请生成最近 10 条左右的日常银行卡收支：支出 7-8 条（咖啡、餐饮、交通、超市、房租、水电、购物等），收入 2-3 条（工资、稿费、项目结款、退款、红包等）；金额符合普通日常消费水平，时间在最近 7 天内，按从新到旧排列。\n' +
-                '只输出 JSON：{"transactions":[{"type":"expense","desc":"星巴克","amount":32,"time":"2026-10-24T10:15:00"}]}';
-            content = await callMainApi(sys, safeUser, 4096);
-        }
+        content = await callMainApi(sys, user, 4096);
         var data = firstJson(content);
         var txs = normalizeTransactions(data && data.transactions, 12);
         try { if (profile && window.NanoCharWealth) txs = NanoCharWealth.sanitizeTransactions(profile, txs, { balance: S.readCharWallet(chatId).balance }); } catch (e) {}

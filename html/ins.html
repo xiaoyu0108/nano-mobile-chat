@@ -5,7 +5,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>Forum</title>
-<link rel="stylesheet" href="../css/ins.css?v=20261112b">
+<link rel="stylesheet" href="../css/ins.css?v=20261112c">
 <script src="../js/appearance.js?v=20261110c"></script>
 <script src="../js/nano-gallery.js?v=20261102a"></script>
 </head>
@@ -281,7 +281,7 @@
 <div class="modal" id="forumRefreshModal" onclick="closeModal('forumRefreshModal')">
   <div class="modal-card" onclick="event.stopPropagation()">
     <div class="modal-title">选择要生成帖子的角色</div>
-    <div class="refresh-char-hint">可多选。一次生成 4~5 条：优先让所选角色各发一条，数量不足时由朋友 NPC 补足；每条自带 2~4 个赞和 2~4 条评论互动</div>
+    <div class="refresh-char-hint">可多选。一次生成 4~6 条：优先让所选角色各发一条，另加 1~2 条平台网友/路人帖（网红、idol、打工人、种草、黑贴、恋爱博主等）；每条自带 2~4 个赞和 3~5 条评论互动</div>
     <div class="refresh-char-list" id="forumRefreshCharList"></div>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeModal('forumRefreshModal')" data-close>取消</button>
@@ -300,7 +300,7 @@
       <div class="pm-section">
         <div class="pm-section-title">AI 生图</div>
         <label class="pm-switch-row">
-          <div class="pm-switch-text"><b>开启生图</b><span>刷新帖子时，随机为部分帖子生成真实图片</span></div>
+          <div class="pm-switch-text"><b>开启生图</b><span>刷新帖子时最多生成 1 张真实图片</span></div>
           <input type="checkbox" id="pmImgEnabled" class="pm-switch">
         </label>
         <div class="pm-sub">随机生图的角色</div>
@@ -391,7 +391,7 @@
 <script src="../js/mem-link.js?v=20261111a"></script>
 <script src="../js/nano-prompts.js?v=20261108a"></script>
 <script src="../js/social-graph.js?v=20261027k"></script>
-<script src="../js/ins.js?v=20261112b"></script>
+<script src="../js/ins.js?v=20261112f"></script>
 <script src="../js/api-float.js"></script>
 <script src="../js/nano-notify.js?v=20261112a"></script>
 <script src="../js/reroll-reason.js?v=20261022a"></script>

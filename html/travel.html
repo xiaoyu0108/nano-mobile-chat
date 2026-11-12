@@ -357,7 +357,7 @@ textarea.ta:focus,.inp:focus{border-color:var(--ink)}
 <script src="../js/nano-gallery.js?v=20261106a"></script>
 <script src="../js/localforage.min.js?v=20261106a"></script>
 <script src="../js/mem-link.js?v=20261111a"></script>
-<script src="../js/travel-store.js?v=20261111a"></script>
+<script src="../js/travel-store.js?v=20261112b"></script>
 <script src="../js/travel-api.js?v=20261102a"></script>
 <script>
 /* ================= 配置 / 对接口子 ================= */
@@ -986,6 +986,7 @@ function travelCharForeign(c){
   return !/中国|中國|china/i.test(nat);
 }
 async function travelShare(req){
+  if(!req || !req.record) throw new Error('没有可分享的旅程');
   const charId = String(req.charId || (CHAR && CHAR.id) || '');
   if(!charId) throw new Error('没有选择角色');
   const target = CHARS.find(c=>String(c.id)===charId) || CHAR;
@@ -1152,12 +1153,13 @@ async function runGen(){
 
 async function runShare(){
   const r = curRec(), kind = CUR.kind, message = ($('#shareMsg')||{}).value || '';
+  if(!r){ toast('没有可分享的旅程'); return; }
   const charId = S.shareChar || (CHAR && CHAR.id);
   const target = CHARS.find(c=>String(c.id)===String(charId));
   try{ await window.onShare({kind, record:r, message:message.trim(), charId}); }
   catch(e){ toast('分享失败，请重试'); return; }
   r.shared = true;
-  if(kind==='us') await persistTogether(r); else await persistTrip(r);
+  try{ if(kind==='us') await persistTogether(r); else await persistTrip(r); }catch(e){ console.warn('[travel] persist share failed', e); }
   S.panel = null;
   const as = $('#actShare'); if(as){ as.outerHTML = actShare(r); }
   renderPanel(); render(); toast('已分享到私聊；回私聊点「回复」，' + ((target&&target.name)||CHAR_NAME) + ' 就会回应');

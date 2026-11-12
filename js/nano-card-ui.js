@@ -281,12 +281,9 @@
             else if (st === 'returned') { headText = side === 'right' ? '对方已退还' : '已退还'; headIcon = 'x'; }
             else if (side === 'right') { headText = '转账已发出'; headIcon = 'clock'; }
             var foot = '';
-            if (isResponse && st === 'received') foot = statusFoot(side === 'right' ? '你已收下这笔转账' : '对方已收下这笔转账');
-            else if (isResponse && st === 'returned') foot = statusFoot(side === 'right' ? '你已退还这笔转账' : '对方已退还这笔转账');
-            else if (st === 'received') foot = statusFoot(side === 'right' ? '对方已收款' : '这笔转账已收款');
-            else if (st === 'returned') foot = statusFoot(side === 'right' ? '对方已退还' : '这笔转账已退还');
-            else if (side === 'right') foot = statusFoot('等待对方接收');
-            else foot = actions([['退还', 'return', false], ['接收', 'receive', true]]);
+            if (!isResponse && st !== 'received' && st !== 'returned') {
+                foot = side === 'right' ? statusFoot('等待对方接收') : actions([['退还', 'return', false], ['接收', 'receive', true]]);
+            }
             var transferNote = String(cd.note || (cd.title && cd.title !== '转账' ? cd.title : '')).trim();
             html = header(headIcon, headText, time) +
                 mainAmount('转账金额', amount, null, cd, transferNote) +
@@ -305,10 +302,9 @@
             var gIcon = st === 'pending' ? (side === 'left' ? 'gift' : 'clock') : 'checkCircle';
             if (st === 'returned') gIcon = 'x';
             var gFoot = '';
-            if (st === 'received') gFoot = statusFoot(side === 'left' && cd.response ? '你已收下这份礼物' : (side === 'right' && cd.response ? '对方已收下这份礼物' : '这份礼物已收下'));
-            else if (st === 'returned') gFoot = statusFoot(side === 'left' && cd.response ? '你已拒收这份礼物' : (side === 'right' && cd.response ? '对方已拒收这份礼物' : '这份礼物已拒收'));
-            else if (side === 'right') gFoot = statusFoot('等待对方收下或拒收');
-            else gFoot = actions([['拒收', 'return', false], ['收下', 'receive', true]]);
+            if (st !== 'received' && st !== 'returned') {
+                gFoot = side === 'right' ? statusFoot('等待对方收下或拒收') : actions([['拒收', 'return', false], ['收下', 'receive', true]]);
+            }
             var giftSub = cd.amount
                 ? ('价值 ' + String(cd.amount) + (cd.sub ? ' · ' + cd.sub : ''))
                 : (cd.sub || '');
@@ -338,20 +334,14 @@
                 : (st === 'declined' ? '订单已拒绝' : (st === 'returned' ? '订单已退回' : (origin === 'char' ? '订单待处理' : '订单进行中')));
             var sIcon = st === 'accepted' ? 'checkCircle' : (st === 'declined' || st === 'returned' ? 'x' : 'clock');
             var sFoot = '';
-            if (st === 'accepted') {
-                if (kind === 'char_gift') sFoot = statusFoot('已确认收货');
-                else if (kind === 'char_share' || kind === 'char_pay_request') sFoot = statusFoot('你已帮 TA 付款');
-                else sFoot = statusFoot('TA 已' + (kind === 'pay_request' ? '代付' : '买给你'));
-            } else if (st === 'declined') {
-                sFoot = statusFoot(origin === 'char' ? '你已拒绝' : 'TA 拒绝了');
-            } else if (st === 'returned') {
-                sFoot = statusFoot('已退回');
-            } else if (origin === 'char') {
-                if (kind === 'char_gift') sFoot = actions([['拒收', 'store-gift-reject', false], ['确认收货', 'store-gift-confirm', true]]);
-                else if (kind === 'char_share') sFoot = actions([['拒绝', 'store-reject-char', false], ['帮他买', 'store-buy-char', true]]);
-                else sFoot = actions([['拒绝', 'store-reject-char', false], ['帮他付', 'store-pay-char', true]]);
-            } else {
-                sFoot = statusFoot(kind === 'pay_request' ? '等待 TA 代付' : '等待 TA 决定');
+            if (st !== 'accepted' && st !== 'declined' && st !== 'returned') {
+                if (origin === 'char') {
+                    if (kind === 'char_gift') sFoot = actions([['拒收', 'store-gift-reject', false], ['确认收货', 'store-gift-confirm', true]]);
+                    else if (kind === 'char_share') sFoot = actions([['拒绝', 'store-reject-char', false], ['帮他买', 'store-buy-char', true]]);
+                    else sFoot = actions([['拒绝', 'store-reject-char', false], ['帮他付', 'store-pay-char', true]]);
+                } else {
+                    sFoot = statusFoot(kind === 'pay_request' ? '等待 TA 代付' : '等待 TA 决定');
+                }
             }
             var sMain = cd.amount ? mainAmount('订单金额', cd.amount, null, cd) : mainTitle('bag', '商城订单', cd.title || '商城', itemText || cd.sub || '', cd);
             html = header(sIcon, sHead, time) + sMain +
@@ -368,9 +358,8 @@
             var fHead = st === 'active' ? '亲属卡已开启' : (st === 'rejected' ? '亲属卡已拒绝' : (issuer === 'user' ? '你开出的亲属卡待接受' : '亲属卡邀请'));
             var fIcon = st === 'active' ? 'checkCircle' : (st === 'rejected' ? 'x' : 'clock');
             var fFoot = '';
-            if (st === 'active') fFoot = statusFoot('已开启 · 已用 ¥' + used.toFixed(2));
-            else if (st === 'rejected') fFoot = statusFoot('已拒绝');
-            else if (issuer === 'user') fFoot = statusFoot('等待对方回应');
+            if (st === 'active') fFoot = statusFoot('已用 ¥' + used.toFixed(2));
+            else if (st === 'rejected' || issuer === 'user') fFoot = '';
             else fFoot = actions([['拒绝', 'family-reject', false], ['接受', 'family-accept', true]]);
             html = header(fIcon, fHead, time) +
                 mainTitle('card', '亲属卡', '亲属卡', '额度 ¥' + lim.toFixed(2)) +
@@ -391,10 +380,10 @@
                 : (st === 'rejected' ? (isErrand ? '跑腿已取消' : '外卖已取消') : (isErrand ? '同城跑腿' : '外卖订单'));
             var tIcon = st === 'accepted' ? 'checkCircle' : (st === 'rejected' ? 'x' : 'truck');
             var tFoot = '';
-            if (st === 'accepted') tFoot = statusFoot(isErrand ? '已接单，正在为你跑腿' : '已确认，等待送达');
-            else if (st === 'rejected') tFoot = statusFoot(isErrand ? '已拒收，跑腿取消' : '已拒收，外卖取消');
-            else if (tDir === 'char') tFoot = actions([['拒收', 'takeout-reject', false], [isErrand ? '确认接单' : '确认外卖', 'takeout-accept', true]]);
-            else tFoot = statusFoot('等待对方接单或拒收');
+            if (st !== 'accepted' && st !== 'rejected') {
+                if (tDir === 'char') tFoot = actions([['拒收', 'takeout-reject', false], [isErrand ? '确认接单' : '确认外卖', 'takeout-accept', true]]);
+                else tFoot = statusFoot('等待对方接单或拒收');
+            }
             var priceText = price > 0 ? ('¥' + price.toFixed(2)) : '';
             var tSub = [cd.shop || kindLabel, priceText].filter(Boolean).join(' · ');
             var tMain = mainTitle(isErrand ? 'truck' : 'utensil', isErrand ? '跑腿订单' : '外卖订单', cd.food || kindLabel, tSub, cd);
@@ -436,9 +425,9 @@
             var aSetting = cd.altSetting || '陌生人';
             var aHead = st === 'accepted' ? '已添加好友' : (st === 'rejected' ? '已拒绝' : '好友申请');
             var aIcon = st === 'accepted' ? 'checkCircle' : (st === 'rejected' ? 'x' : 'userPlus');
-            var aFoot = st === 'accepted' ? statusFoot('已添加好友') : (st === 'rejected' ? statusFoot('已拒绝') : actions([['拒绝', 'altfriend-reject', false], ['接受', 'altfriend-accept', true]]));
+            var aFoot = (st === 'accepted' || st === 'rejected') ? '' : actions([['拒绝', 'altfriend-reject', false], ['接受', 'altfriend-accept', true]]);
             html = header(aIcon, aHead, time) +
-                mainTitle('userPlus', '好友申请', aName, aSetting) +
+                mainTitle('userPlus', '', aName, aSetting) +
                 info([
                     ['昵称', aName, 'user'],
                     ['来源', aSetting, 'hash'],
@@ -453,11 +442,11 @@
             var iFoot = st === 'accepted'
                 ? statusFoot(isUserInvite ? '对方已同意，已加入群聊' : '已同意，可在聊天页进入该群')
                 : (st === 'rejected'
-                    ? statusFoot(isUserInvite ? '对方拒绝了邀请' : '已拒绝')
+                    ? ''
                     : (isUserInvite ? statusFoot('等待 ' + (cd.toName || '对方') + ' 回应')
                         : actions([['拒绝', 'reject', false], ['同意', 'accept', true]])));
             html = header(iIcon, iHead, time) +
-                mainTitle('users', '群聊邀请', title, '群聊：' + (cd.groupName || '')) +
+                mainTitle('users', '', title, '群聊：' + (cd.groupName || '')) +
                 info([
                     ['群聊名称', cd.groupName || '群聊', 'users'],
                     ['邀请人', isUserInvite ? me : (cd.fromName || other), 'user'],
@@ -471,8 +460,8 @@
             var cTitle = isVideo ? '视频通话' : '语音通话';
             var cHead = missed ? (isVideo ? '未接视频通话' : '未接来电') : cTitle;
             var cSub = missed ? '对方已取消' : ('通话时长 ' + dur);
-            html = header(missed ? 'x' : (isVideo ? 'video' : 'phone'), cHead, time) +
-                mainTitle(isVideo ? 'video' : 'phone', '通话记录', cTitle, cSub) +
+            html = header(missed ? 'x' : (isVideo ? 'video' : 'phone'), missed ? cHead : '通话记录', time) +
+                mainTitle(isVideo ? 'video' : 'phone', '', cTitle, cSub) +
                 info([
                     ['通话类型', isVideo ? '视频通话' : '语音通话', isVideo ? 'video' : 'phone'],
                     ['通话时长', missed ? '未接通' : dur, 'clock'],
@@ -487,12 +476,10 @@
             var lHead = st === 'accepted' ? '一起听中' : (st === 'rejected' ? '邀请已婉拒' : (st === 'ended' ? '一起听已结束' : (st === 'expired' ? '邀请已过期' : '一起听邀请')));
             var lIcon = st === 'accepted' ? 'headphones' : (st === 'rejected' || st === 'ended' || st === 'expired' ? 'x' : 'clock');
             var lFoot = '';
-            if (st === 'accepted') lFoot = statusFoot(lDir === 'char' ? '你已接受，一起听开始' : 'TA 接受了，一起听中');
-            else if (st === 'rejected') lFoot = statusFoot(lDir === 'char' ? '你婉拒了邀请' : 'TA 婉拒了邀请');
-            else if (st === 'ended') lFoot = statusFoot('一起听已结束');
-            else if (st === 'expired') lFoot = statusFoot('邀请已过期');
-            else if (lDir === 'char') lFoot = actions([['婉拒', 'listen-reject', false], ['接收', 'listen-accept', true]]);
+            if (st !== 'accepted' && st !== 'rejected' && st !== 'ended' && st !== 'expired') {
+                if (lDir === 'char') lFoot = actions([['婉拒', 'listen-reject', false], ['接收', 'listen-accept', true]]);
                 else lFoot = statusFoot('等待 ' + (cd.toName || '对方') + ' 回应');
+            }
             html = header(lIcon, lHead, time) +
                 mainTitle('headphones', '一起听', song || '一起听', lSub) +
                 info([
@@ -537,7 +524,7 @@
             var chapters = Number(cd.chapters || 0);
             var fHead2 = '同人文';
             html = header('book', fHead2, time) +
-                mainTitle('book', '同人文', cd.title || '同人文', [cd.sub, cd.genres].filter(Boolean).join(' · ')) +
+                mainTitle('book', '', cd.title || '同人文', [cd.sub, cd.genres].filter(Boolean).join(' · ')) +
                 info([
                     ['类型', cd.genres || '同人文', 'book'],
                     ['章节', chapters ? (chapters + ' 章') : '—', 'list'],
@@ -575,7 +562,7 @@
             var imgHtml = imgSrc ? '<div class="card-image"><img src="' + esc(imgSrc) + '" alt=""></div>' : '';
             var sub = [cd.start, cd.place].filter(Boolean).join(' · ');
             html = header('calendar', '日程报备', time) + imgHtml +
-                mainTitle('calendar', '日程报备', cd.title || '刚刚的记录', sub) +
+                mainTitle('calendar', '', cd.title || '刚刚的记录', sub) +
                 info([
                     ['开始时间', cd.start || time || '—', 'clock'],
                     ['地点', cd.place || '—', 'pin'],
@@ -614,13 +601,13 @@
             var rpStatus = rpDone ? ('已领完 ' + rpClaims + '/' + rpCount) : (rpClaims ? ('已领取 ' + rpClaims + '/' + rpCount) : ('待领取 0/' + rpCount));
             var rpHead = rpDone ? '红包已领完' : (cd.opened ? '红包已领取' : (side === 'right' ? '红包已发出' : '收到一个红包'));
             html = header(rpDone ? 'checkCircle' : 'redpacket', rpHead, time) +
-                mainTitle('redpacket', cd.opened ? '已拆开' : (rpDone ? '红包已领完' : '恭喜发财，大吉大利'), cd.title || '恭喜发财，大吉大利', rpCount + ' 个红包') +
+                mainTitle('redpacket', '', cd.title || '恭喜发财，大吉大利', rpCount + ' 个红包') +
                 info([
                     ['红包类型', '拼手气红包', 'redpacket'],
                     ['红包个数', rpCount + ' 个', 'hash'],
                     ['发送人', side === 'left' ? other : me, 'user'],
                     ['红包状态', rpStatus, 'box']
-                ]) + statusFoot(cd.opened ? '已拆开' : (rpDone ? '已领完' : ''));
+                ]);
         } else if (type === 'notice') {
             var confirmed = cd.confirmed || {};
             var count = Object.keys(confirmed).length + 1;
@@ -632,7 +619,7 @@
                     ? statusFoot('已确认 · ' + count + '/' + total)
                     : actions([['确认', '', true, 'data-notice="' + esc(cd.noticeId || '') + '"']]));
             html = header('bell', '群公告', time) +
-                mainTitle('bell', '群公告', '群公告', (cd.text || '').slice(0, 24)) +
+                mainTitle('bell', '', '群公告', (cd.text || '').slice(0, 24)) +
                 info([
                     ['发布人', side === 'left' ? other : me, 'user'],
                     ['已确认', count + '/' + total, 'users'],
@@ -648,7 +635,7 @@
                 }).join('') + '</div>'
                 : '';
             html = header('list', '群接龙', time) +
-                mainTitle('list', '群接龙', cd.title || '群接龙', cd.desc || (side === 'right' ? '等待群友接龙' : '点击下方按钮参与接龙')) +
+                mainTitle('list', '', cd.title || '群接龙', cd.desc || (side === 'right' ? '等待群友接龙' : '点击下方按钮参与接龙')) +
                 info([
                     ['发起人', side === 'left' ? other : me, 'user'],
                     ['参与人数', chain.length + ' 人', 'users'],
@@ -660,7 +647,7 @@
             var firstLine = secretLines[0] || {};
             var secretPreview = String(firstLine.text || firstLine.translation || '').slice(0, 80);
             html = header('secret', '角色悄悄话', time) +
-                mainTitle('secret', '角色悄悄话', cd.title || '两个人私下聊了几句', cd.sub || ('共 ' + secretLines.length + ' 句')) +
+                mainTitle('secret', '', cd.title || '两个人私下聊了几句', cd.sub || ('共 ' + secretLines.length + ' 句')) +
                 info([
                     ['对话双方', cd.title || '—', 'users'],
                     ['记录句数', secretLines.length + ' 句', 'hash'],
@@ -676,7 +663,7 @@
             var tIcon = tSt === 'accepted' ? 'checkCircle' : (tSt === 'rejected' ? 'x' : 'pin');
             var tFoot = '';
             if (tSt === 'accepted') tFoot = '<div class="card-footer"><span class="card-actions"><button type="button" class="btn btn-primary primary card-btn" data-act="travel-open">进入旅程</button></span></div>';
-            else if (tSt === 'rejected') tFoot = statusFoot(tDir === 'char' ? '你婉拒了这次邀请' : 'TA 婉拒了这次邀请');
+            else if (tSt === 'rejected') tFoot = '';
             else if (tDir === 'char') tFoot = actions([['婉拒', 'travel-reject', false], ['同意', 'travel-accept', true]]);
             var tWhen = [cd.date, cd.time].filter(Boolean).join(' · ');
             var tDays = cd.days ? (String(cd.days) + ' 天') : '';
@@ -694,27 +681,16 @@
             var trImg = String(cd.img || '');
             var trImgHtml = trImg ? '<div class="card-image"><img src="' + esc(trImg) + '" alt=""></div>' : '';
             var trTitle = String(cd.title || cd.place || (isReport ? '旅途报备' : '旅途分享'));
-            var trSub = [cd.place, cd.date, cd.days ? (cd.days + ' 天') : ''].filter(Boolean).join(' · ');
-            var trFoot = statusFoot(isTogether ? '这次旅行已同步到「旅途 · 我们」' : (isReport ? 'TA 的旅途已同步到「旅途」' : '这段旅程已同步到「旅途」'));
-            var trHead = isTogether ? '我们的旅行' : (isReport ? '旅途报备' : '旅途分享');
-            var trRows = isTogether ? [
-                ['目的地', cd.place || trTitle, 'pin'],
-                ['日期', cd.date || '—', 'calendar'],
-                ['天数', (cd.days || '1') + ' 天', 'clock'],
-                ['票号', cd.ticketNo || '—', 'box']
-            ] : [
-                ['地点', cd.place || trTitle, 'pin'],
-                ['日期', cd.date || '—', 'calendar'],
-                [isReport ? '记录人' : '分享人', isReport ? (side === 'left' ? other : me) : (cd.fromName || (side === 'right' ? me : other)), 'user'],
-                ['状态', isReport ? '已同步' : '已分享', 'checkCircle']
-            ];
+            var trSubParts = [cd.place, cd.date, cd.days ? (cd.days + ' 天') : ''];
+            if (String(trTitle).trim() === String(cd.place || '').trim()) trSubParts.shift();
+            var trSub = trSubParts.filter(Boolean).join(' · ');
             var trThought = String(cd.thought || cd.note || '').trim();
             var trThoughtZh = String(cd.thoughtZh || '').trim();
             var trThoughtHtml = (trThought ? note(trThought) : '') + (trThoughtZh ? note(trThoughtZh) : '');
-            html = header(isReport ? 'pin' : 'image', trHead, time) +
+            html = header(isReport ? 'pin' : 'image', isTogether ? '我们的旅行' : (isReport ? '旅途报备' : '旅途分享'), time) +
                 trImgHtml +
-                mainTitle(isReport ? 'pin' : 'image', trHead, trTitle, trSub) +
-                info(trRows, cd) + trThoughtHtml + trFoot;
+                mainTitle(isReport ? 'pin' : 'image', '', trTitle, trSub) +
+                trThoughtHtml;
         } else if (type === 'cycle') {
             html = header('calendar', cd.title || '经期提醒', time) +
                 mainTitle('calendar', '经期提醒', cd.sub || '', cd.date || '', cd) +
@@ -736,10 +712,8 @@
         } else if (type === 'forwardBundle') {
             var fwItems = Array.isArray(cd.items) ? cd.items : [];
             html = header('box', cd.footer || '转发聊天记录', time) +
-                mainTitle('box', '转发聊天记录', cd.title || '聊天记录', cd.sub || '', cd) +
-                '<div class="card-note fw-box">' +
-                '<div class="fw-open-hint">共 ' + (Number(cd.count) || fwItems.length) + ' 条 · 点击查看完整聊天记录</div></div>' +
-                statusFoot('点击卡片查看');
+                mainTitle('box', '', cd.title || '聊天记录', cd.sub || '', cd) +
+                '<div class="card-hint">共 ' + (Number(cd.count) || fwItems.length) + ' 条 · 点击查看</div>';
         } else {
             html = header('box', cd.title || '卡片', time) +
                 mainTitle('box', '卡片消息', cd.title || '卡片', cd.sub || '') +

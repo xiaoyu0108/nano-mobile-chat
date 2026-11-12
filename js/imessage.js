@@ -931,6 +931,8 @@ function splitBubbles(text) {
   const push = s => { s = String(s).trim(); if (s) out.push(s); };
   String(text || '').split(/\n+/).forEach(line => {
     line = line.trim(); if (!line) return;
+    // 「外文||中文」由同一次回复直接给出，整行保留为一个气泡，不再二次调用翻译。
+    if (line.indexOf('||') !== -1) { push(line); return; }
     // 先按句末标点切成独立气泡（即使很短也分开，像真人连发）
     splitByChars(line, '。！？!?…~；;').forEach(seg => {
       if (seg.length <= 26) { push(seg); return; }
@@ -1130,7 +1132,6 @@ async function genCharReply(c) {
     const cyc = window.NanoCycle && NanoCycle.promptBlock(c.charId);
     if (cyc) sys += '\n\n' + cyc;
   } catch (e) {}
-  const foreign = isForeignChar(ch);
   const history = [{ role: 'system', content: sys }].concat(historyForApi(20, c.history));
   // 即使还没有用户消息，点击“回复”也让 TA 主动发一条，而不是没反应
   if (!history.slice(1).some(m => m.role === 'user')) history.push({ role: 'user', content: '（主动给 TA 发条 iMessage 短信）' });
@@ -1138,11 +1139,7 @@ async function genCharReply(c) {
   if (!raw) return null;
   let body = String(raw).replace(/\[(加回我|取消拉黑|解除拉黑|unblockuser|继续拉黑|拉黑用户|拉黑我|blockuser)\]/g, '');
   body = stripThinkTags(body);
-  // 只要不是中文（外国角色、或没填国籍但说了外语），都补上中文翻译
-  if (foreign || looksNonChinese(body)) {
-    const lines = await ensureTranslatedLines(ch, String(body).split(/\n+/).map(s => s.trim()).filter(Boolean).slice(0, 6));
-    return { raw: String(raw), bubbles: lines };
-  }
+  // 外语翻译必须由同一次回复里的「原文||中文」提供，不再擅自追加翻译 API。
   return { raw: String(raw), bubbles: splitBubbles(body) };
 }
 function looksNonChinese(s) {
@@ -1288,10 +1285,7 @@ async function genAliasReply(c) {
   const raw = await callApi(history, { maxTokens: 400, temperature: 0.9 }, { kind: 'reply', chatId: c.id });
   if (!raw) return null;
   const body = stripThinkTags(raw);
-  if (foreign || looksNonChinese(body)) {
-    const lines = await ensureTranslatedLines(ch, body.split(/\n+/).map(s => s.trim()).filter(Boolean).slice(0, 6));
-    return { raw: body, bubbles: lines };
-  }
+  // 外语翻译由同一次回复的「原文||中文」直接提供，不再二次调用翻译 API。
   return { raw: body, bubbles: splitBubbles(body) };
 }
 async function genStrangerReply(c) {
@@ -1370,31 +1364,45 @@ function salvageRefresh(raw) {
 }
 // 归一化解析：优先「竖线行」格式（最稳），再退回 JSON / 文本兜底
 function parseAnyRefresh(raw) {
-  const res = { strangers: [], charsMap: {} };
+  const res = { strangers: [], charsMap: {}, alt: null };
   const lines = String(raw || '').split(/\n+/).map(s => s.trim()).filter(Boolean);
   let hit = false;
   lines.forEach(line => {
     const clean = line.replace(/^[-*•\d.、)）\s]+/, '').replace(/[`"「」]/g, '').trim();
     const parts = clean.split(/[|｜]/).map(s => s.trim());
     if (parts.length >= 4 && /^S$/i.test(parts[0])) { res.strangers.push({ name: parts[1] || '陌生号码', setting: parts[2] || '', text: parts[3] }); hit = true; }
-    else if (parts.length >= 4 && /^C$/i.test(parts[0])) { res.charsMap[parts[1] || ''] = parts[3]; hit = true; }
+    else if (parts.length >= 4 && /^C$/i.test(parts[0])) { res.charsMap[parts[1] || ''] = parts.slice(3).join('|'); hit = true; }
+    else if (parts.length >= 5 && /^A$/i.test(parts[0])) {
+      const text = parts.slice(4).join('|');
+      if (!text) return;
+      if (!res.alt) res.alt = { charName: parts[1] || '', name: parts[2] || '', setting: parts[3] || '', lines: [] };
+      res.alt.lines.push(text);
+      hit = true;
+    }
   });
   if (hit) return res;
   const obj = extractJsonObj(raw);
   if (obj) {
     (Array.isArray(obj.strangers) ? obj.strangers : []).forEach(o => { if (o && o.text) res.strangers.push({ name: o.name || '陌生号码', setting: o.setting || '', text: o.text }); });
     (Array.isArray(obj.chars) ? obj.chars : []).forEach(c => { if (c && c.name && c.text) res.charsMap[c.name] = c.text; });
-    if (res.strangers.length || Object.keys(res.charsMap).length) return res;
+    if (obj.alt && typeof obj.alt === 'object') {
+      const a = obj.alt;
+      const list = Array.isArray(a.messages) ? a.messages : (a.text ? [a.text] : []);
+      if (list.length) res.alt = { charName: a.char || a.charName || '', name: a.name || '', setting: a.bio || a.setting || '', lines: list.map(s => String(s || '')).filter(Boolean) };
+    }
+    if (res.strangers.length || Object.keys(res.charsMap).length || res.alt) return res;
   }
   salvageRefresh(raw).strangers.forEach(o => res.strangers.push(o));
   return res;
 }
-async function applyRefreshRaw(raw, picks) {
+async function applyRefreshRaw(raw, picks, altId) {
   picks = picks || [];
   const parsed = parseAnyRefresh(raw);
   let added = 0, charNotified = false;
+  const charNameKeys = new Set(state.chars.map(c => String(c && c.name || '').replace(/\s+/g, '').toLowerCase()).filter(Boolean));
   for (const o of parsed.strangers.slice(0, 5)) {
     if (!o || !o.text) continue;
+    if (charNameKeys.has(String(o.name || '').replace(/\s+/g, '').toLowerCase())) continue; // 未勾选角色不能伪装成陌生人
     const text = String(o.text).replace(/^["'「]|["'」]$/g, '').trim();
     if (!text) continue;
     if (state.chats.some(s => s.kind === 'stranger' && s.name === o.name && (s.history || []).some(h => h.text === text))) continue;
@@ -1411,90 +1419,69 @@ async function applyRefreshRaw(raw, picks) {
   for (const pc of picks) {
     const ch = state.chars.find(x => x.id === pc.id);
     if (!ch) continue;
-    const isBlocked = (pc.blocked != null) ? !!pc.blocked : getSetting(pc.id, 'blocked', false);
-    // 每个角色单独生成：完整读取 c/u 人设、共享记忆、世界书（批量 C 行做不到这些）
-    const chat = ensureCharChat(ch);
-    const text = await proactiveCharText(ch, isBlocked, chat.history);
+    // 同一次刷新里由主 API 直接返回 C 行，不再为每个角色额外调用一次 API。
+    let text = parsed.charsMap[ch.name];
+    if (!text) {
+      const chKey = String(ch.name).replace(/\s+/g, '').toLowerCase();
+      const hitKey = Object.keys(parsed.charsMap).find(k => String(k).replace(/\s+/g, '').toLowerCase() === chKey);
+      if (hitKey) text = parsed.charsMap[hitKey];
+    }
     if (!text) continue;
+    const chat = ensureCharChat(ch);
     const rawText = String(text);
     if (/\[(加好友|加微信|加回我|加我)\]/i.test(rawText)) maybePushMeetReadd(ch.id, ch.name, chat, rawText.replace(/\[[^\]]*\]/g, ' '));
-    const rawLines = rawText.replace(/\[(加好友|加微信|加回我|加我)\]/gi, '').split(/\n+/).map(s => s.replace(/^["'「]|["'」]$/g, '').trim()).filter(Boolean).slice(0, 3);
+    const rawLines = rawText.replace(/\[(加好友|加微信|加回我|加我)\]/gi, '').split(/\n+/).map(s => s.replace(/^["'「]|["'」]$/g, '').trim()).filter(s => s && !/^[\s.。…·．\-—_~～!！?？,，、;；:：'"“”‘’|｜]+$/.test(s)).slice(0, 3);
     if (!rawLines.length) continue;
-    const lines = await ensureTranslatedLines(ch, rawLines); // 外语角色补中文翻译
-    const msgs = bubblesToMessages(lines, 'char');
+    const msgs = bubblesToMessages(rawLines, 'char');
     if (!msgs.length) continue;
     chat.history = chat.history || [];
     msgs.forEach(m => chat.history.push(m));
     const last = chat.history[chat.history.length - 1];
     chat.preview = last.text; chat.lastTime = last.time; chat.sortTime = last.ts; chat.unread = (chat.unread || 0) + msgs.length;
     await saveChat(chat);
-        notifyApp(ch.name, msgs[0].text || lines[0], { icon: ch.avatar, avatar: ch.avatar, name: ch.name, group: ch.name }); charNotified = true;
+        notifyApp(ch.name, msgs[0].text, { icon: ch.avatar, avatar: ch.avatar, name: ch.name, group: ch.name }); charNotified = true;
     added++;
     try { maybeSummarize(ch.id, ch.name, chat.history); } catch (e) {}
+  }
+  // 角色小号：与角色/陌生人消息同一条 API 返回（A 行），不再额外调用
+  if (altId && parsed.alt && parsed.alt.lines.length) {
+    const ch = state.chars.find(x => String(x.id) === String(altId));
+    if (ch) {
+      const altName = String(parsed.alt.name || '').replace(/[<>]/g, '').trim().slice(0, 16) || ('新朋友' + Math.floor(100 + Math.random() * 900));
+      const altBio = String(parsed.alt.setting || '').trim().slice(0, 40);
+      const altLines = parsed.alt.lines.map(s => String(s || '').trim()).filter(Boolean).slice(0, 2);
+      const altMsgs = bubblesToMessages(altLines, 'stranger');
+      if (altMsgs.length) {
+        let altChat = state.chats.find(x => x && x.altOf === ch.id);
+        if (!altChat) {
+          altChat = { id: 'alt:' + ch.id, kind: 'stranger', owner: currentNs(), name: altName, setting: altBio, avatar: '', altOf: ch.id, isAlt: true, history: [], preview: '', lastTime: nowHHMM(), sortTime: Date.now(), unread: 0 };
+          state.chats.push(altChat);
+        } else {
+          altChat.name = altName; altChat.setting = altBio;
+        }
+        altChat.history = altChat.history || [];
+        altMsgs.forEach(m => altChat.history.push(m));
+        const lastAlt = altChat.history[altChat.history.length - 1];
+        altChat.preview = lastAlt.text; altChat.lastTime = lastAlt.time; altChat.sortTime = lastAlt.ts;
+        altChat.unread = (altChat.unread || 0) + altMsgs.length;
+        await saveChat(altChat);
+        localStorage.setItem('nano_imessage_altprobe_at_' + currentNs(), String(Date.now()));
+        const _ad = new Date();
+        localStorage.setItem('nano_imessage_altprobe_day_' + currentNs(), _ad.getFullYear() + '-' + (_ad.getMonth() + 1) + '-' + _ad.getDate());
+        localStorage.setItem('nano_imessage_altprobe_char_' + currentNs() + '_' + ch.id, String(Date.now()));
+        notifyApp(altChat.name, altMsgs[0].text, { name: altChat.name, group: altChat.name });
+        if (state.current && state.current.id === altChat.id) { state.messages = altChat.history; renderMessages(); renderBanner(altChat); }
+        charNotified = true;
+        added++;
+      }
+    }
   }
   if (!added) return 0;
   if (!charNotified) notifyApp('iMessage', '收到 ' + added + ' 条新消息');
   renderList();
   return added;
 }
-/* ---------------- 小号试探：刷新时随机来一条「角色小号」的搭话 ---------------- */
-async function maybeAltProbe() {
-  try {
-    if (localStorage.getItem('nano_imessage_altprobe_' + currentNs()) === '0') return 0;
-    // 全站每天最多生成一个小号
-    const _d = new Date();
-    const dayKey = _d.getFullYear() + '-' + (_d.getMonth() + 1) + '-' + _d.getDate();
-    if (localStorage.getItem('nano_imessage_altprobe_day_' + currentNs()) === dayKey) return 0;
-    const pool = state.chars.filter(c => c && c.id && !/^alt_/.test(c.id) && !c.isAltProbe && !isAssistantChar(c))
-      .filter(c => {
-        // 同一角色 14 天内只小号试探一次
-        const lastChar = parseInt(localStorage.getItem('nano_imessage_altprobe_char_' + currentNs() + '_' + c.id) || '0', 10) || 0;
-        return Date.now() - lastChar >= 14 * 24 * 3600 * 1000;
-      });
-    if (!pool.length) return 0;
-    if (Math.random() > 0.4) return 0;                       // 有资格时约四成概率触发（日限兜底）
-    const ch = pool[Math.floor(Math.random() * pool.length)];
-    const u = readCurrentUser() || {};
-    const userName = u.name || '用户';
-    const ctx = await charContextText(ch, []);
-    const sys = '你是「' + ch.name + '」本人。你现在注册了一个小号，想用一个「陌生人 / 新朋友」的身份在 iMessage 里接近并试探「' + userName + '」，' + userName + ' 完全不知道这个小号是你本人。\n' +
-      '要求：\n' +
-      '1. 起一个真实的网络昵称（姓名或网名都行，禁止用「小号 / 陌生人 / 新朋友」这类词当名字）。\n' +
-      '2. 写一句小号的公开简介 / 身份（为什么加 TA，如「同城摄影」「朋友介绍」「旧同学换号」，要合理）。\n' +
-      '3. 写 1-2 条发给 TA 的开场消息：自然、像真人搭话，能勾住 TA 回应、忍不住多聊；可以带一点试探意味（问 TA 有没有对象、平时和谁聊天、是不是一个人），但不要一上来就露骨，也不要主动暴露你就是' + ch.name + '（但若对方非常笃定地认出来，后续可以按本人脾气松口承认）。\n' +
-      '4. 你内心与行为逻辑仍遵循本人设定。\n' +
-      '只输出 JSON：{"name":"网名","bio":"简介","messages":["第一条","第二条"]}\n' +
-      ctx;
-    const raw = await callApi([{ role: 'system', content: sys }, { role: 'user', content: '（生成小号与开场消息）' }], { maxTokens: 420, temperature: 1.0 });
-    if (!raw) return 0;
-    const o = extractJsonObj(raw);
-    const name = o && o.name ? String(o.name).replace(/[<>]/g, '').slice(0, 16) : '';
-    const bio = o && o.bio ? String(o.bio).slice(0, 40) : '';
-    const msgs = (o && Array.isArray(o.messages)) ? o.messages.map(s => String(s || '').trim()).filter(Boolean).slice(0, 2) : [];
-    if (!name || !msgs.length) return 0;
-    const lines = await ensureTranslatedLines(ch, msgs);
-    let chat = state.chats.find(x => x && x.altOf === ch.id);
-    if (!chat) {
-      chat = { id: 'alt:' + ch.id, kind: 'stranger', owner: currentNs(), name: name, setting: bio, avatar: '', altOf: ch.id, isAlt: true, history: [], preview: '', lastTime: nowHHMM(), sortTime: Date.now(), unread: 0 };
-      state.chats.push(chat);
-    } else { chat.name = name; chat.setting = bio; }
-    const list = bubblesToMessages(lines, 'stranger');
-    if (!list.length) return 0;
-    chat.history = chat.history || [];
-    list.forEach(m => chat.history.push(m));
-    const lastM = chat.history[chat.history.length - 1];
-    chat.preview = lastM.text; chat.lastTime = lastM.time; chat.sortTime = lastM.ts; chat.unread = (chat.unread || 0) + list.length;
-    await saveChat(chat);
-    localStorage.setItem('nano_imessage_altprobe_at_' + currentNs(), String(Date.now()));
-    const _dd = new Date();
-    localStorage.setItem('nano_imessage_altprobe_day_' + currentNs(), _dd.getFullYear() + '-' + (_dd.getMonth() + 1) + '-' + _dd.getDate());
-    localStorage.setItem('nano_imessage_altprobe_char_' + currentNs() + '_' + ch.id, String(Date.now()));
-      notifyApp(name, list[0].text || lines[0], { name: name, group: name });
-    if (state.current && state.current.id === chat.id) { state.messages = chat.history; renderMessages(); renderBanner(chat); }
-    else renderList();
-    return list.length;
-  } catch (e) { return 0; }
-}
+/* ---------------- 主动消息：角色 / 陌生人 / 角色小号同一次刷新生成 ---------------- */
 
 async function proactiveCharText(ch, isBlocked, msgs) {
   const userName = (readCurrentUser() || {}).name || '用户';
@@ -1508,35 +1495,88 @@ async function proactiveCharText(ch, isBlocked, msgs) {
   }
   const raw = await callApi([{ role: 'system', content: sys }], { maxTokens: 260, temperature: 0.95 });
   if (!raw) return '';
-  return String(raw).split(/\n+/).map(s => s.trim()).filter(Boolean).slice(0, 2).join('\n');
+  return String(raw).split(/\n+/).map(s => s.trim()).filter(s => s && !/^[\s.。…·．\-—_~～!！?？,，、;；:：'"“”‘’|｜]+$/.test(s)).slice(0, 2).join('\n');
 }
-function buildRefreshReq() {
-  const pool = state.chars.filter(c => !/^alt_/.test(c.id) && !c.isAltProbe && !isAssistantChar(c));
-  // 被拉黑的角色必须包含；最多 2 个角色（角色消息改为逐个单独生成，能读全 c/u 人设 + 记忆 + 世界书）
+function autoMsgOnChar(c) {
+  if (!c || !c.id) return false;
+  const v = getSetting(c.id, 'autoMsg', false);
+  return v === true || v === 'true' || v === 1 || v === '1';
+}
+
+async function buildRefreshReq() {
+  // 只让开启了「主动消息」的角色参与刷新；没勾选的 char/NPC/小号一律不生成。
+  const pool = state.chars.filter(c => c && !/^alt_/.test(c.id) && !c.isAltProbe && !isAssistantChar(c) && autoMsgOnChar(c));
+  // 被拉黑的角色优先；最多 2 个角色。角色消息和陌生人消息在同一次 API 里生成。
   const blocked = pool.filter(c => getSetting(c.id, 'blocked', false));
   const others = shuffle(pool.filter(c => !getSetting(c.id, 'blocked', false)));
   const picks = blocked.concat(others).slice(0, 2).map(c => ({ id: c.id, name: c.name, blocked: getSetting(c.id, 'blocked', false) }));
   const strangersCount = Math.max(1, 5 - picks.length);
   const u = readCurrentUser() || {};
   const userName = u.name || '用户';
-  const uSetting = String(u.setting || u.persona || '').replace(/\s+/g, ' ').slice(0, 200);
+  const uSetting = String(u.setting || u.persona || '').replace(/\s+/g, ' ').slice(0, 300);
+  let charBlocks = '';
+  for (const pc of picks) {
+    const c = state.chars.find(x => x.id === pc.id);
+    if (!c) continue;
+    const oldChat = state.chats.find(x => x.kind === 'char' && x.charId === c.id) || {};
+    const recent = (oldChat.history || []).filter(m => m && m.text).slice(-6)
+      .map(m => (m.who === 'me' ? userName : c.name) + '：' + String(m.text).slice(0, 80)).join('\n');
+    let ctx = '';
+    try { ctx = await charContextText(c, oldChat.history || []); } catch (e) {}
+    charBlocks += '\n【角色：' + c.name + '】\n' + String(ctx || '').slice(0, 2200) +
+      (pc.blocked ? '\n状态：用户刚刚把你拉黑了，你只能通过短信联系 TA，消息要围绕被拉黑/被冷落/想挽回或质问展开。' : '') +
+      (recent ? ('\n最近短信：\n' + recent) : '') + '\n';
+  }
+  // 角色小号：同样并入这一次刷新，不额外调用 API；每天最多一个，同一角色 14 天一次
+  let altPick = null;
+  try {
+    if (localStorage.getItem('nano_imessage_altprobe_' + currentNs()) !== '0') {
+      const _d = new Date();
+      const dayKey = _d.getFullYear() + '-' + (_d.getMonth() + 1) + '-' + _d.getDate();
+      if (localStorage.getItem('nano_imessage_altprobe_day_' + currentNs()) !== dayKey) {
+        const pickedIds = new Set(picks.map(p => String(p.id)));
+        const altPool = pool.filter(c => !pickedIds.has(String(c.id))).filter(c => {
+          const lastChar = parseInt(localStorage.getItem('nano_imessage_altprobe_char_' + currentNs() + '_' + c.id) || '0', 10) || 0;
+          return Date.now() - lastChar >= 14 * 24 * 3600 * 1000;
+        });
+        if (altPool.length && Math.random() <= 0.4) altPick = altPool[Math.floor(Math.random() * altPool.length)];
+      }
+    }
+  } catch (e) {}
+  let altBlock = '';
+  if (altPick) {
+    let altCtx = '';
+    try { altCtx = await charContextText(altPick, []); } catch (e) {}
+    altBlock = '\n【小号：' + altPick.name + '】\n'
+      + '角色名必须原样照抄「' + altPick.name + '」。TA 正在用一个小号、以陌生人身份接近收件人，收件人不知道这是 TA 本人。\n'
+      + '网名要真实自然（禁止用「小号 / 陌生人 / 新朋友」这类词当名字），公开简介要合理（如「同城摄影」「朋友介绍」「旧同学换号」）。\n'
+      + '短信内容是 1~2 条开场搭话：自然、像真人，能勾住回复，可以略带试探，但不要一上来就露骨，也不要主动暴露自己是' + altPick.name + '本人。\n'
+      + String(altCtx || '').slice(0, 1800) + '\n';
+  }
   const sys = '你是短信内容生成器。只输出纯文本，每行一条，用竖线 | 分隔；不要输出任何解释、标题、编号、Markdown 或多余文字。\n'
     + '陌生人短信格式：S|发件人|身份或意图|短信内容\n'
     + '请生成 ' + strangersCount + ' 条 S 行（场景：发错号码、电话推销、App订阅扣费、快递、诈骗、验证码、外卖等）。\n'
+    + (picks.length ? ('角色短信格式：C|角色名|回复对象|短信内容\n' +
+        '请为下面每个角色各生成 1~2 条 C 行，角色名必须原样照抄；每条 5~30 字，主动找用户说话，贴合人设和最近短信，不要标签旁白；外国角色每条写成「外语原文||中文翻译」。\n' +
+        charBlocks + '\n') : '')
+    + (altPick ? ('小号短信格式：A|角色名|网名|公开简介|短信内容\n' +
+        '请生成 1~2 条 A 行，角色名、网名、公开简介保持一致；外国角色每条写成「外语原文||中文翻译」。\n' +
+        altBlock + '\n') : '')
     + '收件人是「' + userName + '」' + (uSetting ? ('，TA 的设定：' + uSetting) : '') + '。\n'
     + '陌生人 / 推销 / 诈骗短信里不要凭空编造或叫错收件人的名字；不确定就用「你好」「您」或不带称呼，禁止乱叫名字。';
-  return { history: [{ role: 'system', content: sys }, { role: 'user', content: '开始（只输出 S 行）' }], picks: picks };
+  return {
+    history: [{ role: 'system', content: sys }, { role: 'user', content: '开始（只输出 S' + (picks.length ? '/C' : '') + (altPick ? '/A' : '') + ' 行）' }],
+    picks: picks,
+    altId: altPick ? altPick.id : ''
+  };
 }
 // 切页/关页后回来，把后台已完成的结果补上
 async function applyReplyRaw(chatId, raw) {
   const c = state.chats.find(x => x.id === chatId);
   if (!c) return;
   const body = String(raw || '').replace(/\[(加回我|取消拉黑|解除拉黑|unblockuser|继续拉黑|拉黑用户|拉黑我|blockuser|加好友|加微信|加我)\]/g, '');
+  // 外语译文已在同一次后台生成里以「原文||中文」返回，这里不再追加翻译调用。
   let lines = splitBubbles(body);
-  if (c.kind === 'char') {
-    const ch = state.chars.find(x => x.id === c.charId);
-    if (ch) lines = await ensureTranslatedLines(ch, lines);
-  }
   const msgs = bubblesToMessages(lines, c.kind);
   if (!msgs.length) return;
   c.history = c.history || [];
@@ -1565,20 +1605,19 @@ async function resumePending() {
     const raw = extractContent(data);
     if (!raw) continue;
     if (p.kind === 'reply') await applyReplyRaw(p.chatId, raw);
-    else if (p.kind === 'refresh') await applyRefreshRaw(raw, (p.extra && p.extra.picks) || []);
+    else if (p.kind === 'refresh') await applyRefreshRaw(raw, (p.extra && p.extra.picks) || [], (p.extra && p.extra.altId) || '');
   }
 }
 async function refreshStrangers() {
   setBusy('刷新中…');
   let raw = null;
   try {
-    const req = buildRefreshReq();
-    raw = await callApi(req.history, { maxTokens: 1000, temperature: 0.9 }, { kind: 'refresh', extra: { picks: req.picks } });
+    const req = await buildRefreshReq();
+    raw = await callApi(req.history, { maxTokens: 1000, temperature: 0.9 }, { kind: 'refresh', extra: { picks: req.picks, altId: req.altId } });
     if (!raw) { showRefreshError(lastApiError || '接口没有返回内容'); return; }
-    const added = await applyRefreshRaw(raw, req.picks);
-    let altAdded = 0;
-    try { altAdded = await maybeAltProbe(); } catch (e) {}
-    const total = added + altAdded;
+    const added = await applyRefreshRaw(raw, req.picks, req.altId);
+    // 不再在一次刷新里额外调用小号试探 API：一次点击只调用一次 API。
+    const total = added;
     toastMsg(total ? ('收到 ' + total + ' 条新消息') : '暂时没有新消息（可重试或检查 API）');
   } catch (e) {
     showRefreshError('刷新出错：' + ((e && e.message) || e));

@@ -3390,50 +3390,8 @@ async function requestReply(opts) {
       result = await callMainAPI(history, { continue: continueMode });
     }
     let reply = typeof result === 'string' ? result : (result?.reply ?? result?.content ?? result?.message ?? '');
-    // 模型偶尔会把正文写进 [thinking:] 里，或者只输出心声/剧情，导致正文区空白。
-    // 这种情况下单独补一次「只写正文」的请求，再把第一段的 thinking/heart/plot 合回去。
-    try {
-      const probe = extractMeta(reply);
-      if (!String(probe.text || '').replace(/\s+/g, '').trim()) {
-        const bodyHistory = history.concat([
-          { role: 'assistant', content: reply || '' },
-          { role: 'user', content: '（正文区是空的。现在只写正文，接着上一段剧情往下写，不要 [thinking]/[heart]，不要解释。）' }
-        ]);
-        const bodyRaw = await callMainAPI(bodyHistory, { continue: true, bodyOnly: true });
-        const bodyMeta = extractMeta(bodyRaw);
-        const bodyText = String(bodyMeta.text || '').replace(/\s+$/g, '').trim();
-        if (bodyText) {
-          let think = probe.thinking || bodyMeta.thinking || '';
-          // 旧 thinking 里可能混进了正文；补写成功后只保留前面一段摘要，避免正文在思维链里重复一遍。
-          if (think.length > 600) think = think.slice(0, 400).replace(/\s+$/g, '') + '…';
-          const heart = probe.heart || bodyMeta.heart;
-          const plots = (probe.plots && probe.plots.length) ? probe.plots : bodyMeta.plots;
-          const bars = (probe.bars && probe.bars.length) ? probe.bars : (bodyMeta.bars || []);
-          const body = (probe.body && probe.body.length) ? probe.body : (bodyMeta.body || []);
-          // 内容里自带的 ] / 】 会把重新包上的标签提前截断，先替换掉再合并。
-          const stripTagEnd = s => String(s || '').replace(/[\]】]/g, ' ');
-          let merged = bodyText;
-          if (think) merged = '[thinking:' + stripTagEnd(think) + ']\n' + merged;
-          if (heart) merged += '\n[heart:' + stripTagEnd(heart) + ']';
-          if (plots && plots.length) merged += '\n[plot:' + plots.map(stripTagEnd).join('\n') + ']';
-          (bars || []).forEach(function (b) {
-            if (!b || !b.name || !String(b.content || '').trim()) return;
-            merged += '\n[bar:' + stripTagEnd(b.name) + ']' + String(b.content) + '[/bar]';
-          });
-          if (body && body.length) {
-            merged += '\n[身体:' + body.map(function (it) {
-              return (it.k ? stripTagEnd(it.k) + '=' : '') + stripTagEnd(it.v);
-            }).join('|') + ']';
-          }
-          reply = merged;
-        }
-      }
-    } catch (e) {}
-    try { reply = await ensureOfflineLength(reply, history, continueMode); } catch (e) {}
-    // 正文有了但没带剧情推荐：单独补一次小请求，不再依赖模型在长文末尾记得写 [plot]。
-    try { if (reply && !extractMeta(reply).plots.length) reply = await ensureOfflinePlots(reply, history); } catch (e) {}
-    // 最后统一检查：thinking / heart / plot / 身体状态 / 自定义状态栏，缺什么补什么，保证一轮输出完整。
-    try { if (reply) reply = await ensureOfflineSections(reply, history); } catch (e) {}
+    // 一次 API 调用直接生成完整回复（正文 + thinking/heart/plot/状态栏）。
+    // 缺失字段不再自动追加请求补生成，避免在用户不知情时重复消耗 API。
     try {
       if (!offlineIsGroup && !offlineInvitedChars.length && reply && window.NanoScheduleBridge && window.NanoScheduleBridge.applyMarkers) {
         reply = await window.NanoScheduleBridge.applyMarkers(reply, { charId: offlineChatId, charName: settings.charName });

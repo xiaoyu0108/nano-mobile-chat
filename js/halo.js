@@ -10,7 +10,11 @@ const S = {
     {name:'日常',desc:'日常琐碎、心情、生活分享与闲聊'},
     {name:'18+',desc:'成人向露骨板块：性、身体、情欲、重口玩梗，允许大胆直白（不写违法内容）'}
   ],
-  groupTags:[{name:'电影'},{name:'音乐'},{name:'游戏'},{name:'创作'}],
+  groupTags:[
+    {name:'追星'},{name:'网红'},{name:'动漫'},{name:'游戏'},{name:'影视'},{name:'音乐'},
+    {name:'同好'},{name:'手作'},{name:'谷圈'},{name:'生活'},{name:'学习'},{name:'职场'},
+    {name:'宠物'},{name:'运动'},{name:'摄影'},{name:'美食'},{name:'二手'},{name:'数码'}
+  ],
   liveTopic:'全部',
   liveRooms:[], groups:[], mode:'single',
   currentRoom:null, currentGroup:null, chatFrom:'dmHome',
@@ -37,6 +41,7 @@ const S = {
   _apiReady:false,
   _apiModel:'',
   _mask:null,
+  _stateMaskId:null,
   charMasks:[],
   dmBusy:{},
   groupBusy:{},
@@ -60,20 +65,21 @@ function giftSvg(name){
   return g?'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round">'+g.svg+'</svg>':'';
 }
 
-const FOREIGN_CHARS = [];
-const CN_AUDIENCE = [];
-const CN_TEXTS = [];
-const FRIEND_POOL = [];
-const FAN_POOL = [];
-
 function $(id){return document.getElementById(id)}
 function nowHM(){const d=new Date();return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')}
 function nowMin(){return Math.floor(Date.now()/60000)}
 function rand(a){return a[Math.floor(Math.random()*a.length)]}
 function rnd(n){return Math.floor(Math.random()*n)}
-function sampleUnique(arr,n){return [...arr].sort(()=>Math.random()-.5).slice(0,n)}
-function randomFans(n=8){return sampleUnique(FAN_POOL,n)}
-function normalizeGroupFans(g){if(!g._randomizedFans){g.fans=randomFans(8+rnd(5));g.members=Math.max(g.members||1,g.fans.length+1);g._randomizedFans=true}}
+function isLabelMemberName(name){
+  return /^(阴阳怪气|键盘侠|带节奏的|路人黑|路人|网友|群友|成员|粉丝|管理员|群主|黑粉)$/.test(String(name||'').trim());
+}
+function normalizeGroupFans(g){
+  if(!g)return;
+  if(!Array.isArray(g.fans))g.fans=[];
+  // 旧版本用词库补过群成员：清掉这批池库名字，之后由群聊生成时连同消息一起生成具体网名。
+  if(g._randomizedFans){g.fans=[];g._randomizedFans=false;}
+  g.fans=g.fans.filter(n=>n&&!isLabelMemberName(n));
+}
 function getFriendNames(){return (S.dmFriends||[]).map(x=>x.name)}
 try{ if(window.NanoRefresh) window.NanoRefresh.define({ id:'halo', name:'Halo', url:'halo.html', title:'Halo' }); }catch(e){}
 
@@ -182,15 +188,17 @@ async function doDMRefreshFromSheet(){
 }
 async function refreshLiveViaAI(selectedNames){
   if(!S._apiReady||typeof HaloData==='undefined') throw new Error('未配置主 API');
-  const genAlias=S.activeAliasId;
+  const genAlias=S.activeAliasId;const genMask=S._stateMaskId;
   const scopeTags=(S.liveTopic==='全部')
     ? S.liveTags.filter(t=>t.name!=='全部')
     : S.liveTags.filter(t=>t.name===S.liveTopic);
   if(!scopeTags.length) scopeTags.push({name:'日常',desc:''});
   const scopeNames=scopeTags.map(t=>t.name);
   const chosen=(selectedNames||[]).map(n=>({name:n,char:charByName(n)})).filter(x=>x.name);
+  const chosenKeys={};
+  chosen.forEach(x=>{ chosenKeys[haloNameKey(x.name)]=1; });
   const tagLines=scopeTags.map(t=>t.name+(tagDescOf(t.name)?('（'+tagDescOf(t.name)+'）'):'')).join('、');
-  const sys='你在生成直播平台的直播房间，并为主播房间生成初始内容。\n'
+  const sys='你在生成直播平台的直播房间，并为主播房间生成初始内容。所有直播帖子、首次卡片、观众网名和弹幕必须在这一次 JSON 里全部生成，不要留空名字、不要使用固定网名池。\n'
     +'房间的标题/话题/简介必须严格贴合所给【板块描述】，不能跑题。\n'
     +'只输出 JSON：{"lives":[{"host":"主播名","title":"标题(8-16字)","topic":"话题","dual":true或false,"intro":"一句话简介","stranger":true或false,"cards":[{"who":"A","narration":"2-3句画面/动作描写","speech":"主播台词，简短"}],"barrage":[{"name":"观众网名","text":"弹幕"}]}]}。\n'
     +'话题必须从这些板块里选：'+tagLines+'。\n'
@@ -202,18 +210,20 @@ async function refreshLiveViaAI(selectedNames){
   const obj=await HaloData.callMainJSON([{role:'system',content:sys},{role:'user',content:usr}],{temperature:1.05});
   const lives=Array.isArray(obj&&obj.lives)?obj.lives:[];
   if(!lives.length) throw new Error('AI 没有返回直播内容');
-  assertSameAlias(genAlias);
+  assertSameAlias(genAlias,genMask);
   // 只清理当前 tag 范围内旧的“生成”直播，其他 tag 不受影响
   S.liveRooms=(S.liveRooms||[]).filter(r=>!(r.gen&&scopeNames.indexOf(r.topic)>-1));
   let count=0;
   lives.forEach((L,i)=>{
     const host=String(L&&L.host||'').slice(0,20); if(!host) return;
     const c=charByName(host);
+    // 没勾选的 char/NPC/小号不能出现在本轮生成的直播里。
+    if(c && !chosenKeys[haloNameKey(c.name)]) return;
     const stranger=!!(L.stranger)&&!c;
     const topic=scopeNames.indexOf(String(L.topic))>-1?String(L.topic):scopeNames[i%scopeNames.length];
     const cards=(Array.isArray(L&&L.cards)?L.cards:[]).map(cc=>({who:String((cc&&cc.who)||'A').slice(0,2),narration:String((cc&&cc.narration)||'').trim(),speech:String((cc&&cc.speech)||'').trim()})).filter(cc=>cc.narration||cc.speech);
     const banned=[host,currentIdentity().name].filter(Boolean);
-    const barrage=(Array.isArray(L&&L.barrage)?L.barrage:[]).map(b=>({name:String((b&&b.name)||'').slice(0,20),text:String((b&&b.text)||'').trim()})).filter(b=>b.text&&banned.indexOf(b.name)<0&&!charByName(b.name)).map(b=>({name:b.name||rand(CN_AUDIENCE)||'',text:b.text}));
+    const barrage=(Array.isArray(L&&L.barrage)?L.barrage:[]).map(b=>({name:String((b&&b.name)||'').slice(0,20),text:String((b&&b.text)||'').trim()})).filter(b=>b.text&&b.name&&banned.indexOf(b.name)<0&&!charByName(b.name));
     S.liveRooms.unshift({
       id:Date.now()+i,title:String(L.title||'随便聊聊').slice(0,30),topic,
       desc:String(L.intro||'').slice(0,120),
@@ -249,8 +259,10 @@ async function refreshRoomViaAI(){
 /* ---- 私聊页：一次 API，所选 char + 4 陌生人或 6 陌生人（读取我的马甲人设） ---- */
 async function refreshDMViaAI(selectedNames){
   if(!S._apiReady||typeof HaloData==='undefined') throw new Error('未配置主 API');
-  const genAlias=S.activeAliasId;
+  const genAlias=S.activeAliasId;const genMask=S._stateMaskId;
   const chosenNames=(selectedNames||[]).filter(Boolean);
+  const chosenKeys={};
+  chosenNames.forEach(n=>{ chosenKeys[haloNameKey(n)]=1; });
   const friends=chosenNames.length
     ? chosenNames.map(n=>dmMeta(n)).filter(Boolean)
     : [];
@@ -278,7 +290,7 @@ async function refreshDMViaAI(selectedNames){
   const obj=await HaloData.callMainJSON([{role:'system',content:sys},{role:'user',content:contacts||('（没有已选联系人，只需要创造 '+strangerCount+' 位全新陌生人）')}],{temperature:1.0});
   const arr=(obj&&Array.isArray(obj.messages))?obj.messages:[];
   if(!arr.length) throw new Error('AI 没有返回消息内容');
-  assertSameAlias(genAlias);
+  assertSameAlias(genAlias,genMask);
   // 每次刷新都换成全新陌生人：清掉旧普通陌生人（保留角色马甲），并删除其聊天记录
   (S.dmStrangers||[]).filter(x=>x&&!x.isCharMask).forEach(x=>{delete S.chatLog[x.name];});
   S.dmStrangers=(S.dmStrangers||[]).filter(x=>x&&x.isCharMask);
@@ -287,6 +299,11 @@ async function refreshDMViaAI(selectedNames){
     if(item&&item.skip) return;
     const nm=String(item&&item.name||'').trim();
     if(!nm) return;
+    // 没勾选的已有好友/char/NPC/小号不能出现在本轮刷新里。
+    const nmKey=haloNameKey(nm);
+    const existingChar=charByName(nm);
+    const existingFriend=(S.dmFriends||[]).some(x=>x&&haloNameKey(x.name)===nmKey);
+    if(!chosenKeys[nmKey]&&(existingChar||existingFriend)) return;
     let t=(S.dmFriends||[]).find(x=>x.name===nm)||(S.dmStrangers||[]).find(x=>x.name===nm);
     if(!t){
       t={name:nm,prev:'',time:'刚刚',unread:true,avatarLetter:nm.charAt(0),isCharMask:false,persona:String(item.persona||'').trim()};
@@ -294,7 +311,7 @@ async function refreshDMViaAI(selectedNames){
       S.dmStrangers.push(t);
       // char 的小号（马甲）试探：链接到原 char，后续回复走马甲逻辑，可被识破
       const ownerName=String(item.maskOf||'').trim();
-      const owner=ownerName?(charByName(ownerName)||(S._realChars||[]).find(c=>c.name===ownerName)):null;
+      const owner=ownerName&&chosenKeys[haloNameKey(ownerName)]?(charByName(ownerName)||(S._realChars||[]).find(c=>c.name===ownerName)):null;
       const probingCount=(S.charMasks||[]).filter(mk=>mk&&mk.status==='probing').length;
       if(owner&&probingCount<2&&Math.random()<0.5){
         const maskId='cm_'+Date.now()+'_'+rnd(999);
@@ -347,41 +364,52 @@ async function generateGroupMessages(groups){
   const list=(groups||[]).filter(Boolean);
   if(!list.length) throw new Error('没有可刷新的群聊');
   if(!S._apiReady||typeof HaloData==='undefined') throw new Error('未配置主 API');
-  const genAlias=S.activeAliasId;
+  const genAlias=S.activeAliasId;const genMask=S._stateMaskId;
   const blocks=list.map(g=>{
     normalizeGroupFans(g);
-    const anti=['阴阳怪气','键盘侠','带节奏的','路人黑'];
-    const memberPool=[...new Set([...(g.admins||[]).filter(a=>charByName(a)),...(g.fans||[]),anti[0],anti[1]])].slice(0,12);
-    g._memberPool=memberPool;
+    const adminNames=(g.admins||[]).filter(Boolean);
+    const existingMembers=[...new Set((g.fans||[]).filter(n=>n&&!isLabelMemberName(n)&&n!=='You'&&n!==currentIdentity().name&&adminNames.indexOf(n)<0))].slice(0,12);
+    g._memberPool=adminNames.filter(a=>a!=='You'&&a!==currentIdentity().name).concat(existingMembers);
     const log=(S.chatLog[g.name]||[]).slice(-16).map(m=>`${m.who==='user'?'用户':(m.name||'成员')}：${m.text||m.foreign||''}`).join('\n')||'（还没有聊天记录）';
     const userDir=(S.chatLog[g.name]||[]).filter(m=>m.who==='user').slice(-3).map(m=>m.text||'').filter(Boolean).join(' / ')||'（用户还没发言）';
     const charNote=(g.admins||[]).map(a=>charByName(a)).filter(Boolean).slice(0,2).map(c=>`${c.name}的人设：${String(c.setting||'').slice(0,200)}`).join('；');
-    const adminChars=(g.admins||[]).map(a=>charByName(a)).filter(Boolean).map(c=>c.name);
-    return `【群：${g.name}】\n群简介：${g.desc||'（无简介）'}\n话题标签：${g.topic||''}\n管理员（只有这些人是管理员）：${adminChars.join('、')||'（无，禁止任何人自称管理员/群主）'}\n成员：${memberPool.join('、')}\n用户个签：${currentIdentity().signature||'无'}\n${charNote?'（'+charNote+'）\n':''}用户最近发言方向：${userDir}\n最近聊天：\n${log}`;
+    return `【群：${g.name}】\n群简介（本轮唯一硬设定，必须以此为准）：${g.desc||'（无简介，按群名和话题自然聊）'}\n话题标签：${g.topic||''}\n管理员（只有这些人是管理员）：${adminNames.join('、')||'（无，禁止任何人自称管理员/群主）'}\n已有成员（可沿用，也可补充；本轮必须在 members 里给出完整成员名单）：${existingMembers.join('、')||'（暂无，请本轮现场生成 8~12 个具体网名）'}\n用户个签：${currentIdentity().signature||'无'}\n${charNote?'（'+charNote+'）\n':''}${g._descChanged?'※ 这个群的群简介刚被用户修改过：请重新读取当前简介，按新简介校正话题，不要延续旧简介的内容。\n':''}用户最近发言方向：${userDir}\n最近聊天：\n${log}`;
   }).join('\n\n');
   const aliasNote=(S.activeAliasId&&S.activeAliasId!=='main')
     ? ('\n※ 用户现在用的是新身份「'+currentIdentity().name+'」，群成员都不认识TA，请像对待一个新成员一样，不要称呼TA旧名字、不要说认识TA。')
     : '';
-  const sys='你在模拟一个社交 App 的群聊。硬性要求：\n1) 每个群的聊天必须围绕该群的【群简介】和【用户最近发言方向】展开，严禁跑题、严禁聊与该群无关的内容。\n2) 成员多元：有喜欢/支持用户的粉丝，也有黑粉（挑刺、阴阳怪气、带节奏、唱反调），以及路人；性别身份也要多样（男女都有）。黑粉的名字用成员列表里的“阴阳怪气/键盘侠”等。\n3) 为下列每个群各生成【至少 10 条】新消息，由不同成员交替发言，像真人群聊，简短、每条单独一行。\n4) 【管理员】管理员是群主手动设置的，只有每个群【管理员】列表里的人才是管理员。列表为空时本轮不要出现任何管理员相关发言，也禁止任何人自称管理/群主；列表非空时，管理员本轮至少发言一次、语气更有分量，其他成员会提及或回应其管理身份。列表外的人一律不得自称、也不得被当成管理员。\n5) 角色人设与身份要立体，不要每轮同一个腔调。'+DIVERSITY_NOTE+aliasNote+'\n只输出 JSON：{"groups":[{"group":"群名","msgs":[{"name":"成员名","text":"消息"}]}]}。成员名必须是该群给出的成员之一，群名必须完全一致。';
+  const sys='你在模拟一个社交 App 的群聊。硬性要求：\n1) 每个群的【群名 + 群简介 + 话题标签】是唯一硬设定：聊天必须围绕当前群简介展开，严禁跑题；如果群简介刚被修改，必须以新简介为准，自然把旧话题拉回来并校正。群聊不一定和用户绑定的 char 有关，可以就是爱豆粉丝群、网红/主播粉丝群、动漫/游戏/追剧/音乐/手作/谷圈/学习/职场/宠物/运动/摄影/美食/二手等同好群，也可以是纯路人群。\n2) 每个群先在 members 里生成 8~12 个具体群成员网名（有网感、像真人，可沿用已有成员并补充新成员），再让这些成员在 msgs 里发言。所有人必须使用具体网名，禁止把“阴阳怪气、键盘侠、带节奏的、路人黑、黑粉”这类标签当成名字；挑刺的人也要是具体网友网名。members 只列普通成员，不能包含用户本人、管理员本人或任何已绑定的 char 真名；管理员可以直接在 msgs 里发言。\n3) 为下列每个群各生成【至少 10 条】新消息，由不同成员交替发言，像真人群聊，简短、每条单独一行。发言要体现这个群的具体氛围和黑话，但不要硬塞和群主题无关的 char。\n4) 【管理员】管理员是群主手动设置的，只有每个群【管理员】列表里的人才是管理员。列表为空时本轮不要出现任何管理员相关发言，也禁止任何人自称管理/群主；列表非空时，管理员本轮至少发言一次、语气更有分量，其他成员会提及或回应其管理身份。列表外的人一律不得自称、也不得被当成管理员，也不能替用户发言。\n5) 角色人设与身份要立体，不要每轮同一个腔调；同一个群的成员说话方式要有区分度。'+DIVERSITY_NOTE+aliasNote+'\n只输出 JSON：{"groups":[{"group":"群名","members":["网名1","网名2"],"msgs":[{"name":"成员名","text":"消息"}]}]}。msgs 里的 name 必须是该群 members 里的具体成员，或该群管理员列表里的人，群名必须完全一致。';
   const obj=await HaloData.callMainJSON([{role:'system',content:sys},{role:'user',content:blocks}],{temperature:1.0});
   const arr=(obj&&Array.isArray(obj.groups))?obj.groups:[];
   if(!arr.length) throw new Error('AI 没有返回群消息内容');
-  assertSameAlias(genAlias);
+  assertSameAlias(genAlias,genMask);
   let count=0;
   arr.forEach(item=>{
     const g=list.find(x=>x.name===item.group)||list.find(x=>x.name===String(item&&item.group||'').trim());
     if(!g) return;
-    const memberPool=g._memberPool||[];
+    const adminNames=(g.admins||[]).filter(Boolean);
+    const banned=[currentIdentity().name,'You'].concat(adminNames);
+    const generated=(Array.isArray(item&&item.members)?item.members:[])
+      .map(n=>String(n||'').trim())
+      .filter(n=>n&&!isLabelMemberName(n)&&banned.indexOf(n)<0&&!charByName(n));
+    let memberPool=[...new Set((g._memberPool||[]).concat(generated))].slice(0,18);
     (Array.isArray(item.msgs)?item.msgs:[]).forEach(m=>{
       const tx=String(m&&m.text||'').trim(); if(!tx) return;
       let sp=String(m&&m.name||'').trim();
+      if(sp&&!isLabelMemberName(sp)&&banned.indexOf(sp)<0&&!charByName(sp)&&memberPool.indexOf(sp)<0){
+        memberPool.push(sp);
+      }
       if(memberPool.length&&memberPool.indexOf(sp)<0) sp=rand(memberPool);
-      if(!sp) sp=rand(memberPool)||'成员';
+      if(!sp){ if(memberPool.length) sp=rand(memberPool); else return; }
       count+=pushSplitChat(g.name,'member',tx,sp);
     });
+    memberPool=memberPool.slice(0,18);
+    g.fans=memberPool.filter(n=>banned.indexOf(n)<0);
+    g.members=Math.max(Number(g.members)||1,[...new Set(memberPool.concat(adminNames,[currentIdentity().name]))].length);
     const log=S.chatLog[g.name]||[]; const last=log[log.length-1];
     if(last){g.last=last.text||last.foreign||g.last;g.time='刚刚';g.unread=(g.unread||0)+1;}
     delete g._memberPool;
+    delete g._descChanged;
   });
   if(!count) throw new Error('AI 返回的群消息无法匹配到任何群');
   saveHaloState();renderGroupList();
@@ -408,13 +436,13 @@ async function groupReply(name){
   }
 }
 
-/* ============ 加入其他人的粉丝群 ============ */
+/* ============ 加入其他人的群聊 ============ */
 let _discoverGroups=[];
 async function openDiscoverGroups(){
   let modal=$('haloDiscoverGroupsModal');
   if(!modal){
     modal=document.createElement('div');modal.className='modal';modal.id='haloDiscoverGroupsModal';
-    modal.innerHTML='<div class="sheet"><div class="grab"></div><h2>加入粉丝群</h2><div id="haloDiscoverGroupsList" style="max-height:50vh;overflow:auto;margin-bottom:8px"></div><button class="secondary-wide" onclick="closeDiscoverGroups()">关闭</button></div>';
+    modal.innerHTML='<div class="sheet"><div class="grab"></div><h2>加入群聊</h2><div id="haloDiscoverGroupsList" style="max-height:50vh;overflow:auto;margin-bottom:8px"></div><button class="secondary-wide" onclick="closeDiscoverGroups()">关闭</button></div>';
     document.body.appendChild(modal);
   }
   const box=$('haloDiscoverGroupsList');
@@ -427,9 +455,8 @@ function closeDiscoverGroups(){const m=$('haloDiscoverGroupsModal');if(m)m.class
 async function fetchDiscoverGroups(){
   if(!S._apiReady||typeof HaloData==='undefined') throw new Error('未配置主 API');
   const joined=(S.groups||[]).map(g=>g.name);
-  const chars=(S._realChars||[]).slice(0,6).map(c=>c.name);
-  const sys='你在生成一个粉丝群广场。生成 4 个可以被加入的粉丝群。只输出 JSON：{"groups":[{"name":"群名","topic":"话题","desc":"群简介(一句)","members":数字,"owner":"群主/明星的名字"}]}。群名要有趣、像真实粉丝群。';
-  const usr='已加入的群（不要重复）：'+(joined.join('、')||'无')+'。可用的角色/明星：'+(chars.join('、')||'无')+'。话题可选：'+S.groupTags.map(t=>t.name).join('、')+'。';
+  const sys='你在生成一个社交平台的「群聊广场」。生成 4 个真实感很强、可以被加入的群聊。群类型要随机多样，可以是：爱豆/偶像粉丝群、网红/主播粉丝群、动漫同好、游戏开黑、追剧、音乐、手作、谷圈、学习打卡、职场摸鱼、宠物、运动、摄影、美食、二手闲置、数码等等。群名要有网感、具体、有梗，禁止使用“阴阳怪气”“键盘侠”“XX交流群”“同好群”这种空泛或标签化的名字。群简介要写清这个群在聊什么、氛围如何、成员大概是什么人。群主可以是虚构的爱豆/网红/群主网名，不必来自角色库；群聊不要强行绑定用户已绑定的角色。只输出 JSON：{"groups":[{"name":"群名","topic":"话题","desc":"群简介(一句)","members":数字,"owner":"群主网名"}]}。';
+  const usr='已加入的群（不要重复）：'+(joined.join('、')||'无')+'。话题方向可选：'+S.groupTags.map(t=>t.name).join('、')+'。请给出 4 个不同类型的群，群名和群简介都要具体，不要空泛。';
   const obj=await HaloData.callMainJSON([{role:'system',content:sys},{role:'user',content:usr}],{temperature:1.0});
   const arr=(obj&&Array.isArray(obj.groups))?obj.groups:[];
   const list=arr.filter(g=>g&&String(g.name||'').trim()&&joined.indexOf(String(g.name).trim())<0).slice(0,4);
@@ -450,13 +477,14 @@ function joinDiscoveredGroup(i){
   const g=_discoverGroups[i];if(!g)return;
   const name=String(g.name||'').trim();if(!name)return;
   if((S.groups||[]).some(x=>x.name===name)){showToast('已经加入过了');return;}
-  const fans=randomFans(8+rnd(6));
-  const group={id:Date.now(),name,desc:String(g.desc||'一个粉丝群。'),topic:String(g.topic||'创作'),
-    members:Number(g.members)||(fans.length+1),joined:true,last:'你加入了群聊',time:'刚刚',unread:0,
-    admins:[currentIdentity().name||'我'],fans,foreign:sampleUnique(FOREIGN_CHARS,3),_randomizedFans:true};
+  let owner=String(g.owner||'').trim();
+  if(!owner||owner===currentIdentity().name) owner='群主';
+  const group={id:Date.now(),name,desc:String(g.desc||'一个同好群。'),topic:String(g.topic||'同好'),
+    members:Number(g.members)||1,joined:true,last:'你加入了群聊',time:'刚刚',unread:0,
+    admins:[owner],fans:[],foreign:[],_randomizedFans:false};
   S.groups.unshift(group);
-  S.myGroups.unshift({name,members:group.members,admin:(group.admins[0]||'—'),last:'你加入了群聊',time:'刚刚',unread:0});
-  S.chatLog[name]=[{who:'system',name:'System',text:'你加入了群聊「'+name+'」',time:nowHM(),at:nowMin()}];
+  S.myGroups.unshift({name,members:group.members,admin:owner,last:'你加入了群聊',time:'刚刚',unread:0});
+  S.chatLog[name]=[{who:'system',name:'System',text:'你加入了群聊「'+name+'」，群主是 '+owner,time:nowHM(),at:nowMin()}];
   saveHaloState();renderGroupList();renderMine();
   closeDiscoverGroups();showToast('已加入 '+name);
 }
@@ -664,7 +692,7 @@ async function requestStreamerLive(name){
     const topic=tagNames.indexOf(String(obj.topic))>-1?String(obj.topic):(tagNames[0]||'日常');
     const banned=[name,currentIdentity().name].filter(Boolean);
     const cards=(Array.isArray(obj.cards)?obj.cards:[]).map(c=>({who:String((c&&c.who)||'A').slice(0,2),narration:String((c&&c.narration)||'').trim(),speech:String((c&&c.speech)||'').trim()})).filter(c=>c.narration||c.speech);
-    const barrage=(Array.isArray(obj.barrage)?obj.barrage:[]).map(b=>({name:String((b&&b.name)||'').slice(0,20),text:String((b&&b.text)||'').trim()})).filter(b=>b.text&&banned.indexOf(b.name)<0).map(b=>({name:b.name||rand(CN_AUDIENCE)||'',text:b.text}));
+    const barrage=(Array.isArray(obj.barrage)?obj.barrage:[]).map(b=>({name:String((b&&b.name)||'').slice(0,20),text:String((b&&b.text)||'').trim()})).filter(b=>b.text&&b.name&&banned.indexOf(b.name)<0&&!charByName(b.name));
     if(!cards.length&&!barrage.length) throw new Error('AI 未返回有效的直播内容');
     const r={id:Date.now(),title:String(obj.title||(name+' 的直播')).slice(0,30),topic,desc:String(obj.intro||'').slice(0,120),
       viewers:String(100+Math.floor(Math.random()*2000)),dual:!!obj.dual,hostName:name,
@@ -743,8 +771,8 @@ function editSignature(){
     fields:[{label:'个签（其他人会读取这段内容）',value:id.signature||'',multiline:true,placeholder:'一句介绍自己的话'}],
     onSave:(v)=>{
       id.signature=(v[0]||'').trim();
-      if(S.activeAliasId==='main'){try{localStorage.setItem('nanoSignature',id.signature);}catch(e){}}
-      try{localStorage.setItem('nanoAliases',JSON.stringify(S.aliases));}catch(e){}
+      if(S.activeAliasId==='main'){try{localStorage.setItem(haloProfileKey('signature'),id.signature);}catch(e){}}
+      try{localStorage.setItem(haloAliasKey(),JSON.stringify(S.aliases));}catch(e){}
       renderMine();saveHaloState();showToast('个签已更新');
     }
   });
@@ -877,6 +905,7 @@ function avStyle(img){
 }
 function indexByName(list){const m={};(list||[]).forEach(x=>{if(x&&x.name)m[x.name]=x});return m}
 function charByName(name){return (S._realChars||[]).find(c=>c.name===name)||null}
+function haloNameKey(s){return String(s==null?'':s).replace(/\s+/g,'').toLowerCase()}
 function dmMeta(name){return (S.dmFriends||[]).find(x=>x.name===name)||(S.dmStrangers||[]).find(x=>x.name===name)||null}
 function markChatRead(name){
   const m=dmMeta(name);
@@ -1017,7 +1046,23 @@ function haloIdbDel(key){
       q.onsuccess=()=>{db.close();res(true);};q.onerror=()=>{db.close();res(false);};}catch(e){try{db.close()}catch(_){ }res(false);}
   })).catch(()=>false);
 }
-function haloStateKey(){return 'state:'+(S.activeAliasId||'main');}
+function currentMaskId(){
+  try{
+    if(typeof HaloData!=='undefined'&&HaloData.currentMask){
+      const m=HaloData.currentMask();
+      if(m&&m.id!=null)return String(m.id);
+    }
+  }catch(e){}
+  try{ if(S._mask&&S._mask.id!=null)return String(S._mask.id); }catch(e){}
+  return 'default';
+}
+function haloMaskScope(){
+  if(S._stateMaskId)return String(S._stateMaskId);
+  return currentMaskId();
+}
+function haloStateKey(aliasId){return 'state:'+haloMaskScope()+':'+(aliasId||S.activeAliasId||'main');}
+function haloAliasKey(){return 'nanoHaloAliases_v2_'+haloMaskScope();}
+function haloActiveAliasKey(){return 'nanoHaloActiveAlias_v2_'+haloMaskScope();}
 function emptyHaloData(){
   S.chatLog={};S.charMasks=[];S.myReplays=[];S.liveRooms=[];S.myOwnLives=[];S.interactedLives=[];
   S.groups=[];S.myGroups=[];S._dmFriendsPersist=[];S._dmStrangersPersist=[];S.dmPinned=[];S.dmDeleted=[];S.gallery=[];S.roomRecaps={};
@@ -1041,12 +1086,33 @@ function applyHaloData(d){
 }
 async function loadHaloState(){
   emptyHaloData();
-  let d=await haloIdbGet(haloStateKey());
-  if(!d&&(S.activeAliasId||'main')==='main'){
+  const aliasId=S.activeAliasId||'main';
+  const key=haloStateKey(aliasId);
+  let d=await haloIdbGet(key);
+  // 旧版本按小号名存 state:<aliasId>，第一次进入当前 user 面具时迁移到 mask+alias 维度。
+  const aliasExists=aliasId==='main'||(S.aliases||[]).some(a=>a&&a.id===aliasId);
+  if(!d&&aliasExists){
+    const legacyKey='state:'+aliasId;
+    if(legacyKey!==key){
+      d=await haloIdbGet(legacyKey);
+      if(d){
+        try{ await haloIdbPut(key,d); await haloIdbDel(legacyKey); }catch(e){}
+      }
+    }
+  }
+  if(!d&&aliasId==='main'){
     try{const raw=localStorage.getItem(HALO_LEGACY);if(raw){d=JSON.parse(raw);localStorage.removeItem(HALO_LEGACY);}}catch(e){}
   }
   if(!d){
-    try{const all=JSON.parse(localStorage.getItem('nanoHaloFallback_v1')||'{}');if(all[haloStateKey()])d=all[haloStateKey()];}catch(e){}
+    try{
+      const all=JSON.parse(localStorage.getItem('nanoHaloFallback_v1')||'{}');
+      if(all[key])d=all[key];
+      else if(aliasExists&&all['state:'+aliasId]){
+        d=all['state:'+aliasId];
+        all[key]=d;delete all['state:'+aliasId];
+        localStorage.setItem('nanoHaloFallback_v1',JSON.stringify(all));
+      }
+    }catch(e){}
   }
   applyHaloData(d);
 }
@@ -1315,10 +1381,11 @@ function renderLive(){
   }
   $('liveFeed').innerHTML=data.map(r=>{
     const hostImg = r.hostAvatarImage || (charByName(r.hostName)?.avatar) || null;
-    const cover = r.cover ? `<img src="${esc(r.cover)}" alt="">` : (hostImg ? `<img src="${esc(hostImg)}" alt="">` : `<div class="cover-fallback">${esc((r.hostAvatar||r.hostName||'L').slice(0,2))}</div>`);
+    const hasImg = !!r.cover;
+    const cover = r.cover ? `<img src="${esc(r.cover)}" alt="">` : `<div class="cover-fallback">${esc((r.hostAvatar||r.hostName||'L').slice(0,2))}</div>`;
     return `
     <button class="feed-card" onclick="watchLive('${r.id}')">
-      <div class="feed-cover">
+      <div class="feed-cover${hasImg?'':' no-image'}">
         ${cover}
         <div class="fade"></div>
         <span class="feed-badge"><i></i>LIVE</span>
@@ -1364,10 +1431,8 @@ function watchLive(id, host=false, fromSelf=false){
   updateLiveQuoteBar();openPage('liveRoom');
   updateLiveHomeBackDot();
   renderRoom();
-  // 没有预生成内容时才补一次，避免进去一片空白（有内容的房间不会额外调用 API）
-  if(!S.hostCards.length && !S.audience.length && !S.isHost){
-    refreshRoom().catch(e=>{ if(!isAliasChanged(e)) haloFail('直播内容生成失败',e); });
-  }
+  // 首页刷新时已经用同一次 API 生成了初始卡片和弹幕；进入房间不再自动补调 API。
+  // 如果确实为空，用户可以在直播间里手动点刷新。
 }
 function openRoomRecap(id){
   const rc=S.roomRecaps&&S.roomRecaps[String(id)];
@@ -1642,7 +1707,10 @@ function sendHostContent(){
   if(S.hostCardIndex>=S.hostCards.length) S.hostCardIndex=0;
   renderHostCard();showToast('已更新主播卡');
 }
-function assertSameAlias(genAlias){ if(S.activeAliasId!==genAlias) throw new Error('__alias_changed__'); }
+function assertSameAlias(genAlias,genMask){
+  if(S.activeAliasId!==genAlias) throw new Error('__alias_changed__');
+  if(genMask&&String(S._stateMaskId||'')!==String(genMask)) throw new Error('__alias_changed__');
+}
 function isAliasChanged(e){ return String((e&&e.message)||e||'')==='__alias_changed__'; }
 function tagDescOf(name){
   const t=(S.liveTags||[]).find(x=>x.name===name&&x.desc);
@@ -1710,21 +1778,20 @@ async function generateRoomContent(mode){
   }
   const barrage=(Array.isArray(obj&&obj.barrage)?obj.barrage:[])
     .map(b=>({name:String((b&&b.name)||'').slice(0,20),text:String((b&&b.text)||'').trim()}))
-    .filter(b=>b.text&&banned.indexOf(b.name)<0&&audienceAllowed(b.name))
-    .map(b=>({name:b.name||rand(CN_AUDIENCE)||'',text:b.text}));
+    .filter(b=>b.text&&b.name&&banned.indexOf(b.name)<0&&audienceAllowed(b.name));
   const gifts=(Array.isArray(obj&&obj.gifts)?obj.gifts:[]).slice(0,2)
-    .map(g=>({name:String((g&&g.name)||'观众').slice(0,20),gift:String((g&&g.gift)||'星星').slice(0,10),value:Number(g&&g.value)||1}))
-    .filter(g=>banned.indexOf(g.name)<0&&audienceAllowed(g.name));
+    .map(g=>({name:String((g&&g.name)||'').trim().slice(0,20),gift:String((g&&g.gift)||'星星').slice(0,10),value:Number(g&&g.value)||1}))
+    .filter(g=>g.name&&banned.indexOf(g.name)<0&&audienceAllowed(g.name));
   return {cards,barrage,gifts};
 }
 async function refreshRoom(){
   if(!S.currentRoom) return false;
   S._lastRoomError=null;
   if(!S._apiReady||typeof HaloData==='undefined'){ const e=new Error('未配置主 API'); S._lastRoomError=e; throw e; }
-  const genAlias=S.activeAliasId;
+  const genAlias=S.activeAliasId;const genMask=S._stateMaskId;
   const soloOwn=S.isHost&&!S.cohostPresent;
   const g=await generateRoomContent(soloOwn?'barrage':'both');
-  assertSameAlias(genAlias);
+  assertSameAlias(genAlias,genMask);
   if(!g.cards.length&&!g.barrage.length){ const e=new Error('AI 未返回有效的直播内容'); S._lastRoomError=e; throw e; }
   if(g.cards.length){ S.hostCards=g.cards; S.hostCardIndex=0; g.cards.forEach(c=>S.roomLog.push({who:S.isHost?'user':'char',kind:'narration',text:c.narration},{who:S.isHost?'user':'char',kind:'speech',text:c.speech})); }
   g.barrage.forEach(b=>S.audience.push({name:b.name,text:b.text,time:nowHM()}));
@@ -2093,17 +2160,25 @@ async function respondShare(chatName,idx){
     if(isGroup){
       const g=(S.groups||[]).find(x=>x.name===chatName)||{};
       normalizeGroupFans(g);
-      const members=[...new Set([...(g.admins||[]),...(g.fans||[]),'阴阳怪气','键盘侠'])].slice(0,10);
-      const sys='你在模拟群聊「'+chatName+'」（群简介：'+(g.desc||'无')+'）。有人分享了一场直播。请生成 3-6 条不同成员的反应：有人看好、有人挑刺、有人玩梗、有人追问，简短、每条单独一行。所有人都不得自称管理员或群主。'
-        +'只输出 JSON：{"msgs":[{"name":"成员名","text":"消息"}]}，name 必须是这些成员之一：'+members.join('、')+'。';
+      const adminNames=(g.admins||[]).filter(a=>a&&a!=='You'&&a!==currentIdentity().name);
+      const knownMembers=[...new Set(adminNames.concat(g.fans||[]))].slice(0,12);
+      const sys='你在模拟群聊「'+chatName+'」（群简介是唯一硬设定：'+(g.desc||'无')+'）。有人分享了一场直播。请按这个群的简介和氛围生成 3-6 条不同成员的反应：有人看好、有人挑刺、有人玩梗、有人追问，简短、每条单独一行。成员必须使用具体网名，不能使用“阴阳怪气/键盘侠/路人黑”这类标签名。所有人都不得自称管理员或群主。'
+        +(knownMembers.length?('已有成员（优先沿用）：'+knownMembers.join('、')+'。'):'')
+        +'请同时生成 6~8 个符合这个群的具体成员网名，然后用这些成员发言。只输出 JSON：{"members":["网名1","网名2"],"msgs":[{"name":"成员名","text":"消息"}]}。';
       const obj=await HaloData.callMainJSON([{role:'system',content:sys},{role:'user',content:shareText}],{temperature:1.0});
+      const generated=(Array.isArray(obj&&obj.members)?obj.members:[]).map(n=>String(n||'').trim()).filter(n=>n&&!isLabelMemberName(n)&&n!==currentIdentity().name&&adminNames.indexOf(n)<0);
+      let members=[...new Set(knownMembers.concat(generated))].slice(0,16);
       const msgs=(obj&&Array.isArray(obj.msgs))?obj.msgs:[];
       if(!msgs.length) throw new Error('AI 未返回内容');
+      members=[...new Set(members.concat(msgs.map(mm=>String(mm&&mm.name||'').trim()).filter(n=>n&&!isLabelMemberName(n)&&n!==currentIdentity().name&&adminNames.indexOf(n)<0)))].slice(0,16);
+      g.fans=members.filter(n=>adminNames.indexOf(n)<0);
+      g.members=Math.max(Number(g.members)||1,[...new Set(members.concat(adminNames,[currentIdentity().name]))].length);
       msgs.forEach(mm=>{
         const tx=String(mm&&mm.text||'').trim(); if(!tx)return;
         let sp=String(mm&&mm.name||'').trim();
-        if(members.length&&members.indexOf(sp)<0) sp=rand(members);
-        pushSplitChat(chatName,'member',tx,sp||'成员');
+        if(!sp){ if(members.length) sp=rand(members); else return; }
+        else if(members.length&&members.indexOf(sp)<0) sp=rand(members);
+        pushSplitChat(chatName,'member',tx,sp);
       });
       const lg=S.chatLog[chatName]||[];const last=lg[lg.length-1];
       if(g&&last){g.last=last.text||g.last;g.time='刚刚';g.unread=(g.unread||0)+1;}
@@ -2592,19 +2667,28 @@ function renderGroupSettings(){
     +'<div style="display:flex;gap:8px;margin:6px 0 10px">'
     +'<button class="secondary-wide" style="height:38px" onclick="editGroupDesc()">编辑群简介</button>'
     +'<button class="secondary-wide" style="height:38px;color:var(--accent)" onclick="deleteCurrentGroup()">删除群聊</button></div>'
-    +'<div class="admin-only-note">邀请 char 入群：只有被邀请的 char 才会出现在群里并发言；普通粉丝不会自动包含任何 char。</div>';
+    +'<div class="admin-only-note">邀请 char 入群：只有被邀请的 char 才会出现在群里并发言；普通群成员不会自动包含任何 char。</div>';
   $('adminList').innerHTML=head+
     (S.dmFriends||[]).map(f=>{const on=admins.includes(f.name);return `<div class="admin-char-row"><div class="a-dot">${esc(f.name.charAt(0))}</div><div class="a-main"><div class="a-name">${esc(f.name)}</div><div class="a-role">${on?'已邀请 · 群成员':'好友 · char'}</div></div><button class="pill-action ${on?'danger':''}" data-name="${esc(f.name)}" onclick="toggleAdmin(this.dataset.name)">${on?'移出群聊':'邀请入群'}</button></div>`}).join('');
   const invited=(admins||[]).filter(a=>charByName(a));
   $('memberList').innerHTML=invited.map(f=>`<div class="settings-item"><div><div class="label">${esc(f)}<span class="admin-badge">管理员</span></div><div class="desc">已邀请的 char</div></div></div>`).join('')
-    +(g.fans||[]).slice(0,12).map(f=>`<div class="settings-item"><div><div class="label">${esc(f)}</div><div class="desc">随机粉丝</div></div></div>`).join('');
+    +(g.fans||[]).slice(0,12).map(f=>`<div class="settings-item"><div><div class="label">${esc(f)}</div><div class="desc">群成员</div></div></div>`).join('');
 }
 function editGroupDesc(){
   const g=S.currentGroup;if(!g)return;
   openEditDialog({
     title:'编辑群简介',
     fields:[{label:'群简介（之后群聊内容会围绕它生成）',value:g.desc||'',multiline:true,placeholder:'例如：一起讨论新番与同人创作'}],
-    onSave:(v)=>{g.desc=(v[0]||'').trim();renderGroupSettings();saveHaloState();showToast('群简介已更新');}
+    onSave:(v)=>{
+      const desc=(v[0]||'').trim();
+      g.desc=desc;
+      g._descChanged=true;
+      delete g._memberPool;
+      const canonical=(S.groups||[]).find(x=>x&&x.name===g.name);
+      if(canonical&&canonical!==g)canonical.desc=desc;
+      renderGroupSettings();saveHaloState();
+      showToast('群简介已更新，下次刷新会按新简介校正群聊');
+    }
   });
 }
 function deleteCurrentGroup(){
@@ -2627,9 +2711,9 @@ function toggleAdmin(name){
 }
 function createGroup(){
   const name=$('groupName').value.trim()||'New Space',desc=$('groupDesc').value.trim()||'一个刚刚创建的群聊。';
-  const topic=document.querySelector('#groupCreateTopics .choice.active')?.dataset?.topic||'创作';
-  const fans=randomFans(9);const admin=currentIdentity().name||'我';
-  const g={id:Date.now(),name,desc,topic,members:fans.length+1,joined:true,last:'群聊已创建',time:'刚刚',unread:0,admins:admin?[admin]:[],fans,foreign:sampleUnique(FOREIGN_CHARS,3),_randomizedFans:true};
+  const topic=document.querySelector('#groupCreateTopics .choice.active')?.dataset?.topic||'追星';
+  const admin=currentIdentity().name||'我';
+  const g={id:Date.now(),name,desc,topic,members:1,joined:true,last:'群聊已创建',time:'刚刚',unread:0,admins:admin?[admin]:[],fans:[],foreign:[],_randomizedFans:false};
   S.groups.unshift(g);S.myGroups.unshift({name:name,members:g.members,admin:admin||'—',last:'群聊已创建',time:'刚刚',unread:0});
   S.currentGroup=g;S.chatFrom='groupHome';S.chatLog[name]=[];openPage('groupChat');renderGroupList();renderMine();saveHaloState();
 }
@@ -2681,7 +2765,7 @@ function renderMine(){
         <div class="mine-thumb round">${esc(g.name.charAt(0))}</div>
         <div class="mine-info"><div class="mine-title">${esc(g.name)}</div>
         <div class="mine-meta">${g.members} 成员 · 群主 ${esc(g.admin)}</div></div>
-      </button>`).join(''):`<div class="mine-empty">还没有粉丝群</div>`;
+      </button>`).join(''):`<div class="mine-empty">还没有群聊</div>`;
   } else {
     el.innerHTML=S.myReplays.length?S.myReplays.map((r,i)=>`
       <div class="mine-row">
@@ -2738,13 +2822,13 @@ function deleteAlias(id){
   if(!id||id==='main')return;
   const a=(S.aliases||[]).find(x=>x.id===id);if(!a)return;
   haloConfirm('删除马甲「'+a.name+'」？该马甲下的 Halo 记录也会一起删除。',async()=>{
-    try{ await haloIdbDel('state:'+id); }catch(e){}
-    try{ const all=JSON.parse(localStorage.getItem('nanoHaloFallback_v1')||'{}'); delete all['state:'+id]; localStorage.setItem('nanoHaloFallback_v1',JSON.stringify(all)); }catch(e){}
+    try{ await haloIdbDel(haloStateKey(id)); }catch(e){}
+    try{ const all=JSON.parse(localStorage.getItem('nanoHaloFallback_v1')||'{}'); delete all[haloStateKey(id)]; localStorage.setItem('nanoHaloFallback_v1',JSON.stringify(all)); }catch(e){}
     S.aliases=(S.aliases||[]).filter(x=>x.id!==id);
-    try{ localStorage.setItem('nanoAliases',JSON.stringify(S.aliases)); }catch(e){}
+    try{ localStorage.setItem(haloAliasKey(),JSON.stringify(S.aliases)); }catch(e){}
     if(S.activeAliasId===id){
       S.activeAliasId='main';
-      try{ localStorage.setItem('nanoHaloActiveAlias','main'); }catch(e){}
+      try{ localStorage.setItem(haloActiveAliasKey(),'main'); }catch(e){}
       closeAliasSwitcher();
       S.currentRoom=null;S.currentGroup=null;S.history=['liveHome'];
       await applyRealData();
@@ -2761,7 +2845,7 @@ async function switchAlias(id){
   if(S.activeAliasId===id){closeAliasSwitcher();return;}
   _savePending=false;clearTimeout(_saveTimer);persistNow();
   S.activeAliasId=id;
-  try{localStorage.setItem('nanoHaloActiveAlias',id);}catch(e){}
+  try{localStorage.setItem(haloActiveAliasKey(),id);}catch(e){}
   closeAliasSwitcher();
   S.currentRoom=null;S.currentGroup=null;S.history=['liveHome'];
   await applyRealData();
@@ -2786,7 +2870,7 @@ function editAlias(id){
       a.handle='@'+a.name.toLowerCase().replace(/\s+/g,'');
       a.avatarLetter=a.name.charAt(0).toUpperCase();
       a.bio=bio;a.setting=bio;
-      try{localStorage.setItem('nanoAliases',JSON.stringify(S.aliases));}catch(e){}
+      try{localStorage.setItem(haloAliasKey(),JSON.stringify(S.aliases));}catch(e){}
       renderMine();renderDM();renderChat();renderLive();
       if(S.activeAliasId===id)saveHaloState();
       showToast('马甲已更新');
@@ -2795,7 +2879,7 @@ function editAlias(id){
 }
 function closeAliasSwitcher(){$('aliasModal').classList.remove('show')}
 function openMyGroup(name){
-  S.currentGroup=S.groups.find(x=>x.name===name)||{name:name,members:'1',topic:'粉丝群',desc:'我的粉丝群',admins:['You'],fans:[],foreign:FOREIGN_CHARS.slice(0,3)};
+  S.currentGroup=S.groups.find(x=>x.name===name)||{name:name,members:'1',topic:'群聊',desc:'我的群聊',admins:['You'],fans:[],foreign:[]};
   S.chatFrom='meHome';if(!S.chatLog[name]) S.chatLog[name]=[];openPage('groupChat');
 }
 function openReplay(i){
@@ -2808,7 +2892,7 @@ function editCover(){
   const input=document.createElement('input');input.type='file';input.accept='image/*';
   input.onchange=(e)=>{const f=e.target.files[0];if(!f)return;
     const reader=new FileReader();
-    reader.onload=()=>{const id=currentIdentity();id.cover=reader.result;if(S.activeAliasId==='main')localStorage.setItem('nanoCover',reader.result);saveHaloState();renderMine();showToast('封面已更新');};
+    reader.onload=()=>{const id=currentIdentity();id.cover=reader.result;if(S.activeAliasId==='main')localStorage.setItem(haloProfileKey('cover'),reader.result);saveHaloState();renderMine();showToast('封面已更新');};
     reader.readAsDataURL(f);
   };
   input.click();
@@ -2857,22 +2941,71 @@ function editName(){
     }
   });
 }
+function haloProfileKey(field){return 'nanoHaloProfile_'+haloMaskScope()+'_'+field;}
+function readHaloProfile(field,legacyKey){
+  try{ const v=localStorage.getItem(haloProfileKey(field)); if(v!=null)return v; }catch(e){}
+  try{
+    const v=localStorage.getItem(legacyKey);
+    if(v!=null){
+      localStorage.setItem(haloProfileKey(field),v);
+      localStorage.removeItem(legacyKey);
+      return v;
+    }
+  }catch(e){}
+  return null;
+}
+function loadAliasesForMask(){
+  S.aliases=[];
+  S.activeAliasId='main';
+  const key=haloAliasKey();
+  let raw=null;
+  try{ raw=localStorage.getItem(key); }catch(e){}
+  // 旧版本把马甲存在全局 nanoAliases：只迁移给当前 user 面具，迁移后删除旧键，避免其他面具共享。
+  if(!raw){
+    try{
+      const legacy=localStorage.getItem('nanoAliases');
+      if(legacy){
+        raw=legacy;
+        localStorage.setItem(key,legacy);
+        localStorage.removeItem('nanoAliases');
+      }
+    }catch(e){}
+  }
+  try{ const a=JSON.parse(raw||'[]'); S.aliases=Array.isArray(a)?a:[]; }catch(e){ S.aliases=[]; }
+  const actKey=haloActiveAliasKey();
+  let act=null;
+  try{ act=localStorage.getItem(actKey); }catch(e){}
+  if(!act){
+    try{
+      const legacyAct=localStorage.getItem('nanoHaloActiveAlias');
+      if(legacyAct&&(legacyAct==='main'||S.aliases.some(a=>a&&a.id===legacyAct))){
+        act=legacyAct;
+        localStorage.setItem(actKey,act);
+        localStorage.removeItem('nanoHaloActiveAlias');
+      }
+    }catch(e){}
+  }
+  if(act&&(act==='main'||S.aliases.some(a=>a&&a.id===act))) S.activeAliasId=act;
+}
 function loadProfile(){
+  if(!S._stateMaskId) S._stateMaskId=currentMaskId();
+  // 切换 user 面具时先清空主身份，避免新面具没有某项资料时沿用旧面具的昵称/个签/封面。
+  S.identity.name='我';S.identity.handle='@me';S.identity.avatarLetter='我';
+  S.identity.avatarImage=null;S.identity.cover=null;S.identity.setting='';
+  S.identity.gender='';S.identity.maskId=null;S.identity.signature='';
   if(localStorage.getItem('nanoName')) S.identity.name=localStorage.getItem('nanoName');
   if(localStorage.getItem('nanoHandle')) S.identity.handle=localStorage.getItem('nanoHandle');
   if(localStorage.getItem('nanoAvatar')) S.identity.avatarLetter=localStorage.getItem('nanoAvatar');
   if(localStorage.getItem('nanoAvatarImg')) S.identity.avatarImage=localStorage.getItem('nanoAvatarImg');
-  if(localStorage.getItem('nanoCover')) S.identity.cover=localStorage.getItem('nanoCover');
-  if(localStorage.getItem('nanoSignature')) S.identity.signature=localStorage.getItem('nanoSignature');
-  try{const a=JSON.parse(localStorage.getItem('nanoAliases')||'[]');if(Array.isArray(a))S.aliases=a;}catch(e){}
-  const act=localStorage.getItem('nanoHaloActiveAlias');
-  if(act && (act==='main'||(S.aliases||[]).some(a=>a&&a.id===act))) S.activeAliasId=act;
+  const haloCover=readHaloProfile('cover','nanoCover'); if(haloCover!=null) S.identity.cover=haloCover;
+  const haloSignature=readHaloProfile('signature','nanoSignature'); if(haloSignature!=null) S.identity.signature=haloSignature;
+  loadAliasesForMask();
 }
 function saveAlias(){
   const n=$('aliasName').value.trim()||'新的我';
   const bio=$('aliasBio').value.trim();
   const a={id:'a'+Date.now(),name:n,handle:'@'+n.toLowerCase().replace(/\s+/g,''),avatarLetter:n.charAt(0).toUpperCase(),avatarImage:null,cover:null,bio,setting:bio};
-  S.aliases.push(a);localStorage.setItem('nanoAliases',JSON.stringify(S.aliases));
+  S.aliases.push(a);localStorage.setItem(haloAliasKey(),JSON.stringify(S.aliases));
   $('aliasName').value='';$('aliasBio').value='';
   saveHaloState();openPage('meHome');showToast('马甲已保存');
 }
@@ -2943,13 +3076,29 @@ function haloGoDiscover(){
 function notifyHalo(title,body,app){
   try{if(window.NanoNotify&&NanoNotify.enabled())NanoNotify.notify(title,body,{app:'halo',channel:'halo',target:'halo'})}catch(e){}
 }
+async function reloadForCurrentMask(){
+  // 先按旧面具把未落盘的数据存好，避免切换面具时把旧数据写进新面具。
+  try{ if(_savePending) flushHaloState(); }catch(e){}
+  S._stateMaskId=null;
+  S._mask=null;
+  S.aliases=[];
+  S.activeAliasId='main';
+  S.currentRoom=null;S.currentGroup=null;S.history=['liveHome'];
+  loadProfile();
+  await applyRealData();
+  renderLiveTopics();renderLive();renderDM();renderGroupList();renderMine();renderChat();renderGroupSettings();
+  navTo('liveHome',false);
+}
 function installHaloInterop(){
   if(window.__haloInteropInstalled)return;
   window.__haloInteropInstalled=true;
   try{
     window.addEventListener('message',(ev)=>{
       const d=ev&&ev.data;if(!d||!d.type)return;
-      if(d.type==='currentMaskChanged'||d.type==='homeDataUpdated'||d.type==='contactsDataUpdated'){
+      if(d.type==='currentMaskChanged'){
+        clearTimeout(window.__haloResyncT);
+        window.__haloResyncT=setTimeout(()=>{reloadForCurrentMask().catch(e=>console.warn('[Halo] 切换面具失败',e));},300);
+      }else if(d.type==='homeDataUpdated'||d.type==='contactsDataUpdated'){
         clearTimeout(window.__haloResyncT);
         window.__haloResyncT=setTimeout(()=>{syncIdentity().then(()=>{renderMine();renderDM();renderChat();})},300);
       }
@@ -3015,12 +3164,12 @@ function installHaloInterop(){
   if(giftGrid){
     giftGrid.innerHTML=GIFT_KINDS.map(gg=>`<button class="gift" onclick="sendGift('${gg.name}',${gg.value})"><span class="gico">${giftSvg(gg.name)}</span>${gg.name} · ${gg.value}</button>`).join('');
   }
-  // 群聊页：加入其他人的粉丝群
+  // 群聊页：加入其他人的群聊
   const createGroupBtn=document.querySelector('#groupHome .page-inner button.secondary-wide');
   if(createGroupBtn&&!$('haloJoinGroupBtn')){
     const b=document.createElement('button');
     b.className='secondary-wide';b.id='haloJoinGroupBtn';b.style.marginTop='10px';
-    b.textContent='＋ 加入其他人的粉丝群';
+    b.textContent='＋ 加入其他人的群聊';
     b.onclick=openDiscoverGroups;
     createGroupBtn.after(b);
   }

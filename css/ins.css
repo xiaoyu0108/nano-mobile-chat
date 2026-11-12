@@ -11,9 +11,9 @@ button,input,textarea{font:inherit}button{border:0;background:none;padding:0;cur
 .status{height:var(--safe-top, 0px);flex:none}
 
 /* 注释已清理（原文件编码损坏） */
-.topbar{min-height:44px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:10px 12px;flex:none;background:var(--bg);z-index:6}
-.brand{font-family:Georgia,'Times New Roman',serif;font-style:italic;font-size:27px;font-weight:900;letter-spacing:0;padding:2px 10px 2px 4px;line-height:1.15;flex:none;cursor:pointer;user-select:none;overflow:visible;background:linear-gradient(135deg,#f8b04d,#ef476f,#a343d4);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
-.top-actions{display:flex;gap:18px;align-items:center}
+.topbar{min-height:44px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;flex:none;background:var(--bg);z-index:9;position:relative}
+.brand{font-family:Georgia,'Times New Roman',serif;font-style:italic;font-size:27px;font-weight:900;letter-spacing:0;padding:2px 20px 2px 4px;line-height:1.15;flex:none;cursor:pointer;user-select:none;overflow:visible;white-space:nowrap;position:relative;z-index:2;background:linear-gradient(135deg,#f8b04d,#ef476f,#a343d4);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.top-actions{display:flex;gap:18px;align-items:center;flex:none;position:relative;z-index:1;margin-left:auto}
 .top-actions button{display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:9px}
 .top-actions button:active{background:#f0f0f0}
 .icon{width:24px;height:24px;display:block;stroke:var(--ink);stroke-width:1.9;fill:none;stroke-linecap:round;stroke-linejoin:round}

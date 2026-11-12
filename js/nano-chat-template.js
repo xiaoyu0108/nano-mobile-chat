@@ -570,9 +570,9 @@ window.NANO_CHAT_TEMPLATE = `/* ================================================
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .nano-chat-inner .bubble-card .message-box {
-    margin: 10px 14px 0; padding: 8px 10px;
-    background: #f8f8f8; border-radius: 8px;
-    font-size: 12px; line-height: 1.35; color: #444444;
+    margin: 10px 14px 0; padding: 0;
+    background: transparent; border-radius: 0;
+    font-size: 12.5px; line-height: 1.5; color: #8e8e93;
     white-space: pre-wrap; overflow-wrap: anywhere;
     max-height: 76px; overflow-y: auto;
 }
@@ -848,9 +848,9 @@ window.NANO_CHAT_TEMPLATE = `/* ================================================
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .nano-groups .bubble-card .message-box {
-    margin: 10px 14px 0; padding: 8px 10px;
-    background: #f8f8f8; border-radius: 8px;
-    font-size: 12px; line-height: 1.35; color: #444444;
+    margin: 10px 14px 0; padding: 0;
+    background: transparent; border-radius: 0;
+    font-size: 12.5px; line-height: 1.5; color: #8e8e93;
     white-space: pre-wrap; overflow-wrap: anywhere;
     max-height: 76px; overflow-y: auto;
 }

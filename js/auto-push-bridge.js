@@ -124,8 +124,11 @@
             return String(f.contentWindow.__nanoChatReadyChat || '') === String(chatId || '');
         } catch (e) { return false; }
     }
+    function onlyPunctText(s) {
+        return /^[\s.。…·．\-—_~～!！?？,，、;；:：'"“”‘’|｜]+$/.test(String(s || ''));
+    }
     function splitBubbles(list) {
-        var arr = (list || []).map(function (s) { return String(s || '').trim(); }).filter(Boolean);
+        var arr = (list || []).map(function (s) { return String(s || '').trim(); }).filter(function (s) { return s && !onlyPunctText(s); });
         var out = [];
         arr.forEach(function (s) {
             var sep = s.indexOf('||');
@@ -133,7 +136,7 @@
                 // 外文：原文和译文分别按句拆开，再一一配对，保证每条气泡都带自己的翻译
                 var orig = s.slice(0, sep).trim();
                 var trans = s.slice(sep + 2).trim();
-                var os = orig.split(/(?<=[。！？!?…\.])\s*/).map(function (x) { return x.trim(); }).filter(Boolean);
+                var os = orig.split(/(?<=[。！？!?…\.])\s*/).map(function (x) { return x.trim(); }).filter(function (x) { return x && !onlyPunctText(x); });
                 var ts = trans.split(/(?<=[。！？!?…\.])\s*/).map(function (x) { return x.trim(); }).filter(Boolean);
                 if (os.length > 1) {
                     os.forEach(function (x, i) { out.push(x + '||' + (ts[i] || trans)); });
@@ -141,7 +144,7 @@
                 }
             }
             if (s.indexOf('||') < 0 && s.length > 16) {
-                var parts = s.split(/(?<=[。！？!?…])/).map(function (x) { return x.trim(); }).filter(Boolean);
+                var parts = s.split(/(?<=[。！？!?…])/).map(function (x) { return x.trim(); }).filter(function (x) { return x && !onlyPunctText(x); });
                 if (parts.length > 1) { out = out.concat(parts); return; }
             }
             out.push(s);

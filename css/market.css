@@ -768,3 +768,34 @@ main,
 .detail-content {
   background: #ffffff !important;
 }
+
+/* 共享集市：高亮白底 + 纯黑白灰配色（图片/头像保持原色） */
+:root{
+  --bg:#ffffff;
+  --paper:#ffffff;
+  --ink:#0a0a0a;
+  --ink-2:#2f2f2f;
+  --muted:#7c7c7c;
+  --line:#e5e5e5;
+  --line-2:#f1f1f1;
+  --accent:#0a0a0a;
+  --accent-soft:#f3f3f3;
+  --shadow-sm:0 1px 2px rgba(0,0,0,.04);
+  --shadow-md:0 8px 24px rgba(0,0,0,.06);
+  --shadow-lg:0 16px 44px rgba(0,0,0,.09);
+}
+body,.app,main,.page,.detail-page,.detail-content{background:#fff!important;color:#111}
+.topbar,.detail-header,.bottombar{background:rgba(255,255,255,.97)!important;border-color:#e5e5e5!important}
+.topbar-btn,.topbar-back,.detail-back{background:#fff!important;border-color:#e5e5e5!important;color:#111!important}
+.hero .eyebrow,.section-label span,.page-kicker,.detail-note{color:#8a8a8a!important}
+.hero h1 em{color:#8a8a8a!important}
+.mode-banner,.mode-banner.warn{background:#f5f5f5!important;border-color:#e5e5e5!important;color:#333!important}
+.folder,.post,.preset,.server,.detail-reaction{background:#fff!important;border-color:#e5e5e5!important;box-shadow:none!important}
+.folder-icon,.post-tag,.search-box,.post-file,.file-badge,.detail-tag,.detail-file-item,.form-input,.form-textarea,.form-select,.upload-zone,.modal-close,.btn-secondary{background:#f4f4f4!important;border-color:#e5e5e5!important;color:#333!important}
+.folder-arrow,.post-excerpt,.post-foot,.detail-desc,.detail-note,.section-label span{color:#7d7d7d!important}
+.avatar{background-color:#f0f0f0!important;color:#444!important}
+.search-btn,.btn-primary,.tag-inline{background:#0a0a0a!important;color:#fff!important}
+.bottombar{box-shadow:0 12px 30px rgba(0,0,0,.10)!important}
+.nav-btn{color:#8a8a8a!important}
+.nav-btn.active{color:#0a0a0a!important}
+.detail-delete,.btn-danger{background:#f4f4f4!important;color:#111!important;border-color:#e5e5e5!important}

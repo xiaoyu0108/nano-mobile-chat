@@ -235,3 +235,32 @@ body,
 main {
   background: #ffffff !important;
 }
+
+/* MCP：高亮白底 + 纯黑白灰配色（图片/头像保持原色） */
+:root{
+  --bg:#ffffff;
+  --paper:#ffffff;
+  --ink:#0a0a0a;
+  --ink2:#2f2f2f;
+  --muted:#7c7c7c;
+  --line:#e5e5e5;
+  --soft:#f3f3f3;
+}
+body,.app,main{background:#fff!important;color:#111}
+.topbar{background:rgba(255,255,255,.97)!important;border-color:#e5e5e5!important}
+.topbar-btn,.topbar-back{background:#fff!important;border-color:#e5e5e5!important;color:#111!important}
+.hero .eyebrow,.section-label span,.server-info small,.tool small,.preset-info small,.tool-desc,.tool-hint,.server-status{color:#7d7d7d!important}
+.hero h1 em{color:#8a8a8a!important}
+.help,.server,.preset{background:#fff!important;border-color:#e5e5e5!important;box-shadow:none!important}
+.help code,.tool,.tool-hint code,.input,.textarea,.mini-btn,.btn-secondary,.modal-close{background:#f4f4f4!important;border-color:#e5e5e5!important;color:#333!important}
+.tool:active{background:#ececec!important}
+.switch{background:#d8d8d8}
+.switch.on{background:#0a0a0a}
+.server-dot{background:#c9c9c9}
+.server-dot.ok{background:#0a0a0a}
+.server-dot.err{background:#8a8a8a}
+.mini-btn.danger{background:#f4f4f4!important;color:#111!important}
+.tag-inline,.btn-primary{background:#0a0a0a!important;color:#fff!important}
+.result{background:#111!important}
+.empty{background:#fff!important;border-color:#e5e5e5!important;color:#8a8a8a!important}
+.toast{background:#0a0a0a!important;color:#fff!important}

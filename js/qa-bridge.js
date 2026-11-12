@@ -548,25 +548,23 @@
       'X-Nano-App': 'qa',
       'X-Nano-Kind': 'chat'
     };
-    // Q&A 的 JSON 输出比普通聊天长，预算太低会直接截断。至少给 1400，
-    // 并且遇到 finish_reason=length 时自动用更大的预算重试一次。
+    // Q&A 的 JSON 输出比普通聊天长，预算太低会直接截断，因此一次给足预算，
+    // 不再在截断后自动换更大预算重复生成。
     var startTokens = Math.max(parseInt(meta.maxTokens, 10) || 0, 2200);
-    var budgets = [startTokens];
-    if (meta.retryOnLength !== false) budgets.push(Math.min(16000, Math.round(startTokens * 1.8)));
     var lastContent = '';
     var useJson = meta.json !== false;
     var jsonFallbackUsed = false;
-    for (var attempt = 0; attempt < budgets.length; attempt++) {
+    for (var attempt = 0; attempt < 1; attempt++) {
       var bodyObj = {
         model: cfg.mainModel,
         messages: msgs,
-        max_tokens: budgets[attempt],
+        max_tokens: startTokens,
         temperature: isFinite(meta.temp) ? meta.temp : temp,
         stream: false
       };
       if (useJson) bodyObj.response_format = { type: 'json_object' };
       var body = JSON.stringify(bodyObj);
-      try { console.info('[Q&A] 请求', { model: cfg.mainModel, messages: msgs.length, max_tokens: budgets[attempt], url: base + '/chat/completions' }); } catch (e) {}
+      try { console.info('[Q&A] 请求', { model: cfg.mainModel, messages: msgs.length, max_tokens: startTokens, url: base + '/chat/completions' }); } catch (e) {}
       var resp = await requestAI(base + '/chat/completions', headers, body);
       var rawText = String((resp && resp.text) || '');
       var data = null;
@@ -585,7 +583,7 @@
         e1.status = resp && resp.status;
         e1.body = rawText.slice(0, 2000);
         try { console.error('[Q&A] API 失败', { url: base + '/chat/completions', status: e1.status, model: cfg.mainModel, response: rawText.slice(0, 1000) }); } catch (e) {}
-        try { if (window.NanoApiLogs && NanoApiLogs.add) NanoApiLogs.add({ url: base + '/chat/completions', method: 'POST', kind: 'chat', status: e1.status || 0, ok: false, error: httpMsg, detail: rawText.slice(0, 1200), meta: { model: cfg.mainModel, messages: msgs.length, maxTokens: budgets[attempt], stream: false } }); } catch (e) {}
+        try { if (window.NanoApiLogs && NanoApiLogs.add) NanoApiLogs.add({ url: base + '/chat/completions', method: 'POST', kind: 'chat', status: e1.status || 0, ok: false, error: httpMsg, detail: rawText.slice(0, 1200), meta: { model: cfg.mainModel, messages: msgs.length, maxTokens: startTokens, stream: false } }); } catch (e) {}
         throw e1;
       }
       if (!data) {
@@ -597,16 +595,13 @@
         var apiErr = data && ((data.error && data.error.message) || data.message);
         if (apiErr) throw new Error('Q&A 模型返回错误：' + apiErr);
         var fr = data.choices && data.choices[0] && data.choices[0].finish_reason;
-        // 推理模型可能把预算全花在思维链上：换更大的预算再试一次
-        if (attempt < budgets.length - 1) continue;
-        try { if (window.NanoApiLogs && NanoApiLogs.add) NanoApiLogs.add({ url: base + '/chat/completions', method: 'POST', kind: 'chat', status: resp.status || 0, ok: false, error: fr === 'length' ? '模型输出被截断' : '模型没有返回正文', detail: rawText.slice(0, 1200), meta: { model: cfg.mainModel, maxTokens: budgets[attempt] } }); } catch (e) {}
+        try { if (window.NanoApiLogs && NanoApiLogs.add) NanoApiLogs.add({ url: base + '/chat/completions', method: 'POST', kind: 'chat', status: resp.status || 0, ok: false, error: fr === 'length' ? '模型输出被截断' : '模型没有返回正文', detail: rawText.slice(0, 1200), meta: { model: cfg.mainModel, maxTokens: startTokens } }); } catch (e) {}
         throw new Error(fr === 'length'
-          ? ('Q&A 模型输出被截断（模型：' + cfg.mainModel + '，max_tokens=' + budgets[attempt] + '），请重试或换更大的上下文模型')
+          ? ('Q&A 模型输出被截断（模型：' + cfg.mainModel + '，max_tokens=' + startTokens + '），请重试或换更大的上下文模型')
           : ('Q&A 模型没有返回正文（模型：' + cfg.mainModel + '，finish_reason=' + (fr || '空') + '）'));
       }
       lastContent = content;
-      var finish = data.choices && data.choices[0] && data.choices[0].finish_reason;
-      if (finish !== 'length' || attempt === budgets.length - 1) return content;
+      return content;
     }
     return lastContent;
   }

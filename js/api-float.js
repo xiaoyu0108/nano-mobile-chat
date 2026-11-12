@@ -929,8 +929,8 @@
             }
             var _r = window.NANO_ROOT || '';
             if (!window.NANO_GLOBAL_TEMPLATE) load(_r + 'js/nano-global-template.js?v=20261021a');
-            if (!window.NANO_CHAT_TEMPLATE) load(_r + 'js/nano-chat-template.js?v=20261021h');
-            if (!window.NANO_CHAT_TEMPLATE_GRAY_PINK) load(_r + 'js/nano-chat-theme-gray-pink.js?v=20261102c');
+            if (!window.NANO_CHAT_TEMPLATE) load(_r + 'js/nano-chat-template.js?v=20261113a');
+            if (!window.NANO_CHAT_TEMPLATE_GRAY_PINK) load(_r + 'js/nano-chat-theme-gray-pink.js?v=20261113a');
             finish();
         });
         return beautyTemplatesReady;

@@ -1054,11 +1054,7 @@ function showToast(text) {
     function translateLines(lines) {
         var bases = (lines || []).map(stripParentheticals).map(function (s) { return String(s || '').trim(); }).filter(Boolean);
         if (!bases.length) return Promise.resolve([]);
-        return requestTranslation(bases, false).then(function (arr) {
-            var ok = Array.isArray(arr) && arr.length >= bases.length && arr.slice(0, bases.length).every(isChineseTranslationText);
-            if (ok) return arr;
-            return requestTranslation(bases, true);
-        });
+        return requestTranslation(bases, false);
     }
 
     function ensureBubbleTranslations(bubbles, els) {
@@ -1087,7 +1083,7 @@ function showToast(text) {
         }).catch(function () {});
     }
 
-    // 一轮只调用一次主 API + 一次 TTS：气泡先拆开显示，语音整轮合成一次后播放。
+    // 一轮只调用一次主 API + 一次 TTS：气泡先拆开显示，语音整轮合成一次后播放。外语译文必须由同一次回复提供，不再追加翻译调用。
     function deliverReplyBubbles(raw, opts) {
         opts = opts || {};
         var bubbles = normalizeBilingualBubbles(splitBubbles(cleanModelText(raw)));
@@ -1101,7 +1097,6 @@ function showToast(text) {
             if (el && el._msg) { el._msg.turnSeq = seq; el._msg.turnLast = last; }
             els.push(el);
         });
-        ensureBubbleTranslations(bubbles, els);
         var spoken = bubbles.map(spokenText).filter(Boolean).join('\n');
         notifyCallReplied(spoken || bubbles.join(' '));
         if (opts.noTts || !speakerOn || !spoken || !window.NanoTTS || !NanoTTS.getVoiceBlob) return;

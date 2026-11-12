@@ -160,7 +160,7 @@ const APP_CATEGORIES = [
     },
     {
         id: 'halo', label: 'Halo', color: '#5e5ce6',
-        ls: ['nanoName', 'nanoHandle', 'nanoSignature', 'nanoCover', 'nanoAvatar', 'nanoAvatarImg', 'nanoAliases', 'nanoDark', 'nanoHaloFallback_v1', 'nanoHaloActiveAlias'],
+        ls: ['nanoName', 'nanoHandle', 'nanoSignature', 'nanoCover', 'nanoAvatar', 'nanoAvatarImg', 'nanoAliases', 'nanoHaloAliases_v2_', 'nanoHaloProfile_', 'nanoDark', 'nanoHaloFallback_v1', 'nanoHaloActiveAlias', 'nanoHaloActiveAlias_v2_'],
         idb: [{ db: 'nano_halo_db' }]
     },
     {

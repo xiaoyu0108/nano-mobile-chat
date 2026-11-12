@@ -700,7 +700,11 @@
           return (u && u.length < 300000) ? u : imageSrc;
         }).catch(function () { return imageSrc; })
       : Promise.resolve(imageSrc);
-    return imageReady.then(function (img) {
+    // 图片缓存偶尔会卡住；超时就用原图，保证分享按钮不会“没反应”。
+    var imageSafe = Promise.race([imageReady, new Promise(function (resolve) {
+      setTimeout(function () { resolve(imageSrc); }, 2500);
+    })]);
+    return imageSafe.then(function (img) {
       var card = {
         cardType: 'travelShare',
         travelKind: 'share',
@@ -718,10 +722,13 @@
         fromName: String(opts.fromName || mask.name || '我'),
         sharedAt: now()
       };
-      var msg = baseMessage({ type: 'right', cardData: card, text: '' });
-      if (note) enqueueChatEntry(cid, { text: note, side: 'right' });
-      enqueueChatEntry(cid, { card: card, side: 'right' });
-      return Promise.resolve(msg);
+      var cardMsg = baseMessage({ type: 'right', cardData: card, text: '' });
+      // 直接写入聊天记录并通知已打开的私聊，避免只依赖 storage 事件导致“没反应”。
+      // 不把 note 塞进卡片字段，长文本/特殊字符不会影响卡片解析。
+      var noteMsg = note ? baseMessage({ type: 'right', text: note, isCard: false, cardData: {} }) : null;
+      var chain = Promise.resolve();
+      if (noteMsg) chain = chain.then(function () { return appendChatMessage(cid, noteMsg); });
+      return chain.then(function () { return appendChatMessage(cid, cardMsg); }).then(function () { return cardMsg; });
     });
   }
   function sendInvite(opts) {

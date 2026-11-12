@@ -2190,7 +2190,11 @@
             var commenterBoundNpc = (bound || []).find(function(x) { return x && (x.isNpc || x.isAltProbe) && normName(x.name) === u; });
             if (commenterBoundNpc) return isUserPost || plausibleForAuthor(commenterBoundNpc, author, false, false);
             var commenterChar = (bound || []).find(function(x) { return x && !x.isNpc && !x.isAltProbe && normName(x.name) === u; });
-            if (!commenterChar) return false; // 不在花名册里的名字 → 路人甲，丢弃
+            if (!commenterChar) {
+                // 名单外的名字：允许模型在同一次评论生成里现场虚构 NPC/网友，
+                // 但不能是泛称或已选角色，避免为了花名册再调一次 API。
+                return !isGenericNpcName(c.user);
+            }
             if (isAuthor) return !isUserPost;  // 作者只能在自己的动态里出现（后续回复对象还需是真实评论者）
             // 用户动态：char 可以评论用户，但不能回复其他 char；char 动态：其他 char 一律不出现。
             if (!isUserPost) return false;
@@ -2397,19 +2401,11 @@
         if (hasReplyFromExpected) return parsed;
         if (!expected) return parsed;
 
-        var userLine = userComments.slice().reverse().find(function(c) {
-            return c && expected && normName(c.toUser || '') === normName(expected);
-        }) || userComments[userComments.length - 1];
-        var tryText = '';
-        try {
-            var sys = '你正在扮演朋友圈里的「' + expected + '」。请只回一句对「' + (currentUser.name || '用户') + '」评论的自然回复，不超过 25 字，口语、短促、像随手打字；不要解释、不要加名字前缀、不要输出引号。' +
-                (authorForeign && authorForeign.foreign ? (' 这条朋友圈的作者是' + (authorForeign.nat || '外国') + '人，请先用' + authorForeign.lang + '写，再用括号附中文翻译，例如：thank you（谢谢）。') : '');
-            var usr = persona + '\n\n动态内容：' + (item.text || '') +
-                '\n用户对你说：' + String(userLine.text || '') +
-                '\n请只输出回复内容本身。';
-            var raw = await fetchAIResponse(usr, false, { apiPref: 'sub', system: sys, maxTokens: 120, temperature: 0.9 });
-            tryText = String(raw || '').replace(/```[a-zA-Z]*/g, '').replace(/^["“”'\s]+|["“”'\s]+$/g, '').split(/\n/)[0].trim();
-        } catch (e) { tryText = ''; }
+        // 不再为了“必须有人回复用户”额外调用一次 API，直接用本地短句兜底。
+        var localReplies = authorForeign && authorForeign.foreign
+            ? ['ok（看到了）', 'thanks（谢谢）', 'haha（哈哈）']
+            : ['看到了', '哈哈哈', '好家伙', '这个我懂', '刚看到'];
+        var tryText = localReplies[Math.floor(Math.random() * localReplies.length)];
         var fallbackText = (authorForeign && authorForeign.foreign) ? 'ok（看到了）' : '看到了';
         var reply = filterCommentList(
             [{ user: expected, toUser: currentUser.name, text: tryText || fallbackText }],
@@ -2460,26 +2456,13 @@
             var authorObj = authorCharForScope || { name: item.author };
             var npcs = (npcsOverride && npcsOverride.length) ? npcsOverride.slice() : [];
             if (!npcs.length) {
+                // 一次 API 刷新评论：不再单独调用花名册 API。
+                // 用本地已知的熟人和上一次缓存兜底，名单不足时由模型在本次输出里虚构。
                 var knownNpcs = knownNpcPeople(authorObj, isUserAuthor, bound);
                 var oldRoster = rosterNpcs(rosterScope);
-                var generatedNpcs = [];
-                var rosterChars = authorCharForScope ? [authorCharForScope] : (isUserAuthor ? bound : [authorObj]);
-                if (rosterChars.length) {
-                    // 每次都换一批新面孔：排除当前评论/点赞里已经出现的人和旧花名册。
-                    var excludeOld = [];
-                    (item.comments || []).forEach(function (c) { if (c && c.user) excludeOld.push(c.user); });
-                    (item.likes || []).forEach(function (n) { if (n) excludeOld.push(n); });
-                    oldRoster.forEach(function (n) { if (n && n.name) excludeOld.push(n.name); });
-                    try { generatedNpcs = (await generateNpcRoster(rosterChars, rosterScope, true, excludeOld)) || []; } catch (e) { generatedNpcs = []; }
-                }
-                if (generatedNpcs.length) {
-                    generatedNpcs.forEach(function (n) { if (n) n.__authorRoster = true; });
-                    npcs = knownNpcs.concat(generatedNpcs);
-                } else {
-                    // 生成失败：保留旧花名册，至少还有熟人能评论、能回应用户。
-                    oldRoster.forEach(function (n) { if (n) n.__authorRoster = true; });
-                    npcs = knownNpcs.concat(oldRoster);
-                }
+                knownNpcs.forEach(function (n) { if (n) n.__authorRoster = true; });
+                oldRoster.forEach(function (n) { if (n) n.__authorRoster = true; });
+                npcs = knownNpcs.concat(oldRoster);
             }
             // 保留作者，并把用户刚回复过的人收编进名单，保证 TA 能被识别、能回复用户。
             (function absorbPostNpcs() {
@@ -2540,6 +2523,7 @@
 
             var persona = buildMomentsPersona(bound, npcs);
             var pool = buildCommenterPool(authorChar, bound, npcs, isUserPost);
+            var canInvent = pool.filter(function(c) { return c && normName(c.name) !== normName(currentUser.name) && normName(c.name) !== normName(item.author); }).length < 3;
             if (!pool.length) {
                 if (silent) return;
                 showApiError({
@@ -2565,12 +2549,13 @@
             }).join('\n');
             var userReplyTargets = userComments.map(function(c) { return c && c.toUser; }).filter(function(n) { return n && normName(n) !== normName(currentUser.name); });
             var userMsg = persona +
-                '\n\n【本动态可以出现的评论者（只能使用这些名字，不要创造新名字）】\n' + pool.map(function(c) { return '· ' + c.name + (c.kind === 'author' ? '（本动态作者）' : ''); }).join('\n') +
+                '\n\n【本动态可以出现的评论者】\n' + pool.map(function(c) { return '· ' + c.name + (c.kind === 'author' ? '（本动态作者）' : ''); }).join('\n') +
+                (canInvent ? '\n名单不足时，你可以为作者现场虚构 2~4 个与 TA 可能认识的 NPC/小号名字（真实姓名），但绝不能使用用户本人或其它普通角色。' : '') +
                 '\n\n【这条朋友圈】\n作者：' + (item.author || '') + '\n内容：' + (item.text || '') +
                 (existing ? ('\n已有评论（可接着聊）：\n' + existing) : '') +
                 (hasUserComment ? ('\n【用户本人的评论（必须回复）】\n' + userCommentLines) : '') +
                 '\n\n请生成 7~10 条新的评论互动（数量要够，不要只写两三条；既要回复已有评论，也要有新的人加入）：\n' +
-                '- 评论者只能从上面的名字里选，名字原样使用；名单里的人都可能认识作者，名单外的人一个都不许出现；\n' +
+                '- 评论者优先从上面的名字里选，名字原样使用；名单不足时可按上面的说明虚构作者认识的 NPC/小号，但绝不能出现用户本人或其它普通角色；\n' +
                 '- 不能只有作者/用户一个人说话，至少 4 条评论要来自 NPC/小号或其他角色；\n' +
                 (isUserPost && charNamesForPrompt ? ('- 这条是用户本人发的动态：点赞名单里必须包含全部角色（' + charNamesForPrompt + '），并且至少 2 位角色要发表评论；\n') : '') +
                 (hasUserComment
@@ -2607,17 +2592,7 @@
             var rawForComments = String(raw || '').replace(/^\s*(?:LIKES|点赞)\s*[:：].*$/gim, '');
             var existingUsers = (item.comments || []).map(function(c) { return c.user; });
             var parsed = filterCommentList(parseCommentLines(rawForComments), authorChar, bound, npcs, isUserPost, existingUsers);
-            // 单独刷新评论时至少 7 条：不够就再补一次，单次最多追加 10 条。
-            if (parsed.length < 7) {
-                try {
-                    var raw2 = await fetchAIResponse(userMsg + '\n\n上次只生成了 ' + parsed.length + ' 条，请再补齐到 7~10 条；不要重复已有评论。', false, { apiPref: 'sub', system: system, maxTokens: isUserPost ? 1400 : 1200, temperature: 0.92 });
-                    var parsed2 = filterCommentList(
-                        parseCommentLines(String(raw2 || '').replace(/^\s*(?:LIKES|点赞)\s*[:：].*$/gim, '')),
-                        authorChar, bound, npcs, isUserPost, existingUsers.concat(parsed.map(function(c) { return c.user; }))
-                    );
-                    if (parsed2.length) parsed = parsed.concat(parsed2);
-                } catch (e) {}
-            }
+            // 一次请求就结束：不再为了凑够 7 条额外调用第二次 API。
             // 关键兜底：用户评论后必须有人回复用户；被回复的人优先，否则作者本人。
             parsed = parsed.slice(0, 10);
             parsed = await ensureUserReply(item, parsed, authorChar, bound, npcs, isUserPost, persona, authorForeign);
@@ -2772,6 +2747,7 @@
             document.querySelectorAll('#refreshCharList input[type="checkbox"]:checked')
         ).map(function(i) { return i.value; });
         document.getElementById('refreshCharModal').classList.remove('show');
+        if (!ids.length) { showToast('请至少勾选一个角色'); return; }
         runGlobalGenerate(ids);
     });
     document.getElementById('btnCancelRefreshChars').addEventListener('click', function() {
@@ -2879,10 +2855,21 @@
             settings = await getSettings();
 
             var boundAll = getUserBindChars().filter(isPostableChar);
-            var selected = boundAll.filter(function(c) {
-                return !selectedIds || !selectedIds.length || selectedIds.indexOf(String(c.id || c.name)) !== -1;
+            var hasPick = Array.isArray(selectedIds) && selectedIds.length > 0;
+            var selected = hasPick ? boundAll.filter(function(c) {
+                return selectedIds.indexOf(String(c.id || c.name)) !== -1;
+            }) : boundAll.slice();
+            // 勾掉的角色（含 NPC / 小号）整批都不能出现，不能拿它们当 NPC 补位。
+            var selectedKeys = {};
+            selected.forEach(function(c) { if (c && c.name) selectedKeys[normName(c.name)] = 1; });
+            var excludedKeys = {};
+            boundAll.forEach(function(c) {
+                if (c && c.name && !selectedKeys[normName(c.name)]) excludedKeys[normName(c.name)] = 1;
             });
-            if (!selected.length) selected = boundAll.slice();
+            if (hasPick && !selected.length) {
+                showToast('没有勾选要生成的角色');
+                return;
+            }
 
             // 只取已选角色自己的熟人池；不要把其他未选角色的熟人拿来发帖/评论。
             var npcs = [];
@@ -2947,6 +2934,8 @@
                     var exists = findNpcByName(npcs, name);
                     if (exists) return;
                     if (findCharByName(selected, name)) return;
+                    // 用户没勾选的角色/NPC/小号，不能伪装成 NPC 出现在任何动态或评论里。
+                    if (excludedKeys[normName(name)]) return;
                     // 未选中的普通 char 不能被当成 NPC 补位发帖；NPC/小号可以。
                     if (boundAll.some(function(c) { return c && !c.isNpc && !c.isAltProbe && normName(c.name) === normName(name); })) return;
                     if (isGenericNpcName(name) || isLegacyFallbackNpc(name)) return;
@@ -2973,15 +2962,13 @@
                     try { saveNpcRoster(npcs.slice(0, 12), ids, 'forum_batch'); } catch (e) {}
                 }
             })();
-            // 仍然没有任何 NPC 时再补一次花名册，避免整批动态没有点赞/评论。
-            // 用独立的批次 scope，不覆盖各角色自己的花名册。
-            if (!npcs.length && selected.length) {
-                try { await generateNpcRoster(selected, 'forum_batch', true); npcs = generateContextNPCs('forum_batch'); } catch (e) {}
-            }
+            // 不再为了补 NPC 花名册额外调用一次 API：模型在本轮输出里虚构的 NPC 会被收编，
+            // 没有就用本地已有人物兜底，避免刷新一次朋友圈产生第二次请求。
             // 已选手动角色（含 NPC）不能同时作为「NPC 名单」重复出现；
             // 任何绑定角色的名字也都不能伪装成 NPC 出现在别的角色评论区。
             npcs = npcs.filter(function(n) {
                 if (!n) return false;
+                if (excludedKeys[normName(n.name)]) return false;
                 if (selected.some(function(c) { return c && normName(c.name) === normName(n.name); })) return false;
                 if (boundAll.some(function(c) { return c && !c.isNpc && !c.isAltProbe && normName(c.name) === normName(n.name); })) return false;
                 return true;
@@ -2991,6 +2978,14 @@
             for (var i = 0; i < parsed.length; i++) {
                 var p = parsed[i];
                 if (!p.author || normName(p.author) === normName(currentUser.name)) continue;
+                if (excludedKeys[normName(p.author)]) continue;
+                // 模型可能把没勾选的角色/NPC/小号写进点赞或评论，先整条剔除。
+                p.likes = (p.likes || []).filter(function(n) { return n && !excludedKeys[normName(n)]; });
+                p.comments = (p.comments || []).filter(function(c) {
+                    if (!c || !c.user || excludedKeys[normName(c.user)]) return false;
+                    if (c.toUser && excludedKeys[normName(c.toUser)]) return false;
+                    return true;
+                });
                 var ch = findCharByName(selected, p.author);
                 var np = findNpcByName(npcs, p.author);
                 if (!ch && !np) continue; // 丢弃花名册以外的路人甲
@@ -3048,7 +3043,7 @@
             }
 
             // 生图：仅「允许朋友圈生图」的 char 参与，按每条动态累计各自频率（高/中/低）：
-            // 高=每条都生；中=2~3 条一次；低=6~8 条一次。到点的动态都生成，不再只出 1 张。
+            // 高=每条都生；中=2~3 条一次；低=6~8 条一次。一次刷新最多生成 1 张，避免反复调用生图 API。
             if (settings.imageEnabled) {
                 var duePosts = [];   // 本轮到点、可生图的动态
                 newPosts.forEach(function(p) {
@@ -3061,19 +3056,18 @@
                 });
 
                 if (duePosts.length) {
-                    // 模型标了 image 的排前面
+                    // 模型标了 image 的排前面，只取第一条生图。
                     duePosts.sort(function(a, b) { return (b.post.media === 'image' ? 1 : 0) - (a.post.media === 'image' ? 1 : 0); });
-                    for (var ci = 0; ci < duePosts.length; ci++) {
-                        var cp = duePosts[ci].post;
-                        var promptText = cp.image || cp.text;
-                        try {
-                            var genUrl = await generateImage(promptText, { charId: duePosts[ci].charId, char: duePosts[ci].char });
-                            if (genUrl) {
-                                cp.images = [genUrl]; cp.genPrompt = promptText; cp.media = 'image';
-                                try { if (window.NanoGallery) window.NanoGallery.add({ url: genUrl, source: '朋友圈', charName: (duePosts[ci].char && duePosts[ci].char.name) || cp.author || '', prompt: promptText, generated: true }); } catch (e) {}
-                            }
-                        } catch (e) {}
-                    }
+                    var due = duePosts[0];
+                    var cp = due.post;
+                    var promptText = cp.image || cp.text;
+                    try {
+                        var genUrl = await generateImage(promptText, { charId: due.charId, char: due.char });
+                        if (genUrl) {
+                            cp.images = [genUrl]; cp.genPrompt = promptText; cp.media = 'image';
+                            try { if (window.NanoGallery) window.NanoGallery.add({ url: genUrl, source: '朋友圈', charName: (due.char && due.char.name) || cp.author || '', prompt: promptText, generated: true }); } catch (e) {}
+                        }
+                    } catch (e) {}
                 }
             }
 
@@ -3151,8 +3145,7 @@
             saveMomentsData(momentsData);
             renderFeed();
 
-            // 让所有绑定的 char / 朋友去评论用户自己最近发的、还没人评论的动态
-            await backfillUserPostComments(boundAll, npcs);
+            // 不再在刷新后自动给旧动态补评论，避免一次刷新产生多次 API 调用。
             try { if (window.NanoRefresh) NanoRefresh.success('朋友圈已更新，点「去看看」查看', { key: 'moments' }); } catch (e) {}
         } finally {
             hideMomentsLoading();
@@ -3758,8 +3751,7 @@
                 momentsData = items || [];
                 try { sanitizeCharInteractions(); } catch (e) {}
                 try { renderFeed(); } catch (err) {}
-                // 后台/Worker 的主动朋友圈如果只有文案，自动补点赞和评论。
-                setTimeout(function () { backfillMissingInteractions(2); }, 1200);
+                // 不再自动补互动：只有用户手动刷新时才生成评论，避免额外 API 调用。
             });
             return;
         }
@@ -3815,8 +3807,7 @@
                 momentsData = items || [];
                 try { sanitizeCharInteractions(); } catch (e) {}
                 renderFeed();
-                // 首次打开时，给「只有文案、没有任何互动」的动态补上点赞和评论。
-                setTimeout(function () { backfillMissingInteractions(3); }, 1800);
+                // 不再自动补互动：缺赞/评论的动态留到用户手动刷新时再生成。
             });
         });
     }
@@ -3841,7 +3832,7 @@
             console.log('[Moments] 角色库加载', dbCharsCache.length, '可用角色', allAvailableChars.length);
             try { sanitizeCharInteractions(); } catch (e) {}
             try { renderFeed(); } catch (e) {}
-            setTimeout(function () { backfillMissingInteractions(3); }, 1200);
+            // 不再自动补互动：避免每次打开朋友圈都额外调用 API。
         });
 
         reloadForCurrentMask();

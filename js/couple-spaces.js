@@ -438,7 +438,8 @@ async function callMainApi(messages, opts) {
   const model = opts.model || cfg.mainModel;
   const temp = opts.temp != null ? opts.temp : (typeof cfg.mainTemp === 'number' ? cfg.mainTemp : (parseFloat(cfg.mainTemp) || 0.8));
   const baseMax = Math.max(400, Number(opts.maxTokens) || 900);
-  const budgets = opts.retryOnLength === false ? [baseMax] : [baseMax, Math.min(12000, Math.round(baseMax * 1.8))];
+  // 每个动作只发起一次 API 请求；截断不再自动换更大预算重复生成。
+  const budgets = [baseMax];
   const endpoint = baseUrl + '/chat/completions';
   apiInFlight = true;
   let lastContent = '';
@@ -488,8 +489,6 @@ async function callMainApi(messages, opts) {
         const content = msg.content || choice.text || msg.reasoning_content || '';
         if (!content) throw new Error('模型没有返回可用内容（choices 为空）。可能触发了内容过滤、达到长度上限或模型参数不兼容。');
         lastContent = content;
-        // 被 max_tokens 截断：用更大的预算再试一次；最后一次仍截断则返回已生成内容。
-        if (choice.finish_reason === 'length' && bi < budgets.length - 1) break;
         return content;
       }
     }

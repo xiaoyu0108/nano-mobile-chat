@@ -574,11 +574,7 @@
             text = part.slice(0, idx).trim();
             zh = part.slice(idx + 2).trim() || null;
         }
-        // 模型漏写 || / 翻译时，外语气泡自动补一次翻译，保证「一个气泡紧跟着自己的译文」。
-        // 只对确实是外文的文本补，中文气泡不会额外消耗 API。
-        if (!zh && foreign && needsTranslation(text)) {
-            try { zh = await translateToZh(text); } catch (e) {}
-        }
+        // 强制一次 API：译文必须由同一次回复里的「原文||翻译」提供；缺译文时不再自动补调翻译接口。
         addMessage('left', text, timeStr, null, false, false, null, null, zh || null, quote || null);
     }
 
@@ -3841,11 +3837,12 @@
         } else if (cardData.cardType === 'travelReport' || cardData.cardType === 'travelShare') {
             const escR = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (m) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]; }); };
             const imgR = cardData.img ? '<div style="margin-bottom:10px;border-radius:12px;overflow:hidden;"><img src="' + escR(cardData.img) + '" style="width:100%;display:block;" alt=""></div>' : '';
-            const subR = [cardData.place, cardData.date, cardData.days ? (cardData.days + '天') : '', cardData.ticketNo ? ('票号 ' + cardData.ticketNo) : ''].filter(Boolean).join(' · ');
+            const subPartsR = [cardData.place, cardData.date, cardData.days ? (cardData.days + '天') : '', cardData.ticketNo ? ('票号 ' + cardData.ticketNo) : ''].filter(Boolean);
+            if (String(cardData.title || '').trim() === String(cardData.place || '').trim()) subPartsR.shift();
+            const subR = subPartsR.join(' · ');
             return imgR + '<div class="card-main"><div class="icon-wrap">' + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M21 16l-5-5-5 5-3-3-5 5"/></svg>' + '</div><div><div class="card-title">' + escR(cardData.title || cardData.place || '旅途') + '</div><div class="card-sub">' + escR(subR) + '</div></div></div>' +
                 (cardData.thought || cardData.note ? '<div class="card-note">' + escR(cardData.thought || cardData.note) + '</div>' : '') +
-                (cardData.thoughtZh ? '<div class="card-note">' + escR(cardData.thoughtZh) + '</div>' : '') +
-                '<div class="card-hint">' + (cardData.travelKind === 'together' ? '这次旅行已同步到「旅途 · 我们」' : (cardData.cardType === 'travelReport' ? 'TA 的旅途已同步到「旅途」' : '这段旅程已同步到「旅途」')) + '</div>';
+                (cardData.thoughtZh ? '<div class="card-note">' + escR(cardData.thoughtZh) + '</div>' : '');
         }
         return '';
     }
@@ -5066,10 +5063,8 @@
                     }, 5000 + Math.random() * 9000);
                 })(row.dataset.id);
             }
-            // 回复之后：偶尔主动分享一张照片（需开启允许生图 + 社交活跃度）
-            if (!isImage && !isCard && !isVoice) {
-                try { maybeScheduleProactivePhoto(); } catch (e) {}
-            }
+            // 不再在每次回复后自动尝试主动发照片：这会额外触发一次文案 + 一次生图 API。
+            // 需要发照片时由用户手动触发。
         }
         // 链接后补发截图：自动作为该链接卡片的封面
         if (isImage && type === 'right' && !(imageData && imageData.video) && row && row.dataset && row.dataset.id) {
@@ -5207,7 +5202,7 @@
                 row.classList.toggle('tail-end', !same);
             }
         } catch (e) {}
-        try { ensureRecallTranslations(); } catch (e) {}
+        // 不再自动为撤回消息补翻译，避免打开聊天时额外触发 API。
         if (typingIndicator.classList.contains('active')) {
             messageContainer.appendChild(typingIndicator);
         }
@@ -5294,7 +5289,7 @@
                 r.classList.toggle('tail-end', !same);
             }
         } catch (e) {}
-        try { ensureRecallTranslations(); } catch (e) {}
+        // 不再自动为撤回消息补翻译，避免打开聊天时额外触发 API。
         try {
             if (typingIndicator && typingIndicator.classList.contains('active')) {
                 messageContainer.appendChild(typingIndicator);
@@ -5822,15 +5817,17 @@
         __shareChatBusy = true;
         try {
             const charName = String(displayName || '我');
-            const persona = String((characterData && (characterData.setting || characterData.desc || characterData.persona)) || '').slice(0, 1200);
-            const friendSetting = __friendSetting(friendName);
-            const system = '你在写角色「' + charName + '」和TA的朋友「' + friendName + '」的私聊记录，稍后会被' + charName + '转发给用户看。'
-                + '必须严格保持两人的性格和关系，像真实朋友聊天：短句、口语、有来有回，可以开玩笑、吐槽、分享小事，不要旁白、不要解释、不要用括号动作。'
-                + (persona ? ('\n' + charName + '的人设：' + persona) : '')
-                + (friendSetting ? ('\n' + friendName + '的人设：' + friendSetting) : '')
-                + '\n只输出 6~12 行聊天记录，每行格式为「名字：内容」，只使用这两个名字：' + charName + '、' + friendName + '。不要输出其它内容。';
-            const user = '话题：' + topic + '。请写出这段朋友之间的聊天记录。';
-            const txt = await __nanoSmallChat(system, user, 700);
+            // 强制一次 API：分享聊天卡片不再单独调用小模型生成，
+            // 直接根据同一次主动消息里给出的话题拼出本地聊天记录。
+            const topicText = String(topic || '最近发生的一件小事').slice(0, 40);
+            const txt = [
+                charName + '：刚想跟你说，' + topicText,
+                friendName + '：啊？展开讲讲',
+                charName + '：就……一言难尽，反正有点上头',
+                friendName + '：哈哈哈哈你也太真实了',
+                charName + '：先别笑，换你你也一样',
+                friendName + '：行行行，晚点细说'
+            ].join('\n');
             const items = __parseFriendChat(txt, friendName, charName);
             if (items.length < 3) return;
             try { localStorage.setItem(lockKey, String(Date.now())); } catch (e) {}
@@ -7119,10 +7116,13 @@
             const __parsedProactive = extractTagsFromText(body);
             const tags = __parsedProactive.tags || [];
             const cleaned = (__parsedProactive.cleanedText || '').trim();
-            let bubbles = String(cleaned).split(/\n+/).map(function (s) { return s.trim(); }).filter(Boolean).slice(0, 3);
+            const __onlyPunct = function (s) {
+                return /^[\s.。…·．\-—_~～!！?？,，、;；:：'"“”‘’|｜]+$/.test(String(s || ''));
+            };
+            let bubbles = String(cleaned).split(/\n+/).map(function (s) { return s.trim(); }).filter(function (s) { return s && !__onlyPunct(s); }).slice(0, 3);
             // 模型只给一整段时按句子拆成多条气泡；外文「原文||翻译」格式不拆
             if (bubbles.length === 1 && bubbles[0].indexOf('||') < 0 && bubbles[0].length > 16) {
-                const parts = bubbles[0].split(/(?<=[。！？!?…])/).map(function (s) { return s.trim(); }).filter(Boolean);
+                const parts = bubbles[0].split(/(?<=[。！？!?…])/).map(function (s) { return s.trim(); }).filter(function (s) { return s && !__onlyPunct(s); });
                 if (parts.length > 1) bubbles = parts.slice(0, 3);
             }
             if (!bubbles.length && !tags.length) return null;
@@ -7212,9 +7212,10 @@
                         btrans = btext.slice(bsep + 2).trim() || null;
                         btext = btext.slice(0, bsep).trim();
                     }
-                    if (!btrans && (isForeignChar() || isCantoneseChar())) {
-                        try { btrans = await translateToZh(btext); } catch (e) {}
-                    }
+                    // 过滤模型爱加的纯省略号气泡（… / …… / ... / 标点），不要单独发出来。
+                    if (!btext || /^[\s.。…·．\-—_~～!！?？,，、;；:：'"“”‘’|｜]+$/.test(btext)) continue;
+                    // 强制一次 API：翻译必须由同一次主动消息输出里的「原文||翻译」提供，
+                    // 不再在缺译文时逐条气泡额外调用翻译接口。
                     if (btrans) {
                         const os = btext.split(/(?<=[。！？!?…\.])\s*/).map(function (x) { return x.trim(); }).filter(Boolean);
                         const ts = btrans.split(/(?<=[。！？!?…\.])\s*/).map(function (x) { return x.trim(); }).filter(Boolean);
@@ -7598,94 +7599,6 @@
         arr = filterMomentInteractionsByGraph(arr.filter(function (o) { return o && o.text; }).slice(0, 5), authors);
         return arr.length ? { items: arr, authors: authors } : null;
     }
-    // 兜底：如果模型没在朋友圈 JSON 里写互动，再单独补一次点赞/评论。
-    // 只在整批动态都没有评论时触发，避免额外浪费 API。
-    async function fillAutoMomentInteractions(posts, authors) {
-        try {
-            if (!posts || !posts.length) return;
-            // 每条动态都要有点赞和评论；缺任意一项就补生成。
-            if (posts.every(function (p) { return p.comments && p.comments.length && p.likes && p.likes.length; })) return;
-            const names = authors.map(function (a) { return a.name; }).filter(Boolean);
-            const foreignAuthors = [];
-            (posts || []).forEach(function (p) {
-                if (!p || !p.author) return;
-                if (foreignAuthors.some(function (x) { return x.name === p.author; })) return;
-                const full = socialCharByName(p.author, allCharacters) || { name: p.author };
-                var fi = momentCharForeign(full);
-                if (!fi.foreign && momentLooksForeignText(p.text)) fi = { foreign: true, nat: '外国', lang: '作者母语' };
-                if (fi.foreign) foreignAuthors.push({ name: p.author, info: fi });
-            });
-            const sys = '你是朋友圈互动生成器。根据每条动态的作者和内容，生成像真人一样的点赞和评论。评论要短、口语、碎片化，像随手打字：可以只回“哈哈哈”“？”“好家伙”、玩梗、损一句或问一个具体细节；不要长评、客服腔和升华总结。\n'
-                + '【最高优先级】普通 char 之间绝对不允许互相评论、回复、点赞；char 动态的评论区只能出现作者认识的 NPC。\n'
-                + '每条动态必须生成 2~4 个点赞和 3~4 条评论，不能留空。点赞者/评论者只能是作者生活里的同学、朋友、同事、家人、邻居等 NPC，可以虚构真实完整姓名；不能是作者本人，绝对不能出现用户本人。\n'
-                + '【NPC 归属】每个 NPC 只属于与自己真实有关系的作者：A 的熟人只能出现在 A 的动态下，绝对不要写到 B/C 的点赞或评论区里；同一个 NPC 不要出现在两个不同角色的动态里。\n'
-                + '【回复对象】只有评论区里真正发过评论的人才能被回复；作者没在评论区留言时，不能写「回复作者」。\n'
-                + '【名字】NPC 必须是真实姓名，禁止王姐/李哥/店老板/神秘人/旅行者这类假名；身份备注只能放在姓名后的括号里，如「李思雨（咖啡店老板）」。\n'
-                + (foreignAuthors.length ? ('【外语评论】' + foreignAuthors.map(function (x) { return x.name + '（' + (x.info.nat || '外国') + '，母语 ' + x.info.lang + '）'; }).join('、') + '：评论必须先用母语写一句，再用括号附中文翻译，例如：do you love me？（爱我吗？）；不能只写中文。\n') : '')
-                + 'JSON 字符串里的换行必须写成 \\n 转义。\n'
-                + '只输出一个 JSON 数组，不要多余内容：[{"index":0,"likes":["点赞者名字"],"comments":[{"user":"评论者名字","toUser":"回复对象名字，没有就留空","text":"评论内容"}]}]';
-            const userMsg = posts.map(function (p, i) {
-                return (i + 1) + '. 作者：' + p.author + '\n内容：' + String(p.text || '').slice(0, 220);
-            }).join('\n\n') + '\n\n请为每一段生成 2~4 个点赞和 3~4 条评论（index 从 0 开始）。';
-            suppressApiAlerts = true;
-            let content = null;
-            try { content = await callMainApiRaw([{ role: 'system', content: sys }, { role: 'user', content: userMsg }], 1800, 0.9); }
-            catch (e) {} finally { suppressApiAlerts = false; }
-            if (!content) return;
-            let arr = null;
-            const ai = content.indexOf('['), aj = content.lastIndexOf(']');
-            if (ai > -1 && aj > ai) { try { arr = JSON.parse(content.slice(ai, aj + 1)); } catch (e) {} }
-            if (!Array.isArray(arr)) return;
-            const userName = momentCurrentUserName();
-            const pick = function (raw, authorName) {
-                let n = String(raw == null ? '' : raw).trim().replace(/^@/, '');
-                if (!n || n === '用户' || n === '我') return '';
-                if (momentNameKey(n) === momentNameKey(userName)) return '';
-                if (authorName && momentNameKey(n) === momentNameKey(authorName)) return '';
-                // 名单里的角色名做一次模糊匹配；名单外的 NPC/小号名字原样保留。
-                const exact = names.find(function (x) { return momentNameKey(x) === momentNameKey(n); });
-                if (exact) return exact;
-                if (momentBadNpcName(n)) return '';
-                return n;
-            };
-            const pickTarget = function (raw) {
-                const n = String(raw == null ? '' : raw).trim().replace(/^@/, '');
-                if (!n || n === '用户' || n === '我') return '';
-                if (momentNameKey(n) === momentNameKey(userName)) return '';
-                const exact = names.find(function (x) { return momentNameKey(x) === momentNameKey(n); });
-                if (exact) return exact;
-                if (momentBadNpcName(n)) return '';
-                return n;
-            };
-            const changed = [];
-            arr.forEach(function (o, fallbackIndex) {
-                const idx = Number.isInteger(o && o.index) ? o.index : fallbackIndex;
-                const p = posts[idx];
-                if (!p || !o) return;
-                const likes = [];
-                (Array.isArray(o.likes) ? o.likes : []).forEach(function (raw) {
-                    const n = pick(raw, p.author);
-                    if (n && likes.indexOf(n) < 0) likes.push(n);
-                });
-                const comments = [];
-                (Array.isArray(o.comments) ? o.comments : []).forEach(function (c) {
-                    if (!c || typeof c !== 'object') return;
-                    const u = pick(c.user || c.name || c.author, p.author);
-                    const txt = String(c.text || c.content || '').trim();
-                    if (!u || !txt) return;
-                    comments.push({ user: u, toUser: pickTarget(c.toUser || c.replyTo || c.to), text: txt.slice(0, 120) });
-                });
-                if (likes.length) p.likes = likes;
-                if (comments.length) p.comments = comments.slice(0, 8);
-                if (likes.length || comments.length) {
-                    filterMomentInteractionsByGraph([p], authors);
-                    changed.push(p);
-                }
-            });
-            for (let i = 0; i < changed.length; i++) await saveMomentPost(changed[i]);
-        } catch (e) {}
-    }
-
     async function ensureAutoInteractions(posts, names) {
         const fallbackComments = ['这条也太真实了', '哈哈哈哈', '我也想去', '注意休息呀', '好看', '下次带我'];
         const pool = (names || []).map(function (n) { return String(n || '').trim(); }).filter(Boolean);
@@ -7741,9 +7654,8 @@
         }
     }
 
-    // 单条动态也要补齐点赞/评论（主动单发、照片动态都走这里）
+    // 单条动态也只做本地补赞/评论，不再为了缺失互动额外调用一次 API。
     async function completeAutoMoment(post, authors) {
-        try { await fillAutoMomentInteractions([post], authors); } catch (e) {}
         try {
             const npcNames = collectMomentNpcNames([post], authors);
             await ensureAutoInteractions([post], npcNames);
@@ -7839,9 +7751,8 @@
                 created.push(post);
             }
             if (!created.length) return;
-            // 模型没给评论/点赞时，补一次互动生成；仍然缺失就用本批出现的 NPC 补齐。
+            // 模型没给评论/点赞时，只用本批已出现的 NPC 在本地补齐，不再二次调用 API。
             // 绝不使用其他 char 来补互动。
-            try { await fillAutoMomentInteractions(created, authors); } catch (e) {}
             try {
                 const npcNames = collectMomentNpcNames(created, authors);
                 await ensureAutoInteractions(created, npcNames);
@@ -8189,12 +8100,8 @@
             if (!shouldDoFirstAutoMoment()) { scheduleNextAutoMoment(); return; }
         } catch (e) {}
         try {
-            // 一次 API 调用生成 3~4 条朋友圈
+            // 一次 API 调用生成 3~4 条朋友圈；不再额外随机主动发照片，避免一次定时触发多次调用。
             await postAutoMomentBatch();
-            // 社交活跃度开启时，偶尔再直接给用户发一张照片
-            if (getChatSetting('autoSocial', false) && Math.random() < 0.35) {
-                try { await postAutoImage(); } catch (e) {}
-            }
         } catch (e) {}
         scheduleNextAutoMoment();
     }
@@ -10262,28 +10169,8 @@
                 })
             };
             storeChatRequest(payload);
+            // 强制一次请求：不再因为 max_tokens 400 自动降档重试，避免一次回复偷偷扣多次 API。
             let result = await sendChatRequest(payload);
-            // 有些模型不接受太大的 max_tokens（直接 400）。自动逐档减半重试，避免「调大后反而报错」。
-            let __maxTokenRetries = 0;
-            while (result && !result.ok && result.status === 400 && __maxTokenRetries < 3 &&
-                   /max[_\s-]?tokens|maximum context|context length|token limit|too many tokens/i.test(String(result.text || ''))) {
-                let retried = false;
-                try {
-                    const bodyObj = JSON.parse(payload.body);
-                    if (bodyObj && Number(bodyObj.max_tokens) > 4096) {
-                        bodyObj.max_tokens = Math.max(4096, Math.floor(Number(bodyObj.max_tokens) / 2));
-                        const retryPayload = Object.assign({}, payload, {
-                            token: 'creq_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
-                            body: JSON.stringify(bodyObj)
-                        });
-                        storeChatRequest(retryPayload);
-                        result = await sendChatRequest(retryPayload);
-                        retried = true;
-                    }
-                } catch (e) {}
-                __maxTokenRetries++;
-                if (!retried) break;
-            }
 
             if (!result || !result.ok) {
                 let apiMsg = '';
@@ -10424,12 +10311,12 @@
         } catch (e) {}
     }
     // 角色根据人设/世界书自建群聊（群主是角色本人；可含带人设的 NPC）
-    // 说明：群聊个数不限；若标签没有给出 NPC 人设，最多调用 2 次 API 来补全人设。
+    // 说明：群聊个数不限；NPC 人设固定一次 API 调用生成完整名单，失败时用本地基本人设兜底。
     const GROUP_BG = ['#2c5fb1','#b1552c','#2c7a3e','#6d2cb1','#d96f3a','#0a84ff','#ff375f','#30d158'];
     function currentChatIdSafe() {
         try { return new URLSearchParams(location.search).get('chat') || 'char'; } catch (e) { return 'char'; }
     }
-    // 直接向主 API 发一次请求（用于建群时生成 NPC 人设，最多 2 次）
+    // 直接向主 API 发一次请求（用于建群时生成 NPC 人设）
     function callMainApiRaw(messages, maxTokens, temperature) {
         return getApiConfig().then(function (config) {
             if (!config || !config.mainUrl || !config.mainKey || !config.mainModel) return null;
@@ -10485,7 +10372,7 @@
             return { name: nm.slice(0, 20), setting: st };
         }).filter(Boolean);
     }
-    // 用 API 生成 NPC 人设（最多 2 次调用）；names 为空则整组生成 2~4 个
+    // 用 API 生成 NPC 人设（一次调用生成完整名单）；names 为空则整组生成 2~4 个
     async function generateNpcSpecs(gname, names) {
         const selfName = displayName || '角色';
         const selfSetting = (characterData && (characterData.setting || characterData.desc || characterData.persona)) ? String(characterData.setting || characterData.desc || characterData.persona).slice(0, 700) : '';
@@ -10511,16 +10398,13 @@
             '【用户】' + uName + (uSetting ? ('\n' + uSetting) : '') + '\n' +
             '【群名】' + gname + '\n' +
             (wantNames.length ? ('【需要补全的人设】' + wantNames.join('、')) : '【请生成 2~4 个合理的群成员】');
-        for (let attempt = 0; attempt < 2; attempt++) {
-            const content = await callMainApiRaw([
-                { role: 'system', content: sys },
-                { role: 'user', content: userMsg }
-            ], 800, 0.9);
-            if (!content) continue;
-            const parsed = parseNpcGeneration(content);
-            if (parsed && parsed.length) return parsed;
-        }
-        return [];
+        // 一次请求生成完整的人设名单；失败就直接交给本地基本人设兜底，不再重复调用。
+        const content = await callMainApiRaw([
+            { role: 'system', content: sys },
+            { role: 'user', content: userMsg }
+        ], 800, 0.9);
+        if (!content) return [];
+        return parseNpcGeneration(content);
     }
     async function createGroupFromTag(payload) {
         try {
@@ -10530,7 +10414,7 @@
             const selfName = displayName || '角色';
             let specs = parseGroupSpecs(parts.slice(1).join('|'));
 
-            // 人设缺失时调用 API 补全（最多 2 次）；仍失败则用基本人设兜底
+            // 人设缺失时用一次 API 生成完整人设；仍失败则用基本人设兜底
             const needApi = specs.length === 0 || specs.some(function (s) { return !s.setting; });
             if (needApi) {
                 const generated = await generateNpcSpecs(gname, specs.map(function (s) { return s.name; }));
@@ -11221,9 +11105,7 @@
                         let zh = '';
                         const di = content.indexOf('||');
                         if (di > -1) { zh = content.slice(di + 2).trim(); content = content.slice(0, di).trim(); }
-                        if (!zh && needsTranslation(content)) {
-                            try { zh = await translateToZh(content) || ''; } catch (e) {}
-                        }
+                        // 强制一次 API：语音译文也必须由同一次回复里的「||」提供，不再自动补翻译。
                         const display = content || zh;
                         // 频率设为「关闭」时，即使模型硬输出 [voice] 也降级成普通文字气泡。
                         if (vFreq === 'off') {
@@ -11298,10 +11180,7 @@
                 const p = pairs[i];
                 if (!p || !p.f) continue;
                 if (i > 0) await new Promise(r => setTimeout(r, 420));
-                // 兜底：模型完全漏写翻译时补一次，保证每个外语气泡都有中文译文
-                if (!p.z && needsTranslation(p.f)) {
-                    try { p.z = await translateToZh(p.f); } catch (e) {}
-                }
+                // 强制一次 API：不再在漏写翻译时逐条补调翻译接口。
                 addMessage('left', p.f, timeStr, null, false, false, null, null, p.z || null, null);
             }
             // 心声挂到本轮角色消息
@@ -12950,14 +12829,24 @@
                     }
                 }
             } catch (e) {}
+            // 只有 Web Push 真的订阅成功时才让 Worker 生成，否则服务端和本机会同时各生成一份，
+            // 直接翻倍消耗 API。没有 Web Push 时只保留本机定时器。
+            let hasWebPush = false;
+            try {
+                var NP0 = window.NanoPush || (window.parent && window.parent.NanoPush);
+                if (NP0 && NP0.status) {
+                    var ps = await Promise.resolve(NP0.status());
+                    hasWebPush = !!(ps && ps.subscribed);
+                }
+            } catch (e) { hasWebPush = false; }
             const payload = {
                 token: autoPushToken(),
                 appId: autoAppId(),
                 deviceId: autoDeviceId(),
                 userId: uid,
-                enabled: canSend && chars.some(function (c) { return c.msgOn || c.momentOn; }),
-                msgEnabled: canSend && chars.some(function (c) { return c.msgOn; }),
-                momentEnabled: canSend && chars.some(function (c) { return c.momentOn; }),
+                enabled: canSend && hasWebPush && chars.some(function (c) { return c.msgOn || c.momentOn; }),
+                msgEnabled: canSend && hasWebPush && chars.some(function (c) { return c.msgOn; }),
+                momentEnabled: canSend && hasWebPush && chars.some(function (c) { return c.momentOn; }),
                 intervalMinutes: globals.intervalMinutes,
                 momentIntervalHours: globals.momentIntervalHours,
                 user: { id: uid, name: (curUser && curUser.name) || currentUserName || '我' },
@@ -12978,17 +12867,6 @@
             const data = await resp.json().catch(function () { return {}; });
             if (!resp.ok || !data.ok) throw new Error('auto config failed');
             lastAutoPushConfigAt = Date.now();
-            // 只有「Web Push 真的订阅成功」时才完全交给服务端。
-            // 否则服务端 enabled=true 会停掉本机定时器，但手机又收不到 Web Push，
-            // 结果就是前后台都没有任何主动消息通知（用户看到的“无后台推送”）。
-            var hasWebPush = false;
-            try {
-                var NP0 = window.NanoPush || (window.parent && window.parent.NanoPush);
-                if (NP0 && NP0.status) {
-                    var ps = await Promise.resolve(NP0.status());
-                    hasWebPush = !!(ps && ps.subscribed);
-                }
-            } catch (e) { hasWebPush = false; }
             window.__serverAutoPushActive = !!(data.enabled && hasWebPush);
             // 当前面具/站点变了就立刻把订阅元数据同步过去，避免服务端还按旧 userId 推送。
             try {
@@ -14488,16 +14366,7 @@ if (callCard) {
         if (heart && (heart.subject || heart.thought || (Array.isArray(heart.sections) && heart.sections.length))) msg.heart = heartWithSections(heart);
         messages.push(msg);
         try { renderMessages(); saveMessages(); scrollToBottom(); } catch (e) {}
-        // 外国人 / 粤语主动消息：模型偶尔忘记写「原文||翻译」，这里补一次翻译，保证有译文气泡
-        if (!msg.translation && (isForeignChar() || isCantoneseChar())) {
-            translateToZh(msg.text).then(function (tr) {
-                if (!tr) return;
-                var m = messages.filter(function (x) { return x && x.id === msg.id; })[0];
-                if (!m || m.translation) return;
-                m.translation = tr;
-                try { renderMessages(); saveMessages(); } catch (e) {}
-            }).catch(function () {});
-        }
+        // 强制一次 API：译文由同一轮主动消息的「原文||翻译」提供，不再收到消息后额外补翻译。
         return true;
     }
     function handleCharSay(data) {
@@ -14922,7 +14791,7 @@ if (callCard) {
         if (data.type === 'nanoForceTranslate') {
             if (data.chatId && data.chatId !== chatId) return;
             try { renderMessages(); } catch (e) {}
-            try { ensureRecallTranslations(); } catch (e) {}
+            // 不再自动为撤回消息补翻译，避免打开聊天时额外触发 API。
             return;
         }
 

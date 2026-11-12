@@ -26,6 +26,8 @@ html, body {
   overflow: hidden;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 button, input, select {
@@ -54,8 +56,8 @@ button, a {
   flex: none;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: calc(14px + var(--safe-top)) 20px 12px;
+  gap: 8px;
+  padding: calc(10px + var(--safe-top)) 16px 9px;
   background: var(--bg);
   border-bottom: 1px solid var(--line);
   z-index: 5;
@@ -63,8 +65,8 @@ button, a {
 
 .nav .back,
 .nav .nav-refresh {
-  width: 36px;
-  height: 36px;
+  width: 34px;
+  height: 34px;
   border-radius: 0;
   display: grid;
   place-items: center;
@@ -96,9 +98,10 @@ button, a {
   flex: 1;
   min-width: 0;
   text-align: left;
-  font-size: 24px;
-  font-weight: 750;
-  letter-spacing: -.04em;
+  font-size: 21px;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: -.03em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
