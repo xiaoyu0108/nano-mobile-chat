@@ -1282,6 +1282,14 @@
         if (!isNanoChat) {
             prompt += '5.5 想翻看 / 接管对方的手机时（对方让你看，或你自己好奇、想确认什么），输出 [查看手机]（独占一行）。系统会向对方发起一个「想看看你的手机」的申请，由对方决定是否同意；对方同意后你就能翻看 TA 的 App、聊天和群聊。不要频繁用。\n';
             prompt += '5.6 想实时看对方真实屏幕的画面时（对方问“你在看什么”“给你看看我的屏幕”，或你想陪 TA 一起看），输出 [看屏幕]（独占一行）。系统会请求对方共享屏幕，由对方决定；同意后你能看到 TA 屏幕的画面并实时点评。不要频繁用。\n';
+            try {
+                const __denyN = parseInt(localStorage.getItem('nano_takeover_deny_' + chatId) || '0', 10) || 0;
+                if (__denyN > 0) {
+                    prompt += '5.7 对方已经拒绝过你查看手机 ' + __denyN + ' 次' +
+                        (__denyN >= 3 ? '，你对此已经明显在意、怀疑甚至生气' : '') +
+                        '。不要反复申请；如果再次被拒绝，要自然地表露失落、怀疑或生气，不要装作什么都没发生。\n';
+                }
+            } catch (e) {}
         }
         prompt += '6. 平衡：一轮回复里特殊格式一般 1-2 个、最多 3 个，优先让它们服务剧情而不是单纯堆砌；语音按上面的频率发，表情包随缘，不必硬凑。\n';
         try {
@@ -1561,6 +1569,7 @@
     let currentTurn = 0;
     let pendingTurnThink = '';
     let pendingTurnTools = null;   // 本轮 char 调用过的 MCP 工具记录 [{name,args,ok,result}]
+    let lastTakeoverDenyAt = '';   // 拒绝查手机事件的去重标记（外层会补发多次）
     let isPageVisible = true;
     let isStorageReady = false;
     let collapseExpanded = 0;
@@ -3829,6 +3838,7 @@
             let footT = '';
             if (tSt === 'accepted') footT = '<span class="card-actions"><button class="card-btn" data-act="travel-open">进入旅程</button></span>';
             else if (tSt === 'rejected') footT = '<span class="card-footer-text">邀请已婉拒</span>';
+            else if (tSt === 'expired') footT = '<span class="card-footer-text">邀请已过期</span>';
             else if (tDir === 'char') footT = '<span class="card-footer-text">邀请你一起去</span><span class="card-actions"><button class="card-btn return-btn" data-act="travel-reject">婉拒</button><button class="card-btn" data-act="travel-accept">同意</button></span>';
             const iconT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-5.5 7-11a7 7 0 1 0-14 0c0 5.5 7 11 7 11z"/><circle cx="12" cy="10" r="2.6"/></svg>';
             return '<div class="card-main"><div class="icon-wrap">' + iconT + '</div><div><div class="card-title">一起去 · ' + escT(cardData.dest || '') + '</div><div class="card-sub">' + escT([cardData.date, cardData.time, cardData.days ? (cardData.days + '天') : ''].filter(Boolean).join(' · ')) + '</div></div></div>' +
@@ -4698,6 +4708,10 @@
         if (!list.length) return '';
         const L = [];
         L.push('【心声 · 附加板块（必须输出，放在 [heart:...] 之后；每个板块都要写，不可省略）】');
+        L.push('【硬性规则 · 附加板块同样适用】');
+        L.push('- 评论区 / 留言 / 弹幕 / 网友互动等板块，只能出现与角色毫无关系的匿名网友、路人或粉丝，用网名、账号名或「网友」称呼。');
+        L.push('- 绝对禁止出现任何其他角色（char）的名字或昵称，也禁止出现用户本人、任何角色认识的人，或彼此认识的人；他们和角色互不认识，也不认识彼此。');
+        L.push('- 不要在评论里写「某某说 / 回复某某」来把其它角色拉进来；评论区只是陌生网友对这条心声的自然反应。');
         L.push('格式严格为（板块内容可多行）：');
         L.push('[section:板块名]');
         L.push('板块内容');
@@ -4706,20 +4720,49 @@
         list.forEach(function (s) { L.push('- ' + s.name + '：' + s.prompt); });
         return L.join('\n');
     }
+    // 评论区等附加板块只能出现陌生网友：把回复里误带进来的其他角色名/用户名替换掉，
+    // 保证「心声评论区不会出现其他 char」。
+    function heartSectionOtherNames() {
+        const out = [], seen = {};
+        try {
+            (allCharacters || []).forEach(function (c) {
+                if (!c || !c.name) return;
+                if (String(c.id) === String(chatId)) return;
+                if (c.nanoAssistant) return;
+                if (displayName && String(c.name) === String(displayName)) return;
+                const nm = String(c.name).trim();
+                if (nm.length < 2 || seen[nm]) return;
+                seen[nm] = 1;
+                out.push(nm);
+            });
+            const un = String((currentUser && currentUser.name) || currentUserName || '').trim();
+            if (un.length >= 2 && !seen[un]) out.push(un);
+        } catch (e) {}
+        return out.sort(function (a, b) { return b.length - a.length; });
+    }
+    function sanitizeHeartSectionContent(name, content) {
+        let s = String(content || '');
+        if (!s) return s;
+        if (!/评论|留言|弹幕|网友|回复|互动|帖子|论坛/.test(String(name || ''))) return s;
+        heartSectionOtherNames().forEach(function (n) {
+            try { s = s.split(n).join('网友'); } catch (e) {}
+        });
+        return s;
+    }
     function extractHeartSections(text) {
         const sections = [];
         let src = String(text || '');
         if (!src) return { text: src, sections: sections };
         src = src.replace(/\[(?:section|板块)\s*:\s*([^\]\n]+)\]([\s\S]*?)\[\/\s*(?:section|板块)\s*\]/gi, function (m, name, content) {
             name = String(name || '').trim();
-            content = String(content || '').trim();
+            content = sanitizeHeartSectionContent(name, String(content || '').trim());
             if (name && content) sections.push({ name: name, content: content });
             return ' ';
         });
         // 容错：末尾未闭合的 [section:名] 一直吃到结尾
         src = src.replace(/\[(?:section|板块)\s*:\s*([^\]\n]+)\]\s*([\s\S]*)$/i, function (m, name, content) {
             name = String(name || '').trim();
-            content = String(content || '').trim();
+            content = sanitizeHeartSectionContent(name, String(content || '').trim());
             if (name && content) sections.push({ name: name, content: content });
             return ' ';
         });
@@ -7150,6 +7193,31 @@
     let lastAutoMsgRunAt = 0;      // 去重：本地定时器与外壳广播同时到点时不重复生成
     let lastAutoMomentRunAt = 0;
     function autoMsgTaskId() { return 'nano_auto_msg:' + chatId; }
+    // 主动消息/朋友圈的单次 API 锁：同一聊天在短时间内只允许生成一次。
+    // 本地定时器、外壳 KeepAlive 广播、多个同 chatId 的聊天 frame 可能同时到点，
+    // 没有这层锁时每个入口都会各自调用一次 API（表现为一次主动消息扣多次额度）。
+    const AUTO_API_LOCK_MS = 5 * 60 * 1000;
+    function autoApiLockOk(kind, id, gapMs) {
+        try {
+            const key = 'nano_auto_api_lock:' + kind + ':' + String(id || chatId);
+            const now = Date.now();
+            const last = parseInt(localStorage.getItem(key) || '0', 10) || 0;
+            const gap = Math.max(60000, Number(gapMs) || AUTO_API_LOCK_MS);
+            if (last && now - last < gap) return false;
+            localStorage.setItem(key, String(now));
+            return true;
+        } catch (e) { return true; }
+    }
+    // 服务端无后台推送已经生效时，本地定时器绝不能再生一份；sync 成功前也可能有
+    // 上一次写入的标记，用 30 分钟内的记录兜底，避免「Worker + 本机」双份调用。
+    function serverAutoPushLikelyActive() {
+        if (window.__serverAutoPushActive) return true;
+        try {
+            if (localStorage.getItem('nano_server_auto_push') !== '1') return false;
+            const at = parseInt(localStorage.getItem('nano_server_auto_push_at') || '0', 10) || 0;
+            return !!(at && Date.now() - at < 30 * 60 * 1000);
+        } catch (e) { return false; }
+    }
     // 本机兜底也遵守「后台最多 3 个 char」：一小时窗口内已有 3 个不同角色主动发过，就不再插队
     function localAutoBudgetOk() {
         try {
@@ -7168,13 +7236,18 @@
     }
     // 真正执行一次主动发消息（本地定时器到点、或外壳统一调度到点都会走到这里）
     function runScheduledAutoMsg() {
+        // 开关关闭后，任何延迟到达的旧任务都不允许再调用 API。
+        if (!window.__autoMsgEnabled) {
+            if (autoMsgTimer) { clearTimeout(autoMsgTimer); autoMsgTimer = null; }
+            return;
+        }
         // 角色已进入线下：退出线下之前，线上不发任何主动消息。
         if (isChatOfflineMode()) {
             if (autoMsgTimer) { clearTimeout(autoMsgTimer); autoMsgTimer = null; }
             return;
         }
         // 已交给 Worker 无后台推送：本机不再生成，避免重复主动消息。
-        if (window.__serverAutoPushActive) {
+        if (serverAutoPushLikelyActive()) {
             if (autoMsgTimer) { clearTimeout(autoMsgTimer); autoMsgTimer = null; }
             return;
         }
@@ -7192,6 +7265,8 @@
             }
         } catch (e) {}
         if (!localAutoBudgetOk()) { scheduleNextAutoMsg(); return; }
+        // 同一次到点只允许调用一次 API：拦住 KeepAlive 广播 / 重复 frame / 延迟任务。
+        if (!autoApiLockOk('msg', chatId)) { scheduleNextAutoMsg(); return; }
         lastAutoMsgRunAt = Date.now();
         if (autoMsgTimer) { clearTimeout(autoMsgTimer); autoMsgTimer = null; }
         try { if (window.NanoKeepAlive && NanoKeepAlive.cancel) NanoKeepAlive.cancel(autoMsgTaskId()); } catch (e) {}
@@ -7245,7 +7320,7 @@
     function scheduleNextAutoMsg(first) {
         if (autoMsgTimer) { clearTimeout(autoMsgTimer); autoMsgTimer = null; }
         if (!window.__autoMsgEnabled) return;
-        if (window.__serverAutoPushActive) return;
+        if (serverAutoPushLikelyActive()) return;
         const base = window.__autoMsgMins || 480;
         // 严格按设定间隔（50%~150% 随机）发送，不再在开启时插一条「立即触发」，
         // 避免用户没到点就被多扣一次 API。
@@ -8081,13 +8156,18 @@
         } catch (e) { return true; }
     }
     async function runScheduledAutoMoment() {
+        // 开关关闭后，任何延迟到达的旧任务都不允许再调用 API。
+        if (!window.__autoMomentEnabled) {
+            if (autoMomentTimer) { clearTimeout(autoMomentTimer); autoMomentTimer = null; }
+            return;
+        }
         // 角色已进入线下：退出线下之前，线上不再自动发朋友圈。
         if (isChatOfflineMode()) {
             if (autoMomentTimer) { clearTimeout(autoMomentTimer); autoMomentTimer = null; }
             return;
         }
         // 已交给 Worker 无后台推送：本机不再生成朋友圈。
-        if (window.__serverAutoPushActive) {
+        if (serverAutoPushLikelyActive()) {
             if (autoMomentTimer) { clearTimeout(autoMomentTimer); autoMomentTimer = null; }
             return;
         }
@@ -8099,6 +8179,8 @@
         try {
             if (!shouldDoFirstAutoMoment()) { scheduleNextAutoMoment(); return; }
         } catch (e) {}
+        // 同一次到点只允许调用一次 API，拦住重复 frame / 延迟广播。
+        if (!autoApiLockOk('moment', chatId, 10 * 60 * 1000)) { scheduleNextAutoMoment(); return; }
         try {
             // 一次 API 调用生成 3~4 条朋友圈；不再额外随机主动发照片，避免一次定时触发多次调用。
             await postAutoMomentBatch();
@@ -8108,7 +8190,7 @@
     function scheduleNextAutoMoment(first) {
         if (autoMomentTimer) { clearTimeout(autoMomentTimer); autoMomentTimer = null; }
         if (!window.__autoMomentEnabled) return;
-        if (window.__serverAutoPushActive) return;
+        if (serverAutoPushLikelyActive()) return;
         const baseH = window.__autoMomentHours || 24;
         // 0.85x ~ 1.2x：两次主动动态之间至少间隔约一个「间隔」，避免一天多次触发。
         const randH = baseH * (0.85 + Math.random() * 0.35);
@@ -13049,8 +13131,32 @@
     // 日程到点后自动生成的「报备」卡片：轮询日程库，补进私聊
     let __schedReportBusy = false;
     let __schedImgWarned = false;
+    // 只有真正聊熟的角色才自动报备；刚点开/没聊过的角色不弹日程卡。
+    function hasFamiliarRealChat() {
+        let total = 0, mine = 0, theirs = 0, first = 0;
+        const cutoff = Date.now() - 12 * 3600 * 1000;
+        let recent = false;
+        try {
+            messages.forEach(function (m) {
+                if (!m || m.recalled || m.isCard) return;
+                if (m.cardData && m.cardData.systemNotice) return;
+                if (!String(m.text || m.transcript || '').trim()) return;
+                if (m.type === 'right') mine++;
+                else if (m.type === 'left') theirs++;
+                else return;
+                total++;
+                const ts = Number(m.ts || 0);
+                if (ts >= cutoff) recent = true;
+                if (ts && (!first || ts < first)) first = ts;
+            });
+        } catch (e) { return false; }
+        const oldEnough = !first || (Date.now() - first >= 2 * 86400000);
+        // 报备门槛：至少 200 条真实消息，双方各 60 条，认识 2 天以上，且近 12 小时聊过。
+        return total >= 200 && mine >= 60 && theirs >= 60 && recent && oldEnough;
+    }
     async function deliverScheduleReports() {
         if (isChatOfflineMode()) return;
+        if (!hasFamiliarRealChat()) return;
         if (__schedReportBusy || !window.NanoScheduleBridge || !NanoScheduleBridge.takeReports) return;
         if (!isStorageReady) return;
         __schedReportBusy = true;
@@ -14439,6 +14545,84 @@ if (callCard) {
         addCharSaid(p.text, p.heart || null, p.think || '', p.id || '');
     }
 
+    // ===== 角色接管手机：用户拒绝后的角色反应 =====
+    // 拒绝查手机不能静默关闭：第一次可以失落/嘴硬，多次拒绝后要体现怀疑、生气或受伤。
+    function takeoverDenyFallback(n) {
+        if (n <= 1) return '……好吧，不给看就不给看。';
+        if (n === 2) return '你越这样，我越觉得你有事瞒着我。';
+        return '你每次都这样……行，我不问了。';
+    }
+    function reactToTakeoverDenied(count) {
+        if (isNanoChat) return;
+        const n = Math.max(1, parseInt(count, 10) || 1);
+        const tone = n <= 1
+            ? '意外、失落、有点小情绪，或者装作不在意、嘴硬一下'
+            : (n === 2
+                ? '明显不开心，开始怀疑对方是不是有事瞒着你，语气认真起来'
+                : '已经生气、受伤，怀疑加深，语气可以变冷、追问或说重话，但仍要符合你的人设和你们的关系');
+        const instr = '【系统事件】你刚刚想看看对方的手机，对方拒绝了。这是你第 ' + n + ' 次被拒绝。\n'
+            + '请以你的人设和你们现在的关系，自然地对这次拒绝作出反应：' + tone + '。\n'
+            + '- 只发 1~3 条短消息，像真人聊天；不要写报告、不要总结、不要解释。\n'
+            + '- 不要提“系统 / 按钮 / 第几次 / 拒绝记录 / API”这类系统字样。\n'
+            + '- 不要输出 [查看手机] / [看屏幕] 等任何特殊标记，也不要立刻再申请一次。\n'
+            + '- 第一次可以嘴硬或撒娇；多次被拒绝后要体现累积的情绪，不要每次都只说“好吧”。';
+        let tries = 0;
+        const fallback = function () {
+            try { addCharSaid(takeoverDenyFallback(n)); } catch (e) {}
+        };
+        const run = async function () {
+            tries++;
+            if (tries > 10) { fallback(); return; }
+            if (isProcessingApi || isWaitingForReply) { setTimeout(run, 1800); return; }
+            isProcessingApi = true;
+            const prevSuppress = suppressApiAlerts;
+            try {
+                suppressApiAlerts = true;
+                let reply = await callApi(instr);
+                if (reply) {
+                    reply = String(reply).replace(/\[(查看手机|看手机|查手机|接管手机|接管我的手机|看你手机|看屏幕|掌心窗|共享屏幕|看你屏幕)\]/gi, '');
+                }
+                if (reply && String(reply).trim()) {
+                    await processReply(reply, 0);
+                } else {
+                    fallback();
+                }
+            } catch (e) {
+                fallback();
+            } finally {
+                suppressApiAlerts = prevSuppress;
+                isProcessingApi = false;
+            }
+        };
+        run();
+    }
+
+    function takeoverDeniedClearPending(id, at) {
+        try {
+            const qk = 'nano_pending_takeover_denied';
+            const q = JSON.parse(localStorage.getItem(qk) || '{}') || {};
+            const hit = q[String(id)];
+            if (hit && (!at || String(hit.at) === String(at))) {
+                delete q[String(id)];
+                localStorage.setItem(qk, JSON.stringify(q));
+            }
+        } catch (e) {}
+    }
+    function consumePendingTakeoverDenied() {
+        try {
+            const qk = 'nano_pending_takeover_denied';
+            const q = JSON.parse(localStorage.getItem(qk) || '{}') || {};
+            const hit = q[String(chatId)];
+            if (!hit) return;
+            delete q[String(chatId)];
+            localStorage.setItem(qk, JSON.stringify(q));
+            // 超过 6 小时的旧拒绝不再补反应，避免一打开聊天突然翻旧账。
+            if (hit.at && Date.now() - Number(hit.at) > 6 * 60 * 60 * 1000) return;
+            lastTakeoverDenyAt = String(hit.at || Date.now());
+            reactToTakeoverDenied(hit.count);
+        } catch (e) {}
+    }
+
     // ===== 角色接管手机：把整次「翻看」放进一张卡片 =====
     function addTakeoverCard(data) {
         data = data || {};
@@ -14728,6 +14912,18 @@ if (callCard) {
             return;
         }
 
+        // 用户拒绝了「查看手机」申请：必须让角色作出反应；多次拒绝会累积成怀疑/生气。
+        if (data.type === 'NANO_TAKEOVER_DENIED') {
+            if (data.chatId && String(data.chatId) !== String(chatId)) return;
+            if (isChatOfflineMode()) return;
+            const at = data.at ? String(data.at) : '';
+            if (at && at === lastTakeoverDenyAt) return;   // 外壳会补发几次，只处理一次
+            lastTakeoverDenyAt = at || String(Date.now());
+            takeoverDeniedClearPending(chatId, at);
+            reactToTakeoverDenied(data.count);
+            return;
+        }
+
         // 一起听系统提示（接受/拒绝/结束）：居中灰框，写入聊天记录让角色能读到
         if (data.type === 'NANO_LISTEN_NOTICE') {
             // 必须明确指定聊天，避免提示串到别的会话
@@ -14907,8 +15103,8 @@ if (callCard) {
             setAutoMomentState(getChatSetting('autoMoment', false) || !!data.enabled, data.interval || getChatSetting('autoMomentInterval', 24), { first: true, reset: true });
         } else if (data.type === 'autoMomentIntervalChanged') {
             setAutoMomentState(getChatSetting('autoMoment', false), data.interval, { reset: true });
-        } else if (data.type === 'timeAwareChanged' || data.type === 'allowImageChanged' || data.type === 'allowMomentImageChanged') {
-            // 无需实时处理（构建提示词/生图时读取设置）
+        } else if (data.type === 'timeAwareChanged' || data.type === 'allowImageChanged' || data.type === 'allowMomentImageChanged' || data.type === 'allowTravelInviteChanged') {
+            // 无需实时处理（构建提示词/生图/旅途时读取设置）
         }
 
         // 角色接通电话后说的第一句话
@@ -14999,9 +15195,17 @@ if (data.type === 'NANO_VOICE_CALL_CARD' || data.type === 'NANO_VIDEO_CALL_CARD'
         messages: messages,
         displayName: displayName,
         currentUserName: currentUserName,
+        getCharacterData: function () { return characterData || null; },
         isForeignChar: function () { try { return isForeignChar(); } catch (e) { return false; } },
         charLanguageName: function () { try { return charLanguageName(); } catch (e) { return ''; } },
         translateToZh: function (text) { try { return translateToZh(text); } catch (e) { return Promise.resolve(''); } },
+        // 心声附加板块（评论区等）只允许陌生网友：渲染旧消息前也再清洗一次。
+        sanitizeHeartSections: function (list) {
+            return (Array.isArray(list) ? list : []).map(function (s) {
+                if (!s) return s;
+                return { name: s.name || '', content: sanitizeHeartSectionContent(s.name, s.content) };
+            });
+        },
         loadMessages: loadMessages,
         isStorageReady: function() { return isStorageReady; },
         getTakeoverContext: function () {
@@ -15153,6 +15357,8 @@ if (data.type === 'NANO_VOICE_CALL_CARD' || data.type === 'NANO_VIDEO_CALL_CARD'
             try { consumePendingCycleCard(); } catch (e) {}
             // 角色接管手机：进入该角色的聊天时补挂查看卡片
             try { consumePendingTakeoverCard(); } catch (e) {}
+            // 拒绝查手机后聊天帧没收到广播：进入聊天时补生成角色反应
+            try { consumePendingTakeoverDenied(); } catch (e) {}
             // 查手机：把用户分享的手机内容补挂进来
             try { consumePendingPhoneShare(); } catch (e) {}
             // 同人文：把用户分享的故事卡片补挂进来

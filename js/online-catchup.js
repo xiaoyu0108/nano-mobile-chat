@@ -4,7 +4,7 @@
 // 挑 1~2 位，主动给你发一条和上下文强相关的消息（含心声 + 1~3 条气泡）。
 // 仅在 App 外壳（index.html）运行。背景：网页被系统挂起后无法真正后台定时发消息，
 // 所以把「主动发消息」的补发放在你重新上线的时机完成。
-// 关闭：localStorage.setItem('nano_online_catchup','0')
+// 默认关闭，避免未经授权自动调用 API；开启：localStorage.setItem('nano_online_catchup','1')
 // ============================================================
 (function () {
     'use strict';
@@ -24,7 +24,9 @@
     function enc(s) { return encodeURIComponent(String(s == null ? '' : s)); }
     function enabled() {
         try {
-            if (localStorage.getItem(ENABLE_KEY) === '0') return false;
+            // 默认关闭：上线补发属于「额外交互」，不能在没有明确授权时自动调用 API。
+            // 需要时手动写入 localStorage.setItem('nano_online_catchup','1') 才开启。
+            if (localStorage.getItem(ENABLE_KEY) !== '1') return false;
             // 服务端已经在按间隔主动发消息时，不再额外做「上线补发」，避免重复扣 API
             if (localStorage.getItem('nano_server_auto_push') === '1') return false;
             // 本机已经为某个角色开启了定时主动消息：交给它只发一次，

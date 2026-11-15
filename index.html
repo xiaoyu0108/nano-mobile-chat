@@ -50,8 +50,8 @@
     <!-- 底部脚本很多，提前并行下载，避免解析到底部才开始请求 -->
     <link rel="preload" as="script" href="js/nano-push.js?v=20261112a">
     <link rel="preload" as="script" href="js/keep-alive.js?v=20261112a">
-    <link rel="preload" as="script" href="js/char-takeover.js?v=20261107a">
-    <link rel="preload" as="script" href="js/online-catchup.js?v=20261112a">
+    <link rel="preload" as="script" href="js/char-takeover.js?v=20261115b">
+    <link rel="preload" as="script" href="js/online-catchup.js?v=20261115a">
     <link rel="preload" as="script" href="js/auto-push-bridge.js?v=20261112b">
     <!-- 聊天/通话/设置页会同步加载 localforage；在这里提前拉，避免它们卡在 CDN 往返上 -->
     <link rel="preload" as="script" href="js/localforage.min.js">
@@ -986,7 +986,7 @@
     </style>
 
 
-    <script defer src="js/appearance.js?v=20261113a"></script>
+    <script defer src="js/appearance.js?v=20261115a"></script>
 </head>
 <body class="nano-index">
 <!-- 旧的“每次访问清缓存 + reload”已移除：它和 head 里的版本自愈叠加，
@@ -4781,12 +4781,12 @@ setTimeout(function () {
 <script src="js/nano-push.js?v=20261112a"></script>
 <script src="swipe-back.js"></script>
 <script src="js/keep-alive.js?v=20261112a"></script>
-<script src="js/char-takeover.js?v=20261107a"></script>
+<script src="js/char-takeover.js?v=20261115b"></script>
 <script src="js/nano-prompts.js?v=20261108a"></script>
 <script src="js/screen-share.js?v=20261027a"></script>
 <script src="js/ios-bridge.js?v=20261027k"></script>
 <script src="js/auto-push-bridge.js?v=20261112b"></script>
-<script src="js/online-catchup.js?v=20261112a"></script>
+<script src="js/online-catchup.js?v=20261115a"></script>
 <script src="js/whisper-store.js?v=20261026a"></script>
 <script src="js/char-secret-chat.js?v=20261029f"></script>
 </div>

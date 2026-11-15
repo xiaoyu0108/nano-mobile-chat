@@ -585,7 +585,8 @@ function applyImgResult(job,res){
   const ev=byId(job.eventId);
   if(!ev)return false;
   ev.img=res;
-  ev.report={at:Date.now(),note:String(ev.mood||ev.note||'').trim().slice(0,80),delivered:false};
+  // 报备文字只发安排本身，不把「心声/感悟」发到私聊。
+  ev.report={at:Date.now(),note:String(ev.note||ev.title||'').trim().slice(0,80),delivered:false};
   // 后台任务从父页面拿到的常常是临时 URL：先落库显示，再在后台转成永久 dataURL 回写，
   // 避免过几天链接失效后日程图片变成空白（看起来像被自动销毁）。
   if(window.NanoImageCache&&/^https?:\/\//i.test(String(res.src||''))){
@@ -1353,7 +1354,8 @@ async function runImage(ev,prompt,openAfter,autoReport){
     logEv(ev,'生成画面');
     clearImgJob(activeImgJobToken);
     if(autoReport){
-      ev.report={at:Date.now(),note:(ev.mood||ev.note||'').trim().slice(0,80),delivered:false};
+      // 报备文字只发安排本身，不把「心声/感悟」发到私聊。
+      ev.report={at:Date.now(),note:(ev.note||ev.title||'').trim().slice(0,80),delivered:false};
     }
   }else if(!errBg){
     clearImgJob(activeImgJobToken);

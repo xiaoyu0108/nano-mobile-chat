@@ -659,11 +659,12 @@
             var tDir = cd.direction || (side === 'right' ? 'user' : 'char');
             var tSt = st || 'pending';
             var tHead = tSt === 'accepted' ? '一起去 · 已同意'
-                : (tSt === 'rejected' ? '一起去 · 已婉拒' : '一起去邀请');
-            var tIcon = tSt === 'accepted' ? 'checkCircle' : (tSt === 'rejected' ? 'x' : 'pin');
+                : (tSt === 'rejected' ? '一起去 · 已婉拒' : (tSt === 'expired' ? '一起去 · 已过期' : '一起去邀请'));
+            var tIcon = tSt === 'accepted' ? 'checkCircle' : ((tSt === 'rejected' || tSt === 'expired') ? 'x' : 'pin');
             var tFoot = '';
             if (tSt === 'accepted') tFoot = '<div class="card-footer"><span class="card-actions"><button type="button" class="btn btn-primary primary card-btn" data-act="travel-open">进入旅程</button></span></div>';
             else if (tSt === 'rejected') tFoot = '';
+            else if (tSt === 'expired') tFoot = '';
             else if (tDir === 'char') tFoot = actions([['婉拒', 'travel-reject', false], ['同意', 'travel-accept', true]]);
             var tWhen = [cd.date, cd.time].filter(Boolean).join(' · ');
             var tDays = cd.days ? (String(cd.days) + ' 天') : '';

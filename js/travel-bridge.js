@@ -69,6 +69,283 @@
       return v === true || v === 1 || v === 'true' || v === '1';
     } catch (e) { return false; }
   }
+  // 「一起去邀请」必须由用户在私聊设置里手动开启；默认关闭。
+  function charAllowsInvite(id) {
+    try {
+      var raw = localStorage.getItem('chat_setting_allowTravelInvite_' + String(id || ''));
+      if (raw === null) return false;
+      var v = raw;
+      try { v = JSON.parse(raw); } catch (e) {}
+      return v === true || v === 1 || v === 'true' || v === '1';
+    } catch (e) { return false; }
+  }
+  // 只统计真实聊天气泡：卡片、系统提示、表情/图片都不算「熟」。
+  function realChatStats() {
+    var total = 0, user = 0, char = 0;
+    messages().forEach(function (m) {
+      if (!m || m.recalled || m.isCard) return;
+      if (m.cardData && m.cardData.systemNotice) return;
+      var txt = String(m.text || m.transcript || '').trim();
+      if (!txt) return;
+      if (m.type === 'right') user++;
+      else if (m.type === 'left') char++;
+      else return;
+      total++;
+    });
+    return { total: total, user: user, char: char };
+  }
+  function msgTs(m) {
+    if (!m) return 0;
+    var ts = Number(m.ts) || 0;
+    if (!ts) ts = parseInt(String(m.id || '').split('-')[0], 10) || 0;
+    return ts;
+  }
+  function realMessageList() {
+    return messages().filter(function (m) {
+      return m && !m.recalled && !m.isCard &&
+        (m.type === 'left' || m.type === 'right') &&
+        !(m.cardData && m.cardData.systemNotice) &&
+        String(m.text || m.transcript || '').trim();
+    });
+  }
+  function recentRealCount(days) {
+    var cutoff = Date.now() - days * 86400000;
+    return realMessageList().filter(function (m) { return msgTs(m) >= cutoff; }).length;
+  }
+  function recentChatText(limit) {
+    return realMessageList().slice(-(limit || 60)).map(function (m) {
+      return String(m.text || m.transcript || '').replace(/\s+/g, ' ');
+    }).join('\n');
+  }
+  // 认识多久：避免同一天猛聊几十句就被当成「很熟」。
+  function relationshipAgeDays() {
+    var first = 0;
+    realMessageList().forEach(function (m) {
+      var t = msgTs(m);
+      if (t && (!first || t < first)) first = t;
+    });
+    return first ? (Date.now() - first) / 86400000 : 999;
+  }
+  // 很久没聊（≥7 天）后再重新聊：从重新开口的第一条算起，至少聊满 2 天才允许邀请。
+  function resumeAfterLongGap() {
+    var list = realMessageList().slice().sort(function (a, b) { return msgTs(a) - msgTs(b); });
+    var resumeAt = 0;
+    for (var i = 1; i < list.length; i++) {
+      var prev = msgTs(list[i - 1]);
+      var cur = msgTs(list[i]);
+      if (prev && cur && cur - prev >= 7 * 86400000) resumeAt = cur;
+    }
+    return resumeAt;
+  }
+  function resumedLongEnough() {
+    var at = resumeAfterLongGap();
+    if (!at) return true;
+    if (Date.now() - at < 2 * 86400000) return false;
+    // 重新聊之后，至少跨两个不同日期都有真实消息，才算「重新聊了 2 天」。
+    var days = {};
+    realMessageList().forEach(function (m) {
+      var t = msgTs(m);
+      if (!t || t < at) return;
+      var d = new Date(t);
+      days[d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate()] = true;
+    });
+    return Object.keys(days).length >= 2;
+  }
+  function characterProfileText() {
+    var parts = [];
+    var c = charRecord() || {};
+    ['setting', 'persona', 'desc', 'description', 'profile', 'bio', 'background', 'relationship'].forEach(function (k) {
+      var v = c[k];
+      if (typeof v === 'string' && v.trim()) parts.push(v);
+    });
+    try {
+      var s = (store().getCharData(chatId).settings) || {};
+      ['persona', 'setting', 'desc', 'description', 'relationship'].forEach(function (k) {
+        var v = s[k];
+        if (typeof v === 'string' && v.trim()) parts.push(v);
+      });
+    } catch (e) {}
+    return parts.join('\n');
+  }
+  function relationshipSignals() {
+    var profile = characterProfileText();
+    var chat = recentChatText(80);
+    var list = messages();
+    var lover = /(恋人|情侣|爱人|老公|老婆|男友|女友|男朋友|女朋友|伴侣|未婚妻|未婚夫)/.test(profile);
+    var closeFriend = /(青梅竹马|挚友|闺蜜|死党|最好的朋友|最亲近的人|家人)/.test(profile);
+    var affection = /(喜欢你|爱你|想你|舍不得你|想见你|在一起|宝贝|亲爱的|抱抱|亲亲|约会|牵手|老婆|老公|男朋友|女朋友|亲一下)/.test(chat);
+    var couple = false, family = false;
+    list.forEach(function (m) {
+      if (!m || !m.cardData) return;
+      if (m.cardData.cardType === 'couple' && m.cardData.coupleKind === 'invite' && String(m.cardData.status || '') === 'accepted') couple = true;
+      if (m.cardData.cardType === 'familycard') {
+        var st = String(m.cardData.status || '');
+        if (m.cardData.response === true || st === 'accepted' || st === 'active' || st === 'approved') family = true;
+      }
+    });
+    return {
+      lover: lover || couple,
+      closeFriend: closeFriend,
+      affection: affection || lover || couple,
+      family: family
+    };
+  }
+  // 关系分级：熟人（可报备）→ 亲近（可同城/同国邀请）→ 亲密（才可能异国长途邀请）。
+  function chatCloseness() {
+    var st = realChatStats();
+    var recent30 = recentRealCount(30);
+    var recent7 = recentRealCount(7);
+    var ageDays = relationshipAgeDays();
+    var sig = relationshipSignals();
+    var affinity = !!(sig.lover || sig.family || sig.affection);
+    var bond = affinity || sig.closeFriend;
+    // 报备：至少 200 条真实消息、双方各 60 条、认识 2 天以上。
+    var familiar = st.total >= 200 && st.user >= 60 && st.char >= 60 && ageDays >= 2;
+    // 邀请：至少 500 条真实消息、双方各 150 条、认识 2 天以上。
+    var inviteReady = st.total >= 500 && st.user >= 150 && st.char >= 150 && ageDays >= 2;
+    var close = inviteReady;
+    // 异地/异国还要求明确的感情浓度；800 条以上视为足够亲密。
+    var intimate = inviteReady && (affinity || st.total >= 800);
+    return {
+      stats: st, recent30: recent30, recent7: recent7, ageDays: ageDays, sig: sig,
+      affinity: affinity, bond: bond, familiar: familiar, close: close, intimate: intimate
+    };
+  }
+  function isFamiliar() { return chatCloseness().familiar; }
+  function remoteFlagKey() { return 'nano_travel_remote_' + chatId; }
+  // 同国但异地：用户明确说过“异地/不在一个城市/离得很远”时记住 120 天。
+  function isRemoteRelationship() {
+    if (isCrossCountry()) return true;
+    try {
+      var flag = JSON.parse(localStorage.getItem(remoteFlagKey()) || 'null');
+      if (flag && Date.now() - Number(flag.at || 0) < 120 * 86400000) return true;
+    } catch (e) {}
+    var txt = messages().filter(function (m) {
+      return m && !m.recalled && !m.isCard && m.type === 'right' &&
+        !(m.cardData && m.cardData.systemNotice) && String(m.text || '').trim();
+    }).slice(-30).map(function (m) { return String(m.text || ''); }).join('\n');
+    var hit = /(异地|不在同一个城市|不在一个城市|两个城市|相隔(很|太)?远|距离(很|太)远|离得(很|太)远|见一面(很|太)难|聚少离多)/.test(txt);
+    if (hit) {
+      try { localStorage.setItem(remoteFlagKey(), JSON.stringify({ at: Date.now() })); } catch (e) {}
+    }
+    return hit;
+  }
+  // same_country=同国（可能同城），remote=同国异地，cross_country=异国。
+  function distanceClass() {
+    if (isCrossCountry()) return 'cross_country';
+    if (isRemoteRelationship()) return 'remote';
+    return 'same_country';
+  }
+  // 同城/同国：关系亲近就能邀请；异地/异国：必须到「亲密」才可能偶尔邀请一次长途旅行。
+  function inviteTierAllowed(tier) {
+    tier = tier || chatCloseness();
+    var d = distanceClass();
+    return d === 'same_country' ? tier.close : tier.intimate;
+  }
+  function inviteCooldownMs() {
+    var d = distanceClass();
+    return d === 'cross_country' ? 12 * 86400000 : (d === 'remote' ? 10 * 86400000 : 7 * 86400000);
+  }
+  function rejectCooldownMs() {
+    // 被婉拒后：同城/同国、异地、异国一律 14 天。
+    return 14 * 86400000;
+  }
+  function lastCharInviteAt() {
+    var last = 0;
+    try {
+      var cd = store().getCharData(chatId);
+      last = Math.max(last, Number(cd.lastInviteAt || 0));
+    } catch (e) {}
+    try {
+      var lock = JSON.parse(localStorage.getItem(inviteLockKey()) || 'null');
+      if (lock) last = Math.max(last, Number(lock.at || 0));
+    } catch (e) {}
+    return last;
+  }
+  function lastCharRejectAt() {
+    try { return Number((store().getCharData(chatId).lastInviteRejectedAt) || 0); } catch (e) { return 0; }
+  }
+  function charRecord() {
+    try {
+      if (window.__chat && window.__chat.getCharacterData) {
+        var c = window.__chat.getCharacterData();
+        if (c) return c;
+      }
+    } catch (e) {}
+    try {
+      var cd = store() && store().getCharData ? store().getCharData(chatId) : null;
+      var s = (cd && cd.settings) || {};
+      return { name: s.name || displayName(), nationality: s.nationality || '', setting: s.persona || '' };
+    } catch (e) { return null; }
+  }
+  function normCountry(v) {
+    return String(v || '').replace(/国$/, '').replace(/\s+/g, '').trim();
+  }
+  function charNationality() {
+    var c = charRecord() || {};
+    return String(c.nationality || c.country || '').trim();
+  }
+  function userNationality() {
+    try {
+      var s = store();
+      var m = s && s.getMask ? s.getMask() : null;
+      return String((m && m.nationality) || '').trim();
+    } catch (e) { return ''; }
+  }
+  function isCrossCountry() {
+    var a = normCountry(charNationality());
+    var b = normCountry(userNationality());
+    if (a && b) return a !== b;
+    // 国籍字段缺失时，用「外国人」标记兜底：外国人角色默认不做当天往返的周末邀请。
+    try {
+      if (window.__chat && window.__chat.isForeignChar && window.__chat.isForeignChar()) return true;
+    } catch (e) {}
+    return false;
+  }
+  // 已经同意过一次「一起去」，且之后还没结束这趟旅程：不要再反复发新邀请。
+  function hasUpcomingAcceptedTrip() {
+    var lastTogetherAt = 0;
+    messages().forEach(function (m) {
+      if (!m || !m.cardData) return;
+      if (m.cardData.cardType === 'travelReport' && m.cardData.travelKind === 'together') {
+        lastTogetherAt = Math.max(lastTogetherAt, Number(m.ts || m.cardData.reportedAt || 0));
+      }
+    });
+    return messages().some(function (m) {
+      if (!m || !m.cardData || m.cardData.cardType !== 'travelInvite') return false;
+      if (String(m.cardData.status || '') !== 'accepted') return false;
+      var at = Number(m.createdAt || m.ts || 0);
+      if (at && Date.now() - at > 60 * 86400000) return false;
+      return at > lastTogetherAt;
+    });
+  }
+  // 最近聊天里已经约好「以后某个时间见面/我去找你」：不要再反复发新的邀请。
+  function hasTextMeetingAgreement() {
+    var txt = messages().filter(function (m) {
+      return m && !m.recalled && !m.isCard && (m.type === 'left' || m.type === 'right') &&
+        !(m.cardData && m.cardData.systemNotice) && String(m.text || '').trim();
+    }).slice(-24).map(function (m) { return String(m.text || ''); }).join('\n');
+    return /(约好|约了|说好|商量好|定了|等我|等你|下次|以后|到时候|放假|假期|攒钱|机票|签证)[^。！？\n]{0,40}(去找你|去找他|来找我|来找你|见面|过去|飞|去你|来我|找你|找他)/.test(txt);
+  }
+  // 用户已经多次说过异地/周末来不了时，跨国的角色不要再自动发周末邀请。
+  function distanceFlagKey() { return 'nano_travel_no_weekend_' + chatId; }
+  function userRepeatedDistanceComplaint() {
+    if (distanceClass() === 'same_country') return false;
+    // 一旦说过距离/周末来不了，记住 60 天；即使后面又聊了很多，也不会忘了这件事。
+    try {
+      var flag = JSON.parse(localStorage.getItem(distanceFlagKey()) || 'null');
+      if (flag && Date.now() - Number(flag.at || 0) < 60 * 86400000) return true;
+    } catch (e) {}
+    var txt = messages().filter(function (m) {
+      return m && !m.recalled && !m.isCard && m.type === 'right' &&
+        !(m.cardData && m.cardData.systemNotice) && String(m.text || '').trim();
+    }).slice(-20).map(function (m) { return String(m.text || ''); }).join('\n');
+    var hit = /(周末|周六|周日)[^。！？\n]{0,18}(找不了|来不了|去不了|见不了|没法|没办法|不能|太远|怎么.{0,6}(找你|见你|过去|去))|我在(中国|北京|上海|广州|深圳|杭州|成都|重庆)|你在(日本|东京|大阪|美国|纽约|英国|伦敦|韩国|首尔|法国|巴黎|德国|澳洲|加拿大)/.test(txt);
+    if (hit) {
+      try { localStorage.setItem(distanceFlagKey(), JSON.stringify({ at: Date.now() })); } catch (e) {}
+    }
+    return hit;
+  }
   function isChatOffline() {
     try { return String(localStorage.getItem('nano_chat_mode_' + chatId) || '') === 'offline'; } catch (e) { return false; }
   }
@@ -83,14 +360,11 @@
     });
     return last;
   }
-  // 只让「最近 24 小时真的在聊天」的角色主动分享旅程；很久没聊的不再打扰。
-  function recentlyChatting() {
-    try {
-      var at = store() && store().lastChatAt ? Number(store().lastChatAt(chatId) || 0) : 0;
-      if (at && Date.now() - at < 24 * 3600 * 1000) return true;
-    } catch (e) {}
-    var last = recentMessageAt();
-    return !!last && Date.now() - last < 24 * 3600 * 1000;
+  // 必须近 12 小时真的聊过天（只算真实气泡，不算卡片/系统提示）。
+  function recentlyChatting(hours) {
+    var h = Number(hours) || 12;
+    var cutoff = Date.now() - h * 3600 * 1000;
+    return realMessageList().some(function (m) { return msgTs(m) >= cutoff; });
   }
 
   function whenReady(fn) {
@@ -139,7 +413,7 @@
         shared.forEach(function (m) {
           var c = m.cardData || {};
           out.push('- ' + (c.travelKind === 'together' ? '你们刚一起旅行回来' : (c.cardType === 'travelShare' ? '对方分享' : '你报备')) + '：' + (c.title || c.place || '一段旅程')
-            + (c.thought ? ('，心得：' + String(c.thought).slice(0, 80)) : '')
+            + (c.caption ? ('，画面：' + String(c.caption).slice(0, 80)) : '')
             + (c.img ? '（有拍立得）' : ''));
         });
         var hasUserShare = shared.some(function (m) { return m.cardData && m.cardData.cardType === 'travelShare'; });
@@ -150,12 +424,59 @@
         out.push(hasUserShare
           ? '对方刚把这段旅程分享给你。这一轮必须自然回应这张卡片：可以惊讶、追问、评价或想起某个细节；不要无视，也不要机械复述卡片内容。'
           : '如果氛围合适，可以自然提起这段旅途；不要机械复述卡片内容。');
+        out.push('注意：卡片里的「心得/感悟/心声」是 App 里的记录，不要在聊天气泡里复述、扩写或另发一遍。');
       }
     } catch (e) {}
-    out.push('你也可以主动分享自己一个人的行程、临时出门散心、路上遇到的小事和票根（旅途报备），不用等对方问；频率要低，别每轮都发。');
-    out.push('当气氛自然、你真的想和对方一起出门时，可以主动邀请，但频率要低，不要每轮都提。邀请时单独占一行输出标记（标记不会显示给对方）：');
-    out.push('[邀请一起去:目的地|日期|时间|天数|一句说明]');
-    out.push('例如 [邀请一起去:苏州|这周末|上午十点|2|想去平江路慢慢走一走]。日期可以写“这周末/明天/下个月”等自然说法；天数写数字。');
+    // 旅途报备由系统卡片承载；聊天正文不要再写行程小作文或「感悟」气泡。
+    out.push('旅途报备由系统生成的卡片承载。聊天气泡里不要主动写行程小作文，也不要把「感悟/心得/心声」当作气泡发出来；只有对方问起你在哪、在做什么时，才用一两句具体、自然的话回答。');
+    var inviteOn = charAllowsInvite(chatId);
+    var tier = chatCloseness();
+    var inviteByTier = inviteTierAllowed(tier);
+    var inviteBlocked = hasUpcomingAcceptedTrip() || hasTextMeetingAgreement() || userRepeatedDistanceComplaint();
+    var rejectedAt = lastCharRejectAt();
+    var rejectedRecently = !!(rejectedAt && Date.now() - rejectedAt < rejectCooldownMs());
+    var lastInvite = lastCharInviteAt();
+    var coolingDown = !!(lastInvite && Date.now() - lastInvite < inviteCooldownMs());
+    var chattedRecently = recentlyChatting(12);
+    var resumedEnough = resumedLongEnough();
+    if (inviteOn && inviteByTier && !inviteBlocked && !rejectedRecently && !coolingDown && chattedRecently && resumedEnough) {
+      out.push('当气氛自然、你们关系已经到位时，才可以主动邀请对方一起出行，频率要低。邀请时单独占一行输出标记（标记不会显示给对方）：');
+      out.push('[邀请一起去:目的地|日期|时间|天数|一句说明]');
+      out.push('例如 [邀请一起去:苏州|下个月15号|上午十点|2|想去平江路慢慢走一走]。日期写具体日期或对方方便的时间，不要默认写“这周末”。');
+      out.push('邀请前必须先考虑现实条件：');
+      var __d = distanceClass();
+      if (__d === 'cross_country') {
+        out.push('- 你们是异国（对方在' + (userNationality() || '中国') + '，你在' + (charNationality() || '国外') + '）。不要用“这周末/周六/周日/明天/今天”这种当天就能见面的说法，也不要忽略距离。');
+        out.push('- 这种长途邀请 12 天内最多主动发一次；要像认真计划一次旅行，写清日期、天数、路程/假期。');
+        out.push('- 如果对方已经说过周末来不了、距离太远，或者你们已经约好以后某个时间见面，就不要再发新的邀请，等那个约定。');
+      } else if (__d === 'remote') {
+        out.push('- 你们是异地（不在同一座城市）：不要默认周末，也不要默认当天往返；这种邀请 10 天内最多一次。');
+        out.push('- 如果对方最近说过没空、太远、或者你们已经约好某个时间，就不要再反复邀请，等那个约定。');
+      } else {
+        out.push('- 你们在同一国家（可能同城，也可能不同城市）：不要默认每个周末都约，日期要看对方最近的时间安排；这种邀请 7 天内最多一次。');
+        out.push('- 如果对方最近说过没空、或者你们已经约好某个时间，就不要再反复邀请，等那个约定。');
+      }
+      out.push('- 刚认识、没聊几句、对方最近没怎么回你时，不要邀请。');
+    } else if (!inviteOn) {
+      out.push('现在不要主动邀请对方一起出行，也不要输出 [邀请一起去:...] 标记：用户没有为这个角色开启「一起去邀请」。');
+    } else if (!tier.familiar) {
+      out.push('现在不要主动邀请对方一起出行，也不要输出 [邀请一起去:...] 标记：你们还不够熟，先正常聊天。');
+    } else if (!inviteByTier) {
+      var __dd = distanceClass();
+      out.push(__dd === 'cross_country'
+        ? '现在不要主动邀请对方一起出行，也不要输出 [邀请一起去:...] 标记：你们是异国，关系虽然不错，但还没到可以主动约长途旅行的程度。'
+        : (__dd === 'remote'
+          ? '现在不要主动邀请对方一起出行，也不要输出 [邀请一起去:...] 标记：你们是异地，关系虽然不错，但还没到可以主动约对方跑一趟的程度。'
+          : '现在不要主动邀请对方一起出行，也不要输出 [邀请一起去:...] 标记：关系还没亲近到可以约一起出去玩的程度。'));
+    } else if (!chattedRecently) {
+      out.push('现在不要主动邀请对方一起出行，也不要输出 [邀请一起去:...] 标记：你们最近 12 小时没有真实聊天，不要突然邀约。');
+    } else if (!resumedEnough) {
+      out.push('现在不要主动邀请对方一起出行，也不要输出 [邀请一起去:...] 标记：你们很久没聊了，重新聊还不到 2 天，先恢复日常聊天。');
+    } else if (inviteBlocked) {
+      out.push('现在不要主动邀请对方一起出行，也不要输出 [邀请一起去:...] 标记：你们已经约好以后见面的时间，或者对方已经说过距离太远/周末来不了，先守住那个约定。');
+    } else {
+      out.push('现在不要主动邀请对方一起出行，也不要输出 [邀请一起去:...] 标记：上次邀请之后还在冷却期（同城/同国 7 天、异地 10 天、异国 12 天；被婉拒后一律 14 天），不要反复催。');
+    }
     var pend = pendingInvites();
     if (pend.length) {
       var p = pend[pend.length - 1];
@@ -214,25 +535,14 @@
       }
     }
 
-    // 2) 角色主动发出邀请
-    var re = /\[邀请一起去\s*[:：]\s*([^\]]+)\]/ig;
-    var found;
-    while ((found = re.exec(body)) !== null) {
-      var args = parseInviteArgs(found[1]);
-      var inviteId = 'invite_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-      var card = {
-        cardType: 'travelInvite', travelKind: 'invite', direction: 'char',
-        status: 'pending', inviteId: inviteId,
-        dest: args.dest, date: args.date, time: args.time, days: args.days, note: args.note,
-        fromName: displayName(), toName: userName(), tripId: '', createdAt: Date.now()
-      };
-      try {
-        (function(cardData){
-          setTimeout(function(){ try { chat().addMessage('left', '', nowTime(), null, false, true, cardData); } catch (e) {} }, 60);
-        })(card);
-        changed = true;
-      } catch (e) {}
-      body = body.replace(found[0], '');
+    // 2) 角色主动发出邀请：开关开启 + 关系/距离/冷却都满足。
+    var inviteAllowed = charAllowsInvite(chatId) && inviteTierAllowed(chatCloseness()) &&
+      recentlyChatting(12) && resumedLongEnough();
+    if (inviteAllowed) {
+      body = body.replace(/\[邀请一起去\s*[:：]\s*([^\]]+)\]/ig, function (m, raw) {
+        if (addInviteCard(parseInviteArgs(raw))) changed = true;
+        return '';
+      });
     }
     // 清掉可能残留的标记，避免显示给用户
     body = body.replace(/\[一起去\s*[:：][^\]]*\]/ig, '');
@@ -255,6 +565,12 @@
   function deliver() {
     var s = store();
     if (!s || reportBusy) return Promise.resolve(0);
+    // 关闭开关后，把角色之前发出的待回应邀请作废。
+    try { expireCharInvitesIfDisabled(); } catch (e) {}
+    // 刚点开、还没真正聊过的角色不投递任何旅途卡片，避免一进来就被卡片打扰。
+    if (!isFamiliar()) return Promise.resolve(0);
+    // 很久没聊天的角色也不补发报备卡；必须近 12 小时有真实聊天。
+    if (!recentlyChatting(12)) return Promise.resolve(0);
     // 角色在线下：旅途卡片先留在待投递队列，退出线下后再补进线上聊天。
     if (isChatOffline()) return Promise.resolve(0);
     try {
@@ -271,15 +587,9 @@
         if (!r) continue;
         try {
           var img = await persistentImg(r.img);
-          var thought = String(r.thought || r.note || '').trim();
-          var thoughtZh = String(r.thoughtZh || '').trim();
-          if (!thoughtZh && thought) {
-            try {
-              if (window.__chat && window.__chat.isForeignChar && window.__chat.isForeignChar()) {
-                thoughtZh = await window.__chat.translateToZh(thought);
-              }
-            } catch (e) {}
-          }
+          // 聊天里的报备卡片只放地点/日期/画面说明；「心得/感悟」留在旅途 App 里，
+          // 不再作为气泡或卡片正文发到私聊。
+          var caption = String(r.caption || '').trim();
           chat().addMessage('left', '', nowTime(), null, false, true, {
             cardType: 'travelReport',
             travelKind: 'report',
@@ -287,11 +597,11 @@
             title: r.title || r.place || '旅途报备',
             place: r.place || '',
             date: r.date || today(),
-            thought: thought,
-            thoughtZh: thoughtZh,
-            caption: r.caption || '',
+            thought: '',
+            thoughtZh: '',
+            caption: caption,
             img: img || '',
-            note: '',
+            note: caption,
             fromName: displayName(),
             reportedAt: r.at || Date.now()
           });
@@ -311,21 +621,20 @@
     var m = store() && store().getMask ? store().getMask() : {};
     return 'nano_travel_report_global_' + ((m && m.id) || 'default');
   }
-  // 与「旅途」App 的随机拍立得共用同一把锁：两条路径合计约 3 天只分享一次。
+  // 与「旅途」App 的随机拍立得共用同一把锁：两条路径合计约 5 天只分享一次。
   function sharedShareKey() {
     var m = store() && store().getMask ? store().getMask() : {};
     return 'nano_travel_share_at_' + ((m && m.id) || 'default');
   }
-  var REPORT_EVERY = 72 * 3600 * 1000;   // 约 3 天由一位 char 主动分享一次旅程
+  var REPORT_EVERY = 5 * 86400000;   // 约 5 天由一位 char 主动报备一次旅程
   function canReport() {
     var s = store();
     if (!s) return false;
     if (isChatOffline()) return false;
-    // 只对近 24 小时还在聊天的角色触发；很久没聊天的角色不再主动分享。
-    if (!recentlyChatting()) return false;
-    // 没有真实聊天记录时先不打扰；有聊天记录后按约 3 天的节奏主动分享。
-    var hasChat = messages().some(function (m) { return m && !m.isCard && (m.text || m.transcript); }) || !!s.lastChatAt(chatId);
-    if (!hasChat) return false;
+    // 只对近 12 小时还在聊天的角色触发；很久没聊天的角色不再主动分享。
+    if (!recentlyChatting(12)) return false;
+    // 必须是已经聊得很熟的角色；刚点开、没聊过或只有系统提示时不报备。
+    if (!isFamiliar()) return false;
     try {
       var shared = JSON.parse(localStorage.getItem(sharedShareKey()) || 'null');
       if (shared && Date.now() - Number(shared.at || 0) < REPORT_EVERY) return false;
@@ -359,7 +668,7 @@
       + (persona ? ('角色设定：' + String(persona).slice(0, 1400) + '。') : '')
       + (foreign ? ('你的母语是' + (lang || '外语') + '：thought 必须用母语写，thoughtZh 给对应的中文翻译；' ) : 'thoughtZh 留空字符串；')
       + '只输出合法 JSON，不要解释。格式：'
-      + '{"place":"目的地/地点","from":"出发地","to":"到达地","type":"hsr|train|plane|taxi|bike|bus","date":"YYYY-MM-DD","time":"HH:MM","no":"车次/航班/车牌","seat":"座位/里程","price":数字,"thought":"一句真实心得","thoughtZh":"中文翻译或空","caption":"拍立得的一句话说明","photoPrompt":"用于生图的画面描述"}'
+      + '{"place":"目的地/地点","from":"出发地","to":"到达地","type":"hsr|train|plane|taxi|bike|bus","date":"YYYY-MM-DD","time":"HH:MM","no":"车次/航班/车牌","seat":"座位/里程","price":数字,"thought":"一句真实心得","thoughtZh":"中文翻译或空","caption":"对拍立得画面的一句客观说明，不要写心得/感悟，24字以内","photoPrompt":"用于生图的画面描述"}'
       + '。要求：像真实日常出行，不要夸张；地点符合角色所在城市/世界观；thought 不超过 40 字；photoPrompt 描述光线、地点、氛围，可以是人像，也可以只是风景、街角、食物、车票、窗边、影子或手部，不要出现文字。';
     var usr = '今天是 ' + today() + '。请生成一段你一个人出门的记录，或者你为了散心临时去的地方。';
     return { system: sys, user: usr };
@@ -470,43 +779,94 @@
     var m = store() && store().getMask ? store().getMask() : {};
     return 'nano_travel_invite_global_' + ((m && m.id) || 'default');
   }
-  var INVITE_EVERY = 72 * 3600 * 1000;   // 每 3 天由一位 char 主动邀请一次
+  var INVITE_GLOBAL_EVERY = 7 * 86400000;   // 全局：任何角色 7 天内最多主动邀请一次
   function canInvite() {
+    // 必须在私聊设置里手动开启；默认关闭，不给任何自动邀请。
+    if (!charAllowsInvite(chatId)) return false;
+    // 关系要到位：熟人才能报备；亲近才能同国邀请；异国必须到亲密，而且只偶尔一次。
+    var tier = chatCloseness();
+    if (!tier.familiar) return false;
+    if (!inviteTierAllowed(tier)) return false;
+    if (!recentlyChatting(12)) return false;
+    if (!resumedLongEnough()) return false;
     if (isChatOffline()) return false;
     if (hasPendingInvite()) return false;
+    // 已经约好一次「一起去」且还没结束：不要再发新邀请。
+    if (hasUpcomingAcceptedTrip()) return false;
+    // 聊天里已经约好以后某个时间见面：不要再发新邀请。
+    if (hasTextMeetingAgreement()) return false;
+    // 跨国角色已经听用户说过周末来不了：不要再自动发周末邀请。
+    if (userRepeatedDistanceComplaint()) return false;
+    // 被婉拒后一律冷却 14 天，不能隔几天又提。
+    var rejected = lastCharRejectAt();
+    if (rejected && Date.now() - rejected < rejectCooldownMs()) return false;
     try {
       var globalLock = JSON.parse(localStorage.getItem(inviteGlobalKey()) || 'null');
-      if (globalLock && Date.now() - Number(globalLock.at || 0) < INVITE_EVERY) return false;
-      var lock = JSON.parse(localStorage.getItem(inviteLockKey()) || 'null');
-      if (lock && Date.now() - Number(lock.at || 0) < INVITE_EVERY) return false;
+      if (globalLock && Date.now() - Number(globalLock.at || 0) < INVITE_GLOBAL_EVERY) return false;
       var tried = Number(localStorage.getItem(inviteTryKey()) || 0);
       if (Date.now() - tried < 3600 * 1000) return false;
     } catch (e) {}
-    var cd = store() && store().getCharData ? store().getCharData(chatId) : null;
-    if (cd && cd.lastInviteAt && Date.now() - Number(cd.lastInviteAt) < INVITE_EVERY) return false;
-    // 至少有过一轮真实聊天，避免刚打开就弹邀请
-    return messages().some(function (m) { return m && !m.isCard && (m.text || m.transcript); });
+    // 同一个角色的邀请间隔：同城/同国 7 天、异地 10 天、异国 12 天。
+    var last = lastCharInviteAt();
+    if (last && Date.now() - last < inviteCooldownMs()) return false;
+    return true;
   }
-  function invitePrompt(charData, mask) {
+  function invitePrompt(charData, mask, charInfo) {
     var persona = (charData && charData.settings && charData.settings.persona) || '';
     var name = (charData && charData.settings && charData.settings.name) || displayName();
-    var recent = messages().filter(function (m) { return m && !m.recalled && ((m.text && String(m.text).trim()) || m.transcript); })
-      .slice(-6).map(function (m) {
+    var recent = messages().filter(function (m) { return m && !m.recalled && !m.isCard && ((m.text && String(m.text).trim()) || m.transcript); })
+      .slice(-16).map(function (m) {
         return (m.type === 'right' ? (mask.name || '用户') : name) + '：' + String(m.text || m.transcript || '').replace(/\s+/g, ' ').slice(0, 160);
       }).join('\n');
+    var cn = String((charInfo && (charInfo.nationality || charInfo.country)) ||
+      (charData && charData.settings && charData.settings.nationality) || '').trim();
+    var un = String((mask && mask.nationality) || '').trim();
+    var tier = chatCloseness();
+    var d = distanceClass();
+    var distanceRule = d === 'cross_country'
+      ? ('你们是异国：用户是' + (un || '中国人') + '，你在' + (cn || '国外') + '。12 天内最多主动邀请一次；不要用“这周末/周六/周日/明天/今天”这种当天见面的说法，也不要忽略距离。必须像认真计划的长途旅行，写清日期、路程、天数和为什么值得去；如果对方已经说过周末来不了或拒绝过，就不要再提。')
+      : (d === 'remote'
+        ? '你们是异地（不在同一座城市）。10 天内最多主动邀请一次；不要默认写“这周末”或当天往返，日期要具体，并说明路程/时间安排。'
+        : '你们在同一国家（可能同城，也可能不同城市）。7 天内最多主动邀请一次；不要默认每个周末都约，日期要看对方最近的时间安排。');
+    var relationRule = tier.intimate
+      ? '你们关系已经很亲密，但邀请仍然要克制，不能把一起出去玩当成理所当然。'
+      : '你们关系比较亲近，但还没到可以频繁邀约的程度；只在气氛真的合适时偶尔提一次。';
     var sys = '你是角色「' + name + '」。你想自然地向「' + (mask.name || '用户') + '」发起一次「一起去」的旅行邀请。'
       + (persona ? ('角色设定：' + String(persona).slice(0, 1400) + '。') : '')
       + '必须严格保持人设和关系阶段，严禁 OOC、严禁霸道油腻、严禁命令或强迫对方、严禁套路情话。邀请要像你本人会说的话。'
       + '只输出合法 JSON，不要解释：'
-      + '{"dest":"目的地","date":"自然日期，如 这周末/明天/下个月","time":"时间，如 上午十点/傍晚","days":"3","note":"一句自然的邀请，不超过40字"}'
+      + '{"dest":"目的地","date":"具体日期，如 下个月15号/下下周六/明天","time":"时间，如 上午十点/傍晚","days":"3","note":"一句自然的邀请，不超过40字"}'
       + '。地点要符合你的城市、国籍、职业和生活习惯；不要每次都去同一个地方。'
-      + '目的地可以很近，也可以很远（跨城、跨省、甚至跨国/长途）；天数可以是数天甚至更久，不要默认只去附近、只玩一天。';
-    var usr = '最近聊天：\n' + (recent || '（刚刚开始）') + '\n\n请判断现在是否适合发出邀请，并生成邀请内容。';
+      + '目的地可以很近，也可以很远（跨城、跨省、甚至跨国/长途）；天数可以是数天甚至更久，不要默认只去附近、只玩一天。'
+      + distanceRule + relationRule
+      + '如果最近聊天里对方拒绝过、说过太远/没空，或者你们已经约好以后某个时间见面，就不要再发新的邀请，等那个约定；日期不要默认写“这周末”。';
+    var usr = '最近聊天：\n' + (recent || '（刚刚开始）') + '\n\n请判断现在是否适合发出邀请，并生成邀请内容。如果对方已经说过距离太远或已经约好时间，请只输出 {}。';
     return { system: sys, user: usr };
   }
   function addInviteCard(cd) {
+    if (!cd || !charAllowsInvite(chatId)) return false;
+    var tier = chatCloseness();
+    if (!tier.familiar || !inviteTierAllowed(tier)) return false;
+    if (!recentlyChatting(12) || !resumedLongEnough()) return false;
+    // 已经约好、或对方已经明确说过距离/周末来不了：不再出新的邀请卡片。
+    if (hasUpcomingAcceptedTrip() || hasTextMeetingAgreement() || userRepeatedDistanceComplaint()) return false;
+    var rejected = lastCharRejectAt();
+    if (rejected && Date.now() - rejected < rejectCooldownMs()) return false;
+    var last = lastCharInviteAt();
+    if (last && Date.now() - last < inviteCooldownMs()) return false;
+    try {
+      var globalLock = JSON.parse(localStorage.getItem(inviteGlobalKey()) || 'null');
+      if (globalLock && Date.now() - Number(globalLock.at || 0) < INVITE_GLOBAL_EVERY) return false;
+    } catch (e) {}
     var dest = String(cd.dest || '').trim() || '附近走走';
     var note = String(cd.note || '').trim();
+    var when = String(cd.date || '') + ' ' + String(cd.time || '') + ' ' + note;
+    // 硬性拦截：异地/异国角色不能再用“这周末/明天”这类当天见面的邀请；
+    // 除非邀请里明确提到路程/机票/假期等长途安排。
+    if (distanceClass() !== 'same_country' && /(这?周末|周六|周日|明天|今天|后天)/.test(when) &&
+        !/(我去找你|飞过去|机票|航班|车票|高铁|签证|长假|假期|过去找你|来你这边|路程|长途)/.test(when)) {
+      return false;
+    }
     var card = {
       cardType: 'travelInvite', travelKind: 'invite', direction: 'char',
       status: 'pending', inviteId: 'invite_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
@@ -522,6 +882,15 @@
     chat().addMessage('left', say, nowTime(), null, false, false, null);
     chat().addMessage('left', '', nowTime(), null, false, true, card);
     try { chat().saveMessages(); } catch (e) {}
+    // 立刻记下这次邀请：同一条回复里即使模型写了多个邀请标记，也不会重复出卡。
+    try {
+      var cdata = store().getCharData(chatId);
+      cdata.lastInviteAt = Date.now();
+      store().save();
+    } catch (e) {}
+    try { localStorage.setItem(inviteLockKey(), JSON.stringify({ at: Date.now(), dest: dest })); } catch (e) {}
+    try { localStorage.setItem(inviteGlobalKey(), JSON.stringify({ at: Date.now(), charId: chatId, dest: dest })); } catch (e) {}
+    return true;
   }
   async function maybeInvite() {
     if (inviteBusy || reportBusy || !store() || !api()) return false;
@@ -535,12 +904,14 @@
       var charData = store().getCharData(chatId);
       if (c) store().ensureChar(c);
       if (!charData.settings.name && charName) charData.settings.name = charName;
-      var prompt = invitePrompt(charData, store().getMask());
+      var prompt = invitePrompt(charData, store().getMask(), c);
       var j = await api().callJson({
         messages: [{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }],
         temperature: 0.95, maxTokens: 500
       });
-      addInviteCard(j || {});
+      // 模型判断现在不适合邀请时会返回空对象；不要凭空造一个「附近走走」的邀请。
+      if (!j || !String(j.dest || '').trim()) return false;
+      if (!addInviteCard(j)) return false;
       try { localStorage.setItem(inviteLockKey(), JSON.stringify({ at: Date.now(), dest: j && j.dest })); } catch (e) {}
       try { localStorage.setItem(inviteGlobalKey(), JSON.stringify({ at: Date.now(), charId: chatId, dest: j && j.dest })); } catch (e) {}
       try { var cd = store().getCharData(chatId); cd.lastInviteAt = Date.now(); store().save(); } catch (e) {}
@@ -623,6 +994,12 @@
     if (!msg || !msg.cardData) return;
     if ((msg.cardData.status || 'pending') !== 'pending') return;
     msg.cardData.status = 'rejected';
+    // 被婉拒后一律冷却 14 天，避免隔几天又提。
+    try {
+      var cd = store().getCharData(chatId);
+      cd.lastInviteRejectedAt = Date.now();
+      store().save();
+    } catch (e) {}
     try { chat().renderMessages(); chat().saveMessages(); } catch (e) {}
     try { chat().addSystemNotice('你婉拒了一起去邀请'); } catch (e) {}
   }
@@ -755,9 +1132,32 @@
     }
   });
 
+  /* ---------- 关闭开关时，作废角色已发出的待回应邀请 ---------- */
+  function expireCharInvitesIfDisabled() {
+    if (charAllowsInvite(chatId)) return;
+    var changed = false;
+    messages().forEach(function (m) {
+      if (!m || !m.cardData || m.cardData.cardType !== 'travelInvite') return;
+      if ((m.cardData.direction || 'user') !== 'char') return;
+      if ((m.cardData.status || 'pending') !== 'pending') return;
+      m.cardData.status = 'expired';
+      changed = true;
+    });
+    if (changed) {
+      try { chat().renderMessages(); chat().saveMessages(); } catch (e) {}
+    }
+  }
+  try {
+    window.addEventListener('storage', function (e) {
+      if (!e || e.key !== 'chat_setting_allowTravelInvite_' + chatId) return;
+      expireCharInvitesIfDisabled();
+    });
+  } catch (e) {}
+
   /* ---------- 启动 ---------- */
   whenReady(function () {
     try { if (store()) store().load(); } catch (e) {}
+    setTimeout(function () { expireCharInvitesIfDisabled(); }, 1200);
     setTimeout(function () { deliver().catch(function () {}); }, 2600);
     setTimeout(function () { maybeGenerateReport().catch(function () {}); }, 9000);
     setTimeout(function () { maybeInvite().catch(function () {}); }, 22000);

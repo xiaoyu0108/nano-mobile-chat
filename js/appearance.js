@@ -169,6 +169,11 @@
             return c === 'nano_ai' || c.indexOf('nano_ai_') === 0;
         } catch (e) { return false; }
     }
+    // 纳米助手相关页面统一使用固定 UI：不允许聊天/全局美化（含 @js）改动。
+    function isNanoFixedPage() {
+        if (isNanoChatPage()) return true;
+        return fileName.indexOf('nano') === 0 || fileName === 'assistant.html';
+    }
 
     function getEl(id) {
         return document.getElementById(id);
@@ -197,6 +202,12 @@
     function runBeautifyJs(area, raw) {
         try {
             if (!window.NanoBeautifyRT) return;
+            // 纳米助手使用固定 UI：聊天/全局美化（包括其中的 @js 造 DOM）一律不执行，
+            // 否则从共享集市导入的美化脚本仍会改掉助手页面。
+            if (isNanoFixedPage() && (area === 'global' || area === 'chat')) {
+                try { window.NanoBeautifyRT.clear(area); } catch (e) {}
+                return;
+            }
             var parsed = window.NanoBeautifyRT.parse(raw || '');
             window.NanoBeautifyRT.run(area, parsed.js, { mountParent: document.body });
         } catch (e) {}
@@ -383,6 +394,10 @@ function applyChatCss(css) {
         if (isNanoChatPage()) {
             // Nano 专属主题：清掉用户聊天/全局美化，只保留必要的浮动结构与安全区修正
             applyStyle('nano-beautify-chat', '');
+            applyStyle('nano-beautify-global', '');
+            applyStyle('nano-beautify-chat-avatar', '');
+            try { window.NanoBeautifyRT && window.NanoBeautifyRT.clear('chat'); } catch (e) {}
+            try { window.NanoBeautifyRT && window.NanoBeautifyRT.clear('global'); } catch (e) {}
             applyStyle('nano-beautify-chat-fix', CHAT_STRUCT_FIX);
             applyStyle('nano-chat-float', NANO_CHAT_FLOAT_CSS);
             reorderChatLayers();
@@ -1009,6 +1024,25 @@ function applyChatCss(css) {
             var _fOnly = readFontCfgSync();
             if (_fOnly) {
                 applyFontCfg(_fOnly);
+            } else {
+                loadFontCfgFromIDB().then(function (c) { if (c) applyFontCfg(c); });
+            }
+            return;
+        }
+        // 纳米助手使用固定 UI：不读取、不套用聊天/全局/头像美化（含 @js），
+        // 只保留结构修正、底/顶栏位置与字体，避免共享集市导入的美化影响助手页面。
+        if (isNanoFixedPage()) {
+            try { applyChatCss(''); } catch (e) {}
+            try { applyStyle('nano-beautify-global', ''); } catch (e) {}
+            try { applyStyle('nano-beautify-chat-avatar', ''); } catch (e) {}
+            try { applyBottomShift(readCss('nanoBottomShift')); } catch (e) {}
+            try { applyTopShift(readCss('nanoTopShift')); } catch (e) {}
+            try { applyFlushFix(); } catch (e) {}
+            // 头像框是用户单独设置的，不属于集市导入的聊天/全局美化，保留。
+            try { applyFrameElements(); watchAvatars(); } catch (e) {}
+            var _nanoFont = readFontCfgSync();
+            if (_nanoFont) {
+                applyFontCfg(_nanoFont);
             } else {
                 loadFontCfgFromIDB().then(function (c) { if (c) applyFontCfg(c); });
             }

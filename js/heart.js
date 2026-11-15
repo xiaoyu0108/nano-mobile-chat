@@ -658,6 +658,10 @@ function setupThoughtExpand(el) {
     if (!list.length) return '';
     const L = [];
     L.push('【心声 · 附加板块（必须输出，放在 [heart:...] 之后；每个板块都要写，不可省略）】');
+    L.push('【硬性规则 · 附加板块同样适用】');
+    L.push('- 评论区 / 留言 / 弹幕 / 网友互动等板块，只能出现与角色毫无关系的匿名网友、路人或粉丝，用网名、账号名或「网友」称呼。');
+    L.push('- 绝对禁止出现任何其他角色（char）的名字或昵称，也禁止出现用户本人、任何角色认识的人，或彼此认识的人；他们和角色互不认识，也不认识彼此。');
+    L.push('- 不要在评论里写「某某说 / 回复某某」来把其它角色拉进来；评论区只是陌生网友对这条心声的自然反应。');
     L.push('格式严格为（板块内容可多行）：');
     L.push('[section:板块名]');
     L.push('板块内容');
@@ -692,6 +696,12 @@ function setupThoughtExpand(el) {
     const box = $('ivSections');
     const modal = $('nanoVoiceModal');
     if (!box) return;
+    // 旧消息里可能已经存了其他角色的名字：渲染前再清洗一次，评论区只保留陌生网友。
+    try {
+      if (window.__chat && typeof window.__chat.sanitizeHeartSections === 'function') {
+        list = window.__chat.sanitizeHeartSections(list);
+      }
+    } catch (e) {}
     box.innerHTML = '';
     const sec = Array.isArray(list) ? list.filter(function (s) { return s && (s.content || s.name); }) : [];
     if (!sec.length) {

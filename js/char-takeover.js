@@ -20,8 +20,51 @@
     var TK = {
         active: false, abort: false, revoking: false, begun: false, info: null, cfg: null, ctx: {},
         lock: null, bar: null, stream: null, statusEl: null, progEl: null,
-        log: [], startedAt: 0, total: 0, i: 0, confirmEl: null
+        log: [], startedAt: 0, total: 0, i: 0, confirmEl: null, motive: '', usedAngles: {}
     };
+
+    // 每次翻手机换一个动机 / 反应角度，避免同一个角色每次都说同样的话。
+    var REACTION_MOTIVES = [
+        '只是随口问问、随便看看，没有特别目的',
+        '有点好奇对方最近在忙什么',
+        '想确认对方有没有在手机里提到自己',
+        '吃醋，想找一点线索但又不想表现得太明显',
+        '带着一点心虚，怕对方也看到自己藏起来的东西',
+        '想更了解对方真实的生活细节',
+        '最近有点不安，想通过手机确认你们的关系',
+        '纯粹想找点乐子、顺便吐槽一下',
+        '想找礼物或惊喜的灵感',
+        '看到某个东西后突然被戳到，情绪慢慢上来了'
+    ];
+    var REACTION_ANGLES = [
+        '好奇追问', '吃醋但不直说', '心疼', '吐槽 / 好笑', '装不在意', '被戳到后的沉默',
+        '顺势套话', '分享自己的类似经历', '嘴硬', '突然认真', '小声自言自语', '故意调侃对方',
+        '注意到一个很小的细节', '把话题拐到自己身上', '假装没看到但忍不住再看一眼'
+    ];
+    function pickOne(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+    function pickReactionAngle() {
+        if (!TK.usedAngles) TK.usedAngles = {};
+        var avail = REACTION_ANGLES.filter(function (a) { return !TK.usedAngles[a]; });
+        if (!avail.length) { TK.usedAngles = {}; avail = REACTION_ANGLES.slice(); }
+        var a = pickOne(avail);
+        TK.usedAngles[a] = 1;
+        return a;
+    }
+    function recentSayKey(id) { return 'nano_takeover_recent_say_' + String(id || ''); }
+    function loadRecentSay(id) {
+        try { return JSON.parse(localStorage.getItem(recentSayKey(id)) || '[]') || []; } catch (e) { return []; }
+    }
+    function rememberTakeoverSay(id, lines) {
+        try {
+            if (!id) return;
+            var arr = loadRecentSay(id);
+            (lines || []).forEach(function (t) {
+                t = String(t == null ? '' : t).replace(/\s+/g, ' ').trim().slice(0, 90);
+                if (t.length >= 2 && arr.indexOf(t) < 0) arr.push(t);
+            });
+            localStorage.setItem(recentSayKey(id), JSON.stringify(arr.slice(-14)));
+        } catch (e) {}
+    }
 
     // weight 越大越容易被随机选中；收藏 / 查手机降低权重
     var APPS = [
@@ -133,10 +176,10 @@
                 body: JSON.stringify({
                     model: cfg.mainModel,
                     messages: messages,
-                    temperature: (typeof cfg.mainTemp === 'number' ? cfg.mainTemp : 0.85),
+                    temperature: Math.max(0.9, (typeof cfg.mainTemp === 'number' ? cfg.mainTemp : 0.9)),
                     max_tokens: maxTokens || 700,
-                    presence_penalty: 0.4,
-                    frequency_penalty: 0.5
+                    presence_penalty: 0.5,
+                    frequency_penalty: 0.65
                 }),
                 signal: ctrl ? ctrl.signal : undefined
             });
@@ -241,9 +284,18 @@
         if (ctx.worldbook) lines.push('\n【世界书设定】\n' + ctx.worldbook);
         if (ctx.memory) lines.push('\n【你和用户共同经历 / 知道的事】\n' + ctx.memory);
         if (ctx.foreign) lines.push('\n【语言】你是外国角色：每条气泡先写你的母语原文，再紧跟中文翻译，用 || 分隔，例如 Hello, so this is your phone.||你好呀，这就是你的手机啊。');
+        if (TK.motive) lines.push('\n【这次翻手机的动机 / 情绪起点】' + TK.motive + '。这是整场反应的底色，但每一页要跟着真正看到的内容变化，不要机械地重复同一种情绪。');
+        var recent = loadRecentSay(TK.info && TK.info.id).slice(-8);
+        if (recent.length) {
+            lines.push('\n【你最近查手机时说过的话（这些已经说过，禁止原样重复；这次要换新的说法、关注点和情绪）】\n- ' + recent.join('\n- '));
+        }
         lines.push('\n【写反应的要求】');
         lines.push('- 先写 act：你翻看这一页时的动作、神态和态度，1 句，20~40 字，要连贯、有画面，例如「翻着聊天记录，指腹在屏幕上顿了顿，嘴角慢慢压了下去」。');
         lines.push('- 再写 1-3 条气泡：就是你在这一刻真正会随口说出口的话，短句、口语、有情绪、有指向性，紧扣你在这一页真正看到的东西。');
+        lines.push('- 每页至少抓住屏幕上的一个具体细节再反应：一个名字、一个数字、一个时间、一件物品或一句原话；没有细节就不要空泛地说“你怎么…”。');
+        lines.push('- 反应角度每页都要换：可以从好奇追问、吃醋但不直说、心疼、吐槽、装不在意、被戳到、套话、分享自己的类似经历、嘴硬、突然认真里选，不要每页都吃醋或质问。');
+        lines.push('- act 不要反复用“手指顿了顿 / 嘴角压下去 / 眼神暗了暗 / 喉结滚动 / 心口一紧”这类同一套动作；写这个场景里真正会发生的小动作，比如把手机拿远一点、眯眼、划回去又划走、笑出声、把屏幕扣在桌上。');
+        lines.push('- 同一个意思不要换词说两遍；1-3 条气泡可以有长有短，允许一句吐槽、一句反问或一句自言自语。');
         lines.push('- 语气、用词、称呼、在意什么、会吃什么醋，全部服从人物设定与你们的关系；不同角色要明显不一样，不要千人一面。');
         lines.push('- 不要像报告或旁白；不要空泛；称呼与用词要自然、克制，避免过度亲昵或模板化。');
         lines.push('- 只输出一个 JSON 对象，不要解释、不要代码块：{"act":"<动作态度>","bubbles":["...","..."],"next":"<下一个页面 id>"}');
@@ -251,9 +303,11 @@
     }
     function userText(cur, sc, targets, seenNames) {
         var ids = targets.map(function (t) { return t.id; });
+        var angle = pickReactionAngle();
         return '你打开了「' + cur.name + '」' + (cur.kind === 'chat' ? '（某段聊天）' : (cur.kind === 'group' ? '（一个群聊）' : '')) + '，屏幕内容：\n' +
             clip(sc.text || '（这一页没有可读文字）', 2600) + '\n\n' +
             (seenNames.length ? ('你已经看过：' + seenNames.join('、') + '。\n') : '') +
+            '本页建议反应角度：' + angle + '（只是建议，必须服从你真正看到的内容，不要硬套）。\n' +
             '请先用你的人设写出此刻翻看「' + cur.name + '」的动作与态度 act（20~40 字），再写 1-3 条气泡，并挑下一个要看的页面 next（尽量挑没看过的）。\n' +
             '可选 next（填 id）：' + ids.join('、') + '\n' +
             '只输出 JSON：{"act":"<动作态度>","bubbles":["..."],"next":"<id>"}';
@@ -382,7 +436,7 @@
         document.head.appendChild(st);
     }
 
-    function confirmDialog(info, onAllow) {
+    function confirmDialog(info, onAllow, onDeny) {
         injectCss();
         var el = document.createElement('div');
         el.className = 'tk-confirm';
@@ -396,8 +450,60 @@
             '</div>';
         document.body.appendChild(el);
         TK.confirmEl = el;
-        el.querySelector('.tk-deny').onclick = function () { try { el.remove(); } catch (e) {} TK.confirmEl = null; };
+        el.querySelector('.tk-deny').onclick = function () {
+            try { el.remove(); } catch (e) {}
+            TK.confirmEl = null;
+            // 拒绝不是“无事发生”：角色会记住被拒绝的次数，并据此产生失落、怀疑或生气的反应。
+            try { onDeny && onDeny(); } catch (e) {}
+        };
         el.querySelector('.tk-allow').onclick = function () { try { el.remove(); } catch (e) {} TK.confirmEl = null; console.log('[TK] allow clicked'); onAllow(); };
+    }
+
+    // 拒绝查手机：累计次数并让聊天内页生成角色反应（不是静默关闭弹窗）。
+    function noteDenied(info) {
+        var id = String((info && info.id) || '');
+        if (!id) return;
+        var key = 'nano_takeover_deny_' + id;
+        var n = 0;
+        try {
+            var lastAt = parseInt(localStorage.getItem(key + '_at') || '0', 10) || 0;
+            // 超过 30 天不再累积旧情绪，重新从第一次开始。
+            if (!lastAt || Date.now() - lastAt > 30 * 24 * 3600 * 1000) n = 0;
+            else n = parseInt(localStorage.getItem(key) || '0', 10) || 0;
+        } catch (e) { n = 0; }
+        n += 1;
+        var at = Date.now();
+        try {
+            localStorage.setItem(key, String(n));
+            localStorage.setItem(key + '_at', String(at));
+            // 持久化一份待处理事件：即使聊天帧还没加载好，进入聊天时也会补上角色反应。
+            var qk = 'nano_pending_takeover_denied';
+            var q = {};
+            try { q = JSON.parse(localStorage.getItem(qk) || '{}') || {}; } catch (e) { q = {}; }
+            q[id] = { count: n, at: at };
+            localStorage.setItem(qk, JSON.stringify(q));
+        } catch (e) {}
+        var s = shell();
+        if (!s) return;
+        // 打开对应聊天，确保角色能在聊天里给出反应（如果已经打开则复用）。
+        try { if (s.open) s.open('chat_inner.html?chat=' + enc(id) + '&name=' + enc(info.name || 'TA'), '', 'main'); } catch (e) {}
+        var payload = { type: 'NANO_TAKEOVER_DENIED', chatId: id, count: n, at: at };
+        var tries = 0;
+        var send = function () {
+            tries++;
+            try { if (s.postToChat) s.postToChat(payload); } catch (e) {}
+            if (tries < 3) setTimeout(send, 800);
+        };
+        setTimeout(send, 900);
+    }
+    function resetDeniedCount(id) {
+        try {
+            localStorage.removeItem('nano_takeover_deny_' + id);
+            localStorage.removeItem('nano_takeover_deny_' + id + '_at');
+            var qk = 'nano_pending_takeover_denied';
+            var q = JSON.parse(localStorage.getItem(qk) || '{}') || {};
+            if (q[String(id)]) { delete q[String(id)]; localStorage.setItem(qk, JSON.stringify(q)); }
+        } catch (e) {}
     }
 
     function buildUi(info) {
@@ -550,6 +656,8 @@
         TK.active = true; TK.abort = false; TK.revoking = false;
         TK.cfg = null; TK.ctx = {};
         TK.info = info; TK.log = []; TK.startedAt = Date.now();
+        TK.motive = pickOne(REACTION_MOTIVES);
+        TK.usedAngles = {};
         buildUi(info);
         // 直接用 DOM 写第一行，绕过任何引用失效
         try {
@@ -616,6 +724,7 @@
                 if (bi < r.bubbles.length - 1) await sleep(320);
             }
             TK.log.push({ app: cur.id, kind: cur.kind || '', name: cur.name, act: r.act || '', bubbles: r.bubbles });
+            rememberTakeoverSay(info.id, r.bubbles);
             used[cur.id] = 1; viewedIds.push(cur.id); seenNames.push(cur.name);
             if (TK.i < N - 1) cur = resolveNext(r.next, targets, used, seen, cur);
             await sleep(1200);
@@ -648,6 +757,7 @@
             var firstApp = (TK.log.filter(function (w) { return w && w.name; })[0] || {}).name || '手机';
             msgs = ['（把手机放回桌上）看完了。你最近在「' + firstApp + '」里忙的事，我都看到了。'];
         }
+        rememberTakeoverSay(info.id, msgs);
         var s = shell();
         if (!s || !s.postToChat) return;
         for (var i = 0; i < msgs.length; i++) {
@@ -678,6 +788,7 @@
             if (!arr) arr = Array.isArray(parsed.bubbles) ? parsed.bubbles : (parsed.bubbles ? [parsed.bubbles] : []);
             var t = cleanText(arr && arr[0] ? arr[0] : '');
             if (t && t.length <= 160) {
+                rememberTakeoverSay(info.id, [t]);
                 var s = shell();
                 if (s && s.postToChat) s.postToChat({ type: 'NANO_CHAR_SAY', chatId: String(info.id), text: t });
             }
@@ -748,10 +859,13 @@
         // 已在进行中 / 已有确认弹窗 / 已开始 → 忽略重复触发（避免二次 buildUi 把状态重置成"准备中"）
         if (TK.active || TK.begun || TK.confirmEl) { console.log('[TK] start ignored'); return; }
         confirmDialog(info, function () {
+            resetDeniedCount(info.id);
             console.log('[TK] begin...');
             begin(info).catch(function (e) {
                 try { buildMissingUiOnce(); barLog('接管出错：' + ((e && e.message) || e)); setStatus('出错'); console.log('[TK] error', e); } catch (err) {}
             });
+        }, function () {
+            noteDenied(info);
         });
     }
     function buildMissingUiOnce() { if (!TK.bar) buildUi(TK.info); }

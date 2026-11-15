@@ -790,6 +790,112 @@ const SYS_JSON = "你是虚构角色的手机数据生成器。内容面向成�
 /* 通用的「贴合人设」硬性约束 */
 const PERSONA_RULE = "硬性要求：所有内容必须贴合上面的角色设定、世界书设定与记忆库，符合角色的身份、性格、说话方式、社交圈、作息与近期经历；不得出现与角色无关的通用模板内容；不同角色的内容必须明显不同。内容要自然与「用户」产生关联：每个 App 至少有 1-2 条自然涉及用户（用用户的名字、与用户共同经历的事、用户说过的话，或直接从记忆库取材），但不要每条都硬提用户，保持自然。\n【反雷同】每次生成都要换新的场景、时间、物件、话术与结构，避免反复套用同一批句式或套路；避免千篇一律的空泛描写。\n【自然表达】称呼与用词要自然、克制、有具体质感，避免过度亲昵或模板化。";
 
+/* ===== 手机内容「换一批」种子 / 去重历史 =====
+   同一角色每次生成都从不同生活切面取材，并把最近生成过的标题、地点、店名、物品
+   作为负例传回模型，避免「换汤不换药」。全部本地处理，不额外调用 API。 */
+const PHONE_VARIATION = {
+  time: ["清晨刚醒", "上午", "午休", "下午", "下班后", "傍晚", "夜里", "凌晨", "周末", "雨天", "换季", "节日前"],
+  mood: ["松弛", "烦躁", "疲惫", "雀跃", "心虚", "怀旧", "想靠近用户", "想独处", "有点得意", "被戳到", "平静", "嘴硬"],
+  slice: ["工作 / 学习", "家人", "朋友", "兴趣爱好", "身体状态", "消费 / 购物", "秘密", "回忆", "近期计划", "网络冲浪", "游戏", "外卖 / 吃饭", "出行", "宠物", "居住空间", "社交关系"],
+  place: ["便利店", "地铁", "公司楼下", "旧书店", "健身房", "医院走廊", "小区门口", "咖啡店", "夜市", "车站", "家里沙发", "阳台", "学校后门", "商场负一层", "河边步道", "理发店", "洗衣店", "药店"],
+  object: ["没喝完的咖啡", "充电线", "旧票根", "快递盒", "药盒", "便利贴", "耳机", "钥匙", "折伞", "外卖小票", "拍立得", "笔记本", "半瓶水", "毛绒挂件", "创可贴", "购物袋", "旧照片", "车载香片"],
+  userHook: ["用户说过的一句话", "一起吃过的东西", "用户最近的情绪", "一次没约成的见面", "用户发来的照片", "两个人共同的计划", "用户无意间提到的小习惯", "一次没回完的消息"]
+};
+function phonePick(arr, n){
+  const pool = (arr || []).slice(), out = [];
+  while(pool.length && out.length < n) out.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+  return out;
+}
+function phoneVariation(){
+  return {
+    time: phonePick(PHONE_VARIATION.time, 2),
+    mood: phonePick(PHONE_VARIATION.mood, 2),
+    slice: phonePick(PHONE_VARIATION.slice, 3),
+    place: phonePick(PHONE_VARIATION.place, 2),
+    object: phonePick(PHONE_VARIATION.object, 3),
+    userHook: phonePick(PHONE_VARIATION.userHook, 2),
+    salt: Date.now().toString(36) + "-" + Math.floor(Math.random() * 1e6)
+  };
+}
+function phoneToday(){
+  const d = new Date();
+  const week = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
+  return d.getFullYear() + "年" + (d.getMonth() + 1) + "月" + d.getDate() + "日 " + week[d.getDay()];
+}
+function phoneVariationBlock(v){
+  return `【本批变化种子 · 必须自然写进内容，不要写成提纲】
+- 今天：${phoneToday()}
+- 时间锚点：${v.time.join("、")}
+- 情绪基调：${v.mood.join("、")}
+- 生活切面：${v.slice.join("、")}
+- 场景 / 地点：${v.place.join("、")}
+- 具体物件：${v.object.join("、")}
+- 与用户有关的切入点：${v.userHook.join("、")}
+- 随机编号：${v.salt}
+硬性要求：不同 App 必须写不同的事件和场景；同一个 App 里的多条内容也要换人物、地点、物件和叙事角度；不要把种子逐条照抄成清单，要自然融进具体细节。`;
+}
+const PHONE_SIG_KEY = cid => "phone_recent_sigs_" + String(cid || "");
+function loadPhoneSigs(cid){
+  try{
+    const o = JSON.parse(localStorage.getItem(PHONE_SIG_KEY(cid)) || "{}");
+    return (o && typeof o === "object") ? o : {};
+  }catch(e){ return {}; }
+}
+function uniqSigs(arr){
+  const out = [];
+  (arr || []).forEach(x => {
+    const s = String(x == null ? "" : x).replace(/\s+/g, " ").trim().slice(0, 42);
+    if(s.length >= 2 && out.indexOf(s) < 0) out.push(s);
+  });
+  return out;
+}
+function collectPhoneSigs(id, data){
+  const out = [];
+  const add = v => { if(v != null) out.push(v); };
+  const each = (arr, fn) => { if(Array.isArray(arr)) arr.forEach(fn); };
+  if(id === "video") each(data, it => add(it && it.title));
+  else if(id === "diary") each(data, it => add(it && (it.name || it.date)));
+  else if(id === "album") each(data, it => add(it && it.text));
+  else if(id === "mail") each(data, it => add(it && (it.subject || it.title)));
+  else if(id === "memo") each(data, g => each(g && g.items, it => add(it && it.title)));
+  else if(id === "browser"){
+    each(data && data.normal, it => add(it && (it.keyword || it.site)));
+    each(data && data.incognito, it => add(it && (it.keyword || it.site)));
+  }else if(id === "game") each(data, it => add(it && it.name));
+  else if(id === "private") each(data, it => add(it && it.title));
+  else if(id === "chat") each(data && data.chats, it => add(it && it.name));
+  else if(id === "doubao") each(data, it => { if(it && it.role === "char") add(it.content); });
+  else if(id === "taobao" || id === "store"){
+    each(data && data.cart, it => add(it && (it.name || it.shop)));
+    each(data && data.orders, it => add(it && (it.name || it.shop)));
+    each(data && data.food, it => add(it && (it.restaurant || it.dish)));
+  }else if(id === "mapcal"){
+    each(data && data.places, it => add(it && (it.name || it.address)));
+    each(data && data.events, it => add(it && it.title));
+  }else if(id === "wallet"){
+    each(data && data.transactions, it => add(it && it.desc));
+  }
+  return uniqSigs(out);
+}
+function rememberPhoneSigs(cid, id, data){
+  try{
+    const all = loadPhoneSigs(cid);
+    const merged = uniqSigs((all[id] || []).concat(collectPhoneSigs(id, data)));
+    all[id] = merged.slice(-14);
+    localStorage.setItem(PHONE_SIG_KEY(cid), JSON.stringify(all));
+  }catch(e){}
+}
+function phoneRecentBlock(recent, ids){
+  const lines = [];
+  (ids || []).forEach(id => {
+    const arr = uniqSigs((recent && recent[id]) || []).slice(-10);
+    if(arr.length) lines.push(id + "：" + arr.join(" / "));
+  });
+  if(!lines.length) return "";
+  return `\n【最近已经生成过 · 必须避开】\n${lines.join("\n")}\n这些标题、地点、店名、物品、NPC 名字和事件都已经出现过：不要原样重复，也不要只改一两个字；每条新内容都要换一个不同的具体事件。\n`;
+}
+
+
 /* =========================================================
    7.5 人设 / 世界书 读取
    ========================================================= */
@@ -1568,8 +1674,7 @@ function renderAlbumGrid(photos){
     const card = document.createElement("div");
     card.className = "ab-photo";
     card.style.background = AB_GRADIENTS[i % AB_GRADIENTS.length];
-    const kind = i < 2 ? "日常" : i < 4 ? "私密" : "不为人说";
-    card.innerHTML = `<div class="ab-photo-text">${escHtml(p.text)}</div><div class="ab-photo-tag">${kind}</div>`;
+    card.innerHTML = `<div class="ab-photo-text">${escHtml(p.text)}</div>`;
     card.onclick = () => openAlbumViewer(p.text, i);
     grid.appendChild(card);
   });
@@ -3436,6 +3541,19 @@ async function buildMultiPrompt(ids, char, ctx){
     const ia = PREFERRED_ORDER.indexOf(a), ib = PREFERRED_ORDER.indexOf(b);
     return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib);
   });
+  // 把「当前已经存着的内容」也当成负例：用户点刷新时，即使历史记录还是空的，
+  // 也不会把同一批标题、地点、店名、物品再生成一遍。
+  const variation = phoneVariation();
+  const recent = loadPhoneSigs(char && char.id);
+  for(const id of orderedIds){
+    try{
+      const saved = await dataGet(`app_${char.id}_${id}`);
+      const d = saved && (saved.data || saved);
+      if(d){
+        recent[id] = uniqSigs((recent[id] || []).concat(collectPhoneSigs(id, d))).slice(-14);
+      }
+    }catch(e){}
+  }
   const need = orderedIds.filter(id => MULTI_SPEC[id]).map(id => MULTI_SPEC[id]).join(",\n  ");
   const counts = orderedIds.filter(id => MULTI_COUNT[id]).map(id => MULTI_COUNT[id]).join("；");
   const matureLine = "【成人向】内容面向成年读者，成人向内容不限角色；禁止血腥暴力和违法内容。\n";
@@ -3475,8 +3593,9 @@ ${ctx}
 ${PERSONA_RULE}
 ${matureLine}
 ${walletContext}
-【本次随机编号】${Date.now().toString(36)}-${Math.floor(Math.random()*1e6)}
-请根据这个编号换一个与以往不同的切入角度、场景与措辞来写，避免和之前生成的内容雷同。
+${phoneVariationBlock(variation)}
+${phoneRecentBlock(recent, orderedIds)}
+请围绕上面的变化种子，换一个与以往不同的切入角度、场景与措辞来写，避免和之前生成的内容雷同。
 请一次性生成以下 App 的数据（只生成这些：${orderedIds.join("、")}）：
 {
   ${need}
@@ -3486,21 +3605,25 @@ ${walletContext}
 严禁生成「和用户本人」的聊天会话。
 
 【写作要求 · 每条都要有内容，不要只写一两句】
-- video.desc：40-80 字，写清视频讲了什么 + 角色的反应。
-- diary.content：120-200 字，有具体场景、动作、心情变化，像真人日记。
+- 同批内每条至少要有 2 个只属于这次的具体新细节（人名 / 店名 / 地名 / 数字 / 物件 / 原话）；不要只换同义词，也不要套同一句式的模板。
+- 不同 App 不要复写同一个事件、同一件物品、同一家店；diary / album / private / memo 必须分属不同生活切面，不要都围绕「想你 / 忙 / 累」打转。
+- chat 的 NPC、browser 的搜索词、video 的分区、private 的秘密类型、mail 的发件人每次都要换新，不要总用同一批身份、主题和场景。
+- video.desc：40-80 字，写清视频讲了什么 + 角色的反应；换不同分区和口味，不要总是同一类视频。
+- diary.content：120-200 字，有具体场景、动作、心情变化，像真人日记；不要总写同一种日常。
 - mail.body：每封 3-4 段，每段 30-60 字，有称呼、正文、落款的感觉。
 - memo：总数约 4 条，分 2-3 组；每条 content 90-150 字，写清具体经过、心情或待办细节，不要写得太短。
-- browser.normal：4 条日常搜索/访问；browser.incognito：2-3 条角色私下查过、不想被别人看到的内容（健康与身体的小疑虑、感情里的反复确认、难以启齿的念头、私密购物等），克制但具体，不要每条都写性。
+- browser.normal：4 条日常搜索/访问；browser.incognito：2-3 条角色私下查过、不想被别人看到的内容（健康与身体的小疑虑、感情里的反复确认、难以启齿的念头、私密购物等），克制但具体，不要每条都写性；普通和无痕都要换新主题。
 - browser.intro：50-100 字；quote：15-40 字；points 3 条各 15-30 字。
-${ids.includes("private") ? "- private.preview：一句隐晦的概述；detail：不为人说的具体内容，写角色不愿公开的私事、难以启齿的心事或亲密关系里的秘密；角色可以涉及亲密与性相关的私事。\n" : ""}
+${ids.includes("private") ? "- private.preview：一句隐晦的概述；detail：不为人说的具体内容，写角色不愿公开的私事、难以启齿的心事或亲密关系里的秘密；不要总是「自卑 / 怕失去 / 暗恋」同一套，换具体事件、具体人、具体场景；角色可以涉及亲密与性相关的私事。\n" : ""}
 - game.habit：40-80 字，写清玩法习惯与心态。
 - chat.userRemark：${char.name} 在手机里给用户存的备注（2-8 字），符合两人的关系与角色对用户的称呼习惯，不要用「小姑娘/小东西/丫头/女人」这类油腻称呼。
-- chat.chats：每个会话 6-10 条消息，有来有回，单条 5-25 字；不要生成和用户本人的会话。
-- album.text：10-30 字，有画面感。
+- chat.chats：每个会话 6-10 条消息，有来有回，单条 5-25 字；不要生成和用户本人的会话；NPC 身份、名字、关系和聊天主题每次都要换新。
+- album.text：12-35 字，像照片里被定格的瞬间：写清光线、地点、物件或人物局部，不要抽象心情；场景和物件每次都要换。
 - doubao：8-10 条，char 提问与 ai 回答交替；问题贴合角色当下生活与困惑，ai 回答口语化、可带分点，单条 20-60 字。
-- taobao / store：商品名、店铺、规格、价格要像真实电商；外卖写清店名、菜品、时间与配送状态；cart/orders/food 都要有数据。
-- mapcal.places：写角色搜索或导航过的、有真实感的地点；events：写接下来的日程，含时间、地点、类型标签。
+- taobao / store：商品名、店铺、规格、价格要像真实电商；外卖写清店名、菜品、时间与配送状态；cart/orders/food 都要有数据，店名和商品不要每次都用同一批。
+- mapcal.places：写角色搜索或导航过的、有真实感的地点；events：写接下来的日程，含时间、地点、类型标签；地点和日程每次都要换。
 ${ids.includes("wallet") ? "- wallet：10 条左右收支，收入 2-3 条，收入来源必须严格符合角色的财富阶层（学生只能是生活费/兼职/奖学金/红包/退款；穷人只能是日结/兼职/红包/退款/补助；富人才可以有分红/投资/项目结款），支出 7-8 条；金额、店铺、时间必须符合角色的身份与消费水平；至少 1-2 条自然涉及用户；时间在最近 7 天内，按从新到旧排列；balance 与流水收支一致，不能为负。\n" : ""}
+最后再检查一次：如果某个标题、地点、店名、物品或事件在「最近已经生成过」里出现过，必须换掉；不要只改一个字或换个说法。
 每个 App 的数据格式必须严格符合示例字段名，只输出一个 JSON 对象，不要解释、不要代码块。
 输出必须是合法 JSON：只输出一个 JSON 对象，不要代码块、注释或多余文字；字符串内部不要出现真实换行，需要分段时写成 \\n；字段之间可以不留空格，但不要为了「紧凑」省略上面要求的内容。`;
 }
@@ -3572,13 +3695,16 @@ async function genMulti(api, char, ids, opts){
   } catch (e) {}
   // 一次生成全部 App 时输出很长；默认给 16384。用户可在 API 设置里调低以兼容只支持小输出的模型。
   const maxTokens = Math.min(32768, Math.max(4096, Number(api.maxTokens) || 16384));
+  // 手机内容属于创作类数据：温度至少 0.9，并提高重复惩罚，避免每次生成同一批模板；
+  // 用户在 API 页填得更高时保持用户设置。
+  const creativeTemp = Math.max(0.9, Number(api.temp) || 0.9);
   const baseBody = {
     model: api.model,
     messages: [{role:"system", content:__sysJson},{role:"user", content:user}],
-    temperature: api.temp,
+    temperature: creativeTemp,
     max_tokens: maxTokens,
-    presence_penalty: 0.4,
-    frequency_penalty: 0.5
+    presence_penalty: 0.6,
+    frequency_penalty: 0.7
   };
   const headers = {"Content-Type":"application/json"};
   if(api.key) headers.Authorization = "Bearer " + api.key;
@@ -3598,10 +3724,10 @@ async function genMulti(api, char, ids, opts){
   const payload = {
     model: api.model,
     messages: baseBody.messages,
-    temperature: api.temp,
+    temperature: creativeTemp,
     max_tokens: maxTokens,
-    presence_penalty: 0.4,
-    frequency_penalty: 0.5
+    presence_penalty: 0.6,
+    frequency_penalty: 0.7
   };
   try{
     resp = await post(payload);
@@ -3841,6 +3967,7 @@ async function startGeneration(ids){
         }
         await dataSet(`app_${currentChar.id}_${id}`, payload);
         okAll[id] = payload;
+        try{ rememberPhoneSigs(currentChar.id, id, payload.data); }catch(e){}
       }
       catch(e){ genState.log.push({t:"err", s:`写入 ${id} 失败: ${e.message}`}); }
     }

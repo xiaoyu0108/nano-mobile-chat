@@ -14,6 +14,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.graphics.Insets;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -101,6 +102,7 @@ public class MainActivity extends Activity {
     private String pendingNotifyTarget;
     private boolean pageReady;
     private String pendingNotificationJson;
+    private int lastTopInset;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -108,7 +110,7 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
 
         NanoNotifications.ensureChannels(this);
-        applyFullscreen();
+        applyEdgeToEdge();
 
         Intent launch = getIntent();
         if (launch != null) pendingNotifyTarget = launch.getStringExtra(EXTRA_TARGET);
@@ -124,15 +126,20 @@ public class MainActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         root.addView(webView);
 
-        if (Build.VERSION.SDK_INT >= 28) {
-            root.setOnApplyWindowInsetsListener((v, insets) -> {
-                DisplayCutout cutout = insets.getDisplayCutout();
-                int top = cutout == null ? 0 : Math.max(0, cutout.getSafeInsetTop());
-                applyNativeInsets(top);
-                return insets;
-            });
-            try { root.requestApplyInsets(); } catch (Exception ignored) {}
-        }
+        root.setOnApplyWindowInsetsListener((v, insets) -> {
+            int top = toCssPixels(statusBarInset(insets));
+            lastTopInset = top;
+            if (Build.VERSION.SDK_INT >= 30) {
+                // Edge-to-edge：底部导航栏和输入法由我们自己留白，避免内容被挡住。
+                int bottom = bottomBarInset(insets);
+                if (v.getPaddingBottom() != bottom) {
+                    v.setPadding(v.getPaddingLeft(), v.getPaddingTop(), v.getPaddingRight(), bottom);
+                }
+            }
+            applyNativeInsets(top);
+            return insets;
+        });
+        try { root.requestApplyInsets(); } catch (Exception ignored) {}
 
         WebSettings s = webView.getSettings();
         s.setJavaScriptEnabled(true);
@@ -176,6 +183,7 @@ public class MainActivity extends Activity {
             @Override
             public void onPageFinished(WebView view, String url) {
                 pageReady = true;
+                applyNativeInsets(lastTopInset);
                 final String target = pendingNotifyTarget;
                 if (target != null && !target.isEmpty()) {
                     view.postDelayed(() -> dispatchNotifyTarget(target), 650);
@@ -535,6 +543,42 @@ public class MainActivity extends Activity {
         return true;
     }
 
+    private int statusBarInset(WindowInsets insets) {
+        int top = 0;
+        try {
+            if (Build.VERSION.SDK_INT >= 30) {
+                Insets bars = insets.getInsets(
+                        WindowInsets.Type.statusBars() | WindowInsets.Type.displayCutout());
+                top = bars.top;
+            } else {
+                top = insets.getSystemWindowInsetTop();
+            }
+            DisplayCutout cutout = insets.getDisplayCutout();
+            if (cutout != null) top = Math.max(top, cutout.getSafeInsetTop());
+        } catch (Exception ignored) {
+        }
+        return Math.max(0, top);
+    }
+
+    private int bottomBarInset(WindowInsets insets) {
+        if (Build.VERSION.SDK_INT < 30) return 0;
+        try {
+            Insets nav = insets.getInsets(WindowInsets.Type.navigationBars());
+            Insets ime = insets.getInsets(WindowInsets.Type.ime());
+            return Math.max(0, Math.max(nav.bottom, ime.bottom));
+        } catch (Exception ignored) {
+            return 0;
+        }
+    }
+
+    // WindowInsets 是物理像素，网页的 CSS 像素约等于 dp，必须除以 density。
+    private int toCssPixels(int px) {
+        float density = getResources().getDisplayMetrics().density;
+        if (density <= 0f) density = 1f;
+        return Math.max(0, Math.round(px / density));
+    }
+
+    // 把真实状态栏高度告诉网页：页面整体铺到状态栏下面，但顶栏按钮再往下让出这段时间。
     private void applyNativeInsets(int top) {
         if (webView == null) return;
         final int t = Math.max(0, top);
@@ -549,8 +593,12 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void applyFullscreen() {
+    private void applyEdgeToEdge() {
         Window window = getWindow();
+        try {
+            window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
+        } catch (Exception ignored) {
+        }
         if (Build.VERSION.SDK_INT >= 28) {
             WindowManager.LayoutParams lp = window.getAttributes();
             lp.layoutInDisplayCutoutMode =
@@ -561,20 +609,21 @@ public class MainActivity extends Activity {
         window.setNavigationBarColor(Color.WHITE);
         if (Build.VERSION.SDK_INT >= 30) {
             try {
-                window.setDecorFitsSystemWindows(true);
+                window.setDecorFitsSystemWindows(false);
                 WindowInsetsController c = window.getInsetsController();
                 if (c != null) {
-                    c.hide(WindowInsets.Type.statusBars());
-                    c.setSystemBarsBehavior(
-                            WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
                     c.setSystemBarsAppearance(
-                            WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS,
-                            WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS);
+                            WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+                                    | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS,
+                            WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+                                    | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS);
                 }
             } catch (Exception ignored) {
             }
         } else {
-            int ui = View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_FULLSCREEN;
+            // 只把内容铺到状态栏下面，导航栏仍由系统让位，避免压住底部按钮。
+            int ui = View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN;
+            ui |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 ui |= View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
             }
@@ -585,7 +634,7 @@ public class MainActivity extends Activity {
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
-        if (hasFocus) applyFullscreen();
+        if (hasFocus) applyEdgeToEdge();
     }
 
     private void requestNotifyPermission(String pendingJson) {
@@ -863,18 +912,13 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public String getInsets() {
-            int top = 0;
+            int top = lastTopInset;
             try {
-                if (Build.VERSION.SDK_INT >= 28) {
-                    WindowInsets ins = getWindow().getDecorView().getRootWindowInsets();
-                    if (ins != null) {
-                        DisplayCutout cutout = ins.getDisplayCutout();
-                        if (cutout != null) top = Math.max(0, cutout.getSafeInsetTop());
-                    }
-                }
+                WindowInsets ins = getWindow().getDecorView().getRootWindowInsets();
+                if (ins != null) top = toCssPixels(statusBarInset(ins));
             } catch (Exception ignored) {
             }
-            return "{\"top\":" + top + ",\"bottom\":0}";
+            return "{\"top\":" + Math.max(0, top) + ",\"bottom\":0}";
         }
 
         @JavascriptInterface

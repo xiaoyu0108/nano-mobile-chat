@@ -1436,10 +1436,8 @@ async function travelExit(i){
   }
   const cardTitle=String((cardMeta&&cardMeta.title)||('我们 · '+DEST)).trim();
   const cardThought=String((cardMeta&&cardMeta.thought)||brief||'').trim();
+  // 卡片和旅途记录共用同一次卡片 API 的结果；不再为了翻译再调用一次 API。
   let cardThoughtZh=String((cardMeta&&cardMeta.thoughtZh)||'').trim();
-  if(!cardThoughtZh && cardThought && charIsForeign()){
-    try{cardThoughtZh=String(await translateToZh(cardThought)||'').trim()}catch(e){}
-  }
   const cardCaption=String((cardMeta&&cardMeta.caption)||(lastPhoto&&lastPhoto.caption)||'').trim();
 
   // 完整回顾：保留这次旅行的叙事流程（限制长度，避免撑爆本地存储）

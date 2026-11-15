@@ -894,7 +894,7 @@ async function generateTripRecordAI(c, opts){
     + '必须严格保持人设，严禁 OOC、霸总腔、油腻情话、爹味说教；不要命令、强迫或贬低用户。'
     + (persona ? ('角色设定：' + String(persona).slice(0, 1600) + '。') : '')
     + '只输出合法 JSON，不要任何解释。格式：'
-    + '{"type":"hsr|train|plane|taxi|bike|bus","from":"出发地","to":"到达地","place":"目的地/地点","date":"YYYY-MM-DD","time":"HH:MM","no":"车次/航班/车牌","seat":"座位/里程","price":数字,"thought":"一句真实心得，40字以内","caption":"拍立得的一句话说明","photoPrompt":"用于生图的画面描述"}'
+    + '{"type":"hsr|train|plane|taxi|bike|bus","from":"出发地","to":"到达地","place":"目的地/地点","date":"YYYY-MM-DD","time":"HH:MM","no":"车次/航班/车牌","seat":"座位/里程","price":数字,"thought":"一句真实心得，40字以内","caption":"对拍立得画面的一句客观说明，不要写心得/感悟，24字以内","photoPrompt":"用于生图的画面描述"}'
     + '。要求：地点、交通方式符合角色的国籍、城市、职业和生活习惯；票根信息要像真的；不要每次都去同一个地方；thought 要像角色自己写的一句话，不要解释成旁白。';
   const usr = '今天是 ' + dateStr() + '。' + (opts.report ? '你要向「' + (mask.name||'用户') + '」报备一段你最近的出行。' : '请生成一段你最近独自出门的记录。')
     + (opts.place ? ('目的地可以是：' + opts.place + '。') : '')
@@ -1040,26 +1040,54 @@ async function generateReportForChar(){
       tripId: rec.tripId, title: rec.place, place: rec.place, date: rec.date,
       thought: rec.thought, caption: rec.caption, note: rec.thought, img: rec.polaroid || ''
     });
+    // 手动报备也算一次分享，5 天内不再自动报备，避免紧接着又弹一张卡。
+    try{ localStorage.setItem('nano_travel_share_at_' + (MASK.id||'default'), JSON.stringify({ at:Date.now(), charId:String(c.id) })); }catch(e){}
     await TravelStore.load(true); syncArrays(); render();
     toast((c.name||'TA')+' 的旅途报备已发到私聊');
   }catch(e){ toast('报备失败：'+((e&&e.message)||'请检查主 API')); }
   finally{ S.busy = null; }
 }
+// 自动报备前置检查：至少 200 条真实消息、双方各 60 条、认识 2 天以上，且近 12 小时聊过。
+async function charReportReady(c){
+  try{
+    const msgs = await TravelStore.readChatMessages(c.id);
+    let total=0,user=0,char=0,recent=false,first=0;
+    const cutoff12 = Date.now() - 12*3600*1000;
+    (msgs||[]).forEach(m=>{
+      if(!m || m.recalled || m.isCard) return;
+      if(m.cardData && m.cardData.systemNotice) return;
+      if(!String(m.text || m.transcript || '').trim()) return;
+      if(m.type==='right') user++;
+      else if(m.type==='left') char++;
+      else return;
+      total++;
+      const ts=Number(m.ts||0);
+      if(ts>=cutoff12) recent=true;
+      if(ts && (!first || ts<first)) first=ts;
+    });
+    const ageOk = !first || Date.now()-first >= 2*86400000;
+    return total>=200 && user>=60 && char>=60 && recent && ageOk;
+  }catch(e){ return false; }
+}
 async function maybeRandomPolaroid(){
   if(!CHAR || !window.TravelAPI || S.busy) return;
   const maskId = MASK.id || 'default';
   const state = TravelStore.polaroidState();
-  // 约 3 天分享一次旅程；与私聊里的随机旅途报备共用同一把锁，避免两条路径重复分享。
+  // 约 5 天分享一次旅程；与私聊里的随机旅途报备共用同一把锁，避免两条路径重复分享。
   const shareKey = 'nano_travel_share_at_' + maskId;
   try{
     const shared = JSON.parse(localStorage.getItem(shareKey) || 'null');
-    if(shared && Date.now() - Number(shared.at || 0) < 3*86400000) return;
+    if(shared && Date.now() - Number(shared.at || 0) < 5*86400000) return;
   }catch(e){}
-  if(state.lastAt && Date.now() - Number(state.lastAt) < 3*86400000) return;
-  // 只挑近 24 小时还在聊天的角色，很久没聊的不打扰
-  const recent = TravelStore.recentChatChars(24);
+  if(state.lastAt && Date.now() - Number(state.lastAt) < 5*86400000) return;
+  // 只挑近 12 小时还在聊天、且已经聊熟的角色，很久没聊的不打扰
+  const recent = TravelStore.recentChatChars(12);
   if(!recent.length) return;
-  const cands = CHARS.filter(c=>recent.indexOf(String(c.id)) !== -1 && !charOffline(c.id));
+  const cands = [];
+  for (const c of CHARS) {
+    if (recent.indexOf(String(c.id)) === -1 || charOffline(c.id)) continue;
+    if (await charReportReady(c)) cands.push(c);
+  }
   if(!cands.length) return;
   const lockKey = 'nano_travel_photo_lock_'+maskId;
   try{

@@ -788,7 +788,8 @@
       (data.events || []).forEach(function (x) { if (x && String(x.id) === String(eventId)) target = x; });
       if (!target) return false;
       target.img = { src: src, kind: kind, prompt: prompt };
-      target.report = { at: Date.now(), note: String(target.mood || target.note || '').trim().slice(0, 80), delivered: false };
+      // 日程报备只发「安排本身」的内容，不再把角色的心声/感悟当作报备文字发到私聊。
+      target.report = { at: Date.now(), note: String(target.note || target.title || '').trim().slice(0, 80), delivered: false };
       target.imgTriedAt = Date.now();
       fresh.imgGenDay = today();
       fresh.imgGenAt = Date.now();
@@ -996,6 +997,10 @@
         if (at && at < cutoff) { e.report.delivered = true; changed = true; return; }
         e.report.delivered = true;
         changed = true;
+        // 兼容旧数据：以前可能把 mood（心声/感悟）写进了 report.note；这里丢弃它，
+        // 只发日程本身的安排文字。
+        var reportNote = String(e.report.note || '').trim();
+        if (reportNote && e.mood && reportNote === String(e.mood).trim()) reportNote = '';
         out.push({
           charId: id,
           charName: (data.settings && data.settings.name) || name,
@@ -1005,7 +1010,7 @@
           date: e.date || today(),
           start: e.start || '',
           end: e.end || '',
-          note: e.report.note || e.mood || e.note || '',
+          note: reportNote || e.note || e.title || '',
           img: e.img.src || '',
           at: at || Date.now()
         });

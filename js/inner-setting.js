@@ -305,6 +305,9 @@
     var allowImageToggle = document.getElementById('allowImageToggle');
     var allowImageStatus = document.getElementById('allowImageStatus');
 
+    var allowTravelInviteToggle = document.getElementById('allowTravelInviteToggle');
+    var allowTravelInviteStatus = document.getElementById('allowTravelInviteStatus');
+
     var allowMomentImageToggle = document.getElementById('allowMomentImageToggle');
     var allowMomentImageStatus = document.getElementById('allowMomentImageStatus');
     var allowTakeoverToggle = document.getElementById('allowTakeoverToggle');
@@ -436,6 +439,15 @@
         var allowImage = getSetting('allowImage', false);
         allowImageToggle.checked = allowImage;
         allowImageStatus.textContent = allowImage ? '开启' : '关闭';
+
+        // 默认关闭：没主动开启的角色不会邀请用户「一起去」。
+        var allowTravelInviteRaw = getSetting('allowTravelInvite', false);
+        var allowTravelInvite = allowTravelInviteRaw === true || allowTravelInviteRaw === 1 ||
+            allowTravelInviteRaw === '1' || allowTravelInviteRaw === 'true';
+        if (allowTravelInviteToggle) {
+            allowTravelInviteToggle.checked = allowTravelInvite;
+            if (allowTravelInviteStatus) allowTravelInviteStatus.textContent = allowTravelInvite ? '开启' : '关闭';
+        }
 
         var allowMomentImage = getSetting('allowMomentImage', false);
         if (allowMomentImageToggle) {
@@ -1038,6 +1050,21 @@
         if (window.parent !== window) {
             window.parent.postMessage({
                 type: 'allowImageChanged',
+                chatId: chatId,
+                enabled: enabled
+            }, '*');
+        }
+    }
+
+    // ===== 允许「一起去」邀请 =====
+    function toggleAllowTravelInvite() {
+        if (!allowTravelInviteToggle) return;
+        var enabled = allowTravelInviteToggle.checked === true;
+        setSetting('allowTravelInvite', enabled);
+        if (allowTravelInviteStatus) allowTravelInviteStatus.textContent = enabled ? '开启' : '关闭';
+        if (window.parent !== window) {
+            window.parent.postMessage({
+                type: 'allowTravelInviteChanged',
                 chatId: chatId,
                 enabled: enabled
             }, '*');
@@ -1674,6 +1701,7 @@
     autoMomentInterval.addEventListener('change', changeAutoMomentInterval);
 
     allowImageToggle.addEventListener('change', toggleAllowImage);
+    if (allowTravelInviteToggle) allowTravelInviteToggle.addEventListener('change', toggleAllowTravelInvite);
     if (allowMomentImageToggle) allowMomentImageToggle.addEventListener('change', toggleAllowMomentImage);
     if (momentImageFreq) momentImageFreq.addEventListener('change', function() {
         setSetting('momentImageFreq', this.value);
