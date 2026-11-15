@@ -1906,48 +1906,82 @@ function insHasUserComment(post) {
   const uk = normName(userProfile.name);
   return (post.comments || []).some(c => c && (normName(c.user) === uk || (c.replies || []).some(r => r && normName(r.user) === uk)));
 }
-function insUserCommentTexts(post) {
+// 用户在这条帖子下的每条评论/回复，按时间顺序配对后，返回还没被回应的那些。
+// 一条回复只抵消一条用户评论，避免用户连发多条时只回第一条。
+function insPendingUserComments(post) {
   const uk = normName(userProfile.name);
   const out = [];
-  (post.comments || []).forEach(c => {
+  ((post && post.comments) || []).forEach(c => {
     if (!c) return;
-    if (normName(c.user) === uk) out.push(String(c.text || '').trim());
-    (c.replies || []).forEach(r => {
-      if (r && normName(r.user) === uk) out.push(String(r.text || '').trim());
+    const queue = [];
+    if (normName(c.user) === uk) {
+      queue.push({ commentId: c.id, threadId: c.id, replyIndex: -1, target: '', text: String(c.text || '').trim() });
+    }
+    (c.replies || []).forEach((r, ri) => {
+      if (!r) return;
+      const m = String(r.text || '').match(/^\s*回复\s*([^：:，,、]{1,30})\s*[：:，,]\s*([\s\S]*)$/);
+      if (normName(r.user) === uk) {
+        queue.push({
+          commentId: c.id, threadId: c.id, replyIndex: ri,
+          target: m ? m[1].trim() : '',
+          text: (m ? m[2] : (r.text || '')).trim()
+        });
+        return;
+      }
+      const toMe = (r.toUser && normName(r.toUser) === uk) || (m && normName(m[1].trim()) === uk);
+      if (toMe && queue.length) queue.shift();
     });
+    queue.forEach(x => out.push(x));
   });
-  return out.filter(Boolean);
+  return out.filter(x => x.text);
 }
-// 用户评论/回复后，刷新必须有人回应；被回复的人优先，其次作者/评论区的熟人。
-async function ensureInsUserReply(post, parsed, pool, persona) {
-  if (!insHasUserComment(post)) return parsed;
+function insUserCommentTexts(post) {
+  return insPendingUserComments(post).map(x => x.text);
+}
+// 用户连发多条评论时，必须逐条、一对一回复：缺哪条就用本地短句兜底。
+async function ensureInsUserReplies(post, parsed, pool, persona, pending) {
+  const list = Array.isArray(pending) ? pending : insPendingUserComments(post);
+  if (!list.length) return parsed;
   const uk = normName(userProfile.name);
   const poolNames = (pool || []).filter(n => n && normName(n) !== uk);
   const authorName = post.user;
-  const targets = insUserReplyTargets(post);
-  let expected = '';
-  for (let i = targets.length - 1; i >= 0; i--) {
-    const t = targets[i];
-    const hit = poolNames.find(n => normName(n) === normName(t)) ||
-      ((authorName && normName(t) === normName(authorName)) ? authorName : '');
-    if (hit) { expected = hit; break; }
+  function knownName(n) {
+    return !!(n && normName(n) !== uk &&
+      (normName(n) === normName(authorName) || poolNames.some(x => normName(x) === normName(n))));
   }
-  if (expected && normName(expected) === uk) expected = '';
-  if (!expected) {
-    expected = poolNames.find(n => normName(n) !== normName(authorName)) || '';
-    if (!expected && authorName && normName(authorName) !== uk) expected = authorName;
+  function expectedFor(c) {
+    if (c.target && knownName(c.target)) return c.target;
+    if (authorName && normName(authorName) !== uk) return authorName;
+    return poolNames.find(n => normName(n) !== normName(authorName)) || '';
   }
-  if (!expected) return parsed;
-  const hasReply = (parsed || []).some(c => c && normName(c.toUser || '') === uk && normName(c.user || '') === normName(expected));
-  if (hasReply) return parsed;
-  // 不再为“必须有人回复用户”额外调用一次 API，直接用本地短句兜底。
+  const out = (parsed || []).slice();
+  const used = {};
   const localReplies = ['看到啦', '哈哈哈', '好家伙', '这个我懂', '刚看到'];
-  const text = localReplies[Math.floor(Math.random() * localReplies.length)];
-  return (parsed || []).concat([{ user: expected, toUser: userProfile.name, text: text }]);
+  list.forEach((pc, pi) => {
+    const expected = expectedFor(pc);
+    if (!expected) return;
+    let hit = -1;
+    for (let i = 0; i < out.length; i++) {
+      if (used[i]) continue;
+      const c = out[i];
+      if (!c || normName(c.toUser || '') !== uk) continue;
+      if (normName(c.user || '') === normName(expected)) { hit = i; break; }
+    }
+    if (hit > -1) { used[hit] = 1; return; }
+    out.push({
+      user: expected,
+      toUser: userProfile.name,
+      text: localReplies[(pi + Math.floor(Math.random() * localReplies.length)) % localReplies.length]
+    });
+  });
+  return out;
 }
 
 // 把「评论者|回复对象|内容」结果写入帖子的评论区（回复挂在被回复者的评论下）
-function appendInteractions(post, parsed, npcPool) {
+// pendingUser：这次待回复的用户评论队列。回复用户时按队列一条对一条挂到对应评论下，
+// 不再统统塞进「第一条用户评论」里。
+function appendInteractions(post, parsed, npcPool, pendingUser) {
+  const pendingQueue = (pendingUser || []).slice();
   // 把本次用到的 NPC 资料随帖子保存（不建全局库）：重开页面后仍能按名字找到头像/关系。
   try {
     if (npcPool && npcPool.length) {
@@ -1978,8 +2012,16 @@ function appendInteractions(post, parsed, npcPool) {
     if (!c || !c.user || !String(c.text || '').trim()) return;
     if (!c.toUser || normName(c.toUser) === normName(c.user)) return;
     const to = c.toUser;
-    let target = post.comments.find(x => normName(x.user) === normName(to));
-    if (!target) target = post.comments.find(x => (x.replies || []).some(r => normName(r.user) === normName(to)));
+    const isToUser = normName(to) === normName(userProfile.name);
+    let target = null;
+    // 回复用户：按待回复队列一一对应到那条用户评论所在的楼层。
+    if (isToUser && pendingQueue.length) {
+      const pc = pendingQueue.shift();
+      target = post.comments.find(x => String(x.id) === String(pc.threadId));
+    }
+    // 只有非用户目标才按名字找楼层；否则多出来的「回复用户」会再次全塞进第一条用户评论。
+    if (!target && !isToUser) target = post.comments.find(x => normName(x.user) === normName(to));
+    if (!target && !isToUser) target = post.comments.find(x => (x.replies || []).some(r => normName(r.user) === normName(to)));
     if (target) {
       if (!target.replies) target.replies = [];
       target.replies.push({ user: c.user, text: '回复 ' + to + '：' + String(c.text).trim() });
@@ -1993,6 +2035,29 @@ function formatCommentLine(c) {
   const base = c.user + '：' + c.text;
   const reps = (c.replies || []).map(r => '  ↳ ' + r.text).join(' ');
   return base + (reps ? ' ' + reps : '');
+}
+
+// 找出最近帖子里反复出现的两字词/梗（如「吉他」「弦断」），明确要求模型换素材。
+function insRepeatedMotifs(texts, limit) {
+  const list = (texts || []).map(t => String(t || '')).filter(Boolean);
+  if (list.length < 2) return '';
+  const STOP = '今天 昨天 明天 现在 刚刚 已经 还是 就是 不是 没有 觉得 感觉 真的 有点 一点 一个 这个 那个 我们 你们 他们 自己 什么 怎么 这么 那么 可以 因为 所以 但是 然后 如果 时候 出来 起来 下去 上来 看到 知道 东西 事情 地方 朋友 一起 开始 结束 最后 应该 可能 不会 不要 不能 还有 以及 而且 或者 虽然 不过 其实 本来 后来 突然 一直 总是 每天 下次 这次'.split(/\s+/);
+  const stop = new Set(STOP);
+  const freq = {};
+  list.forEach(t => {
+    const clean = t.replace(/[^\u4e00-\u9fa5]/g, '');
+    const seen = new Set();
+    for (let i = 0; i < clean.length - 1; i++) {
+      const g = clean.slice(i, i + 2);
+      if (!g || stop.has(g) || seen.has(g)) continue;
+      seen.add(g);
+      freq[g] = (freq[g] || 0) + 1;
+    }
+  });
+  const need = Math.max(2, Math.ceil(list.length * 0.6));
+  return Object.keys(freq).filter(g => freq[g] >= need)
+    .sort((a, b) => freq[b] - freq[a])
+    .slice(0, limit || 8).join('、');
 }
 
 // 清理历史 char↔char 互动：绝对禁止 char 互评论/回复/点赞，即使用户人设里写了认识也不放开。
@@ -2082,10 +2147,14 @@ async function generateCommentsForPost(post, bound, npcs, strangers, limit) {
   const existing = (post.comments || []).slice(-30).map(formatCommentLine).join('\n');
   const existingNames = postParticipantNames(post);
   const newPool = pool.filter(n => !existingNames.some(x => normName(x) === normName(n)) && normName(n) !== normName(post.user));
-  const userCommentLines = insUserCommentTexts(post);
-  const hasUserComment = userCommentLines.length > 0;
-  const userTargets = insUserReplyTargets(post);
-  const system = '你是一个真实的人类，请同时扮演多个角色以及平台上的普通网友，在社交平台评论区自然地聊天。严格贴合各自人设、关系与世界书，保持活人感，绝不 OOC，禁止 AI 腔、解释和出戏。这是公开平台，评论可以来自熟人也可以来自陌生人：熟人更随意、更亲近；陌生人更直接、更爱玩梗或质疑，而且陌生网友大多用网名/账号名，不必表现得很熟。评论要短、口语、碎片化，像随手打字：可以玩梗、只回一句、只发一个表情或问一个具体细节；不要长评、客套话和升华总结。绝不能替用户发言；只有评论区里真正发过评论的人才能被回复。所有角色均为成年人。' + GLOBAL_PLATFORM_NOTE + DIVERSE_PLATFORM_NOTE + ADULT_PLATFORM_NOTE;
+  // 只把「还没被回复过」的用户评论列为必答项：每条都必须单独回，不能只回第一条。
+  const pendingUser = insPendingUserComments(post);
+  const hasUserComment = pendingUser.length > 0;
+  const userCommentLines = pendingUser.map((c, i) =>
+    'U' + (i + 1) + '｜' + (c.target ? ('用户 回复 ' + c.target) : '用户评论') + '：' + c.text);
+  const userTargets = pendingUser.map(c => c.target)
+    .filter((n, i, arr) => n && normName(n) !== normName(userProfile.name) && arr.indexOf(n) === i);
+  const system = '你是一个真实的人类，请同时扮演多个角色以及平台上的普通网友，在社交平台评论区自然地聊天。严格贴合各自人设、关系与世界书，保持活人感，绝不 OOC，禁止 AI 腔、解释和出戏。这是公开平台，评论可以来自熟人也可以来自陌生人：熟人更随意、更亲近；陌生人更直接、更爱玩梗或质疑，而且陌生网友大多用网名/账号名，不必表现得很熟。评论要短、口语、碎片化，像随手打字：可以玩梗、只回一句、只发一个表情或问一个具体细节；不要长评、客套话和升华总结；也不要每条都用同一个梗、同一种句式或复述同一句话。绝不能替用户发言；只有评论区里真正发过评论的人才能被回复。所有角色均为成年人。' + GLOBAL_PLATFORM_NOTE + DIVERSE_PLATFORM_NOTE + ADULT_PLATFORM_NOTE;
   const userMsg = userPersonaBlock() + '\n\n' + persona +
     '\n\n【本帖子可以出现的评论者】\n' + pool.map(n => '· ' + n).join('\n') +
     (canInvent ? '\n名单不足时，你可以为作者现场虚构 2~4 个与 TA 可能认识的 NPC 或陌生网友名字（真实姓名或网名），但绝不能使用用户本人或其它已选角色。' : '') +
@@ -2094,7 +2163,7 @@ async function generateCommentsForPost(post, bound, npcs, strangers, limit) {
     ((post.tags && post.tags.length) ? ('\n话题：' + post.tags.map(t => '#' + t).join(' ')) : '') +
     (existing ? ('\n【已有评论（初始回复人，可继续回帖）】\n' + existing) : '') +
     (newPool.length ? ('\n【还没出现过的新回复人】\n' + newPool.map(n => '· ' + n).join('\n')) : '') +
-    (hasUserComment ? ('\n【用户本人的评论（必须有人回复 TA）】\n' + userCommentLines.filter(Boolean).map(t => '用户：' + t).join('\n') +
+    (hasUserComment ? ('\n【待回复的用户评论（必须逐条、一对一回复）】\n' + userCommentLines.filter(Boolean).join('\n') +
       (userTargets.length ? ('\n用户刚才回复了「' + userTargets.join('、') + '」，被回复的人必须回复用户。') : '')) : '') +
     '\n\n请生成 7~10 条新的评论互动（数量要够，不要只写两三条；既要回复已有评论，也要有新的人加入）：\n' +
     '- 每条评论都要针对上面帖子的标题/正文/话题来写，可以引用其中的具体词、细节或观点，绝对不要跑题；\n' +
@@ -2104,7 +2173,8 @@ async function generateCommentsForPost(post, bound, npcs, strangers, limit) {
       : '- 必须包含发帖人「' + post.user + '」的评论，作者要回应评论区；\n') +
     (existingNames.length ? '- 必须包含「初始回复人」（上面已有评论里出现过的人）继续回帖；\n' : '') +
     (newPool.length ? '- 至少 2 条必须来自「新回复人」（上面的新回复人名单）首次加入讨论；\n' : '- 至少 2 条必须是此前没在这条评论区出现过的新评论者；\n') +
-    (hasUserComment ? ('- 必须至少 2 条回复用户本人（回复对象写「' + (userProfile.name || '用户') + '」），自然接住 TA 说的话；作者和其他网友也可以回复用户/互相接话；\n') : '') +
+    (hasUserComment ? ('- 下面有 ' + pendingUser.length + ' 条待回复的用户评论：必须逐条各生成 1 条回复（U1、U2……一条都不能漏），禁止只回第一条，禁止把多条回复合并到同一条评论下面，也不要只在同一条评论下面连写几句；\n' +
+      '- 回复对象统一写「' + (userProfile.name || '用户') + '」，但内容必须分别针对对应的那条用户评论；按 U1→U2→… 的顺序输出这些回复；作者和其他网友也可以回复用户/互相接话；\n') : '') +
     '- 回复对象必须是这条帖子评论区里真正发过评论的人；作者本人在评论区没留言时，绝对不能写「回复作者」；不要回复只点赞的人；\n' +
     ((normName(post.user) === normName(userProfile.name))
       ? '- 角色可以评论用户；但 char 绝对不能回复、点名或评论另一个 char；NPC 可以评论任何参与者；\n'
@@ -2117,11 +2187,15 @@ async function generateCommentsForPost(post, bound, npcs, strangers, limit) {
   let parsed = filterInsKnownReplies(filterCommentList(parseCommentLines(raw), post.user, pool, existingNames), post, bound, npcs, strangers);
   if (!parsed.length && !insHasUserComment(post)) return 0;
   const cap = Math.max(0, limit == null ? 10 : limit);
-  parsed = parsed.slice(0, cap);
-  // 用户评论/回复的回应必须保留，不能被条数上限裁掉。
-  parsed = await ensureInsUserReply(post, parsed, pool, persona);
+  // 截断时优先保留「回复用户」的条目，避免多条用户评论的回复被条数上限裁掉。
+  const uk = normName(userProfile.name);
+  const toUserReplies = parsed.filter(c => c && normName(c.toUser || '') === uk);
+  const restParsed = parsed.filter(c => !(c && normName(c.toUser || '') === uk));
+  parsed = restParsed.slice(0, Math.max(0, cap - toUserReplies.length)).concat(toUserReplies);
+  // 每一条待回复的用户评论都必须有回应；缺哪条就补哪条。
+  parsed = await ensureInsUserReplies(post, parsed, pool, persona, pendingUser);
   if (!parsed.length) return 0;
-  appendInteractions(post, parsed, (npcs || []).concat(strangers || []));
+  appendInteractions(post, parsed, (npcs || []).concat(strangers || []), pendingUser);
   return parsed.length;
 }
 
@@ -2139,7 +2213,17 @@ function buildForumPrompt(chars, npcs, strangers, recent, opts) {
   const npcQuota = Math.max(0, count - charQuota);
   const persona = buildPersonaBlock(charList.concat(npcList).concat(strangerList));
   const lines = [];
+  const recentTexts = (posts || []).slice(0, 12).map(p => (p && (p.body || p.title)) || '');
+  const recentMotifs = insRepeatedMotifs(recentTexts, 8);
+  const ownRecentDigest = charList.map(c => {
+    const list = (posts || []).filter(p => p && normName(p.user) === normName(c.name))
+      .slice(0, 2).map(p => String(p.body || p.title || '').replace(/\s+/g, ' ').slice(0, 110)).filter(Boolean);
+    return list.length ? ('· ' + c.name + ' 最近发过：' + list.join(' / ')) : '';
+  }).filter(Boolean).join('\n');
   lines.push('这是一个开放的社交平台（类似 Instagram）。平台上不只有用户的好友，还有大量陌生网友在这里发帖和互动。');
+  lines.push('- 【反重复 · 最高优先级】同一位作者的新帖子不能重复 TA 最近发过的同一件事、同一个梗、同一种抱怨或同一句式；同一个生活小事最多出现一次。' +
+    (recentMotifs ? ('最近平台反复出现：' + recentMotifs + '，本次必须避开这些词/梗。') : '') +
+    '不要为了延续话题而把同一个小事件再发一遍，也不要换一种说法复述。');
   lines.push('【平台气质 · 必须和朋友圈区分开】这里是面向所有人的公开主页，不是只给熟人看的朋友圈：文案要有展示感，但不要每次只写一句话。这一批约一半写短帖（100 字以下，2~4 句，也要有意思），一半写中等长度（100~220 字，把一件具体的事、一个观点或一种心情讲完整，有细节、有画面）；偶尔挑 1 条写成 300~500 字长文——追星/演唱会 repo、好物分享/测评、情感经历、事情求助/避雷等；少写过度私密的家庭/职场细节和纯负能量发泄，多展示生活方式、审美、旅行、美食、健身、作品、当下心情；可以中英混排、emoji 或定位，但不要每条都长，也不要旅行博主腔和硬广。');
   lines.push(GLOBAL_PLATFORM_NOTE);
   lines.push(DIVERSE_PLATFORM_NOTE);
@@ -2170,7 +2254,8 @@ function buildForumPrompt(chars, npcs, strangers, recent, opts) {
   lines.push('- 严禁以用户身份发帖、点赞或评论；');
   lines.push('- 每条评论不超过 25 字。');
   return ADULT_PLATFORM_NOTE + '\n' + SAFE_REWRITE_NOTE + '\n\n' + userPersonaBlock() + '\n\n' + persona +
-    '\n\n【最近的帖子（可延续话题，别重复）】\n' + (recent || '（暂无）') +
+    '\n\n【最近的帖子（本次必须避开重复的题材/事件/梗/句式，不要为了延续话题而重发）】\n' + (recent || '（暂无）') +
+    (ownRecentDigest ? ('\n' + ownRecentDigest) : '') +
     '\n\n' + lines.join('\n') +
     '\n\n严格按下面格式输出（不要 markdown、不要编号、不要多余解释）：\n' +
     '===POST===\nAUTHOR: 名字\nLOCATION: 地点（可留空）\nTITLE: 标题\nBODY: 正文\nTAGS: 话题1,话题2\nLIKES: 名字1,名字2（可留空）\nCOMMENT: 评论者|回复对象|内容\nCOMMENT: 评论者||内容\n\n（下一条帖子重复 ===POST=== 结构）';
@@ -2197,7 +2282,12 @@ function buildNetizenForumPrompt(npcs, strangers, recent, opts) {
     ? ('【本批网友（可参考，也可现场虚构）】\n' + usableNetizens.map(c => '· ' + c.name + ((c.setting || c.relation) ? ('：' + String(c.setting || c.relation).slice(0, 120)) : '')).join('\n'))
     : '【本批网友】名单为空，请现场虚构不同国家、不同职业的网友。';
   const lines = [];
+  const recentTexts = (posts || []).slice(0, 12).map(p => (p && (p.body || p.title)) || '');
+  const recentMotifs = insRepeatedMotifs(recentTexts, 8);
   lines.push('这是一个面向全球用户的开放社交平台（类似 Instagram）。现在是 #' + tag + ' 话题搜索结果页：所有发帖人都是平台上的普通网友，不是用户的好友、不是用户绑定的角色，也不是 AI。');
+  lines.push('- 【反重复 · 最高优先级】每个网友的新帖子不能重复最近帖子里已经写过的同一件事、同一个梗或同一句式；同一个生活小事最多出现一次。' +
+    (recentMotifs ? ('最近平台反复出现：' + recentMotifs + '，本次必须避开这些词/梗。') : '') +
+    '不要换一种说法复述同一条帖子。');
   lines.push('【铁律】本批帖子、评论、点赞里绝对不能出现用户绑定的任何角色（char），也不能出现用户本人「' + userProfile.name + '」' +
     (forbidden.length ? ('。禁止出现这些名字：' + forbidden.join('、')) : '') + '。char 不是网友，不能发帖、不能评论、不能点赞。');
   lines.push('请一次性生成 ' + count + ' 条帖子，由 ' + count + ' 个不同网友各发 1 条，作者不要重复。');
@@ -2212,7 +2302,7 @@ function buildNetizenForumPrompt(npcs, strangers, recent, opts) {
   if (tag) lines.push('- 所有帖子都必须围绕话题 #' + tag + '，并把它写进 TAGS；');
   if (desc) lines.push('- 话题描述与方向（必须严格符合）：' + desc + '；');
   return ADULT_PLATFORM_NOTE + '\n' + SAFE_REWRITE_NOTE + '\n\n' + persona +
-    '\n\n【最近出现过的帖子（不要重复）】\n' + (recent || '（暂无）') +
+    '\n\n【最近出现过的帖子（本次必须避开同一件事/同一个梗/同一句式，不要换说法复述）】\n' + (recent || '（暂无）') +
     '\n\n' + lines.join('\n') +
     '\n\n严格按下面格式输出（不要 markdown、不要编号、不要多余解释）：\n' +
     '===POST===\nAUTHOR: 名字\nLOCATION: 地点（可留空）\nTITLE: 标题\nBODY: 正文\nTAGS: 话题1,话题2\nLIKES: 名字1,名字2（可留空）\nCOMMENT: 评论者|回复对象|内容\nCOMMENT: 评论者||内容\n\n（下一条帖子重复 ===POST=== 结构）';
@@ -2489,6 +2579,21 @@ async function runForumGenerate(selected) {
     }
     // 先排已选角色的帖子，确保额外网友帖不会挤掉角色帖。
     parsed = parsed.filter(p => p && !excludedKeys.has(normName(p.author)));
+    // 本地再兜一层：同一位作者的新帖若和最近的帖子完全一样，直接丢弃，逼迫换素材。
+    const __recentPostText = {};
+    (posts || []).slice(0, 30).forEach(p => {
+      if (!p || !p.user) return;
+      const k = normName(p.user);
+      const t = String((p.body || p.title || '')).replace(/\s+/g, '');
+      if (!t) return;
+      if (!__recentPostText[k]) __recentPostText[k] = {};
+      __recentPostText[k][t] = 1;
+    });
+    parsed = parsed.filter(p => {
+      const t = String((p.body || p.title || '')).replace(/\s+/g, '');
+      const map = __recentPostText[normName(p.author)];
+      return !(t && map && map[t]);
+    });
     parsed.forEach(p => {
       p.likes = (p.likes || []).filter(n => n && !excludedKeys.has(normName(n)));
       p.comments = (p.comments || []).filter(c => {
@@ -3235,6 +3340,12 @@ async function refreshTagResult() {
     }
     const charKeys = new Set(getSelectableChars().map(c => c && c.name).filter(Boolean).map(normName));
     made = made.filter(p => p && p.user && !charKeys.has(normName(p.user)) && normName(p.user) !== normName(userProfile.name));
+    // 本地去重：不要把最近已经出现过的同一篇帖子再发一遍。
+    const __recentNetizenText = new Set((posts || []).slice(0, 30).map(p => String((p && (p.body || p.title)) || '').replace(/\s+/g, '')).filter(Boolean));
+    made = made.filter(p => {
+      const t = String((p.body || p.title || '')).replace(/\s+/g, '');
+      return !(t && __recentNetizenText.has(t));
+    });
     made = made.slice(0, 7);
     await maybeGeneratePostImages(made);
     posts = made.concat(posts);
@@ -4271,13 +4382,45 @@ async function loadInsData() {
     userProfile.handle = '@' + (mask.name || 'me').toLowerCase();
     userProfile.setting = mask.setting || '';           // 人设：只用于生成内容
     userProfile.bio = mask.signature || '';             // 个性签名：展示用的短句
-    userProfile.avatarImage = await getMaskAvatar(mask.id) || null;
   } else {
     userProfile.name = '我';
     userProfile.id = null;
   }
 
-  const allChars = await getCharacters();
+  // 先读本地状态并渲染首屏；角色库/头像稍后补，避免「有数据却一直转圈」。
+  const savedState = await loadInsChatState();
+  let savedFriends = [];
+  if (savedState) {
+    if (Array.isArray(savedState.friends)) savedFriends = savedState.friends;
+    if (savedState.chatHistories && typeof savedState.chatHistories === 'object') {
+      Object.keys(savedState.chatHistories).forEach(k => {
+        if (!chatHistories[k] || !chatHistories[k].length) chatHistories[k] = savedState.chatHistories[k];
+      });
+    }
+    if (Array.isArray(savedState.followed)) followedUsers = savedState.followed.slice();
+    if (Array.isArray(savedState.savedPosts)) savedPosts = savedState.savedPosts.slice();
+    insPendingReplies = (savedState.pending && typeof savedState.pending === 'object') ? savedState.pending : {};
+  }
+  posts = (savedState && Array.isArray(savedState.posts)) ? savedState.posts : [];
+
+  // 首屏：先用已保存的帖子/资料画出来，不等角色库和头像。
+  renderStories();
+  refreshUserUI();
+  renderFeed();
+  renderProfileGrid();
+  renderDMList();
+  renderRecommendTags();
+  renderDiscover();
+
+  // 头像和角色库并行读，读完再补一次 UI。
+  const avatarPromise = mask ? getMaskAvatar(mask.id).catch(function () { return null; }) : Promise.resolve(null);
+  const charsPromise = getCharacters().catch(function () { return []; });
+  const both = await Promise.all([avatarPromise, charsPromise]);
+  const avatar = both[0], allChars = both[1] || [];
+  if (avatar) {
+    userProfile.avatarImage = avatar;
+    try { refreshUserUI(); } catch (e) {}
+  }
   if (mask) {
     // 用户隔离：当前 user 绑定的普通角色、NPC、小号都可用；小号也可沿大号归属。
     currentUserChars = allChars.filter(c => {
@@ -4297,13 +4440,11 @@ async function loadInsData() {
   }
   buildContactsFromChars(currentUserChars);
 
-  // 恢复上次的聊天记录 / 好友 / 陌生网友（退出页面或切换 App 后不丢）
-  const savedState = await loadInsChatState();
   if (savedState) {
-    if (Array.isArray(savedState.friends)) {
+    if (savedFriends.length) {
       const ids = {};
       friends.forEach(f => { ids[f.id] = 1; });
-      savedState.friends.forEach(f => { if (f && f.id && !ids[f.id]) { friends.push(f); ids[f.id] = 1; } });
+      savedFriends.forEach(f => { if (f && f.id && !ids[f.id]) { friends.push(f); ids[f.id] = 1; } });
     }
     if (Array.isArray(savedState.strangers)) {
       const ids = {};
@@ -4311,21 +4452,6 @@ async function loadInsData() {
       savedState.strangers.forEach(s => { if (s && s.id && !ids[s.id]) { strangers.push(s); ids[s.id] = 1; } });
       strangers = strangers.slice(0, 40);
     }
-    if (savedState.chatHistories && typeof savedState.chatHistories === 'object') {
-      Object.keys(savedState.chatHistories).forEach(k => {
-        if (!chatHistories[k] || !chatHistories[k].length) chatHistories[k] = savedState.chatHistories[k];
-      });
-    }
-    if (Array.isArray(savedState.followed)) followedUsers = savedState.followed.slice();
-    if (Array.isArray(savedState.savedPosts)) savedPosts = savedState.savedPosts.slice();
-    insPendingReplies = (savedState.pending && typeof savedState.pending === 'object') ? savedState.pending : {};
-  }
-
-  // 帖子也持久化：清空或删除后回来不会又恢复成初始帖子
-  if (savedState && Array.isArray(savedState.posts)) {
-    posts = savedState.posts;
-  } else {
-    posts = [];
   }
   try { if (sanitizeCharInteractionsIns()) saveInsChatState(); } catch (e) {}
 

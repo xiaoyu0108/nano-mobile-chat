@@ -2,32 +2,23 @@
 <html lang="zh">
 <head>
     <meta charset="UTF-8">
-    <script src="js/nano-runtime.js?v=20261112a"></script>
+    <script src="js/nano-runtime.js?v=20261115a"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <script>
     // 全站唯一构建号：下面的自愈逻辑、iframe 的 nb= 参数都用它。
     // 注意：不要再另写第二个版本号，否则两个版本号会互相判定“版本变了”，
     // 造成每次打开都清缓存 + 反复 reload。
-    // build 号保持最新即可，但不要再用 reload 强制更新：reload + 旧 SW 的 HTML 缓存
-    // 会让新旧 build 号互相触发，开屏动画无限循环。现在只清缓存，不自动 reload。
-    window.__NANO_BUILD__ = 'nano-2026-11-13-1';
+    // 重要：发版时不要再清空 CacheStorage。
+    // JS/CSS 都带 ?v=，SW 按 URL 缓存；清空缓存会让发版后的第一次打开重新下载全部资源，
+    // 反而造成「每次更新后都特别慢」。旧版本缓存由 sw.js 的 activate 统一回收。
+    window.__NANO_BUILD__ = 'nano-2026-11-15-1';
     (function () {
         try {
             var KEY = 'nano_build';
             var CUR = window.__NANO_BUILD__;
-            var prev = null;
-            try { prev = localStorage.getItem(KEY); } catch (e) { return; }
+            var prev = localStorage.getItem(KEY);
             if (prev === CUR) return;
-            // 写入失败（隐私模式/存储满）就直接放弃，避免每次打开都清缓存。
-            try { localStorage.setItem(KEY, CUR); } catch (e) { return; }
-            try {
-                if (window.caches && caches.keys) caches.keys().then(function (ks) {
-                    // 只清站点静态缓存，别把图片/其它 CacheStorage 一起删掉。
-                    return Promise.all(ks.filter(function (k) { return String(k).indexOf('nano-static-') === 0; })
-                        .map(function (k) { return caches.delete(k).catch(function () {}); }));
-                }).catch(function () {});
-            } catch (e) {}
-            // 不 unregister、不 reload：否则会和页面底部的 sw 注册互相抢，并且反复开屏。
+            try { localStorage.setItem(KEY, CUR); } catch (e) {}
         } catch (e) {}
     })();
     </script>
@@ -41,21 +32,12 @@
     <link rel="apple-touch-icon" sizes="512x512" href="icons/icon-512.png">
     <link rel="manifest" href="manifest.json">
     <title>Nano</title>
+    <!-- 只保留首屏真正会用到的外部连接；其余等打开对应页面时再建立，避免抢占首页带宽。 -->
     <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
-    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-    <link rel="preconnect" href="https://nanopush.nano315.online" crossorigin>
-    <link rel="preconnect" href="https://music.nano315.online" crossorigin>
     <link rel="dns-prefetch" href="https://nanopush.nano315.online">
     <link rel="dns-prefetch" href="https://music.nano315.online">
-    <!-- 底部脚本很多，提前并行下载，避免解析到底部才开始请求 -->
-    <link rel="preload" as="script" href="js/nano-push.js?v=20261112a">
-    <link rel="preload" as="script" href="js/keep-alive.js?v=20261112a">
-    <link rel="preload" as="script" href="js/char-takeover.js?v=20261115b">
-    <link rel="preload" as="script" href="js/online-catchup.js?v=20261115a">
-    <link rel="preload" as="script" href="js/auto-push-bridge.js?v=20261112b">
-    <!-- 聊天/通话/设置页会同步加载 localforage；在这里提前拉，避免它们卡在 CDN 往返上 -->
-    <link rel="preload" as="script" href="js/localforage.min.js">
     <link rel="dns-prefetch" href="https://unpkg.com">
+    <!-- 底部脚本按正常顺序加载即可；提前 preload 会和首页 iframe 抢带宽，反而拖慢首屏。 -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" media="print" onload="this.media='all'">
     <link rel="stylesheet" href="common.css">
     <link rel="stylesheet" href="css/adult-gate.css?v=20261025a">
@@ -878,7 +860,7 @@
             padding: env(safe-area-inset-top, 0) 0 env(safe-area-inset-bottom, 0);
             font-family: 'Arial Rounded MT Bold', 'Hiragino Maru Gothic ProN', 'PingFang SC', system-ui, sans-serif;
             touch-action: manipulation; -webkit-tap-highlight-color: transparent;
-            transition: opacity .3s ease;
+            transition: opacity .22s ease;
             --ns-p1: #ffe6ef; --ns-p2: #ffd5e5; --ns-p3: #f9c6da; --ns-txt: #eba4c0;
         }
         #nano-splash.ns-out { opacity: 0; pointer-events: none; }
@@ -996,7 +978,7 @@
 
 <div class="home-shell pre-splash" id="homeShell">
     <!-- 首页地址带上构建号：SW 可以对它直接缓存秒开，同时每次发版都会自动换缓存键，不会停在旧首页。 -->
-    <iframe id="homeFrame" data-src="html/home.html" title="Nano桌面"></iframe>
+    <iframe id="homeFrame" data-src="html/home.html" title="Nano桌面" loading="eager" fetchpriority="high"></iframe>
 </div>
 <script>
 (function () {
@@ -1102,7 +1084,7 @@
   // 开场动画只在「大退后重新进入」时出现；App 内切换页面不会重载首页，所以不会反复播放。
   // 时长压到 0.75 秒，点屏幕 / 按 Esc 可立即加速结束；
   // 淡出开始时就先显示桌面，让首页在动画遮罩下面先画出来，避免淡出结束后再等一帧。
-  var DUR = 420, READY_HOLD = 40;
+  var DUR = 300, READY_HOLD = 30;
   var t0 = performance.now(), lastSp = 0, burst = false, done = false, raf = 0;
   var G = ['♡', '✦', '✧', '●'], COL = ['#ffc2d9', '#ffd7a8', '#cfe4ff', '#fff', '#e2d6ff'];
 
@@ -1131,7 +1113,7 @@
     document.dispatchEvent(new Event('nano-splash-done'));
     setTimeout(function () {
       if (root.parentNode) root.parentNode.removeChild(root);
-    }, 320);
+    }, 220);
   }
 
   function finish(instant) {
@@ -4780,15 +4762,34 @@ setTimeout(function () {
 <script src="js/nano-notify.js?v=20261112a"></script>
 <script src="js/nano-push.js?v=20261112a"></script>
 <script src="swipe-back.js"></script>
-<script src="js/keep-alive.js?v=20261112a"></script>
-<script src="js/char-takeover.js?v=20261115b"></script>
-<script src="js/nano-prompts.js?v=20261108a"></script>
-<script src="js/screen-share.js?v=20261027a"></script>
+<script src="js/nano-prompts.js?v=20261115a"></script>
 <script src="js/ios-bridge.js?v=20261027k"></script>
 <script src="js/auto-push-bridge.js?v=20261112b"></script>
-<script src="js/online-catchup.js?v=20261115a"></script>
-<script src="js/whisper-store.js?v=20261026a"></script>
-<script src="js/char-secret-chat.js?v=20261029f"></script>
+<script>
+// 这些是后台/低频功能，不参与首屏。等 load 后再按顺序懒加载，
+// 避免和首页 iframe 抢带宽，也避免启动时长时间占用主线程。
+(function () {
+    var files = [
+        'js/keep-alive.js?v=20261112a',
+        'js/char-takeover.js?v=20261115b',
+        'js/screen-share.js?v=20261027a',
+        'js/online-catchup.js?v=20261115a',
+        'js/whisper-store.js?v=20261026a',
+        'js/char-secret-chat.js?v=20261029f'
+    ];
+    function load() {
+        files.forEach(function (src) {
+            var s = document.createElement('script');
+            s.src = src;
+            s.async = false;
+            s.onerror = function () {};
+            document.body.appendChild(s);
+        });
+    }
+    if (document.readyState === 'complete') setTimeout(load, 200);
+    else window.addEventListener('load', function () { setTimeout(load, 200); });
+})();
+</script>
 </div>
     <!-- 小号试探：居中弹窗（不暴露是谁）-->
     <div class="alt-probe-overlay" id="altProbeOverlay">

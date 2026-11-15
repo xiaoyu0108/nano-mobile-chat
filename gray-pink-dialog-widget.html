@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>灰粉对话框小组件</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent;font-family:-apple-system,"PingFang SC","Apple SD Gothic Neo",sans-serif}
+.card{
+  height:100%;
+  border-radius:22px;
+  background:transparent;
+  padding:8px 14px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  position:relative;
+}
+.bubbles{
+  position:relative;
+  width:100%;
+  max-width:320px;
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+}
+.bubble{
+  position:relative;
+  border-radius:16px;
+  padding:7px 12px;
+  font-size:12px;
+  line-height:1.28;
+  font-weight:500;
+  word-break:keep-all;
+  outline:none;
+  cursor:text;
+}
+.bubble:focus{
+  box-shadow:0 0 0 2px rgba(0,0,0,.08);
+}
+.bubble.dark{
+  background:#4a4a4a;
+  color:#fff;
+  background-image:radial-gradient(circle, #f8b6c8 1.5px, transparent 1.5px);
+  background-size:13px 13px;
+  background-position:3px 3px;
+  z-index:2;
+  margin-bottom:-6px;
+  align-self:flex-start;
+  max-width:92%;
+}
+/* 深灰尾巴 - 三角形，往上多叠一点消除空隙 */
+.bubble.dark::after{
+  content:"";
+  position:absolute;
+  left:14px;
+  bottom:-8px;
+  width:0;
+  height:0;
+  border-style:solid;
+  border-width:10px 9px 0 0;
+  border-color:#4a4a4a transparent transparent transparent;
+  transform:rotate(12deg);
+}
+.bubble.pink{
+  background:#f9d5e0;
+  color:#5a5a5a;
+  z-index:1;
+  margin-top:2px;
+  align-self:flex-end;
+  max-width:88%;
+  padding:7px 12px;
+}
+/* 浅粉尾巴 */
+.bubble.pink::after{
+  content:"";
+  position:absolute;
+  right:16px;
+  bottom:-8px;
+  width:0;
+  height:0;
+  border-style:solid;
+  border-width:10px 0 0 9px;
+  border-color:#f9d5e0 transparent transparent transparent;
+  transform:rotate(-12deg);
+}
+.star{font-size:13px;opacity:.95}
+.dots{letter-spacing:1px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="bubbles">
+    <div class="bubble dark" contenteditable="true" spellcheck="false"><span class="star">☆</span></div>
+    <div class="bubble pink" contenteditable="true" spellcheck="false"><span class="dots">ππ</span></div>
+  </div>
+</div>
+<script>
+(function(){
+  var W = window.__nanoWidgetId || '';
+  var SK = 'nanoTxt_' + W;
+  var saved = {};
+  try { saved = JSON.parse(localStorage.getItem(SK) || '{}') || {}; } catch (e) {}
+  var els = document.querySelectorAll('[contenteditable="true"]');
+  els.forEach(function(el, i){
+    var k = 't' + i;
+    if (typeof saved[k] === 'string' && saved[k] !== '') el.innerHTML = saved[k];
+    el.addEventListener('input', function(){
+      saved[k] = el.innerHTML;
+      try { localStorage.setItem(SK, JSON.stringify(saved)); } catch (e) {}
+    });
+  });
+})();
+</script>
+</body>
+</html>

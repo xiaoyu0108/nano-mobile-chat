@@ -1879,6 +1879,30 @@
         return c.toUser ? (c.user + ' 回复 ' + c.toUser + '：' + c.text) : (c.user + '：' + c.text);
     }
 
+    // 找出最近动态里反复出现的两字词/梗（如「吉他」「弦断」），用来明确要求模型换素材。
+    function momentRepeatedMotifs(texts, limit) {
+        var list = (texts || []).map(function (t) { return String(t || ''); }).filter(Boolean);
+        if (list.length < 2) return '';
+        var STOP = '今天 昨天 明天 现在 刚刚 已经 还是 就是 不是 没有 觉得 感觉 真的 有点 一点 一个 这个 那个 我们 你们 他们 自己 什么 怎么 这么 那么 可以 因为 所以 但是 然后 如果 时候 出来 起来 下去 上来 看到 知道 东西 事情 地方 朋友 一起 开始 结束 最后 应该 可能 不会 不要 不能 还有 以及 而且 或者 虽然 不过 其实 本来 后来 突然 一直 总是 每天 下次 这次'.split(/\s+/);
+        var stop = {};
+        for (var si = 0; si < STOP.length; si++) stop[STOP[si]] = 1;
+        var freq = {};
+        list.forEach(function (t) {
+            var clean = t.replace(/[^\u4e00-\u9fa5]/g, '');
+            var seen = {};
+            for (var i = 0; i < clean.length - 1; i++) {
+                var g = clean.slice(i, i + 2);
+                if (!g || stop[g] || seen[g]) continue;
+                seen[g] = 1;
+                freq[g] = (freq[g] || 0) + 1;
+            }
+        });
+        var need = Math.max(2, Math.ceil(list.length * 0.6));
+        return Object.keys(freq).filter(function (g) { return freq[g] >= need; })
+            .sort(function (a, b) { return freq[b] - freq[a]; })
+            .slice(0, limit || 8).join('、');
+    }
+
     // 兼容旧数据/主动消息的「外文||中文」格式，统一显示成用户要求的样子。
     function formatMomentText(text) {
         var s = String(text == null ? '' : text);
@@ -2359,63 +2383,77 @@
         return out;
     }
 
-    // 用户评论/回复后，保证至少有一条来自「被回复的人」或作者的回应。
-    // 先尝试让 AI 写一句，失败时给一句自然的兜底，绝不让用户评论石沉大海。
-    async function ensureUserReply(item, parsed, authorChar, bound, npcs, isUserPost, persona, authorForeign) {
-        var userComments = (item.comments || []).filter(function(c) {
-            return c && normName(c.user) === normName(currentUser.name);
+    // 还没被任何人回复过的用户评论。按时间顺序配对：一条回复只抵消一条用户评论，
+    // 这样用户连发多条时，不会出现「只回第一条、后面的石沉大海」。
+    function pendingUserComments(item) {
+        var uk = normName(currentUser.name);
+        var pending = [];
+        (item.comments || []).forEach(function (c) {
+            if (!c || !c.user) return;
+            if (normName(c.user) === uk) {
+                pending.push(c);
+            } else if (c.toUser && normName(c.toUser) === uk) {
+                if (pending.length) pending.shift();
+            }
         });
-        if (!userComments.length) return parsed;
+        return pending;
+    }
+
+    // 用户评论/回复后，保证每一条待回复的用户评论都有一条来自「被回复的人」或作者的回应。
+    // 先尝试用模型已经生成的回复配对；缺哪条就用自然短句兜底，绝不让第二条评论石沉大海。
+    async function ensureUserReplies(item, parsed, authorChar, bound, npcs, isUserPost, persona, authorForeign) {
+        var pending = pendingUserComments(item);
+        if (!pending.length) return parsed;
 
         var npcNames = (npcs || []).filter(function(n) { return n && n.name; }).map(function(n) { return n.name; })
             .concat((bound || []).filter(function(c) { return c && c.isNpc; }).map(function(c) { return c.name; }));
         var plainCharNames = (bound || []).filter(function(c) { return c && c.name && !c.isNpc; }).map(function(c) { return c.name; });
-        var expected = '';
-        for (var i = userComments.length - 1; i >= 0; i--) {
-            var t = userComments[i].toUser;
-            if (t && normName(t) !== normName(currentUser.name)) { expected = t; break; }
+        function known(name) {
+            if (!name) return false;
+            var k = normName(name);
+            return npcNames.some(function(n) { return normName(n) === k; }) ||
+                plainCharNames.some(function(n) { return normName(n) === k; }) ||
+                !!(authorChar && normName(authorChar.name) === k);
         }
-        // char 动态下其他 char 不能出现，被回复的 char 一律改由作者本人回应
-        if (!isUserPost && authorChar && authorChar.name) {
-            if (!expected || plainCharNames.some(function(n) { return normName(n) === normName(expected); })) expected = authorChar.name;
-        }
-        if (expected && !npcNames.some(function(n) { return normName(n) === normName(expected); }) &&
-            !plainCharNames.some(function(n) { return normName(n) === normName(expected); }) &&
-            !(authorChar && normName(authorChar.name) === normName(expected))) {
-            expected = '';
-        }
-        if (!expected) {
-            var npc = npcNames.find(function(n) { return normName(n) !== normName(item.author); });
-            if (npc) expected = npc;
-        }
-        if (!expected && isUserPost) {
+        function expectedFor(c) {
+            var t = String((c && c.toUser) || '').trim();
+            // char 动态下其他 char 不能出现，被回复的 char 一律改由作者本人回应。
+            if (t && known(t) && !(!isUserPost && plainCharNames.some(function(n) { return normName(n) === normName(t); }))) return t;
+            if (!isUserPost && authorChar && authorChar.name) return authorChar.name;
             var ch = plainCharNames.find(function(n) { return normName(n) !== normName(item.author); });
-            if (ch) expected = ch;
+            if (ch) return ch;
+            var npc = npcNames.find(function(n) { return normName(n) !== normName(item.author); });
+            return npc || ((authorChar && authorChar.name) || '');
         }
-        if (!expected && !isUserPost && authorChar && authorChar.name) expected = authorChar.name;
-        // 必须是被回复的那个人回应；只有作者兜底时也一样。
-        var hasReplyFromExpected = (parsed || []).some(function(c) {
-            return c && normName(c.toUser || '') === normName(currentUser.name) &&
-                (!expected || normName(c.user || '') === normName(expected));
-        });
-        if (hasReplyFromExpected) return parsed;
-        if (!expected) return parsed;
 
-        // 不再为了“必须有人回复用户”额外调用一次 API，直接用本地短句兜底。
+        var userKey = normName(currentUser.name);
+        var out = (parsed || []).slice();
+        var used = {};
         var localReplies = authorForeign && authorForeign.foreign
             ? ['ok（看到了）', 'thanks（谢谢）', 'haha（哈哈）']
             : ['看到了', '哈哈哈', '好家伙', '这个我懂', '刚看到'];
-        var tryText = localReplies[Math.floor(Math.random() * localReplies.length)];
-        var fallbackText = (authorForeign && authorForeign.foreign) ? 'ok（看到了）' : '看到了';
-        var reply = filterCommentList(
-            [{ user: expected, toUser: currentUser.name, text: tryText || fallbackText }],
-            authorChar, bound, npcs, isUserPost, [currentUser.name]
-        );
-        if (reply.length) return (parsed || []).concat(reply.slice(0, 1));
-        if (!isUserPost && expected === (authorChar && authorChar.name)) {
-            return (parsed || []).concat([{ user: expected, toUser: currentUser.name, text: tryText || ((authorForeign && authorForeign.foreign) ? 'ok（刚看到，我想想怎么回你）' : '刚看到，我想想怎么回你') }]);
-        }
-        return parsed;
+        pending.forEach(function (pc, pi) {
+            var expected = expectedFor(pc);
+            if (!expected) return;
+            var hit = -1;
+            for (var i = 0; i < out.length; i++) {
+                if (used[i]) continue;
+                var c = out[i];
+                if (!c || normName(c.toUser || '') !== userKey) continue;
+                if (normName(c.user || '') === normName(expected)) { hit = i; break; }
+            }
+            if (hit > -1) { used[hit] = 1; return; }
+            var tryText = localReplies[(pi + Math.floor(Math.random() * localReplies.length)) % localReplies.length];
+            var reply = filterCommentList(
+                [{ user: expected, toUser: currentUser.name, text: tryText }],
+                authorChar, bound, npcs, isUserPost, [currentUser.name]
+            );
+            if (reply.length) { out.push(reply[0]); used[out.length - 1] = 1; }
+            else if (!isUserPost && expected === (authorChar && authorChar.name)) {
+                out.push({ user: expected, toUser: currentUser.name, text: tryText || '刚看到，我想想怎么回你' });
+            }
+        });
+        return out;
     }
 
     // ===== 刷新单条动态评论（AI 生成，调用一次副 API，未配置则主 API） =====
@@ -2535,33 +2573,36 @@
             }
             // 评论区全部保留给用户看，但只把最近的一部分喂给模型，避免上下文无限膨胀。
             var existing = (item.comments || []).slice(-30).map(fmtCommentLine).join('\n');
-            var userComments = (item.comments || []).filter(function(c) { return normName(c.user) === normName(currentUser.name); }).slice(-10);
-            var hasUserComment = userComments.length > 0;
+            // 只把「还没被回复过」的用户评论列为必答项：每条都必须单独回，不能只回第一条。
+            var pendingUser = pendingUserComments(item).slice(-10);
+            var hasUserComment = pendingUser.length > 0;
 
-            var system = '你是朋友圈里的真实人类。评论区只能使用给定名单里的名字，名单里的人都已按「是否可能认识作者」筛选过。最重要：普通 char 之间绝对不允许互相评论、回复、点赞或接话；char 发的动态下评论区只能出现作者真正可能认识的 NPC/小号（不认识的人绝对不能出现）。作者本人可以回复评论区里的 NPC 或用户，NPC 之间、NPC 与作者之间也可以互相回复；但只有真正发过评论的人才能被「回复」，作者没留言时不能被回复。绝不能替用户发言。' +
+            var system = '你是朋友圈里的真实人类。评论区只能使用给定名单里的名字，名单里的人都已按「是否可能认识作者」筛选过。最重要：普通 char 之间绝对不允许互相评论、回复、点赞或接话；char 发的动态下评论区只能出现作者真正可能认识的 NPC/小号（不认识的人绝对不能出现）。作者本人可以回复评论区里的 NPC 或用户，NPC 之间、NPC 与作者之间也可以互相回复；但只有真正发过评论的人才能被「回复」，作者没留言时不能被回复。绝不能替用户发言。用户连发多条评论时，必须逐条一对一回复，不能只回第一条。' +
                 (authorForeign.foreign
                     ? ('这条动态的作者是' + (authorForeign.nat || '外国') + '人，母语是' + authorForeign.lang + '。所有评论都必须先用' + authorForeign.lang + '写一句，再用括号附中文翻译，例如：do you love me？（爱我吗？）；NPC 也大多是作者国家的朋友。')
                     : '') +
-                '评论要短、口语、碎片化，像随手打字：可以只回“哈哈哈”“？”“好家伙”“这家我知道”，可以损、可以关心、可以只发一个表情；不要长评、客服腔、升华总结。';
+                '评论要短、口语、碎片化，像随手打字：可以只回“哈哈哈”“？”“好家伙”“这家我知道”，可以损、可以关心、可以只发一个表情；不要长评、客服腔、升华总结，也不要每条都用同一个梗、同一种句式或复述同一句话。';
             var charNamesForPrompt = (bound || []).map(function(c) { return c && c.name; }).filter(Boolean).join('、');
-            var userCommentLines = userComments.map(function(c) {
-                return '用户' + (c.toUser ? (' 回复 ' + c.toUser) : '') + '：' + c.text;
+            var userCommentLines = pendingUser.map(function(c, i) {
+                return 'U' + (i + 1) + '｜' + (c.toUser ? ('用户 回复 ' + c.toUser) : '用户评论') + '：' + c.text;
             }).join('\n');
-            var userReplyTargets = userComments.map(function(c) { return c && c.toUser; }).filter(function(n) { return n && normName(n) !== normName(currentUser.name); });
+            var userReplyTargets = pendingUser.map(function(c) { return c && c.toUser; })
+                .filter(function(n, i, arr) { return n && normName(n) !== normName(currentUser.name) && arr.indexOf(n) === i; });
             var userMsg = persona +
                 '\n\n【本动态可以出现的评论者】\n' + pool.map(function(c) { return '· ' + c.name + (c.kind === 'author' ? '（本动态作者）' : ''); }).join('\n') +
                 (canInvent ? '\n名单不足时，你可以为作者现场虚构 2~4 个与 TA 可能认识的 NPC/小号名字（真实姓名），但绝不能使用用户本人或其它普通角色。' : '') +
                 '\n\n【这条朋友圈】\n作者：' + (item.author || '') + '\n内容：' + (item.text || '') +
                 (existing ? ('\n已有评论（可接着聊）：\n' + existing) : '') +
-                (hasUserComment ? ('\n【用户本人的评论（必须回复）】\n' + userCommentLines) : '') +
+                (hasUserComment ? ('\n【待回复的用户评论（必须逐条、一对一回复）】\n' + userCommentLines) : '') +
                 '\n\n请生成 7~10 条新的评论互动（数量要够，不要只写两三条；既要回复已有评论，也要有新的人加入）：\n' +
                 '- 评论者优先从上面的名字里选，名字原样使用；名单不足时可按上面的说明虚构作者认识的 NPC/小号，但绝不能出现用户本人或其它普通角色；\n' +
                 '- 不能只有作者/用户一个人说话，至少 4 条评论要来自 NPC/小号或其他角色；\n' +
                 (isUserPost && charNamesForPrompt ? ('- 这条是用户本人发的动态：点赞名单里必须包含全部角色（' + charNamesForPrompt + '），并且至少 2 位角色要发表评论；\n') : '') +
                 (hasUserComment
-                    ? ('- 必须至少 2 条回复用户本人（回复对象写「' + (currentUser.name || '用户') + '」），自然接住 TA 说的话；' +
-                       (userReplyTargets.length ? ('用户刚才回复了「' + userReplyTargets.join('、') + '」，被回复的人必须回复用户；') : '') +
-                       '作者本人和其他 NPC 也都要有人回复用户/互相接话；同时至少 2 条是全新的评论者首次出现；\n')
+                    ? ('- 下面有 ' + pendingUser.length + ' 条待回复的用户评论：必须逐条各生成 1 条回复（U1、U2……一条都不能漏），禁止只回第一条，禁止把多条回复合并到同一条评论里，也不要只在同一条评论下面连写几句；\n' +
+                       '- 回复对象统一写「' + (currentUser.name || '用户') + '」，但内容必须分别针对对应的那条用户评论；按 U1→U2→… 的顺序输出这些回复；\n' +
+                       (userReplyTargets.length ? ('- 用户刚才回复了「' + userReplyTargets.join('、') + '」，被回复的人必须回复用户；\n') : '') +
+                       '- 作者本人和其他 NPC 也都要有人回复用户/互相接话；同时至少 2 条是全新的评论者首次出现；\n')
                     : '- 至少 2 条必须是此前没在这条评论区出现过的新评论者；\n') +
                 '- 回复对象必须是这条动态的评论区里真正发过评论的人；作者本人在评论区没留言时，绝对不能写「回复作者」；不要回复只点赞的人；\n' +
                 '- 每条评论的内容要和「回复对象」一致，不要张冠李戴；\n' +
@@ -2593,9 +2634,13 @@
             var existingUsers = (item.comments || []).map(function(c) { return c.user; });
             var parsed = filterCommentList(parseCommentLines(rawForComments), authorChar, bound, npcs, isUserPost, existingUsers);
             // 一次请求就结束：不再为了凑够 7 条额外调用第二次 API。
-            // 关键兜底：用户评论后必须有人回复用户；被回复的人优先，否则作者本人。
-            parsed = parsed.slice(0, 10);
-            parsed = await ensureUserReply(item, parsed, authorChar, bound, npcs, isUserPost, persona, authorForeign);
+            // 截断时优先保留「回复用户」的条目，避免多条用户评论的回复被条数上限裁掉。
+            var __userKey = normName(currentUser.name);
+            var __toUserReplies = parsed.filter(function (c) { return c && normName(c.toUser || '') === __userKey; });
+            var __restParsed = parsed.filter(function (c) { return !(c && normName(c.toUser || '') === __userKey); });
+            parsed = __restParsed.slice(0, Math.max(0, 10 - __toUserReplies.length)).concat(__toUserReplies);
+            // 关键兜底：每一条待回复的用户评论都必须有回应；被回复的人优先，否则作者本人。
+            parsed = await ensureUserReplies(item, parsed, authorChar, bound, npcs, isUserPost, persona, authorForeign);
             // 模型完全没按格式输出时，用作者可能认识的人补两条短评，别让「刷新」看起来毫无反应。
             if (!parsed.length) {
                 var fbTexts = authorForeign.foreign
@@ -2763,7 +2808,18 @@
         var charQuota = Math.min(charNames.length, total);
         var npcFill = Math.max(0, total - charQuota);
         var lines = [];
+        var recentTexts = (momentsData || []).slice(0, 12).map(function (m) { return m && m.text; });
+        var recentMotifs = momentRepeatedMotifs(recentTexts, 8);
+        var ownRecentDigest = (chars || []).map(function (c) {
+            if (!c || !c.name) return '';
+            var list = (momentsData || []).filter(function (m) { return m && normName(m.author) === normName(c.name); })
+                .slice(0, 2).map(function (m) { return String(m.text || '').replace(/\s+/g, ' ').slice(0, 100); }).filter(Boolean);
+            return list.length ? ('· ' + c.name + ' 最近发过：' + list.join(' / ')) : '';
+        }).filter(Boolean).join('\n');
         lines.push('请一次性生成 ' + total + ' 条朋友圈动态，每条自带点赞和评论互动，像真人随手发的日常：');
+        lines.push('- 【反重复 · 最高优先级】同一位作者的新动态绝对不能重复 TA 最近发过的同一件事、同一个梗、同一种抱怨或同一句式；同一个生活小事最多出现一次。' +
+            (recentMotifs ? ('最近朋友圈反复出现：' + recentMotifs + '，本次必须避开这些词/梗。') : '') +
+            '不要为了延续话题而把同一个小事件再发一遍。');
         if (opts.onlyChars) {
             lines.push('- 发布者只能从已选角色里挑，尽量不同的人各发一条，名字原样使用；');
         } else {
@@ -2802,7 +2858,8 @@
         lines.push('- 严禁以用户身份发动态、点赞或评论；');
         lines.push('- 每条评论不超过 25 字。');
         return persona +
-            '\n\n【最近的朋友圈（可延续话题，别重复）】\n' + (recent || '（暂无）') +
+            '\n\n【最近的朋友圈（本次必须避开重复的题材/事件/梗/句式，不要为了延续话题而重发）】\n' + (recent || '（暂无）') +
+            (ownRecentDigest ? ('\n' + ownRecentDigest) : '') +
             '\n\n' + lines.join('\n') +
             '\n\n严格按下面格式输出（不要 markdown、不要编号、不要多余解释）：\n' +
             '===MOMENT===\nAUTHOR: 名字\nMEDIA: image 或 text\nIMAGE: 若 MEDIA=image，写这句照片拍的是什么（如：融化的草莓冰淇淋特写）；纯文字留空\nTEXT: 文案\nLOCATION: 地点（可留空）\nLIKES: 名字1,名字2（必须 2~4 个，不得包含用户）\nCOMMENT: 评论者|回复对象|内容\nCOMMENT: 评论者||内容\n（每条动态必须写 3~4 条 COMMENT）\n\n（下一条动态重复 ===MOMENT=== 结构）';
@@ -2906,6 +2963,21 @@
             try {
                 parsed = await requestPosts(selected, npcs, npcFill, recent, { total: total, npcFill: npcFill });
                 parsed = (parsed || []).slice(0, total);
+                // 本地再兜一层：同一作者最新动态若和刚生成的文案完全一样，直接丢弃，逼迫模型换素材。
+                var __recentTextMap = {};
+                (momentsData || []).slice(0, 20).forEach(function (m) {
+                    if (!m || !m.author) return;
+                    var k = normName(m.author);
+                    var t = String(m.text || '').replace(/\s+/g, '');
+                    if (!t) return;
+                    if (!__recentTextMap[k]) __recentTextMap[k] = {};
+                    __recentTextMap[k][t] = 1;
+                });
+                parsed = parsed.filter(function (p) {
+                    var t = String((p && p.text) || '').replace(/\s+/g, '');
+                    var map = __recentTextMap[normName(p && p.author)];
+                    return !(t && map && map[t]);
+                });
             } catch (err) {
                 showApiError(err);
                 try { if (window.NanoRefresh) NanoRefresh.fail(err, { key: 'moments' }); } catch (e) {}

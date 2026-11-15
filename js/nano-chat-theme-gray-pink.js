@@ -4,9 +4,11 @@
    ------------------------------------------------------------
    气泡取自内置小组件「灰粉对话」：我方浅粉、对方深灰（已去掉波点）。
    顶栏 / 底栏参考 iMessage：悬浮圆形按钮 + 胶囊输入栏。
-   供 js/beautify.js 的「内置风格」切换使用，挂载到
-   window.NANO_CHAT_TEMPLATE_GRAY_PINK。
-   ============================================================ */
+    供 js/beautify.js 的「内置风格」切换使用，挂载到
+    window.NANO_CHAT_TEMPLATE_GRAY_PINK。
+
+    速查：内置背景图 / 覆盖「上传的背景图」→ 见文件末尾「10. DIY」。
+    ============================================================ */
 
 window.NANO_CHAT_TEMPLATE_GRAY_PINK = `/* ============================================================
    灰粉对话 · Gray-Pink（内置第二套）
@@ -1320,6 +1322,44 @@ body.nano-groups .bottom-bar > .send-btn i {
 }
 body.nano-groups .bottom-bar > .send-btn.reply-mode::after { display: none !important; }
 body.nano-groups .bottom-bar > .send-btn:active { transform: scale(0.9); background: #1c1c1e !important; }
+
+/* ============================================================
+   10. DIY：在灰粉模板里直接内置背景图 / 覆盖「上传的背景图」★
+   ------------------------------------------------------------
+   原理：
+   · 「上传背景图」写到 #chatBg，内联样式 + !important，模板 CSS 直接改它的
+     background 会被内联 !important 压住。
+   · 所以用 .chat-container::before 另画一层背景（z-index:0），
+     消息区 .message-scroll 是 z-index:1，顶/底栏是 30/40，不会挡气泡和按钮。
+   · 灰粉模板本身给 .chat-bg 设了白底，想看到模板背景图必须先让它透明。
+
+   // ① 内置背景图，但保留「用户上传优先」：
+   body.nano-chat-inner .chat-bg { background-color: transparent !important; }
+   body.nano-chat-inner .chat-container::before,
+   body.nano-groups .chat-container::before {
+     content: ""; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+     background: url("https://your.cdn/chat-bg.jpg") center / cover no-repeat !important;
+   }
+
+   // ② 强制用模板背景图覆盖用户上传图：私聊隐藏 #chatBg 即可。
+   //    群聊没有 #chatBg，上传图直接写在 .chat-container 上，模板图本来就在它上层。
+   body.nano-chat-inner #chatBg,
+   body.nano-groups #chatBg { display: none !important; }
+
+   // ③ 压暗 / 渐变，让文字更清楚：
+   body.nano-chat-inner .chat-container::before {
+     background:
+       linear-gradient(rgba(74,74,74,.16), rgba(74,74,74,.24)),
+       url("https://your.cdn/chat-bg.jpg") center / cover no-repeat !important;
+   }
+
+   // ④ 本地图片：放进项目 images/ 目录，路径写相对路径
+   background: url("../images/chat-bg.jpg") center / cover no-repeat !important;
+
+   // ⑤ 只要私聊生效就删掉 body.nano-groups 那几行；群聊也要就保持。
+   //    注意：群聊的上传背景直接写在 .chat-container 上，没有 #chatBg；
+   //    所以群聊里模板图会盖住上传图，想保留群聊上传背景就删掉 body.nano-groups 的 ::before。
+   ============================================================ */
 
 /* @js
 (function () {

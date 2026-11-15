@@ -7,11 +7,13 @@
 /sw.js
   Cache-Control: no-cache
 
+# 版本化资源（?v=）可以安全复用；未带版本号的脚本交给 SW 后台更新。
+# 不再对全部 JS/CSS 强制 no-cache，否则每次打开都要重新回源，页面会明显变慢。
 /js/*
-  Cache-Control: no-cache
+  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
 
 /css/*
-  Cache-Control: no-cache
+  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
 
 /icons/*
   Cache-Control: public, max-age=86400

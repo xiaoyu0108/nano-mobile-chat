@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 // chat-core.js - 核心聊天逻辑（IndexedDB 版）
 // ============================================================
 (function() {
@@ -732,10 +732,102 @@
     }
 
     // ===== 朋友圈记忆（用户/自己发的动态 + 互动）=====
-    // 只读 localStorage 里的朋友圈数据，不额外调用 API；让角色在私聊里知道这些事。
-    function __momentsMemoryBlock() {
+    // moments.js 正常把动态/评论写在 IndexedDB，localStorage 只在兜底/后台推送时使用。
+    // 两处都读，合并成一份缓存；私聊只注入最近、最相关的几条，避免记忆太多反而记不住。
+    let __momentsMemoryCache = null;
+
+    function __readLocalMoments() {
         try {
             const arr = JSON.parse(localStorage.getItem('nano_moments_data') || '[]');
+            return Array.isArray(arr) ? arr : [];
+        } catch (e) { return []; }
+    }
+
+    function __readIdbMoments() {
+        return new Promise(function (resolve) {
+            try {
+                if (!('indexedDB' in window)) { resolve([]); return; }
+                const req = indexedDB.open('NanoMomentsDB', 1);
+                req.onupgradeneeded = function (e) {
+                    try {
+                        const d = e.target.result;
+                        if (!d.objectStoreNames.contains('moments')) d.createObjectStore('moments', { keyPath: 'id' });
+                    } catch (err) {}
+                };
+                req.onsuccess = function (e) {
+                    try {
+                        const d = e.target.result;
+                        if (!d.objectStoreNames.contains('moments')) { try { d.close(); } catch (err) {} resolve([]); return; }
+                        const tx = d.transaction('moments', 'readonly');
+                        const get = tx.objectStore('moments').getAll();
+                        get.onsuccess = function () { try { d.close(); } catch (err) {} resolve(get.result || []); };
+                        get.onerror = function () { try { d.close(); } catch (err) {} resolve([]); };
+                    } catch (err) { resolve([]); }
+                };
+                req.onerror = function () { resolve([]); };
+            } catch (e) { resolve([]); }
+        });
+    }
+
+    async function __refreshMomentsMemoryCache() {
+        const local = __readLocalMoments();
+        const idb = await __readIdbMoments();
+        const map = {};
+        local.concat(idb).forEach(function (p) {
+            if (!p || !p.id) return;
+            const old = map[p.id];
+            // IDB 是朋友圈页主存储，评论/点赞更全，优先保留评论更多的那份。
+            if (!old || ((p.comments && p.comments.length) || 0) >= ((old.comments && old.comments.length) || 0)) map[p.id] = p;
+        });
+        const mid = String((currentUser && currentUser.id) || 'default');
+        const arr = Object.keys(map).map(function (k) { return map[k]; }).filter(function (p) {
+            if (!p || !p.author) return false;
+            if (p.maskId && String(p.maskId) !== mid) return false;
+            return true;
+        }).sort(function (a, b) {
+            return (new Date(b.time || 0).getTime() || 0) - (new Date(a.time || 0).getTime() || 0);
+        });
+        __momentsMemoryCache = arr;
+        return arr;
+    }
+
+    function __momentRecentFor(name, n) {
+        const key = __sameName;
+        const arr = (__momentsMemoryCache && __momentsMemoryCache.length) ? __momentsMemoryCache : __readLocalMoments();
+        return (arr || []).filter(function (p) {
+            return p && p.author && key(p.author, name);
+        }).sort(function (a, b) {
+            return (new Date(b.time || 0).getTime() || 0) - (new Date(a.time || 0).getTime() || 0);
+        }).slice(0, n || 3);
+    }
+
+    // 找出最近动态里反复出现的两字词/梗，明确告诉模型本次必须避开。
+    function __momentMotifHints(texts, limit) {
+        const list = (texts || []).map(function (t) { return String(t || ''); }).filter(Boolean);
+        if (list.length < 2) return '';
+        const STOP = '今天 昨天 明天 现在 刚刚 已经 还是 就是 不是 没有 觉得 感觉 真的 有点 一点 一个 这个 那个 我们 你们 他们 自己 什么 怎么 这么 那么 可以 因为 所以 但是 然后 如果 时候 出来 起来 下去 上来 看到 知道 东西 事情 地方 朋友 一起 开始 结束 最后 应该 可能 不会 不要 不能 还有 以及 而且 或者 虽然 不过 其实 本来 后来 突然 一直 总是 每天 下次 这次'.split(/\s+/);
+        const stop = {};
+        for (let i = 0; i < STOP.length; i++) stop[STOP[i]] = 1;
+        const freq = {};
+        list.forEach(function (t) {
+            const clean = t.replace(/[^\u4e00-\u9fa5]/g, '');
+            const seen = {};
+            for (let i = 0; i < clean.length - 1; i++) {
+                const g = clean.slice(i, i + 2);
+                if (!g || stop[g] || seen[g]) continue;
+                seen[g] = 1;
+                freq[g] = (freq[g] || 0) + 1;
+            }
+        });
+        const need = Math.max(2, Math.ceil(list.length * 0.6));
+        return Object.keys(freq).filter(function (g) { return freq[g] >= need; })
+            .sort(function (a, b) { return freq[b] - freq[a]; })
+            .slice(0, limit || 8).join('、');
+    }
+
+    function __momentsMemoryBlock() {
+        try {
+            const arr = (__momentsMemoryCache && __momentsMemoryCache.length) ? __momentsMemoryCache : __readLocalMoments();
             if (!Array.isArray(arr) || !arr.length) return '';
             const me = displayName || chatName || '';
             const user = currentUserName || '用户';
@@ -755,23 +847,55 @@
                     return c && (__sameName(c.user, me) || __sameName(c.user, user) || __sameName(c.toUser, me) || __sameName(c.toUser, user) ||
                         boundNames.some(function (b) { return __sameName(c.user, b); }));
                 });
-            }).slice(0, 8);
+            });
             if (!relevant.length) return '';
-            const blocks = relevant.map(function (p) {
-                const who = __sameName(p.author, user) ? user : p.author;
-                let s = '- ' + who + '发的朋友圈：' + String(p.text || '').replace(/\s+/g, ' ').slice(0, 180);
-                if (p.location) s += '（' + String(p.location).slice(0, 30) + '）';
-                const likes = (Array.isArray(p.likes) ? p.likes : []).slice(0, 8);
-                if (likes.length) s += '；点赞：' + likes.join('、');
-                const cs = (Array.isArray(p.comments) ? p.comments : []).slice(-4);
+            const seenText = {};
+            const picked = [];
+            function addPicked(p) {
+                if (!p || picked.length >= 3) return;
+                const textKey = String(p.text || '').replace(/\s+/g, '').slice(0, 80);
+                if (textKey && seenText[textKey]) return;
+                if (textKey) seenText[textKey] = 1;
+                picked.push(p);
+            }
+            // 用户/自己的最新动态优先占位：它们最需要在私聊里被自然提起。
+            addPicked(relevant.find(function (p) { return __sameName(p.author, user); }));
+            addPicked(relevant.find(function (p) { return __sameName(p.author, me); }));
+            for (let i = 0; i < relevant.length && picked.length < 3; i++) addPicked(relevant[i]);
+            picked.sort(function (a, b) {
+                return (new Date(b.time || 0).getTime() || 0) - (new Date(a.time || 0).getTime() || 0);
+            });
+            const hasUserPost = picked.some(function (p) { return __sameName(p.author, user); });
+            const hasOwnPost = picked.some(function (p) { return __sameName(p.author, me); });
+            const blocks = picked.map(function (p) {
+                const isUserPost = __sameName(p.author, user);
+                const isOwnPost = __sameName(p.author, me);
+                const who = isUserPost ? ('用户（' + user + '）') : (isOwnPost ? '你' : p.author);
+                let s = '- ' + who + '发的朋友圈：' + String(p.text || '').replace(/\s+/g, ' ').slice(0, 140);
+                if (p.location) s += '（' + String(p.location).slice(0, 24) + '）';
+                const likes = (Array.isArray(p.likes) ? p.likes : []).filter(function (n) {
+                    return __sameName(n, me) || __sameName(n, user) || boundNames.some(function (b) { return __sameName(n, b); });
+                }).slice(0, 3);
+                if (likes.length) s += '；相关点赞：' + likes.join('、');
+                // 评论只带最近 2 条：优先选与用户/自己/熟人有关的，避免整段评论区塞进上下文。
+                const allComments = (Array.isArray(p.comments) ? p.comments : []).filter(Boolean);
+                const involvedComments = allComments.filter(function (c) {
+                    return __sameName(c.user, me) || __sameName(c.user, user) || __sameName(c.toUser, me) || __sameName(c.toUser, user) ||
+                        boundNames.some(function (b) { return __sameName(c.user, b); });
+                });
+                const cs = (involvedComments.length ? involvedComments : allComments).slice(-2);
                 if (cs.length) {
                     s += '；评论：' + cs.map(function (c) {
-                        return String(c.user || '') + (c.toUser ? (' 回复 ' + c.toUser) : '') + '：' + String(c.text || '').replace(/\s+/g, ' ').slice(0, 80);
+                        return String(c.user || '') + (c.toUser ? (' 回复 ' + c.toUser) : '') + '：' + String(c.text || '').replace(/\s+/g, ' ').slice(0, 60);
                     }).join(' / ');
                 }
                 return s;
             });
-            return '\n\n【朋友圈 · 你记得的动态】\n以下是你自己、用户以及你认识的人最近的朋友圈和互动。你确实知道这些内容，可以在聊天里自然提起、吃醋、试探或装作不知道；不要机械复述，也不要说“系统告诉我的”。\n' + blocks.join('\n');
+            let header = '【朋友圈 · 最近的动态（精简版，不是全部）】\n'
+                + '下面只挑了你、用户和熟人最近相关的几条朋友圈及评论。你确实知道这些内容，但不要逐条复述、不要每轮都提，也不要说“系统告诉我的”；只有本轮话题自然相关时，才用一句带过。';
+            if (hasUserPost) header += '\n用户最近发过朋友圈：偶尔可以自然地提起其中一件具体的事（问一句后续、接一个细节或轻轻调侃），但不要每次都提、不要逐条点评。';
+            if (hasOwnPost) header += '\n你自己最近也发过动态：可以自然补充后续或提到评论区里的互动，同一件事不要连续多轮重复提。';
+            return '\n\n' + header + '\n' + blocks.join('\n');
         } catch (e) { return ''; }
     }
 
@@ -7403,6 +7527,7 @@
     async function generateAutoMoment() {
         const config = await getApiConfig();
         if (!config || !config.mainUrl || !config.mainKey || !config.mainModel) return null;
+        try { await __refreshMomentsMemoryCache(); } catch (e) {}
         const setting = characterData ? (characterData.setting || characterData.desc || characterData.persona || '') : '';
         const uName = (currentUser && currentUser.name) || currentUserName || '用户';
         const now = new Date();
@@ -7411,7 +7536,11 @@
         try {
             mem = String(__memHints || '').split('\n').filter(Boolean).slice(0, 8).join('\n');
         } catch (e) {}
+        const __recentOwn = __momentRecentFor(displayName || charName || '角色', 3);
+        const __recentOwnText = __recentOwn.map(function (p) { return String(p.text || '').replace(/\s+/g, ' ').slice(0, 120); }).filter(Boolean).join('\n');
+        const __motifs = __momentMotifHints(__recentOwn.map(function (p) { return p.text; }), 8);
         let sys = '你是「' + (displayName || charName || '角色') + '」，一个真实的人。请发一条朋友圈动态。严格贴合你的人设与你们的关系，像真人发朋友圈一样自然，禁止 AI 腔、禁止解释、禁止出戏。\n' +
+            '【反重复 · 最高优先级】这条动态必须避开你最近发过的同一件事、同一个梗、同一种抱怨和同一句式；不要反复消费“吉他弦又断了 / 又加班 / 猫又打翻杯子”这类同质素材。同一个生活小事最多出现一次，这次换一个具体的新鲜事或新情绪。' + (__motifs ? ('最近反复出现的词/梗：' + __motifs + '，本次必须避开。') : '') + '\n' +
             '口语、生活化、松弛不端着。大多数情况写 100~220 字，把一件具体的事或一种情绪讲完整，带细节、有画面、有意思的表达，不要每次都只说一句话；也可以写短帖（100 字以下，2~4 句，也要有意思），偶尔写 300~500 字长文——追星/演唱会 repo、好物分享、情感经历、求助/避雷、深夜碎碎念等，要有具体细节、真实情绪和起承转合，不要 AI 腔。长度跟着角色当下的情绪、事情大小和人设走，也不要为了凑字硬写。题材从吃喝玩乐、旅游、日常碎片、宠物、天气、开心、emo、吐槽、发疯、追星、避雷、攻略、测评、健身打卡、读书、职场、提问、投票、段子、恋爱日常、热点八卦里自然长出来。广告只做隐晦暗广，先讲真实体验和小缺点。\n' +
             '不要写成流水账或日程记录：拒绝“早上…中午…晚上…”地罗列作息，也拒绝“今天天气不错 / 吃了三明治 / 上班好累 / 晚安”这类谁都能发的空话；要落到一件具体的事或一个具体的细节，有只有你此刻才会发的东西。\n' +
             '只输出一个 JSON，不要多余内容：{"text":"动态文案","wantImage":true 或 false,"imagePrompt":"若想配图，描述这张照片的画面；不配图则留空","location":"地点或空字符串"}';
@@ -7422,17 +7551,46 @@
         try { if (window.NanoPrompts && NanoPrompts.appendTo) sys = NanoPrompts.appendTo(sys, 'moments', { keepFormat: true }); } catch (e) {}
         const userMsg = (setting ? ('【你的人设】\n' + setting.slice(0, 600) + '\n\n') : '') +
             (mem ? ('【最近发生的事】\n' + mem + '\n\n') : '') +
+            (__recentOwnText ? ('【你最近发过的朋友圈（本次必须避开，不要重复同样的事/梗/句式）】\n' + __recentOwnText + '\n\n') : '') +
             '【现在】' + timeStr + '（' + uName + '在你的好友里）。发一条自然、具体、不流水账的朋友圈。';
+        function __parseMomentObj(raw) {
+            let obj = null;
+            const ai = String(raw || '').indexOf('{'), aj = String(raw || '').lastIndexOf('}');
+            if (ai > -1 && aj > ai) { try { obj = JSON.parse(String(raw).slice(ai, aj + 1)); } catch (e) {} }
+            return (obj && obj.text) ? obj : null;
+        }
+        function __looksRepeated(text) {
+            const clean = function (s) { return String(s || '').replace(/\s+/g, ''); };
+            const a = clean(text);
+            if (!a) return false;
+            if (__recentOwnText.split('\n').some(function (t) { return clean(t) && clean(t) === a; })) return true;
+            if (__motifs) {
+                const hit = __motifs.split('、').some(function (m) { return m && a.indexOf(m) > -1; });
+                if (hit) return true;
+            }
+            return false;
+        }
         suppressApiAlerts = true;
         let content = null;
         try {
             content = await callMainApiRaw([{ role: 'system', content: sys }, { role: 'user', content: userMsg }], 1400, 0.95);
         } catch (e) {} finally { suppressApiAlerts = false; }
         if (!content) return null;
-        let obj = null;
-        const ai = content.indexOf('{'), aj = content.lastIndexOf('}');
-        if (ai > -1 && aj > ai) { try { obj = JSON.parse(content.slice(ai, aj + 1)); } catch (e) {} }
-        if (!obj || !obj.text) return null;
+        let obj = __parseMomentObj(content);
+        if (!obj) return null;
+        // 模型偶尔无视提示词继续复读同一个梗：只重写一次，明确要求换素材。
+        if (__looksRepeated(obj.text)) {
+            suppressApiAlerts = true;
+            let retryContent = null;
+            try {
+                retryContent = await callMainApiRaw([
+                    { role: 'system', content: sys + '\n【本次重写】上一条生成又重复了你最近发过的素材，这是不允许的。请彻底换一个具体的新事件/新情绪，不要再用同样的梗、同样的抱怨或同样的关键词。' },
+                    { role: 'user', content: userMsg }
+                ], 1400, 0.95);
+            } catch (e) {} finally { suppressApiAlerts = false; }
+            const retryObj = __parseMomentObj(retryContent);
+            if (retryObj) obj = retryObj;
+        }
         return obj;
     }
     // 选出参与本次朋友圈的 3~4 位角色/NPC（当前角色 + 通讯录里其他角色）
@@ -7620,12 +7778,25 @@
     async function generateAutoMomentBatch() {
         const config = await getApiConfig();
         if (!config || !config.mainUrl || !config.mainKey || !config.mainModel) return null;
+        try { await __refreshMomentsMemoryCache(); } catch (e) {}
         const uName = (currentUser && currentUser.name) || currentUserName || '用户';
         const timeStr = nowHHMM();
         let mem = '';
         try { mem = String(__memHints || '').split('\n').filter(Boolean).slice(0, 8).join('\n'); } catch (e) {}
         const authors = pickMomentAuthors(5);
         const authorNames = authors.map(function (a) { return a.name; }).join('、');
+        const __recentMap = {};
+        const __motifMap = {};
+        authors.forEach(function (a) {
+            const list = __momentRecentFor(a.name, 3);
+            __recentMap[a.name] = list.map(function (p) { return String(p.text || '').replace(/\s+/g, ' ').slice(0, 110); }).filter(Boolean);
+            __motifMap[a.name] = __momentMotifHints(list.map(function (p) { return p.text; }), 6);
+        });
+        const __recentInfo = authors.map(function (a) {
+            const list = __recentMap[a.name] || [];
+            if (!list.length) return '';
+            return '· ' + a.name + ' 最近发过：' + list.join(' / ') + (__motifMap[a.name] ? ('（最近反复出现：' + __motifMap[a.name] + '，本次必须避开）') : '');
+        }).filter(Boolean).join('\n');
         const authorInfo = authors.map(function (a) {
             let st = '';
             try {
@@ -7644,6 +7815,7 @@
             + '【最高优先级】任何 char 之间都绝对不允许互相评论、回复、点赞或接话，即使角色关系/悄悄话记录写了认识也不行。char 只能和 NPC 互动；char 的动态下评论区只能出现 NPC。\n'
             + '【发帖人】优先让「' + (authors[0] && authors[0].name) + '」至少发 1 条；其余动态由名单里的其他角色发，数量不够时由作者可能认识的 NPC 发帖补足到 ' + totalPosts + ' 条。作者不要重复太多，内容贴合各自人设、身份和当天心情。\n'
             + '【拒绝流水账】严禁把动态写成日程记录或流水账：不要“早上…中午…晚上…”地罗列作息，也不要“今天天气不错 / 吃了三明治 / 上班好累 / 晚安”这种谁都能发的空话。每条都要落到一件具体的事或一个具体的细节（一个地点、一个人、一句话、刚发生的一个小插曲，或一种有来由的情绪），要有只有这个人此刻才会发的东西。宁少勿滥。\n'
+            + '【反重复 · 最高优先级】同一位作者的新动态绝对不能重复 TA 最近发过的同一件事、同一个梗、同一种抱怨或同一句式（例如反复写“吉他弦又断了”）。同一个生活小事最多出现一次；如果最近反复出现某个词/梗，这次必须彻底换一个具体的新素材。不同作者的动态也不能同质化。\n'
             + '【文案长度】这一批约一半写短帖（100 字以下，2~4 句，也要有意思），一半写中等长度（100~220 字，把一件具体的事或情绪讲完整，有细节、有画面）；偶尔挑 1 条写 300~500 字长文——追星/演唱会 repo、好物分享、情感经历、求助/避雷、深夜碎碎念等，要有细节、真实情绪和起承转合，不要 AI 腔。不要每次都只说一句话，也不要为了凑字硬写。\n'
             + '【重要 · 朋友圈不是聊天】这是发在朋友圈的动态，不是私聊：不要对任何人说话，不要提问，不要出现「你要不要/你去吗/在吗/一起吃吗」这类约人或聊天的语气；只分享自己的日常与心情。禁止 AI 腔、禁止解释、禁止出戏。\n'
             + '【互动规则】每条必须写 2~4 个点赞、3~4 条评论。点赞者/评论者只能是作者生活里真实存在的同学、朋友、同事、家人、邻居等 NPC（可以虚构真实完整姓名），可以是动态作者/评论区里的人。'
@@ -7656,6 +7828,7 @@
         try { if (window.NanoPrompts && NanoPrompts.appendTo) sys = NanoPrompts.appendTo(sys, 'moments', { keepFormat: true }); } catch (e) {}
         const userMsg = '【朋友圈成员与人设】\n' + authorInfo + '\n\n'
             + (mem ? ('【最近发生的事】\n' + mem + '\n\n') : '')
+            + (__recentInfo ? ('【各自最近发过的动态（本次必须避开，不要重复同样的事/梗/句式）】\n' + __recentInfo + '\n\n') : '')
             + '【现在】' + timeStr + '（' + uName + '在他们的好友里，但朋友圈动态不是说给 ' + uName + ' 听的，只是他们各自的日常分享）。'
             + '请输出 ' + totalPosts + ' 条自然、具体、不流水账的朋友圈动态，每条都带点赞和评论互动。';
         suppressApiAlerts = true;
@@ -7671,7 +7844,14 @@
             if (oi > -1 && oj > oi) { try { arr = [JSON.parse(content.slice(oi, oj + 1))]; } catch (e) {} }
         }
         if (!Array.isArray(arr)) return null;
-        arr = filterMomentInteractionsByGraph(arr.filter(function (o) { return o && o.text; }).slice(0, 5), authors);
+        const __cleanText = function (s) { return String(s || '').replace(/\s+/g, ''); };
+        arr = arr.filter(function (o) {
+            if (!o || !o.text) return false;
+            const recent = __recentMap[o.author] || [];
+            const t = __cleanText(o.text);
+            return !recent.some(function (r) { return __cleanText(r) === t; });
+        });
+        arr = filterMomentInteractionsByGraph(arr.slice(0, 5), authors);
         return arr.length ? { items: arr, authors: authors } : null;
     }
     async function ensureAutoInteractions(posts, names) {
@@ -10007,6 +10187,8 @@
             try { await getEmojiData(true); } catch (e) {}
             // 刷新角色日程上下文（当前在做什么、今天/明天安排、是否被叫醒）
             try { if (window.NanoScheduleBridge) await window.NanoScheduleBridge.refreshContext({ charId: chatId, charName: displayName, nationality: (characterData && (characterData.nationality || characterData.country)) || '' }); } catch (e) {}
+            // 朋友圈/私聊互通：每轮回复前从 IndexedDB + localStorage 合并最新动态和评论。
+            try { await __refreshMomentsMemoryCache(); } catch (e) {}
             let __sys = buildSystemPrompt();
             if (__taOn) {
                 __sys += '\n\n【聊天记录时间标注】对话记录里每条消息前括号中的日期和时间，是系统标注的真实发送时间（按你的当地时间）。它只用来判断隔了多久、是早上还是深夜；你自己回复时不要输出这种时间标注。';
@@ -15280,13 +15462,10 @@ if (data.type === 'NANO_VOICE_CALL_CARD' || data.type === 'NANO_VIDEO_CALL_CARD'
 
     // ===== 启动 =====
     (async function init() {
-        // 表情包 / 角色库并行读，别再串行等两次 IndexedDB。
-        try {
-            await Promise.all([
-                getEmojiData().catch(function () {}),
-                loadAllCharactersFromDB()
-            ]);
-        } catch (e) {}
+        // 角色库必须先读（决定当前角色）；表情包只有打开表情面板才用得到，
+        // 放到后台加载，别再让首屏消息等表情数据。
+        getEmojiData().catch(function () {});
+        try { await loadAllCharactersFromDB(); } catch (e) {}
         setupCharacter();
         try { pushPeekPersona(); } catch (e) {}
 

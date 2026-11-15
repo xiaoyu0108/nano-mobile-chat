@@ -67,24 +67,6 @@
   (function installIdbShim() {
     if (!window.indexedDB || indexedDB.__nanoSafeOpen) return;
     var nativeOpen = indexedDB.open.bind(indexedDB);
-    var versionMap = null;
-    var versionPromise = null;
-
-    function loadVersions() {
-      if (versionPromise) return versionPromise;
-      versionPromise = new Promise(function (resolve) {
-        if (!indexedDB.databases) { resolve(null); return; }
-        try {
-          indexedDB.databases().then(function (list) {
-            var map = {};
-            (list || []).forEach(function (d) { if (d && d.name) map[d.name] = d.version; });
-            versionMap = map;
-            resolve(map);
-          }).catch(function () { resolve(null); });
-        } catch (e) { resolve(null); }
-      });
-      return versionPromise;
-    }
 
     function safeOpen(name, version) {
       var self = {
@@ -167,10 +149,10 @@
         bind(req);
       }
 
-      loadVersions().then(function (map) {
-        var existing = map && map[name];
-        realOpen(existing && Number(existing) > Number(version) ? null : version);
-      });
+      // 直接按调用方版本打开；只有真的遇到 VersionError 才无版本重试。
+      // 不再先调 indexedDB.databases()：这个预检在移动端经常要几十到几百毫秒，
+      // 而每个页面启动都要开好几个库，会明显拖慢首屏和聊天加载。
+      realOpen(version);
 
       return self;
     }

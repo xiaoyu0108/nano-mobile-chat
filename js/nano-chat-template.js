@@ -27,6 +27,7 @@
    纯 CSS 可以用 ::before / ::after 的 content 加文字/图标/URL 图片。
 
    速查：
+   - 内置背景图 / 覆盖「上传的背景图」：见「配方 P」
    - URL 图片覆盖图标：`.xxx i,.xxx svg{display:none} .xxx::before{content:url("图片")}`
    - 去透明外包裹/玻璃：background / backdrop-filter / border / box-shadow 清零
    - 顶/底栏加底：直接写 .topbar{background:#fff} / .bottom-bar{background:#fff} 即可；
@@ -1284,6 +1285,46 @@ window.NANO_CHAT_TEMPLATE = `/* ================================================
    // 用图片做底栏遮罩：
    :root { --chat-bottom-mask: url("https://your.cdn/bottom.png") center / cover no-repeat; }
 */
+
+/* ============================================================
+   配方 P：在模板里直接内置背景图 / 覆盖「上传的背景图」★
+   ------------------------------------------------------------
+   原理（很重要）：
+   · 聊天设置里「上传背景图」会把图片写到 #chatBg 上，而且是内联样式 + !important。
+     内联 !important 的优先级高于模板 CSS，所以不要直接和 #chatBg 的 background 硬拼。
+   · 正确做法：用 .chat-container::before 自己画一层背景图。
+     ::before 的 z-index 是 0，消息区 .message-scroll 是 1，顶栏/底栏是 30/40，
+     所以它只会垫在气泡下面，不会挡住消息和按钮。
+
+   // ① 内置背景图，但保留「用户上传优先」：
+   //    不隐藏 #chatBg。没上传时看得到模板图；上传后 #chatBg 会盖住模板图。
+   body.nano-chat-inner .chat-container::before,
+   body.nano-groups .chat-container::before {
+     content: ""; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+     background: url("https://your.cdn/chat-bg.jpg") center / cover no-repeat !important;
+   }
+
+   // ② 强制用模板背景图覆盖用户上传的背景图：
+   //    私聊把 #chatBg 隐藏即可（它只负责画上传图，不影响消息和按钮）。
+   //    群聊没有 #chatBg，上传图是写在 .chat-container 上的，模板图本来就在它上层。
+   body.nano-chat-inner #chatBg,
+   body.nano-groups #chatBg { display: none !important; }
+
+   // ③ 想加一层压暗 / 渐变，让文字更清楚：background 写成两层
+   body.nano-chat-inner .chat-container::before {
+     background:
+       linear-gradient(rgba(0,0,0,.18), rgba(0,0,0,.28)),
+       url("https://your.cdn/chat-bg.jpg") center / cover no-repeat !important;
+   }
+
+   // ④ 用项目里的本地图片：把图片放进 images/ 目录，路径写相对路径
+   background: url("../images/chat-bg.jpg") center / cover no-repeat !important;
+
+   // ⑤ 只想私聊使用：删掉带 body.nano-groups 的那几行即可；
+   //    群聊也想用同一张图就保持不变。
+   //    注意：群聊的上传背景直接写在 .chat-container 上，没有 #chatBg；
+   //    所以群聊里模板图会盖住上传图，想保留群聊上传背景就删掉 body.nano-groups 的 ::before。
+   ============================================================ */
 
 /* ============================================================
    6. DIY 覆盖区（把自定义规则放这里，放最下面）
