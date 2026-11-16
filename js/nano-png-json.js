@@ -174,17 +174,51 @@
     return btoa(s);
   }
 
-  function embedText(arrayBuffer, key, value) {
-    const png = new Uint8Array(arrayBuffer);
+  function insertChunk(png, chunk) {
     const iend = findIend(png);
     if (iend < 0) throw new Error('PNG 文件不完整，找不到 IEND');
-    const textBytes = new TextEncoder().encode(String(key || 'nano_card') + '\u0000' + String(value == null ? '' : value));
-    const chunk = makeChunk('tEXt', textBytes);
     const out = new Uint8Array(png.length + chunk.length);
     out.set(png.subarray(0, iend), 0);
     out.set(chunk, iend);
     out.set(png.subarray(iend), iend + chunk.length);
     return out.buffer;
+  }
+
+  function embedText(arrayBuffer, key, value) {
+    const png = new Uint8Array(arrayBuffer);
+    const textBytes = new TextEncoder().encode(String(key || 'nano_card') + '\u0000' + String(value == null ? '' : value));
+    return insertChunk(png, makeChunk('tEXt', textBytes));
+  }
+
+  async function deflateText(text) {
+    const bytes = new TextEncoder().encode(String(text == null ? '' : text));
+    if (window.pako && typeof window.pako.deflate === 'function') {
+      return window.pako.deflate(bytes);
+    }
+    if (typeof CompressionStream !== 'undefined') {
+      try {
+        const cs = new CompressionStream('deflate');
+        const stream = new Blob([bytes]).stream().pipeThrough(cs);
+        return new Uint8Array(await new Response(stream).arrayBuffer());
+      } catch (e) {}
+    }
+    return null;
+  }
+
+  async function embedCompressedText(arrayBuffer, key, text) {
+    const deflated = await deflateText(text);
+    if (!deflated) return embedText(arrayBuffer, key, text);
+    const keyBytes = new TextEncoder().encode(String(key || 'nano_text'));
+    const data = new Uint8Array(keyBytes.length + 2 + deflated.length);
+    data.set(keyBytes, 0);
+    data[keyBytes.length] = 0;
+    data[keyBytes.length + 1] = 0;
+    data.set(deflated, keyBytes.length + 2);
+    return insertChunk(new Uint8Array(arrayBuffer), makeChunk('zTXt', data));
+  }
+
+  async function embedJsonCompressed(arrayBuffer, key, obj) {
+    return embedCompressedText(arrayBuffer, key, JSON.stringify(obj));
   }
 
   function embedJson(arrayBuffer, key, obj) {
@@ -201,6 +235,60 @@
         if (!chunks[key]) continue;
         const value = parseValue(chunks[key]);
         if (value && (value.nano || (value.data && value.data.nano))) return value;
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  function normalizeEmojiPack(value) {
+    if (!value || typeof value !== 'object') return null;
+    const root = value.data && typeof value.data === 'object' ? value.data : value;
+    let list = null;
+    if (Array.isArray(root.emojis)) list = root.emojis;
+    else if (Array.isArray(root.stickers)) list = root.stickers;
+    else if (Array.isArray(root.items)) list = root.items;
+    else if (Array.isArray(value.emojis)) list = value.emojis;
+    else if (Array.isArray(value)) list = value;
+    if (!list || !list.length) return null;
+    const emojis = [];
+    list.forEach(function (e) {
+      if (!e) return;
+      if (typeof e === 'string') {
+        if (!/^(https?:\/\/|data:image\/)/i.test(e)) return;
+        emojis.push({ name: '表情包', url: e, addedAt: 0 });
+        return;
+      }
+      if (typeof e !== 'object') return;
+      const u = e.url || e.src || e.image || e.img || e.link || e.file || e.href || e.path;
+      if (!u) return;
+      emojis.push({
+        name: String(e.name || e.title || e.label || e.desc || e.meaning || e.text || e.key || '表情包'),
+        url: String(u),
+        addedAt: Number(e.addedAt) || 0
+      });
+    });
+    if (!emojis.length) return null;
+    return {
+      format: root.format || value.format || 'nano_emoji_v1',
+      kind: 'emoji',
+      name: String(root.name || root.title || value.name || '导入的表情包'),
+      desc: String(root.desc || root.description || value.desc || ''),
+      totalCount: Number(root.totalCount || value.totalCount) || emojis.length,
+      emojis: emojis
+    };
+  }
+
+  async function extractEmojiPack(arrayBuffer) {
+    try {
+      const chunks = await readChunks(arrayBuffer);
+      const keys = ['nano_emoji', 'nano_emojis', 'nano_sticker', 'nano_stickers', 'emoji_pack', 'sticker_pack', 'stickers', 'emojis', 'json'];
+      const seen = {};
+      for (const key of keys.concat(Object.keys(chunks))) {
+        if (!key || seen[key] || !chunks[key]) continue;
+        seen[key] = true;
+        const value = parseValue(chunks[key]);
+        const pack = normalizeEmojiPack(value);
+        if (pack) return pack;
       }
     } catch (e) {}
     return null;
@@ -226,6 +314,9 @@
     extractRules: extractRules,
     embedText: embedText,
     embedJson: embedJson,
-    extractNanoCard: extractNanoCard
+    embedCompressedText: embedCompressedText,
+    embedJsonCompressed: embedJsonCompressed,
+    extractNanoCard: extractNanoCard,
+    extractEmojiPack: extractEmojiPack
   };
 })();

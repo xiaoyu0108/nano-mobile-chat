@@ -1550,13 +1550,13 @@ body:has(#appHost.show) .ab-ball { display: none !important; }
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 }
 .ct-msg-bubble{
-  max-width:100%;padding:6px 11px;border-radius:14px;
+  max-width:100%;padding:6px 11px;border-radius:18px;
   font-size:13.5px;line-height:1.48;letter-spacing:-.1px;
   word-break:break-word;overflow-wrap:anywhere;
   color:#1b1b1b;background:#f4f4f4;
 }
-.ct-msg.left .ct-msg-bubble{border-top-left-radius:5px}
-.ct-msg.right .ct-msg-bubble{background:#1b1b1b;color:#fff;border-top-right-radius:5px}
+.ct-msg.left .ct-msg-bubble{border-radius:18px}
+.ct-msg.right .ct-msg-bubble{background:#1b1b1b;color:#fff;border-radius:18px}
 /* 底栏 */
 .ct-inputbar{
   flex:none;background:#fff;border-top:1px solid #f2f2f2;
@@ -1688,3 +1688,46 @@ body:has(#appHost.show) .ab-ball { display: none !important; }
 .app.drop-target,.widget-large.drop-target{outline:2px solid rgba(0,122,255,.72);outline-offset:-3px;border-radius:18px}
 .app,.widget-large{-webkit-touch-callout:none}
 
+
+/* ===== 查手机 · 视频/相册/浏览器 扩展内容 ===== */
+.vd-tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+.vd-tag{display:inline-flex;align-items:center;height:18px;padding:0 7px;border-radius:9px;background:#f0f0f2;color:#777b82;font-size:9.5px;font-weight:650;letter-spacing:.2px;white-space:nowrap}
+.vd-tag.main{background:#1b1b1b;color:#fff}
+.vd-tag.fav{background:#fff3dc;color:#a9791f}
+.vd-tag.private{background:#ffe8ee;color:#b94d69}
+.vd-tags.detail{margin:14px 0 4px}
+.vd-desc-text{font-size:13.5px;line-height:1.8;color:#62656c}
+.vd-note{margin-top:12px;padding:10px 12px;border-radius:12px;background:#f7f7f8;color:#7a7d84;font-size:12px;line-height:1.6}
+.vd-private-hint{margin-top:10px;font-size:11px;color:#b94d69}
+.vd-comment-user{display:block;font-size:11px;font-weight:700;color:#555;margin-bottom:3px}
+.vd-comment{padding:9px 0;border-bottom:1px solid #f4f4f4}
+.vd-comment:last-child{border-bottom:0}
+.vd-comment-text{font-size:12.5px;line-height:1.55;color:#777}
+
+.ab-tabs{display:flex;gap:8px;overflow-x:auto;padding:0 1px 12px;-webkit-overflow-scrolling:touch}
+.ab-tab{flex:none;height:30px;padding:0 13px;border-radius:15px;border:1px solid #e6e6e9;background:#fff;color:#8a8d94;font-size:12px;font-weight:600;cursor:pointer}
+.ab-tab.active{background:#171717;border-color:#171717;color:#fff}
+.ab-photo-badge{position:absolute;left:10px;top:10px;height:20px;padding:0 8px;border-radius:10px;background:rgba(255,255,255,.72);backdrop-filter:blur(6px);color:#4b4d52;font-size:9.5px;font-weight:700;display:flex;align-items:center}
+.ab-photo.private .ab-photo-badge{background:rgba(255,225,232,.85);color:#a33a57}
+.ab-photo-meta{position:absolute;left:12px;right:12px;bottom:10px;text-align:center;font-size:9.5px;color:#696b70;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ab-viewer-body{flex-direction:column;gap:18px}
+.ab-viewer-card{flex:none}
+.ab-viewer-text{font-size:22px;line-height:1.5;font-weight:700;text-align:center}
+.ab-viewer-meta{width:100%;max-width:390px;color:#c7c9ce;font-size:12px;line-height:1.7}
+.ab-viewer-detail{color:#e4e5e8;font-size:13px;line-height:1.75}
+.ab-viewer-info{margin-top:8px;color:#8f9298;font-size:11px;letter-spacing:.2px}
+
+.bw-intro{font-size:14.5px;line-height:1.85;color:#55585f}
+.bw-section{padding:14px 0;border-top:1px solid #f0f0f2}
+.bw-section-title{font-size:13.5px;font-weight:750;color:#2d3036;margin-bottom:7px}
+.bw-section-text{font-size:13px;line-height:1.8;color:#686b72}
+.bw-section-list{margin-top:8px}
+.bw-related-title,.bw-comments-title{margin-top:20px;padding-top:16px;border-top:1px solid #f0f0f2;font-size:11px;font-weight:700;letter-spacing:1px;color:#8f8f8f;margin-bottom:8px}
+.bw-related{display:flex;flex-direction:column;gap:10px}
+.bw-related-item{padding:11px 12px;border-radius:12px;background:#f7f7f8}
+.bw-related-name{font-size:12.5px;font-weight:650;color:#35383e;line-height:1.45}
+.bw-related-site{margin-top:4px;font-size:10px;color:#9a9da4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bw-comment{padding:10px 0;border-bottom:1px solid #f4f4f4}
+.bw-comment:last-child{border-bottom:0}
+.bw-comment-user{display:block;font-size:11px;font-weight:700;color:#555;margin-bottom:3px}
+.bw-comment-text{font-size:12.5px;line-height:1.6;color:#777}

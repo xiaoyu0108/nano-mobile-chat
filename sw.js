@@ -1,15 +1,18 @@
 /* sw.js — 用于 PWA 安装、通知点击聚焦、静态资源加速。
-   缓存策略（解决“每次打开都要好几秒”）：
-     · HTML：首屏 index.html 先联网（no-store，绕过 GitHub 的 HTTP 缓存），最多等 0.25 秒就先用缓存；
-       带 ?v= / ?nb= 的页面（首页 iframe、App 内页都走 nb）内容随构建号变化，直接缓存秒开；
-       其余子页面先用缓存秒开，后台静默更新
-     · CSS / JS / 图片 / 图标 / 字体：先用缓存秒开；带 ?v= 的直接用缓存，不带版本号的后台静默更新
-       —— 改 JS/CSS 时一定要同步改对应的 ?v=，否则会继续命中旧缓存
+   缓存策略（解决“每次打开都要好几秒”与“每次更新都整站重载”）：
+     · 缓存名固定、发版不清空：未改动的资源一直命中缓存，只下载真正改过的文件。
+       只有从更老的版本升级上来时，才会清理一次旧名字的缓存。
+     · HTML：首屏 index.html 与 home.html 先联网（no-store），最多等 0.25 秒就先用缓存；
+       其余子页面先用缓存秒开，后台静默更新，下次打开即最新。
+       页面 URL 不再拼构建号，避免每次发版所有 iframe 换 key 全部重新下载。
+     · CSS / JS / 图片 / 图标 / 字体：先用缓存秒开；改过的文件请同步改对应的 ?v=，
+       没有 ?v= 的资源会在后台静默更新。
      · 跨域（CDN）请求不拦截，交给浏览器自己的缓存
    注意：Service Worker 无法在应用被关闭后持续运行 AI 生成，
    “后台回复”依赖页面常驻 + 音频保活；真正的“关闭也能收到”需要服务端配合（见 push 事件）。 */
 'use strict';
 
+// 缓存代号固定不变：发版不要改这里。改了会触发一次整站缓存清理，所有页面又要重新下载。
 var CACHE = 'nano-static-v407';
 var STATIC_RE = /\.(css|js|png|jpg|jpeg|webp|svg|gif|ico|woff2?|ttf|mp3)$/i;
 var HTML_NET_TIMEOUT_MS = 250;        // 首屏 HTML 有缓存时最多等 0.25 秒，超时立刻上缓存
@@ -48,7 +51,12 @@ self.addEventListener('install', function (event) {
 self.addEventListener('activate', function (event) {
     event.waitUntil(
         caches.keys().then(function (keys) {
-            return Promise.all(keys.map(function (k) { return k === CACHE ? null : caches.delete(k); }));
+            // 只清理旧版按版本号命名的缓存；当前固定缓存名保留，发版不再整站重新下载。
+            return Promise.all(keys.map(function (k) {
+                if (k === CACHE) return null;
+                if (k.indexOf('nano-static') !== 0) return null;
+                return caches.delete(k);
+            }));
         }).then(function () { return self.clients.claim(); })
     );
 });
@@ -62,13 +70,13 @@ self.addEventListener('fetch', function (event) {
 
     var isHTML = req.mode === 'navigate' || /\.html?$/i.test(url.pathname) || /\/$/.test(url.pathname);
     if (isHTML) {
-        // 首屏 index.html 始终先联网，避免旧页面一直压住新构建号；
-        // 但只等 0.25 秒，网络慢时立刻用缓存，不再让每次打开都卡 0.7 秒。
-        // 子页面（尤其带 ?v= / ?nb= 的 iframe 页面）直接命中缓存秒开：
-        // nb 跟随 window.__NANO_BUILD__ 变化，构建号一换就是新缓存键，不会串旧页面。
-        // 不带版本号的子页面走「先用缓存，后台静默更新」，下次打开就是最新。
+        // 首屏 index.html / home.html 先联网，最多等 0.25 秒；网络慢时立刻用缓存。
+        // 其余子页面直接命中缓存秒开，后台静默更新，下次打开就是最新。
+        // 页面 URL 不拼构建号：发版后未改动的页面继续用缓存，不会整站重新下载。
         var isRoot = /\/$/.test(url.pathname) || /\/index\.html?$/i.test(url.pathname);
-        var versioned = url.searchParams.has('v') || url.searchParams.has('nb');
+        var isHome = /\/home\.html$/i.test(url.pathname);
+        var isEntry = isRoot || isHome;
+        var versioned = url.searchParams.has('v');
         event.respondWith(
             caches.open(CACHE).then(function (cache) {
                 return cache.match(req).then(function (cached) {
@@ -94,11 +102,13 @@ self.addEventListener('fetch', function (event) {
                             });
                         });
                     }
-                    if (!isRoot) {
+                    if (!isEntry) {
                         // 子页面先用缓存显示，网络结果只用来更新缓存，不阻塞进入。
                         event.waitUntil(network.catch(function () {}));
                         return cached;
                     }
+                    // 超时先返回缓存后，仍让网络请求在后台把新 HTML 写进缓存。
+                    event.waitUntil(network.catch(function () {}));
                     return Promise.race([
                         network.then(function (res) { return res || cached; }),
                         new Promise(function (resolve) { setTimeout(function () { resolve(cached); }, HTML_NET_TIMEOUT_MS); })
@@ -118,7 +128,7 @@ self.addEventListener('fetch', function (event) {
                 return cache.match(req).then(function (cached) {
                     if (cached) {
                         if (!url.searchParams.has('v')) {
-                            event.waitUntil(fetch(req).then(function (res) {
+                            event.waitUntil(fetch(req, { cache: 'no-cache' }).then(function (res) {
                                 try { if (res && res.status === 200) cache.put(req, res.clone()); } catch (e) {}
                             }).catch(function () {}));
                         }
@@ -141,7 +151,7 @@ self.addEventListener('fetch', function (event) {
                 // 有缓存就立刻返回，不再等网络（之前会先等最多 700ms，导致每次打开都慢半拍）。
                 if (cached) {
                     if (!url.searchParams.has('v')) {
-                        event.waitUntil(fetch(req).then(function (res) {
+                        event.waitUntil(fetch(req, { cache: 'no-cache' }).then(function (res) {
                             try { if (res && res.status === 200) cache.put(req, res.clone()); } catch (e) {}
                         }).catch(function () {}));
                     }

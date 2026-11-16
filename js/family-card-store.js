@@ -217,7 +217,8 @@
         try {
             var w = JSON.parse(localStorage.getItem(charKey(chatId)) || 'null');
             if (!w || typeof w !== 'object') {
-                return { balance: 5000, transactions: [], seedVersion: 2 };
+                var p0 = charProfile(chatId);
+                return { balance: (p0 && Number(p0.balance)) || 5000, transactions: [], seedVersion: 2 };
             }
             if (typeof w.balance !== 'number') w.balance = 0;
             if (!Array.isArray(w.transactions)) w.transactions = [];
@@ -270,20 +271,58 @@
             if (old && old.seedVersion === 2 && old.wealthTier === profile.tier &&
                 !!old.lowFamily === !!profile.lowFamily && !!old.veryPoor === !!profile.veryPoor &&
                 typeof old.balance === 'number') {
+                // 旧数据可能已经越滚越高（穷学生攒到十几万）：没被手动改过就压回人设区间。
+                if (!old.balanceManual && window.NanoCharWealth && NanoCharWealth.clampBalance) {
+                    var fixed = NanoCharWealth.clampBalance(profile, old.balance);
+                    if (fixed !== old.balance) {
+                        old.balance = fixed;
+                        old.balanceRange = profile.balanceRange || old.balanceRange;
+                        writeCharWallet(chatId, old);
+                    }
+                }
+                // 亲属卡「他的」需要能看到银行流水：没有流水时补一批贴合人设的历史流水。
+                if (!Array.isArray(old.transactions) || !old.transactions.length) {
+                    try {
+                        old.transactions = (window.NanoCharWealth && NanoCharWealth.randomWalletTransactions)
+                            ? NanoCharWealth.randomWalletTransactions(profile, 10, name, { balance: old.balance })
+                            : [];
+                        writeCharWallet(chatId, old);
+                    } catch (e2) {}
+                }
                 return readCharWallet(chatId);
             }
+            var seedTxs = [];
+            try {
+                seedTxs = (window.NanoCharWealth && NanoCharWealth.randomWalletTransactions)
+                    ? NanoCharWealth.randomWalletTransactions(profile, 10, name, { balance: profile.balance })
+                    : [];
+            } catch (e3) {}
             var w = {
                 balance: round2(profile.balance),
-                transactions: [],
+                transactions: seedTxs,
                 wealthTier: profile.tier,
                 wealthLabel: profile.label,
+                balanceRange: profile.balanceRange || [],
                 lowFamily: !!profile.lowFamily,
                 veryPoor: !!profile.veryPoor,
-                seedVersion: 2
+                seedVersion: 2,
+                balanceManual: false
             };
             writeCharWallet(chatId, w);
             return w;
         } catch (e) { return readCharWallet(chatId); }
+    }
+
+    // 手动修改角色银行卡余额（亲属卡「他的」页）。手动余额不会被后续自动生成压回人设区间。
+    function updateCharBalance(chatId, balance) {
+        var w = readCharWallet(chatId);
+        var v = round2(balance);
+        if (!(v >= 0)) v = 0;
+        w.balance = v;
+        w.balanceManual = true;
+        w.updatedAt = new Date().toISOString();
+        writeCharWallet(chatId, w);
+        return w;
     }
 
     function bumpCharWallet(chatId) {
@@ -303,6 +342,9 @@
             for (var i = 0; i < n; i++) bumpCharTx(w, 'expense', '日常支出', 20 + Math.random() * 100);
         }
         if (w.transactions.length > 500) w.transactions = w.transactions.slice(0, 500);
+        if (!w.balanceManual && profile && window.NanoCharWealth && NanoCharWealth.clampBalance) {
+            w.balance = NanoCharWealth.clampBalance(profile, w.balance);
+        }
         writeCharWallet(chatId, w);
         return w;
     }
@@ -347,6 +389,7 @@
         spend: spend,
         readCharWallet: readCharWallet,
         writeCharWallet: writeCharWallet,
+        updateCharBalance: updateCharBalance,
         charSpend: charSpend,
         charIncome: charIncome,
         seedCharWallet: seedCharWallet,

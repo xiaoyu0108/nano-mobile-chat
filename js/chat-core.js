@@ -899,6 +899,100 @@
         } catch (e) { return ''; }
     }
 
+    // ===== Ins 记忆（用户/角色最近发的帖子）=====
+    // Ins 的帖子存在 nano_ins_db > state > nano_ins_chat_<mask>，localStorage 只是兜底。
+    // 这里每次回复前按需读取，让角色也能“刷到”用户刚发的 Ins，并自然提起。
+    function __currentInsKey() {
+        const mid = String((currentUser && currentUser.id) || 'default');
+        return 'nano_ins_chat_' + mid;
+    }
+    function __readInsLocalPosts() {
+        try {
+            const raw = localStorage.getItem(__currentInsKey());
+            const d = raw ? JSON.parse(raw) : null;
+            return (d && Array.isArray(d.posts)) ? d.posts : [];
+        } catch (e) { return []; }
+    }
+    function __readInsIdbPosts() {
+        return new Promise(function (resolve) {
+            try {
+                if (!('indexedDB' in window)) { resolve([]); return; }
+                const req = indexedDB.open('nano_ins_db', 2);
+                req.onupgradeneeded = function (e) {
+                    try {
+                        const d = e.target.result;
+                        if (!d.objectStoreNames.contains('state')) d.createObjectStore('state', { keyPath: 'key' });
+                    } catch (err) {}
+                };
+                req.onsuccess = function (e) {
+                    try {
+                        const d = e.target.result;
+                        if (!d.objectStoreNames.contains('state')) { try { d.close(); } catch (err) {} resolve([]); return; }
+                        const tx = d.transaction('state', 'readonly');
+                        const r = tx.objectStore('state').get(__currentInsKey());
+                        r.onsuccess = function () {
+                            const v = r.result && r.result.value;
+                            try { d.close(); } catch (err) {}
+                            resolve(v && Array.isArray(v.posts) ? v.posts : []);
+                        };
+                        r.onerror = function () { try { d.close(); } catch (err) {} resolve([]); };
+                    } catch (err) { resolve([]); }
+                };
+                req.onerror = function () { resolve([]); };
+            } catch (e) { resolve([]); }
+        });
+    }
+    let __insMemoryCache = null;
+    async function __refreshInsMemoryCache() {
+        const local = __readInsLocalPosts();
+        const idb = await __readInsIdbPosts();
+        const map = {};
+        local.concat(idb).forEach(function (p) {
+            if (!p || p.id == null) return;
+            map[String(p.id)] = p;
+        });
+        __insMemoryCache = Object.keys(map).map(function (k) { return map[k]; }).sort(function (a, b) {
+            return (Number(b.id) || 0) - (Number(a.id) || 0);
+        });
+        return __insMemoryCache;
+    }
+    function __insMemoryBlock() {
+        try {
+            const arr = __insMemoryCache || __readInsLocalPosts();
+            if (!Array.isArray(arr) || !arr.length) return '';
+            const me = displayName || chatName || '';
+            const user = currentUserName || '用户';
+            const relevant = arr.filter(function (p) {
+                if (!p) return false;
+                if (__sameName(p.user, me) || __sameName(p.user, user)) return true;
+                const comments = Array.isArray(p.comments) ? p.comments : [];
+                return comments.some(function (c) {
+                    return c && (__sameName(c.user, me) || __sameName(c.user, user) ||
+                        (Array.isArray(c.replies) && c.replies.some(function (r) { return r && __sameName(r.user, me); })));
+                });
+            }).slice(0, 3);
+            if (!relevant.length) return '';
+            const hasUser = relevant.some(function (p) { return __sameName(p.user, user); });
+            const lines = relevant.map(function (p) {
+                const isUser = __sameName(p.user, user);
+                const who = isUser ? ('用户（' + user + '）') : '你';
+                let s = '- ' + who + '发的 Ins：' + String(p.title || p.body || '').replace(/\s+/g, ' ').slice(0, 140);
+                if (p.tags && p.tags.length) s += '（#' + p.tags.slice(0, 3).join(' #') + '）';
+                const cs = (Array.isArray(p.comments) ? p.comments : []).filter(function (c) {
+                    return c && (__sameName(c.user, me) || __sameName(c.user, user));
+                }).slice(-2);
+                if (cs.length) s += '；评论：' + cs.map(function (c) {
+                    return String(c.user || '') + '：' + String(c.text || '').replace(/\s+/g, ' ').slice(0, 60);
+                }).join(' / ');
+                return s;
+            });
+            let header = '【Instagram · 最近的帖子（精简版）】\n'
+                + '下面是你或用户最近在 Ins 发过的帖子。你确实知道这些内容，但不要逐条复述、不要每轮都提，也不要说“系统告诉我的”；只有本轮话题自然相关时，才用一句带过。';
+            if (hasUser) header += '\n用户最近发过 Ins：偶尔可以自然地提起其中一件具体的事（问后续、接细节或轻轻调侃），但不要每次都提。';
+            return '\n\n' + header + '\n' + lines.join('\n');
+        } catch (e) { return ''; }
+    }
+
     // ===== 深度对话判定（用于本轮语气 & 主动发图拦截）=====
     function recentUserTexts(n) {
         const out = [];
@@ -8996,6 +9090,12 @@
             // 旧卡片可能“有图但没正文”，也可能“有正文但封面丢了”；两种都要补。
             const need = !lp.image || (!lp.content && !lp.desc);
             if (!need) continue;
+            // 小红书对同一 IP 的连续请求很敏感：刚抓过的卡片先不自动补图，
+            // 否则一次分享会变成两三次请求，把后面的链接也一起风控掉。
+            if (isXhsLink(lp.url)) {
+                if (Date.now() - __lastXhsFetchAt < 5 * 60 * 1000) continue;
+                if (targets.some(function (x) { return isXhsLink(x.linkPreview && x.linkPreview.url); })) continue;
+            }
             if (!force && linkImgTried.has(String(m.id))) continue;
             // 只在本次会话里记“试过”，不要把标记写进消息，否则一次失败就永远不重试。
             linkImgTried.add(String(m.id));
@@ -9075,7 +9175,8 @@
             renderMessages();
             if (stick) scrollToBottom();
             // 小红书/抖音的封面经常第一次抓不到，稍后强制再补一次；卡片和正文已经能看，不影响先回复。
-            if (!preview.image) {
+            // 小红书连续请求容易触发风控，不再立刻重抓，避免把下一条分享也拖死。
+            if (!preview.image && !isXhsLink(url)) {
                 setTimeout(function () { try { refreshStaleLinkPreviewImages(3, true); } catch (e) {} }, 1600);
             }
         }).catch(function () {});
@@ -9793,38 +9894,70 @@
         if (/jd\.com|3\.cn/i.test(u)) return '京东';
         return '链接';
     }
+    function isXhsLink(url) {
+        return /xiaohongshu|xhslink/i.test(String(url || ''));
+    }
     // 同一轮回复里抓过的链接内容缓存起来，发送时抓一次、角色回复时不再重复请求。
     var __linkPreviewCache = {};
+    // 同一个链接的并发请求合并成一个；小红书连续发多个链接时串行 + 间隔，
+    // 避免一秒内打十几个请求被风控（表现为“第一个能解析，后面全失败”）。
+    var __linkInflight = {};
+    var __linkQueue = Promise.resolve();
+    var __lastXhsFetchAt = 0;
     function fetchLinkPreview(url, opts) {
         url = String(url || '').trim();
         opts = opts || {};
         if (!url) return Promise.resolve(null);
         if (!opts.force && __linkPreviewCache[url]) return Promise.resolve(__linkPreviewCache[url]);
-        return fetchLinkContent(url).then(function (c) {
-            // 被登录/滑块页拦截时，如果还是抓到了帖子配图/商品主图，也保留图片做卡片；
-            // 只有既没有正文也没有图时才彻底放弃。
-            var blocked = isBlockedLinkContent(c);
-            var hasImages = !!(c && c.images && c.images.length);
-            if (blocked && !hasImages) return null;
-            var content = blocked ? '' : String(c.content || c.desc || '');
-            var firstLine = content.split(/\n+/).map(function (s) { return s.trim(); }).filter(Boolean)[0] || '';
-            var title = blocked ? '' : String(c.title || firstLine || '');
-            if (!title && !/^(小红书|抖音|快手|微博|哔哩哔哩|B站|淘宝|天猫|京东)\s*$/i.test(String(c.title || ''))) {
-                title = String(c.title || '');
-            }
-            var preview = {
-                url: url,
-                site: linkSiteLabel(url),
-                title: String(title || firstLine || linkSiteLabel(url)).replace(/\s+/g, ' ').slice(0, 120),
-                desc: blocked ? '' : String(c.desc || content.replace(/\s+/g, ' ')).replace(/\s+/g, ' ').slice(0, 160),
-                image: (c.images && c.images[0]) || '',
-                price: blocked ? '' : (c.price || ''),
-                content: content.slice(0, 7000),
-                at: Date.now()
-            };
-            __linkPreviewCache[url] = preview;
-            return preview;
-        }).catch(function () { return null; });
+        if (__linkInflight[url]) return __linkInflight[url];
+        function runTask() {
+            return fetchLinkContent(url).then(function (c) {
+                // 被登录/滑块页拦截时，如果还是抓到了帖子配图/商品主图，也保留图片做卡片；
+                // 只有既没有正文也没有图时才彻底放弃。
+                var blocked = isBlockedLinkContent(c);
+                var hasImages = !!(c && c.images && c.images.length);
+                if (blocked && !hasImages) return null;
+                var content = blocked ? '' : String(c.content || c.desc || '');
+                var firstLine = content.split(/\n+/).map(function (s) { return s.trim(); }).filter(Boolean)[0] || '';
+                var title = blocked ? '' : String(c.title || firstLine || '');
+                if (!title && !/^(小红书|抖音|快手|微博|哔哩哔哩|B站|淘宝|天猫|京东)\s*$/i.test(String(c.title || ''))) {
+                    title = String(c.title || '');
+                }
+                var preview = {
+                    url: url,
+                    site: linkSiteLabel(url),
+                    title: String(title || firstLine || linkSiteLabel(url)).replace(/\s+/g, ' ').slice(0, 120),
+                    desc: blocked ? '' : String(c.desc || content.replace(/\s+/g, ' ')).replace(/\s+/g, ' ').slice(0, 160),
+                    image: (c.images && c.images[0]) || '',
+                    price: blocked ? '' : (c.price || ''),
+                    content: content.slice(0, 7000),
+                    at: Date.now()
+                };
+                __linkPreviewCache[url] = preview;
+                return preview;
+            }).catch(function () { return null; });
+        }
+        var task;
+        if (isXhsLink(url)) {
+            task = __linkQueue.catch(function () {}).then(function () {
+                var wait = Math.max(0, 1500 - (Date.now() - __lastXhsFetchAt));
+                return new Promise(function (resolve) { setTimeout(resolve, wait); }).then(function () {
+                    __lastXhsFetchAt = Date.now();
+                    return runTask();
+                });
+            });
+            __linkQueue = task.catch(function () {});
+        } else {
+            task = runTask();
+        }
+        __linkInflight[url] = task;
+        return task.then(function (v) {
+            delete __linkInflight[url];
+            return v;
+        }, function (e) {
+            delete __linkInflight[url];
+            throw e;
+        });
     }
     function _decHtml(s) {
         return String(s || '')
@@ -9903,15 +10036,87 @@
     function parseHtmlMeta(html) {
         html = String(html || '');
         function pick(re) { var m = html.match(re); return m ? m[1] : ''; }
-        var title = pick(/<meta[^>]+property=["']og:title["'][^>]*content=["']([\s\S]*?)["']/i)
+        var xhs = parseXhsInitialState(html);
+        var title = (xhs && xhs.title) || pick(/<meta[^>]+property=["']og:title["'][^>]*content=["']([\s\S]*?)["']/i)
             || pick(/<meta[^>]+content=["']([\s\S]*?)["'][^>]*property=["']og:title["']/i)
             || pick(/<title[^>]*>([\s\S]*?)<\/title>/i);
         var jt = html.match(/"title"\s*:\s*"([^"]{1,200})"/i);
         if (jt && jt[1] && (!title || /^(小红书|抖音|快手|微博|哔哩哔哩|B站)/i.test(_decHtml(title)))) title = jt[1];
-        var desc = pick(/<meta[^>]+property=["']og:description["'][^>]*content=["']([\s\S]*?)["']/i)
+        var desc = (xhs && xhs.desc) || pick(/<meta[^>]+property=["']og:description["'][^>]*content=["']([\s\S]*?)["']/i)
             || pick(/<meta[^>]+name=["']description["'][^>]*content=["']([\s\S]*?)["']/i)
             || pick(/<meta[^>]+content=["']([\s\S]*?)["'][^>]*name=["']description["']/i);
-        return { title: _decHtml(title), desc: _decHtml(desc), images: extractLinkImages(html), price: extractLinkPrice(html) };
+        var images = [];
+        if (xhs && xhs.images && xhs.images.length) {
+            xhs.images.forEach(function (u) { u = _absImg(u); if (u && images.indexOf(u) === -1 && images.length < 6) images.push(u); });
+        }
+        extractLinkImages(html).forEach(function (u) {
+            if (images.indexOf(u) === -1 && images.length < 6) images.push(u);
+        });
+        return { title: _decHtml(title), desc: _decHtml(desc), content: (xhs && xhs.content) || '', images: images, price: extractLinkPrice(html) };
+    }
+    function _extractBalancedJson(text, start) {
+        text = String(text || '');
+        var i = text.indexOf('{', start);
+        if (i < 0) return '';
+        var depth = 0, inStr = false, esc = false;
+        for (var j = i; j < text.length; j++) {
+            var c = text.charAt(j);
+            if (inStr) {
+                if (esc) esc = false;
+                else if (c === '\\') esc = true;
+                else if (c === '"') inStr = false;
+            } else {
+                if (c === '"') inStr = true;
+                else if (c === '{') depth++;
+                else if (c === '}') { depth--; if (!depth) return text.slice(i, j + 1); }
+            }
+        }
+        return '';
+    }
+    // 小红书新版笔记页把正文/配图放在 window.__INITIAL_STATE__ 里，
+    // og:title / og:image 经常缺失，只靠 meta 会解析成空卡片。
+    function parseXhsInitialState(html) {
+        html = String(html || '');
+        var m = html.match(/__INITIAL_STATE__\s*=\s*/);
+        if (!m) return null;
+        var raw = _extractBalancedJson(html, m.index + m[0].length);
+        if (!raw) return null;
+        raw = raw.replace(/([:\[,]\s*)undefined(\s*[,}\]])/g, '$1null$2');
+        var state;
+        try { state = JSON.parse(raw); } catch (e) { return null; }
+        var map = state && state.note && state.note.noteDetailMap;
+        if (!map || typeof map !== 'object') return null;
+        var note = null;
+        Object.keys(map).some(function (k) {
+            var item = map[k];
+            var n = item && (item.note || item.noteCard || item);
+            if (n && (n.title || n.desc || (Array.isArray(n.imageList) && n.imageList.length))) {
+                note = n;
+                return true;
+            }
+            return false;
+        });
+        if (!note) return null;
+        var title = String(note.title || '').replace(/\s+/g, ' ').trim();
+        var desc = String(note.desc || '').replace(/\s+/g, ' ').trim();
+        var tags = (Array.isArray(note.tagList) ? note.tagList : []).map(function (t) {
+            return t && t.name ? String(t.name) : '';
+        }).filter(Boolean);
+        var author = (note.user && (note.user.nickname || note.user.nickName)) || '';
+        var parts = [];
+        if (title) parts.push(title);
+        if (desc) parts.push(desc);
+        if (tags.length) parts.push(tags.map(function (t) { return '#' + t; }).join(' '));
+        if (author) parts.push('作者：' + author);
+        var imgs = [];
+        (Array.isArray(note.imageList) ? note.imageList : []).forEach(function (im) {
+            if (!im) return;
+            var u = im.urlDefault || im.urlPre || im.url ||
+                (Array.isArray(im.infoList) && im.infoList[0] && im.infoList[0].url) || '';
+            if (u) imgs.push(String(u));
+        });
+        if (!title && !desc && !imgs.length) return null;
+        return { title: title, desc: desc, content: parts.join('\n'), images: imgs };
     }
     function _cleanLinkText(s) {
         return String(s || '')
@@ -9973,6 +10178,79 @@
                     };
                 });
         }
+        // 可选：用户自己搭的小红书 / 链接解析服务。小红书对 Cloudflare 机房 IP
+        // 和公共代理越来越严格，自建服务（带真实登录 Cookie 或第三方 API）最稳。
+        function normalizeCustomPayload(j) {
+            if (!j || typeof j !== 'object') return null;
+            var root = j.data && typeof j.data === 'object' && !Array.isArray(j.data) ? j.data : j;
+            var note = root.note || (root.data && root.data.note) || null;
+            if (note && typeof note === 'object') {
+                var nTitle = String(note.title || '');
+                var nDesc = String(note.desc || '');
+                var nImgs = [];
+                (Array.isArray(note.imageList) ? note.imageList : []).forEach(function (im) {
+                    var u = im && (im.urlDefault || im.urlPre || im.url ||
+                        (Array.isArray(im.infoList) && im.infoList[0] && im.infoList[0].url));
+                    if (u) nImgs.push(String(u));
+                });
+                return { title: nTitle, desc: nDesc, content: [nTitle, nDesc].filter(Boolean).join('\n'), images: nImgs.map(_absImg).filter(Boolean), price: '' };
+            }
+            var title = root.title || root.name || '';
+            var desc = root.desc || root.description || root.summary || '';
+            var content = root.content || root.text || root.body || root.markdown || '';
+            var images = root.images || root.imageList || root.pics || root.pictures || [];
+            if (typeof images === 'string') images = [images];
+            if (!Array.isArray(images)) images = [];
+            images = images.map(function (x) {
+                return typeof x === 'string' ? x : (x && (x.url || x.src || x.urlDefault || x.image || ''));
+            }).filter(Boolean).map(_absImg).filter(Boolean);
+            var price = root.price || root.priceText || '';
+            if (!title && !desc && !content && !images.length) return null;
+            return {
+                title: String(title),
+                desc: String(desc || content).replace(/\s+/g, ' ').slice(0, 180),
+                content: String(content || [title, desc].filter(Boolean).join('\n')).slice(0, 7000),
+                images: images.slice(0, 6),
+                price: String(price || '')
+            };
+        }
+        function fromCustom() {
+            return getApiConfig().then(function (cfg) {
+                var base = String((cfg && (cfg.linkParserUrl || cfg.linkParser)) || '').trim();
+                if (!base) throw new Error('no custom parser');
+                var token = String((cfg && (cfg.linkParserToken || cfg.linkParserKey)) || '').trim();
+                var endpoint = base.indexOf('{url}') >= 0
+                    ? base.replace('{url}', encodeURIComponent(url))
+                    : base + (base.indexOf('?') >= 0 ? '&' : '?') + 'url=' + encodeURIComponent(url);
+                var headers = { 'Accept': 'application/json, text/html;q=0.8, */*;q=0.6' };
+                if (token) headers['Authorization'] = /^Bearer\s/i.test(token) ? token : ('Bearer ' + token);
+                return linkFetch(endpoint, { cache: 'no-store', headers: headers }, 12000)
+                    .then(function (r) {
+                        if (!r || !r.ok) throw new Error('custom http');
+                        var ct = '';
+                        try { ct = String((r.headers && r.headers.get && r.headers.get('content-type')) || '').toLowerCase(); } catch (e) {}
+                        if (ct.indexOf('text/html') >= 0) {
+                            return r.text().then(function (html) {
+                                var meta = parseHtmlMeta(html);
+                                if (!meta.title && !meta.desc && !meta.content && !(meta.images && meta.images.length)) throw new Error('custom empty');
+                                return meta;
+                            });
+                        }
+                        return r.text().then(function (txt) {
+                            var j = null;
+                            try { j = JSON.parse(txt); } catch (e) {}
+                            if (!j) {
+                                var meta = parseHtmlMeta(txt);
+                                if (!meta.title && !(meta.images && meta.images.length)) throw new Error('custom bad');
+                                return meta;
+                            }
+                            var out = normalizeCustomPayload(j);
+                            if (!out) throw new Error('custom empty');
+                            return out;
+                        });
+                    });
+            });
+        }
         function fromJina() {
             return linkFetch('https://r.jina.ai/' + url, { cache: 'no-store' }, 10000)
                 .then(function (r) { if (!r.ok) throw new Error('http'); return r.text(); })
@@ -10025,13 +10303,16 @@
                     if (m2) bodyText = _decHtml(String(m2[1]).replace(/\\n/g, ' ').replace(/\\u[\dA-Fa-f]{4}/g, ' '));
                     var visible = _cleanLinkText(html.replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<style[\s\S]*?<\/style>/gi, ' '));
                     var priceLine = meta.price ? ('价格：¥' + meta.price) : '';
-                    var content = [priceLine, bodyText, meta.desc, visible].filter(Boolean).join('\n').slice(0, 7000);
+                    var bodyTextAndDesc = [bodyText, meta.desc, visible].filter(Boolean).join('\n');
+                    var content = [priceLine, meta.content || bodyTextAndDesc].filter(Boolean).join('\n').slice(0, 7000);
                     if (!meta.title && !content) throw new Error('empty');
                     return { title: meta.title, desc: meta.desc, content: content, images: meta.images || [], price: meta.price || '' };
                 })
                 .catch(function () { return fromProxy(i + 1); });
         }
-        return fromWorker()
+        return fromCustom()
+            // 自定义解析服务没配置 / 失败时，继续走 Worker、Jina、公共代理。
+            .catch(function () { return fromWorker(); })
             // Worker 被登录/反爬页拦住时，仍然继续试 Jina / 公共代理：
             // 它们有时能拿到正文和封面，不能因为 Worker 一次失败就放弃整张卡片。
             .catch(function () { return fromJina(); })
@@ -10086,7 +10367,8 @@
             var c = null;
             try { c = await fetchLinkPreview(links[i]); } catch (e) {}
             // 缓存里可能只有封面、没有正文；本轮强制再抓一次，保证角色能看到帖子内容。
-            if (!c || (!c.content && !c.desc)) {
+            // 小红书不再强制重抓：第一条能解析、第二条失败通常就是短时间请求过多被风控。
+            if (!isXhsLink(links[i]) && (!c || (!c.content && !c.desc))) {
                 try {
                     var c2 = await fetchLinkPreview(links[i], { force: true });
                     if (c2 && (c2.content || c2.desc || c2.image)) c = c2;
@@ -10232,6 +10514,8 @@
             try { if (window.NanoScheduleBridge) await window.NanoScheduleBridge.refreshContext({ charId: chatId, charName: displayName, nationality: (characterData && (characterData.nationality || characterData.country)) || '' }); } catch (e) {}
             // 朋友圈/私聊互通：每轮回复前从 IndexedDB + localStorage 合并最新动态和评论。
             try { await __refreshMomentsMemoryCache(); } catch (e) {}
+            // Ins/私聊互通：让角色也能读到用户/自己刚发的 Ins。
+            try { await __refreshInsMemoryCache(); } catch (e) {}
             let __sys = buildSystemPrompt();
             if (__taOn) {
                 __sys += '\n\n【聊天记录时间标注】对话记录里每条消息前括号中的日期和时间，是系统标注的真实发送时间（按你的当地时间）。它只用来判断隔了多久、是早上还是深夜；你自己回复时不要输出这种时间标注。';
@@ -10264,6 +10548,8 @@
             try { __sys += __charSharingBlock(); } catch (e) {}
             // 朋友圈记忆：让角色记得用户/自己发的动态和互动
             try { __sys += __momentsMemoryBlock(); } catch (e) {}
+            // Ins 记忆：同样让角色能自然提起用户/自己刚发的帖子
+            try { __sys += __insMemoryBlock(); } catch (e) {}
             // 可编辑的角色扮演 Prompt 模板（js/roleplay-prompt.js），用户可自行修改
             try {
                 const RP = window.NanoRoleplayPrompt;

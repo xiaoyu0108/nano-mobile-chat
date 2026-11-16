@@ -2153,8 +2153,70 @@ function linkAbsImg(u) {
 function linkCleanText(s) {
   return String(s || "").replace(/!\[[^\]]*\]\([^)]*\)/g, " ").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/<[^>]+>/g, " ").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").replace(/[ \t]{2,}/g, " ").trim();
 }
+function linkBalancedJson(text, start) {
+  text = String(text || "");
+  const i = text.indexOf("{", start);
+  if (i < 0) return "";
+  let depth = 0, inStr = false, esc = false;
+  for (let j = i; j < text.length; j++) {
+    const c = text.charAt(j);
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === "\\") esc = true;
+      else if (c === '"') inStr = false;
+    } else {
+      if (c === '"') inStr = true;
+      else if (c === "{") depth++;
+      else if (c === "}") { depth--; if (!depth) return text.slice(i, j + 1); }
+    }
+  }
+  return "";
+}
+function parseXhsInitialState(html) {
+  html = String(html || "");
+  const m = html.match(/__INITIAL_STATE__\s*=\s*/);
+  if (!m) return null;
+  let raw = linkBalancedJson(html, m.index + m[0].length);
+  if (!raw) return null;
+  raw = raw.replace(/([:\[,]\s*)undefined(\s*[,}\]])/g, "$1null$2");
+  let state;
+  try { state = JSON.parse(raw); } catch (e) { return null; }
+  const map = state && state.note && state.note.noteDetailMap;
+  if (!map || typeof map !== "object") return null;
+  let note = null;
+  Object.keys(map).some(function(k) {
+    const item = map[k];
+    const n = item && (item.note || item.noteCard || item);
+    if (n && (n.title || n.desc || (Array.isArray(n.imageList) && n.imageList.length))) {
+      note = n;
+      return true;
+    }
+    return false;
+  });
+  if (!note) return null;
+  const title = String(note.title || "").replace(/\s+/g, " ").trim();
+  const desc = String(note.desc || "").replace(/\s+/g, " ").trim();
+  const tags = (Array.isArray(note.tagList) ? note.tagList : []).map(function(t) {
+    return t && t.name ? String(t.name) : "";
+  }).filter(Boolean);
+  const author = note.user && (note.user.nickname || note.user.nickName) || "";
+  const parts = [];
+  if (title) parts.push(title);
+  if (desc) parts.push(desc);
+  if (tags.length) parts.push(tags.map(function(t) { return "#" + t; }).join(" "));
+  if (author) parts.push("作者：" + author);
+  const images = [];
+  (Array.isArray(note.imageList) ? note.imageList : []).forEach(function(im) {
+    if (!im) return;
+    const u = im.urlDefault || im.urlPre || im.url || (Array.isArray(im.infoList) && im.infoList[0] && im.infoList[0].url) || "";
+    if (u) images.push(String(u));
+  });
+  if (!title && !desc && !images.length) return null;
+  return { title: title, desc: desc, content: parts.join("\n"), images: images };
+}
 function parseLinkPage(html) {
   html = String(html || "").replace(/\\u002F/gi, "/").replace(/\\\//g, "/");
+  const xhs = parseXhsInitialState(html);
   function pick(re2) {
     const m2 = html.match(re2);
     return m2 ? m2[1] : "";
@@ -2165,11 +2227,11 @@ function parseLinkPage(html) {
   }
   const docTitle = pick(/<meta[^>]+(?:property|name)=["'](?:og:title|twitter:title)["'][^>]*content=["']([\s\S]*?)["']/i) || pick(/<meta[^>]+content=["']([\s\S]*?)["'][^>]*(?:property|name)=["'](?:og:title|twitter:title)["']/i) || pick(/<title[^>]*>([\s\S]*?)<\/title>/i);
   const jsonTitle = jsonField("title") || jsonField("noteTitle") || jsonField("displayTitle");
-  let title = docTitle;
+  let title = (xhs && xhs.title) || docTitle;
   if (!title || /^(小红书|抖音|快手|微博|哔哩哔哩|B站)/i.test(linkDecodeHtml(title))) {
-    title = jsonTitle || title;
+    title = (xhs && xhs.title) || jsonTitle || title;
   }
-  let desc = pick(/<meta[^>]+(?:property|name)=["'](?:og:description|description|twitter:description)["'][^>]*content=["']([\s\S]*?)["']/i) || pick(/<meta[^>]+content=["']([\s\S]*?)["'][^>]*(?:property|name)=["'](?:og:description|description|twitter:description)["']/i) || jsonField("desc") || jsonField("description");
+  let desc = (xhs && xhs.desc) || pick(/<meta[^>]+(?:property|name)=["'](?:og:description|description|twitter:description)["'][^>]*content=["']([\s\S]*?)["']/i) || pick(/<meta[^>]+content=["']([\s\S]*?)["'][^>]*(?:property|name)=["'](?:og:description|description|twitter:description)["']/i) || jsonField("desc") || jsonField("description");
   const imgs = [];
   const seen = {};
   function addImg(u) {
@@ -2179,6 +2241,7 @@ function parseLinkPage(html) {
     seen[u] = 1;
     if (imgs.length < 6) imgs.push(u);
   }
+  if (xhs && xhs.images && xhs.images.length) xhs.images.forEach(addImg);
   let re = /<meta[^>]+(?:property|name)=["'](?:og:image(?::secure_url)?|twitter:image)["'][^>]*content=["']([^"']+)["']/gi, m;
   while (m = re.exec(html)) addImg(m[1]);
   re = /<meta[^>]+content=["']([^"']+)["'][^>]*(?:property|name)=["'](?:og:image(?::secure_url)?|twitter:image)["']/gi;
@@ -2204,7 +2267,7 @@ function parseLinkPage(html) {
   if (pm && pm[1]) price = pm[1];
   title = linkDecodeHtml(title).slice(0, 120);
   desc = linkDecodeHtml(desc).replace(/\s+/g, " ").slice(0, 180);
-  const body = [jsonTitle, jsonField("desc"), jsonField("share_title"), jsonField("description"), desc, visible].filter(Boolean).join("\n").slice(0, 7e3);
+  const body = xhs && xhs.content ? [xhs.content, jsonField("share_title")].filter(Boolean).join("\n").slice(0, 7e3) : [jsonTitle, jsonField("desc"), jsonField("share_title"), jsonField("description"), desc, visible].filter(Boolean).join("\n").slice(0, 7e3);
   return { title, desc, content: body, images: imgs, price };
 }
 function linkLooksBlocked(finalUrl, data) {
@@ -2231,22 +2294,41 @@ function linkCoverOnly(data, url) {
     price: ""
   };
 }
-function xhsDirectUrls(finalUrl) {
+function xhsDirectUrls(finalUrl, originalUrl) {
   const out = [];
-  try {
-    const fu = new URL(String(finalUrl || ""));
-    const rp = fu.searchParams.get("redirectPath") || "";
-    if (!rp) return out;
-    const direct = new URL(rp.replace(/^http:/i, "https:"));
-    const m = direct.pathname.match(/\/(?:item|explore)\/([0-9a-f]+)/i);
-    if (!m) return out;
-    const id = m[1];
-    const token = direct.searchParams.get("xsec_token") || fu.searchParams.get("xsec_token") || "";
-    const q = token ? "?xsec_token=" + encodeURIComponent(token) + "&xsec_source=app_share" : "";
-    out.push("https://www.xiaohongshu.com/explore/" + id + q);
-    out.push("https://www.xiaohongshu.com/discovery/item/" + id + q);
-  } catch (e) {
+  function info(raw) {
+    try {
+      const fu = new URL(String(raw || ""));
+      const m = fu.pathname.match(/\/(?:item|explore|discovery\/item)\/([0-9a-f]{16,})/i);
+      return { id: m ? m[1] : "", token: fu.searchParams.get("xsec_token") || "" };
+    } catch (e) {
+      return { id: "", token: "" };
+    }
   }
+  const fi = info(finalUrl);
+  const oi = info(originalUrl);
+  let id = fi.id || oi.id;
+  let token = fi.token || oi.token;
+  if (!id) {
+    try {
+      const fu = new URL(String(finalUrl || ""));
+      const rp = fu.searchParams.get("redirectPath") || "";
+      if (rp) {
+        const direct = new URL(rp.replace(/^http:/i, "https:"));
+        const m = direct.pathname.match(/\/(?:item|explore|discovery\/item)\/([0-9a-f]{16,})/i);
+        if (m) {
+          id = m[1];
+          token = token || direct.searchParams.get("xsec_token") || fu.searchParams.get("xsec_token") || "";
+        }
+      }
+    } catch (e) {
+    }
+  }
+  if (!id) return out;
+  const q = token ? "?xsec_token=" + encodeURIComponent(token) + "&xsec_source=app_share" : "";
+  out.push("https://www.xiaohongshu.com/explore/" + id + q);
+  out.push("https://www.xiaohongshu.com/discovery/item/" + id + q);
+  out.push("https://www.xiaohongshu.com/discovery/item/" + id + (q ? q + "&source=webshare" : "?source=webshare"));
   return out;
 }
 function parseJinaText(raw) {
@@ -2273,6 +2355,11 @@ function parseJinaText(raw) {
     price: ""
   };
 }
+function linkSleep(ms) {
+  return new Promise(function(resolve) {
+    setTimeout(resolve, ms);
+  });
+}
 async function fetchTextWithTimeout(target, headers, ms) {
   const controller = new AbortController();
   const timer = setTimeout(function() {
@@ -2291,7 +2378,7 @@ async function fetchTextWithTimeout(target, headers, ms) {
     clearTimeout(timer);
   }
 }
-async function fetchLinkPreview(url) {
+async function fetchLinkPreview(url, env) {
   let u;
   try {
     u = new URL(String(url || ""));
@@ -2302,11 +2389,13 @@ async function fetchLinkPreview(url) {
   if (u.protocol !== "https:" || !linkHostAllowed(u.hostname)) return null;
   const mobileUA = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1";
   const refHost = /douyin|iesdouyin/i.test(u.hostname) ? "https://www.douyin.com/" : /taobao|tb\.cn|tmall/i.test(u.hostname) ? "https://m.tb.cn/" : "";
+  const xhsCookie = env && env.XHS_COOKIE && /xiaohongshu|xhslink|xhs\.cn/i.test(u.hostname) ? { "Cookie": String(env.XHS_COOKIE) } : {};
   const first = await fetchTextWithTimeout(u.href, {
     "User-Agent": mobileUA,
     "Accept": "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8",
     "Accept-Language": "zh-CN,zh;q=0.9",
-    ...refHost ? { "Referer": refHost } : {}
+    ...refHost ? { "Referer": refHost } : {},
+    ...xhsCookie
   }, 1e4);
   let firstOk = false;
   if (first && first.text) {
@@ -2335,13 +2424,16 @@ async function fetchLinkPreview(url) {
       if (cover2) return cover2;
     }
   }
-  const directUrls = xhsDirectUrls(first && first.resp ? first.resp.url : u.href);
+  const directUrls = xhsDirectUrls(first && first.resp ? first.resp.url : u.href, u.href);
+  let directIndex = 0;
   for (const direct of directUrls) {
+    if (directIndex++ > 0) await linkSleep(700);
     const r = await fetchTextWithTimeout(direct, {
       "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
       "Accept": "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8",
       "Accept-Language": "zh-CN,zh;q=0.9",
-      "Referer": "https://www.xiaohongshu.com/"
+      "Referer": "https://www.xiaohongshu.com/",
+      ...xhsCookie
     }, 1e4);
     if (r && r.text) {
       const data = parseLinkPage(r.text);
@@ -3376,7 +3468,7 @@ var index_default = {
     if (pathname === "/link/preview" && request.method === "GET") {
       if (!autoOk(request, env, null)) return json({ ok: false, error: "unauthorized" }, 401);
       const target = new URL(request.url).searchParams.get("url") || "";
-      const data = await fetchLinkPreview(target);
+      const data = await fetchLinkPreview(target, env);
       if (!data) return json({ ok: false, error: "blocked" }, 200);
       return json(Object.assign({ ok: true }, data));
     }

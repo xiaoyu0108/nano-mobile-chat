@@ -984,7 +984,8 @@ async function refreshComments() {
     }
     let newCount = 0;
     try {
-      newCount = await generateCommentsForPost(post, bound, npcs, strangers, 10);
+      const socialContext = isUserAuthor ? await loadUserPostSocialContext(allChars) : '';
+      newCount = await generateCommentsForPost(post, bound, npcs, strangers, 10, socialContext);
     } catch (e) {
       // 旧评论一直保留着，生成失败也不用回滚任何内容。
       showToast('评论生成失败');
@@ -1000,6 +1001,26 @@ async function refreshComments() {
     insBusy.comments = false;
     hideLoading();
   }
+}
+
+// 用户发完 Ins 后，后台自动让绑定角色 + 熟人 NPC 来评论/点赞，不用手动点刷新。
+async function autoCommentOnUserPost(post) {
+  if (!post) return 0;
+  try {
+    const allChars = getSelectableChars();
+    const bound = allChars.slice();
+    const npcs = pickRandom(generateContextNPCs('user'), 5);
+    const strangers = pickRandom(strangerRosterList('user'), 5);
+    const socialContext = await loadUserPostSocialContext(bound);
+    const n = await generateCommentsForPost(post, bound, npcs, strangers, 8, socialContext);
+    if (n > 0) {
+      saveInsChatState();
+      renderFeed();
+      if (currentPost && String(currentPost.id) === String(post.id)) renderDetail();
+      showToast('角色和好友来评论了');
+    }
+    return n;
+  } catch (e) { return 0; }
 }
 
 function toggleLike(btn) {
@@ -1138,10 +1159,21 @@ async function generateInsPosts(count, topic) {
     '如果给出的可用名单不足，允许你在这一轮里直接虚构 2~4 个与作者可能认识的 NPC 或陌生网友名字（真实姓名或网名），但绝对不能使用用户本人或任何已选角色。' +
     '只返回 JSON 数组，格式：[{"user":"用户名","location":"地点","title":"标题","body":"正文","tags":["话题1","话题2"],"likes":["名字1","名字2"],"comments":[{"user":"评论者","toUser":"回复对象或空","text":"内容"}]}]，' +
     '不要 Markdown、不要解释、不要多余文字。user 优先从给定用户名里选；名单不足时可现场虚构真实姓名/网名的朋友 NPC 发帖。' + GLOBAL_PLATFORM_NOTE + DIVERSE_PLATFORM_NOTE;
+  const recentTexts = (posts || []).slice(0, 12).map(function (p) {
+    return (p && ((p.title || '') + ' ' + (p.body || ''))) || '';
+  }).filter(Boolean);
+  const recentMotifs = insRepeatedMotifs(recentTexts, 8);
+  const recentDigest = (posts || []).slice(0, 10).map(function (p) {
+    if (!p) return '';
+    return '· ' + (p.user || '') + '：' + String(p.title || p.body || '').replace(/\s+/g, ' ').slice(0, 90);
+  }).filter(Boolean).join('\n');
   const userMsg = '话题方向：' + tagPool.join('、') +
     '\n已选角色（优先每人 1 条）：' + charNames.join('、') +
     (npcQuota > 0 ? ('\n已选角色不足 ' + total + ' 条，剩余 ' + npcQuota + ' 条由朋友 NPC 补足' + (npcNames.length ? ('：' + npcNames.join('、')) : '（名单为空，可现场虚构真实姓名/网名）')) : '\n已选角色数量足够，全部由已选角色发帖') +
     '\n评论者/点赞者可用：' + (allowedNames.length ? allowedNames.join('、') : '（无预设名单，可现场虚构真实姓名/网名）') +
+    '\n【最近发过的 Ins（本次必须避开同样的事/梗/句式，不要反复发一个主题）】\n' + (recentDigest || '（暂无）') +
+    (recentMotifs ? ('\n最近反复出现的词/梗：' + recentMotifs + '，本批必须彻底换素材。') : '') +
+    '\n【平台气质】Ins 是公开主页，可以接上角色最近的生活，也可以完全发散（审美、旅行、美食、健身、作品、吐槽、追星、好物、随手拍）；不要求每条都和聊天有关，但同一批里人物、主题、场景、句式必须明显不同。' +
     '\n【最高优先级】已选角色（char）之间绝对不允许互相评论、回复、点赞或接话，即使人设/世界书/角色关系明确写了认识也不行。char 只能和用户或 NPC/陌生网友互动；char 发的帖子下只允许 NPC/陌生网友和作者本人出现，作者本人只回复用户。' +
     '\n【NPC 归属】每个 NPC 只属于自己的关系角色：A 的熟人只能出现在 A 的帖子下，绝对不要把 A 的 NPC 写到 B / C 的评论区或点赞里。';
   let out = '';
@@ -1476,6 +1508,92 @@ function loadCharMemoryText(chars) {
       req.onerror = () => resolve('');
     } catch (e) { resolve(''); }
   });
+}
+
+// 用户发 Ins 后，评论区可以出现的熟人 NPC：来自世界书、长期记忆和最近聊天。
+function loadRecentChatTextForIns(chars, rounds) {
+  const ids = (chars || []).map(c => c && c.id).filter(Boolean);
+  if (!ids.length) return Promise.resolve('');
+  const limit = Math.max(4, (Number(rounds) || 3) * 4);
+  return new Promise(resolve => {
+    try {
+      const req = indexedDB.open('nano_vector_memory_db', 5);
+      req.onupgradeneeded = e => {
+        try {
+          const d = e.target.result;
+          if (!d.objectStoreNames.contains('memories')) {
+            const ms = d.createObjectStore('memories', { keyPath: 'id' });
+            ms.createIndex('chatId', 'chatId', { unique: false });
+            ms.createIndex('type', 'type', { unique: false });
+            ms.createIndex('hasVector', 'hasVector', { unique: false });
+          }
+          if (!d.objectStoreNames.contains('config')) d.createObjectStore('config', { keyPath: 'key' });
+          if (!d.objectStoreNames.contains('chat_state')) d.createObjectStore('chat_state', { keyPath: 'chatId' });
+          if (!d.objectStoreNames.contains('chat_messages')) d.createObjectStore('chat_messages', { keyPath: 'chatId' });
+        } catch (e2) {}
+      };
+      req.onsuccess = e => {
+        try {
+          const db = e.target.result;
+          if (!db.objectStoreNames.contains('chat_messages')) { try { db.close(); } catch (e3) {} resolve(''); return; }
+          const store = db.transaction('chat_messages', 'readonly').objectStore('chat_messages');
+          const out = [];
+          let pending = ids.length;
+          ids.forEach(id => {
+            const r = store.get(String(id));
+            r.onsuccess = () => {
+              let rec = r.result;
+              let msgs = (rec && Array.isArray(rec.messages)) ? rec.messages : [];
+              if (!msgs.length) {
+                try {
+                  const raw = localStorage.getItem('chat_messages_' + id);
+                  const local = raw ? JSON.parse(raw) : [];
+                  if (Array.isArray(local)) msgs = local;
+                } catch (e6) {}
+              }
+              const ch = (chars || []).find(c => String(c.id) === String(id)) || {};
+              const chName = ch.name || '角色';
+              const lines = msgs.filter(m => m && !m.recalled && !m.isTip && !m.isCard).slice(-limit).map(m => {
+                let t = m.isVoice ? (m.transcript || m.text) : (m.isImage ? (m.imageData && m.imageData.desc ? '[' + m.imageData.desc + ']' : '[图片]') : (m.text || ''));
+                t = String(t || '').replace(/\s+/g, ' ').trim();
+                if (!t) return '';
+                const who = m.type === 'right' ? (userProfile.name || '用户') : chName;
+                return who + '：' + t.slice(0, 160);
+              }).filter(Boolean).join('\n');
+              if (lines) out.push('【' + chName + ' 与 ' + (userProfile.name || '用户') + ' 最近聊天】\n' + lines);
+              if (--pending <= 0) { try { db.close(); } catch (e4) {} resolve(out.join('\n\n')); }
+            };
+            r.onerror = () => { if (--pending <= 0) { try { db.close(); } catch (e5) {} resolve(out.join('\n\n')); } };
+          });
+        } catch (e2) { resolve(''); }
+      };
+      req.onerror = () => resolve('');
+    } catch (e) { resolve(''); }
+  });
+}
+
+async function loadUserPostSocialContext(bound) {
+  const chars = (bound || []).filter(c => c && c.name);
+  if (!chars.length) return '';
+  const ids = chars.map(c => c.id).filter(Boolean);
+  const parts = [];
+  try {
+    const wb = loadWorldbookText(ids, chars);
+    if (wb) parts.push('【世界书里的人物、关系与设定】\n' + wb);
+  } catch (e) {}
+  try {
+    const mem = await loadCharMemoryText(chars);
+    if (mem) parts.push('【角色长期记忆里真实出现过的人】\n' + mem);
+  } catch (e) {}
+  try {
+    const recent = await loadRecentChatTextForIns(chars, 4);
+    if (recent) parts.push('【角色与用户最近的聊天（里面提到的 NPC 可以来评论/点赞）】\n' + recent);
+  } catch (e) {}
+  try {
+    const up = userProfile.setting || userProfile.bio || '';
+    if (up) parts.push('【用户本人设定】\n' + String(up).slice(0, 700));
+  } catch (e) {}
+  return parts.join('\n\n').slice(0, 6500);
 }
 
 function buildPersonaBlock(allChars) {
@@ -2139,7 +2257,7 @@ function sanitizeCharInteractionsIns() {
   return changed;
 }
 
-async function generateCommentsForPost(post, bound, npcs, strangers, limit) {
+async function generateCommentsForPost(post, bound, npcs, strangers, limit, socialContext) {
   const pool = buildCommenterPool(post, bound, npcs, strangers);
   if (!pool.length) return 0;
   const canInvent = pool.filter(n => normName(n) !== normName(post.user) && normName(n) !== normName(userProfile.name)).length < 3;
@@ -2158,6 +2276,7 @@ async function generateCommentsForPost(post, bound, npcs, strangers, limit) {
   const userMsg = userPersonaBlock() + '\n\n' + persona +
     '\n\n【本帖子可以出现的评论者】\n' + pool.map(n => '· ' + n).join('\n') +
     (canInvent ? '\n名单不足时，你可以为作者现场虚构 2~4 个与 TA 可能认识的 NPC 或陌生网友名字（真实姓名或网名），但绝不能使用用户本人或其它已选角色。' : '') +
+    (socialContext ? ('\n\n【世界书 / 长期记忆 / 最近聊天里真实出现过的熟人与 NPC】\n' + socialContext + '\n请优先让其中与用户或角色真实认识的具体人物来评论（名字原样使用），不要把他们写成陌生人；没有合适的人时再虚构。') : '') +
     '\n\n【这条帖子（所有评论必须紧扣它的具体内容，禁止跑题）】\n作者：' + post.user +
     '\n标题：' + (post.title || '（无标题）') + '\n正文：' + (post.body || '（无正文）') +
     ((post.tags && post.tags.length) ? ('\n话题：' + post.tags.map(t => '#' + t).join(' ')) : '') +
@@ -2196,6 +2315,18 @@ async function generateCommentsForPost(post, bound, npcs, strangers, limit) {
   parsed = await ensureInsUserReplies(post, parsed, pool, persona, pendingUser);
   if (!parsed.length) return 0;
   appendInteractions(post, parsed, (npcs || []).concat(strangers || []), pendingUser);
+  // 用户发的帖子：所有绑定角色都应该来点赞/捧场，不能只有陌生人评论。
+  try {
+    if (normName(post.user) === normName(userProfile.name)) {
+      if (!Array.isArray(post.likedBy)) post.likedBy = [];
+      (bound || []).forEach(c => {
+        if (!c || !c.name) return;
+        if (!post.likedBy.some(x => normName(x) === normName(c.name))) post.likedBy.push(c.name);
+      });
+      post.likedBy = post.likedBy.slice(0, 10);
+      post.likes = Math.max(Number(post.likes) || 0, post.likedBy.length);
+    }
+  } catch (e) {}
   return parsed.length;
 }
 
@@ -3228,7 +3359,9 @@ function publishPost(type) {
     renderFeed(); profileTab = 'posts'; switchProfileTab('posts');
     document.getElementById('textTitle').value = ''; document.getElementById('textBody').value = '';
     tagsText = []; renderTags('text');
-    showToast('发布成功！'); setTimeout(() => go('home'), 400);
+    showToast('发布成功！');
+    setTimeout(() => { autoCommentOnUserPost(newPost); }, 450);
+    setTimeout(() => go('home'), 400);
   } else {
     const title = document.getElementById('postTitle').value.trim();
     const text = document.getElementById('postText').value.trim();
@@ -3244,7 +3377,9 @@ function publishPost(type) {
     document.getElementById('preview').style.display = 'none'; document.getElementById('preview').src = '';
     document.getElementById('mediaPick').style.display = 'flex'; fileInput.value = '';
     tagsImage = []; renderTags('image');
-    showToast('发布成功！'); setTimeout(() => go('home'), 400);
+    showToast('发布成功！');
+    setTimeout(() => { autoCommentOnUserPost(newPost); }, 450);
+    setTimeout(() => go('home'), 400);
   }
 }
 

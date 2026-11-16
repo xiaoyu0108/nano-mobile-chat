@@ -61,7 +61,7 @@
                     <button class="btn primary" id="fileImportBtn">选择文件</button>
                     <button class="btn ai-btn" id="fileAiBtn">AI 识别</button>
                 </div>
-                <div style="font-size:11px;color:rgba(0,0,0,0.25);margin-top:4px;">格式：描述: 图片链接</div>
+                <div style="font-size:11px;color:rgba(0,0,0,0.25);margin-top:4px;">格式：描述: 图片链接，或导入 Nano 表情包票根 PNG</div>
                 <div id="fileStatus" style="font-size:13px;color:#34c759;margin-top:4px;min-height:18px;"></div>
             </div>
             <div class="form-group">
@@ -158,12 +158,15 @@
         </div>
     </div>
 
-    <input type="file" class="hidden-input" id="fileInput" accept=".txt,.json,.docx,.doc">
+    <input type="file" class="hidden-input" id="fileInput" accept=".txt,.json,.docx,.doc,.png,image/png">
     <input type="file" class="hidden-input" id="imageFileInput" accept="image/*">
 
 </div>
 
-<script defer src="../js/emoji.js?v=20261102a"></script>
+<script defer src="../js/pako.min.js"></script>
+<script defer src="../js/nano-png-json.js?v=20261116a"></script>
+<script defer src="../js/nano-card-ticket.js?v=20261116a"></script>
+<script defer src="../js/emoji.js?v=20261116a"></script>
 
 <script defer src="../js/api-float.js"></script>
 <script defer src="../swipe-back.js"></script>

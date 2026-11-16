@@ -623,6 +623,32 @@
         });
     }
 
+    // 用户发朋友圈后，评论区可能出现的熟人 NPC：
+    // 从世界书、角色长期记忆和最近聊天里取材，而不是凭空造一批与角色无关的人。
+    async function loadUserPostSocialContext(bound) {
+        var chars = (bound || []).filter(function (c) { return c && c.name; });
+        if (!chars.length) return '';
+        var ids = chars.map(function (c) { return c.id; }).filter(Boolean);
+        var parts = [];
+        try {
+            var wb = loadWorldbookText(ids, chars);
+            if (wb) parts.push('【世界书里的人物、关系与设定】\n' + wb);
+        } catch (e) {}
+        try {
+            var mem = await loadCharMemoryText(chars);
+            if (mem) parts.push('【角色长期记忆里真实出现过的人】\n' + mem);
+        } catch (e) {}
+        try {
+            var recent = await loadRecentChatText(chars, 4);
+            if (recent) parts.push('【角色与用户最近的聊天（里面提到的 NPC 可以来评论/点赞）】\n' + recent);
+        } catch (e) {}
+        try {
+            var up = currentUser && (currentUser.persona || currentUser.setting || currentUser.desc || currentUser.bio);
+            if (up) parts.push('【用户本人设定】\n' + String(up).slice(0, 700));
+        } catch (e) {}
+        return parts.join('\n\n').slice(0, 6500);
+    }
+
     var MOMENT_LANG_BY_NAT = {
         '美国': '英文', '英国': '英文', '澳大利亚': '英文', '加拿大': '英文', '新西兰': '英文', '爱尔兰': '英文',
         '法国': '法文', '德国': '德文', '奥地利': '德文', '瑞士': '德文', '意大利': '意大利文', '西班牙': '西班牙文',
@@ -1977,17 +2003,27 @@
     }
 
     // 从模型输出里解析点赞名单（只保留名单内的人）
-    function parseLikesFromText(raw, allowedNames) {
+    function parseLikesFromText(raw, allowedNames, opts) {
+        opts = opts || {};
         var m = String(raw || '').match(/^\s*(?:LIKES|点赞)\s*[:：]\s*(.+)$/im);
         if (!m) return [];
         var names = (allowedNames || []).map(function(n) { return (n && n.name) || n; }).filter(Boolean);
+        var charKeys = {};
+        (opts.charNames || []).forEach(function(n) { if (n) charKeys[normName(n)] = 1; });
         var seen = {};
         return m[1].split(/[,，、;；\/]/).map(function(s) {
             var n = String(s == null ? '' : s).trim();
             if (!n) return '';
             if (normName(n) === normName(currentUser.name)) return '';
             var hit = names.find(function(a) { return normName(a) === normName(n); });
-            if (!hit) return '';
+            if (!hit) {
+                // 用户动态允许世界书/聊天里出现的熟人 NPC 点赞；普通 char 仍不能互相点赞。
+                if (!opts.allowAny) return '';
+                if (charKeys[normName(n)]) return '';
+                if (isGenericNpcName(n)) return '';
+                if (/^(全部|所有|大家|众人|全体|用户|角色|NPC|朋友们)$/i.test(n)) return '';
+                hit = n;
+            }
             var k = normName(hit);
             if (seen[k]) return '';
             seen[k] = 1;
@@ -2559,6 +2595,17 @@
                 oldRoster.forEach(function (n) { if (n) n.__authorRoster = true; });
                 npcs = knownNpcs.concat(oldRoster);
             }
+            // 用户动态：通讯录里已有的 NPC 也是这个 user 的熟人，可以来互动。
+            if (isUserAuthor) {
+                try {
+                    dbNpcs().forEach(function (n) {
+                        if (!n || !n.name) return;
+                        if (npcs.some(function (x) { return x && normName(x.name) === normName(n.name); })) return;
+                        n.__authorRoster = true;
+                        npcs.push(n);
+                    });
+                } catch (e) {}
+            }
             // 保留作者，并把用户刚回复过的人收编进名单，保证 TA 能被识别、能回复用户。
             (function absorbPostNpcs() {
                 var seen = {};
@@ -2589,6 +2636,11 @@
                     if (c.toUser) add(c.toUser);
                 });
             })();
+            // 用户动态的评论区要从世界书/长期记忆/聊天里找熟人，不能全是模型凭空编的路人。
+            var socialContext = '';
+            if (isUserAuthor) {
+                try { socialContext = await loadUserPostSocialContext(bound); } catch (e) {}
+            }
             // 花名册里如果碰巧出现和绑定角色同名的 NPC，也不能绕过「角色之间不互动」的规则。
             var plainBoundKeys = {};
             bound.forEach(function (c) {
@@ -2648,13 +2700,14 @@
             var userMsg = persona +
                 '\n\n【本动态可以出现的评论者】\n' + pool.map(function(c) { return '· ' + c.name + (c.kind === 'author' ? '（本动态作者）' : ''); }).join('\n') +
                 (canInvent ? '\n名单不足时，你可以为作者现场虚构 2~4 个普通 NPC 名字（真实姓名，不能是已添加好友的 char/NPC/小号），但绝不能使用用户本人或其它普通角色。' : '') +
+                (socialContext ? ('\n\n【世界书 / 长期记忆 / 最近聊天里真实出现过的熟人与 NPC】\n' + socialContext + '\n请优先让其中与用户或角色真实认识的具体人物来评论/点赞（名字原样使用），不要把他们写成陌生人；没有合适的人时再虚构。') : '') +
                 '\n\n【这条朋友圈】\n作者：' + (item.author || '') + '\n内容：' + (item.text || '') +
                 (existing ? ('\n已有评论（可接着聊）：\n' + existing) : '') +
                 (hasUserComment ? ('\n【待回复的用户评论（必须逐条、一对一回复）】\n' + userCommentLines) : '') +
                 '\n\n请生成 7~10 条新的评论互动（数量要够，不要只写两三条；既要回复已有评论，也要有新的人加入）：\n' +
                 '- 评论者优先从上面的名字里选，名字原样使用；名单不足时可按上面的说明虚构作者的普通 NPC，但绝不能出现用户本人、已添加好友的 char/NPC/小号；\n' +
                 '- 不能只有作者/用户一个人说话，至少 4 条评论要来自普通 NPC；\n' +
-                (isUserPost && charNamesForPrompt ? ('- 这条是用户本人发的动态：点赞名单里必须包含全部角色（' + charNamesForPrompt + '），并且至少 2 位角色要发表评论；\n') : '') +
+                (isUserPost && charNamesForPrompt ? ('- 这条是用户本人发的动态：点赞名单里必须包含全部角色（' + charNamesForPrompt + '），并且至少 2 位角色要发表评论；还要让世界书/聊天里出现过的熟人 NPC 来互动，不要只有绑定角色；\n') : '') +
                 (hasUserComment
                     ? ('- 下面有 ' + pendingUser.length + ' 条待回复的用户评论：必须逐条各生成 1 条回复（U1、U2……一条都不能漏），禁止只回第一条，禁止把多条回复合并到同一条评论里，也不要只在同一条评论下面连写几句；\n' +
                        '- 回复对象统一写「' + (currentUser.name || '用户') + '」，但内容必须分别针对对应的那条用户评论；按 U1→U2→… 的顺序输出这些回复；\n' +
@@ -2672,7 +2725,9 @@
                     : '') +
                 '- 严禁以用户身份发言、点赞或评论；\n' +
                 '- 每条不超过 25 字，口语化，像真人。\n' +
-                '- 另外给出 3~6 个点赞者的名字，只能从上面的名单里选；char 动态的点赞者只能是 NPC。\n\n' +
+                (isUserPost
+                    ? '- 另外给出 3~6 个点赞者的名字：必须包含全部绑定角色，也可以使用世界书/聊天里出现过的熟人 NPC；不能出现用户本人。\n\n'
+                    : '- 另外给出 3~6 个点赞者的名字，只能从上面的名单里选；char 动态的点赞者只能是 NPC。\n\n') +
                 '严格按下面格式输出（不要编号、不要解释）：\n' +
                 'LIKES: 名字1,名字2\n' +
                 '评论者|回复对象|内容\n' +
@@ -2686,7 +2741,10 @@
                 return;
             }
 
-            var newLikes = parseLikesFromText(raw, pool);
+            var newLikes = parseLikesFromText(raw, pool, isUserPost ? {
+                allowAny: true,
+                charNames: (bound || []).map(function (c) { return c && c.name; }).filter(Boolean)
+            } : null);
             var rawForComments = String(raw || '').replace(/^\s*(?:LIKES|点赞)\s*[:：].*$/gim, '');
             var existingUsers = (item.comments || []).map(function(c) { return c.user; });
             var parsed = filterCommentList(parseCommentLines(rawForComments), authorChar, bound, npcs, isUserPost, existingUsers);
@@ -2925,7 +2983,11 @@
     async function requestPosts(chars, npcs, wantNpcCount, recent, opts) {
         var system = '你是朋友圈里的真实人类。请一次性发布日常动态，并让 NPC 朋友在评论区接话。已经加为好友的 NPC、小号同样算 char（小号和大号是同一个人），char 之间绝对不允许互相评论、回复、点赞或接话；char 发的动态下评论区只能出现普通 NPC。只有真正在评论区发过评论的人才能被回复。外国角色的动态和评论都要「外语原文 + 中文翻译」。严格贴合各自人设、NPC 关系与世界书，保持活人感，绝不 OOC，禁止 AI 腔、解释和出戏。';
         var chatRecent = await loadRecentChatText(chars, 2);
-        var userMsg = buildPostsPrompt(chars, npcs, wantNpcCount, recent, opts, chatRecent);
+        var memText = '';
+        try { memText = await loadCharMemoryText(chars); } catch (e) {}
+        var userMsg = buildPostsPrompt(chars, npcs, wantNpcCount, recent, opts, chatRecent) +
+            (memText ? ('\n\n【角色长期记忆（动态优先从这些真实发生过的事里长出来，不要凭空造无关日常）】\n' + memText.slice(0, 3200)) : '') +
+            '\n\n【本批硬性要求】朋友圈动态优先和最近聊天 / 长期记忆里的事有关：可以写这件事的后续、当时的另一个角度、没在聊天里说完的半句；不要每条都写成和用户无关的模板日常，也不要反复消费同一件事、同一个梗。';
         var raw = await fetchAIResponse(userMsg, true, { apiPref: 'main', system: system, maxTokens: 3400, temperature: 0.95 });
         return parseMomentBlocks(raw);
     }
@@ -3729,6 +3791,17 @@
         saveMomentsData(momentsData);
         renderFeed();
         switchView('viewFeed');
+        /* 发完朋友圈后立刻让角色和熟人 NPC 来互动，不用手动点刷新。
+           静默生成：失败不弹大窗，评论区之后仍可手动刷新。 */
+        if (!editId) {
+            setTimeout(function () {
+                try {
+                    if (typeof window.triggerPostRefresh === 'function') {
+                        window.triggerPostRefresh(newPost.id, null, null, true);
+                    }
+                } catch (e) {}
+            }, 450);
+        }
     });
 
     // ===== 背景 =====

@@ -335,6 +335,7 @@
     let pendingFileContent = '';
     let parsedBatchEmojis = [];
     let renameCallback = null;
+    let addTargetGroupId = null;
 
     // ============================================================
     // 6. DOM 引用
@@ -639,6 +640,17 @@
             });
             actionContainer.appendChild(exportBtn);
 
+            var shareTicketBtn = document.createElement('button');
+            shareTicketBtn.className = 'nav-action icon';
+            shareTicketBtn.title = '分享表情包票根';
+            shareTicketBtn.setAttribute('aria-label', '分享表情包票根');
+            shareTicketBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;display:block;margin:0 auto;"><path d="M4 7a2 2 0 0 1 2-2h4"/><path d="M4 7v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/><path d="M9 15h6"/><path d="m16 4 4 4-4 4"/><path d="M20 8h-7"/></svg>';
+            shareTicketBtn.addEventListener('click', function() {
+                var group = data.emojiGroups.find(function(g) { return g.id === currentGroupId; });
+                shareGroupTicket(group);
+            });
+            actionContainer.appendChild(shareTicketBtn);
+
             var editBtn = document.createElement('button');
             editBtn.className = 'nav-action text';
             editBtn.textContent = '编辑';
@@ -758,6 +770,7 @@
     // 13. 新增弹窗
     // ============================================================
     function openAddModal(groupId) {
+        addTargetGroupId = groupId || null;
         targetGroupSelect.innerHTML = '';
         data.emojiGroups.forEach(function(g) {
             var opt = document.createElement('option');
@@ -923,6 +936,23 @@
         } catch (e) { showToast('导出失败'); }
     }
 
+    // 分享表情包票根：和角色卡一样打印成一张 PNG，图片数据一起封装在票根里。
+    async function shareGroupTicket(group) {
+        try {
+            if (!group) { showToast('找不到分组'); return; }
+            if (!group.emojis || !group.emojis.length) { showToast('这个分组里还没有可分享的表情包'); return; }
+            if (!window.NanoCardTicket || !NanoCardTicket.printEmojiGroup) {
+                showToast('票根模块未加载，请刷新页面后重试');
+                return;
+            }
+            showToast('正在生成表情包票根…');
+            await NanoCardTicket.printEmojiGroup(group);
+        } catch (e) {
+            console.error('表情包票根生成失败:', e);
+            showToast((e && e.message) || '票根生成失败');
+        }
+    }
+
     if (fileInput) {
         fileInput.addEventListener('change', function(e) {
             var file = this.files[0];
@@ -974,6 +1004,53 @@
                     fileStatus.style.color = '#ff3b30';
                     fileInput.value = '';
                 });
+                return;
+            }
+
+            // ===== PNG：Nano 表情包票根（内嵌完整表情数据） =====
+            if (lower.endsWith('.png') || file.type === 'image/png') {
+                if (!window.NanoPngJson || !NanoPngJson.extractEmojiPack) {
+                    fileStatus.textContent = 'PNG 导入模块未加载，请刷新页面后重试';
+                    fileStatus.style.color = '#ff3b30';
+                    fileInput.value = '';
+                    return;
+                }
+                var pngReader = new FileReader();
+                pngReader.onload = async function(ev) {
+                    try {
+                        var pack = await NanoPngJson.extractEmojiPack(ev.target.result);
+                        if (!pack || !pack.emojis || !pack.emojis.length) {
+                            fileStatus.textContent = '这张 PNG 里没有表情包数据，请确认是 Nano 表情包票根';
+                            fileStatus.style.color = '#ff3b30';
+                            return;
+                        }
+                        parsedBatchEmojis = parsedBatchEmojis.concat(pack.emojis.map(function(e) {
+                            return { name: e.name, url: e.url };
+                        }));
+                        // 从主页「+」导入时，用票根里的分组名新建分组；
+                        // 从某个分组详情里导入时，默认合并进当前分组。
+                        if (!addTargetGroupId && !newGroupName.value.trim() && pack.name) {
+                            newGroupName.value = String(pack.name).slice(0, 30);
+                        }
+                        fileStatus.textContent = '已读取「' + (pack.name || '表情包') + '」共 ' + pack.emojis.length + ' 个'
+                            + (pack.totalCount && pack.totalCount > pack.emojis.length ? '（票根只打包了前 ' + pack.emojis.length + ' 个）' : '')
+                            + '，点击「添加」保存';
+                        fileStatus.style.color = '#34c759';
+                        showToast('已读取 ' + pack.emojis.length + ' 个表情包');
+                    } catch (err) {
+                        console.error('导入表情包票根失败:', err);
+                        fileStatus.textContent = '解析票根失败：' + ((err && err.message) || '未知错误');
+                        fileStatus.style.color = '#ff3b30';
+                    } finally {
+                        fileInput.value = '';
+                    }
+                };
+                pngReader.onerror = function() {
+                    fileStatus.textContent = '读取 PNG 失败';
+                    fileStatus.style.color = '#ff3b30';
+                    fileInput.value = '';
+                };
+                pngReader.readAsArrayBuffer(file);
                 return;
             }
 

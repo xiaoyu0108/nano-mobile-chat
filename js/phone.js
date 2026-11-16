@@ -853,14 +853,14 @@ function collectPhoneSigs(id, data){
   const out = [];
   const add = v => { if(v != null) out.push(v); };
   const each = (arr, fn) => { if(Array.isArray(arr)) arr.forEach(fn); };
-  if(id === "video") each(data, it => add(it && it.title));
+  if(id === "video") each(data, it => { add(it && it.title); add(it && it.category); each(it && it.comments, c => add(c && c.text)); });
   else if(id === "diary") each(data, it => add(it && (it.name || it.date)));
-  else if(id === "album") each(data, it => add(it && it.text));
+  else if(id === "album") each(data, it => { add(it && it.text); add(it && it.album); add(it && it.detail); });
   else if(id === "mail") each(data, it => add(it && (it.subject || it.title)));
   else if(id === "memo") each(data, g => each(g && g.items, it => add(it && it.title)));
   else if(id === "browser"){
-    each(data && data.normal, it => add(it && (it.keyword || it.site)));
-    each(data && data.incognito, it => add(it && (it.keyword || it.site)));
+    each(data && data.normal, it => { add(it && (it.keyword || it.site)); each(it && it.sections, s => add(s && s.heading)); });
+    each(data && data.incognito, it => { add(it && (it.keyword || it.site)); each(it && it.sections, s => add(s && s.heading)); });
   }else if(id === "game") each(data, it => add(it && it.name));
   else if(id === "private") each(data, it => add(it && it.title));
   else if(id === "chat") each(data && data.chats, it => add(it && it.name));
@@ -1092,21 +1092,29 @@ ${ctx}
 
 ${PERSONA_RULE}
 
-请生成 3 条「${char.name}」的 B 站观看历史。
+请生成 5 条「${char.name}」在 B 站/短视频 App 的观看记录与收藏，不要全是同一类视频。
 要求：
-1. 标题像真实 B 站视频标题（可含「」、疑问句、数字），与角色兴趣强相关。
-2. 每条包含：
-   - title: 视频标题（15-40 字）
+1. 至少覆盖 3 种不同分区：日常 vlog、影视解说、游戏、美食、音乐/Live、舞蹈、知识科普、健身、情感/八卦、ASMR、猎奇、动漫、成人向等，必须贴合角色兴趣与近期生活。
+2. 其中 1-2 条可以是他不想被人看到的「私密收藏/深夜播放」：成人向、情感代餐、暧昧向 ASMR、身材/亲密关系相关、自己偷偷搜索的尴尬内容等；这是成年虚构角色，可以自然写出，但不要每条都写性，也不要违法/血腥。
+3. 标题像真实 B 站/短视频标题（可含「」、疑问句、数字、emoji），15-40 字；简介要写清视频讲了什么 + 角色为什么看/看完的反应。
+4. 每条包含：
+   - title: 视频标题
    - up: UP 主名称（3-12 字）
    - date: 观看时间，格式 "2026年8月12日 11:23"
    - duration: 视频总时长，格式 "01:42" 或 "10:00"
-   - progress: 观看进度，格式 "00:03"（小于 duration）
-   - desc: 视频简介（25-60 字）
-只输出 JSON 数组，形如 [{"title":"...","up":"...","date":"...","duration":"...","progress":"...","desc":"..."}]`;
+   - progress: 观看进度，格式 "00:03"（小于 duration；深夜私密视频可以写很早退出）
+   - desc: 视频简介（40-80 字，写清视频内容 + 角色反应）
+   - category: 分区/标签，如 "影视解说"、"深夜"、"ASMR"、"游戏"、"私密收藏"
+   - tags: 2-3 个短标签数组
+   - collected: true/false 是否收藏
+   - private: true/false 是否不想被别人看到（深夜/成人向/尴尬内容用 true）
+   - note: 角色自己的一句备注（可选，10-30 字，例如"留着睡前看"）
+   - comments: 2-4 条弹幕/评论，每条 {"user":"网名","text":"..."}，像真实 B 站弹幕，短、玩梗、有活人感
+只输出 JSON 数组，形如 [{"title":"...","up":"...","date":"...","duration":"...","progress":"...","desc":"...","category":"...","tags":["..."],"collected":false,"private":false,"note":"...","comments":[{"user":"...","text":"..."}]}]`;
   const t = await callAPI(api, SYS_JSON, user);
   const a = extractJSON(t);
   if(!Array.isArray(a) || !a.length) throw new Error("视频数据格式错误");
-  return a.slice(0, 3);
+  return a.slice(0, 5);
 }
 
 async function genDiary(api, char){
@@ -1140,18 +1148,25 @@ ${ctx}
 
 ${PERSONA_RULE}
 
-请生成 4 条「${char.name}」图库照片的文字描述，按顺序：
-- 第 1-2 条：日常（日常片段、心情、看到的景色）
-- 第 3 条：私密（只有角色自己知道的小事、独处时的状态）
-- 第 4 条：不为人说（角色不愿对别人说的隐秘念头，克制、点到为止）
+请生成 8 条「${char.name}」图库照片的描述，不要全是同一种日常。
 要求：
-1. 每条 8-25 字，像照片上的一行字，有画面感、贴合角色。
-2. 4 条不要重复。
-只输出 JSON 数组，形如 [{"text":"..."}]`;
+1. 覆盖不同相册类型：日常、自拍、美食、旅行/街景、截图、宠物、工作/学习、与用户的合照、私密相册等，至少 4 种。
+2. 其中 2 条放进「私密相册」：只有角色自己知道、不想被别人看到的内容，例如亲密关系、成人向自拍/合照、暧昧聊天截图、身材记录、偷偷保存的人、私密购物/礼物等；这是成年虚构角色，可以自然写出，但不要违法/血腥，也不要 8 条都写性。
+3. 每条不是抽象的「心情」：要像照片里被定格的瞬间，写清光线、地点、物件、人物局部、当时发生的小事，12-40 字。
+4. 每条包含：
+   - text: 照片上的一行字/描述（12-40 字）
+   - date: 拍摄日期，如 "8月27日 21:14"
+   - place: 地点（可留空）
+   - people: 画面里出现的人（可留空，如 "你"、"妈妈"、"同事"）
+   - album: 相册分类（日常 / 自拍 / 美食 / 旅行 / 截图 / 工作 / 宠物 / 私密）
+   - private: true/false 是否在私密相册
+   - detail: 这张照片背后的具体细节（30-70 字，角色为什么留着它）
+5. 8 条不要重复同一场景、同一物件或同一句式。
+只输出 JSON 数组，形如 [{"text":"...","date":"...","place":"...","people":"...","album":"日常","private":false,"detail":"..."}]`;
   const t = await callAPI(api, SYS_JSON, user);
   const a = extractJSON(t);
   if(!Array.isArray(a) || !a.length) throw new Error("图库数据格式错误");
-  return a.slice(0, 4);
+  return a.slice(0, 8);
 }
 
 async function genMail(api, char){
@@ -1249,25 +1264,29 @@ ${PERSONA_RULE}
 
 请生成「${char.name}」的浏览器记录，分成「普通搜索」和「无痕浏览」两组。
 要求：
-1. normal（普通搜索/访问记录）4 条：符合角色兴趣与生活的日常搜索、网页访问。
-2. incognito（无痕浏览记录）2-3 条：角色私下查过、不想被别人看到的内容，例如健康与身体的小疑虑、感情里的反复确认、难以启齿的念头、私密购物或独自面对的心事。要贴合人设，克制但具体，不要每条都写性。
-3. 每条记录包含：
+1. normal（普通搜索/访问记录）5-6 条：符合角色兴趣与生活的日常搜索、网页访问，类型要丰富：工作/学习资料、购物比价、外卖/菜谱、健康、追剧/追星、游戏攻略、旅游攻略、本地服务、论坛/八卦、新闻、租房/二手、情感求助等；不要全是同一类。
+2. incognito（无痕浏览）3-4 条：角色真正不想被别人看到的内容。可以是成人向的欲望与性幻想、亲密关系/出轨/暗恋的反复确认、私密身体困扰、成人用品/内衣/私密购物、偷偷搜索前任或某个人、难以启齿的癖好、羞耻的自我搜索等。这是成年虚构角色，可以写得具体、有画面，但不要违法/血腥；不要每条都写性，也不要把无痕写成普通的购物记录。
+3. 每条记录必须是一张「能点开看的网页」，页面内容要丰富，不能只有一句摘要：
    - keyword: 搜索词或页面标题（显示在列表第一行）
    - url: 网址，像真实域名
    - site: 网站名（如 "NANO JOURNAL"）
    - title: 网页标题（详情页大标题）
    - time: 完整时间，如 "今天 22:06"
    - visits: 访问次数（整数）
-   - intro: 页面摘要（40-80 字）
-   - quote: 页面引用句（15-40 字）
-   - points: 3 条要点字符串数组
-只输出 JSON 对象，形如 {"normal":[{"keyword":"...","url":"...","site":"...","title":"...","time":"...","visits":3,"intro":"...","quote":"...","points":["..."]}],"incognito":[{"keyword":"...","url":"...","site":"...","title":"...","time":"...","visits":2,"intro":"...","quote":"...","points":["..."]}]}`;
+   - intro: 页面导语/摘要（60-120 字，具体到网页里发生了什么）
+   - sections: 2-3 个网页正文区块，每个 {"heading":"小标题","text":"正文 80-180 字，有具体细节/数据/对话/观点","list":["可选要点"]}
+   - quote: 页面里被角色注意到的一句原话（15-50 字）
+   - points: 3 条页面要点字符串数组
+   - comments: 3-5 条网页评论/跟帖，每条 {"user":"网名","text":"..."}，像真实评论区，有夸有骂有玩梗
+   - related: 2-3 条相关推荐，每条 {"title":"...","site":"...","url":"..."}
+4. 普通和无痕都要换新主题，不要重复最近生成过的搜索词和网页。
+只输出 JSON 对象，形如 {"normal":[{"keyword":"...","url":"...","site":"...","title":"...","time":"今天 22:06","visits":3,"intro":"...","sections":[{"heading":"...","text":"...","list":["..."]}],"quote":"...","points":["...","...","..."],"comments":[{"user":"...","text":"..."}],"related":[{"title":"...","site":"...","url":"..."}]}],"incognito":[...]}`;
   const t = await callAPI(api, SYS_JSON, user);
   const o = extractJSON(t);
   const model = normalizeBrowserData(o);
   if(!model.normal.length && !model.incognito.length) throw new Error("浏览器数据格式错误");
-  model.normal = model.normal.slice(0, 6);
-  model.incognito = model.incognito.slice(0, 4);
+  model.normal = model.normal.slice(0, 8);
+  model.incognito = model.incognito.slice(0, 6);
   return model;
 }
 
@@ -1490,6 +1509,11 @@ function renderVideoList(videos){
   videos.forEach(v => {
     const card = document.createElement("article");
     card.className = "vd-item";
+    const tags = [];
+    if(v.category) tags.push(`<span class="vd-tag main">${escHtml(v.category)}</span>`);
+    (Array.isArray(v.tags) ? v.tags : []).slice(0, 2).forEach(t => tags.push(`<span class="vd-tag">${escHtml(t)}</span>`));
+    if(v.collected) tags.push(`<span class="vd-tag fav">已收藏</span>`);
+    if(v.private) tags.push(`<span class="vd-tag private">私密</span>`);
     card.innerHTML = `
       <div class="vd-thumb">
         <div class="vd-play"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></div>
@@ -1498,6 +1522,7 @@ function renderVideoList(videos){
       <div class="vd-info">
         <div class="vd-title">${escHtml(v.title)}</div>
         <div class="vd-up">${escHtml(v.up)}</div>
+        <div class="vd-tags">${tags.join("")}</div>
         <div class="vd-date">${escHtml(v.date)}</div>
       </div>`;
     card.onclick = () => openVideoDetail(v);
@@ -1519,8 +1544,17 @@ async function refreshVideo(){
 }
 function openVideoDetail(v){
   appHost.querySelector("[data-dtitle]").textContent = v.title || "";
-  appHost.querySelector("[data-dmeta]").textContent = (v.up || "") + " · " + (v.date || "");
-  appHost.querySelector("[data-ddesc]").textContent = v.desc || "";
+  appHost.querySelector("[data-dmeta]").textContent = (v.up || "") + " · " + (v.date || "") + (v.category ? (" · " + v.category) : "");
+  const tags = (Array.isArray(v.tags) ? v.tags : []).map(t => `<span class="vd-tag">${escHtml(t)}</span>`).join("");
+  const comments = (Array.isArray(v.comments) ? v.comments : []).filter(c => c && (c.text || c.user)).map(c =>
+    `<div class="vd-comment"><span class="vd-comment-user">${escHtml(c.user || "网友")}</span><span class="vd-comment-text">${escHtml(c.text || "")}</span></div>`
+  ).join("");
+  appHost.querySelector("[data-ddesc]").innerHTML = `
+    <div class="vd-desc-text">${escHtml(v.desc || "")}</div>
+    ${v.note ? `<div class="vd-note">${escHtml(v.note)}</div>` : ""}
+    ${tags ? `<div class="vd-tags detail">${tags}</div>` : ""}
+    ${v.private ? `<div class="vd-private-hint">这条被角色标记为不想被别人看到的内容</div>` : ""}
+    ${comments ? `<div class="vd-comments-title">弹幕 / 评论</div><div class="vd-comments">${comments}</div>` : ""}`;
   appHost.querySelector("[data-detail]").classList.add("open");
 }
 
@@ -1644,6 +1678,7 @@ async function openAlbum(){
     </header>
     <main class="ab-content">
       <div class="ab-heading"><h2>照片</h2><span data-count>0 张</span></div>
+      <div class="ab-tabs" data-tabs></div>
       <div class="ab-grid" data-grid></div>
     </main>
     <div class="ab-viewer" data-viewer>
@@ -1651,7 +1686,7 @@ async function openAlbum(){
         <button class="ab-close" data-close><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
         <div></div>
       </div>
-      <div class="ab-viewer-body"><div class="ab-viewer-card" data-viewer-card></div></div>
+      <div class="ab-viewer-body"><div class="ab-viewer-card" data-viewer-card></div><div class="ab-viewer-meta" data-viewer-meta></div></div>
       <div class="ab-viewer-foot">照片</div>
     </div>
   </div>`;
@@ -1659,23 +1694,44 @@ async function openAlbum(){
   appHost.querySelector("[data-refresh]").onclick = () => startGeneration(["album"]);
   appHost.querySelector("[data-close]").onclick = () => appHost.querySelector("[data-viewer]").classList.remove("open");
   const saved = await dataGet(`app_${currentChar.id}_album`);
+  appHost._albumFilter = "all";
   renderAlbumGrid(saved?.data || []);
 }
 function renderAlbumGrid(photos){
   const grid = appHost.querySelector("[data-grid]");
+  const tabs = appHost.querySelector("[data-tabs]");
   const count = appHost.querySelector("[data-count]");
-  count.textContent = photos.length + " 张";
+  const filter = appHost._albumFilter || "all";
+  const all = Array.isArray(photos) ? photos.filter(p => p && (p.text || p.detail)) : [];
+  const albums = [];
+  all.forEach(p => { const a = String(p.album || "").trim(); if(a && a !== "私密" && albums.indexOf(a) < 0) albums.push(a); });
+  const hasPrivate = all.some(p => p.private || p.album === "私密");
+  if(tabs){
+    const items = [{ id:"all", label:"全部" }].concat(albums.map(a => ({ id:a, label:a })));
+    if(hasPrivate) items.push({ id:"private", label:"私密" });
+    tabs.innerHTML = items.map(t => `<button class="ab-tab${filter === t.id ? " active" : ""}" data-album="${escHtml(t.id)}" type="button">${escHtml(t.label)}</button>`).join("");
+    tabs.querySelectorAll("[data-album]").forEach(b => {
+      b.onclick = () => { appHost._albumFilter = b.dataset.album || "all"; renderAlbumGrid(all); };
+    });
+  }
+  let photosFiltered = all;
+  if(filter === "private") photosFiltered = all.filter(p => p.private || p.album === "私密");
+  else if(filter !== "all") photosFiltered = all.filter(p => String(p.album || "") === filter);
+  count.textContent = photosFiltered.length + " 张";
   grid.innerHTML = "";
-  if(!photos.length){
-    grid.innerHTML = `<div class="app-empty" style="grid-column:1/-1">暂无照片，点右上角刷新生成</div>`;
+  if(!photosFiltered.length){
+    grid.innerHTML = `<div class="app-empty" style="grid-column:1/-1">${filter === "private" ? "私密相册是空的" : "暂无照片，点右上角刷新生成"}</div>`;
     return;
   }
-  photos.forEach((p, i) => {
+  photosFiltered.forEach((p, i) => {
     const card = document.createElement("div");
-    card.className = "ab-photo";
+    card.className = "ab-photo" + (p.private || p.album === "私密" ? " private" : "");
     card.style.background = AB_GRADIENTS[i % AB_GRADIENTS.length];
-    card.innerHTML = `<div class="ab-photo-text">${escHtml(p.text)}</div>`;
-    card.onclick = () => openAlbumViewer(p.text, i);
+    const badge = (p.private || p.album === "私密") ? "私密" : (p.album || "");
+    card.innerHTML = `<div class="ab-photo-text">${escHtml(p.text)}</div>
+      ${badge ? `<div class="ab-photo-badge">${escHtml(badge)}</div>` : ""}
+      ${(p.date || p.place) ? `<div class="ab-photo-meta">${escHtml([p.date, p.place].filter(Boolean).join(" · "))}</div>` : ""}`;
+    card.onclick = () => openAlbumViewer(p, i);
     grid.appendChild(card);
   });
 }
@@ -1692,10 +1748,19 @@ async function refreshAlbum(){
     if(grid) grid.innerHTML = `<div class="app-error" style="grid-column:1/-1">生成失败：${escHtml(e.message)}</div>`;
   }
 }
-function openAlbumViewer(text, i){
+function openAlbumViewer(photo, i){
+  const p = (photo && typeof photo === "object") ? photo : { text: String(photo || "") };
   const card = appHost.querySelector("[data-viewer-card]");
+  const meta = appHost.querySelector("[data-viewer-meta]");
   card.style.background = AB_GRADIENTS[i % AB_GRADIENTS.length];
-  card.textContent = text;
+  card.innerHTML = `<div class="ab-viewer-text">${escHtml(p.text || "")}</div>`;
+  if(meta){
+    const rows = [];
+    if(p.detail) rows.push(`<div class="ab-viewer-detail">${escHtml(p.detail)}</div>`);
+    const info = [p.date, p.place, p.people ? ("出镜：" + p.people) : "", p.private || p.album === "私密" ? "私密相册" : p.album].filter(Boolean);
+    if(info.length) rows.push(`<div class="ab-viewer-info">${info.map(escHtml).join(" · ")}</div>`);
+    meta.innerHTML = rows.join("");
+  }
   appHost.querySelector("[data-viewer]").classList.add("open");
 }
 
@@ -2341,11 +2406,21 @@ function openBrowserDetail(it){
   appHost.querySelector("[data-dfull]").textContent = it.url || "";
   appHost.querySelector("[data-dvisits]").textContent = (it.visits || 1) + " 次";
   const points = Array.isArray(it.points) ? it.points : [];
+  const sections = Array.isArray(it.sections) ? it.sections.filter(s => s && (s.heading || s.text)) : [];
+  const comments = Array.isArray(it.comments) ? it.comments.filter(c => c && (c.user || c.text)) : [];
+  const related = Array.isArray(it.related) ? it.related.filter(r => r && (r.title || r.site)) : [];
   appHost.querySelector("[data-dcontent]").innerHTML = `
     <h4>页面内容</h4>
-    <p>${escHtml(it.intro || "")}</p>
+    <p class="bw-intro">${escHtml(it.intro || "")}</p>
+    ${sections.map(s => `<div class="bw-section">
+      ${s.heading ? `<div class="bw-section-title">${escHtml(s.heading)}</div>` : ""}
+      ${s.text ? `<div class="bw-section-text">${escHtml(s.text)}</div>` : ""}
+      ${Array.isArray(s.list) && s.list.length ? `<ul class="bw-section-list">${s.list.map(x => `<li>${escHtml(x)}</li>`).join("")}</ul>` : ""}
+    </div>`).join("")}
     ${it.quote ? `<div class="quote">${escHtml(it.quote)}</div>` : ""}
-    ${points.length ? `<p>页面摘要：</p><ul>${points.map(x => `<li>${escHtml(x)}</li>`).join("")}</ul>` : ""}`;
+    ${points.length ? `<p>页面摘要：</p><ul>${points.map(x => `<li>${escHtml(x)}</li>`).join("")}</ul>` : ""}
+    ${related.length ? `<div class="bw-related-title">相关推荐</div><div class="bw-related">${related.map(r => `<div class="bw-related-item"><div class="bw-related-name">${escHtml(r.title || "")}</div><div class="bw-related-site">${escHtml(r.site || "")}${r.url ? " · " + escHtml(r.url) : ""}</div></div>`).join("")}</div>` : ""}
+    ${comments.length ? `<div class="bw-comments-title">网页评论</div><div class="bw-comments">${comments.map(c => `<div class="bw-comment"><span class="bw-comment-user">${escHtml(c.user || "网友")}</span><span class="bw-comment-text">${escHtml(c.text || "")}</span></div>`).join("")}</div>` : ""}`;
   appHost.querySelector("[data-detail]").classList.add("open");
 }
 
@@ -3420,6 +3495,9 @@ function leaveChar(){
   innerTop.style.display = "none";
   phoneHome.style.display = "grid";
   selectPage.classList.remove("hidden");
+  /* 关闭当前 App，避免生成过程中返回角色列表后界面还残留上一个角色的内容。
+     正在进行的生成使用角色快照继续写盘，不受这里影响。 */
+  try{ closeApp(); }catch(e){}
   currentChar = null;
   updateHomeWidgets();
 }
@@ -3507,13 +3585,13 @@ document.getElementById("checkSelectAll").onclick = () => {
 
 /* ===== 单次 API 生成多个 App ===== */
 const MULTI_SPEC = {
-  video:`"video":[{"title":"视频标题","up":"UP主","date":"2026年8月12日 11:23","duration":"01:42","progress":"00:03","desc":"简介"}]`,
+  video:`"video":[{"title":"视频标题","up":"UP主","date":"2026年8月12日 11:23","duration":"01:42","progress":"00:03","desc":"简介","category":"影视解说","tags":["标签"],"collected":false,"private":false,"note":"角色备注","comments":[{"user":"网名","text":"弹幕"}]}]`,
   diary:`"diary":[{"date":"2026 · 08 · 28","name":"标题","day":"星期五","weather":"晴","content":"正文"}]`,
-  album:`"album":[{"text":"照片文字"}]`,
+  album:`"album":[{"text":"照片文字","date":"8月27日 21:14","place":"地点","people":"画面里的人","album":"日常","private":false,"detail":"照片背后的细节"}]`,
   mail:`"mail":[{"sender":"发件人","date":"8月27日","subject":"标题","preview":"预览","icon":"person","unread":false,"title":"正文标题","body":["段落一","段落二"]}]`,
   memo:`"memo":[{"group":"过去 7 天","items":[{"title":"标题","meta":"日期 · 摘要","content":"正文"}]}]`,
   health:`"health":{"steps":{"total":8426,"goal":10000,"hours":[24个整数]},"distance":{"total":"5.80","kcal":318},"sleep":{"score":92,"duration":"8小时12分","deep":"1h 48m","weekly":[7个0-100]},"screen":{"hours":3,"minutes":46,"weekly":[7个整数分钟]}}`,
-  browser:`"browser":{"normal":[{"keyword":"搜索词","url":"https://example.com/a","site":"网站名","title":"网页标题","time":"今天 22:06","visits":3,"intro":"页面摘要","quote":"引用句","points":["要点一","要点二","要点三"]}],"incognito":[{"keyword":"无痕搜索词","url":"https://example.com/b","site":"网站名","title":"网页标题","time":"今天 23:41","visits":2,"intro":"页面摘要","quote":"引用句","points":["要点一","要点二","要点三"]}]}`,
+  browser:`"browser":{"normal":[{"keyword":"搜索词","url":"https://example.com/a","site":"网站名","title":"网页标题","time":"今天 22:06","visits":3,"intro":"页面导语 60-120 字","sections":[{"heading":"小标题","text":"正文 80-180 字","list":["可选要点"]}],"quote":"页面原话","points":["要点一","要点二","要点三"],"comments":[{"user":"网名","text":"评论"}],"related":[{"title":"相关推荐","site":"网站名","url":"https://example.com/rel"}]}],"incognito":[{"keyword":"无痕搜索词","url":"https://example.com/b","site":"网站名","title":"网页标题","time":"今天 23:41","visits":2,"intro":"页面导语","sections":[{"heading":"小标题","text":"正文","list":["要点"]}],"quote":"页面原话","points":["要点一","要点二","要点三"],"comments":[{"user":"网名","text":"评论"}],"related":[{"title":"相关推荐","site":"网站名","url":"https://example.com/rel"}]}]}`,
   game:`"game":[{"name":"中文游戏名","id":"4827 1936","winRate":68,"matches":327,"wins":222,"losses":105,"rank":"大师","rating":2847,"rankMark":"III","recent":[{"result":"W","mode":"排位赛","time":"今天 · 21:42","kda":"18 / 6 / 11"}],"habit":"隐藏游戏习惯","weekly":[35,55,43,75,100,67,46]}]`,
   private:`"private":[{"type":"PRIVATE / 01","time":"23:41","title":"标题","preview":"一句隐晦的概述","detail":"不为人说的具体内容","tags":["心事","私密"],"level":"轻"}]`,
   chat:`"chat":{"userRemark":"角色给用户存的备注（2-8字）","chats":[{"name":"NPC名字","lastMsg":"最后一条","time":"昨天 22:13","unread":0,"messages":[{"side":"left","text":"消息"}]}]}`,
@@ -3524,19 +3602,19 @@ const MULTI_SPEC = {
   wallet:`"wallet":{"balance":12800.5,"transactions":[{"type":"expense","desc":"星巴克","amount":32,"time":"2026-10-24T10:15:00"},{"type":"income","desc":"工资入账","amount":12800,"time":"2026-10-23T08:00:00"}]}`
 };
 const MULTI_COUNT = {
-  video:"video 3 条", diary:"diary 3 篇", album:"album 5 条", mail:"mail 4 封",
-  memo:"memo 约 4 条（分 2-3 组，每组 1-2 条）", browser:"browser：normal 4 条、incognito 2-3 条", game:"game 2 个",
+  video:"video 5 条（至少 3 种分区，含 1-2 条私密/深夜收藏）", diary:"diary 3 篇", album:"album 8 条（至少 4 种相册类型，含 2 条私密相册）", mail:"mail 4 封",
+  memo:"memo 约 4 条（分 2-3 组，每组 1-2 条）", browser:"browser：normal 5-6 条、incognito 3-4 条（无痕可含成人向私密内容）", game:"game 2 个",
   private:"private 4 条不为人说的私事 / 心事（成人角色可含亲密关系）", chat:"chat：userRemark 1 条（角色给用户的备注），chats 3 个会话（每个 5-8 条消息）",
   doubao:"doubao 8-10 条消息（char 与 ai 交替，构成一次完整对话）",
   taobao:"taobao：cart 2-3 件、orders 2-3 单、food 2-3 单",
   store:"store：cart 2-3 件、orders 2-3 单、food 2-3 单",
   mapcal:"mapcal：places 3 个、events 4 条",
-  wallet:"wallet：transactions 10 条左右（收入 2-3 条、支出 7-8 条），balance 为余额"
+  wallet:"wallet：transactions 10 条左右（收入 2-3 条、支出 7-8 条），balance 为余额，必须符合人设财富阶层"
 };
 
 async function buildMultiPrompt(ids, char, ctx){
   // 输出太长时模型会从后往前截断；把钱包 / 相册 / 备忘 / 浏览器这些容易被截掉的 App 排到最前面。
-  const PREFERRED_ORDER = ["wallet","album","memo","browser","mapcal","taobao","store","health","game","private","doubao","chat","mail","diary","video"];
+  const PREFERRED_ORDER = ["wallet","album","browser","video","memo","mapcal","taobao","store","health","game","private","doubao","chat","mail","diary"];
   const orderedIds = ids.slice().sort((a, b) => {
     const ia = PREFERRED_ORDER.indexOf(a), ib = PREFERRED_ORDER.indexOf(b);
     return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib);
@@ -3580,6 +3658,10 @@ async function buildMultiPrompt(ids, char, ctx){
       bal = profile.balance;
       w = { balance: bal, transactions: [], wealthTier: profile.tier, wealthLabel: profile.label, lowFamily: !!profile.lowFamily, veryPoor: !!profile.veryPoor, seedVersion: 2 };
       saveCharWallet(wkey, w);
+    }else if(w && !w.balanceManual && profile && window.NanoCharWealth && NanoCharWealth.clampBalance){
+      // 旧数据可能已经被越滚越高：生成前先把余额压回人设区间，模型才会按正确余额编流水。
+      const fixed = NanoCharWealth.clampBalance(profile, bal);
+      if(fixed !== bal){ bal = fixed; w.balance = bal; saveCharWallet(wkey, w); }
     }
     const recent = (w && Array.isArray(w.transactions) && w.transactions.length)
       ? w.transactions.slice(0, 5).map(t => (t.type === "income" ? "+" : "-") + "¥" + t.amount + " " + (t.desc || "") + " " + (t.time || "")).join("\n")
@@ -3608,21 +3690,21 @@ ${phoneRecentBlock(recent, orderedIds)}
 - 同批内每条至少要有 2 个只属于这次的具体新细节（人名 / 店名 / 地名 / 数字 / 物件 / 原话）；不要只换同义词，也不要套同一句式的模板。
 - 不同 App 不要复写同一个事件、同一件物品、同一家店；diary / album / private / memo 必须分属不同生活切面，不要都围绕「想你 / 忙 / 累」打转。
 - chat 的 NPC、browser 的搜索词、video 的分区、private 的秘密类型、mail 的发件人每次都要换新，不要总用同一批身份、主题和场景。
-- video.desc：40-80 字，写清视频讲了什么 + 角色的反应；换不同分区和口味，不要总是同一类视频。
+- video：5 条，至少 3 种分区；1-2 条可以是「私密收藏 / 深夜播放」的成人向、暧昧向、ASMR、身材/亲密关系内容（成年虚构角色，可写具体，但不要违法/血腥）；video.desc 40-80 字，写清视频讲了什么 + 角色的反应；comments 是 2-4 条真实感弹幕/评论。
 - diary.content：120-200 字，有具体场景、动作、心情变化，像真人日记；不要总写同一种日常。
 - mail.body：每封 3-4 段，每段 30-60 字，有称呼、正文、落款的感觉。
 - memo：总数约 4 条，分 2-3 组；每条 content 90-150 字，写清具体经过、心情或待办细节，不要写得太短。
-- browser.normal：4 条日常搜索/访问；browser.incognito：2-3 条角色私下查过、不想被别人看到的内容（健康与身体的小疑虑、感情里的反复确认、难以启齿的念头、私密购物等），克制但具体，不要每条都写性；普通和无痕都要换新主题。
-- browser.intro：50-100 字；quote：15-40 字；points 3 条各 15-30 字。
+- browser.normal：5-6 条日常搜索/访问，类型要丰富（工作学习、购物、外卖、健康、追剧追星、游戏、旅游、本地服务、论坛八卦、新闻、二手、情感求助等）；browser.incognito：3-4 条角色私下查过、不想被别人看到的成人向/私密内容（欲望与性幻想、亲密关系/出轨/暗恋、身体困扰、成人用品/内衣、偷偷搜索某个人、羞耻癖好等），克制但具体，不要每条都写性；普通和无痕都要换新主题。
+- browser 的每一条都必须像能点开看的网页：intro 60-120 字；sections 2-3 个正文区块，每个 text 80-180 字，有具体细节/数据/对话/观点；quote 15-50 字；points 3 条各 15-30 字；comments 3-5 条真实评论区跟帖；related 2-3 条相关推荐。
 ${ids.includes("private") ? "- private.preview：一句隐晦的概述；detail：不为人说的具体内容，写角色不愿公开的私事、难以启齿的心事或亲密关系里的秘密；不要总是「自卑 / 怕失去 / 暗恋」同一套，换具体事件、具体人、具体场景；角色可以涉及亲密与性相关的私事。\n" : ""}
 - game.habit：40-80 字，写清玩法习惯与心态。
 - chat.userRemark：${char.name} 在手机里给用户存的备注（2-8 字），符合两人的关系与角色对用户的称呼习惯，不要用「小姑娘/小东西/丫头/女人」这类油腻称呼。
 - chat.chats：每个会话 6-10 条消息，有来有回，单条 5-25 字；不要生成和用户本人的会话；NPC 身份、名字、关系和聊天主题每次都要换新。
-- album.text：12-35 字，像照片里被定格的瞬间：写清光线、地点、物件或人物局部，不要抽象心情；场景和物件每次都要换。
+- album：8 条，至少 4 种相册类型，其中 2 条 private=true 放进私密相册（亲密关系、成人向自拍/合照、暧昧聊天截图、身材记录、偷偷保存的人等，成年虚构角色可写具体，但不要违法/血腥）；album.text 12-40 字，写清光线、地点、物件、人物局部或当时发生的小事，不要抽象心情；detail 30-70 字，写清角色为什么留着这张；场景和物件每次都要换。
 - doubao：8-10 条，char 提问与 ai 回答交替；问题贴合角色当下生活与困惑，ai 回答口语化、可带分点，单条 20-60 字。
 - taobao / store：商品名、店铺、规格、价格要像真实电商；外卖写清店名、菜品、时间与配送状态；cart/orders/food 都要有数据，店名和商品不要每次都用同一批。
 - mapcal.places：写角色搜索或导航过的、有真实感的地点；events：写接下来的日程，含时间、地点、类型标签；地点和日程每次都要换。
-${ids.includes("wallet") ? "- wallet：10 条左右收支，收入 2-3 条，收入来源必须严格符合角色的财富阶层（学生只能是生活费/兼职/奖学金/红包/退款；穷人只能是日结/兼职/红包/退款/补助；富人才可以有分红/投资/项目结款），支出 7-8 条；金额、店铺、时间必须符合角色的身份与消费水平；至少 1-2 条自然涉及用户；时间在最近 7 天内，按从新到旧排列；balance 与流水收支一致，不能为负。\n" : ""}
+${ids.includes("wallet") ? "- wallet：10 条左右收支，收入 2-3 条，收入来源必须严格符合角色的财富阶层（学生只能是生活费/兼职/奖学金/红包/退款；穷人只能是日结/兼职/红包/退款/补助；富人才可以有分红/投资/项目结款），支出 7-8 条；金额、店铺、时间必须符合角色的身份与消费水平；至少 1-2 条自然涉及用户；时间在最近 7 天内，按从新到旧排列；balance 必须等于【当前银行卡余额】+ 收入合计 - 支出合计，且必须落在角色财富阶层的合理区间内，不能为负，不能把穷学生写成十几万存款。\n" : ""}
 最后再检查一次：如果某个标题、地点、店名、物品或事件在「最近已经生成过」里出现过，必须换掉；不要只改一个字或换个说法。
 每个 App 的数据格式必须严格符合示例字段名，只输出一个 JSON 对象，不要解释、不要代码块。
 输出必须是合法 JSON：只输出一个 JSON 对象，不要代码块、注释或多余文字；字符串内部不要出现真实换行，需要分段时写成 \\n；字段之间可以不留空格，但不要为了「紧凑」省略上面要求的内容。`;
@@ -3693,8 +3775,8 @@ async function genMulti(api, char, ids, opts){
   try {
     if (window.NanoPrompts && NanoPrompts.appendTo) __sysJson = NanoPrompts.appendTo(__sysJson, 'phone', { keepFormat: true });
   } catch (e) {}
-  // 一次生成全部 App 时输出很长；默认给 16384。用户可在 API 设置里调低以兼容只支持小输出的模型。
-  const maxTokens = Math.min(32768, Math.max(4096, Number(api.maxTokens) || 16384));
+  // 一次生成全部 App 时输出很长；默认给 24576。用户可在 API 设置里调低以兼容只支持小输出的模型。
+  const maxTokens = Math.min(32768, Math.max(4096, Number(api.maxTokens) || 24576));
   // 手机内容属于创作类数据：温度至少 0.9，并提高重复惩罚，避免每次生成同一批模板；
   // 用户在 API 页填得更高时保持用户设置。
   const creativeTemp = Math.max(0.9, Number(api.temp) || 0.9);
@@ -3830,9 +3912,20 @@ async function genMulti(api, char, ids, opts){
 }
 
 /* ===== 生成状态（非阻塞 · 可切换 App · 一次只调用一次 API） ===== */
-const genState = { running:false, ids:[], failed:[], log:[] };
+const genState = { running:false, ids:[], failed:[], log:[], charId:"" };
 try{ if(window.NanoRefresh) window.NanoRefresh.define({ id:'phone', name:'手机', url:'phone.html', title:'手机' }); }catch(e){}
 let lastFailedIds = [];
+
+/* 直接单独打开 phone.html 时，生成过程中刷新/关闭页面会中断请求；
+   在支持 beforeunload 的环境里给出提示。iframe 内退出由主框架保留后台帧。 */
+try{
+  window.addEventListener("beforeunload", function(e){
+    if(!genState.running) return;
+    e.preventDefault();
+    e.returnValue = "手机内容正在生成，离开会中断本次生成。";
+    return e.returnValue;
+  });
+}catch(e){}
 
 function showGenToast(text){
   document.getElementById("genToastText").textContent = text || "正在生成手机内容…";
@@ -3854,13 +3947,14 @@ async function reRenderCurrentApp(){
 }
 
 // 把生成的钱包流水合并进角色银行卡（亲属卡「他的」共用同一份数据）
-function mergeWalletForChar(charId, data) {
+// charInfo 必须是「开始生成时」的角色快照，不能依赖 currentChar（用户可能已经返回列表）。
+function mergeWalletForChar(charId, data, charInfo) {
   const key = "nano_char_wallet_" + (charId || "default");
-  const charInfo = (typeof currentChar !== "undefined" && currentChar) || {};
+  const info = charInfo || ((typeof currentChar !== "undefined" && currentChar) || {});
   let profile = null;
   try{
     if(window.NanoCharWealth){
-      profile = NanoCharWealth.profileFor(charInfo.setting || charInfo.desc || "", charInfo.name || "");
+      profile = NanoCharWealth.profileFor(info.setting || info.desc || "", info.name || "");
       NanoCharWealth.saveProfile(charId, profile);
     }
   }catch(e){}
@@ -3878,6 +3972,8 @@ function mergeWalletForChar(charId, data) {
         cur.wealthLabel = w.wealthLabel || "";
         cur.lowFamily = !!w.lowFamily;
         cur.veryPoor = !!w.veryPoor;
+        cur.balanceManual = !!w.balanceManual;
+        cur.updatedAt = w.updatedAt || "";
       }
     }
   }catch(e){}
@@ -3892,7 +3988,7 @@ function mergeWalletForChar(charId, data) {
     const d = new Date(time);
     if(isNaN(d.getTime())) time = new Date(now - i * 3600000).toISOString();
     txs.push({
-      id: "ctx_" + now + "_" + Math.random().toString(36).slice(2, 7),
+      id: "ctx_" + now + "_" + i + "_" + Math.random().toString(36).slice(2, 7),
       type: type,
       amount: amount,
       desc: String(t.desc || t.name || "").trim() || (type === "income" ? "收入" : "支出"),
@@ -3903,20 +3999,80 @@ function mergeWalletForChar(charId, data) {
   txs.sort(function(a, b){ return new Date(b.time) - new Date(a.time); });
   let net = 0;
   txs.forEach(function(t){ net += (t.type === "income" ? t.amount : -t.amount); });
-  const balance = Math.max(0, Math.round((cur.balance + net) * 100) / 100);
-  const merged = { balance: balance, transactions: txs.slice(0, 500), seedVersion: 2, wealthTier: profile ? profile.tier : "", wealthLabel: profile ? profile.label : "", lowFamily: profile ? !!profile.lowFamily : false, veryPoor: profile ? !!profile.veryPoor : false };
+
+  /* 余额口径：
+     - 模型给了 balance：以模型的「本轮结束余额」为准（它会看到当前余额再算收支）；
+     - 模型没给 balance：当前余额 + 本轮净收支；
+     - 手动编辑过的余额优先保留，不再被自动按人设压回去；
+     - 自动生成必须被限制在角色财富阶层的余额区间内，避免穷学生越生成越富。 */
+  let balance = cur.balance + net;
+  const modelBal = Number(data && data.balance);
+  if(Number.isFinite(modelBal) && modelBal >= 0) balance = modelBal;
+  if(cur.balanceManual){
+    balance = Math.max(0, balance);
+  }else if(profile && window.NanoCharWealth && NanoCharWealth.clampBalance){
+    balance = NanoCharWealth.clampBalance(profile, balance);
+  }else{
+    balance = Math.max(0, balance);
+  }
+  balance = Math.round(balance * 100) / 100;
+
+  /* 保留旧流水，再把本轮新流水接上；亲属卡 / 查手机都能看到更完整的银行流水。 */
+  const seenTx = {};
+  const mergedTxs = [];
+  (txs.concat(cur.transactions || [])).forEach(function(t){
+    if(!t || typeof t !== "object") return;
+    const id = String(t.id || (t.time + "|" + t.type + "|" + t.amount + "|" + t.desc));
+    if(seenTx[id]) return;
+    seenTx[id] = 1;
+    mergedTxs.push(t);
+  });
+  mergedTxs.sort(function(a, b){ return new Date(b.time) - new Date(a.time); });
+
+  const merged = {
+    balance: balance,
+    transactions: mergedTxs.slice(0, 300),
+    seedVersion: 2,
+    wealthTier: profile ? profile.tier : "",
+    wealthLabel: profile ? profile.label : "",
+    lowFamily: profile ? !!profile.lowFamily : false,
+    veryPoor: profile ? !!profile.veryPoor : false,
+    balanceManual: !!cur.balanceManual,
+    updatedAt: new Date(now).toISOString()
+  };
   saveCharWallet(key, merged);
   return merged;
+}
+
+function phoneGenCharMatches(c){
+  return !!(c && typeof currentChar !== "undefined" && currentChar && String(currentChar.id) === String(c.id));
 }
 
 async function startGeneration(ids){
   if(genState.running) return;
   ids = (ids || []).filter(Boolean);
   if(!ids.length) return;
-  const api = await getApiInfo();
-  if(!api) return;
+  /* 关键：生成一开始就锁定角色快照。
+     用户可以在生成过程中返回角色列表 / 退出手机页面，currentChar 会变成 null；
+     后续写盘、合并钱包、刷新界面都必须用这份快照，否则整批生成会在最后一步全部失败。 */
+  if(!currentChar || currentChar.id == null){ showGenToast("请先进入一个角色的手机再生成"); setTimeout(hideGenToast, 1600); return; }
+  const genChar = Object.assign({}, currentChar);
   genState.running = true;
-  try{ if(window.NanoRefresh) NanoRefresh.start({ key:'gen', label:'生成内容' }); }catch(e){}
+  genState.charId = genChar.id;
+  /* refresh-notify.js 在 phone.js 之后加载，这里再 define 一次，
+     保证生成期间退出页面时主框架能把 iframe 保留在后台继续生成。 */
+  try{
+    if(window.NanoRefresh){
+      NanoRefresh.define({ id:'phone', name:'手机', url:'phone.html', title:'手机' });
+      NanoRefresh.start({ key:'gen', label:'生成内容' });
+    }
+  }catch(e){}
+  const api = await getApiInfo();
+  if(!api){
+    genState.running = false;
+    try{ if(window.NanoRefresh) NanoRefresh.fail("未读取到主 API 配置", { key:'gen' }); }catch(e){}
+    return;
+  }
   genState.ids = ids.slice();
   genState.failed = [];
   genState.log = [];
@@ -3936,7 +4092,7 @@ async function startGeneration(ids){
     showGenToast(label);
     let r = {ok:{}, log:[], fatal:null};
     try{
-      r = await genMulti(api, currentChar, batch);
+      r = await genMulti(api, genChar, batch);
     }catch(e){
       r.log.push({t:"err", s:"异常: " + ((e && e.stack) || e.message || e)});
       r.fatal = (e && e.message) || String(e);
@@ -3949,7 +4105,7 @@ async function startGeneration(ids){
        私密缺失时用本地个人随想补齐，不消耗 API。 */
     if(batch.indexOf("private") >= 0 && !(r.ok && r.ok.private)){
       if(!r.ok) r.ok = {};
-      r.ok.private = { type: "private", data: genPrivateLocal(currentChar) };
+      r.ok.private = { type: "private", data: genPrivateLocal(genChar) };
       genState.log.push({t:"warn", s:"私密：已用本地个人随想补充（不消耗 API）"});
     }
     if(r.truncated) wasTruncated = true;
@@ -3961,17 +4117,17 @@ async function startGeneration(ids){
       try{
         let payload = r.ok[id];
         if(id === "wallet"){
-          const merged = mergeWalletForChar(currentChar.id, payload.data);
+          const merged = mergeWalletForChar(genChar.id, payload.data, genChar);
           payload = { type: "wallet", data: merged };
           r.ok[id] = payload;
         }
-        await dataSet(`app_${currentChar.id}_${id}`, payload);
+        await dataSet(`app_${genChar.id}_${id}`, payload);
         okAll[id] = payload;
-        try{ rememberPhoneSigs(currentChar.id, id, payload.data); }catch(e){}
+        try{ rememberPhoneSigs(genChar.id, id, payload.data); }catch(e){}
       }
       catch(e){ genState.log.push({t:"err", s:`写入 ${id} 失败: ${e.message}`}); }
     }
-    await reRenderCurrentApp();
+    if(phoneGenCharMatches(genChar)) await reRenderCurrentApp();
     return r;
   };
 
@@ -3983,7 +4139,9 @@ async function startGeneration(ids){
   } finally {
     genState.running = false;
     hideGenToast();
-    try { await reRenderCurrentApp(); } catch (e) {}
+    if(phoneGenCharMatches(genChar)){
+      try { await reRenderCurrentApp(); } catch (e) {}
+    }
   }
 
   const failed = ids.filter(id => !okAll[id] || partialIdSet.has(id));
@@ -4040,6 +4198,8 @@ document.getElementById("checkLogClose").onclick = () =>
 
 /* ---------- 新 App 宿主：加载原版页面（UI 不变，仅注入数据） ---------- */
 async function openHostedApp(appId, file, renderName){
+  const hostCharId = (typeof currentChar !== "undefined" && currentChar) ? currentChar.id : "";
+  if(!hostCharId){ showGenToast("请先进入一个角色的手机"); setTimeout(hideGenToast, 1600); return; }
   appHost.innerHTML = `<iframe class="app-frame" data-frame src="${file}" title=""></iframe>`;
   const frame = appHost.querySelector("[data-frame]");
   if(!frame) return;
@@ -4058,8 +4218,10 @@ async function openHostedApp(appId, file, renderName){
       }
     }catch(e){}
     let data = null;
-    try{ const saved = await dataGet(`app_${currentChar.id}_${appId}`); data = saved ? saved.data : null; }catch(e){}
+    try{ const saved = await dataGet(`app_${hostCharId}_${appId}`); data = saved ? saved.data : null; }catch(e){}
     if(!appHost.contains(frame)) return;
+    /* 加载期间用户可能已经返回角色列表；此时 iframe 已被移除，不再注入旧角色数据。 */
+    if(!(typeof currentChar !== "undefined" && currentChar && String(currentChar.id) === String(hostCharId))) return;
     try{
       const w = frame.contentWindow;
       w.__phoneRefresh = () => startGeneration([appId]);
@@ -4088,10 +4250,22 @@ async function openWallet(){
         }catch(e){}
       }
       if(!w || w.seedVersion !== 2 || w.wealthTier !== profile.tier || !!w.lowFamily !== !!profile.lowFamily || !!w.veryPoor !== !!profile.veryPoor){
+        let seedTxs = [];
+        try{ seedTxs = NanoCharWealth.randomWalletTransactions(profile, 10, nm, { balance: profile.balance }); }catch(e){}
         saveCharWallet(key, {
-          balance: profile.balance, transactions: [], seedVersion: 2,
-          wealthTier: profile.tier, wealthLabel: profile.label, lowFamily: !!profile.lowFamily, veryPoor: !!profile.veryPoor
+          balance: profile.balance, transactions: seedTxs, seedVersion: 2,
+          wealthTier: profile.tier, wealthLabel: profile.label, lowFamily: !!profile.lowFamily, veryPoor: !!profile.veryPoor, balanceManual: false
         });
+      }else{
+        let changed = false;
+        if(!w.balanceManual && NanoCharWealth.clampBalance){
+          const fixed = NanoCharWealth.clampBalance(profile, w.balance);
+          if(fixed !== w.balance){ w.balance = fixed; changed = true; }
+        }
+        if(!Array.isArray(w.transactions) || !w.transactions.length){
+          try{ w.transactions = NanoCharWealth.randomWalletTransactions(profile, 10, nm, { balance: w.balance }); changed = true; }catch(e){}
+        }
+        if(changed){ w.balanceRange = profile.balanceRange || w.balanceRange; saveCharWallet(key, w); }
       }
     }
   }catch(e){}

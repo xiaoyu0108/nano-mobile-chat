@@ -58,6 +58,7 @@
     var fcTotal = $('fcTotal');
     var fcUsed = $('fcUsed');
     var fcBalance = $('fcBalance');
+    var editBalanceBtn = $('editBalanceBtn');
     var inviteModal = $('inviteModal');
     var inviteLimit = $('inviteLimit');
     var limitModal = $('limitModal');
@@ -290,6 +291,7 @@
         fcTotal.textContent = moneyCompact(total);
         fcUsed.textContent = moneyCompact(used);
         renderCards(cards);
+        if (editBalanceBtn) editBalanceBtn.classList.toggle('show', !mine);
         var inv = $('inviteBtn');
         if (inv) inv.style.display = mine ? '' : 'none';
         if (!S) { fcBalance.textContent = moneyCompact(0); renderFlow([]); return; }
@@ -445,22 +447,69 @@
         return out;
     }
 
+    function charWalletProfile() {
+        try {
+            if (!window.NanoCharWealth) return null;
+            var p = NanoCharWealth.readProfile(chatId);
+            if (p) return p;
+            var persona = String((charData && (charData.setting || charData.desc || charData.description || charData.persona || charData.bio)) || '') + ' ' + contactName;
+            return NanoCharWealth.profileFor(persona, contactName);
+        } catch (e) { return null; }
+    }
+
     function applyTransactions(txs) {
         var w = S.readCharWallet(chatId);
+        var profile = charWalletProfile();
         var net = 0;
         txs.forEach(function (t) { net += (t.type === 'income' ? t.amount : -t.amount); });
-        var balance = Math.max(0, Math.round(((Number(w.balance) || 0) + net) * 100) / 100);
+        var balance = Math.max(0, Number(w.balance) || 0);
+        if (!w.balanceManual && profile && window.NanoCharWealth && NanoCharWealth.clampBalance) {
+            // 自动刷新必须落在角色财富阶层的余额区间内，避免穷学生越刷越富。
+            balance = NanoCharWealth.clampBalance(profile, balance + net);
+        } else {
+            balance = Math.max(0, balance + net);
+        }
+        balance = Math.round(balance * 100) / 100;
+        /* 保留历史流水，新流水接在最前面；亲属卡页面能直接看到完整的银行流水。 */
+        var seen = {};
+        var all = [];
+        (txs || []).concat(w.transactions || []).forEach(function (t) {
+            if (!t || typeof t !== 'object') return;
+            var id = String(t.id || (t.time + '|' + t.type + '|' + t.amount + '|' + t.desc));
+            if (seen[id]) return;
+            seen[id] = 1;
+            all.push(t);
+        });
+        all.sort(function (a, b) { return new Date(b.time) - new Date(a.time); });
         var merged = {
             balance: balance,
-            transactions: txs.slice(0, 500),
+            transactions: all.slice(0, 300),
             seedVersion: 2,
-            wealthTier: w.wealthTier || '',
-            wealthLabel: w.wealthLabel || '',
-            lowFamily: !!w.lowFamily,
-            veryPoor: !!w.veryPoor
+            wealthTier: w.wealthTier || (profile && profile.tier) || '',
+            wealthLabel: w.wealthLabel || (profile && profile.label) || '',
+            balanceRange: (profile && profile.balanceRange) || w.balanceRange || [],
+            lowFamily: w.lowFamily != null ? !!w.lowFamily : !!(profile && profile.lowFamily),
+            veryPoor: w.veryPoor != null ? !!w.veryPoor : !!(profile && profile.veryPoor),
+            balanceManual: !!w.balanceManual,
+            updatedAt: new Date().toISOString()
         };
         S.writeCharWallet(chatId, merged);
         return merged;
+    }
+
+    // 「他的」余额支持手动编辑；手动值会一直保留，不会被自动生成压回人设区间。
+    function editCharBalance() {
+        if (!S || !S.updateCharBalance) return;
+        var w = S.readCharWallet(chatId);
+        var input = window.prompt('输入 ' + contactName + ' 的银行卡余额（元）', String(Number(w.balance || 0).toFixed(2)));
+        if (input == null) return;
+        var amt = Math.round((parseFloat(input) || 0) * 100) / 100;
+        if (!(amt >= 0)) { toast('请输入正确的金额'); return; }
+        if (amt > 1e12) amt = 1e12;
+        S.updateCharBalance(chatId, amt);
+        if (currentTab === 'other') switchToOther();
+        refresh();
+        toast('余额已修改为 ' + money(amt));
     }
 
     async function apiRefreshWallet() {
@@ -470,7 +519,7 @@
         } catch (e) {}
         var w = S.readCharWallet(chatId);
         var balance = Number(w.balance) || 0;
-        var persona = String((charData && (charData.setting || charData.desc)) || '') + ' ' + contactName;
+        var persona = String((charData && (charData.setting || charData.desc || charData.description || charData.persona || charData.bio)) || '') + ' ' + contactName;
         var profile = null;
         try {
             profile = (window.NanoCharWealth && NanoCharWealth.readProfile(chatId)) || (window.NanoCharWealth && NanoCharWealth.profileFor(persona, contactName));
@@ -500,7 +549,7 @@
     }
 
     function randomWalletTransactions() {
-        var persona = String((charData && (charData.setting || charData.desc)) || '') + ' ' + contactName;
+        var persona = String((charData && (charData.setting || charData.desc || charData.description || charData.persona || charData.bio)) || '') + ' ' + contactName;
         var profile = null;
         try {
             profile = (window.NanoCharWealth && NanoCharWealth.readProfile(chatId)) || (window.NanoCharWealth && NanoCharWealth.profileFor(persona, contactName));
@@ -729,6 +778,9 @@
         if (refreshRandomBtn.disabled) return;
         var txs = randomWalletTransactions();
         finishRefresh(txs, '随机刷新');
+    });
+    if (editBalanceBtn) editBalanceBtn.addEventListener('click', function () {
+        editCharBalance();
     });
 
     var fcTabs = $('fcTabs');

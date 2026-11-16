@@ -5,13 +5,10 @@
     <script src="js/nano-runtime.js?v=20261115a"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <script>
-    // 全站唯一构建号：下面的自愈逻辑、iframe 的 nb= 参数都用它。
-    // 注意：不要再另写第二个版本号，否则两个版本号会互相判定“版本变了”，
-    // 造成每次打开都清缓存 + 反复 reload。
-    // 重要：发版时不要再清空 CacheStorage。
-    // JS/CSS 都带 ?v=，SW 按 URL 缓存；清空缓存会让发版后的第一次打开重新下载全部资源，
-    // 反而造成「每次更新后都特别慢」。旧版本缓存由 sw.js 的 activate 统一回收。
-    window.__NANO_BUILD__ = 'nano-2026-11-15-1';
+    // 全站构建号：只作为版本标记记录，不再据此清空缓存或强制整页 reload。
+    // 更新走增量：SW 保留旧缓存，页面先用缓存秒开、后台静默换成新文件；
+    // 只有真正改过的 JS/CSS 在改版本号（?v=）后才会重新下载。
+    window.__NANO_BUILD__ = 'nano-2026-11-16-1';
     (function () {
         try {
             var KEY = 'nano_build';
@@ -971,21 +968,20 @@
     <script defer src="js/appearance.js?v=20261115a"></script>
 </head>
 <body class="nano-index">
-<!-- 旧的“每次访问清缓存 + reload”已移除：它和 head 里的版本自愈叠加，
-     会造成进入页面时反复整页刷新。现在只保留 head 里按 __NANO_BUILD__ 执行一次的清理。 -->
+<!-- 旧的“每次访问清缓存 + reload”已移除：它会造成进入页面时反复整页刷新。
+     现在发版只记一个构建号，不清缓存、不强制 reload，更新由 SW 在后台增量完成。 -->
 <div class="bg"></div>
 <script src="bg.js"></script>
 
 <div class="home-shell pre-splash" id="homeShell">
-    <!-- 首页地址带上构建号：SW 可以对它直接缓存秒开，同时每次发版都会自动换缓存键，不会停在旧首页。 -->
+    <!-- 首页地址保持固定，SW 直接缓存秒开、后台静默更新；不再因构建号变化而整页重新下载。 -->
     <iframe id="homeFrame" data-src="html/home.html" title="Nano桌面" loading="eager" fetchpriority="high"></iframe>
 </div>
 <script>
 (function () {
     var f = document.getElementById('homeFrame');
     if (!f) return;
-    var b = window.__NANO_BUILD__ || '';
-    f.src = 'html/home.html' + (b ? '?nb=' + encodeURIComponent(b) : '?v=20261029f');
+    f.src = 'html/home.html';
 })();
 </script>
 <div class="app hidden-shell" id="legacyShell" aria-hidden="true">
@@ -1082,9 +1078,9 @@
   }
 
   // 开场动画只在「大退后重新进入」时出现；App 内切换页面不会重载首页，所以不会反复播放。
-  // 时长压到 0.75 秒，点屏幕 / 按 Esc 可立即加速结束；
+  // 按完整时长自然播放，不再自动加速；只有点屏幕 / 按 Esc 才提前跳过；
   // 淡出开始时就先显示桌面，让首页在动画遮罩下面先画出来，避免淡出结束后再等一帧。
-  var DUR = 300, READY_HOLD = 30;
+  var DUR = 3600, READY_HOLD = 900;
   var t0 = performance.now(), lastSp = 0, burst = false, done = false, raf = 0;
   var G = ['♡', '✦', '✧', '●'], COL = ['#ffc2d9', '#ffd7a8', '#cfe4ff', '#fff', '#e2d6ff'];
 
@@ -1156,16 +1152,6 @@
 
   root.addEventListener('pointerdown', skip);
   window.addEventListener('keydown', function (e) { if (e.key === 'Escape') skip(); });
-  // 首页 iframe 画好后会主动通知：能提前结束就提前结束，不再死等固定时长。
-  window.addEventListener('message', function (e) {
-    var d = e && e.data;
-    if (!d || d.type !== 'nanoHomeReady') return;
-    try {
-      var f = document.getElementById('homeFrame');
-      if (f && e.source && e.source !== f.contentWindow) return;
-    } catch (err) {}
-    skip();
-  });
   window.NanoSplash = { skip: skip, done: removeSplash };
   raf = requestAnimationFrame(frame);
 })();
@@ -1869,10 +1855,9 @@ setTimeout(function () {
         try { if (window.visualViewport) window.visualViewport.addEventListener('resize', applySafeTopToFrames); } catch (e) {}
         setTimeout(applySafeTopToFrames, 300);
 
-        // 构建版本号：与 head 里的 window.__NANO_BUILD__ 共用同一个值
-        var BUILD = window.__NANO_BUILD__ || 'nano-2026-10-29-6';
-
-        // 给同源页面 URL 追加构建版本号，避免浏览器/Service Worker 缓存到旧 HTML
+        // 页面地址保持稳定：不把构建号拼进 URL。
+        // 以前每次发版所有页面的 URL 都变，SW 全部 miss，导致所有页面重新下载；
+        // 现在由 SW 用「先用缓存秒开，后台静默更新」来拿到新 HTML，只有改过的文件才会真正下载。
         function pageUrl(u) {
             try {
                 if (!u || /^(https?:|blob:|data:|about:|file:)/i.test(u)) return u;
@@ -1884,11 +1869,7 @@ setTimeout(function () {
         }
         function withBuild(u) {
             try {
-                u = pageUrl(u);
-                if (!u || /^(https?:|blob:|data:|about:|file:)/i.test(u)) return u;
-                var b = BUILD || '';
-                if (!b) return u;
-                return u + (u.indexOf('?') === -1 ? '?' : '&') + 'nb=' + encodeURIComponent(b);
+                return pageUrl(u);
             } catch (e) { return u; }
         }
         function openFullscreen(url, title, showBack, source, skipStack) {
@@ -4737,8 +4718,8 @@ setTimeout(function () {
         } catch (e) {}
     })();
 
-    // 版本自愈只保留在 <head>：那里按 window.__NANO_BUILD__ 清理一次并 reload。
-    // 这里不再重复判断/清缓存，避免两个地方同时触发刷新。
+    // 发版不再清空 CacheStorage，也不强制 reload：所有页面共用一个长期缓存，
+    // 改动的文件由 SW 后台增量替换，未改动的资源继续命中缓存。
 
     // ===== Service Worker =====
     // 未配置后台推送时：保持注销，保证每次都加载最新代码（解决 iOS PWA 缓存旧版本）。

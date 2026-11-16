@@ -35,7 +35,8 @@
   }
   function serialOf(payload) {
     var h = hash((payload.id || '') + '|' + (payload.name || '') + '|' + (payload.createdAt || 0));
-    return 'NC-' + h.toString(36).toUpperCase().padStart(7, '0').slice(-7);
+    var prefix = payload.kind === 'emoji' ? 'NE-' : 'NC-';
+    return prefix + h.toString(36).toUpperCase().padStart(7, '0').slice(-7);
   }
   function roundRect(ctx, x, y, w, h, r) {
     r = Math.min(r, w / 2, h / 2);
@@ -72,6 +73,20 @@
     while (cut.length > 1 && ctx.measureText(cut + '…').width > maxWidth) cut = cut.slice(0, -1);
     ctx.fillText(cut + '…', x, y);
     return cut + '…';
+  }
+  function drawTextFitCenter(ctx, text, cx, y, maxWidth, size, weight, color) {
+    var t = String(text == null ? '' : text).replace(/\s+/g, ' ').trim();
+    ctx.font = (weight || 500) + ' ' + size + 'px ' + FONT;
+    ctx.fillStyle = color || '#141416';
+    ctx.textAlign = 'center';
+    if (ctx.measureText(t).width <= maxWidth) {
+      ctx.fillText(t, cx, y);
+    } else {
+      var cut = t;
+      while (cut.length > 1 && ctx.measureText(cut + '…').width > maxWidth) cut = cut.slice(0, -1);
+      ctx.fillText(cut + '…', cx, y);
+    }
+    ctx.textAlign = 'left';
   }
   function wrapText(ctx, text, x, y, maxWidth, lineHeight, maxLines, size, weight, color) {
     var t = String(text == null ? '' : text).replace(/\s+/g, ' ').trim();
@@ -153,9 +168,216 @@
       cur += bar + gap;
     }
   }
+  function drawEmojiThumb(ctx, img, name, x, y, size) {
+    ctx.save();
+    roundRect(ctx, x, y, size, size, 14);
+    ctx.clip();
+    ctx.fillStyle = '#e9e7df';
+    ctx.fillRect(x, y, size, size);
+    if (img) {
+      try {
+        var scale = Math.max(size / img.width, size / img.height);
+        var dw = img.width * scale;
+        var dh = img.height * scale;
+        ctx.drawImage(img, x + (size - dw) / 2, y + (size - dh) / 2, dw, dh);
+      } catch (e) {}
+    } else {
+      ctx.fillStyle = '#b9b7ae';
+      ctx.textAlign = 'center';
+      ctx.font = '800 ' + Math.round(size * 0.16) + 'px ' + MONO;
+      ctx.fillText('NANO', x + size / 2, y + size / 2 + Math.round(size * 0.02));
+      ctx.font = '500 ' + Math.round(size * 0.075) + 'px ' + MONO;
+      ctx.fillText('STICKER', x + size / 2, y + size / 2 + Math.round(size * 0.14));
+      ctx.textAlign = 'left';
+    }
+    ctx.restore();
+    ctx.save();
+    roundRect(ctx, x, y, size, size, 14);
+    ctx.strokeStyle = 'rgba(20,20,22,.14)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.restore();
+    drawTextFitCenter(ctx, name || '表情', x + size / 2, y + size + 18, size + 6, 13, 500, '#3a3a3e');
+  }
+  function drawEmojiTicket(ctx, payload, images) {
+    var W = TICKET_W, H = TICKET_H;
+
+    // 背景：深色票夹，中间一张浅色票纸
+    ctx.fillStyle = '#0c0c0e';
+    ctx.fillRect(0, 0, W, H);
+    ctx.save();
+    ctx.globalAlpha = 0.06;
+    ctx.fillStyle = '#ffffff';
+    for (var yy = 0; yy < H; yy += 14) {
+      for (var xx = (yy / 14) % 2 ? 8 : 0; xx < W; xx += 16) ctx.fillRect(xx, yy, 1.2, 1.2);
+    }
+    ctx.restore();
+
+    var px = 48, py = 48, pw = W - 96, ph = H - 96;
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,.55)';
+    ctx.shadowBlur = 40;
+    ctx.shadowOffsetY = 18;
+    ctx.fillStyle = '#f3f1ea';
+    roundRect(ctx, px, py, pw, ph, 26);
+    ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    roundRect(ctx, px, py, pw, ph, 26);
+    ctx.clip();
+    ctx.fillStyle = '#f3f1ea';
+    ctx.fillRect(px, py, pw, ph);
+    ctx.globalAlpha = 0.06;
+    for (var i = 0; i < 90; i++) {
+      var ly = py + ((i * 53) % ph);
+      ctx.fillStyle = i % 2 ? '#141416' : '#ffffff';
+      ctx.fillRect(px, ly, pw, 1);
+    }
+    ctx.globalAlpha = 1;
+
+    // 顶部字标
+    var topY = py + 74;
+    ctx.fillStyle = '#141416';
+    ctx.font = '800 46px ' + FONT;
+    letterSpace(ctx, 'NANO', px + 40, topY, 2);
+    ctx.font = '600 13px ' + MONO;
+    ctx.fillStyle = '#6c6c70';
+    letterSpace(ctx, 'STICKER PASS', px + 42, topY + 26, 3);
+
+    ctx.textAlign = 'right';
+    ctx.font = '600 13px ' + MONO;
+    ctx.fillStyle = '#6c6c70';
+    ctx.fillText('NO. ' + serialOf(payload), px + pw - 38, topY - 4);
+    ctx.fillText('NANO STICKER SYSTEM', px + pw - 38, topY + 18);
+    ctx.textAlign = 'left';
+
+    ctx.strokeStyle = 'rgba(20,20,22,.16)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(px + 38, py + 132); ctx.lineTo(px + pw - 38, py + 132); ctx.stroke();
+
+    // 分组名 / 数量
+    var list = Array.isArray(payload.emojis) ? payload.emojis : [];
+    var total = Number(payload.total) || list.length;
+    ctx.fillStyle = '#141416';
+    ctx.font = '700 46px ' + FONT;
+    drawTextFit(ctx, payload.name || '表情包', px + 40, py + 198, pw - 80, 46, 700, '#141416');
+    ctx.font = '600 12px ' + MONO;
+    ctx.fillStyle = '#6c6c70';
+    letterSpace(ctx, 'STICKER PACK · ' + total + ' EMOJIS', px + 42, py + 232, 2.2);
+
+    // 表情缩略图：4 列 × 3 行
+    var cols = 4, gap = 14;
+    var cell = (pw - 80 - gap * (cols - 1)) / cols;
+    var rowH = cell + 24;
+    var gridX = px + 40, gridY = py + 276;
+    var shown = Math.min(total, 12);
+    for (var k = 0; k < shown; k++) {
+      var col = k % cols, row = Math.floor(k / cols);
+      var item = list[k] || {};
+      drawEmojiThumb(ctx, images[k], item.name, gridX + col * (cell + gap), gridY + row * rowH, cell);
+    }
+    var extraPacked = list.length - shown;
+    var truncated = total - list.length;
+    ctx.font = '500 12px ' + FONT;
+    ctx.fillStyle = '#8a8a8f';
+    ctx.fillText(extraPacked > 0 ? ('还有 ' + extraPacked + ' 个已打包，导入后全部可用。') : '分组的全部表情都已打包进这张票根。', px + 40, py + 752);
+    if (truncated > 0) {
+      ctx.fillStyle = '#b06a3a';
+      ctx.fillText('票根最多打包 60 个，剩余 ' + truncated + ' 个没有包含，请分批分享。', px + 40, py + 772);
+    }
+
+    // 打孔线（票根撕线）
+    var perfY = py + 788;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(20,20,22,.4)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([7, 9]);
+    ctx.beginPath(); ctx.moveTo(px + 22, perfY); ctx.lineTo(px + pw - 22, perfY); ctx.stroke();
+    ctx.restore();
+    ctx.fillStyle = '#0c0c0e';
+    ctx.beginPath(); ctx.arc(px, perfY, 17, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(px + pw, perfY, 17, 0, Math.PI * 2); ctx.fill();
+
+    // 票根下半部分
+    var stubY = perfY + 34;
+    ctx.font = '700 15px ' + MONO;
+    ctx.fillStyle = '#141416';
+    letterSpace(ctx, 'NANO STICKER TICKET', px + 40, stubY + 24, 2.4);
+
+    ctx.font = '400 15px ' + FONT;
+    ctx.fillStyle = '#6c6c70';
+    ctx.fillText('一张可以导入 Nano 的表情包票根', px + 40, stubY + 54);
+
+    var photoCount = 0;
+    list.forEach(function (e) { if (e && /^data:image\//i.test(String(e.url || ''))) photoCount++; });
+    var stats = [
+      ['分组', total + ' 个'],
+      ['已打包', list.length + ' 个'],
+      ['照片', photoCount + ' 个']
+    ];
+    var colW = (pw - 80) / stats.length;
+    stats.forEach(function (s, idx) {
+      var sx = px + 40 + colW * idx;
+      ctx.font = '700 28px ' + FONT;
+      ctx.fillStyle = '#141416';
+      ctx.fillText(s[1], sx, stubY + 92);
+      ctx.font = '600 11px ' + MONO;
+      ctx.fillStyle = '#8a8a8f';
+      letterSpace(ctx, s[0], sx, stubY + 112, 1.2);
+    });
+
+    drawBarcode(ctx, (payload.id || '') + '|' + (payload.name || ''), px + 40, stubY + 126, pw - 210, 56);
+
+    ctx.font = '600 12px ' + MONO;
+    ctx.fillStyle = '#6c6c70';
+    ctx.fillText('STICKER · PHOTO · LINK', px + 40, stubY + 204);
+    ctx.textAlign = 'right';
+    ctx.fillText('IMPORT TO NANO', px + pw - 40, stubY + 204);
+    ctx.textAlign = 'left';
+
+    ctx.font = '400 11px ' + FONT;
+    ctx.fillStyle = '#9a9a9f';
+    ctx.fillText('完整表情包数据已封装在 PNG 里；照片表情也已打包，导入后换设备 / 分享给别人都能直接使用。', px + 40, stubY + 228);
+
+    // 圆形印章
+    ctx.save();
+    ctx.translate(px + pw - 96, stubY + 150);
+    ctx.rotate(-0.18);
+    ctx.strokeStyle = 'rgba(20,20,22,.18)';
+    ctx.lineWidth = 3;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath(); ctx.arc(0, 0, 46, 0, Math.PI * 2); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(20,20,22,.18)';
+    ctx.textAlign = 'center';
+    ctx.font = '800 16px ' + FONT;
+    ctx.fillText('NANO', 0, -6);
+    ctx.font = '600 9px ' + MONO;
+    ctx.fillText('STICKER', 0, 10);
+    ctx.fillText(serialOf(payload), 0, 24);
+    ctx.restore();
+    ctx.textAlign = 'left';
+
+    ctx.strokeStyle = 'rgba(20,20,22,.1)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(px + 38, py + ph - 24); ctx.lineTo(px + pw - 38, py + ph - 24); ctx.stroke();
+    ctx.font = '400 10px ' + MONO;
+    ctx.fillStyle = '#9a9a9f';
+    ctx.fillText('PRINTED BY NANO · ' + new Date().getFullYear(), px + 40, py + ph - 8);
+    ctx.textAlign = 'right';
+    ctx.fillText('ID ' + serialOf(payload), px + pw - 40, py + ph - 8);
+    ctx.textAlign = 'left';
+
+    ctx.restore();
+  }
 
   // ---------- 票根绘制 ----------
-  function drawTicket(ctx, payload, avatarImg) {
+  function drawTicket(ctx, payload, avatarImg, emojiImages) {
+    if (payload.kind === 'emoji') {
+      drawEmojiTicket(ctx, payload, emojiImages || []);
+      return;
+    }
     var isUser = payload.kind === 'user';
     var W = TICKET_W, H = TICKET_H;
 
@@ -401,6 +623,32 @@
     return { spec: 'chara_card_v2', spec_version: '2.0', data: data };
   }
 
+  function buildEmojiPackJson(payload) {
+    var list = Array.isArray(payload.emojis) ? payload.emojis : [];
+    var emojis = [];
+    list.forEach(function (e) {
+      if (!e || !e.url) return;
+      emojis.push({
+        name: String(e.name || '表情'),
+        url: String(e.url),
+        addedAt: Number(e.addedAt) || 0
+      });
+    });
+    return {
+      format: 'nano_emoji_v1',
+      kind: 'emoji',
+      version: 1,
+      id: payload.id || '',
+      name: payload.name || '表情包',
+      desc: payload.desc || '',
+      emojis: emojis,
+      count: emojis.length,
+      totalCount: Number(payload.total) || emojis.length,
+      createdAt: payload.createdAt || Date.now(),
+      serial: serialOf(payload)
+    };
+  }
+
   // ---------- 渲染 PNG + 内嵌数据 ----------
   async function renderBlob(payload) {
     payload = payload || {};
@@ -409,8 +657,15 @@
     canvas.width = TICKET_W;
     canvas.height = TICKET_H;
     var ctx = canvas.getContext('2d');
-    var avatar = await loadImage(payload.avatar || '');
-    drawTicket(ctx, payload, avatar);
+    var emojiImages = [];
+    if (payload.kind === 'emoji') {
+      var list = Array.isArray(payload.emojis) ? payload.emojis.slice(0, 12) : [];
+      emojiImages = await Promise.all(list.map(function (e) { return loadImage((e && e.url) || ''); }));
+      drawTicket(ctx, payload, null, emojiImages);
+    } else {
+      var avatar = await loadImage(payload.avatar || '');
+      drawTicket(ctx, payload, avatar);
+    }
 
     var blob = await new Promise(function (resolve, reject) {
       try {
@@ -418,6 +673,13 @@
       } catch (e) { reject(e); }
     });
     var buf = await blob.arrayBuffer();
+    if (payload.kind === 'emoji') {
+      var pack = buildEmojiPackJson(payload);
+      var outEmoji = NanoPngJson.embedJsonCompressed
+        ? await NanoPngJson.embedJsonCompressed(buf, 'nano_emoji', pack)
+        : NanoPngJson.embedJson(buf, 'nano_emoji', pack);
+      return new Blob([outEmoji], { type: 'image/png' });
+    }
     var card = buildCardJson(payload);
     var out = NanoPngJson.embedJson(buf, 'nano_card', card);
     return new Blob([out], { type: 'image/png' });
@@ -465,8 +727,8 @@
     return true;
   }
 
-  async function saveBlob(blob, name, silent) {
-    var filename = safeName(name) + '-Nano票根.png';
+  async function saveBlob(blob, name, silent, kind) {
+    var filename = safeName(name) + (kind === 'emoji' ? '-表情包票根.png' : '-Nano票根.png');
     // iOS / 移动端：优先系统分享（可以存到相册）
     try {
       if (navigator.canShare && navigator.share) {
@@ -584,7 +846,7 @@
       try { URL.revokeObjectURL(url); } catch (e) {}
       overlay.remove();
     }
-    saveBtn.addEventListener('click', function () { saveBlob(blob, payload.name); });
+    saveBtn.addEventListener('click', function () { saveBlob(blob, payload.name, false, payload.kind); });
     closeBtn.addEventListener('click', closeOverlay);
     overlay.addEventListener('click', function (e) {
       if (e.target === overlay) closeOverlay();
@@ -694,16 +956,96 @@
     };
   }
 
+  // 上传照片生成的表情是 data URL，直接塞进 PNG 会非常大。分享前把过大的图片
+  // 缩到 360px 并转成 WebP；这样别人导入票根后仍然能直接使用这张表情。
+  function shrinkEmojiUrl(url) {
+    return new Promise(function (resolve) {
+      if (!/^data:image\//i.test(url)) return resolve(url);
+      if (url.length <= 90 * 1024) return resolve(url);
+      var img = new Image();
+      var done = false;
+      function finish(v) { if (!done) { done = true; resolve(v); } }
+      img.onload = function () {
+        try {
+          var max = 360;
+          var w = img.width || max;
+          var h = img.height || max;
+          var scale = Math.min(1, max / Math.max(w, h));
+          var cw = Math.max(1, Math.round(w * scale));
+          var ch = Math.max(1, Math.round(h * scale));
+          var canvas = document.createElement('canvas');
+          canvas.width = cw;
+          canvas.height = ch;
+          var cx = canvas.getContext('2d');
+          cx.clearRect(0, 0, cw, ch);
+          cx.drawImage(img, 0, 0, cw, ch);
+          var out = '';
+          try { out = canvas.toDataURL('image/webp', 0.82); } catch (e) {}
+          if (!/^data:image\/webp/i.test(out)) {
+            try { out = canvas.toDataURL('image/png'); } catch (e2) { out = ''; }
+          }
+          finish(out && out.length < url.length ? out : url);
+        } catch (e) { finish(url); }
+      };
+      img.onerror = function () { finish(url); };
+      try { img.src = url; } catch (e) { finish(url); }
+      setTimeout(function () { finish(url); }, 8000);
+    });
+  }
+
+  async function fromEmojiGroup(group) {
+    group = group || {};
+    var list = Array.isArray(group.emojis) ? group.emojis.slice(0, 60) : [];
+    var prepared = [];
+    // 分批处理，避免几十张图片同时解码把手机内存撑爆。
+    for (var start = 0; start < list.length; start += 8) {
+      var batch = list.slice(start, start + 8);
+      var done = await Promise.all(batch.map(async function (raw) {
+        var e = raw || {};
+        var u = String(e.url || '');
+        if (!u) return null;
+        if (/^data:image\//i.test(u)) {
+          try { u = await shrinkEmojiUrl(u); } catch (err) {}
+        }
+        return {
+          id: e.id || '',
+          name: e.name || '表情',
+          url: u,
+          addedAt: Number(e.addedAt) || 0
+        };
+      }));
+      done.forEach(function (e) { if (e) prepared.push(e); });
+    }
+    return {
+      kind: 'emoji',
+      id: group.id || '',
+      name: group.name || '表情包',
+      desc: group.desc || '',
+      total: Array.isArray(group.emojis) ? group.emojis.length : prepared.length,
+      emojis: prepared,
+      createdAt: Date.now()
+    };
+  }
+
+  async function printEmojiGroup(group) {
+    var payload = await fromEmojiGroup(group);
+    if (!payload.emojis.length) throw new Error('这个分组里还没有表情包');
+    return printPayload(payload);
+  }
+
   window.NanoCardTicket = {
     VERSION: 1,
     TICKET_W: TICKET_W,
     TICKET_H: TICKET_H,
     fromCharacter: fromCharacter,
     fromUser: fromUser,
+    fromEmojiGroup: fromEmojiGroup,
     loadWorldbooksForCharacter: loadWorldbooksForCharacter,
     buildCardJson: buildCardJson,
+    buildEmojiPackJson: buildEmojiPackJson,
     renderBlob: renderBlob,
     printPayload: printPayload,
+    printEmojiGroup: printEmojiGroup,
     saveBlob: saveBlob,
     serialOf: serialOf
   };

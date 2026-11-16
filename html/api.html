@@ -152,6 +152,28 @@
                             <div class="connection-status" id="subStatus"></div>
                         </div>
                     </div>
+
+                    <!-- 链接解析服务（可选） -->
+                    <div class="api-card">
+                        <div class="api-card-header" style="margin-bottom:4px;">
+                            <span class="api-card-title">链接解析（可选）</span>
+                            <button class="api-card-toggle" data-target="linkParserBody">
+                                <i class="fas fa-chevron-up"></i>
+                            </button>
+                        </div>
+                        <div class="api-card-body" id="linkParserBody">
+                            <div class="form-group">
+                                <label class="form-label">解析服务地址 <span class="hint">(留空则用 Worker 自动解析)</span></label>
+                                <input class="form-control" id="linkParserUrl" placeholder="https://your-xhs-parser.example.com/preview" />
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Token <span class="hint">(可选)</span></label>
+                                <input class="form-control" id="linkParserToken" type="text" placeholder="Bearer Token" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
+                            </div>
+                            <div class="connection-status" id="linkParserStatus">优先使用自定义解析服务；未配置时走 Worker → Jina → 公共代理。返回 JSON 需包含 title / desc / content / images。</div>
+                            <button class="btn btn-primary" id="linkParserSave" style="width:100%;margin-top:8px;"><i class="fas fa-save"></i> 保存链接解析配置</button>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- ============ Tab: Image ============ -->
@@ -380,7 +402,7 @@
     </div>
 
     <script defer src="../js/nano-tts.js?v=20261111a"></script>
-    <script defer src="../js/api.js?v=20261028c"></script>
+    <script defer src="../js/api.js?v=20261116a"></script>
 <script defer src="../js/nano-own-back.js"></script>
 <script defer src="../swipe-back.js"></script>
 </body>

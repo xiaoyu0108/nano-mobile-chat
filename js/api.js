@@ -234,6 +234,8 @@
             subModel: (document.getElementById('subModelSelect') || {}).value || '',
             subTemp: parseFloat((document.getElementById('subTemp') || {}).value) || 0.7,
             subToggle: document.getElementById('subToggle') && document.getElementById('subToggle').classList.contains('active'),
+            linkParserUrl: normUrl((document.getElementById('linkParserUrl') || {}).value),
+            linkParserToken: (document.getElementById('linkParserToken') || {}).value || '',
             imgUrl: normUrl((document.getElementById('imgUrl') || {}).value),
             imgKey: (document.getElementById('imgKey') || {}).value || '',
             imgPreset: (document.getElementById('imgPreset') || {}).value || '',
@@ -317,6 +319,7 @@
         function setVal(id, val) { var el = document.getElementById(id); if (el && val !== undefined && val !== null) el.value = val; }
         setVal('mainUrl', data.mainUrl); setVal('mainKey', data.mainKey); setVal('mainPreset', data.mainPreset); setVal('mainModelSelect', data.mainModel);
         setVal('subUrl', data.subUrl); setVal('subKey', data.subKey); setVal('subPreset', data.subPreset); setVal('subModelSelect', data.subModel);
+        setVal('linkParserUrl', data.linkParserUrl); setVal('linkParserToken', data.linkParserToken);
         setVal('imgUrl', data.imgUrl); setVal('imgKey', data.imgKey); setVal('imgPreset', data.imgPreset); setVal('imgModelSelect', data.imgModel);
         setVal('ttsUrl', data.ttsUrl); setVal('ttsKey', data.ttsKey); setVal('ttsGroupId', data.ttsGroupId);
         setVal('ttsMinimaxRegion', data.ttsMinimaxRegion || 'auto');
@@ -1129,6 +1132,12 @@
         if (ttsVoiceBtn) ttsVoiceBtn.addEventListener('click', fetchTtsVoices);
         var ttsTestBtn = document.getElementById('ttsTestVoice');
         if (ttsTestBtn) ttsTestBtn.addEventListener('click', testTtsVoice);
+
+        var linkParserSaveBtn = document.getElementById('linkParserSave');
+        if (linkParserSaveBtn) linkParserSaveBtn.addEventListener('click', async function () {
+            await saveAllToStorage();
+            showModal('链接解析配置已保存');
+        });
 
         // 保存预设
         setupSavePreset('main_', 'mainSavePreset', 'mainPresetName', 'mainPreset', 'mainUrl', 'mainKey', 'mainModelSelect');

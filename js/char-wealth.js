@@ -90,6 +90,8 @@
 
     var LOW_FAMILY_RE = /家境(不好|一般|普通|差|困难|贫寒|拮据|不咋好|不太好)|家庭(条件|经济|情况|背景).{0,10}(不好|一般|普通|差|困难|拮据|贫寒|不咋好|不太好)|普通家庭|工薪家庭|农村|小县城|单亲|父母.{0,10}(下岗|务农|打工|生病|残疾|收入不高)|家里.{0,6}(没钱|不富裕|条件一般|管得严)/;
     var RICH_FAMILY_RE = /家里.{0,6}(很有钱|有钱|富裕|条件很好|条件不错|不缺钱)|家境(优渥|富裕|很好|不错)|富二代|豪门|财阀|富家/;
+    // 更口语的「穷」也要识别：穷孩子 / 手头紧 / 吃土 / 靠打工过日子……
+    var POOR_HINT_RE = /穷(?!开心|尽|追|举|极)|穷光蛋|穷人|穷孩子|穷学生|没钱|缺钱|手头紧|吃土|靠打工|打工仔|寒门|清贫|揭不开锅|吃了上顿没下顿/;
 
     function hash32(s) {
         var h = 2166136261 >>> 0;
@@ -119,8 +121,9 @@
         if (RICH_FAMILY_RE.test(s)) rich += 3;
 
         var poor = hits(s, /落魄|破产|欠债|负债|穷困潦倒|家道中落|被扫地出门|低保|特困|拾荒|流浪|吃不起|揭不开锅|家徒四壁/g) * 6;
-        poor += hits(s, /贫穷|贫困|拮据|没钱|打工|服务员|便利店|外卖员|快递员|工地|流水线|小时工|日结|临时工/g) * 2;
+        poor += hits(s, /贫穷|贫困|拮据|没钱|穷(?!开心|尽|追|举|极)|打工|服务员|便利店|外卖员|快递员|工地|流水线|小时工|日结|临时工|兼职/g) * 2;
         if (LOW_FAMILY_RE.test(s)) poor += 2;
+        if (POOR_HINT_RE.test(s)) poor += 3;
 
         var student = hits(s, /学生|高中生|大学生|初中生|研究生|硕士|博士|大一|大二|大三|大四|高三|高二|高一|初三|校园|奖学金|生活费|宿舍|住校/g) * 4;
         var upper = hits(s, /中产|白领|设计师|工程师|建筑师|教师|老师|公务员|护士|会计|销售|客服|文员|自由职业|普通上班族|工薪/g) * 2;
@@ -169,7 +172,7 @@
         var text = textOf(persona) + ' ' + textOf(name);
         var tier = pickTier(persona, name);
         var t = TIERS[tier] || TIERS.ordinary;
-        var lowFamily = !!(tier === 'student' && LOW_FAMILY_RE.test(text) && !RICH_FAMILY_RE.test(text));
+        var lowFamily = !!(tier === 'student' && (LOW_FAMILY_RE.test(text) || POOR_HINT_RE.test(text)) && !RICH_FAMILY_RE.test(text));
         var veryPoor = !!(tier === 'poor' && /落魄|破产|欠债|负债|穷困潦倒|吃不起|低保|特困|家徒四壁|流浪|拾荒|揭不开锅/.test(text));
         var ranges = t;
         var note = t.note;
@@ -189,6 +192,7 @@
             lowFamily: lowFamily,
             veryPoor: veryPoor,
             balance: Math.round(between(ranges.balance, seed + '|balance') * 100) / 100,
+            balanceRange: ranges.balance.slice(),
             incomeRange: ranges.income.slice(),
             expenseRange: ranges.expense.slice(),
             incomePool: ranges.incomePool.slice(),
@@ -197,6 +201,24 @@
             seed: seed,
             personaHash: hash32(text)
         };
+    }
+
+    // 角色当前银行卡余额的合理区间。手动编辑过的余额不强制套用。
+    function balanceRangeFor(profile) {
+        if (!profile) return [0, Infinity];
+        if (profile.veryPoor) return POOR_LOW.balance.slice();
+        if (profile.lowFamily) return STUDENT_LOW.balance.slice();
+        var t = TIERS[profile.tier] || TIERS.ordinary;
+        if (Array.isArray(profile.balanceRange) && profile.balanceRange.length === 2) return profile.balanceRange.slice();
+        return t.balance.slice();
+    }
+
+    function clampBalance(profile, n) {
+        var range = balanceRangeFor(profile);
+        var v = Number(n) || 0;
+        if (v < range[0]) v = range[0];
+        if (v > range[1]) v = range[1];
+        return Math.round(v * 100) / 100;
     }
 
     function profileKey(chatId) {
@@ -219,6 +241,10 @@
                     p.expensePool = Array.isArray(p.expensePool) && p.expensePool.length ? p.expensePool : t.expensePool.slice();
                     p.version = 2;
                 }
+                if (!Array.isArray(p.balanceRange)) {
+                    p.balanceRange = p.veryPoor ? POOR_LOW.balance.slice() : (p.lowFamily ? STUDENT_LOW.balance.slice() : (TIERS[p.tier] || TIERS.ordinary).balance.slice());
+                }
+                if (typeof p.balance === 'number') p.balance = clampBalance(p, p.balance);
                 return p;
             }
         } catch (e) {}
@@ -377,6 +403,8 @@
             if (p.lowFamily && type === 'income') amount = Math.min(amount, 1500);
             if (p.tier === 'student' && type === 'income') amount = Math.min(amount, 2000);
             if (p.tier === 'poor' && type === 'income') amount = Math.min(amount, 800);
+            // 兼职 / 日结这类收入不能写成「学生兼职几千」：低家境学生封顶 800。
+            if (type === 'income' && p.lowFamily && /兼职|日结|小时工|临时|勤工|家教/.test(desc)) amount = Math.min(amount, 800);
             out.push({
                 id: t.id || ('ctx_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7)),
                 type: type,
@@ -426,6 +454,7 @@
             if (p.lowFamily && type === 'income') amount = Math.min(amount, 1500);
             if (p.tier === 'student' && type === 'income') amount = Math.min(amount, 2000);
             if (p.tier === 'poor' && type === 'income') amount = Math.min(amount, 800);
+            if (type === 'income' && p.lowFamily && /兼职|日结|小时工|临时|勤工|家教/.test(desc)) amount = Math.min(amount, 800);
 
             // 时间落在最近 7 天，收入偏上午，消费偏中午/晚上。
             var dayAgo = Math.random() * 7;
@@ -466,6 +495,8 @@
         promptBlock: promptBlock,
         sanitizeTransactions: sanitizeTransactions,
         randomWalletTransactions: randomWalletTransactions,
+        balanceRangeFor: balanceRangeFor,
+        clampBalance: clampBalance,
         saveProfile: saveProfile,
         readProfile: readProfile,
         seedChar: seedChar,
