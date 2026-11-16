@@ -794,6 +794,7 @@ function sanitizeAutoConfig(body) {
       style: String((c && c.style) || '').slice(0, 6000),
       worldbook: String((c && c.worldbook) || '').slice(0, 4000),
       isNpc: !!(c && c.isNpc),
+      isAltProbe: !!(c && c.isAltProbe),
       nationality: String((c && c.nationality) || '').slice(0, 40),
       language: String((c && c.language) || '').slice(0, 40),
       foreign: !!(c && c.foreign),
@@ -1160,10 +1161,10 @@ async function generateAutoMoments(env, cfg, busyChatId, maxChars) {
   const count = Math.max(3, Math.min(Number(maxChars) || 3, 5));
   const picked = pickRandom(source, Math.min(source.length, count));
   const names = picked.map(function (c) { return c.name; });
-  // 普通 char 集合：char 之间绝对不互动；NPC/小号可以发帖和互动。
+  // 已添加到通讯录的 NPC / 小号同样按 char 看待：char 之间绝对不互动。
   const plainChars = {};
   (cfg.chars || []).forEach(function (c) {
-    if (c && c.name && !c.isNpc && !c.isAltProbe) plainChars[String(c.name).replace(/\s+/g, '')] = String(c.name);
+    if (c && c.name) plainChars[String(c.name).replace(/\s+/g, '')] = String(c.name);
   });
   const npcPool = (cfg.chars || []).filter(function (c) {
     return c && c.name && (c.isNpc || c.isAltProbe);
@@ -1192,11 +1193,11 @@ async function generateAutoMoments(env, cfg, busyChatId, maxChars) {
   }).join('\n');
   const sys = '你们是彼此认识的朋友，在同一个朋友圈里。请一次性生成 ' + count + ' 条朋友圈动态（3~5 条）。\n'
     + '【角色人设与最近聊天】\n' + profiles + '\n'
-    + '【最高优先级】任何 char 之间都绝对不允许互相评论、回复、点赞或接话；char 发的动态下评论区只能出现 NPC，即使人设写了认识也不行。\n'
-    + '【发帖人】优先让以下角色发，每人只发 1 条：' + names.join('、') + '；数量不够 ' + count + ' 条时，由他们可能认识的 NPC 发帖补足，作者不要重复。\n'
+    + '【最高优先级】任何 char 之间都绝对不允许互相评论、回复、点赞或接话，即使人设写了认识也不行；已经加为好友的 NPC、小号同样算 char（小号和大号是同一个人，更不能互动）。char 发的动态下评论区只能出现普通 NPC。\n'
+    + '【发帖人】优先让以下角色发，每人只发 1 条：' + names.join('、') + '；数量不够 ' + count + ' 条时，由他们可能认识的普通 NPC 发帖补足，作者不要重复。\n'
     + '要求：像真人随手发的日常，具体、有细节，最好和 TA 最近聊过的事有一点关联；不要流水账，不要对任何人说话，不要提问，禁止 AI 腔。\n'
     + '这一批约一半写短帖（100 字以下，2~4 句，也要有意思），一半写中等长度（100~220 字，把一件具体的事或情绪讲完整，有细节、有画面）；偶尔挑 1 条写 300~500 字长文——追星/演唱会 repo、好物分享、情感经历、求助/避雷、深夜碎碎念等，要有细节、真实情绪和起承转合，不要 AI 腔。不要每次都只说一句话，也不要为了凑字硬写。\n'
-    + '每条动态都必须带 2~4 个点赞和 3~4 条评论，不能只发一条光秃秃的动态。点赞/评论者只能是作者生活里的同学、朋友、同事、家人、邻居等 NPC（可以虚构真实完整姓名），不能是作者本人，绝对不能出现用户「' + cfg.user.name + '」，也不能是任何普通 char。\n'
+    + '每条动态都必须带 2~4 个点赞和 3~4 条评论，不能只发一条光秃秃的动态。点赞/评论者只能是作者生活里的同学、朋友、同事、家人、邻居等普通 NPC（可以虚构真实完整姓名），不能是作者本人，绝对不能出现用户「' + cfg.user.name + '」，也不能是任何 char（含已添加好友的 NPC/小号）。\n'
     + '【NPC 归属】每个 NPC 只属于与自己真实有关系的作者：A 的熟人只能出现在 A 的动态下，绝对不要写到 B/C 的点赞或评论区里；不认识作者的人一个都不许出现；同一个 NPC 不要出现在两个不同角色的动态里。\n'
     + '【回复对象】只有评论区里真正发过评论的人才能被回复；作者没在评论区留言时，NPC 不能写「回复作者」。\n'
     + '【名字】NPC 必须是真实姓名，禁止王姐/李哥/店老板/神秘人/旅行者这类假名；身份备注只能放在姓名后的括号里，如「李思雨（咖啡店老板）」。\n'

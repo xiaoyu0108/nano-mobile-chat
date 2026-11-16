@@ -915,8 +915,9 @@
     }
     function isExplicitPhotoRequest(t) {
         const s = String(t || '');
-        return /(发|拍|来|给|想看|看看).{0,8}(自拍|照片|图片|你现在的样子|你在干嘛|你在做什么)/.test(s)
-            || /(自拍|照片|图片).{0,6}(发|拍|来|给我|看看)/.test(s);
+        return /(发|拍|来|给|传|想看|看看|瞧瞧|让我看|我要看).{0,12}(自拍|照片|相片|图片|你现在的样子|你在干嘛|你在做什么|你长什么样)/.test(s)
+            || /(自拍|照片|相片|图片|你现在的样子|你长什么样).{0,10}(发|拍|来|给我|看看|瞧瞧)/.test(s)
+            || /(看看你|想看看你|让我看看你|拍张你|发张你|来张你)/.test(s);
     }
     function looksLikeDeepTalk(t) {
         const s = String(t || '').trim();
@@ -1173,11 +1174,12 @@
         prompt += '- [transfer:金额] 例如 [transfer:52.00]\n';
         prompt += '- [gift:礼物名称] 例如 [gift:小熊玩偶]\n';
         prompt += '- [商城:商品名称|金额|说明] 你在商城给对方买一份礼物（真实扣你的银行卡，下单后对方确认收货），例如 [商城:香薰礼盒|168|路过看到觉得很适合你]；金额要符合你的身份，不要频繁。\n';
-        if (__vFreq !== 'off') prompt += '- [voice:秒数|内容] 例如 [voice:8|路上小心]（发语音气泡，内容就是你要说的那句话）。只输出这个标签本身；严禁写成“对方发了一条语音（时长8秒），内容是：……”这种描述句，系统只认 [voice:秒数|内容] 标签，描述句会变成普通文字。\n';
+        if (__vFreq !== 'off') prompt += '- [voice:秒数|内容] 例如 [voice:8|路上小心]（发语音气泡，内容就是你要说的那句话）。只输出这个标签本身；严禁写成“对方发了一条语音（时长8秒），内容是：……”这种描述句，系统只认 [voice:秒数|内容] 标签，描述句会变成普通文字。语音标签的位置要随机：可以在第一条、中间或最后，不要每次都放第一条。\n';
         prompt += '- [call:来电]（给对方打电话，接通后即语音通话）\n';
         prompt += '- [call:视频]（给对方打视频电话）\n';
         prompt += '- [image:图片描述] 例如 [image:一张夕阳]\n';
         prompt += '- 发图必须有理由：只分享你此刻真实看到/正在做的事，先自然说清“为什么发”，再发图；不要为了发图而发图。生图不一定是自拍：也可以主动发夕阳、咖啡、电脑桌面、街角、食物、小狗小猫、窗边等日常随拍；发自拍时镜头角度要随机（仰拍/俯拍/侧拍/回头/过肩/对镜/半身/全身），不要每次都同一张正面自拍。对方在说情绪、认真话题时，绝对不要用自拍或无关照片回应；除非对方明确要，否则本轮不发图。\n';
+        prompt += '- 对方明确要照片/自拍/看看你时，本轮必须输出一个和请求相关的 [image:...] 标签，不能只口头说“发了/给你看/发过去了”。\n';
         const __emojiNames = getEmojiNamesForPrompt();
         if (__emojiNames.length) {
             const __emojiExample = __emojiNames[Math.floor(Math.random() * Math.min(__emojiNames.length, 40))] || __emojiNames[0];
@@ -2433,6 +2435,28 @@
             const who = (m.type === 'right') ? ((currentUser && currentUser.name) || '用户') : (charName || '角色');
             return who + '：' + t;
         }).filter(Boolean).join('\n');
+    }
+
+    // 读取某个角色最近的真实聊天（当前角色用内存中的 messages，其他角色从记忆库读）。
+    // 朋友圈生成必须接得上最近聊过的事，不能只靠长期记忆卡片。
+    function __recentChatTextFor(author, rounds) {
+        const a = author || {};
+        const isCurrent = String(a.id || '') === String(chatId);
+        const readP = isCurrent
+            ? Promise.resolve(messages)
+            : ((window.NanoMemLink && window.NanoMemLink.readMessages)
+                ? window.NanoMemLink.readMessages(a.id).catch(function () { return []; })
+                : Promise.resolve([]));
+        return readP.then(function (msgs) {
+            if (!Array.isArray(msgs) || !msgs.length) {
+                try {
+                    const raw = localStorage.getItem('chat_messages_' + a.id);
+                    const local = raw ? JSON.parse(raw) : [];
+                    if (Array.isArray(local) && local.length) msgs = local;
+                } catch (e) {}
+            }
+            return __formatMsgs(__lastRounds(msgs, rounds || 2), a.name || displayName || '角色');
+        }).catch(function () { return ''; });
     }
 
     // 单聊读取「该角色所在的群聊」最近消息 + 群聊记忆卡片，实现群聊↔单聊互通
@@ -4745,7 +4769,7 @@
             return ' ';
         });
 
-        const tagRegex = /\[(transfer|gift|storegift|商城|voice|语音|语音消息|call|heart|image|textimage|text-image|文字图|文字图片|reply|mem|回忆|记忆|sharechat|分享聊天|creategroup|inviteme|acceptinvite|rejectinvite|familycard|亲属卡|takeout|外卖|跑腿|errand|location|定位|act|动描|altprobe|小号|emoji|sticker|表情包|表情|anniv|纪念日)\s*:\s*([^\]]*?)(?:\]|$)/gi;
+        const tagRegex = /\[(transfer|gift|storegift|商城|voice|语音|语音消息|call|heart|image|textimage|text-image|文字图|文字图片|图片|照片|自拍|reply|mem|回忆|记忆|sharechat|分享聊天|creategroup|inviteme|acceptinvite|rejectinvite|familycard|亲属卡|takeout|外卖|跑腿|errand|location|定位|act|动描|altprobe|小号|emoji|sticker|表情包|表情|anniv|纪念日)\s*:\s*([^\]]*?)(?:\]|$)/gi;
         let match;
         while ((match = tagRegex.exec(text)) !== null) {
             const kind = match[1].toLowerCase();
@@ -4768,7 +4792,7 @@
                 results.push({ kind: 'call', payload: payload });
             } else if (kind === 'heart') {
                 results.push({ kind: 'heart', payload: payload });
-            } else if (kind === 'image') {
+            } else if (kind === 'image' || kind === '图片' || kind === '照片' || kind === '自拍') {
                 if (payload) results.push({ kind: 'image', payload: payload });
             } else if (kind === 'textimage' || kind === 'text-image' || kind === '文字图' || kind === '文字图片') {
                 if (payload) results.push({ kind: 'textimage', payload: payload });
@@ -4809,7 +4833,7 @@
             }
         }
 
-        cleaned = text.replace(/\[(transfer|gift|storegift|商城|voice|语音|语音消息|call|heart|image|textimage|text-image|文字图|文字图片|reply|mem|回忆|记忆|sharechat|分享聊天|creategroup|inviteme|acceptinvite|rejectinvite|familycard|亲属卡|takeout|外卖|跑腿|errand|location|定位|act|动描|altprobe|小号|emoji|sticker|表情包|表情|anniv|纪念日|微信号|wechat)\s*:\s*[^\]]*?(?:\]|$)/gi, '').trim();
+        cleaned = text.replace(/\[(transfer|gift|storegift|商城|voice|语音|语音消息|call|heart|image|textimage|text-image|文字图|文字图片|图片|照片|自拍|reply|mem|回忆|记忆|sharechat|分享聊天|creategroup|inviteme|acceptinvite|rejectinvite|familycard|亲属卡|takeout|外卖|跑腿|errand|location|定位|act|动描|altprobe|小号|emoji|sticker|表情包|表情|anniv|纪念日|微信号|wechat)\s*:\s*[^\]]*?(?:\]|$)/gi, '').trim();
 
         return { tags: results, cleanedText: cleaned };
     }
@@ -7539,6 +7563,10 @@
         const __recentOwn = __momentRecentFor(displayName || charName || '角色', 3);
         const __recentOwnText = __recentOwn.map(function (p) { return String(p.text || '').replace(/\s+/g, ' ').slice(0, 120); }).filter(Boolean).join('\n');
         const __motifs = __momentMotifHints(__recentOwn.map(function (p) { return p.text; }), 8);
+        let __recentChat = '';
+        try {
+            __recentChat = await __recentChatTextFor({ id: chatId, name: displayName || charName || '角色' }, 2);
+        } catch (e) {}
         let sys = '你是「' + (displayName || charName || '角色') + '」，一个真实的人。请发一条朋友圈动态。严格贴合你的人设与你们的关系，像真人发朋友圈一样自然，禁止 AI 腔、禁止解释、禁止出戏。\n' +
             '【反重复 · 最高优先级】这条动态必须避开你最近发过的同一件事、同一个梗、同一种抱怨和同一句式；不要反复消费“吉他弦又断了 / 又加班 / 猫又打翻杯子”这类同质素材。同一个生活小事最多出现一次，这次换一个具体的新鲜事或新情绪。' + (__motifs ? ('最近反复出现的词/梗：' + __motifs + '，本次必须避开。') : '') + '\n' +
             '口语、生活化、松弛不端着。大多数情况写 100~220 字，把一件具体的事或一种情绪讲完整，带细节、有画面、有意思的表达，不要每次都只说一句话；也可以写短帖（100 字以下，2~4 句，也要有意思），偶尔写 300~500 字长文——追星/演唱会 repo、好物分享、情感经历、求助/避雷、深夜碎碎念等，要有具体细节、真实情绪和起承转合，不要 AI 腔。长度跟着角色当下的情绪、事情大小和人设走，也不要为了凑字硬写。题材从吃喝玩乐、旅游、日常碎片、宠物、天气、开心、emo、吐槽、发疯、追星、避雷、攻略、测评、健身打卡、读书、职场、提问、投票、段子、恋爱日常、热点八卦里自然长出来。广告只做隐晦暗广，先讲真实体验和小缺点。\n' +
@@ -7551,6 +7579,7 @@
         try { if (window.NanoPrompts && NanoPrompts.appendTo) sys = NanoPrompts.appendTo(sys, 'moments', { keepFormat: true }); } catch (e) {}
         const userMsg = (setting ? ('【你的人设】\n' + setting.slice(0, 600) + '\n\n') : '') +
             (mem ? ('【最近发生的事】\n' + mem + '\n\n') : '') +
+            (__recentChat ? ('【你和 ' + uName + ' 最近的真实聊天（动态可以和这些事自然关联，但不要复述原文、不要写成在回复 ' + uName + '）】\n' + __recentChat + '\n\n') : '') +
             (__recentOwnText ? ('【你最近发过的朋友圈（本次必须避开，不要重复同样的事/梗/句式）】\n' + __recentOwnText + '\n\n') : '') +
             '【现在】' + timeStr + '（' + uName + '在你的好友里）。发一条自然、具体、不流水账的朋友圈。';
         function __parseMomentObj(raw) {
@@ -7600,7 +7629,7 @@
         const others = [];
         try {
             (allCharacters || []).forEach(function (c) {
-                if (!c || !c.name) return;
+                if (!c || !c.name || c.nanoAssistant) return;
                 if (String(c.id) === String(chatId) || c.name === cur.name) return;
                 // 只让「绑定到当前用户」的角色发朋友圈，避免把其他用户的角色混进同一个朋友圈
                 if (currentUser && (!c.bindUser || String(c.bindUser) !== String(currentUser.id))) return;
@@ -7687,11 +7716,12 @@
             (allCharacters || []).find(function (c) { return c && c.name && momentNameKey(c.name) === ak; }) || { name: authorName };
         return momentPersonKnows(person, author);
     }
-    // 普通 char 集合：NPC/小号不算 char。自动朋友圈里 char 之间绝对不能互动。
+    // 已添加到通讯录的 NPC / 小号同样按 char 看待：char 之间绝对不能互动。
     function momentPlainCharMap() {
         const map = {};
         (allCharacters || []).forEach(function (c) {
-            if (!c || !c.name || c.nanoAssistant || c.isNpc || c.isAltProbe) return;
+            if (!c || !c.name || c.nanoAssistant) return;
+            if (currentUser && c.bindUser && String(c.bindUser) !== String(currentUser.id)) return;
             map[momentNameKey(c.name)] = String(c.name);
         });
         return map;
@@ -7797,6 +7827,16 @@
             if (!list.length) return '';
             return '· ' + a.name + ' 最近发过：' + list.join(' / ') + (__motifMap[a.name] ? ('（最近反复出现：' + __motifMap[a.name] + '，本次必须避开）') : '');
         }).filter(Boolean).join('\n');
+        const __chatMap = {};
+        try {
+            await Promise.all(authors.map(async function (a) {
+                __chatMap[a.name] = await __recentChatTextFor(a, 2);
+            }));
+        } catch (e) {}
+        const __chatInfo = authors.map(function (a) {
+            const body = __chatMap[a.name];
+            return body ? ('· ' + a.name + ' 和 ' + uName + ' 最近聊过：\n' + body) : '';
+        }).filter(Boolean).join('\n');
         const authorInfo = authors.map(function (a) {
             let st = '';
             try {
@@ -7812,7 +7852,7 @@
         }).filter(function (x) { return x.info && x.info.foreign; });
         let sys = '下面这几位是用户的好友，他们的动态会出现在同一个朋友圈里：' + authorNames + '。\n'
             + '请一次性生成 ' + totalPosts + ' 条朋友圈动态（3~5 条），每条动态必须自带 2~4 个点赞和 3~4 条评论，不能只写文案。\n'
-            + '【最高优先级】任何 char 之间都绝对不允许互相评论、回复、点赞或接话，即使角色关系/悄悄话记录写了认识也不行。char 只能和 NPC 互动；char 的动态下评论区只能出现 NPC。\n'
+            + '【最高优先级】任何 char 之间都绝对不允许互相评论、回复、点赞或接话，即使角色关系/悄悄话记录写了认识也不行。已经加为好友的 NPC、小号同样算 char（小号和大号是同一个人，更不能互相互动）；char 只能和用户、以及评论区现场虚构的普通 NPC 互动；char 的动态下评论区只能出现普通 NPC。\n'
             + '【发帖人】优先让「' + (authors[0] && authors[0].name) + '」至少发 1 条；其余动态由名单里的其他角色发，数量不够时由作者可能认识的 NPC 发帖补足到 ' + totalPosts + ' 条。作者不要重复太多，内容贴合各自人设、身份和当天心情。\n'
             + '【拒绝流水账】严禁把动态写成日程记录或流水账：不要“早上…中午…晚上…”地罗列作息，也不要“今天天气不错 / 吃了三明治 / 上班好累 / 晚安”这种谁都能发的空话。每条都要落到一件具体的事或一个具体的细节（一个地点、一个人、一句话、刚发生的一个小插曲，或一种有来由的情绪），要有只有这个人此刻才会发的东西。宁少勿滥。\n'
             + '【反重复 · 最高优先级】同一位作者的新动态绝对不能重复 TA 最近发过的同一件事、同一个梗、同一种抱怨或同一句式（例如反复写“吉他弦又断了”）。同一个生活小事最多出现一次；如果最近反复出现某个词/梗，这次必须彻底换一个具体的新素材。不同作者的动态也不能同质化。\n'
@@ -7828,6 +7868,7 @@
         try { if (window.NanoPrompts && NanoPrompts.appendTo) sys = NanoPrompts.appendTo(sys, 'moments', { keepFormat: true }); } catch (e) {}
         const userMsg = '【朋友圈成员与人设】\n' + authorInfo + '\n\n'
             + (mem ? ('【最近发生的事】\n' + mem + '\n\n') : '')
+            + (__chatInfo ? ('【真实聊天近况（动态可以自然接上，但不要复述原文、不要写成聊天回复）】\n' + __chatInfo + '\n\n') : '')
             + (__recentInfo ? ('【各自最近发过的动态（本次必须避开，不要重复同样的事/梗/句式）】\n' + __recentInfo + '\n\n') : '')
             + '【现在】' + timeStr + '（' + uName + '在他们的好友里，但朋友圈动态不是说给 ' + uName + ' 听的，只是他们各自的日常分享）。'
             + '请输出 ' + totalPosts + ' 条自然、具体、不流水账的朋友圈动态，每条都带点赞和评论互动。';
@@ -7857,6 +7898,8 @@
     async function ensureAutoInteractions(posts, names) {
         const fallbackComments = ['这条也太真实了', '哈哈哈哈', '我也想去', '注意休息呀', '好看', '下次带我'];
         const pool = (names || []).map(function (n) { return String(n || '').trim(); }).filter(Boolean);
+        const plain = momentPlainCharMap();
+        const userKey = momentNameKey(momentCurrentUserName());
         for (let pi = 0; pi < (posts || []).length; pi++) {
             const p = posts[pi];
             if (!p) continue;
@@ -11224,6 +11267,64 @@
 
         currentTurn++;
 
+        // 用户明确要照片：本轮必须真的落地一张图，不能只口头说「发了」。
+        let __lastUserForPhoto = '';
+        try { __lastUserForPhoto = recentUserTexts(1)[0] || ''; } catch (e) {}
+        if (!__lastUserForPhoto && quoteTarget && quoteTarget.text) __lastUserForPhoto = String(quoteTarget.text);
+        const __explicitPhoto = isExplicitPhotoRequest(__lastUserForPhoto);
+        let turnImageSent = false;
+        async function emitImageBubble(payload, force) {
+            const desc = String(payload || '').trim() || '一张自然、真实的生活照';
+            const allowImage = getChatSetting('allowImage', false);
+            if (allowImage || force) {
+                try {
+                    const realUrl = await generateImage(buildImagePrompt(desc));
+                    if (realUrl) {
+                        addMessage('left', '', timeStr, null, false, false, null, null, null,
+                            null, false, null, true, { url: realUrl, desc: desc, genPrompt: desc });
+                        turnImageSent = true;
+                        return;
+                    }
+                } catch (imgErr) {
+                    // 生图失败：退化成文字图，别让角色「发不出图」。
+                }
+            }
+            addMessage('left', '', timeStr, null, false, false, null, null, null,
+                null, false, null, true, { textImage: true, desc: desc });
+            turnImageSent = true;
+        }
+        // 语音气泡不固定在第一条：把纯语音行随机插回文字/其他气泡之间。
+        function __isVoiceOnlyLine(line) {
+            try {
+                const parsed = extractTagsFromText(line);
+                return !!(parsed.tags.length &&
+                    parsed.tags.every(function (t) { return t && t.kind === 'voice'; }) &&
+                    !String(parsed.cleanedText || '').trim());
+            } catch (e) { return false; }
+        }
+        function __shuffleVoiceLines(input) {
+            const arr = (Array.isArray(input) ? input : []).slice();
+            const voices = [], rest = [];
+            arr.forEach(function (line) { (__isVoiceOnlyLine(line) ? voices : rest).push(line); });
+            if (!voices.length || !rest.length) return arr;
+            voices.forEach(function (line) {
+                const pos = Math.floor(Math.random() * (rest.length + 1));
+                rest.splice(pos, 0, line);
+            });
+            return rest;
+        }
+        function __shuffleVoiceEntries(entries) {
+            const arr = (Array.isArray(entries) ? entries : []).slice();
+            const voices = [], rest = [];
+            arr.forEach(function (entry) { (entry && entry.voice ? voices : rest).push(entry); });
+            if (!voices.length || !rest.length) return arr;
+            voices.forEach(function (entry) {
+                const pos = Math.floor(Math.random() * (rest.length + 1));
+                rest.splice(pos, 0, entry);
+            });
+            return rest;
+        }
+
         // 外国人 + 香港/澳门（粤语）都按「原文||翻译」逐句成气泡处理
         const foreign = isForeignChar() || isCantoneseChar();
 
@@ -11355,7 +11456,8 @@
 
         // 外国人：一句完整的话 = 一个气泡（外文在上、中文在下），不再整段塞进同一个气泡
         if (foreign && replyBody) {
-            const segLines = replyBody.split(/\n+/).map(s => s.trim()).filter(s => s.length > 0);
+            let segLines = replyBody.split(/\n+/).map(s => s.trim()).filter(s => s.length > 0);
+            segLines = __shuffleVoiceLines(segLines);
             const pairs = [];
             for (let li = 0; li < segLines.length; li++) {
                 const parsed = extractTagsFromText(segLines[li]);
@@ -11373,12 +11475,22 @@
                         const display = content || zh;
                         // 频率设为「关闭」时，即使模型硬输出 [voice] 也降级成普通文字气泡。
                         if (vFreq === 'off') {
-                            addMessage('left', display, timeStr, null, false, false, null, null, zh || null, null, false, null, false, null);
-                            continue;
+                            pairs.push({ f: display, z: zh || null });
+                        } else {
+                            // 先入队，最后和其它气泡一起按随机位置发送，避免语音永远排第一条。
+                            pairs.push({ voice: true, duration: dur, display: display, zh: zh || null, ttsText: content || display });
                         }
-                        const vrow = addMessage('left', '', timeStr, null, false, false, null, display || null, zh || null, null, true, { duration: dur, unread: true, ttsText: content || display });
                         // 不再自动额外调用一次 API 去翻译语音：外语原文照常显示，
                         // 需要中文时由用户点「翻译」再单独触发。
+                    } else if (tag.kind === 'textimage') {
+                        addMessage('left', '', timeStr, null, false, false, null, null, null,
+                            null, false, null, true, { textImage: true, desc: tag.payload || '一张文字图' });
+                        turnImageSent = true;
+                    } else if (tag.kind === 'image') {
+                        // 情绪/深度对话里仍偶尔硬塞自拍：直接丢弃；但用户明确要照片时必须发。
+                        if (!isDeepTalkNow() || __explicitPhoto) {
+                            await emitImageBubble(tag.payload || '一张图片', __explicitPhoto);
+                        }
                     } else if (tag.kind === 'emoji') {
                         const em = await findEmojiByName(tag.payload);
                         if (em && em.url) {
@@ -11440,12 +11552,24 @@
                 }
                 fSeg.forEach(function(fs, i) { pairs.push({ f: fs, z: zSeg[i] || z }); });
             }
-            for (let i = 0; i < pairs.length; i++) {
-                const p = pairs[i];
-                if (!p || !p.f) continue;
+            const orderedPairs = __shuffleVoiceEntries(pairs);
+            for (let i = 0; i < orderedPairs.length; i++) {
+                const p = orderedPairs[i];
+                if (!p) continue;
+                if (p.voice) {
+                    if (i > 0) await new Promise(r => setTimeout(r, 420));
+                    addMessage('left', '', timeStr, null, false, false, null, p.display || null, p.zh || null,
+                        null, true, { duration: p.duration, unread: true, ttsText: p.ttsText });
+                    continue;
+                }
+                if (!p.f) continue;
                 if (i > 0) await new Promise(r => setTimeout(r, 420));
                 // 强制一次 API：不再在漏写翻译时逐条补调翻译接口。
                 addMessage('left', p.f, timeStr, null, false, false, null, null, p.z || null, null);
+            }
+            // 模型忘了发图、用户又明确要照片时，兜底真的生成一张。
+            if (__explicitPhoto && !turnImageSent) {
+                await emitImageBubble('一张自然、真实的生活照', true);
             }
             // 心声挂到本轮角色消息
             if (roundHeart && (roundHeart.subject || roundHeart.thought)) {
@@ -11461,7 +11585,8 @@
             return;
         }
 
-        const lines = replyBody.split(/\n+/).map(s => s.trim()).filter(s => s.length > 0);
+        let lines = replyBody.split(/\n+/).map(s => s.trim()).filter(s => s.length > 0);
+        lines = __shuffleVoiceLines(lines);
         let sentCount = 0;
         let pendingQuote = null;
 
@@ -11506,25 +11631,12 @@
                             // 角色主动发「文字图」：白底黑字，不调用生图 API
                             addMessage('left', '', timeStr, null, false, false, null, null, null,
                                 null, false, null, true, { textImage: true, desc: tag.payload || '' });
+                            turnImageSent = true;
                         } else if (tag.kind === 'image') {
                             // 情绪/深度对话中模型仍偶尔硬塞自拍：这里直接丢弃，避免答非所问。
-                            if (!isDeepTalkNow()) {
-                                const imgPrompt = buildImagePrompt(tag.payload || '一张图片');
-                                const allowImage = getChatSetting('allowImage', false);
-                                if (allowImage) {
-                                    try {
-                                        const realUrl = await generateImage(imgPrompt);
-                                        addMessage('left', '', timeStr, null, false, false, null, null, null,
-                                            null, false, null, true, { url: realUrl, desc: tag.payload || '', genPrompt: tag.payload || '' });
-                                    } catch (imgErr) {
-                                        // 生图失败：自动退化成文字图，别让角色「发不出图」
-                                        addMessage('left', '', timeStr, null, false, false, null, null, null,
-                                            null, false, null, true, { textImage: true, desc: tag.payload || '' });
-                                    }
-                                } else {
-                                    addMessage('left', '', timeStr, null, false, false, null, null, null,
-                                        null, false, null, true, { textImage: true, desc: tag.payload || '' });
-                                }
+                            // 用户明确要照片时例外，且没开「允许生图」也要真的生成一张。
+                            if (!isDeepTalkNow() || __explicitPhoto) {
+                                await emitImageBubble(tag.payload || '一张图片', __explicitPhoto);
                             }
                         } else if (tag.kind === 'mem') {
                             handleMemoryRecallTag(tag.payload, timeStr);
@@ -11603,6 +11715,10 @@
 
             if (sentCount === 0 && replyBody) {
                 addMessage('left', replyBody, timeStr, null, false, false, null, null, null, null);
+            }
+            // 模型忘了发图、用户又明确要照片时，兜底真的生成一张。
+            if (__explicitPhoto && !turnImageSent) {
+                await emitImageBubble('一张自然、真实的生活照', true);
             }
             // 把本轮生成的心声内容挂到本轮所有角色消息上（点击头像可查看）
             if (roundHeart && (roundHeart.subject || roundHeart.thought)) {
