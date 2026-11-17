@@ -262,6 +262,13 @@
             display: flex;
             flex-direction: column;
         }
+        .fullscreen-overlay.active .overlay-inner {
+            animation: overlayIn .18s cubic-bezier(.2, .8, .3, 1);
+        }
+        @keyframes overlayIn {
+            from { opacity: .55; transform: translateY(7px) scale(.996); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
 
         .overlay-header {
             display: flex;
@@ -326,33 +333,47 @@
         }
         .overlay-loading {
             position: absolute;
-            inset: 0;
+            top: calc(env(safe-area-inset-top, 0px) + 14px);
+            left: 50%;
+            transform: translateX(-50%) translateY(-6px);
             z-index: 40;
-            display: none;
-            flex-direction: column;
+            display: flex;
             align-items: center;
-            justify-content: center;
-            gap: 13px;
-            background:
-                radial-gradient(90% 60% at 50% 0%, #ffe6ef 0%, transparent 70%),
-                #fff9fc;
+            gap: 8px;
+            max-width: 86%;
+            padding: 8px 14px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, .86);
             color: #2b2026;
-            font-size: 13px;
+            font-size: 12px;
             font-weight: 650;
             letter-spacing: .02em;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, .12);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            visibility: hidden;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity .18s ease, transform .18s ease, visibility .18s;
         }
-        .overlay-loading.show { display: flex; }
+        .overlay-loading.show {
+            visibility: visible;
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+        .overlay-loading b { font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .overlay-loading-spin {
-            width: 28px;
-            height: 28px;
+            width: 15px;
+            height: 15px;
+            flex: 0 0 auto;
             border-radius: 50%;
-            border: 2.5px solid rgba(232, 92, 138, .18);
+            border: 2px solid rgba(232, 92, 138, .18);
             border-top-color: #e85c8a;
             animation: overlaySpin .72s linear infinite;
         }
         @keyframes overlaySpin { to { transform: rotate(360deg); } }
         @media (prefers-color-scheme: dark) {
-            .overlay-loading { background: #1a1418; color: #f6ebf0; }
+            .overlay-loading { background: rgba(26, 20, 24, .9); color: #f6ebf0; box-shadow: 0 8px 24px rgba(0,0,0,.4); }
             .overlay-loading-spin { border-color: rgba(255, 127, 168, .2); border-top-color: #ff7fa8; }
         }
         #voiceCallFrame {
@@ -1071,17 +1092,19 @@
   var ball = document.getElementById('nsBall');
   var pct  = document.getElementById('nsPct');
   var bar  = fill ? fill.parentNode : null;
+
   if (!fill || !head || !ball || !pct || !bar) {
     if (root.parentNode) root.parentNode.removeChild(root);
     document.dispatchEvent(new Event('nano-splash-done'));
     return;
   }
 
-  // 开场动画只在「大退后重新进入」时出现；App 内切换页面不会重载首页，所以不会反复播放。
-  // 按完整时长自然播放，不再自动加速；只有点屏幕 / 按 Esc 才提前跳过；
-  // 淡出开始时就先显示桌面，让首页在动画遮罩下面先画出来，避免淡出结束后再等一帧。
-  var DUR = 3600, READY_HOLD = 900;
-  var t0 = performance.now(), lastSp = 0, burst = false, done = false, raf = 0;
+  var done = false, raf = 0, lastSp = 0, burst = false;
+  var homeReady = false, readyAt = 0;
+  var t0 = performance.now();
+  var MIN_MS = 900;      // 最短展示：避免一闪而过，但不再固定 4.5 秒
+  var MAX_MS = 9000;     // 最长等待：首页真的异常时也不至于永远卡住
+  var cur = 0, target = 0.08;
   var G = ['♡', '✦', '✧', '●'], COL = ['#ffc2d9', '#ffd7a8', '#cfe4ff', '#fff', '#e2d6ff'];
 
   function ease(x) { return x < .5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2; }
@@ -1104,8 +1127,7 @@
     root.__nsRemoved = true;
     if (raf) { try { cancelAnimationFrame(raf); } catch (e) {} }
     root.classList.add('ns-out');
-    // 淡出动画一开始就先解除桌面的 pre-splash 隐藏：桌面在遮罩下面同步绘制，
-    // 用户看到的是「动画淡出 → 桌面已经在那儿」，而不是淡出完再闪一下白屏。
+    // 淡出时先显示桌面，避免淡出结束后再闪一下白屏。
     document.dispatchEvent(new Event('nano-splash-done'));
     setTimeout(function () {
       if (root.parentNode) root.parentNode.removeChild(root);
@@ -1117,42 +1139,87 @@
     done = true;
     if (raf) { try { cancelAnimationFrame(raf); } catch (e) {} }
     pct.textContent = 'READY ♡  100%';
-    setTimeout(removeSplash, instant ? 120 : READY_HOLD);
+    setTimeout(removeSplash, instant ? 100 : 240);
   }
 
-  function frame(now) {
-    if (done) return;
-    var p = Math.min((now - t0) / DUR, 1);
-    var v = ease(p);
+  function render(v) {
     var w = bar.clientWidth;
     var x = v * (w - 40);
     fill.style.width = (x + 20) + 'px';
     head.style.left = (x + 20) + 'px';
     ball.style.transform = 'rotate(' + (x * 3.4) + 'deg)';
-    pct.textContent = (p >= 1 ? 'READY ♡  ' : 'LOADING  ') + Math.round(v * 100) + '%';
-    if (p < 1) {
-      if (now - lastSp > 130) {
-        lastSp = now;
-        spark(x + 6, -30 - Math.random() * 20, -30 - Math.random() * 20);
-      }
-      raf = requestAnimationFrame(frame);
+    pct.textContent = (v >= 0.995 ? 'READY ♡  ' : 'LOADING  ') + Math.round(v * 100) + '%';
+  }
+
+  function markHomeReady() {
+    if (homeReady) return;
+    homeReady = true;
+    readyAt = performance.now();
+    target = 1;
+  }
+
+  // 首页真正把角色 / 桌面数据读完才会发 nanoHomeReady；骨架画好时先走到 60%。
+  window.addEventListener('message', function (e) {
+    var d = e && e.data;
+    if (!d) return;
+    if (d.type === 'nanoHomeSkeletonReady') {
+      target = Math.max(target, 0.6);
+      return;
+    }
+    if (d.type === 'nanoHomeReady') markHomeReady();
+  });
+
+  // 首页 iframe 可能在外壳脚本执行前就已经发过信号：同时检查父窗口上的标记，避免白等。
+  try { if (window.__nanoHomeSkeletonReady) target = Math.max(target, 0.6); } catch (e) {}
+  try { if (window.__nanoHomeReady) markHomeReady(); } catch (e) {}
+
+  function frame(now) {
+    if (done) return;
+    var elapsed = now - t0;
+    if (!homeReady) {
+      // 数据还没好：最多走到 92%，让进度条反映真实的等待。
+      target = Math.max(target, Math.min(0.92, 0.08 + (elapsed / 3500) * 0.84));
+    } else if (elapsed < MIN_MS) {
+      target = Math.max(target, Math.min(0.96, 0.08 + (elapsed / MIN_MS) * 0.88));
     } else {
+      target = 1;
+    }
+    cur += (target - cur) * 0.1;
+    if (target >= 1 && cur > 0.995) cur = 1;
+    render(ease(cur));
+    if (homeReady && elapsed >= MIN_MS && cur >= 1) {
       if (!burst) {
         burst = true;
+        var w = bar.clientWidth;
         for (var i = 0; i < 14; i++) spark(w - 20, (Math.random() - .5) * 160, -30 - Math.random() * 70);
       }
       finish();
+      return;
     }
+    if (now - lastSp > 150 && cur < 0.98) {
+      lastSp = now;
+      spark(ease(cur) * (bar.clientWidth - 40) + 26, -30 - Math.random() * 20, -30 - Math.random() * 20);
+    }
+    raf = requestAnimationFrame(frame);
   }
 
   function skip() {
     if (done) return;
+    homeReady = true;
+    cur = 1;
+    target = 1;
     finish(true);
   }
 
+  // 兜底：首页脚本异常 / 没发 ready 时，最多等 9 秒；页面 load 后 6 秒仍没信号也放行。
+  setTimeout(function () { if (!homeReady) markHomeReady(); }, MAX_MS);
+  window.addEventListener('load', function () {
+    setTimeout(function () { if (!homeReady) markHomeReady(); }, 6000);
+  });
+
   root.addEventListener('pointerdown', skip);
   window.addEventListener('keydown', function (e) { if (e.key === 'Escape') skip(); });
-  window.NanoSplash = { skip: skip, done: removeSplash };
+  window.NanoSplash = { skip: skip, done: removeSplash, ready: markHomeReady };
   raf = requestAnimationFrame(frame);
 })();
 </script>
@@ -1166,7 +1233,7 @@ document.addEventListener('nano-splash-done', function () {
 setTimeout(function () {
   var h = document.getElementById('homeShell');
   if (h) h.classList.remove('pre-splash');
-}, 6500);
+}, 10000);
 </script>
 
 
@@ -1180,6 +1247,8 @@ setTimeout(function () {
         <div class="overlay-content">
             <iframe id="overlayFrame" src="about:blank"></iframe>
             <iframe id="overlayFrame2" src="about:blank"></iframe>
+            <iframe id="overlayFrame3" src="about:blank"></iframe>
+            <iframe id="overlayFrame4" src="about:blank"></iframe>
             <iframe id="voiceCallFrame" src="about:blank"></iframe>
             <iframe id="chatInnerFrame" class="chat-inner-frame" src="about:blank"></iframe>
             <iframe id="chatInnerFrame2" class="chat-inner-frame" src="about:blank"></iframe>
@@ -1259,10 +1328,40 @@ setTimeout(function () {
         const circleMoreBtn = document.getElementById('circleMore');
 
         const overlay = document.getElementById('fullscreenOverlay');
-        // 两个通用全屏帧轮换使用：某个帧正在后台生成时，用另一个帧打开新页面，
-        // 这样切换页面不会销毁正在生成的那个帧（生成不中断）。
+        // 通用全屏帧池：保留最近打开的 App，切换时只切 display，不再每次销毁重载。
+        // 低内存设备只启用 3 个，避免 iOS 因内存压力整页重载。
         const overlayFrameA = document.getElementById('overlayFrame');
         const overlayFrameB = document.getElementById('overlayFrame2');
+        const overlayFrameC = document.getElementById('overlayFrame3');
+        const overlayFrameD = document.getElementById('overlayFrame4');
+        const overlayFrames = [overlayFrameA, overlayFrameB, overlayFrameC, overlayFrameD].filter(Boolean);
+        const MAX_OVERLAY_FRAMES = (function () {
+            try {
+                var dm = Number(navigator.deviceMemory || 0);
+                if (dm && dm <= 2) return 3;
+                return 4;
+            } catch (e) { return 4; }
+        })();
+        function activeOverlayFrames() { return overlayFrames.slice(0, MAX_OVERLAY_FRAMES); }
+        function markOverlayUsed(f) { try { if (f) f.setAttribute('data-used-at', String(Date.now())); } catch (e) {} }
+        function overlayFrameUsedAt(f) { try { return Number(f.getAttribute('data-used-at') || 0); } catch (e) { return 0; } }
+        // 帧被隐藏时暂停里面的音视频，避免“回到桌面后视频还在响”。
+        function pauseFrameMedia(f) {
+            try {
+                var doc = f && f.contentDocument;
+                if (!doc) return;
+                var media = doc.querySelectorAll('video,audio');
+                for (var i = 0; i < media.length; i++) {
+                    try { media[i].pause(); } catch (e) {}
+                }
+            } catch (e) {}
+        }
+        function findOverlayFrameByBase(base) {
+            for (var i = 0; i < overlayFrames.length; i++) {
+                if (frameBase(overlayFrames[i]) === base) return overlayFrames[i];
+            }
+            return null;
+        }
         let overlayFrame = overlayFrameA;
         const overlayLoading = document.getElementById('overlayLoading');
         const overlayLoadingText = document.getElementById('overlayLoadingText');
@@ -1275,16 +1374,17 @@ setTimeout(function () {
             if (overlayLoadingText && text) overlayLoadingText.textContent = text;
             clearTimeout(overlayLoadingTimer);
             clearTimeout(overlayLoadingFallback);
-            // 200ms 内的快速打开不闪加载层；慢页面才显示。
+            // 1 秒内的快速打开完全不闪加载提示；只有真的慢页面才显示顶部小胶囊。
+            // 不再用全屏遮罩挡住 iframe：页面自身可以先画出来，切换感更接近原生。
             overlayLoadingTimer = setTimeout(function () {
                 if (seq !== overlayLoadingSeq) return;
                 if (overlayLoadingText) overlayLoadingText.textContent = text || '正在打开…';
                 overlayLoading.classList.add('show');
-            }, 200);
-            // 兜底：任何情况下都不让加载层永远卡住。
+            }, 1000);
+            // 兜底：任何情况下都不让加载提示永远卡住。
             overlayLoadingFallback = setTimeout(function () {
                 if (seq === overlayLoadingSeq) hidePageLoading();
-            }, 5000);
+            }, 8000);
         }
         function hidePageLoading() {
             overlayLoadingSeq++;
@@ -1293,10 +1393,23 @@ setTimeout(function () {
             if (overlayLoading) overlayLoading.classList.remove('show');
         }
         // 子页面脚本一开始执行就通知宿主，不必等图片/CDN 全部加载完。
+        // 只接受「当前可见帧」的 ready，避免后台预热的隐藏帧把加载提示提前收掉。
         window.addEventListener('message', function (e) {
-            if (e && e.data && e.data.type === 'nanoFrameReady') hidePageLoading();
+            if (!e || !e.data || e.data.type !== 'nanoFrameReady') return;
+            try {
+                var frames = [overlayFrame, chatInnerFrame, voiceCallFrame, musicFrame, momentsFrame, insFrame];
+                for (var i = 0; i < frames.length; i++) {
+                    var f = frames[i];
+                    if (f && f.contentWindow === e.source && f.style.display !== 'none') {
+                        hidePageLoading();
+                        return;
+                    }
+                }
+            } catch (err) {
+                hidePageLoading();
+            }
         });
-        [overlayFrameA, overlayFrameB].forEach(function (f) {
+        overlayFrames.forEach(function (f) {
             if (!f) return;
             f.addEventListener('load', function () {
                 if (f === overlayFrame) hidePageLoading();
@@ -1631,6 +1744,7 @@ setTimeout(function () {
         }
         function showInsFrame() {
             insFrame.style.display = 'block';
+            pauseFrameMedia(overlayFrame);
             overlayFrame.style.display = 'none';
             hideOtherGenericFrame();
             chatInnerFrame.style.display = 'none';
@@ -1641,46 +1755,59 @@ setTimeout(function () {
             try { insFrame.contentWindow.postMessage({ type: 'nano:insShown' }, '*'); } catch (e) {}
         }
         // 选一个通用全屏帧来打开 url：优先复用已加载同一应用的帧；
-        // 其次选一个没有在后台生成的帧，避免销毁正在生成的那个（切页不中断生成）。
+        // 其次用空帧；都没有就按 LRU 换掉最久没用的帧，并尽量避开后台生成中的帧。
         function pickOverlayFrame(url) {
             const want = baseName(url);
-            // 已加载同一应用的帧优先复用
-            if (frameBase(overlayFrameA) === want) { overlayFrame = overlayFrameA; return; }
-            if (overlayFrameB && frameBase(overlayFrameB) === want) { overlayFrame = overlayFrameB; return; }
-            // 聊天大厅常驻缓存：打开其他页面时不要覆盖聊天帧，切回聊天可以秒开
-            if (want !== 'chat.html' && frameBase(overlayFrame) === 'chat.html') {
-                const other = (overlayFrame === overlayFrameA) ? overlayFrameB : overlayFrameA;
-                if (other) overlayFrame = other;
+            const frames = activeOverlayFrames();
+            // 1) 已加载同一应用的帧优先复用
+            for (var i = 0; i < frames.length; i++) {
+                if (frameBase(frames[i]) === want || frames[i].getAttribute('data-loaded-url') === url) {
+                    overlayFrame = frames[i];
+                    markOverlayUsed(overlayFrame);
+                    return;
+                }
             }
-            // 否则挑一个没有在后台生成任务的帧，避免销毁正在生成的那个
-            const aBusy = hasActiveRefreshForFrame(overlayFrameA);
-            const bBusy = overlayFrameB ? hasActiveRefreshForFrame(overlayFrameB) : false;
-            if (aBusy && !bBusy && overlayFrameB) { overlayFrame = overlayFrameB; return; }
-            if (bBusy && !aBusy) { overlayFrame = overlayFrameA; return; }
-            // 群聊页常驻：从群聊打开别的页面时用另一个帧，别把还在后台生成的群聊销毁
-            const other = (overlayFrame === overlayFrameA) ? overlayFrameB : overlayFrameA;
-            if (frameBase(overlayFrame) === 'groups.html' && other && !hasActiveRefreshForFrame(other)) {
-                overlayFrame = other;
+            // 2) 优先用从未打开过的空帧
+            for (var j = 0; j < frames.length; j++) {
+                var b = frameBase(frames[j]);
+                if (!b || b === 'about:blank') {
+                    overlayFrame = frames[j];
+                    markOverlayUsed(overlayFrame);
+                    return;
+                }
             }
-            // 再次确认：非聊天页不要占用聊天缓存帧
-            if (want !== 'chat.html' && frameBase(overlayFrame) === 'chat.html' && other && !hasActiveRefreshForFrame(other)) {
-                overlayFrame = other;
-            }
+            // 3) LRU：排除当前帧和后台生成中的帧；尽量保留 chat/groups
+            var free = frames.filter(function (f) {
+                return f !== overlayFrame && !hasActiveRefreshForFrame(f);
+            });
+            var preferred = free.filter(function (f) {
+                var b = frameBase(f);
+                return b !== 'chat.html' && b !== 'groups.html';
+            });
+            var pool = preferred.length ? preferred : free;
+            if (!pool.length) pool = frames.filter(function (f) { return !hasActiveRefreshForFrame(f); });
+            if (!pool.length) pool = frames.slice();
+            pool.sort(function (a, b) { return overlayFrameUsedAt(a) - overlayFrameUsedAt(b); });
+            overlayFrame = pool[0] || overlayFrameA;
+            markOverlayUsed(overlayFrame);
         }
         function hideOtherGenericFrame() {
-            const other = (overlayFrame === overlayFrameA) ? overlayFrameB : overlayFrameA;
-            if (other) {
-                other.style.display = 'none';
-                // 群聊帧留在后台生成：标记为前台已关闭，完成时要走通知栏
+            overlayFrames.forEach(function (f) {
+                if (!f || f === overlayFrame) return;
+                var wasVisible = f.style.display !== 'none';
+                if (wasVisible) pauseFrameMedia(f);
+                f.style.display = 'none';
+                // 群聊帧留在后台生成：只有它原本在前台时才标记为已关闭，避免重复通知。
                 try {
-                    if (frameBase(other) === 'groups.html' && other.contentWindow) {
-                        other.contentWindow.postMessage({ type: 'nanoOverlayClosed' }, '*');
+                    if (wasVisible && frameBase(f) === 'groups.html' && f.contentWindow) {
+                        f.contentWindow.postMessage({ type: 'nanoOverlayClosed' }, '*');
                     }
                 } catch (e) {}
-            }
+            });
         }
         function showOverlayFrame() {
             overlayFrame.style.display = 'block';
+            markOverlayUsed(overlayFrame);
             hideOtherGenericFrame();
             chatInnerFrame.style.display = 'none';
             voiceCallFrame.style.display = 'none';
@@ -1694,7 +1821,13 @@ setTimeout(function () {
         // 注意：与 user（人设/马甲）强相关的页面不能复用缓存帧，否则切换 user 后仍显示上一个 user 的数据
         const REUSE_SAFE_PAGES = ['chat.html', 'other.html', 'emoji.html', 'inner-setting.html', 'nano-setting.html',
             'groups.html', 'group-setting.html', 'imessage.html', 'storage.html', 'backup.html', 'cloud-backup.html', 'char-relations.html', 'char-chats.html',
-            'wallet.html', 'appstore.html', 'family-card.html', 'pomodoro.html', 'nano.html', 'nano-image.html', 'nano-image-settings.html'];
+            'wallet.html', 'appstore.html', 'family-card.html', 'pomodoro.html', 'nano.html', 'nano-image.html', 'nano-image-settings.html',
+            'settings.html', 'settings-desktop.html', 'settings-notifications.html', 'settings-prompts.html', 'settings-other.html',
+            'settings-account.html', 'settings-android.html', 'settings-logs.html', 'worldbook.html', 'beautify.html', 'gallery.html',
+            'favorite.html', 'nano-files.html', 'phone.html', 'phone-wallet.html', 'schedule.html', 'travel.html', 'travel-chat.html',
+            'market.html', 'mall.html', 'mcp.html', 'meet.html', 'books.html', 'halo.html', 'cycle.html', 'fanfic.html', 'fanfic-create.html',
+            'fanfic-read.html', 'qa.html', 'memory palace.html', 'offline.html', 'offline-setting.html', 'couple-spaces.html',
+            'ios-setting.html', 'heart-setting.html', 'nano-card-template.html', 'character.html'];
         function reuseOrLoadOverlayFrame(url) {
             const base = baseName(url);
             // data-loaded-url 可能残留，但 iframe 已经被重置为 about:blank；
@@ -1702,19 +1835,65 @@ setTimeout(function () {
             const loadedExact = overlayFrame.getAttribute('data-loaded-url') === url && frameBase(overlayFrame) === base;
             if (loadedExact && REUSE_SAFE_PAGES.indexOf(base) !== -1) {
                 hidePageLoading();
+                markOverlayUsed(overlayFrame);
                 try { overlayFrame.contentWindow.postMessage({ type: 'nanoOverlayReopen' }, '*'); } catch (e) {}
                 return;
             }
             if (frameBase(overlayFrame) === base && hasActiveRefreshForFrame(overlayFrame)) {
                 hidePageLoading();
+                markOverlayUsed(overlayFrame);
                 return;
             }
             showPageLoading('正在打开…');
             overlayFrame.setAttribute('data-loaded-url', url);
             overlayFrame.src = url;
+            markOverlayUsed(overlayFrame);
         }
+
+        // 启动后把最近常用的两个 App 预装进通用帧：下次点开直接显示，不用重新加载。
+        (function warmRecentApps() {
+            var started = false;
+            function run() {
+                if (started) return;
+                started = true;
+                // 用户已经在开屏结束后立刻点开 App 了：不要再动帧池，避免抢走正在看的页面。
+                if (overlayActive) return;
+                var list = [];
+                try { list = JSON.parse(localStorage.getItem('nano_recent_apps_v1') || '[]') || []; } catch (e) { list = []; }
+                // 第一次用还没有历史：默认预装最常用的「查手机」「设置」「角色」。
+                if (!list.length) list = ['html/phone.html', 'html/settings.html', 'html/character.html'];
+                var frames = activeOverlayFrames();
+                // 留一个空帧给新 App，避免刚打开新页面就挤掉预装页。
+                var limit = Math.max(1, Math.min(3, frames.length - 1));
+                var used = 0;
+                for (var i = 0; i < list.length && used < limit; i++) {
+                    var u = list[i];
+                    if (!u || typeof u !== 'string') continue;
+                    var base = baseName(u);
+                    if (REUSE_SAFE_PAGES.indexOf(base) === -1 || base === 'chat.html') continue;
+                    var exists = false;
+                    for (var j = 0; j < frames.length; j++) {
+                        if (frames[j] && frameBase(frames[j]) === base) { exists = true; break; }
+                    }
+                    if (exists) continue;
+                    var fr = frames[used++];
+                    if (!fr) continue;
+                    try {
+                        fr.setAttribute('data-loaded-url', u);
+                        fr.src = u;
+                        fr.style.display = 'none';
+                        markOverlayUsed(fr);
+                    } catch (e) {}
+                }
+            }
+            try {
+                if (!document.getElementById('nano-splash')) setTimeout(run, 200);
+                else document.addEventListener('nano-splash-done', function () { setTimeout(run, 260); }, { once: true });
+            } catch (e) { setTimeout(run, 800); }
+        })();
         function showVoiceFrame() {
             voiceCallFrame.style.display = 'block';
+            pauseFrameMedia(overlayFrame);
             overlayFrame.style.display = 'none';
             hideOtherGenericFrame();
             chatInnerFrame.style.display = 'none';
@@ -1725,6 +1904,7 @@ setTimeout(function () {
         }
         function showMusicFrame() {
             musicFrame.style.display = 'block';
+            pauseFrameMedia(overlayFrame);
             overlayFrame.style.display = 'none';
             hideOtherGenericFrame();
             chatInnerFrame.style.display = 'none';
@@ -1736,6 +1916,7 @@ setTimeout(function () {
         }
         function showMomentsFrame() {
             momentsFrame.style.display = 'block';
+            pauseFrameMedia(overlayFrame);
             overlayFrame.style.display = 'none';
             hideOtherGenericFrame();
             chatInnerFrame.style.display = 'none';
@@ -1745,7 +1926,7 @@ setTimeout(function () {
             isMusicFrameActive = false;
         }
 
-        const OVERLAY_FRAME_IDS = ['overlayFrame', 'overlayFrame2', 'chatInnerFrame', 'chatInnerFrame2', 'chatInnerFrame3', 'voiceCallFrame', 'musicFrame', 'momentsFrame', 'insFrame'];
+        const OVERLAY_FRAME_IDS = ['overlayFrame', 'overlayFrame2', 'overlayFrame3', 'overlayFrame4', 'chatInnerFrame', 'chatInnerFrame2', 'chatInnerFrame3', 'voiceCallFrame', 'musicFrame', 'momentsFrame', 'insFrame'];
         function getSafeTopFrames() {
             const frames = [];
             OVERLAY_FRAME_IDS.forEach(function(id) {
@@ -1875,6 +2056,16 @@ setTimeout(function () {
         function openFullscreen(url, title, showBack, source, skipStack) {
             url = withBuild(url);
             const pageName = baseName(url);
+            // 记住最近从桌面打开的 App：下次启动时用通用帧池预加载，点开就是现成的。
+            try {
+                if (source === 'home' && REUSE_SAFE_PAGES.indexOf(pageName) !== -1 && pageName !== 'chat.html') {
+                    var rec = [];
+                    try { rec = JSON.parse(localStorage.getItem('nano_recent_apps_v1') || '[]') || []; } catch (e) { rec = []; }
+                    rec = rec.filter(function (x) { return x && x !== url; });
+                    rec.unshift(url);
+                    localStorage.setItem('nano_recent_apps_v1', JSON.stringify(rec.slice(0, 4)));
+                }
+            } catch (e) {}
             try {
                 if (!skipStack && overlayActive && source === 'settings') {
                     const curBase = frameBase(overlayFrame);
@@ -2011,9 +2202,8 @@ setTimeout(function () {
             hidePageLoading();
             try { sessionStorage.setItem('nano_chat_active_page', JSON.stringify({ page: 'chat', tab: 'groups', at: Date.now() })); } catch (e) {}
             const chatUrl = withBuild('chat.html');
-            const isChat = function (f) { return !!f && frameBase(f) === 'chat.html'; };
             const groupFrame = overlayFrame;
-            let chatFrame = isChat(overlayFrameA) ? overlayFrameA : (isChat(overlayFrameB) ? overlayFrameB : null);
+            let chatFrame = findOverlayFrameByBase('chat.html');
             const activateGroupsTab = function (frame, tries) {
                 if (!frame) return;
                 let n = 0, timer = null;
@@ -2037,7 +2227,7 @@ setTimeout(function () {
                 insFrame.style.display = 'none';
                 activateGroupsTab(chatFrame, 4);
             } else {
-                const target = groupFrame || overlayFrameA;
+                const target = groupFrame || overlayFrames[0];
                 if (target) {
                     overlayFrame = target;
                     overlayFrame.setAttribute('data-loaded-url', chatUrl);
@@ -2214,7 +2404,7 @@ setTimeout(function () {
                 if (wasOverlaySource === 'chat' && frameBase(overlayFrame) === 'groups.html') {
                     const groupFrame = overlayFrame;
                     groupFrame.style.display = 'none';
-                    const chatFrame = (groupFrame === overlayFrameA) ? overlayFrameB : overlayFrameA;
+                    const chatFrame = findOverlayFrameByBase('chat.html');
                     const chatUrl = withBuild('chat.html');
                     try { sessionStorage.setItem('nano_chat_active_page', JSON.stringify({ page: 'chat', tab: 'groups', at: Date.now() })); } catch (e) {}
                     if (chatFrame) {
@@ -2243,8 +2433,7 @@ setTimeout(function () {
             } catch (e) {}
 
             if (wasOverlaySource === 'groups' && lastGroupUrl) {
-                const liveGroupFrame = (frameBase(overlayFrameA) === 'groups.html') ? overlayFrameA
-                    : ((overlayFrameB && frameBase(overlayFrameB) === 'groups.html') ? overlayFrameB : null);
+                const liveGroupFrame = findOverlayFrameByBase('groups.html');
                 if (liveGroupFrame) {
                     overlayFrame = liveGroupFrame;
                     try { overlayFrame.contentWindow.postMessage({ type: 'nanoOverlayReopen' }, '*'); } catch (e) {}
@@ -2275,8 +2464,7 @@ setTimeout(function () {
             // 从聊天列表/聊天资料打开的功能页：关闭后回到聊天列表
             try {
                 if (wasOverlaySource === 'chat') {
-                    const liveChat = (frameBase(overlayFrameA) === 'chat.html') ? overlayFrameA
-                        : ((overlayFrameB && frameBase(overlayFrameB) === 'chat.html') ? overlayFrameB : null);
+                    const liveChat = findOverlayFrameByBase('chat.html');
                     if (liveChat) {
                         overlayFrame = liveChat;
                         hidePageLoading();
@@ -2825,7 +3013,7 @@ setTimeout(function () {
         };
         function __tkReadScreen() {
             try {
-                var frames = [overlayFrame, overlayFrameB, chatInnerFrame, voiceCallFrame, musicFrame, momentsFrame, insFrame];
+                var frames = overlayFrames.concat([chatInnerFrame, voiceCallFrame, musicFrame, momentsFrame, insFrame]);
                 for (var i = 0; i < frames.length; i++) {
                     var f = frames[i]; if (!f) continue;
                     var vis = f.style.display && f.style.display !== 'none';
@@ -2850,7 +3038,7 @@ setTimeout(function () {
         }
         function __tkScroll(dy) {
             try {
-                var frames = [overlayFrame, overlayFrameB, chatInnerFrame, voiceCallFrame, musicFrame, momentsFrame, insFrame];
+                var frames = overlayFrames.concat([chatInnerFrame, voiceCallFrame, musicFrame, momentsFrame, insFrame]);
                 for (var i = 0; i < frames.length; i++) {
                     var f = frames[i];
                     if (!f || !f.style.display || f.style.display === 'none') continue;
@@ -2947,23 +3135,20 @@ setTimeout(function () {
             return false;
         }
         function retireOverlayFrame() {
+            // 关闭只隐藏，不销毁：帧池会在需要时按 LRU 复用，
+            // 这样从桌面再点回来不需要重新加载页面。
             try {
-                if (overlayFrame && hasActiveRefreshForFrame(overlayFrame)) {
-                    overlayFrame.style.display = 'none';
-                    hideOtherGenericFrame();
-                    return;
-                }
-            } catch (e) {}
-            // 聊天大厅保留在后台，退出后再次进入不需要重新加载
-            if (frameBase(overlayFrame) === 'chat.html') {
+                if (!overlayFrame) return;
+                markOverlayUsed(overlayFrame);
+                pauseFrameMedia(overlayFrame);
                 overlayFrame.style.display = 'none';
                 hideOtherGenericFrame();
-                return;
-            }
-            overlayFrame.style.display = 'none';
-            hideOtherGenericFrame();
-            try { overlayFrame.removeAttribute('data-loaded-url'); } catch (e) {}
-            overlayFrame.setAttribute('src', 'about:blank');
+                // Halo 直播会占用摄像头：这类页面关闭时必须真正销毁，不能留在池里。
+                if (frameBase(overlayFrame) === 'halo.html') {
+                    try { overlayFrame.removeAttribute('data-loaded-url'); } catch (e) {}
+                    overlayFrame.setAttribute('src', 'about:blank');
+                }
+            } catch (e) {}
         }
         function handleNanoRefresh(data, fromWin) {
             const id = data.id || '';
@@ -3644,7 +3829,7 @@ setTimeout(function () {
                 const storeResult = function(result) {
                     try { localStorage.setItem(resultKey, JSON.stringify(result)); } catch (e) {}
                     delete groupApiInFlight[token];
-                    [overlayFrameA, overlayFrameB, chatInnerFrame].forEach(function(fr) {
+                    overlayFrames.concat([chatInnerFrame]).forEach(function(fr) {
                         try { if (fr && fr.contentWindow) fr.contentWindow.postMessage({ type: doneType, token: token, result: result }, '*'); } catch (e) {}
                     });
                 };
@@ -4039,7 +4224,7 @@ setTimeout(function () {
                 try { openFullscreen('chat.html', '', false, 'main'); } catch (e) {}
                 var goChatFriends = function () {
                     try {
-                        var cands = [overlayFrame, overlayFrameA, overlayFrameB];
+                        var cands = [overlayFrame].concat(overlayFrames.filter(function (f) { return f && f !== overlayFrame; }));
                         try {
                             var c = document.getElementById('iframeChat');
                             var f = c ? c.querySelector('iframe') : null;
@@ -4082,7 +4267,7 @@ setTimeout(function () {
                 try { openFullscreen('chat.html', '', false, 'main'); } catch (e) {}
                 var goTravelChatFriends = function () {
                     try {
-                        var cands = [overlayFrame, overlayFrameA, overlayFrameB];
+                        var cands = [overlayFrame].concat(overlayFrames.filter(function (f) { return f && f !== overlayFrame; }));
                         try {
                             var c = document.getElementById('iframeChat');
                             var f = c ? c.querySelector('iframe') : null;
@@ -4671,26 +4856,67 @@ setTimeout(function () {
         try {
             if (!navigator.serviceWorker) return;
             if (navigator.connection && (navigator.connection.saveData || /(^|-)2g$|slow-2g|(^|-)3g$/.test(navigator.connection.effectiveType || ''))) return;
-            var pages = ['chat_inner.html', 'storage.html', 'backup.html', 'cloud-backup.html', 'char-relations.html', 'char-chats.html', 'other.html', 'beautify.html',
-                'inner-setting.html', 'groups.html', 'group-setting.html', 'music.html', 'ins.html',
-                'moments.html', 'halo.html', 'books.html', 'character.html', 'mask.html', 'favorite.html',
-                'emoji.html', 'worldbook.html', 'memory.html', 'phone.html', 'offline.html',
-                'offline-setting.html', 'couple-spaces.html', 'voice-call.html', 'video-call.html', 'api.html', 'cycle.html', 'fanfic.html', 'fanfic-create.html', 'fanfic-read.html',
-                'discover.html', 'qa.html', 'pomodoro.html', 'nano.html', 'nano-image.html',
-                'travel.html', 'travel-chat.html', 'nano-card-template.html'];
-            var i = 0;
+            var pages = [
+                'phone.html', 'chat.html', 'chat_inner.html', 'settings.html', 'character.html', 'moments.html', 'ins.html', 'music.html',
+                'worldbook.html', 'emoji.html', 'nano.html', 'nano-files.html', 'nano-setting.html', 'nano-image.html', 'nano-image-settings.html',
+                'storage.html', 'backup.html', 'cloud-backup.html', 'char-relations.html', 'char-chats.html', 'other.html', 'beautify.html',
+                'inner-setting.html', 'groups.html', 'group-setting.html', 'halo.html', 'books.html', 'mask.html', 'favorite.html',
+                'memory.html', 'memory palace.html', 'offline.html', 'offline-setting.html', 'couple-spaces.html', 'voice-call.html', 'video-call.html',
+                'api.html', 'cycle.html', 'fanfic.html', 'fanfic-create.html', 'fanfic-read.html', 'discover.html', 'qa.html', 'pomodoro.html',
+                'travel.html', 'travel-chat.html', 'nano-card-template.html', 'appstore.html', 'market.html', 'mall.html', 'wallet.html',
+                'phone-wallet.html', 'family-card.html', 'ios-setting.html', 'heart-setting.html', 'gallery.html', 'mcp.html', 'meet.html',
+                'schedule.html', 'settings-desktop.html', 'settings-notifications.html', 'settings-prompts.html', 'settings-other.html',
+                'settings-account.html', 'settings-android.html', 'settings-logs.html', 'imessage.html', 'doubao.html', 'mapcal.html',
+                'taobao.html', 'assistant.html', 'app-host.html', 'nano-app-template.html', '灰樱.html'
+            ];
+            var i = 0, seen = {};
+            function fetchAsset(href) {
+                if (!href || seen[href]) return Promise.resolve();
+                seen[href] = 1;
+                return fetch(href, { credentials: 'same-origin' }).catch(function () {});
+            }
+            // 预热页面时顺便把它引用的 JS / CSS 一起拉进 SW / HTTP 缓存。
+            // 只拉 HTML 是不够的：第一次打开仍然要解析一堆脚本，看起来就像“正在打开”。
+            function warmPage(u) {
+                var pageUrl = new URL('html/' + u, location.href).href;
+                return fetch(pageUrl, { credentials: 'same-origin' }).then(function (r) { return r.text(); }).then(function (html) {
+                    var re = /(?:src|href)\s*=\s*["']([^"']+)["']/gi;
+                    var assets = [], m;
+                    while ((m = re.exec(html))) {
+                        var s = m[1];
+                        if (!s || /^(data:|blob:|about:|javascript:|#)/i.test(s)) continue;
+                        if (!/\.(?:js|css)(?:[?#]|$)/i.test(s)) continue;
+                        try {
+                            var abs = new URL(s, pageUrl);
+                            if (abs.origin !== location.origin) continue;
+                            assets.push(abs.href);
+                        } catch (e) {}
+                    }
+                    return assets.reduce(function (p, href) {
+                        return p.then(function () { return fetchAsset(href); }).then(function () {
+                            return new Promise(function (res) { setTimeout(res, 35); });
+                        });
+                    }, Promise.resolve());
+                }).catch(function () {});
+            }
             function next() {
                 if (i >= pages.length) return;
                 var u = pages[i++];
-                try {
-                    fetch('html/' + u, { credentials: 'same-origin' }).catch(function () {}).then(function () {
-                        setTimeout(next, 250);
-                    });
-                } catch (e) { setTimeout(next, 250); }
+                warmPage(u).then(function () { setTimeout(next, 160); }, function () { setTimeout(next, 160); });
             }
             // SW 已停用：直接顺序 fetch，浏览器 HTTP 缓存同样能命中
             // 改为空闲时才预热，避免和首页/首屏资源抢带宽
-            var startWarm = function () { setTimeout(next, 300); };
+            var warmStarted = false;
+            var startWarm = function () {
+                if (warmStarted) return;
+                warmStarted = true;
+                setTimeout(next, 150);
+            };
+            // 开屏骨架一出来就开始预热：利用开屏等待数据的时间，把常用 App 的 JS/CSS 拉进缓存。
+            try { if (window.__nanoHomeSkeletonReady) setTimeout(startWarm, 80); } catch (e) {}
+            try { window.addEventListener('message', function (e) { if (e && e.data && e.data.type === 'nanoHomeSkeletonReady') setTimeout(startWarm, 80); }); } catch (e) {}
+            // 开屏一结束也开始预热（如果骨架信号没收到）。
+            try { document.addEventListener('nano-splash-done', function () { setTimeout(startWarm, 160); }, { once: true }); } catch (e) {}
             if (window.requestIdleCallback) requestIdleCallback(startWarm, { timeout: 6000 });
             else setTimeout(startWarm, 6000);
         } catch (e) {}
@@ -4741,18 +4967,18 @@ setTimeout(function () {
 <script src="js/aux-memory.js?v=20261029d"></script>
 <script src="js/user-scope.js?v=20261020j"></script>
 <script src="js/nano-notify.js?v=20261112a"></script>
-<script src="js/nano-push.js?v=20261112a"></script>
+<script src="js/nano-push.js?v=20261117a"></script>
 <script src="swipe-back.js"></script>
 <script src="js/nano-prompts.js?v=20261115a"></script>
 <script src="js/ios-bridge.js?v=20261027k"></script>
-<script src="js/auto-push-bridge.js?v=20261112b"></script>
+<script src="js/auto-push-bridge.js?v=20261117a"></script>
 <script>
 // 这些是后台/低频功能，不参与首屏。等 load 后再按顺序懒加载，
 // 避免和首页 iframe 抢带宽，也避免启动时长时间占用主线程。
 (function () {
     var files = [
         'js/keep-alive.js?v=20261112a',
-        'js/char-takeover.js?v=20261115b',
+        'js/char-takeover.js?v=20261117a',
         'js/screen-share.js?v=20261027a',
         'js/online-catchup.js?v=20261115a',
         'js/whisper-store.js?v=20261026a',

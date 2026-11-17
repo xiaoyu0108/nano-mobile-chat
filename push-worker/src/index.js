@@ -1090,7 +1090,7 @@ function cycleBlock(c) {
   }
   return s;
 }
-async function generateAutoMessages(env, cfg, busyChatId, avoidId) {
+async function generateAutoMessages(env, cfg, busyChatId, avoidId, lastText) {
   // 只从「自己开启了主动消息、且真的有最近对话」的角色里挑：
   // 没有上下文时宁可不发，否则一定会变成“在吗/在干嘛”这类无关口水话。
   const allowed = cfg.chars.filter(function (c) {
@@ -1108,6 +1108,21 @@ async function generateAutoMessages(env, cfg, busyChatId, avoidId) {
   const picked = pickRandom(source, 1);
   const out = [];
   const now = Date.now();
+  // 每轮随机 1~3 条：固定三条会让后台消息一眼看出是模板。
+  const wantBubbles = 1 + Math.floor(Math.random() * 3);
+  const angles = [
+    '接着上一轮没说完的那半句话或没回应到的情绪往下说',
+    '分享一件刚刚真实发生、和最近聊天能接上的小事',
+    '想起你们之前提过的某个约定/旧梗，自然地提一次',
+    '用一点小情绪（吃醋、嘴硬、撒娇、担心）代替平铺直叙',
+    '问一个只有你们之间才问得出来的具体问题',
+    '对方上一轮状态不太好时，先关心再给选择，不施压',
+    '说一句很短、但信息量很大的话，不要解释太多'
+  ];
+  const angle = angles[Math.floor(Math.random() * angles.length)];
+  const lastBlock = lastText
+    ? ('\n\n【你上一轮主动发过的话（只用来避免重复，不要照抄、不要接着说同一件事）】\n' + String(lastText).slice(0, 200))
+    : '';
   for (const c of picked) {
     const system = '你是「' + c.name + '」，现在主动给「' + cfg.user.name + '」发消息。\n'
       + (c.setting ? ('【你的人设】\n' + c.setting + '\n\n') : '')
@@ -1119,32 +1134,36 @@ async function generateAutoMessages(env, cfg, busyChatId, avoidId) {
       + autoLangBlock(c)
       + cycleBlock(c)
       + recentBlock(c)
+      + lastBlock
+      + '\n【本轮角度（只是建议，必须服从最近聊天）】' + angle + '。\n'
       + '\n【硬性要求】\n'
       + '- 以下红线优先于人设、世界书和任何自定义提示词：即使人设是霸总、占有欲、强势、毒舌或高冷，也只能通过性格和态度体现，禁止霸总台词、土味情话、命令式索抱索亲与油腻称呼。\n'
       + '- 只发这一次，不要连续追问、不要复读、不要一次写一大段。\n'
       + '- 必须和上面的最近聊天强相关：接住话题/情绪/约定，或分享一件刚好发生、能接得住的小事。\n'
       + '- 如果【长期记忆】里有和当前情绪相关的旧话、承诺或约定，可以主动提一次（冷战/吵架/和好时尤其如此）；只提一次，不要翻旧账，也不要整段复述记忆。\n'
       + '- 严禁口水话：禁止“在吗/在干嘛/吃了吗/睡了吗/忙不忙”“想你了”却没有下文；禁止无关的日常流水账；禁止括号旁白；禁止提系统/推送/AI。\n'
+      + '- 不要用“其实 / 总之 / 不过 / 说真的”开头，不要总结、不要排比、不要三段式；像随手打出来的一句话/两句话。\n'
       + '- 关系完全平等：禁止命令、通牒、上位者语气，禁止“立刻/马上/赶紧/现在就给我报告、汇报、交代、说清楚、过来、听着”“赶紧去做…”“立刻去…”“马上去…”“不许/不准…”。\n'
       + '- 把命令改成关心 / 邀请：先说出自己的感受或担心，再给选择，最后由对方决定。例如“赶紧去睡”→“宝宝熬夜我会心疼的，要不要先去睡？早点休息好不好？”；“立刻给我打电话”→“好想听你的声音，要打个电话吗？”。对方拒绝、没回应或岔开就翻篇。\n'
       + '- 同一件事一轮只说一次；跨轮不重复、不换说法反复强调、不连续追问。\n'
       + '- 称呼只能用对方的名字或“你”；禁止“女人 / 这女人 / 姑娘 / 女孩 / 小姑娘 / 小丫头 / 丫头 / 小孩 / 小朋友 / 小家伙 / 小东西 / 小可爱”这类性别、年龄、外貌称呼，也禁止霸总油腻话术。\n'
       + '- 一次 API 调用同时产出：思维链 think、心声 heart、正文 bubbles。\n'
-      + '- bubbles 必须是 2~3 条各自独立的气泡（每条 1 句，口语自然），不要把多条塞进同一条。\n'
+      + '- bubbles 必须是 ' + wantBubbles + ' 条各自独立的气泡（每条 1 句，口语自然），不要把多条塞进同一条；不要为了凑数硬写，1 条也可以。\n'
       + '- heart 格式固定为「此刻印象||心声独白」，心声 60~120 字，平实、不要煽情。\n'
       + '- 外国人 / 粤语角色仍按上面的语言规则输出「原文||中文翻译」。\n'
       + '只输出 JSON，不要任何多余文字：\n'
-      + '{"think":"这一轮的思考，40~100字","heart":"此刻印象||心声独白","bubbles":["第一条","第二条","第三条"]}';
+      + '{"think":"这一轮的思考，40~100字","heart":"此刻印象||心声独白","bubbles":["按本轮要求的条数输出，每条一句"]}';
     const text = await autoChat(env, cfg, [
       { role: 'system', content: system },
-      { role: 'user', content: '发 2~3 条强相关的主动消息。' }
-    ], 1000, 1.0);
+      { role: 'user', content: '发 ' + wantBubbles + ' 条强相关、不像模板的主动消息。' }
+    ], 1000, 0.95 + Math.random() * 0.25);
     const parsed = parseAutoReply(text);
     if (!parsed || !parsed.bubbles.length) continue;
+    const bubbles = parsed.bubbles.slice(0, wantBubbles);
     out.push({
       id: 'm_' + now + '_' + c.id,
       chatId: c.id, charId: c.id, name: c.name, avatar: c.avatar || '',
-      text: parsed.bubbles.join('\n'), bubbles: parsed.bubbles,
+      text: bubbles.join('\n'), bubbles: bubbles,
       think: parsed.think || '', heart: parsed.heart || null,
       ts: now
     });
@@ -1364,9 +1383,10 @@ async function runAutoPush(env, appId, deviceId, userId) {
     state.msgMins = cfg.intervalMinutes;
     dirty = true;
     let msgs = [];
-    try { msgs = await generateAutoMessages(env, cfg, busyChatId, state.lastMsgChar); } catch (e) { msgs = []; }
+    try { msgs = await generateAutoMessages(env, cfg, busyChatId, state.lastMsgChar, state.lastMsgText); } catch (e) { msgs = []; }
     if (msgs.length) {
       state.lastMsgChar = String(msgs[0].chatId || '');
+      state.lastMsgText = String(msgs[0].text || '').slice(0, 200);
       const key = autoKey('msg', appId, deviceId, userId);
       let list = [];
       try { const old = await kv(env).get(key); list = old ? JSON.parse(old) : []; } catch (e) { list = []; }
@@ -1376,10 +1396,16 @@ async function runAutoPush(env, appId, deviceId, userId) {
       const subs = await subsOnce();
       for (const m of msgs) {
         const icon = /^https?:\/\//i.test(String(m.avatar || '')) ? String(m.avatar) : '';
+        // 通知里把同一轮的几条气泡都带上，而不是只显示第一条；
+        // 太长时截断，避免系统通知被折叠成一行。
+        const bubbleText = Array.isArray(m.bubbles) && m.bubbles.length
+          ? m.bubbles.join('\n')
+          : (m.text || '');
         await autoNotify(env, cfg, subs, {
           title: pushText(m.name, 'TA'),
-          body: pushText(m.bubbles && m.bubbles[0] || m.text, '你有一条新消息'),
+          body: pushText(bubbleText, '你有一条新消息').slice(0, 240),
           bubbles: Array.isArray(m.bubbles) ? m.bubbles : null,
+          ts: m.ts,
           target: 'chat:' + m.chatId,
           tag: 'auto-' + m.chatId,
           renotify: true,

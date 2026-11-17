@@ -545,6 +545,7 @@ const APP_ICONS = {
         else if (s.permission === 'unsupported') status.textContent = '此环境不支持系统通知';
         else if (s.permission !== 'granted') status.textContent = '需要允许通知后开启';
         else if (s.subscribed) status.textContent = '已开启';
+        else if (s.disabled) status.textContent = '已手动关闭（不会再自动打开）';
         else if (s.configured) status.textContent = '已配置，等待订阅';
         else status.textContent = '未订阅';
       }

@@ -47,6 +47,19 @@
     // 浏览器订阅到一把服务端已经没有私钥的 key，表现就是“已订阅但永远收不到”。
     // 所有订阅前都从 /vapid 取服务端当前公钥。
     var DEFAULT_ENDPOINT = 'https://nanopush.nano315.online';
+    // 用户手动关掉 Web Push 后记住这个选择：否则下次启动时
+    // refreshSubscription()/syncVapid() 会把「浏览器里没有订阅」当成掉线并自动重建，
+    // 表现就是「关掉又自己打开」。
+    var USER_DISABLED_KEY = 'nano_push_user_disabled';
+    function userDisabled() {
+        try { return localStorage.getItem(USER_DISABLED_KEY) === '1'; } catch (e) { return false; }
+    }
+    function setUserDisabled(v) {
+        try {
+            if (v) localStorage.setItem(USER_DISABLED_KEY, '1');
+            else localStorage.removeItem(USER_DISABLED_KEY);
+        } catch (e) {}
+    }
     function readConfig() {
         var endpoint = '', vapid = '', token = '';
         try {
@@ -260,6 +273,8 @@
     }
 
     function enable(force) {
+        // 用户主动点「开启 / 重新订阅」：解除之前的关闭记忆。
+        setUserDisabled(false);
         if (isNative()) {
             var na = nativeApp();
             try { if (na.requestNotificationPermission) na.requestNotificationPermission(); } catch (e) {}
@@ -370,6 +385,8 @@
     }
 
     function disable() {
+        // 先记下「是用户自己关的」：后面的自动补订阅不能覆盖这个选择。
+        setUserDisabled(true);
         if (isNative()) {
             try { localStorage.removeItem('nano_push_native'); } catch (e) {}
             return Promise.resolve(true);
@@ -395,7 +412,7 @@
                     return true;
                 });
             });
-        });
+        }).catch(function () { return true; });
     }
 
     // 预约一条/多条后台推送；at 为毫秒时间戳
@@ -458,6 +475,7 @@
                 endpoint: readConfig().endpoint,
                 permission: perm,
                 subscribed: subbed,
+                disabled: userDisabled(),
                 appId: appId(),
                 deviceId: autoDeviceId(),
                 userId: currentAutoUserId()
@@ -470,7 +488,7 @@
                 permission = 'granted';
             }
         } catch (e) {}
-        var out = { configured: !!cfg.endpoint, endpoint: cfg.endpoint, permission: permission, subscribed: false, appId: appId(), deviceId: autoDeviceId(), userId: currentAutoUserId() };
+        var out = { configured: !!cfg.endpoint, endpoint: cfg.endpoint, permission: permission, subscribed: false, disabled: userDisabled(), appId: appId(), deviceId: autoDeviceId(), userId: currentAutoUserId() };
         if (!swSupported()) return Promise.resolve(out);
         return navigator.serviceWorker.getRegistration().then(function (reg) {
             if (!reg) return out;
@@ -482,6 +500,8 @@
     function refreshSubscription() {
         try {
             if (isNative()) return Promise.resolve(false);
+            // 用户手动关闭过就绝不自动重建订阅；只有他自己再点开启才恢复。
+            if (userDisabled()) return Promise.resolve(false);
             if (!swSupported()) return Promise.resolve(false);
             var perm = Notification.permission;
             try {
@@ -567,6 +587,8 @@
     function syncSubscription() {
         try {
             if (isNative()) return Promise.resolve(false);
+            // 关闭状态下不补登记，否则又会在服务端留下订阅记录。
+            if (userDisabled()) return Promise.resolve(false);
             if (!swSupported()) return Promise.resolve(false);
             var cfg = readConfig();
             if (!cfg.endpoint) return Promise.resolve(false);
@@ -600,6 +622,8 @@
     function syncVapid() {
         try {
             if (isNative()) return Promise.resolve(false);
+            // 关闭状态不检查/重建订阅，避免「刚关掉又被自动打开」。
+            if (userDisabled()) return Promise.resolve(false);
             var cfg = readConfig();
             if (!cfg.endpoint) return Promise.resolve(false);
             var ctrl = null, timer = null;

@@ -1274,6 +1274,12 @@
         // 只有 PNG 角色卡导入需要设备激活；TXT / DOC / DOCX 不限制。
         // 直接导入 .json 角色卡已关闭，只允许 PNG 角色卡。
         const lowerName = (file.name || '').toLowerCase();
+        // 误从「导入文件」选择 PNG 时自动走票根解析，而不是当文本读成乱码。
+        if (lowerName.endsWith('.png') || file.type === 'image/png') {
+            fileInput.value = '';
+            importPngFromFile(file, false);
+            return;
+        }
         if (lowerName.endsWith('.json')) {
             fileInput.value = '';
             showInfo('不支持 JSON', '角色导入只接受 PNG 角色卡、TXT / DOC / DOCX 文本，不再直接导入 JSON 文件。');
@@ -1400,9 +1406,11 @@
     function readPngCardKind(chunks) {
         const hasNano = NANO_PNG_KEYS.some(function(k) { return !!(chunks && chunks[k]); });
         const hasTavern = TAVERN_PNG_KEYS.some(function(k) { return !!(chunks && chunks[k]); });
-        if (hasNano && !hasTavern) return 'nano';
+        // 同时带两种数据时优先认 Nano 票根：Nano 票根本身也兼容酒馆字段，
+        // 之前先判 tavern 会把 Nano 票根误判成酒馆卡，导致「导入 Nano 票根」说不是票根。
+        if (hasNano) return 'nano';
         if (hasTavern) return 'tavern';
-        return hasNano ? 'nano' : '';
+        return '';
     }
 
     function parseNanoPngCard(chunks) {
@@ -1476,6 +1484,59 @@
             });
             renderWorldbookList();
         }
+    }
+
+    // 统一的 PNG 导入：TXT/DOCX 入口误选 PNG 时也能自动识别 Nano 票根，
+    // 不再把二进制当文本塞进设定框，最后显示成“无法识别”。
+    async function importPngFromFile(file, nanoOnly) {
+        try {
+            await ensurePako();
+        } catch (e) {
+            showInfo('导入失败', 'PNG 解析库加载失败，请刷新页面后重试');
+            return false;
+        }
+        return new Promise(function(resolve) {
+            const reader = new FileReader();
+            reader.onload = async function(ev) {
+                try {
+                    const arrayBuffer = ev.target.result;
+                    const chunks = readPNGTextChunks(arrayBuffer);
+                    const kind = readPngCardKind(chunks);
+                    if (kind === 'nano') {
+                        const cardData = parseNanoPngCard(chunks);
+                        if (!cardData) {
+                            showInfo('导入失败', '无法读取 Nano 票根中的角色数据。请确认分享时发送的是原图 / 原文件，不要用截图或经过微信压缩的图片。');
+                            resolve(false);
+                            return;
+                        }
+                        const parsed = parseCardData(cardData);
+                        await applyImportedCharacter(parsed, arrayBuffer, file.type);
+                        resolve(true);
+                        return;
+                    }
+                    if (kind === 'tavern') {
+                        if (nanoOnly) {
+                            showInfo('不是 Nano 票根', '没有检测到 Nano 票根数据。酒馆角色卡请使用右上角的「导入酒馆 PNG」入口。');
+                        } else {
+                            showInfo('这是酒馆角色卡', '请使用右上角的「导入酒馆 PNG」入口导入（需要先完成设备激活）。');
+                        }
+                        resolve(false);
+                        return;
+                    }
+                    showInfo('无法识别', '这张 PNG 里没有 Nano 票根或酒馆角色卡数据。请确认分享时发送的是原图 / 原文件；截图、微信压缩或从相册转存都会丢掉 PNG 里的数据。');
+                    resolve(false);
+                } catch (err) {
+                    console.error('PNG 导入失败:', err);
+                    showInfo('导入失败', '解析 PNG 遇到错误: ' + ((err && err.message) || '未知错误'));
+                    resolve(false);
+                }
+            };
+            reader.onerror = function() {
+                showInfo('错误', '读取文件失败');
+                resolve(false);
+            };
+            reader.readAsArrayBuffer(file);
+        });
     }
 
     // ===== 事件绑定 =====
@@ -1596,33 +1657,7 @@
         const file = this.files[0];
         if (!file) return;
         importNanoPngFileInput.value = '';
-        ensurePako().then(function() {
-            const reader = new FileReader();
-            reader.onload = async function(ev) {
-                try {
-                    const arrayBuffer = ev.target.result;
-                    const chunks = readPNGTextChunks(arrayBuffer);
-                    const kind = readPngCardKind(chunks);
-                    if (kind !== 'nano') {
-                        showInfo('不是 Nano 票根', '没有检测到 Nano 票根数据。酒馆角色卡请使用「导入酒馆 PNG」入口。');
-                        return;
-                    }
-                    const cardData = parseNanoPngCard(chunks);
-                    if (!cardData) {
-                        showInfo('导入失败', '无法读取 Nano 票根中的角色数据，请重新导出后再试。');
-                        return;
-                    }
-                    const parsed = parseCardData(cardData);
-                    await applyImportedCharacter(parsed, arrayBuffer, file.type);
-                } catch(err) {
-                    console.error('Nano 票根导入失败:', err);
-                    showInfo('导入失败', '解析 Nano 票根遇到错误: ' + err.message);
-                }
-            };
-            reader.readAsArrayBuffer(file);
-        }).catch(function() {
-            showInfo('导入失败', 'PNG 解压库加载失败，无法导入 Nano 票根');
-        });
+        await importPngFromFile(file, true);
     });
 
     // ===== 导出 Nano 票根 PNG =====
@@ -1746,6 +1781,16 @@
             loadWorldbooks();
             populateWorldbookSelect();
             }
+        if (data && data.type === 'nanoOverlayReopen') {
+            // 复用的缓存页重新显示时重新读角色库，避免 Nano 助手新建角色后这里还是旧列表。
+            try {
+                if (isEditMode || (editModal && editModal.classList.contains('show'))) return;
+                idbGetAll().then(function(chars) {
+                    data.chars = chars || [];
+                    renderAll();
+                }).catch(function() {});
+            } catch (e) {}
+        }
     });
 
     try { window.parent.postMessage({ type: 'pageLoaded', page: 'character' }, '*'); } catch(e) {}

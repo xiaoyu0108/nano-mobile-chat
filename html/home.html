@@ -1720,8 +1720,9 @@ function init(){
     });
     if (hasEmptyBuiltin) loadBuiltinTemplates();
   } catch (e) {}
-  // 先让外壳收起开屏动画，再在后台补完 IndexedDB 数据。
-  try{ parent.postMessage({type:'nanoHomeReady'},'*'); }catch(e){}
+  // 桌面骨架已经画好：先让开屏进度走到一半，真正读完 IndexedDB 再发 nanoHomeReady。
+  try{ parent.__nanoHomeSkeletonReady = true; }catch(e){}
+  try{ parent.postMessage({type:'nanoHomeSkeletonReady'},'*'); }catch(e){}
   (async function hydrate(){
     try{
       // 布局、图片、桌面背景、自定义图标同时读，避免 4 次 IndexedDB 串行等待；
@@ -1745,8 +1746,12 @@ function init(){
       }
       applyDesktopBg();
       render();
-      try{ parent.postMessage({type:'nanoHomeReady'},'*'); }catch(e){}
     }catch(e){}
+    finally {
+      // 无论成功失败都通知外壳：数据已经读完（或读失败），可以进入桌面了。
+      try{ parent.__nanoHomeReady = true; }catch(e){}
+      try{ parent.postMessage({type:'nanoHomeReady'},'*'); }catch(e){}
+    }
   })();
 }
 let lastW=0;

@@ -962,7 +962,7 @@
 
             function onLoaded(content) {
                 pendingFileContent = content || '';
-                fileStatus.textContent = '已加载: ' + file.name + '，点击「AI 识别」解析';
+                fileStatus.textContent = '已加载: ' + file.name + '，点击「解析文件」：先本地解析，失败再用 AI';
                 fileStatus.style.color = '#34c759';
                 fileInput.value = '';
             }
@@ -1086,7 +1086,9 @@
                 return;
             }
             
-            // 本地解析失败，调用 AI
+            // 本地解析失败，才调用 AI
+            fileStatus.textContent = '本地没有识别到，正在用 AI 尝试…';
+            fileStatus.style.color = '#8e8e93';
             recognizeWithAI(pendingFileContent, function(result) {
                 if (result && result.length > 0) {
                     parsedBatchEmojis = parsedBatchEmojis.concat(result);

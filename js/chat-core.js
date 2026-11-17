@@ -15029,10 +15029,13 @@ if (callCard) {
     }
 
     // ===== 角色接管手机：由外壳让角色"亲自"发一条消息（左气泡） =====
-    function makeCharSaidMsg(text, think, forcedId) {
-        const now = new Date();
-        const h = String(now.getHours()).padStart(2, '0');
-        const m = String(now.getMinutes()).padStart(2, '0');
+    function makeCharSaidMsg(text, think, forcedId, ts) {
+        // 后台消息可能是在几小时前生成的：必须用服务端/暂存里的时间，
+        // 否则补进聊天时会显示成“点开 App 的那一刻”，看起来像刚发的。
+        const whenMs = Number(ts) > 0 ? Number(ts) : Date.now();
+        const when = new Date(whenMs);
+        const h = String(when.getHours()).padStart(2, '0');
+        const m = String(when.getMinutes()).padStart(2, '0');
         let body = String(text || '').trim();
         let translation = null;
         // 外国人主动消息：外文||中文翻译 → 气泡显示外文，下面挂中文翻译
@@ -15045,14 +15048,14 @@ if (callCard) {
             id: forcedId || ('say_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7)),
             type: 'left', text: body, time: h + ':' + m, status: null, recalled: false,
             isCard: false, cardData: null, isVoice: false, voiceData: null, isImage: false, imageData: null,
-            quote: null, transcript: null, translation: translation, favorite: false, turn: null, ts: Date.now(),
+            quote: null, transcript: null, translation: translation, favorite: false, turn: null, ts: whenMs,
             think: think || null
         };
     }
-    function addCharSaid(text, heart, think, forcedId) {
+    function addCharSaid(text, heart, think, forcedId, ts) {
         const t = String(text || '').trim();
         if (!t) return false;
-        const msg = makeCharSaidMsg(t, think, forcedId);
+        const msg = makeCharSaidMsg(t, think, forcedId, ts);
         if (heart && (heart.subject || heart.thought || (Array.isArray(heart.sections) && heart.sections.length))) msg.heart = heartWithSections(heart);
         messages.push(msg);
         try { renderMessages(); saveMessages(); scrollToBottom(); } catch (e) {}
@@ -15065,10 +15068,10 @@ if (callCard) {
         // 同一条后台消息可能既走了实时插入、又被 pending 补发：用 id 去重
         if (data.id && messages.some(function (m) { return m && String(m.id) === String(data.id); })) return;
         if (!isStorageReady) {
-            try { sessionStorage.setItem('nano_pending_char_say', JSON.stringify({ chatId: chatId, text: String(data.text), heart: data.heart || null, think: data.think || '', id: data.id || '', ts: Date.now() })); } catch (e) {}
+            try { sessionStorage.setItem('nano_pending_char_say', JSON.stringify({ chatId: chatId, text: String(data.text), heart: data.heart || null, think: data.think || '', id: data.id || '', ts: Number(data.ts) || Date.now() })); } catch (e) {}
             return;
         }
-        addCharSaid(data.text, data.heart, data.think, data.id);
+        addCharSaid(data.text, data.heart, data.think, data.id, data.ts);
     }
     function consumePendingCycleCard() {
         try {
@@ -15116,7 +15119,9 @@ if (callCard) {
                         // 同一条消息可能已经实时插入过（online-catchup / 无后台推送实时投递）：
                         // 按 id 去重，避免补发时出现双份。
                         if (mid && messages.some(function (x) { return x && String(x.id) === mid; })) return;
-                        addCharSaid(String(t), h, th, mid);
+                        // 同一条主动消息的多个气泡用生成时间递增，保持顺序但不要显示成“刚刚”。
+                        var mts = (item && Number(item.ts) > 0) ? (Number(item.ts) + bi * 1000) : 0;
+                        addCharSaid(String(t), h, th, mid, mts);
                     });
                 });
             }
@@ -15126,7 +15131,7 @@ if (callCard) {
         if (!p || !p.text) return;
         if (String(p.chatId || '') !== String(chatId || '')) return;
         try { sessionStorage.removeItem('nano_pending_char_say'); } catch (e) {}
-        addCharSaid(p.text, p.heart || null, p.think || '', p.id || '');
+        addCharSaid(p.text, p.heart || null, p.think || '', p.id || '', p.ts);
     }
 
     // ===== 角色接管手机：用户拒绝后的角色反应 =====

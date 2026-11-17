@@ -164,7 +164,9 @@
                     text: String(t),
                     id: id,
                     heart: i === 0 ? (m.heart || null) : null,
-                    think: i === 0 ? String(m.think || '') : ''
+                    think: i === 0 ? String(m.think || '') : '',
+                    // 带上服务端生成时间：插入聊天时显示真实发送时间，而不是点开 App 的时间。
+                    ts: (Number(m.ts) > 0 ? (Number(m.ts) + i * 1000) : 0)
                 }, '*');
             });
             return true;
