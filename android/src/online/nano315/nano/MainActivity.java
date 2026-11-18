@@ -15,6 +15,7 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.Insets;
+import android.media.projection.MediaProjectionManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -66,6 +67,7 @@ public class MainActivity extends Activity {
     private static final int REQ_GEO = 1003;
     private static final int REQ_STORAGE = 1004;
     private static final int REQ_NOTIFY = 1005;
+    private static final int REQ_SCREEN = 1006;
 
     static final String EXTRA_TARGET = "nano_notify_target";
     private static final String PREFS = "nano_native_prefs";
@@ -101,6 +103,8 @@ public class MainActivity extends Activity {
     private Map<String, String> assetNameCache;
     private String pendingNotifyTarget;
     private boolean pageReady;
+    private volatile String currentPageUrl = "";
+    private volatile boolean screenCapturePending;
     private String pendingNotificationJson;
     private int lastTopInset;
 
@@ -182,6 +186,7 @@ public class MainActivity extends Activity {
 
             @Override
             public void onPageFinished(WebView view, String url) {
+                currentPageUrl = url == null ? "" : url;
                 pageReady = true;
                 applyNativeInsets(lastTopInset);
                 final String target = pendingNotifyTarget;
@@ -751,6 +756,15 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode == REQ_SCREEN) {
+            screenCapturePending = false;
+            if (resultCode == RESULT_OK && data != null) {
+                ScreenCaptureService.start(this, resultCode, data);
+            } else {
+                ScreenCaptureService.setError("denied");
+            }
+            return;
+        }
         if (requestCode == REQ_FILE) {
             Uri[] results = null;
             if (resultCode == RESULT_OK && data != null) {
@@ -843,6 +857,10 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        try {
+            if (isFinishing()) ScreenCaptureService.stop(this);
+        } catch (Throwable ignored) {
+        }
         if (webView != null) {
             try {
                 webView.loadUrl("about:blank");
@@ -1013,6 +1031,59 @@ public class MainActivity extends Activity {
             if (on) KeepAliveService.start(MainActivity.this);
             else KeepAliveService.stop(MainActivity.this);
         }
+
+        @JavascriptInterface
+        public String screenCaptureSupported() {
+            return "1";
+        }
+
+        @JavascriptInterface
+        public String startScreenCapture() {
+            if (!isTrustedPage()) return "untrusted";
+            if (ScreenCaptureService.isRunning()) return "active";
+            if (screenCapturePending) return "requesting";
+            runOnUiThread(() -> {
+                if (screenCapturePending || ScreenCaptureService.isRunning()) return;
+                try {
+                    MediaProjectionManager mpm = (MediaProjectionManager) getSystemService(MEDIA_PROJECTION_SERVICE);
+                    if (mpm == null) {
+                        ScreenCaptureService.setError("unsupported");
+                        return;
+                    }
+                    screenCapturePending = true;
+                    startActivityForResult(mpm.createScreenCaptureIntent(), REQ_SCREEN);
+                } catch (Throwable t) {
+                    screenCapturePending = false;
+                    ScreenCaptureService.setError("start_failed: "
+                            + (t.getMessage() == null ? t.getClass().getSimpleName() : t.getMessage()));
+                }
+            });
+            return "requesting";
+        }
+
+        @JavascriptInterface
+        public String screenCaptureState() {
+            if (!isTrustedPage()) return "{\"supported\":false,\"state\":\"untrusted\"}";
+            return ScreenCaptureService.stateJson();
+        }
+
+        @JavascriptInterface
+        public String getScreenFrame() {
+            if (!isTrustedPage()) return "";
+            return ScreenCaptureService.frameDataUrl();
+        }
+
+        @JavascriptInterface
+        public String takeScreenFrame() {
+            return getScreenFrame();
+        }
+
+        @JavascriptInterface
+        public String stopScreenCapture() {
+            if (!isTrustedPage()) return "untrusted";
+            ScreenCaptureService.stop(MainActivity.this);
+            return "stopped";
+        }
     }
 
     private void saveBytes(String name, String mime, String base64) {
@@ -1059,6 +1130,17 @@ public class MainActivity extends Activity {
         } catch (Exception e) {
             Log.e(TAG, "writeDownload failed", e);
             toast("保存失败：" + e.getMessage());
+        }
+    }
+
+    private boolean isTrustedPage() {
+        try {
+            String url = currentPageUrl;
+            if (url == null || url.isEmpty()) return false;
+            Uri uri = Uri.parse(url);
+            return HOST.equals(uri.getHost());
+        } catch (Throwable t) {
+            return false;
         }
     }
 

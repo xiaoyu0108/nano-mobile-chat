@@ -3201,7 +3201,7 @@ async function openSettings(){
         <button class="st-btn" data-act="screenshare">
           <div>
             <div class="st-btn-title">让 TA 看我的真实屏幕</div>
-            <div class="st-btn-sub">电脑上一键共享整个屏幕，TA 每 30 秒点评一次（需能识图的模型）</div>
+            <div class="st-btn-sub">电脑或安卓 APK 一键共享整个屏幕，TA 每 30 秒点评一次（需能识图的模型）</div>
           </div>
           <svg class="st-btn-chev" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></svg>
         </button>

@@ -640,15 +640,36 @@
   }
 
   function goBack() {
+    // 生图设置永远是生图室的子页面：交给主框架按返回栈回到生图聊天页，
+    // 不能直接 history.back()，否则会被 iframe 的历史带回设置 App。
     try {
-      if (history.length > 1) { history.back(); return; }
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({ type: 'closeFullscreen' }, '*');
+        return;
+      }
     } catch (e) {}
     location.href = 'nano-image.html';
+  }
+
+  function handleBackRequest() {
+    try {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({ type: 'nanoBackHandled' }, '*');
+      }
+    } catch (e) {}
+    goBack();
   }
 
   function bind() {
     var back = $('nisBack');
     if (back) back.addEventListener('click', goBack);
+
+    window.addEventListener('message', function (e) {
+      var d = e && e.data;
+      if (!d || d.type !== 'nanoRequestBack') return;
+      if (window.parent && window.parent !== window && e.source !== window.parent) return;
+      handleBackRequest();
+    });
 
     var use = $('nisUseBase');
     if (use) use.addEventListener('change', function () {

@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Nano 生图室</title>
   <link rel="stylesheet" href="../css/nano.css?v=20261025b">
-  <link rel="stylesheet" href="../css/nano-image.css?v=20261103b">
+  <link rel="stylesheet" href="../css/nano-image.css?v=20261118a">
   <script defer src="../js/localforage.min.js?v=20261027a"></script>
 </head>
 <body class="ni-body">
@@ -15,26 +15,22 @@
       <button class="ni-top-btn" id="niBack" data-back aria-label="返回">
         <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
-      <div class="ni-title">
-        <b>Nano 生图室</b>
-        <small id="niSub">生图 · 多图参考 · 风格延续</small>
+      <button class="ni-title-pill" id="niTitleBtn" type="button" title="点击改名">
+        <b id="niSessionName">生图 1</b>
+      </button>
+      <div class="ni-top-actions">
+        <button class="ni-top-btn" id="niSettingsBtn" aria-label="设置" title="设置">
+          <svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10M4 12h4M12 12h8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="16" cy="7" r="2" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="8" cy="17" r="2" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="10" cy="12" r="2" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
+        </button>
+        <button class="ni-top-btn" id="niSessionsBtn" aria-label="生图窗口" title="生图窗口">
+          <svg viewBox="0 0 24 24"><path d="M12 3 3 8l9 5 9-5-9-5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="m3 12 9 5 9-5M3 16l9 5 9-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
       </div>
-      <button class="ni-top-btn" id="niSessionsBtn">窗口</button>
-      <button class="ni-top-btn" id="niSettingsBtn">设置</button>
     </header>
 
-    <div class="ni-scroll" id="niScroll">
-      <section class="ni-hero">
-        <div class="ni-hero-head">
-          <div class="ni-hero-main">
-            <span>当前窗口</span>
-            <b id="niSessionName">生图 1</b>
-          </div>
-          <button class="ni-mini-btn" id="niRenameBtn">改名</button>
-        </div>
-        <div class="ni-chips" id="niChips"></div>
-      </section>
+    <div class="ni-chips ni-chips-strip" id="niChips"></div>
 
+    <div class="ni-scroll" id="niScroll">
       <div class="ni-feed" id="niFeed"></div>
       <div class="ni-empty" id="niEmpty">
         <b>直接说想画什么，或一次添加多张参考图</b>
@@ -149,7 +145,7 @@
   <script defer src="../js/nano-idb.js?v=20261028e"></script>
   <script defer src="../js/nano-gallery.js?v=20261102a"></script>
   <script defer src="../js/nano-image.js?v=20261118e"></script>
-  <script defer src="../js/nano-image-studio.js?v=20261112c"></script>
+  <script defer src="../js/nano-image-studio.js?v=20261118a"></script>
   <script defer src="../swipe-back.js"></script>
 </body>
 </html>

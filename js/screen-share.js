@@ -1,17 +1,26 @@
 // ============================================================
 // screen-share.js — 「让 TA 看你真实的屏幕」（掌心窗）
-// 用 getDisplayMedia 采集屏幕 → 定时截帧 → 交给能识图的模型
-// → TA 以人设实时短评。
-// 不设任何平台 / 环境限制：能拿到屏幕流就工作，拿不到就由浏览器/系统自行决定并回报错误。
+// 电脑用 getDisplayMedia；安卓 APK 用 NanoApp 原生 MediaProjection 截帧。
+// 定时截帧 → 交给能识图的模型 → TA 以人设实时短评。
 // 入口：查手机 → 设置 → 让 TA 看我的真实屏幕（测试）
 // ============================================================
 (function () {
     'use strict';
-    var VERSION = '20261013a';
+    var VERSION = '20261118a';
     try { console.log('[ScreenShare] build ' + VERSION + ' loaded'); } catch (e) {}
 
     var INTERVAL = 30000; // 每 30 秒看一帧（一次截图 = 一次 API 调用：看一次 + 输出回复）
     function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+    function nativeApi() {
+        try {
+            return (window.NanoApp && typeof window.NanoApp.startScreenCapture === 'function') ? window.NanoApp : null;
+        } catch (e) { return null; }
+    }
+    function nativeState() {
+        var api = nativeApi();
+        if (!api || typeof api.screenCaptureState !== 'function') return null;
+        try { return JSON.parse(api.screenCaptureState() || '{}'); } catch (e) { return null; }
+    }
     function enc(s) { return encodeURIComponent(String(s == null ? '' : s)); }
     function escHtml(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (m) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]; }); }
     function shell() { return window.__nanoShell || null; }
@@ -29,7 +38,7 @@
         return null;
     }
 
-    var SS = { active: false, info: null, cfg: null, ctx: {}, stream: null, panel: null, log: null, statusEl: null, video: null, lastAt: 0, busy: false, timer: null, comments: [], cardPosted: false, mode: 'screen' };
+    var SS = { active: false, info: null, cfg: null, ctx: {}, stream: null, panel: null, log: null, statusEl: null, video: null, lastAt: 0, busy: false, timer: null, comments: [], cardPosted: false, mode: 'screen', native: false };
 
     // 当前私聊帧打开的是哪个角色。postToChat 只发给当前帧，
     // 如果它是别的角色/根本没打开，直接 post 等于把消息丢掉。
@@ -195,6 +204,7 @@
         injectCss();
         var isPhoto = mode === 'photo';
         var isText = mode === 'text';
+        var isNative = mode === 'native';
         var looking = mode === 'camera' ? ' 在看你的镜头' : (isPhoto ? ' 看了你的截图' : (isText ? ' 看到了你屏幕上的内容' : ' 在看你的屏幕'));
         var el = document.createElement('div'); el.className = 'ss-panel';
         el.innerHTML =
@@ -203,7 +213,7 @@
                 '<div><div class="ss-name">' + escHtml(info.name || 'TA') + looking + '</div><div class="ss-status">连接中…</div></div>' +
                 '<button class="ss-stop">停止</button>' +
             '</div>' +
-            ((isPhoto || isText) ? '' : '<video class="ss-video" autoplay muted playsinline></video>') +
+            ((isPhoto || isText || isNative) ? '' : '<video class="ss-video" autoplay muted playsinline></video>') +
             '<div class="ss-log"></div>';
         document.body.appendChild(el);
         SS.panel = el; SS.log = el.querySelector('.ss-log'); SS.statusEl = el.querySelector('.ss-status');
@@ -234,6 +244,13 @@
 
     /* ---------------- 采集 ---------------- */
     function grab() {
+        if (SS.native) {
+            try {
+                var api = nativeApi();
+                if (!api || typeof api.getScreenFrame !== 'function') return '';
+                return api.getScreenFrame() || '';
+            } catch (e) { return ''; }
+        }
         var v = SS.video; if (!v || !v.videoWidth) return '';
         var w = 720, h = Math.round(v.videoHeight * (w / v.videoWidth));
         var c = document.createElement('canvas'); c.width = w; c.height = h;
@@ -417,6 +434,16 @@
         if (!SS.active || SS.busy) return;
         SS.busy = true;
         try {
+            if (SS.native) {
+                var nst = nativeState();
+                if (!nst || nst.state !== 'active') {
+                    addLine('屏幕共享已结束。', true);
+                    setStatus('已结束');
+                    SS.busy = false;
+                    stop();
+                    return;
+                }
+            }
             var dataURL = grab();
             if (!dataURL) {
                 // 刚拿到屏幕流时，第一帧可能还没解码出来。之前的逻辑会直接 return，
@@ -452,6 +479,7 @@
 
     /* ---------------- 启动 / 停止 ---------------- */
     function canScreenShare() {
+        if (nativeApi()) return true;
         try { return !!(navigator.mediaDevices && typeof navigator.mediaDevices.getDisplayMedia === 'function'); } catch (e) { return false; }
     }
 
@@ -460,17 +488,23 @@
         info = info || {}; info.id = String(info.id || info.charId || ''); info.name = String(info.name || info.charName || 'TA');
         if (!info.id) return;
         injectCss();
+        var nativeOk = !!nativeApi();
         var screenOk = canScreenShare();
         var title, desc, actions;
-        if (screenOk) {
+        if (nativeOk) {
+            // 安卓 APK：走原生 MediaProjection，系统会显示录屏授权和持续通知。
+            title = '让「' + escHtml(info.name) + '」看你真实的屏幕？';
+            desc = '会调起安卓系统录屏授权。TA 每 30 秒看一次，每次只调用一次模型，并把点评发进你们的私聊。共享期间会有系统通知，可随时停止。';
+            actions = '<button class="ss-cancel">取消</button><button class="ss-ok">开始共享</button>';
+        } else if (screenOk) {
             // 电脑 Chrome / Edge 能真正共享屏幕，保留完整流程。
             title = '让「' + escHtml(info.name) + '」看你真实的屏幕？';
             desc = '会请求屏幕共享权限（建议选「整个屏幕」，这样你切换窗口 TA 也能看到）。TA 每 30 秒看一次，每次只调用一次模型，并把点评直接发进你们的私聊。可随时停止。';
             actions = '<button class="ss-cancel">取消</button><button class="ss-ok">开始共享</button>';
         } else {
-            // iOS / 隐私浏览器等拿不到录屏接口：直接引导到「屏幕速聊」（快捷指令 + 服务端）
-            title = 'iOS 上请用「屏幕速聊」';
-            desc = 'iOS 的网页端拿不到录屏接口，无法在这里直接共享屏幕。请用「屏幕速聊」快捷指令截屏，TA 的回复会直接弹在系统窗口里，可继续打字；回到小手机后自动合并进聊天。';
+            // 手机浏览器 / 旧版 APK 拿不到录屏接口：引导到屏幕速聊或更新 APK。
+            title = '当前设备不能直接共享屏幕';
+            desc = '电脑端请用 Chrome / Edge。安卓请更新到最新 APK 后重试；iPhone 可用「屏幕速聊」快捷指令截屏，回复会直接弹在系统窗口里。';
             actions = '<button class="ss-cancel">知道了</button><button class="ss-ios">去配置「屏幕速聊」</button>';
         }
         var el = document.createElement('div'); el.className = 'ss-confirm';
@@ -494,7 +528,7 @@
     }
 
     async function runStream(info, stream, mode) {
-        SS.active = true; SS.info = info; SS.stream = stream; SS.lastAt = Date.now(); SS.cfg = null;
+        SS.active = true; SS.info = info; SS.stream = stream; SS.native = false; SS.lastAt = Date.now(); SS.cfg = null;
         SS.mode = mode || 'screen';
         SS.comments = []; SS.cardPosted = false;
         try { if (window.NanoNotify && NanoNotify.ensurePermission) NanoNotify.ensurePermission(); } catch (e) {}
@@ -539,7 +573,51 @@
         SS.timer = setInterval(tick, 3000);
     }
 
+    async function startNative(info) {
+        var api = nativeApi();
+        if (!api) return;
+        SS.active = true; SS.info = info; SS.stream = null; SS.native = true;
+        SS.lastAt = Date.now(); SS.cfg = null; SS.mode = 'screen';
+        SS.comments = []; SS.cardPosted = false;
+        try { if (window.NanoNotify && NanoNotify.ensurePermission) NanoNotify.ensurePermission(); } catch (e) {}
+        buildPanel(info, 'native');
+        setStatus('等待系统录屏授权…');
+        try { api.startScreenCapture(); } catch (e) {
+            addLine('启动屏幕共享失败：' + ((e && e.message) || e), true);
+            setStatus('启动失败');
+            SS.active = false; SS.native = false;
+            return;
+        }
+        var deadline = Date.now() + 60000;
+        while (SS.active && Date.now() < deadline) {
+            var st = nativeState();
+            if (st && st.state === 'active') {
+                setStatus('画面已连接，正在看…');
+                SS.lastAt = Date.now();
+                SS.emptyTries = 0;
+                setTimeout(function () { captureAndComment(); }, 800);
+                SS.timer = setInterval(tick, 3000);
+                return;
+            }
+            if (st && (st.state === 'denied' || st.state === 'error' || st.state === 'untrusted' || st.state === 'unsupported')) {
+                addLine('没有拿到屏幕：' + (st.error || st.state), true);
+                setStatus('未授权');
+                try { if (api.stopScreenCapture) api.stopScreenCapture(); } catch (e) {}
+                SS.active = false; SS.native = false;
+                return;
+            }
+            await sleep(500);
+        }
+        if (SS.active) {
+            addLine('等待录屏授权超时，请重试。', true);
+            setStatus('等待授权超时');
+            try { if (api.stopScreenCapture) api.stopScreenCapture(); } catch (e) {}
+            SS.active = false; SS.native = false;
+        }
+    }
+
     async function doStart(info) {
+        if (nativeApi()) { await startNative(info); return; }
         var stream = null, lastErr = null;
         // 不做任何平台 / 环境限制：直接向浏览器申请屏幕共享，多种参数与接口依次尝试
         var md = navigator.mediaDevices || {};
@@ -579,11 +657,21 @@
     }
 
     function stop() {
-        if (!SS.active) return;
-        postCard();
+        var wasActive = !!SS.active;
+        if (!wasActive && !SS.panel) return;
+        if (wasActive) postCard();
         // 私聊里补一条结束提示
-        try { var __sS = shell(); if (__sS && __sS.postToChat && SS.info) __sS.postToChat({ type: 'NANO_SYS_NOTICE', chatId: String(SS.info.id), text: '你结束了屏幕共享' }); } catch (e) {}
+        if (wasActive) {
+            try { var __sS = shell(); if (__sS && __sS.postToChat && SS.info) __sS.postToChat({ type: 'NANO_SYS_NOTICE', chatId: String(SS.info.id), text: '你结束了屏幕共享' }); } catch (e) {}
+        }
+        if (SS.native) {
+            try {
+                var api = nativeApi();
+                if (api && typeof api.stopScreenCapture === 'function') api.stopScreenCapture();
+            } catch (e) {}
+        }
         SS.active = false;
+        SS.native = false;
         try { if (SS.timer) clearInterval(SS.timer); } catch (e) {}
         SS.timer = null;
         try { if (SS.stream) SS.stream.getTracks().forEach(function (t) { try { t.stop(); } catch (e) {} }); } catch (e) {}

@@ -802,12 +802,6 @@
     var session = currentSession();
     var nameEl = $('niSessionName');
     if (nameEl) nameEl.textContent = session.name || '生图窗口';
-    var subEl = $('niSub');
-    if (subEl) {
-      var pics = session.items.filter(function (x) { return x && x.role === 'ai' && x.kind !== 'chat' && x.status === 'done'; }).length;
-      var chats = session.items.filter(function (x) { return x && x.role === 'ai' && x.kind === 'chat' && x.status === 'done'; }).length;
-      subEl.textContent = pics + ' 张图片 · ' + chats + ' 条回复 · ' + (state.sessions.length) + ' 个窗口';
-    }
     renderChips();
     renderMode();
     renderFeed();
@@ -1722,6 +1716,13 @@
   function bind() {
     // 顶栏按钮用事件委托，避免其他脚本异常导致按钮完全无响应
     document.addEventListener('click', function (e) {
+      var title = e.target && e.target.closest ? e.target.closest('#niTitleBtn') : null;
+      if (title) {
+        e.preventDefault();
+        e.stopPropagation();
+        renameSession(state.currentId);
+        return;
+      }
       var btn = e.target && e.target.closest ? e.target.closest('#niSessionsBtn, #niSettingsBtn') : null;
       if (!btn) return;
       e.preventDefault();
