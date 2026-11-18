@@ -105,6 +105,7 @@ public class MainActivity extends Activity {
     private boolean pageReady;
     private volatile String currentPageUrl = "";
     private volatile boolean screenCapturePending;
+    private volatile String pendingFloatPayload = "";
     private String pendingNotificationJson;
     private int lastTopInset;
 
@@ -845,7 +846,9 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onPause() {
-        if (webView != null) webView.onPause();
+        // 屏幕共享期间不暂停 WebView 定时器，否则切到其他 App 后
+        // 每 30 秒取帧/点评的循环会被暂停，看起来就像“看不到”。
+        if (webView != null && !ScreenCaptureService.isRunning()) webView.onPause();
         super.onPause();
     }
 
@@ -853,12 +856,25 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         if (webView != null) webView.onResume();
+        String pending = pendingFloatPayload;
+        if (pending != null && !pending.isEmpty()) {
+            try {
+                if (Build.VERSION.SDK_INT < 23 || Settings.canDrawOverlays(this)) {
+                    pendingFloatPayload = "";
+                    startFloatFromPayload(pending);
+                }
+            } catch (Throwable ignored) {
+            }
+        }
     }
 
     @Override
     protected void onDestroy() {
         try {
-            if (isFinishing()) ScreenCaptureService.stop(this);
+            if (isFinishing()) {
+                ScreenCaptureService.stop(this);
+                FloatChatService.stop(this);
+            }
         } catch (Throwable ignored) {
         }
         if (webView != null) {
@@ -1084,6 +1100,55 @@ public class MainActivity extends Activity {
             ScreenCaptureService.stop(MainActivity.this);
             return "stopped";
         }
+
+        @JavascriptInterface
+        public String hasOverlayPermission() {
+            try {
+                return (Build.VERSION.SDK_INT < 23 || Settings.canDrawOverlays(MainActivity.this)) ? "1" : "0";
+            } catch (Throwable t) {
+                return "0";
+            }
+        }
+
+        @JavascriptInterface
+        public String startFloatingChat(String payload) {
+            if (!isTrustedPage()) return "untrusted";
+            final String p = payload == null ? "" : payload;
+            String id = "";
+            try {
+                org.json.JSONObject o = new org.json.JSONObject(p);
+                id = o.optString("chatId", "");
+            } catch (Throwable t) {
+                return "bad_payload";
+            }
+            if (id.isEmpty()) return "bad_payload";
+            if (Build.VERSION.SDK_INT >= 23 && !Settings.canDrawOverlays(MainActivity.this)) {
+                pendingFloatPayload = p;
+                runOnUiThread(() -> {
+                    try {
+                        Intent i = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                Uri.parse("package:" + getPackageName()));
+                        startActivity(i);
+                    } catch (Throwable ignored) {
+                    }
+                });
+                return "permission";
+            }
+            runOnUiThread(() -> startFloatFromPayload(p));
+            return "started";
+        }
+
+        @JavascriptInterface
+        public String floatingChatState() {
+            return FloatChatService.isRunning() ? "running" : "stopped";
+        }
+
+        @JavascriptInterface
+        public String stopFloatingChat() {
+            if (!isTrustedPage()) return "untrusted";
+            FloatChatService.stop(MainActivity.this);
+            return "stopped";
+        }
     }
 
     private void saveBytes(String name, String mime, String base64) {
@@ -1130,6 +1195,17 @@ public class MainActivity extends Activity {
         } catch (Exception e) {
             Log.e(TAG, "writeDownload failed", e);
             toast("保存失败：" + e.getMessage());
+        }
+    }
+
+    private void startFloatFromPayload(String payload) {
+        try {
+            org.json.JSONObject o = new org.json.JSONObject(payload == null ? "{}" : payload);
+            String id = o.optString("chatId", "");
+            if (id.isEmpty()) return;
+            FloatChatService.start(this, id, o.optString("charName", "聊天"), o.optString("avatar", ""));
+        } catch (Throwable t) {
+            Log.e(TAG, "startFloatFromPayload failed", t);
         }
     }
 

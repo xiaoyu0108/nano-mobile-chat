@@ -2352,3 +2352,9 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .bubble-card .fw-preview-line b { color: #2c2c2e; font-weight: 600; }
 .bubble-card .fw-open-hint { margin-top: 7px; font-size: 11.5px; color: #0a84ff; }
 
+
+/* float chat overlay */
+body.float-chat-mode .topbar { display: none !important; }
+body.float-chat-mode .message-scroll { padding-top: 6px !important; }
+body.float-chat-mode .bottom-bar { padding-bottom: 6px !important; }
+body.float-chat-mode { background: #fff; }

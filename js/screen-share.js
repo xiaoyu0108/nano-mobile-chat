@@ -6,7 +6,7 @@
 // ============================================================
 (function () {
     'use strict';
-    var VERSION = '20261118a';
+    var VERSION = '20261118c';
     try { console.log('[ScreenShare] build ' + VERSION + ' loaded'); } catch (e) {}
 
     var INTERVAL = 30000; // 每 30 秒看一帧（一次截图 = 一次 API 调用：看一次 + 输出回复）
@@ -129,6 +129,18 @@
     }
     function apiEndpoint(raw) { var s = String(raw || '').trim().replace(/\/+$/, ''); if (!s) return ''; if (!/\/v1$/i.test(s)) s += '/v1'; return s + '/chat/completions'; }
 
+    async function loadShareConfig(info) {
+        setStatus('正在读取人设与 API…');
+        try { SS.ctx = (await requestContext(info)) || {}; } catch (e) { SS.ctx = SS.ctx || {}; }
+        if (SS.ctx.api && SS.ctx.api.url && SS.ctx.api.key && SS.ctx.api.model) {
+            SS.cfg = { mainUrl: SS.ctx.api.url, mainKey: SS.ctx.api.key, mainModel: SS.ctx.api.model, mainTemp: SS.ctx.api.temp };
+        }
+        if (!SS.cfg) {
+            try { SS.cfg = await getApiConfig(); } catch (e) { SS.cfg = null; }
+        }
+        return !!(SS.cfg && SS.cfg.mainUrl && SS.cfg.mainKey && SS.cfg.mainModel);
+    }
+
     /* ---------------- 人设上下文 ---------------- */
     function requestContext(info) {
         return new Promise(function (resolve) {
@@ -226,9 +238,28 @@
         var d = document.createElement('div'); d.className = 'ss-line' + (isErr ? ' err' : ''); d.textContent = String(text || '');
         SS.log.appendChild(d); SS.log.scrollTop = SS.log.scrollHeight;
     }
+    function queueForFloatChat(text) {
+        // 悬浮聊天窗开着时，把 TA 的屏幕点评也送进同一个聊天，边看边聊。
+        try {
+            var api = nativeApi();
+            if (!api || typeof api.floatingChatState !== 'function') return;
+            if (api.floatingChatState() !== 'running') return;
+            if (!SS.info || !SS.info.id) return;
+            var key = 'nano_screen_comments_' + String(SS.info.id);
+            var q = [];
+            try { q = JSON.parse(localStorage.getItem(key) || '[]') || []; } catch (e) { q = []; }
+            q.push({
+                id: 'sc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+                text: String(text || ''),
+                at: Date.now()
+            });
+            localStorage.setItem(key, JSON.stringify(q.slice(-30)));
+        } catch (e) {}
+    }
     function addBubble(text) {
         if (!SS.log) return;
         SS.comments.push(String(text || ''));
+        queueForFloatChat(text);
         var p = splitBy(text);
         var d = document.createElement('div'); d.className = 'ss-bub';
         d.innerHTML = '<span>' + escHtml(p.main) + '</span>' + (p.sub ? ('<span class="zh">' + escHtml(p.sub) + '</span>') : '');
@@ -542,13 +573,9 @@
             }, { once: true });
         } catch (e) {}
         setStatus('正在读取人设与 API…');
-        SS.ctx = (await requestContext(info)) || {};
-        if (SS.ctx.api && SS.ctx.api.url && SS.ctx.api.key && SS.ctx.api.model) {
-            SS.cfg = { mainUrl: SS.ctx.api.url, mainKey: SS.ctx.api.key, mainModel: SS.ctx.api.model, mainTemp: SS.ctx.api.temp };
-        }
-        if (!SS.cfg) SS.cfg = await getApiConfig();
-        if (!SS.cfg || !SS.cfg.mainUrl || !SS.cfg.mainKey || !SS.cfg.mainModel) { setStatus('主 API 未配置'); addLine('主 API 未配置，无法点评。', true); }
-        setStatus(SS.mode === 'camera' ? '正在看你的镜头…' : '盯着你的屏幕…');
+        var cfgOk = await loadShareConfig(info);
+        if (!cfgOk) { setStatus('主 API 未配置'); addLine('主 API 未配置，无法点评。', true); }
+        else setStatus(SS.mode === 'camera' ? '正在看你的镜头…' : '盯着你的屏幕…');
         addLine(SS.mode === 'camera' ? '（TA 开始看你的镜头了）' : '（TA 开始看你的屏幕了）');
         // 在私聊里留一条系统提示：让他知道「你已经把屏幕共享给 TA（窥屏）」
         try {
@@ -592,7 +619,30 @@
         while (SS.active && Date.now() < deadline) {
             var st = nativeState();
             if (st && st.state === 'active') {
-                setStatus('画面已连接，正在看…');
+                setStatus('画面已连接，正在读取人设与 API…');
+                var cfgOk = await loadShareConfig(info);
+                if (!SS.active) return;
+                if (!cfgOk) {
+                    setStatus('主 API 未配置');
+                    addLine('主 API 未配置，无法点评。', true);
+                } else {
+                    setStatus('画面已连接，正在看…');
+                }
+                // 屏幕共享和悬浮聊天是一套：原生采集启动后，把同一段私聊放进系统悬浮窗，
+                // 这样切到其他 App 也能继续聊，屏幕点评也会回流到悬浮聊天里。
+                try {
+                    if (api && typeof api.startFloatingChat === 'function') {
+                        var fr = api.startFloatingChat(JSON.stringify({
+                            chatId: String(info.id || ''),
+                            charName: info.name || '聊天',
+                            avatar: info.avatar || ''
+                        }));
+                        if (fr === 'permission') {
+                            setStatus('屏幕共享中 · 允许悬浮窗后可在其他 App 聊天');
+                            addLine('已打开悬浮窗授权；允许后返回，悬浮聊天会自动出现。', false);
+                        }
+                    }
+                } catch (e) {}
                 SS.lastAt = Date.now();
                 SS.emptyTries = 0;
                 setTimeout(function () { captureAndComment(); }, 800);

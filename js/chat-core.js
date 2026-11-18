@@ -14,6 +14,13 @@
     const chatName = getQueryParam('name') || '聊天';
     const chatAvatar = getQueryParam('avatar') || '';
     const jumpMsgId = getQueryParam('jump') || '';
+    const isFloatChat = getQueryParam('float') === '1';
+    if (isFloatChat) {
+        try {
+            document.documentElement.classList.add('float-chat-mode');
+            if (document.body) document.body.classList.add('float-chat-mode');
+        } catch (e) {}
+    }
     // 纳米助手会话：走独立系统提示词 + 可执行动作
     const isNanoChat = !!(window.NanoAssistant && window.NanoAssistant.isNano(chatId));
     const NANO_DEFAULT_AVATAR = 'data:image/svg+xml;utf8,' + encodeURIComponent(
@@ -2347,8 +2354,50 @@
         window.addEventListener('pagehide', function () { try { saveMessages(true); } catch (e) {} });
         document.addEventListener('visibilitychange', function () {
             if (document.visibilityState === 'hidden') { try { saveMessages(true); } catch (e) {} }
+            else if (!isFloatChat && !isWaitingForReply && isStorageReady) {
+                // 悬浮聊天窗和这里是同一份 IndexedDB；回到主聊天时重新读一次，
+                // 把悬浮窗里聊的内容合并进来。
+                try {
+                    loadMessages(function () {
+                        try { scrollToBottom(); } catch (e) {}
+                    });
+                } catch (e) {}
+            }
         });
     } catch (e) {}
+
+    // 悬浮聊天窗：消费屏幕共享期间产生的点评，作为 TA 的普通消息接进同一段聊天。
+    if (isFloatChat) {
+        setInterval(function () {
+            try {
+                if (!isStorageReady || document.visibilityState === 'hidden') return;
+                var qKey = 'nano_screen_comments_' + chatId;
+                var raw = localStorage.getItem(qKey);
+                if (!raw) return;
+                var q = JSON.parse(raw);
+                if (!Array.isArray(q) || !q.length) return;
+                localStorage.removeItem(qKey);
+                var added = false;
+                q.forEach(function (c) {
+                    if (!c || !c.text) return;
+                    try {
+                        var parts = String(c.text || '').split('||');
+                        var main = String(parts[0] || '').trim();
+                        var sub = String(parts[1] || '').trim();
+                        var text = main + (sub ? '（' + sub + '）' : '');
+                        if (!text) return;
+                        addMessage('left', text, nowHHMM(), null);
+                        added = true;
+                    } catch (e) {}
+                });
+                if (added) {
+                    saveMessages();
+                    renderMessages();
+                    scrollToBottom();
+                }
+            } catch (e) {}
+        }, 2000);
+    }
 
     // 轻量侧车数据：不随完整写入走，走热缓存路径时也会更新。
     function writeMessageSidecars() {

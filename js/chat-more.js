@@ -90,6 +90,12 @@
             icon: '<rect x="6" y="2" width="12" height="20" rx="3"/><path d="M11 18h2"/>',
             color: '#FF3B30'
         },
+        {
+            id: 'floatchat',
+            label: '悬浮聊天',
+            icon: '<rect x="3" y="4" width="18" height="14" rx="2"/><rect x="12" y="10" width="7" height="6" rx="1"/>',
+            color: '#AF52DE'
+        },
     ];
 
     // 「接管手机」重新放回聊天加号菜单；
@@ -279,6 +285,33 @@
         input.click();
     }
 
+    // 安卓 APK：把当前角色交给顶层，用系统悬浮窗继续聊天。
+    function fireFloatChat() {
+        const info = chatCharInfo();
+        if (!info || !info.id) {
+            try { window.__chat.showAlert('悬浮聊天', '没有找到当前角色。'); } catch (e) {}
+            return;
+        }
+        const msg = {
+            type: 'nanoFloatChat',
+            chatId: String(info.id),
+            charName: info.name || '聊天',
+            avatar: info.avatar || ''
+        };
+        if (window.parent === window) {
+            if (window.NanoApp && window.NanoApp.startFloatingChat) {
+                try { window.NanoApp.startFloatingChat(JSON.stringify(msg)); } catch (e) {}
+            }
+            return;
+        }
+        try { if (window.parent && window.parent !== window) window.parent.postMessage(msg, '*'); } catch (e) {}
+        try {
+            if (window.top && window.top !== window && window.top !== window.parent) {
+                window.top.postMessage(msg, '*');
+            }
+        } catch (e) {}
+    }
+
     // 触发外壳的「接管手机 / 看屏幕」：优先直接调用（比 postMessage 可靠），不行再发消息
     function fireHost(kind) {
         const info = chatCharInfo();
@@ -406,6 +439,9 @@
                 break;
             case 'takeover':
                 fireHost('takeover');
+                break;
+            case 'floatchat':
+                fireFloatChat();
                 break;
             case 'screenshare':
                 fireHost('screenshare');
