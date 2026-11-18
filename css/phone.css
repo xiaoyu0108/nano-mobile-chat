@@ -925,7 +925,7 @@ body:has(#appHost.show) .ab-ball { display: none !important; }
 .vd-date{font-size:11px;color:var(--muted);margin-top:5px}
 .vd-player{
   width:100%;aspect-ratio:16/9;border-radius:16px;background:#17191c;
-  display:grid;place-items:center;margin-bottom:20px;
+  display:grid;place-items:center;margin-bottom:14px;
 }
 .vd-player-btn{
   width:56px;height:56px;border-radius:50%;background:rgba(255,255,255,.12);
@@ -946,13 +946,13 @@ body:has(#appHost.show) .ab-ball { display: none !important; }
   color:#8a8a8a;font-size:10px;letter-spacing:.3px;
 }
 .vd-detail-desc{
-  font-size:14.5px;line-height:1.85;color:var(--ink-2);
-  margin-top:18px;padding-top:18px;
+  font-size:14.5px;line-height:1.8;color:var(--ink-2);
+  margin-top:12px;padding-top:12px;
   border-top:1px solid var(--hair);
   white-space:pre-wrap;
 }
-.vd-comments{margin-top:20px;padding-top:16px;border-top:1px solid var(--hair)}
-.vd-comments-title{font-size:11px;font-weight:700;letter-spacing:1px;color:#8f8f8f;margin-bottom:6px}
+.vd-comments{margin-top:14px;padding-top:12px;border-top:1px solid var(--hair)}
+.vd-comments-title{font-size:11px;font-weight:700;letter-spacing:1px;color:#8f8f8f;margin-bottom:4px}
 .vd-comment{padding:11px 0;border-bottom:1px solid #f4f4f4}
 .vd-comment:last-child{border-bottom:0}
 .vd-comment-top{display:flex;align-items:center;justify-content:space-between;gap:10px}

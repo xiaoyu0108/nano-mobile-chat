@@ -344,6 +344,7 @@ window.insImgFallback = insImgFallback;
 function buildPostImagePrompt(post) {
   const t = ((post && post.title) || '') + ' ' + ((post && post.body) || '');
   return '为一条社交媒体帖子配图。帖子内容：' + t.slice(0, 120) +
+    '。人物规则：照片里出现谁由帖子内容和角色设定决定；帖子没提到用户、或角色与用户异地/异国时，不要画用户同框；可以只画角色一人，也可以画角色和其他人。' +
     '。要求：真实感强的照片风格，构图自然，光影舒服，不要文字、不要水印。';
 }
 
@@ -382,6 +383,21 @@ async function generateInsImage(prompt, opts) {
     if (bits.length) subject = '画面主角是「' + (ch.name || '角色') + '」（' + bits.join('，') + '）。必须严格按此国籍/人种与性别特征绘制，禁止画成其他国籍或西方人。';
   }
 
+  // 单人 / 双人 / 多人锁脸统一走 NanoFaceLock：只锁五官，不锁姿势与服装。
+  let faceRefs = faceRef ? [faceRef] : [];
+  let faceNote = '';
+  if (opts && opts.charId && window.NanoFaceLock && NanoFaceLock.build) {
+    try {
+      const lock = await NanoFaceLock.build(opts.charId, prompt, {
+        charName: (opts.char && opts.char.name) || '',
+        maxRefs: 4
+      });
+      if (lock.faceRef) faceRef = lock.faceRef;
+      faceRefs = (lock.refs && lock.refs.length) ? lock.refs : faceRefs;
+      faceNote = lock.note || '';
+    } catch (e) {}
+  }
+
   let pos = '', neg = '';
   try {
     const pr = await apiGet('nano_api_prompts');
@@ -394,19 +410,22 @@ async function generateInsImage(prompt, opts) {
   } catch (e) {}
 
   // 有锁脸参考优先走图生图 /images/edits（multipart），失败再退回文生图
-  if (faceRef && String(faceRef).indexOf('data:') === 0) {
+  const dataRefs = (faceRefs || []).filter(function (x) { return String(x).indexOf('data:') === 0; });
+  if (dataRefs.length) {
     try {
-      const fc = faceRef.indexOf(',');
-      const fbin = atob(faceRef.slice(fc + 1));
-      const fu8 = new Uint8Array(fbin.length);
-      for (let fi = 0; fi < fbin.length; fi++) fu8[fi] = fbin.charCodeAt(fi);
-      const fmime = (faceRef.slice(5, fc).split(';')[0]) || 'image/png';
       const ffd = new FormData();
       ffd.append('model', imgModel);
-      ffd.append('prompt', [pos, prompt, subject].filter(Boolean).join('，') + (neg ? ('，避免：' + neg) : ''));
+      ffd.append('prompt', [pos, prompt, subject, faceNote].filter(Boolean).join('，') + (neg ? ('，避免：' + neg) : ''));
       ffd.append('n', '1');
       ffd.append('size', '1024x1024');
-      ffd.append('image', new Blob([fu8], { type: fmime }), 'face.png');
+      dataRefs.forEach(function (ref, idx) {
+        const fc = ref.indexOf(',');
+        const fbin = atob(ref.slice(fc + 1));
+        const fu8 = new Uint8Array(fbin.length);
+        for (let fi = 0; fi < fbin.length; fi++) fu8[fi] = fbin.charCodeAt(fi);
+        const fmime = (ref.slice(5, fc).split(';')[0]) || 'image/png';
+        ffd.append('image', new Blob([fu8], { type: fmime }), 'reference-' + (idx + 1) + '.png');
+      });
       const fr = await fetch(editsEndpoint, {
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + imgKey },
@@ -423,9 +442,17 @@ async function generateInsImage(prompt, opts) {
     } catch (e) { console.warn('[INS生图] 锁脸图生图失败，改用普通生图:', e && e.message); }
   }
 
-  const full = (pos ? pos + '，' : '') + (subject ? subject + '，' : '') + prompt + (neg ? ('，避免：' + neg) : '');
+  const full = (pos ? pos + '，' : '') + (subject ? subject + '，' : '') + prompt + (faceNote ? ('\n' + faceNote) : '') + (neg ? ('，避免：' + neg) : '');
   const body = { model: imgModel, prompt: full, n: 1, size: '1024x1024' };
-  if (faceRef) { body.image = faceRef; body.reference_image = [faceRef]; body.input_reference_image = [faceRef]; }
+  const refPayload = faceRefs.filter(Boolean);
+  if (refPayload.length) {
+    const singleRef = faceRef || refPayload[0];
+    body.image = singleRef;
+    body.reference_image = refPayload.slice();
+    body.input_reference_image = refPayload.slice();
+    body.reference_images = refPayload.slice();
+    body.ref_image = singleRef;
+  }
   const resp = await fetch(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + imgKey },

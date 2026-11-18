@@ -11,6 +11,7 @@
     charId: '',
     charName: '',
     nationality: '',
+    persona: '',
     tz: '',
     wallNow: null,
     data: null,
@@ -172,17 +173,91 @@
   function isSleepEvent(e) {
     if (!e) return false;
     var s = String(e.title || '') + ' ' + String(e.note || '') + ' ' + String(e.tag || '');
-    return /睡|就寝|晚安|入睡|睡眠|午睡/.test(s);
+    return /睡|就寝|晚安|入睡|睡眠|午睡|赖床|补觉|小睡/.test(s);
   }
 
-  function isLateNight(d) {
+  function isDaytime(d) {
     var h = (d instanceof Date ? d : new Date()).getHours();
-    return h >= 22 || h < 8;
+    return h >= 7 && h < 19;
   }
-  // 没有日程、但开了时间感知的角色：23:00~07:00 视为大概率在睡觉。
-  function isNightSleepWindow(d) {
-    var h = (d instanceof Date ? d : new Date()).getHours();
-    return h >= 23 || h < 7;
+  // 按人设推断作息：年轻夜猫子、作息规律的长辈/上班族，入睡和起床时间不同；
+  // 同一个人每天也会有波动，不能每天固定一个点判定“已经睡了”。
+  function personaText(data, opts) {
+    var p = '';
+    try { p = String((data && data.settings && (data.settings.persona || data.settings.setting || data.settings.desc)) || ''); } catch (e) {}
+    if (!p && opts && opts.persona) p = String(opts.persona);
+    if (!p && cache.persona) p = String(cache.persona);
+    return p;
+  }
+  function personaAge(text) {
+    var m = /(\d{2})\s*(?:岁|周岁)/.exec(String(text || ''));
+    return m ? +m[1] : 0;
+  }
+  function sleepProfile(data, opts, dayKey) {
+    var text = personaText(data, opts);
+    var age = personaAge(text);
+    var owlText = /(熬夜|夜猫|通宵|失眠|夜班|凌晨|深夜|夜生活|酒吧|夜店|主播|程序员|写手|作家|自由职业|电竞|打游戏)/.test(text);
+    var regularText = /(早睡|作息规律|养生|退休|老年人|长辈|中年|教师|老师|医生|护士|军人|警察|朝九晚五|上班族)/.test(text);
+    var owl = owlText || (!regularText && age >= 16 && age <= 28);
+    var regular = regularText || (!owlText && age >= 45);
+    if (owl && regular) { owl = false; regular = false; }
+    var start, wake, span;
+    if (owl) { start = 80; wake = 530; span = 80; }          // 夜猫子：约 01:20 睡，08:50 起
+    else if (regular) { start = 1370; wake = 400; span = 35; } // 规律：约 22:50 睡，06:40 起
+    else { start = 1420; wake = 450; span = 40; }             // 普通：约 23:40 睡，07:30 起
+    var r = rng(hashStr(String((data && data.settings && data.settings.charId) || cache.charId || '') + '|' + (dayKey || today())));
+    // 每天不一样：多数在小范围浮动；偶尔通宵或早睡，周末普遍晚一点。
+    var weekend = false;
+    try { var wd = new Date(String(dayKey || today()) + 'T12:00:00').getDay(); weekend = (wd === 0 || wd === 6); } catch (e) {}
+    if (owl && r() < 0.22) { start = 240 + Math.round(r() * 100); wake = 720 + Math.round(r() * 100); }
+    else if (owl && r() < 0.14) { start = 1380 + Math.round(r() * 40); wake = 430 + Math.round(r() * 50); }
+    else if (regular && r() < 0.10) { start = 60 + Math.round(r() * 50); wake = 480 + Math.round(r() * 50); }
+    else if (!owl && !regular && r() < 0.12) { start = 40 + Math.round(r() * 70); wake = 560 + Math.round(r() * 80); }
+    else if (!owl && !regular && r() < 0.08) { start = 1330 + Math.round(r() * 40); wake = 390 + Math.round(r() * 40); }
+    else {
+      start += Math.round((r() * 2 - 1) * span);
+      wake += Math.round((r() * 2 - 1) * span * 0.7);
+    }
+    if (weekend && !regular) {
+      start += 35 + Math.round(r() * 45);
+      wake += 35 + Math.round(r() * 45);
+    }
+    start = ((start % 1440) + 1440) % 1440;
+    wake = ((wake % 1440) + 1440) % 1440;
+    return { start: start, wake: wake, owl: owl, regular: regular };
+  }
+  function inSleepWindow(mins, profile) {
+    var s = profile.start, w = profile.wake;
+    if (s === w) return false;
+    if (s < w) return mins >= s && mins < w;
+    return mins >= s || mins < w;
+  }
+  function isBusyEvent(e) {
+    if (!e) return false;
+    var s = String(e.title || '') + ' ' + String(e.note || '') + ' ' + String(e.tag || '');
+    if (/睡|就寝|晚安|入睡|睡眠|午睡|休息|吃饭|午饭|晚饭|早餐|下班|放学|收工|结束|通勤|路上|自由|空档|摸鱼/.test(s)) return false;
+    return /(上班|上课|开会|会议|面试|考试|加班|值班|手术|拍摄|直播|训练|排练|出差|赶稿|工作|打工|营业|接待|讲座|培训|实验|庭审|执勤|出警|飞行|航班|课程|班)/.test(s);
+  }
+  function statusNow(data, opts, wall) {
+    opts = opts || {};
+    var w = (wall instanceof Date) ? wall : (cache.wallNow || wallNowFor(cache.nationality));
+    var id = String(opts.charId || cache.charId || getCharId() || '');
+    var day = dstr(w);
+    var mins = wallMin(w);
+    var timeAware = (typeof opts.timeAware === 'boolean') ? opts.timeAware : timeAwareFor(id);
+    if (!timeAware) return { kind: '', timeAware: false };
+    var ev = data ? currentEvent(data, day, mins) : null;
+    var profile = sleepProfile(data, opts, day);
+    if (ev && isSleepEvent(ev)) {
+      // 夜猫子即使日程里写了“睡觉”，在 TA 通常入睡的时间之前也只是躺下，没真睡着。
+      if (profile.owl && !isDaytime(w) && !inSleepWindow(mins, profile)) {
+        return { kind: 'awake', event: ev, inBed: true, profile: profile, timeAware: true };
+      }
+      return { kind: 'sleep', event: ev, daytime: isDaytime(w), profile: profile, timeAware: true };
+    }
+    if (!ev && inSleepWindow(mins, profile)) return { kind: 'sleep', event: null, daytime: isDaytime(w), profile: profile, timeAware: true };
+    if (ev && isBusyEvent(ev)) return { kind: 'busy', event: ev, profile: profile, timeAware: true };
+    return { kind: '', event: ev, profile: profile, timeAware: true };
   }
 
   function wakeKey(id) { return 'nano_schedule_wake_' + (id || 'default'); }
@@ -212,6 +287,24 @@
     try {
       localStorage.setItem(wakeKey(id), JSON.stringify({
         date: dstr(wallNowFor(cache.nationality)), at: Date.now(), eventId: eventId || '', status: 'skipped'
+      }));
+    } catch (e) {}
+  }
+
+  function busyKey(id) { return 'nano_schedule_busy_' + (id || 'default'); }
+  function readBusyChoice(id, dayKey) {
+    try {
+      var o = JSON.parse(localStorage.getItem(busyKey(id)) || 'null');
+      if (!o) return null;
+      var recent = o.at && (Date.now() - Number(o.at) < 12 * 3600 * 1000);
+      if (o.date !== (dayKey || today()) && !recent) return null;
+      return o;
+    } catch (e) { return null; }
+  }
+  function markBusy(id, eventId, status) {
+    try {
+      localStorage.setItem(busyKey(id), JSON.stringify({
+        date: dstr(wallNowFor(cache.nationality)), at: Date.now(), eventId: eventId || '', status: status || 'interrupted'
       }));
     } catch (e) {}
   }
@@ -260,9 +353,9 @@
     var cur = currentEvent(data, d, wn.getHours() * 60 + wn.getMinutes());
     var choice = readSleepChoice(id, d);
     var timeAware = (typeof opts.timeAware === 'boolean') ? opts.timeAware : timeAwareFor(id);
-    // 有睡眠日程时按日程；没有日程时，开了时间感知的角色在 23:00~07:00 默认在睡觉。
-    var asleep = !!(cur && isSleepEvent(cur) && isLateNight(wn)) ||
-      (!cur && timeAware && isNightSleepWindow(wn));
+    // 有睡眠日程按日程；没有睡眠日程时按人设 + 当天波动推断作息，不能统一按 23:00 算。
+    var st = statusNow(data, { charId: id, timeAware: timeAware, persona: opts.persona }, wn);
+    var asleep = timeAware && st.kind === 'sleep';
     var lines = [];
     lines.push('【你的真实日程 · 当前状态（重要）】');
     lines.push('现在时间：' + nowText(wn) + '。');
@@ -277,6 +370,9 @@
         (cur.place ? '（' + cur.place + '）' : '') + (cur.note ? '，' + cur.note : ''));
     } else {
       lines.push('你此刻没有正在进行的安排（空档时间）。');
+    }
+    if (timeAware && st.kind === 'awake' && st.inBed) {
+      lines.push('【你还没睡着】你已经躺下了，但按你的作息还没真正睡着。若被消息吵到，你会是清醒但有点困的状态；可以自然表现出“刚躺下还没睡”。');
     }
     if (tomorrowEvents.length) {
       lines.push('你明天的安排：');
@@ -293,10 +389,22 @@
         '，是用户把你叫醒的。你知道是 TA 叫醒的你，可以自然表现出困倦、被打断、或者被吵醒后的真实反应，不要装作没发生过。');
     } else {
       if (asleep) {
-        lines.push('【你正在睡觉】现在是 ' + nowText(wn) + '（你的当地时间），你正在睡觉。若被消息吵到，你会是半睡半醒的状态；不要主动说自己被叫醒，除非用户确实叫了你。');
+        lines.push('【你正在睡觉】现在是 ' + nowText(wn) + '（你的当地时间），' + (st.daytime ? '你还在睡。' : '你正在睡觉。') +
+          '若被消息吵到，你会是半睡半醒的状态；不要主动说自己被叫醒，除非用户确实叫了你。');
       }
       if (choiceFresh && choice.status === 'skipped') {
         lines.push('【用户没有叫醒你】刚才用户看到你正在睡觉，选择了「让他睡」，没有把你叫醒。你知道这件事：你后来一直没被吵醒。现在如果 TA 来找你，你心里清楚 TA 之前没有叫醒你，可以自然带出“你昨晚没叫我”这类反应，但不要每轮都提，也不要质问。');
+      }
+    }
+    // 用户在你上班 / 上课 / 开会时来找你：记住 TA 是坚持找你，还是选择先不打扰。
+    var busyChoice = readBusyChoice(id, d);
+    if (timeAware && cur && isBusyEvent(cur)) {
+      var sameEvent = !busyChoice || !busyChoice.eventId || String(busyChoice.eventId) === String(cur.id);
+      var busyFresh = !!(busyChoice && sameEvent && (Date.now() - (busyChoice.at || 0) < 2 * 3600 * 1000));
+      if (busyFresh && busyChoice.status === 'leftAlone') {
+        lines.push('【用户让你先忙】你正在「' + (cur.title || '忙') + '」，用户看到你在忙，选择先不打扰你。你知道这件事：不要抱怨，也不要每轮都提；等你有空再自然回。');
+      } else if (busyFresh && busyChoice.status === 'interrupted') {
+        lines.push('【你正忙时被用户找了】你正在「' + (cur.title || '忙') + '」，用户还是来找你了。你可以简短回应、说明自己在忙，或按人设决定先停一下，但不要装作没事，也不要因此指责对方。');
       }
     }
     try {
@@ -323,6 +431,7 @@
       cache.charId = id || (store.lastCharId || '');
       cache.charName = name;
       cache.nationality = String(opts.nationality || '');
+      cache.persona = String(opts.persona || '');
       cache.tz = '';
       try { if (window.NanoHoliday && window.NanoHoliday.tzForNationality) cache.tz = window.NanoHoliday.tzForNationality(cache.nationality) || ''; } catch (e) {}
       cache.wallNow = wallNowFor(cache.nationality);
@@ -331,12 +440,13 @@
       if (autoClosePast(data, cache.wallNow)) { try { writeStore(store); } catch (e) {} }
       var ta = (typeof opts.timeAware === 'boolean') ? opts.timeAware : timeAwareFor(cache.charId);
       if (data) {
-        cache.block = buildBlock(data, cache.charId, name, cache.wallNow, { timeAware: ta });
+        cache.block = buildBlock(data, cache.charId, name, cache.wallNow, { timeAware: ta, persona: cache.persona });
       } else {
-        // 没排日程，但仍要保留「睡眠 / 用户没叫醒我」这两件事。
+        // 没排日程：按人设 + 当天波动推断作息，并保留「用户没叫醒我」这件事。
         var parts = [];
-        if (ta && isNightSleepWindow(cache.wallNow)) {
-          parts.push('【当前状态 · 睡眠】现在是 ' + nowText(cache.wallNow) + '（你的当地时间），你正在睡觉。' +
+        var noScheduleStatus = statusNow(null, { charId: cache.charId, timeAware: ta, persona: cache.persona }, cache.wallNow);
+        if (noScheduleStatus.kind === 'sleep') {
+          parts.push('【当前状态 · 睡眠】现在是 ' + nowText(cache.wallNow) + '（你的当地时间），' + (noScheduleStatus.daytime ? '你还在睡。' : '你正在睡觉。') +
             '若被消息吵到，你会是半睡半醒的状态；不要主动说自己被叫醒，除非用户确实叫了你。');
         }
         var noScheduleChoice = readSleepChoice(cache.charId, dstr(cache.wallNow));
@@ -370,7 +480,7 @@
     el.innerHTML =
       '<div style="width:100%;max-width:320px;background:#fff;border-radius:22px;padding:22px 20px 18px;box-shadow:0 24px 70px rgba(0,0,0,.3);text-align:center;font-family:-apple-system,BlinkMacSystemFont,\'PingFang SC\',sans-serif;">' +
         '<div style="width:44px;height:44px;border-radius:50%;background:#f2f2f7;display:grid;place-items:center;margin:0 auto 12px;color:#1c1c1e;font-size:22px;">◔</div>' +
-        '<div style="font-size:17px;font-weight:700;color:#1c1c1e;">对方正在睡觉啦</div>' +
+        '<div id="nanoScheduleModalTitle" style="font-size:17px;font-weight:700;color:#1c1c1e;">对方正在睡觉啦</div>' +
         '<div id="nanoScheduleSleepBody" style="margin-top:8px;font-size:13px;line-height:1.6;color:#6b6b70;"></div>' +
         '<div style="display:flex;gap:10px;margin-top:18px;">' +
           '<button id="nanoScheduleSleepNo" style="flex:1;height:44px;border:0;border-radius:14px;background:#f2f2f7;color:#1c1c1e;font-size:15px;font-weight:600;">让他睡</button>' +
@@ -383,11 +493,13 @@
   }
 
   var pendingProceed = null;
+  var pendingKind = 'sleep';
 
   function closeSleepModal() {
     var el = document.getElementById('nanoScheduleSleepModal');
     if (el) el.style.display = 'none';
     pendingProceed = null;
+    pendingKind = 'sleep';
   }
 
   function wallEvent(data) {
@@ -399,30 +511,50 @@
     return refreshContext({
       charId: cache.charId || getCharId(),
       charName: cache.charName,
-      nationality: cache.nationality
+      nationality: cache.nationality,
+      persona: cache.persona
     });
   }
 
-  function showSleepModal(proceed, data) {
+  function showScheduleModal(kind, proceed, data) {
     var el = ensureModal();
     var body = document.getElementById('nanoScheduleSleepBody');
+    var title = document.getElementById('nanoScheduleModalTitle');
     var name = (data && data.settings && data.settings.name) || cache.charName || 'TA';
     var ev = wallEvent(data);
+    var isBusy = kind === 'busy';
+    var daytime = (function () {
+      var w = cache.wallNow || wallNowFor(cache.nationality);
+      var h = w.getHours();
+      return h >= 7 && h < 19;
+    })();
+    if (title) title.textContent = isBusy ? '对方正在忙' : (daytime ? '对方还在睡' : '对方正在睡觉啦');
     if (body) {
-      body.textContent = (ev && ev.title)
-        ? (name + ' 正在「' + ev.title + '」，确认要叫醒 TA 吗？')
-        : (name + ' 现在可能已经睡了，确认要叫醒 TA 吗？');
+      if (isBusy) {
+        body.textContent = (ev && ev.title)
+          ? (name + ' 正在「' + ev.title + '」，要现在找 TA 吗？')
+          : (name + ' 现在可能正在忙，要现在找 TA 吗？');
+      } else {
+        body.textContent = (ev && ev.title && isSleepEvent(ev))
+          ? (name + ' 正在「' + ev.title + '」，确认要叫醒 TA 吗？')
+          : (name + (daytime ? ' 现在可能还在睡，' : ' 现在可能已经睡了，') + '确认要叫醒 TA 吗？');
+      }
     }
+    pendingKind = kind;
     pendingProceed = proceed || null;
     el.style.display = 'flex';
     var yes = document.getElementById('nanoScheduleSleepYes');
     var no = document.getElementById('nanoScheduleSleepNo');
+    if (yes) yes.textContent = isBusy ? '坚持找他' : '叫醒他';
+    if (no) no.textContent = isBusy ? '让他忙' : '让他睡';
     if (yes && !yes.__nanoBound) {
       yes.__nanoBound = true;
       yes.addEventListener('click', function () {
         var fn = pendingProceed;
+        var kindNow = pendingKind;
         var e = wallEvent(cache.data);
-        markWoken(cache.charId || getCharId(), e ? e.id : '');
+        if (kindNow === 'busy') markBusy(cache.charId || getCharId(), e ? e.id : '', 'interrupted');
+        else markWoken(cache.charId || getCharId(), e ? e.id : '');
         closeSleepModal();
         refreshCached().then(function () {
           if (fn) { try { fn(); } catch (err) {} }
@@ -432,14 +564,18 @@
     if (no && !no.__nanoBound) {
       no.__nanoBound = true;
       no.addEventListener('click', function () {
+        var kindNow = pendingKind;
         var e = wallEvent(cache.data);
-        // 记下“用户选择不叫醒”：之后角色聊天时知道自己没被叫醒，也不会反复弹窗。
-        markSkipped(cache.charId || getCharId(), e ? e.id : '');
+        // 记下“用户选择不叫醒 / 先不打扰”：之后角色聊天时知道这件事，也不会反复弹窗。
+        if (kindNow === 'busy') markBusy(cache.charId || getCharId(), e ? e.id : '', 'leftAlone');
+        else markSkipped(cache.charId || getCharId(), e ? e.id : '');
         closeSleepModal();
         refreshCached();
       });
     }
   }
+
+  function showSleepModal(proceed, data) { showScheduleModal('sleep', proceed, data); }
 
   function sleepingNow(data, opts) {
     opts = opts || {};
@@ -451,19 +587,39 @@
       // 叫醒或明确选择不叫醒后，本次夜里不再重复弹窗。
       return false;
     }
-    var ev = currentEvent(data, day, wallMin(w));
-    // 有睡眠日程：按日程；没有日程但开了时间感知：深夜默认在睡。
-    if (ev) return isSleepEvent(ev) && isLateNight(w);
-    var ta = (typeof opts.timeAware === 'boolean') ? opts.timeAware : timeAwareFor(id);
-    return !!(ta && isNightSleepWindow(w));
+    return statusNow(data, opts, w).kind === 'sleep';
+  }
+
+  function busyNow(data, opts) {
+    opts = opts || {};
+    var id = cache.charId || getCharId();
+    var w = cache.wallNow || wallNowFor(cache.nationality);
+    var st = statusNow(data, opts, w);
+    if (st.kind !== 'busy') return false;
+    var choice = readBusyChoice(id, dstr(w));
+    if (!choice) return true;
+    if (Date.now() - (choice.at || 0) > 2 * 3600 * 1000) return true;
+    // 同一个日程事件已经选择过“坚持找他 / 让他忙”，不要每发一条都弹。
+    if (choice.eventId && st.event && String(choice.eventId) !== String(st.event.id)) return true;
+    return false;
   }
 
   function guardSend(proceed, opts) {
     var fn = typeof proceed === 'function' ? proceed : function () {};
     opts = opts || {};
     refreshContext(opts).then(function () {
-      if (!sleepingNow(cache.data, opts)) { fn(); return; }
-      showSleepModal(fn, cache.data);
+      // 只有「开启了时间感知 + 确实排了日程」的角色才弹作息 / 忙碌窗。
+      if (!cache.data || !Array.isArray(cache.data.events) || !cache.data.events.length) { fn(); return; }
+      var st = statusNow(cache.data, opts, cache.wallNow);
+      if (st.kind === 'sleep' && sleepingNow(cache.data, opts)) {
+        showScheduleModal('sleep', fn, cache.data);
+        return;
+      }
+      if (st.kind === 'busy' && busyNow(cache.data, opts)) {
+        showScheduleModal('busy', fn, cache.data);
+        return;
+      }
+      fn();
     }).catch(function () { fn(); });
     return true;
   }
@@ -674,10 +830,13 @@
     return Promise.resolve('');
   }
   function faceNote() {
-    return '【锁脸说明】提供的人物参考图只用于保持长相（五官、脸型、肤色、发色）一致；请完全忽略参考图的姿势、角度、表情、背景与构图，按当前场景重新构图。';
+    return '【锁脸 · 只锁五官】参考图只用于保持五官、脸型、肤色、发色与发型一致；请忽略参考图的姿势、角度、表情、服装、背景与构图，按当前场景重新构图。';
   }
   // 有锁脸参考先走 /images/edits（multipart），失败再退回带 reference 字段的普通生图。
-  async function requestImage(cfg, prompt, faceRef, relay) {
+  async function requestImage(cfg, prompt, lock, relay) {
+    lock = lock || {};
+    var faceRef = String(lock.faceRef || '');
+    var faceRefs = (lock.refs && lock.refs.length) ? lock.refs.slice() : (faceRef ? [faceRef] : []);
     // 普通生图也读取 API 的正面 / 反面提示词，并参考日程本身的场景上下文。
     var aug = { prompt: prompt, negative: '' };
     try {
@@ -689,16 +848,19 @@
     var url = imageEndpoint(cfg.imgUrl, 'gen');
     var headers = { 'Content-Type': 'application/json' };
     if (cfg.imgKey) headers.Authorization = 'Bearer ' + cfg.imgKey;
-    var note = faceRef ? faceNote() : '';
+    var note = lock.note || (faceRef ? faceNote() : '');
     var fullPrompt = note ? (note + '\n' + prompt) : prompt;
     function viaEdits() {
-      if (!faceRef || String(faceRef).indexOf('data:') !== 0) return Promise.reject(new Error('no data ref'));
+      var dataRefs = faceRefs.filter(function (x) { return String(x).indexOf('data:') === 0; });
+      if (!dataRefs.length) return Promise.reject(new Error('no data ref'));
       var fd = new FormData();
       fd.append('model', cfg.imgModel || '');
       fd.append('prompt', fullPrompt);
       fd.append('n', '1');
       fd.append('size', '1024x1024');
-      fd.append('image', dataUrlToBlob(faceRef), 'face.png');
+      dataRefs.forEach(function (ref, idx) {
+        fd.append('image', dataUrlToBlob(ref), 'reference-' + (idx + 1) + '.png');
+      });
       return fetch(editUrl(cfg.imgUrl), {
         method: 'POST',
         headers: cfg.imgKey ? { Authorization: 'Bearer ' + cfg.imgKey } : {},
@@ -710,8 +872,16 @@
     }
     function viaJson() {
       var payload = { model: cfg.imgModel || undefined, prompt: fullPrompt, n: 1, size: '1024x1024' };
+      var refs = faceRefs.filter(Boolean);
+      var singleRef = faceRef || refs[0] || '';
       var body = JSON.stringify(Object.assign(payload,
-        faceRef ? { image: faceRef, reference_image: [faceRef], input_reference_image: [faceRef] } : {}));
+        refs.length ? {
+          image: singleRef,
+          reference_image: refs,
+          input_reference_image: refs,
+          reference_images: refs,
+          ref_image: singleRef
+        } : {}));
       return fetch(url, { method: 'POST', headers: headers, body: body }).then(function (r) {
         if (!r.ok) throw new Error('生图接口返回 HTTP ' + r.status);
         return r.text();
@@ -727,9 +897,14 @@
   function buildImagePrompt(data, ev) {
     var st = (data && data.settings) || {};
     var persona = String(st.persona || '').replace(/\s+/g, ' ').slice(0, 260);
-    return (st.style || '自然光生活随拍，真实照片质感') + '。主角：' + (st.name || '角色') +
+    var lead = String(st.name || '角色');
+    var who = String(ev.who || '').trim();
+    var cast = lead;
+    if (who) cast += /(用户|你)/.test(who) ? '和用户' : ('、' + who);
+    else cast += '一人';
+    return '人物：' + cast + '。' + (st.style || '自然光生活随拍，真实照片质感') + '。主角：' + lead +
       (persona ? '（' + persona + '）' : '') + '。场景：' + (ev.place || '室内') + '，' + (ev.title || '日常') +
-      (ev.who ? '，与' + ev.who + '在一起' : '') + '。' + String(ev.note || '').slice(0, 120) +
+      (who ? '，与' + who + '在一起' : '') + '。' + String(ev.note || '').slice(0, 120) +
       '。时间约 ' + (ev.start || '') + '。';
   }
 
@@ -922,8 +1097,14 @@
       due.sort(function (a, b) { return toMin(a.start) - toMin(b.start); });
       var ev = due[0];
       var prompt = buildImagePrompt(data, ev);
-      return Promise.all([readApiConfig(), faceRefFor(id)]).then(function (pair) {
-        var cfg = pair[0], faceRef = pair[1] || '';
+      return Promise.all([
+        readApiConfig(),
+        (window.NanoFaceLock && NanoFaceLock.build)
+          ? NanoFaceLock.build(id, prompt, { charName: name, maxRefs: 4 }).catch(function(){ return null; })
+          : faceRefFor(id).then(function (r) { return { faceRef: r || '', refs: r ? [r] : [], note: r ? faceNote() : '' }; })
+      ]).then(function (pair) {
+        var cfg = pair[0];
+        var lock = pair[1] || { faceRef: '', refs: [], note: '' };
         if (!cfg || !cfg.imgUrl) {
           return { ok: false, error: '还没有配置生图 API，请到「API → 生图」填写地址、Key 和模型' };
         }
@@ -951,7 +1132,7 @@
               return String(r.text || '');
             });
           };
-          var req = requestImage(cfg, prompt, faceRef, relay);
+          var req = requestImage(cfg, prompt, lock, relay);
           return req.then(function (raw) {
             var j = JSON.parse(String(raw || '{}'));
             var item = j && j.data && j.data[0];
@@ -1033,6 +1214,7 @@
     applyChanges: applyChanges,
     currentEvent: function () { return wallEvent(cache.data); },
     isSleeping: function () { return sleepingNow(cache.data); },
+    isBusy: function () { return busyNow(cache.data); },
     markWoken: function () {
       var ev = wallEvent(cache.data);
       markWoken(cache.charId || getCharId(), ev ? ev.id : '');

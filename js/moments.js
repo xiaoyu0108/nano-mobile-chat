@@ -1288,6 +1288,21 @@
             }
         } catch (e) {}
 
+        // 单人 / 双人 / 多人锁脸统一走 NanoFaceLock：只锁五官，不锁姿势与服装。
+        var faceRefs = faceRef ? [faceRef] : [];
+        var faceNote = '';
+        try {
+            if (opts && opts.charId && window.NanoFaceLock && NanoFaceLock.build) {
+                var lock = await NanoFaceLock.build(opts.charId, promptText, {
+                    charName: (opts.char && opts.char.name) || '',
+                    maxRefs: 4
+                });
+                if (lock.faceRef) faceRef = lock.faceRef;
+                faceRefs = (lock.refs && lock.refs.length) ? lock.refs : faceRefs;
+                faceNote = lock.note || '';
+            }
+        } catch (e) {}
+
         var trimmedUrl = String(apiUrl).replace(/\/+$/, '');
         var baseUrl = trimmedUrl;
         var genEndpoint = apiUrl;
@@ -1300,19 +1315,22 @@
         var editsEndpoint = baseUrl + '/images/edits';
 
         // 有锁脸参考优先走图生图 /images/edits（multipart），失败再退回文生图
-        if (faceRef && faceRef.indexOf('data:') === 0) {
+        var dataRefs = (faceRefs || []).filter(function (x) { return String(x).indexOf('data:') === 0; });
+        if (dataRefs.length) {
             try {
-                var fc = faceRef.indexOf(',');
-                var fbin = atob(faceRef.slice(fc + 1));
-                var fu8 = new Uint8Array(fbin.length);
-                for (var fi = 0; fi < fbin.length; fi++) fu8[fi] = fbin.charCodeAt(fi);
-                var fmime = (faceRef.slice(5, fc).split(';')[0]) || 'image/png';
                 var ffd = new FormData();
                 ffd.append('model', model);
-                ffd.append('prompt', ([positivePrompt, promptText, subject, negativePrompt ? ('避免：' + negativePrompt) : ''].filter(Boolean)).join('，'));
+                ffd.append('prompt', ([positivePrompt, promptText, subject, faceNote, negativePrompt ? ('避免：' + negativePrompt) : ''].filter(Boolean)).join('，'));
                 ffd.append('n', '1');
                 ffd.append('size', '1024x1024');
-                ffd.append('image', new Blob([fu8], { type: fmime }), 'face.png');
+                dataRefs.forEach(function (ref, idx) {
+                    var fc = ref.indexOf(',');
+                    var fbin = atob(ref.slice(fc + 1));
+                    var fu8 = new Uint8Array(fbin.length);
+                    for (var fi = 0; fi < fbin.length; fi++) fu8[fi] = fbin.charCodeAt(fi);
+                    var fmime = (ref.slice(5, fc).split(';')[0]) || 'image/png';
+                    ffd.append('image', new Blob([fu8], { type: fmime }), 'reference-' + (idx + 1) + '.png');
+                });
                 var fedits = await fetch(editsEndpoint, {
                     method: 'POST',
                     headers: { 'Authorization': 'Bearer ' + apiKey },
@@ -1330,10 +1348,19 @@
         var fullPrompt = promptText;
         if (positivePrompt) fullPrompt = positivePrompt + '，' + fullPrompt;
         if (subject) fullPrompt = subject + '，' + fullPrompt;
+        if (faceNote) fullPrompt = fullPrompt + '\n' + faceNote;
         if (negativePrompt) fullPrompt = fullPrompt + '，避免：' + negativePrompt;
 
         var genBody = { model: model, prompt: fullPrompt, n: 1, size: '1024x1024' };
-        if (faceRef) { genBody.image = faceRef; genBody.reference_image = [faceRef]; genBody.input_reference_image = [faceRef]; }
+        var refPayload = faceRefs.filter(Boolean);
+        if (refPayload.length) {
+            var singleRef = faceRef || refPayload[0];
+            genBody.image = singleRef;
+            genBody.reference_image = refPayload.slice();
+            genBody.input_reference_image = refPayload.slice();
+            genBody.reference_images = refPayload.slice();
+            genBody.ref_image = singleRef;
+        }
 
         var res;
         try {

@@ -90,7 +90,38 @@
         if (rg) return buildFromRegistry(rg);
         return JSON.parse(JSON.stringify(defaultGroup));
     }
-    function saveGroup(g){ try { localStorage.setItem(GROUP_KEY, JSON.stringify(g)); } catch(e){} }
+    // 群资料以 IndexedDB 为准：页面刚打开时 localStorage 可能是旧的（写满配额时新群名/头像
+    // 只会落进 IndexedDB）。在读到权威资料之前，任何 saveGroup（等级、成员名回填等）都可能
+    // 把旧群名/旧头像重新写回去，所以先不落盘，等 hydrate 完成后再补存一次。
+    var __groupWriteReady = false;
+    function writeGroupNow(g){ try { localStorage.setItem(GROUP_KEY, JSON.stringify(g)); } catch(e){} }
+    function saveGroup(g){
+        if (!__groupWriteReady || !g) return;
+        // 群设置页可能刚改过群名/头像，而本页手上的还是旧副本：
+        // profileTs 更大的一方为准，避免等级/消息刷新把新资料覆盖回旧值。
+        try {
+            var curRaw = localStorage.getItem(GROUP_KEY);
+            if (curRaw) {
+                var cur = JSON.parse(curRaw);
+                if (cur && cur.members) {
+                    var curTs = Number(cur.profileTs) || 0;
+                    var ownTs = Number(g.profileTs) || 0;
+                    if (curTs > ownTs) {
+                        g.name = cur.name;
+                        g.avatar = cur.avatar;
+                        g.notice = cur.notice;
+                        g.profileTs = cur.profileTs;
+                    }
+                }
+            }
+        } catch (e) {}
+        writeGroupNow(g);
+    }
+    function markGroupHydrated(){
+        if (__groupWriteReady) return;
+        __groupWriteReady = true;
+        try { saveGroup(group); } catch (e) {}
+    }
     function loadSettings(){
         try { var raw = localStorage.getItem(SETTINGS_KEY); if (raw){ var s=JSON.parse(raw); if(s) return Object.assign({}, defaultSettings, s); } } catch(e){}
         return Object.assign({}, defaultSettings);
@@ -267,6 +298,7 @@
             chars.forEach(function(c){ map[c.id] = c; if (c.name) map[c.name] = c; });
             groupCharMap = map;
             currentMaskData = mask || null;
+            try { if (mask && mask.id != null && window.GroupStore && GroupStore.setCurrentUid) GroupStore.setCurrentUid(mask.id); } catch (e0) {}
             group.members.forEach(function(m){
                 var c = map[m.id] || map[m.name];
                 if (!c) return;
@@ -1342,14 +1374,28 @@
             pushMsg({ type:'left', senderId:member.id, isImage:true, text:desc, imageData:{ textImage:true, desc:desc } });
         };
         if (settings.allowImage === false) { fallback(); return; }
-        var faceRefP = (window.NanoFaceRef && NanoFaceRef.get)
-            ? Promise.resolve(NanoFaceRef.get(member.id)).catch(function(){ return ''; })
-            : Promise.resolve('');
+        var extraIds = (group.members || []).map(function(m){ return m.id; }).filter(function(id){ return id != null && String(id) !== String(member.id); });
+        var lockP = (window.NanoFaceLock && NanoFaceLock.build)
+            ? Promise.resolve(NanoFaceLock.build(member.id, desc, {
+                charName: member.nick || member.name || '',
+                extraIds: extraIds,
+                groupOnline: true,
+                nameOf: function(id){
+                    var mm = (group.members || []).find(function(x){ return String(x.id) === String(id); });
+                    return mm ? (mm.nick || mm.name || '') : '';
+                },
+                maxRefs: 4
+            })).catch(function(){ return { refs: [], faceRef: '', note: '' }; })
+            : ((window.NanoFaceRef && NanoFaceRef.get)
+                ? Promise.resolve(NanoFaceRef.get(member.id)).then(function(r){ return { refs: r ? [r] : [], faceRef: r || '', note: '' }; }).catch(function(){ return { refs: [], faceRef: '', note: '' }; })
+                : Promise.resolve({ refs: [], faceRef: '', note: '' }));
         var promptP = (window.NanoImagePrompt && NanoImagePrompt.augment)
             ? NanoImagePrompt.augment(desc, { appendNegative: true }).catch(function(){ return { prompt: desc, negative: '' }; })
             : Promise.resolve({ prompt: desc, negative: '' });
-        Promise.all([getGroupApiConfig(), faceRefP, promptP]).then(function(pair){
-            var config = pair[0], faceRef = pair[1] || '', aug = pair[2] || {};
+        Promise.all([getGroupApiConfig(), lockP, promptP]).then(function(pair){
+            var config = pair[0], lock = pair[1] || {}, aug = pair[2] || {};
+            var faceRef = lock.faceRef || '';
+            var faceRefs = (lock.refs && lock.refs.length) ? lock.refs : (faceRef ? [faceRef] : []);
             var imgUrl = config && (config.imgUrl || '').trim();
             var imgKey = config && (config.imgKey || '').trim();
             var imgModel = config && (config.imgModel || '').trim();
@@ -1358,7 +1404,7 @@
             var fullDesc = (aug && aug.prompt) || desc;
             var groupCtx = recentGroupImageContext(member, 6);
             if (groupCtx) fullDesc += '\n【最近群聊上下文，用于保持场景和人物一致】\n' + groupCtx;
-            if (faceRef) fullDesc = '【锁脸说明】人物参考图只用于保持长相（五官、脸型、肤色、发色）一致；请完全忽略参考图的姿势、角度、表情、背景与构图，按当前场景重新构图。\n' + fullDesc;
+            if (lock.note) fullDesc = lock.note + '\n' + fullDesc;
             var fail = function(err){
                 if (!opts.replaceMsgId) {
                     try { showAlert('生图失败', String((err && err.message) || err || '生图请求失败')); } catch(e) {}
@@ -1390,7 +1436,14 @@
             };
             var runTextToImage = function(){
                 var body = { model:imgModel, prompt:fullDesc, n:1, size:'1024x1024' };
-                if (faceRef) { body.image = faceRef; body.reference_image = [faceRef]; body.input_reference_image = [faceRef]; body.reference_images = [faceRef]; body.ref_image = faceRef; }
+                if (faceRefs.length) {
+                    var singleRef = faceRef || faceRefs[0];
+                    body.image = singleRef;
+                    body.reference_image = faceRefs.slice();
+                    body.input_reference_image = faceRefs.slice();
+                    body.reference_images = faceRefs.slice();
+                    body.ref_image = singleRef;
+                }
                 fetch(baseUrl + '/images/generations', {
                     method:'POST',
                     headers:{ 'Authorization':'Bearer ' + imgKey, 'Content-Type':'application/json' },
@@ -1408,20 +1461,23 @@
             };
             // 有锁脸参考时优先 /images/edits，否则很多中转站会忽略 generations 里的 image 字段。
             var editTried = false;
-            if (faceRef && String(faceRef).indexOf('data:') === 0) {
+            var dataFaceRefs = faceRefs.filter(function(x){ return String(x).indexOf('data:') === 0; });
+            if (dataFaceRefs.length) {
                 editTried = true;
                 try {
-                    var fc = String(faceRef).indexOf(',');
-                    var fbin = atob(String(faceRef).slice(fc + 1));
-                    var fu8 = new Uint8Array(fbin.length);
-                    for (var fi = 0; fi < fbin.length; fi++) fu8[fi] = fbin.charCodeAt(fi);
-                    var fmime = (String(faceRef).slice(5, fc).split(';')[0]) || 'image/png';
                     var ffd = new FormData();
                     ffd.append('model', imgModel);
                     ffd.append('prompt', fullDesc);
                     ffd.append('n', '1');
                     ffd.append('size', '1024x1024');
-                    ffd.append('image', new Blob([fu8], { type: fmime }), 'face.png');
+                    dataFaceRefs.forEach(function(ref, idx){
+                        var fc = String(ref).indexOf(',');
+                        var fbin = atob(String(ref).slice(fc + 1));
+                        var fu8 = new Uint8Array(fbin.length);
+                        for (var fi = 0; fi < fbin.length; fi++) fu8[fi] = fbin.charCodeAt(fi);
+                        var fmime = (String(ref).slice(5, fc).split(';')[0]) || 'image/png';
+                        ffd.append('image', new Blob([fu8], { type: fmime }), 'reference-' + (idx + 1) + '.png');
+                    });
                     fetch(baseUrl + '/images/edits', {
                         method:'POST',
                         headers:{ 'Authorization':'Bearer ' + imgKey },
@@ -1493,6 +1549,13 @@
         prompt += '- 发言顺序和长短要自然：有人连发几条短消息，有人隔一会儿才冒出来，有人只回一个表情或一个字；不是每条消息都要回应对方。\n';
         prompt += '- 禁止：油腻霸总腔、翻译腔、说明书腔、复读机式总结、星号动作符（*…*）、表情符号滥用；禁止“既……又……”“不仅……而且……”这类书面化关联词句式。\n';
         prompt += '- 禁止出现“作为 AI / 我是人工智能 / 有什么可以帮你”等暴露身份的话。\n\n';
+
+        prompt += '【性格底色与情绪 · 每个角色都要过】\n';
+        prompt += '1. 先定每个角色的底色：外冷内热 / 毒舌但心软 / 闷 / 活泼 / 敏感 / 强势 / 慢热……再结合年龄、身份、经历和彼此关系决定这一句怎么说。不同角色的措辞、反应和幽默方式必须不一样，不能所有人群里都用同一种“温柔讲道理”的 AI 腔。\n';
+        prompt += '2. 先读用户的情绪：用户难过、生气、焦虑、在说很重的事时，群里不搞笑、不刷梗、不集体插科打诨，也不要用“别难过啦 / 想开点”轻轻带过；用户认真问深刻问题时，收起玩笑，认真答；用户说生气、被冒犯时，先把这份情绪当回事，不嘲讽、不否定、不说“别生气了 / 这有什么好气的 / 你至于吗 / 想多了”。\n';
+        prompt += '3. 不挑刺、不催办、不连环反问：可以互相损、打趣，但只在关系和气氛允许时，一次就够；禁止无底线嘲讽、揭短、拿软肋开玩笑。禁止反复催促或把关心写成查岗（“你有没有好好吃饭 / 不然呢 / 怎么还不睡 / 说了多少遍”）；同一件事、同一个要求一轮只说一次，对方回应、拒绝或岔开就翻篇。关心要具体、换位，例如“今天好冷，我怕你冻着，回来先洗个热水澡暖暖？”\n';
+        prompt += '4. 反 AI 腔：禁止“我理解你的感受 / 我能感受到你的难过 / 你一定很不好受吧”这类咨询腔；禁止“首先…其次…最后…”“总的来说 / 综上所述 / 值得一提的是 / 不得不说”“让我们…”“希望这些对你有帮助”这类作文结构；禁止把群聊写成条目、清单、小标题或三段式升华。\n';
+        prompt += '5. 严格格式：每条消息独占一行、以“角色名：内容”开头；即使情绪激烈或换文风，也不得丢掉这个格式，不得合并成一大段。\n\n';
 
         prompt += '【关系与亲密 · 公开场合的分寸】\n';
         prompt += '角色之间、角色与用户之间可以是任何关系（亲情、爱情、友情等），以设定和已发生的互动为准；感情循序渐进、水到渠成，不突然激增、不跳级。涉及亲密或成人话题时，不把相关词语挂在嘴边，也不刻意回避，话题自然走到那里就顺势而为；群聊是公开场合，尺度以角色在群里会有的分寸为准。\n\n';
@@ -1585,6 +1648,7 @@
         prompt += '- 改群名：[groupname:新群名]  例：[groupname:摸鱼小分队]\n';
         prompt += '- 发语音：[voice:秒数|语音内容]  例：[voice:4|我晚点到]\n';
         prompt += (settings.allowImage === false ? '' : '- 发图片：[image:画面描述]  例：[image:一只在窗台打盹的橘猫]\n');
+        prompt += (settings.allowImage === false ? '' : '  群聊是线上聊天：照片里默认只有发言人和群成员/朋友，不要画用户本人；除非剧情明确说明用户也在线下现场。图片描述开头写 `人物：...`，例如「人物：我一人」「人物：我和A、B」「人物：无人（只拍场景）」。\n');
         prompt += '- 想给用户打电话 / 视频：[call:来电] 或 [call:视频]。群聊里不能打电话，系统会自动切到你和用户的私聊并拨过去；只有在非常着急、明确要打电话时再用。\n';
         prompt += '（标签必须单独放在该角色这一行；请自然、偶尔使用，不要每条都发功能。）\n';
         prompt += '- 想加用户好友/微信：[加好友]  例：某成员愿意和用户私聊时，在 TA 这一行的末尾加 [加好友]（系统会向用户发起好友申请，用户在 Meet 同意后即可私聊）。只在自然需要时偶尔使用。\n';
@@ -1643,6 +1707,18 @@
                 if (__mt.length) {
                     prompt += '\n【群成员各自当地时间 · 作息按各自时区】\n' + __mt.join('\n') +
                         '\n每个成员只按自己的当地时间判断早晚、饭点和作息，不要用别人的时间。\n';
+                    // 用户也不一定和任何成员同城：单独给出用户所在地时间，避免外国成员以为用户和他们同时区。
+                    try {
+                        var __uTz = '';
+                        try { __uTz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) {}
+                        if (__uTz) {
+                            var __uw = window.NanoHoliday.wallClock(new Date(), __uTz);
+                            var __p2 = function(v){ return ('0' + v).slice(-2); };
+                            prompt += '【用户所在地时间】用户那边现在是 ' + __uw.getFullYear() + '年' + (__uw.getMonth() + 1) + '月' + __uw.getDate() + '日 ' +
+                                __p2(__uw.getHours()) + ':' + __p2(__uw.getMinutes()) + '（' + __uTz + '）。' +
+                                '不要用成员的时间推断用户那边几点；判断用户是不是在睡觉、该不该吃饭、该说早安还是晚安时，看用户所在地时间。\n';
+                        }
+                    } catch (e) {}
                 }
             }
         } catch (e) {}
@@ -2060,7 +2136,7 @@
         var canRename = member && (member.id === 'me' || member.id === group.ownerId || /群主|管理员/.test(String(member.role || '')));
         if (!canRename) return;
         var old = group.name || '群聊';
-        group.name = name; saveGroup(group); renderHeader();
+        group.name = name; group.profileTs = Date.now(); saveGroup(group); renderHeader();
         notifyGroupChange((member.nick||member.name) + ' 把群名从「' + old + '」改成了「' + name + '」');
     }
 
@@ -2089,7 +2165,7 @@
             if (!text) return;
             var noticeId = 'notice_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5);
             pushMsg({ type:'left', senderId:member.id, isCard:true, cardData:{ cardType:'notice', noticeId:noticeId, text:text, confirmed:{} } });
-            group.notice = text; saveGroup(group); renderHeader();
+            group.notice = text; group.profileTs = Date.now(); saveGroup(group); renderHeader();
             // 等用户点“回复”后再让别人确认（可自行选择不确认）
             pendingNotice = noticeId;
         } else if (tag.kind === 'nickname') {
@@ -3392,6 +3468,7 @@ messageContainer.addEventListener('click', function(e){
     $('noticeMore').addEventListener('click', openGroupSetting);
     if ($('noticeClose')) $('noticeClose').addEventListener('click', function(){
         group.notice = '';
+        group.profileTs = Date.now();
         saveGroup(group);
         renderHeader();
         applyChatInsets();
@@ -3402,7 +3479,13 @@ messageContainer.addEventListener('click', function(e){
     window.addEventListener('storage', function(e){
         // group-store 会把群聊键按 user 加后缀；这里同时接受旧键和当前 user 的作用域键
         function keyIs(base){ try { return e.key === base || (window.GroupStore && e.key === window.GroupStore.scopeKey(base)); } catch (err) { return e.key === base; } }
-        if (keyIs(GROUP_KEY)) { __lastGroupRaw = e.newValue || ''; group = loadGroup(); renderHeader(); renderMessages(); }
+        if (keyIs(GROUP_KEY)) {
+            __lastGroupRaw = e.newValue || '';
+            if (e.newValue) {
+                try { var sg = JSON.parse(e.newValue); if (sg && sg.members) group = sg; } catch (err) {}
+            }
+            renderHeader(); renderMessages();
+        }
         if (keyIs(MSG_KEY)) { messages = loadMsgs(); renderMessages(); }
         if (keyIs(SETTINGS_KEY)) {
             settings = loadSettings();
@@ -3413,10 +3496,12 @@ messageContainer.addEventListener('click', function(e){
     });
     document.addEventListener('visibilitychange', function(){
         if (!document.hidden) {
-            group = loadGroup();
+            // 不要用 loadGroup() 重读 localStorage（可能还是旧资料）；
+            // 保持内存里的群对象，再从 IndexedDB 拉一次权威值。
             settings = loadSettings();
             currentUser.title = settings.myTitle || '群主';
             renderHeader(); applyBackground();
+            readGroupStored();
             resolveIdentities().then(function(){ renderHeader(); renderMessages(); });
         }
     });
@@ -3426,25 +3511,54 @@ messageContainer.addEventListener('click', function(e){
         if (!d || (d.type !== 'nanoOverlayOpen' && d.type !== 'nanoOverlayReopen')) return;
         if (d.type === 'nanoOverlayOpen' && d.chatId && d.chatId !== chatId) return;
         pageLeaving = false;
-        group = loadGroup();
         settings = loadSettings();
         messages = loadMsgs();
         currentUser.title = settings.myTitle || '群主';
         try { if (window.NanoBadge) window.NanoBadge.setContext(chatId); } catch (err) {}
         renderHeader(); applyBackground();
+        readGroupStored();
         resolveIdentities().then(function(){ renderHeader(); renderMessages(); });
     });
 
     // 兜底轮询：群设置在别的页面改了成员/资料，这里也能及时刷新（storage 事件有时收不到）
     var __lastGroupRaw = localStorage.getItem(GROUP_KEY) || '';
-    setInterval(function(){
-        var raw = localStorage.getItem(GROUP_KEY) || '';
-        if (raw === __lastGroupRaw) return;
+    var __groupRawApplying = false;
+    function applyGroupRaw(raw){
+        if(!raw || raw === __lastGroupRaw || __groupRawApplying) return;
+        var g = null;
+        try { g = JSON.parse(raw); } catch (e) { return; }
+        if(!g || !g.members) return;
+        __groupRawApplying = true;
         __lastGroupRaw = raw;
-        group = loadGroup();
+        group = g;
         renderHeader();
-        resolveIdentities().then(function(){ renderHeader(); renderMessages(); });
-    }, 3000);
+        resolveIdentities().then(function(){ renderHeader(); renderMessages(); }).then(function(){ __groupRawApplying = false; }, function(){ __groupRawApplying = false; });
+    }
+    function readGroupStored(){
+        // IndexedDB 是权威副本（localStorage 写满时只有它还保存着最新资料）。
+        if (window.GroupStore && GroupStore.get) {
+            GroupStore.get(GROUP_KEY).then(function(v){
+                if (v) { applyGroupRaw(v); return; }
+                applyGroupRaw(localStorage.getItem(GROUP_KEY) || '');
+            }).then(markGroupHydrated, function(){
+                applyGroupRaw(localStorage.getItem(GROUP_KEY) || '');
+                markGroupHydrated();
+            });
+            return;
+        }
+        applyGroupRaw(localStorage.getItem(GROUP_KEY) || '');
+        markGroupHydrated();
+    }
+    setInterval(readGroupStored, 3000);
+    window.addEventListener('message', function(e){
+        var d = e && e.data;
+        if (!d || d.type !== 'groupsDataUpdated') return;
+        if (d.groupId && String(d.groupId) !== String(chatId)) return;
+        // IDB 是异步写的：立刻读一次，稍后再读一次，避免刚保存时读到旧值。
+        readGroupStored();
+        setTimeout(readGroupStored, 260);
+        setTimeout(readGroupStored, 900);
+    });
 
     // ========== 初始化 ==========
     try { if (window.NanoBadge) window.NanoBadge.setContext(chatId); } catch (e) {}
@@ -3453,20 +3567,8 @@ messageContainer.addEventListener('click', function(e){
     renderMessages();
     updateSendState();
     consumePendingChanges();
-
-    // localStorage 满时群资料可能只写进了 IndexedDB：异步补读一次，避免头像/群名停在旧值。
-    if (window.GroupStore && GroupStore.get) {
-        GroupStore.get(GROUP_KEY).then(function (raw) {
-            if (!raw) return;
-            var g = null;
-            try { g = JSON.parse(raw); } catch (e) { return; }
-            if (!g || !g.members) return;
-            if (String(g.avatar || '') === String(group.avatar || '') && String(g.name || '') === String(group.name || '')) return;
-            group = g;
-            renderHeader();
-            resolveIdentities().then(function(){ renderHeader(); renderMessages(); });
-        }).catch(function(){});
-    }
+    // 首屏也从 IndexedDB 补一次：localStorage 写满时群名 / 头像可能停在旧值。
+    try { readGroupStored(); } catch (e) {}
 
     // 已退出群聊：只能围观，点击发送按钮让 AI 自己互动
     if (userLeft) {

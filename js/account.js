@@ -549,17 +549,7 @@
               (currentPolicy().allowRegister ? '<button type="button" class="nacc-tab" data-mode="register">注册</button>' : '') +
             '</div>' +
             '<div class="nacc-error" id="naccErr"></div>' +
-            '<div class="nacc-actions" style="margin:-4px 0 8px">' +
-              '<button type="button" class="nacc-btn nacc-btn-soft" id="naccResetServerBtn" style="min-height:30px;padding:0 10px;font-size:11px">还原默认</button>' +
-              '<button type="button" class="nacc-btn nacc-btn-soft" id="naccServerBtn" style="min-height:30px;padding:0 10px;font-size:11px">服务器设置</button>' +
-            '</div>' +
             '<div id="naccForm"></div>' +
-            (isNanoApp()
-              ? '<div class="nacc-actions" style="margin-top:10px">' +
-                  '<button type="button" class="nacc-btn nacc-btn-soft" id="naccOffline">离线使用（不登录）</button>' +
-                '</div>' +
-                '<p class="nacc-hint">离线模式跳过账号与导入校验；账号、设备激活、云备份、推送不可用。之后仍可在设置里登录。</p>'
-              : '') +
           '</div>' +
         '</div>';
       var ui = overlay(html, {

@@ -227,6 +227,310 @@
   window.NanoFaceRef = { key: faceRefKey, sync: faceRefSync, get: faceRefGet };
 
   // ============================================================
+  // 统一锁脸（单人 / 双人 / 多人）
+  // ------------------------------------------------------------
+  // 只锁「五官 + 脸型 + 肤色 + 发色/发型」，不锁姿势、位置、头部角度、表情、
+  // 服装、身材、背景和构图。双人/多人时把每张参考图对应到具体的人，避免换脸/混脸。
+  // 线上私聊、线下、INS、朋友圈、旅途、日程、群聊都走这一份，避免各处各写一套。
+  // ============================================================
+  function chatSettingKey(id, key) { return 'chat_setting_' + key + '_' + String(id || ''); }
+  function chatSettingSync(id, key, def) {
+    try {
+      var raw = localStorage.getItem(chatSettingKey(id, key));
+      if (raw === null || raw === '') return def;
+      try { var v = JSON.parse(raw); return v == null ? def : v; } catch (e) { return raw; }
+    } catch (e) { return def; }
+  }
+  function chatSettingAsync(id, key, def) {
+    var v = chatSettingSync(id, key, '');
+    if (v !== '' && v != null) return Promise.resolve(v);
+    try {
+      if (typeof localforage !== 'undefined' && typeof localforage.getItem === 'function') {
+        return localforage.getItem(chatSettingKey(id, key)).then(function (x) {
+          return (x == null || x === '') ? def : x;
+        }).catch(function () { return def; });
+      }
+    } catch (e) {}
+    return Promise.resolve(def);
+  }
+  function currentMaskData() {
+    try {
+      var raw = localStorage.getItem('nano_mask_data');
+      if (!raw) return null;
+      var d = JSON.parse(raw), arr = (d && d.masks) || [];
+      for (var i = 0; i < arr.length; i++) {
+        if (String(arr[i].id) === String(d.currentMaskId)) return arr[i];
+      }
+      return arr[0] || null;
+    } catch (e) { return null; }
+  }
+  function maskAvatarById(id) {
+    return new Promise(function (resolve) {
+      try {
+        var req = indexedDB.open('MaskAvatarDB', 1);
+        req.onupgradeneeded = function (e) {
+          try { var db = e.target.result; if (!db.objectStoreNames.contains('avatars')) db.createObjectStore('avatars', { keyPath: 'id' }); } catch (err) {}
+        };
+        req.onsuccess = function (e) {
+          try {
+            var db = e.target.result;
+            if (!db.objectStoreNames.contains('avatars')) { db.close(); resolve(''); return; }
+            var g = db.transaction('avatars', 'readonly').objectStore('avatars').get(id);
+            g.onsuccess = function () { try { db.close(); } catch (err) {} resolve(g.result ? String(g.result.data || '') : ''); };
+            g.onerror = function () { try { db.close(); } catch (err) {} resolve(''); };
+          } catch (err) { resolve(''); }
+        };
+        req.onerror = function () { resolve(''); };
+      } catch (e) { resolve(''); }
+    });
+  }
+  var __faceLockChars = null, __faceLockCharsAt = 0;
+  function allCharacterList() {
+    if (__faceLockChars && Date.now() - __faceLockCharsAt < 20000) return Promise.resolve(__faceLockChars);
+    return new Promise(function (resolve) {
+      try {
+        var req = indexedDB.open('nano_characters_db', 1);
+        req.onupgradeneeded = function (e) {
+          try { var db = e.target.result; if (!db.objectStoreNames.contains('characters')) db.createObjectStore('characters', { keyPath: 'id' }); } catch (err) {}
+        };
+        req.onsuccess = function (e) {
+          try {
+            var db = e.target.result;
+            if (!db.objectStoreNames.contains('characters')) { db.close(); resolve(__faceLockChars || []); return; }
+            var g = db.transaction('characters', 'readonly').objectStore('characters').getAll();
+            g.onsuccess = function () {
+              try { db.close(); } catch (err) {}
+              __faceLockChars = g.result || [];
+              __faceLockCharsAt = Date.now();
+              resolve(__faceLockChars);
+            };
+            g.onerror = function () { try { db.close(); } catch (err) {} resolve(__faceLockChars || []); };
+          } catch (err) { resolve(__faceLockChars || []); }
+        };
+        req.onerror = function () { resolve(__faceLockChars || []); };
+      } catch (e) { resolve([]); }
+    });
+  }
+  function faceLockNote(labels) {
+    labels = (labels || []).filter(Boolean);
+    if (!labels.length) return '';
+    var mapping = labels.map(function (n, i) { return '第' + (i + 1) + '张=' + n; }).join('，');
+    var note = '【锁脸 · 只锁五官】只锁定' + (labels.length > 1 ? '每个人的' : '') +
+      '五官、脸型、肤色、发色与发型；参考图里的姿势、头部角度、表情、服装、身材、位置、背景和构图都不要照搬，可以自由变化。';
+    if (labels.length > 1) {
+      note += '参考图对应：' + mapping + '；如果只提供一张左右/网格拼接图，就按从左到右、从上到下依次对应。画面里出现这些人时，每个人的脸必须分别与对应参考图一致，不能混合、互换或换成另一个人。';
+    } else {
+      note += '参考图是「' + labels[0] + '」本人：脸要和参考图一致，但姿势、服装、场景、镜头可以换。';
+    }
+    return note;
+  }
+  function loadFaceImage(src) {
+    return new Promise(function (resolve, reject) {
+      try {
+        var img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = function () { resolve(img); };
+        img.onerror = function () { reject(new Error('image load failed')); };
+        img.src = src;
+      } catch (e) { reject(e); }
+    });
+  }
+  // 只接受单张参考图的网关：把多人参考按顺序拼成一张（从左到右、从上到下）。
+  async function combineFaceRefs(refs) {
+    try {
+      var imgs = await Promise.all(refs.map(loadFaceImage));
+      if (!imgs.length) return refs[0] || '';
+      var n = imgs.length;
+      var cols = n <= 2 ? n : (n <= 4 ? 2 : 3);
+      var rows = Math.ceil(n / cols);
+      var tile = 512;
+      var cv = document.createElement('canvas');
+      cv.width = cols * tile; cv.height = rows * tile;
+      var ctx = cv.getContext('2d');
+      ctx.fillStyle = '#f2f2f2';
+      ctx.fillRect(0, 0, cv.width, cv.height);
+      imgs.forEach(function (img, i) {
+        var x = (i % cols) * tile, y = Math.floor(i / cols) * tile;
+        var scale = Math.max(tile / (img.width || 1), tile / (img.height || 1));
+        var w = (img.width || 1) * scale, h = (img.height || 1) * scale;
+        ctx.drawImage(img, x + (tile - w) / 2, y + (tile - h) / 2, w, h);
+      });
+      return cv.toDataURL('image/jpeg', 0.92);
+    } catch (e) {
+      return refs[0] || '';
+    }
+  }
+  function normNat(v) {
+    return String(v || '').replace(/\s+/g, '').replace(/国$/, '');
+  }
+  function isCrossCountryMask(mask, ch) {
+    if (!ch) return false;
+    var a = normNat(mask && mask.nationality) || '中国';
+    var b = normNat(ch.nationality || ch.country);
+    if (!b || b === '未知' || b === '未设定') return false;
+    return a !== b;
+  }
+  function hasRemoteFlag(charId) {
+    try {
+      var f = JSON.parse(localStorage.getItem('nano_travel_remote_' + String(charId || '')) || 'null');
+      return !!(f && Date.now() - Number(f.at || 0) < 120 * 86400000);
+    } catch (e) { return false; }
+  }
+  function isSceneOnlyText(text) {
+    var s = String(text || '');
+    if (/(无人|空镜|只拍场景|只有风景|不要人物|没有人物|无人物)/.test(s)) return true;
+    var personCue = /(我|自己|人物|人像|脸|五官|自拍|全身|半身|特写|站|坐|躺|走|跑|笑|看镜头|穿|戴|抱|牵|回头|侧脸|男朋友|女朋友|男友|女友|老公|老婆|对象|恋人|伴侣|双人|两人|我们|一起|合照|合影|男生|女生|男孩|女孩|男人|女人|他|她)/;
+    var sceneCue = /(夕阳|日落|天空|云|海|海浪|沙滩|街景|街道|咖啡|桌面|电脑|食物|美食|花|树|猫|狗|雨|雪|风景|山|湖|夜景|窗|房间|书|手机)/;
+    return sceneCue.test(s) && !personCue.test(s);
+  }
+  // 返回：refs（按提示词顺序）、labels、faceRef（兼容只收单图的网关）、note
+  async function buildFaceLocks(charId, prompt, opts) {
+    opts = opts || {};
+    var text = String(prompt || '');
+    var maxRefs = Math.max(1, Math.min(6, parseInt(opts.maxRefs, 10) || 4));
+    var mode = String(await chatSettingAsync(charId, 'coupleFaceMode', 'none') || 'none');
+    var charRef = '';
+    try { charRef = await faceRefGet(charId); } catch (e) {}
+    if (!charRef) { try { charRef = String(await chatSettingAsync(charId, 'coupleFaceChar', '') || ''); } catch (e) {} }
+    var charName = String(opts.charName || '当前角色');
+    var mask = currentMaskData();
+    var chars = [];
+    try { chars = await allCharacterList(); } catch (e) {}
+    var charObj = null;
+    for (var ci = 0; ci < chars.length; ci++) {
+      if (chars[ci] && String(chars[ci].id) === String(charId)) { charObj = chars[ci]; break; }
+    }
+    if (charObj && charObj.name && charName === '当前角色') charName = String(charObj.name);
+    // 出场人物优先读 AI 写好的「人物：...」。没有才用关键词兜底。
+    var mm = text.match(/(?:^|[\n。；;])\s*(?:【)?人物(?:】)?[：:]\s*([^\n。；;]+)/);
+    var marker = mm ? String(mm[1] || '').trim() : '';
+    var absent = /(异国|异地|不在身边|见不到|看不到|隔着屏幕|视频通话|电话里|屏幕|远方|两地|分开|独自|一个人|单人|自拍|只有我|只有TA|只有他|只有她)/;
+    var screen = /(视频|电话|屏幕|直播|截图)/;
+    var strongTogether = /(见面|在一起|来到|陪你|身边|面前|面对面|牵手|拥抱|靠在|同框|合照|合影|双人|两人|两个人|约会|同居|住在一起|同行)/;
+    var weakTogether = /(我们|和你|与你|你和我|我和你|你俩|你们俩|我们俩|我们两个)/;
+    var multiCue = /(多人|一群人|几个人|大家|所有人|朋友们|好友们|同学|同事|聚会|派对|聚餐|集体|出游|出去玩|合照|合影|同框|group photo|friends|everyone|party|together)/i;
+    var groupCue = /(大家|所有人|全部人|全群|群里|群成员|我们几个|几个人一起|everyone|whole group|all of us)/i;
+    var sceneOnly = false;
+    var userPresent = false;
+    var charPresent = true;
+    var extraNames = [];
+    if (marker) {
+      if (/(无人|空镜|无人物|只拍场景|只有风景|不要人物|没有人物)/.test(marker)) {
+        sceneOnly = true;
+        charPresent = false;
+      } else {
+        userPresent = /(用户|对方|你和我|我和你|你俩|你们俩|我们|双人|两人|两个人|TA|他|她)/.test(marker)
+          && !/(没有用户|不含用户|不要用户|不见用户)/.test(marker);
+        var realCharName = (charObj && charObj.name) ? String(charObj.name) : charName;
+        var mentionsMe = /(我|自己|角色)/.test(marker) || marker.indexOf(charName) >= 0 || marker.indexOf(realCharName) >= 0;
+        var othersInMarker = [];
+        (chars || []).forEach(function (c) {
+          if (!c || c.id == null || String(c.id) === String(charId)) return;
+          var nm = String(c.name || '').trim();
+          if (nm.length < 2) return;
+          var idx = marker.indexOf(nm);
+          if (idx >= 0) othersInMarker.push({ id: c.id, name: nm, idx: idx });
+        });
+        charPresent = mentionsMe || (!userPresent && !othersInMarker.length);
+        extraNames = othersInMarker;
+      }
+    } else {
+      sceneOnly = isSceneOnlyText(text);
+      if (!sceneOnly) {
+        var maskName = String(mask && mask.name || '').trim();
+        var enCouple = /(couple|together|holding hands|hug|hugging|embrace|kiss|date|two people|2 people|1girl.*1boy|1boy.*1girl|companion|accompany)/i;
+        var enSolo = /(solo|alone|single person|only one|selfie)/i;
+        var hasAbsent = absent.test(text) || screen.test(text);
+        var hasStrong = strongTogether.test(text);
+        var hasWeak = weakTogether.test(text);
+        var hasUserMention = /(用户|对方|你和我|我和你|你俩|你们俩|我们俩|我们两个)/.test(text);
+        var partnerCue = /(男朋友|女朋友|男友|女友|老公|老婆|对象|恋人|爱人|伴侣|未婚夫|未婚妻)/.test(text);
+        var partnerDateCue = partnerCue && /(一起|约会|见面|旅行|旅游|出游|出去玩|合照|合影)/.test(text);
+        var nameMention = !!(maskName.length >= 2 && text.indexOf(maskName) >= 0);
+        userPresent = !hasAbsent && (hasStrong || hasUserMention || hasWeak || partnerCue || nameMention || enCouple.test(text));
+        if (enSolo.test(text) && !enCouple.test(text)) userPresent = false;
+        // 没有「人物：」标记时，异地/异国默认不把用户画进同一张照片；真的见面/在一起/同行才例外。
+        var cross = isCrossCountryMask(mask, charObj) || hasRemoteFlag(charId);
+        var togetherScene = !!(opts.offline || opts.together || enCouple.test(text) || /(同行者|同行)/.test(text) || partnerDateCue);
+        if (cross && !togetherScene && !(hasStrong && !screen.test(text))) userPresent = false;
+        if (multiCue.test(text)) {
+          (chars || []).forEach(function (c) {
+            if (!c || c.id == null || String(c.id) === String(charId)) return;
+            var nm = String(c.name || '').trim();
+            if (nm.length < 2) return;
+            var idx = text.indexOf(nm);
+            if (idx >= 0) extraNames.push({ id: c.id, name: nm, idx: idx });
+          });
+        }
+      }
+    }
+    // 群聊默认是线上：除非剧情明确写到线下见面/现场，否则照片里不放用户。
+    if (opts.groupOnline && !/(线下|见面|来到|现场|在一起|同居|约会)/.test(text)) userPresent = false;
+    // 锁「我」只影响用户参考；单人照仍然锁角色。
+    if (mode === 'none' || mode === 'char') userPresent = false;
+    if (mode === 'user' && userPresent) charPresent = false;
+    var refs = [], labels = [];
+    if (!sceneOnly) {
+      if (userPresent) {
+        var userRef = '';
+        try { userRef = String(await chatSettingAsync(charId, 'coupleFaceUser', '') || ''); } catch (e) {}
+        if (!userRef && mask) {
+          if (mask.id != null) { try { userRef = await maskAvatarById(mask.id); } catch (e) {} }
+          if (!userRef) userRef = String(mask.avatar || '');
+        }
+        if (userRef) { refs.push(userRef); labels.push(opts.userName || '用户本人'); }
+      }
+      if (charPresent && charRef) {
+        refs.push(charRef);
+        labels.push(charName);
+      }
+    }
+    // 多人：只补提示词里真的写了名字的角色；群聊在没有「人物：」时可以用成员表兜底。
+    if (!sceneOnly) {
+      var wanted = extraNames.slice();
+      if (!marker && groupCue.test(text)) {
+        var seen = {};
+        if (charId != null) seen[String(charId)] = 1;
+        wanted.forEach(function (x) { seen[String(x.id)] = 1; });
+        (opts.extraIds || []).forEach(function (id) {
+          id = (id == null ? '' : String(id));
+          if (!id || seen[id]) return;
+          seen[id] = 1;
+          var nm = '';
+          try { if (opts.nameOf) nm = String(opts.nameOf(id) || ''); } catch (e) {}
+          wanted.push({ id: id, name: nm || '同伴', idx: 9999 });
+        });
+      }
+      wanted.sort(function (a, b) { return (a.idx - b.idx) || String(a.name).localeCompare(String(b.name)); });
+      for (var wi = 0; wi < wanted.length && refs.length < maxRefs; wi++) {
+        var r = '';
+        try { r = await faceRefGet(wanted[wi].id); } catch (e) {}
+        if (r) { refs.push(r); labels.push(wanted[wi].name); }
+      }
+    }
+    var singleRef = refs[0] || '';
+    if (refs.length > 1 && refs.every(function (x) { return String(x).indexOf('data:') === 0; })) {
+      singleRef = await combineFaceRefs(refs);
+    }
+    var castLine = '';
+    if (sceneOnly) {
+      castLine = '【出场人物】无人，只拍场景，不要画人。';
+    } else if (marker) {
+      castLine = '【出场人物】' + marker + '。按这个名单画，不要加入名单之外的人。';
+    } else {
+      var castLabels = labels.slice();
+      extraNames.forEach(function (x) { if (castLabels.indexOf(x.name) < 0) castLabels.push(x.name); });
+      var cast = castLabels.join('、') || (charPresent ? charName : '');
+      var unnamedPool = text.replace(/(男朋友|女朋友|男友|女友)/g, '');
+      var unnamed = extraNames.length === 0 && /(朋友|同事|同学|大家|人群|路人|当地人|其他人|多人|几个|一群|friends|people|group|company)/i.test(unnamedPool);
+      castLine = '【出场人物】' + (cast || '按画面描述') + (unnamed ? '，以及画面描述里提到的其他人物（不要求锁脸）' : '') + '。';
+    }
+    var note = [castLine, faceLockNote(labels)].filter(Boolean).join('\n');
+    return { refs: refs, labels: labels, faceRef: singleRef, note: note, sceneOnly: sceneOnly, userPresent: userPresent, charPresent: charPresent };
+  }
+  window.NanoFaceLock = { build: buildFaceLocks, note: faceLockNote, getRef: faceRefGet, setting: chatSettingAsync };
+
+  // ============================================================
   // 生图提示词预设（正面 / 反面 / 画师串）
   // ------------------------------------------------------------
   // 之前只有 NAI 和生图室会读取 API 里的提示词预设，普通生图（私聊、群聊、

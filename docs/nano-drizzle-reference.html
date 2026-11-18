@@ -1,0 +1,1087 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="color-scheme" content="light" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>Nano</title>
+
+
+  <style>
+    :root {
+      --bg-paper: #FFFFFF;
+      --ink-deep: #0D1E45;
+      --ink-cobalt: #1B3B8B;
+      --ink-mist: #AEB8C9;
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+
+    html { color-scheme: light; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #FFFFFF;
+    }
+
+    /* Ultra-fine cotton paper grain */
+    .paper-texture {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 5;
+      opacity: 0.025;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='grain'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23grain)'/%3E%3C/svg%3E");
+    }
+
+    /* Fullscreen 3D Lake, Rain & Wild Goose Canvas */
+    #sceneCanvas {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      z-index: 1;
+      cursor: pointer;
+    }
+
+    /* Center-Upper Artistic "Nano" SVG Stage */
+    .logo-stage {
+      position: fixed;
+      inset: 0;
+      z-index: 15;
+      pointer-events: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding-bottom: 14vh;
+    }
+
+    .nano-art-svg {
+      width: min(86vw, 540px);
+      height: auto;
+      overflow: visible;
+      opacity: 0;
+      transform: translateY(22px) scale(0.96);
+      filter: blur(4px);
+      transition:
+        opacity 1.5s cubic-bezier(0.16, 1, 0.3, 1),
+        transform 1.9s cubic-bezier(0.16, 1, 0.3, 1),
+        filter 1.4s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .nano-art-svg.is-visible {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+      filter: blur(0px);
+    }
+
+    /* Calligraphic stroke drawing animations */
+    .swash-stroke {
+      stroke-dasharray: 920;
+      stroke-dashoffset: 920;
+      transition: stroke-dashoffset 2.3s cubic-bezier(0.22, 1, 0.36, 1) 0.15s;
+    }
+
+    .nano-art-svg.is-visible .swash-stroke {
+      stroke-dashoffset: 0;
+    }
+
+    .orbit-stroke {
+      stroke-dasharray: 640;
+      stroke-dashoffset: 640;
+      transition: stroke-dashoffset 2.5s cubic-bezier(0.22, 1, 0.36, 1) 0.3s;
+    }
+
+    .nano-art-svg.is-visible .orbit-stroke {
+      stroke-dashoffset: 0;
+    }
+
+    .letter-hairline {
+      stroke-dasharray: 480;
+      stroke-dashoffset: 480;
+      transition: stroke-dashoffset 1.9s cubic-bezier(0.22, 1, 0.36, 1) 0.1s;
+    }
+
+    .nano-art-svg.is-visible .letter-hairline {
+      stroke-dashoffset: 0;
+    }
+
+    .letter-fill {
+      opacity: 0;
+      transition: opacity 1.5s cubic-bezier(0.16, 1, 0.3, 1) 0.45s;
+    }
+
+    .nano-art-svg.is-visible .letter-fill {
+      opacity: 1;
+    }
+    @keyframes logoFloat {
+      0%, 100% { translate: 0 0; }
+      50% { translate: 0 -7px; }
+    }
+    .logo-stage.live { animation: logoFloat 7s ease-in-out infinite; }
+  </style>
+</head>
+<body>
+
+  <!-- Subtle cotton paper grain -->
+  
+
+  <!-- Fullscreen 3D Perspective Lake, Raindrops & Wild Goose Canvas -->
+  <canvas id="sceneCanvas"></canvas>
+
+  <!-- Bespoke Artistic Calligraphy / High-Fashion Editorial SVG Logo: "Nano" -->
+  
+
+<main class="logo-stage">
+    <svg id="nanoLogoSvg" class="nano-art-svg" viewBox="0 0 640 270" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Nano">
+      <defs>
+        <linearGradient id="nanoInkGrad" x1="110" y1="50" x2="530" y2="210" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stop-color="#0A1228" />
+          <stop offset="52%" stop-color="#060C1C" />
+          <stop offset="100%" stop-color="#101A36" />
+        </linearGradient>
+        <linearGradient id="swashGrad" x1="45" y1="205" x2="595" y2="55" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stop-color="#6B7690" stop-opacity="0.25" />
+          <stop offset="45%" stop-color="#0A1228" stop-opacity="0.85" />
+          <stop offset="100%" stop-color="#0A1228" stop-opacity="0.18" />
+        </linearGradient>
+      </defs>
+
+      <!-- Delicate tilted ripple-orbit ring framing the logo -->
+      <ellipse
+        class="orbit-stroke"
+        cx="320"
+        cy="142"
+        rx="258"
+        ry="56"
+        transform="rotate(-8.5 320 142)"
+        stroke="#6B7690"
+        stroke-width="1.05"
+        stroke-dasharray="6 7 28 6"
+      />
+
+      <!-- Sweeping calligraphic wing-trajectory flourish beneath & across -->
+      <path
+        class="swash-stroke"
+        d="M 48 214 C 142 204, 198 182, 314 176 C 424 170, 504 142, 588 64"
+        stroke="url(#swashGrad)"
+        stroke-width="1.55"
+        stroke-linecap="round"
+      />
+
+      <!-- Fine secondary ink echo curve -->
+      <path
+        class="swash-stroke"
+        d="M 122 224 C 228 214, 344 198, 476 168"
+        stroke="#6B7690"
+        stroke-width="0.9"
+        stroke-linecap="round"
+        opacity="0.7"
+      />
+
+      <!-- Artisanal ink stipple accents -->
+      <g class="letter-fill">
+        <circle cx="596" cy="56" r="2.2" fill="#0A1228" opacity="0.85" />
+        <circle cx="584" cy="49" r="1.2" fill="#6B7690" opacity="0.9" />
+        <circle cx="40" cy="215" r="1.8" fill="#6B7690" opacity="0.85" />
+        <circle cx="492" cy="176" r="1.5" fill="#0A1228" opacity="0.55" />
+      </g>
+
+      <!-- ============================================================ -->
+      <!-- CUSTOM BESPOKE ARTISTIC LETTERING: "N a n o"                 -->
+      <!-- High-contrast editorial serif + calligraphic swash terminals -->
+      <!-- ============================================================ -->
+
+      <!-- LETTER "N" — Dramatic calligraphic entry curl + thick diagonal + tall finial -->
+      <g>
+        <!-- Hairline outline draw -->
+        <path
+          class="letter-hairline"
+          d="M 104 166 C 84 166, 76 150, 88 139 C 97 131, 111 138, 113 151 L 113 76 C 113 66, 106 62, 98 61 L 123 61 L 194 152 L 194 75 C 194 65, 187 61, 179 61 L 208 61 C 201 61, 197 65, 197 75 L 197 172 L 193 172 L 116 74 L 116 153 C 116 163, 122 166, 130 166 Z"
+          stroke="#0A1228"
+          stroke-width="1.15"
+        />
+        <!-- High-contrast sculptural fill -->
+        <path
+          class="letter-fill"
+          d="M 104 166 C 84 166, 76 150, 88 139 C 97 131, 111 138, 113 151 L 113 76 C 113 66, 106 62, 98 61 L 123 61 L 194 152 L 194 75 C 194 65, 187 61, 179 61 L 208 61 C 201 61, 197 65, 197 75 L 197 172 L 193 172 L 116 74 L 116 153 C 116 163, 122 166, 130 166 Z"
+          fill="url(#nanoInkGrad)"
+        />
+      </g>
+
+      <!-- LETTER "a" — Graceful teardrop bowl & sweeping editorial tail -->
+      <g>
+        <path
+          class="letter-hairline"
+          d="M 278 153 C 278 161, 282 164, 287 164 C 291 164, 295 161, 298 156 L 300 158 C 295 166, 288 170, 280 170 C 271 170, 266 164, 266 155 C 258 165, 247 170, 236 170 C 223 170, 215 161, 215 149 C 215 134, 231 127, 266 121 L 266 112 C 266 99, 259 93, 248 93 C 239 93, 233 97, 233 102 C 233 105, 235 107, 235 110 C 235 114, 231 117, 227 117 C 222 117, 219 113, 219 108 C 219 98, 232 90, 250 90 C 269 90, 278 99, 278 115 Z M 266 124 C 241 129, 228 136, 228 148 C 228 157, 234 162, 243 162 C 252 162, 260 157, 266 149 Z"
+          stroke="#0A1228"
+          stroke-width="1.15"
+        />
+        <path
+          class="letter-fill"
+          d="M 278 153 C 278 161, 282 164, 287 164 C 291 164, 295 161, 298 156 L 300 158 C 295 166, 288 170, 280 170 C 271 170, 266 164, 266 155 C 258 165, 247 170, 236 170 C 223 170, 215 161, 215 149 C 215 134, 231 127, 266 121 L 266 112 C 266 99, 259 93, 248 93 C 239 93, 233 97, 233 102 C 233 105, 235 107, 235 110 C 235 114, 231 117, 227 117 C 222 117, 219 113, 219 108 C 219 98, 232 90, 250 90 C 269 90, 278 99, 278 115 Z M 266 124 C 241 129, 228 136, 228 148 C 228 157, 234 162, 243 162 C 252 162, 260 157, 266 149 Z"
+          fill="url(#nanoInkGrad)"
+        />
+      </g>
+
+      <!-- LETTER "n" — Fluid arch with refined serif terminals -->
+      <g>
+        <path
+          class="letter-hairline"
+          d="M 310 168 L 310 166 C 317 165, 320 162, 320 154 L 320 106 C 320 98, 317 95, 310 95 L 310 93 L 331 90 L 332 105 C 341 95, 352 90, 364 90 C 380 90, 389 100, 389 118 L 389 154 C 389 162, 392 165, 399 166 L 399 168 L 367 168 L 367 166 C 374 165, 377 162, 377 154 L 377 118 C 377 104, 370 97, 358 97 C 348 97, 339 102, 332 111 L 332 154 C 332 162, 335 165, 342 166 L 342 168 Z"
+          stroke="#0A1228"
+          stroke-width="1.15"
+        />
+        <path
+          class="letter-fill"
+          d="M 310 168 L 310 166 C 317 165, 320 162, 320 154 L 320 106 C 320 98, 317 95, 310 95 L 310 93 L 331 90 L 332 105 C 341 95, 352 90, 364 90 C 380 90, 389 100, 389 118 L 389 154 C 389 162, 392 165, 399 166 L 399 168 L 367 168 L 367 166 C 374 165, 377 162, 377 154 L 377 118 C 377 104, 370 97, 358 97 C 348 97, 339 102, 332 111 L 332 154 C 332 162, 335 165, 342 166 L 342 168 Z"
+          fill="url(#nanoInkGrad)"
+        />
+      </g>
+
+      <!-- LETTER "o" — Tilted stress sculptural oval echoing a water drop -->
+      <g>
+        <path
+          class="letter-hairline"
+          d="M 456 90 C 482 90, 501 107, 501 130 C 501 153, 482 170, 456 170 C 430 170, 411 153, 411 130 C 411 107, 430 90, 456 90 Z M 454 94 C 436 94, 425 109, 426 131 C 427 152, 440 166, 458 166 C 476 166, 487 151, 486 129 C 485 108, 472 94, 454 94 Z"
+          stroke="#0A1228"
+          stroke-width="1.15"
+        />
+        <path
+          class="letter-fill"
+          d="M 456 90 C 482 90, 501 107, 501 130 C 501 153, 482 170, 456 170 C 430 170, 411 153, 411 130 C 411 107, 430 90, 456 90 Z M 454 94 C 436 94, 425 109, 426 131 C 427 152, 440 166, 458 166 C 476 166, 487 151, 486 129 C 485 108, 472 94, 454 94 Z"
+          fill="url(#nanoInkGrad)"
+        />
+      </g>
+    </svg>
+  </main>
+
+  <script>
+    /**
+     * Nano — Korean Minimalist Editorial 3D Lake, Raindrops & Wild Goose Splash
+     *
+     * Visual Layers:
+     * 1. Crisp White Cotton Canvas (#FFFFFF)
+     * 2. Clearly Defined 3D Perspective Lake Surface:
+     *    - Soft translucent Prussian-blue water wash gradient from horizon down
+     *    - Subtle 3D perspective longitudinal light-shimmer lines converging to horizon
+     *    - Animated 3D horizontal wave contour ribbons undulating smoothly across the water
+     * 3. Continuous Falling Raindrops & Surface Splashes:
+     *    - Fine silver-blue rain streaks falling from upper sky onto the 3D lake plane
+     *    - Impact splash crowns & expanding 3D elliptical concentric ripples
+     * 4. Detailed Flapping Prussian-Blue Wild Goose (大雁):
+     *    - Anatomically expressive soaring silhouette (long slender neck, pointed beak,
+     *      articulated swept wings with primary feather tips, tail)
+     *    - Stippled ink-wash texture + crisp dark-indigo calligraphic contour
+     *    - Soft silver-grey mirrored reflection on the 3D lake below
+     *    - Wingtips & low-skimming wake kick up dramatic 3D concentric ripples & water spray
+     * 5. Bespoke Calligraphic "Nano" SVG Logo (no extra text anywhere)
+     */
+    (function () {
+      const canvas = document.getElementById('sceneCanvas');
+      const ctx = canvas.getContext('2d');
+      const nanoLogoSvg = document.getElementById('nanoLogoSvg');
+      let logoShown = false;
+
+      let width = 0;
+      let height = 0;
+      let dpr = 1;
+
+      // 3D Camera & Lake Horizon Configuration
+      const camera = {
+        fov: 680,
+        pitch: -0.12,
+        camHeight: 110,
+        camZ: -460
+      };
+
+      // Timeline & Choreography (in virtual seconds)
+      // Goose is immediately visible right from t = 0.0s, swooping across the lake until 3.4s
+      const GOOSE_START_TIME = 0.0;
+      const GOOSE_DURATION = 3.4;
+      const LOGO_REVEAL_TIME = 2.95;
+
+      let virtualTime = 0;
+      let lastFrameTime = 0;
+      let speedMultiplier = 1.0;
+      let isPointerDown = false;
+      let logoRevealed = true;
+      let lastGooseWakeStep = -1;
+      let lastTapTime = 0;
+      let parX = 0, parTarget = 0, lastMoveDrop = 0;
+
+      // Dynamic Entity Pools
+      let raindrops = [];
+      let splashes = [];
+      let ripples3D = [];
+      let waveImpulses = [];
+      let stippleDots = [];
+
+      // Precompute deterministic stipple pattern for painterly ink texture on the goose
+      function buildStipplePattern() {
+        stippleDots = [];
+        for (let i = 0; i < 540; i++) {
+          const s1 = Math.sin(i * 12.9898) * 43758.5453;
+          const s2 = Math.sin(i * 78.233) * 29413.1234;
+          const u = s1 - Math.floor(s1);
+          const v = s2 - Math.floor(s2);
+          stippleDots.push({
+            u,
+            v,
+            r: 0.65 + u * v * 1.35,
+            dark: u > 0.36
+          });
+        }
+      }
+
+      function resize() {
+        dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+        width = window.innerWidth;
+        height = window.innerHeight;
+
+        canvas.width = Math.floor(width * dpr);
+        canvas.height = Math.floor(height * dpr);
+        canvas.style.width = width + 'px';
+        canvas.style.height = height + 'px';
+
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+
+      /**
+       * Project 3D world space (x, y, z) onto 2D screen coordinates.
+       * Water surface lies at y = 0.
+       */
+      function project3D(x, y, z) {
+        const relZ = z - camera.camZ;
+        const relY = y - camera.camHeight;
+
+        const cosP = Math.cos(camera.pitch);
+        const sinP = Math.sin(camera.pitch);
+
+        const rotY = relY * cosP - relZ * sinP;
+        const rotZ = relY * sinP + relZ * cosP;
+
+        const safeZ = Math.max(rotZ, 70);
+        const scale = camera.fov / safeZ;
+
+        return {
+          x: width * 0.5 + x * scale + parX * Math.min(scale, 2.2) * 26,
+          y: height * 0.55 - rotY * scale,
+          scale
+        };
+      }
+
+      /**
+       * Unproject 2D screen point (sx, sy) onto the y = 0 3D water plane
+       */
+      function screenToLake3D(sx, sy) {
+        const dx = sx - width * 0.5;
+        const dy = height * 0.55 - sy;
+
+        const cosP = Math.cos(camera.pitch);
+        const sinP = Math.sin(camera.pitch);
+        const y0 = -camera.camHeight;
+
+        const k = dy / camera.fov;
+        const denom = k * cosP + sinP;
+        const relZ = (y0 * cosP - k * y0 * sinP) / (Math.abs(denom) < 0.06 ? 0.06 : denom);
+        const rotZ = Math.max(y0 * sinP + relZ * cosP, 120);
+        const scale = camera.fov / rotZ;
+
+        return {
+          x: Math.max(-720, Math.min(720, dx / scale)),
+          z: Math.max(-260, Math.min(760, relZ + camera.camZ))
+        };
+      }
+
+      /**
+       * Spawn a 3D concentric ripple ring set on the lake plane (y = 0)
+       * with broken stippled ink-blue and silver-grey arcs + a local wave impulse
+       */
+      function spawnLakeRipple(wx, wz, strength = 1.0, rings = 3) {
+        // Add a local 3D surface wave disturbance so nearby contour lines visibly undulate
+        waveImpulses.push({
+          x: wx,
+          z: wz,
+          amp: 2.0 * strength,
+          radius: 6,
+          speed: 74,
+          age: 0,
+          life: 1.5
+        });
+
+        for (let i = 0; i < rings; i++) {
+          ripples3D.push({
+            x: wx,
+            z: wz,
+            radius: 2.5 + i * 4.5,
+            maxRadius: (86 + i * 28) * strength,
+            speed: (44 - i * 5) * (0.9 + strength * 0.16),
+            alpha: (0.94 - i * 0.17) * Math.min(strength, 1.18),
+            delay: i * 0.095,
+            age: 0,
+            seed: Math.random() * Math.PI * 2,
+            isMistRing: i === rings - 1 && rings > 2
+          });
+        }
+      }
+
+      /**
+       * Spawn crisp splash droplets & a central rebound water bead at water impact
+       */
+      function spawnWaterSplash(wx, wy, wz, count = 6, spread = 1.0) {
+        // Central rebound crown bead (characteristic of a raindrop hitting still water)
+        splashes.push({
+          x: wx,
+          y: Math.max(1.5, wy),
+          z: wz,
+          vx: 0,
+          vy: (24 + Math.random() * 8) * spread,
+          vz: 0,
+          size: 0.9 * Math.min(1.25, spread + 0.25),
+          alpha: 0.92,
+          age: 0,
+          life: 0.48,
+          isMist: false
+        });
+
+        for (let i = 0; i < count; i++) {
+          const angle = (i / count) * Math.PI * 2 + Math.random() * 0.5;
+          const speed = (11 + Math.random() * 20) * spread;
+          splashes.push({
+            x: wx + Math.cos(angle) * 2.5,
+            y: Math.max(1, wy),
+            z: wz + Math.sin(angle) * 2.5,
+            vx: Math.cos(angle) * speed,
+            vy: (16 + Math.random() * 22) * spread,
+            vz: Math.sin(angle) * speed,
+            size: 0.5 + Math.random() * 0.5,
+            alpha: 0.82 + Math.random() * 0.18,
+            age: 0,
+            life: 0.5 + Math.random() * 0.35,
+            isMist: i % 2 === 1
+          });
+        }
+      }
+
+      /**
+       * Spawn a full-screen 3D raindrop falling from the very top edge of the viewport
+       * all the way down into the 3D lake surface across the entire screen width & depth.
+       */
+      function spawnRaindrop(targetX = null, targetZ = null, randomProgress = false, isInteractive = false) {
+        // Depth z spans from foreground (-260) to far horizon (760)
+        const wz = targetZ !== null ? targetZ : -260 + Math.random() * 1020;
+
+        // Calculate exact horizontal world span visible at depth wz so rain covers 100% of screen width
+        const edgeProbe = project3D(100, 0, wz);
+        const halfWorldWidth = Math.max(520, (width * 0.62) / Math.max(edgeProbe.scale, 0.22));
+        const wx = targetX !== null ? targetX : (Math.random() - 0.5) * 2 * halfWorldWidth;
+
+        // Calculate exact top-of-screen world height Y at depth wz so rain starts at y_screen <= 0
+        const topWorldY = Math.max(500, 640 + (wz + 260) * 0.6);
+        const startY = isInteractive
+          ? Math.min(topWorldY * 0.65, 290)
+          : (randomProgress ? Math.random() * topWorldY : topWorldY + Math.random() * 80);
+
+        raindrops.push({
+          x: wx,
+          y: startY,
+          z: wz,
+          vy: isInteractive ? 420 : (210 + Math.random() * 110),
+          length: isInteractive ? 24 : (14 + Math.random() * 16),
+          alpha: isInteractive ? 0.75 : (0.26 + Math.random() * 0.34),
+          isCobalt: isInteractive ? true : (Math.random() > 0.36),
+          isInteractive
+        });
+      }
+
+      function initRaindrops() {
+        raindrops = [];
+        const count = width < 640 ? 110 : 190;
+        for (let i = 0; i < count; i++) {
+          spawnRaindrop(null, null, true, false);
+        }
+      }
+
+      /**
+       * Render the Full-Width 3D Perspective Lake Surface (with real-time raindrop wave disturbances)
+       */
+      function render3DLake(timeSec, dt) {
+        // Advance local wave impulses triggered by raindrop & goose impacts
+        for (let i = waveImpulses.length - 1; i >= 0; i--) {
+          const imp = waveImpulses[i];
+          imp.age += dt;
+          imp.radius += imp.speed * dt;
+          if (imp.age >= imp.life) {
+            waveImpulses.splice(i, 1);
+          }
+        }
+
+        const horizonProj = project3D(0, 0, 920);
+        const horizonY = Math.max(height * 0.45, Math.min(height * 0.57, horizonProj.y));
+
+        ctx.save();
+
+        // 1. Translucent Prussian-Blue Water Wash spanning full width from horizon to bottom
+        const lakeGrad = ctx.createLinearGradient(0, horizonY - 6, 0, height);
+        lakeGrad.addColorStop(0.0, 'rgba(10, 18, 40, 0.00)');
+        lakeGrad.addColorStop(0.06, 'rgba(10, 18, 40, 0.045)');
+        lakeGrad.addColorStop(0.36, 'rgba(10, 18, 40, 0.075)');
+        lakeGrad.addColorStop(0.76, 'rgba(6, 12, 28, 0.105)');
+        lakeGrad.addColorStop(1.0, 'rgba(6, 12, 28, 0.135)');
+
+        
+
+        // 2. Full-width Mist Horizon Line
+        const horizLineGrad = ctx.createLinearGradient(0, 0, width, 0);
+        horizLineGrad.addColorStop(0, 'rgba(78, 88, 108, 0.08)');
+        horizLineGrad.addColorStop(0.25, 'rgba(78, 88, 108, 0.44)');
+        horizLineGrad.addColorStop(0.5, 'rgba(10, 18, 40, 0.34)');
+        horizLineGrad.addColorStop(0.75, 'rgba(78, 88, 108, 0.44)');
+        horizLineGrad.addColorStop(1, 'rgba(78, 88, 108, 0.08)');
+
+        ctx.beginPath();
+        ctx.moveTo(0, horizonY);
+        ctx.lineTo(width, horizonY);
+        ctx.strokeStyle = horizLineGrad;
+        ctx.lineWidth = 0.9;
+        ctx.stroke();
+
+        // 3. Full-width 3D Perspective Shimmer Rays
+        const rayCount = width < 640 ? 11 : 19;
+        for (let i = 0; i < rayCount; i++) {
+          const norm = (i / (rayCount - 1)) * 2 - 1;
+          const worldX = norm * 880;
+          const pFar = project3D(worldX * 0.85, 0, 880);
+          const pNear = project3D(worldX * 1.15, 0, -280);
+
+          const rayAlpha = (1 - Math.abs(norm) * 0.55) * 0.05;
+          const rayGrad = ctx.createLinearGradient(pFar.x, pFar.y, pNear.x, pNear.y);
+          rayGrad.addColorStop(0, 'rgba(10, 18, 40, 0)');
+          rayGrad.addColorStop(0.45, `rgba(10, 18, 40, ${rayAlpha})`);
+          rayGrad.addColorStop(1, 'rgba(6, 12, 28, 0)');
+
+          ctx.beginPath();
+          ctx.moveTo(pFar.x, pFar.y);
+          ctx.lineTo(pNear.x, pNear.y);
+          ctx.strokeStyle = rayGrad;
+          ctx.lineWidth = 0.75;
+          ctx.stroke();
+        }
+
+        // 4. Full-width 3D Undulating Wave Contour Lines perturbed by raindrop ripples
+        const waveRows = 26;
+        for (let r = 0; r < waveRows; r++) {
+          const depthT = r / (waveRows - 1);
+          const z = 840 - Math.pow(depthT, 0.78) * 1100;
+          const rowProj = project3D(0, 0, z);
+
+          if (rowProj.y < horizonY || rowProj.y > height + 10) continue;
+
+          const rowOpacity = (0.08 + depthT * 0.16) * Math.sin(depthT * Math.PI * 0.92 + 0.15);
+          const segments = 54;
+          const spanWorldX = 1150;
+
+          ctx.beginPath();
+          for (let s = 0; s <= segments; s++) {
+            const u = (s / segments) * 2 - 1;
+            const wx = u * spanWorldX;
+
+            // Ambient gentle lake current
+            let waveY =
+              Math.sin(wx * 0.014 + timeSec * 1.35 + r * 0.85) * 1.15 +
+              Math.cos(wx * 0.026 - timeSec * 0.95 + z * 0.01) * 0.65;
+
+            // Add local ripple wave displacement from recent raindrop & goose impacts
+            for (let k = 0; k < waveImpulses.length; k++) {
+              const imp = waveImpulses[k];
+              const dz = z - imp.z;
+              if (Math.abs(dz) > 130) continue;
+              const dx = wx - imp.x;
+              const dist = Math.sqrt(dx * dx + dz * dz);
+              const band = Math.abs(dist - imp.radius);
+              if (band < 34) {
+                const env = (1 - imp.age / imp.life) * Math.cos((band / 34) * Math.PI * 0.5);
+                waveY += Math.sin((dist - imp.radius) * 0.28) * imp.amp * env;
+              }
+            }
+
+            const pt = project3D(wx, waveY, z);
+            if (s === 0) {
+              ctx.moveTo(pt.x, pt.y);
+            } else {
+              ctx.lineTo(pt.x, pt.y);
+            }
+          }
+
+          ctx.strokeStyle = r % 3 === 0
+            ? `rgba(10, 18, 40, ${rowOpacity * 1.15})`
+            : `rgba(78, 88, 108, ${rowOpacity * 0.98})`;
+          ctx.lineWidth = 0.55 + depthT * 0.65;
+          ctx.stroke();
+        }
+
+        ctx.restore();
+      }
+
+      /**
+       * Update & Render Full-Viewport Falling Raindrops
+       * Every raindrop visibly triggers multi-ring 3D concentric ripples & splash crown upon hitting the lake
+       */
+      function updateAndRenderRain(dt) {
+        ctx.save();
+        for (let i = raindrops.length - 1; i >= 0; i--) {
+          const drop = raindrops[i];
+          drop.y -= drop.vy * dt;
+          drop.x -= 5 * dt;
+
+          const topProj = project3D(drop.x + 1.0, drop.y + drop.length, drop.z);
+          const botProj = project3D(drop.x, Math.max(0, drop.y), drop.z);
+
+          const grad = ctx.createLinearGradient(topProj.x, topProj.y, botProj.x, botProj.y);
+          if (drop.isCobalt) {
+            grad.addColorStop(0, 'rgba(10, 18, 40, 0)');
+            grad.addColorStop(1, `rgba(10, 18, 40, ${drop.alpha})`);
+          } else {
+            grad.addColorStop(0, 'rgba(78, 88, 108, 0)');
+            grad.addColorStop(1, `rgba(60, 70, 92, ${drop.alpha})`);
+          }
+
+          ctx.beginPath();
+          ctx.moveTo(topProj.x, topProj.y);
+          ctx.lineTo(botProj.x, botProj.y);
+          ctx.strokeStyle = grad;
+          ctx.lineWidth = Math.max(0.4, (drop.isInteractive ? 0.9 : 0.6) * botProj.scale);
+          ctx.lineCap = 'round';
+          ctx.stroke();
+
+          // Raindrop hits the 3D lake surface (y <= 0) -> immediate 3D concentric ripples + splash crown
+          if (drop.y <= 0) {
+            const impactStrength = drop.isInteractive ? 0.95 : (0.95 + Math.random() * 0.35);
+            const ringCount = drop.isInteractive ? 3 : 2 + (Math.random() > 0.6 ? 1 : 0);
+
+            spawnLakeRipple(drop.x, drop.z, impactStrength, ringCount);
+            if (drop.isInteractive || Math.random() > 0.55) spawnWaterSplash(drop.x, 1.2, drop.z, drop.isInteractive ? 4 : 2, impactStrength * 0.7);
+
+            raindrops.splice(i, 1);
+            if (!drop.isInteractive) {
+              spawnRaindrop(null, null, false, false);
+            }
+          }
+        }
+        ctx.restore();
+      }
+
+      /**
+       * Render 3D Elliptical Concentric Ripples on the Lake Plane
+       */
+      function updateAndRenderRipples3D(dt) {
+        for (let i = ripples3D.length - 1; i >= 0; i--) {
+          const r = ripples3D[i];
+          r.age += dt;
+          if (r.age < r.delay) continue;
+
+          const progress = r.radius / r.maxRadius;
+          if (progress >= 1 || r.alpha <= 0.01) {
+            ripples3D.splice(i, 1);
+            continue;
+          }
+
+          const currentSpeed = r.speed * (1 - progress * 0.52);
+          r.radius += currentSpeed * dt;
+
+          const fade = Math.min(1, r.alpha * 1.25) * Math.pow(1 - progress, 1.1);
+          const segments = 72;
+
+          ctx.save();
+          for (let s = 0; s < segments; s++) {
+            const theta1 = (s / segments) * Math.PI * 2;
+            const theta2 = ((s + 0.74) / segments) * Math.PI * 2;
+
+            const rhythm =
+              Math.sin(theta1 * 3 + r.seed) * 0.5 +
+              Math.cos(theta1 * 5 - r.seed * 1.3) * 0.5;
+
+            if (rhythm < -0.85) continue;
+
+            const wx1 = r.x + Math.cos(theta1) * r.radius;
+            const wz1 = r.z + Math.sin(theta1) * r.radius;
+            const wx2 = r.x + Math.cos(theta2) * r.radius;
+            const wz2 = r.z + Math.sin(theta2) * r.radius;
+
+            const p1 = project3D(wx1, 0, wz1);
+            const p2 = project3D(wx2, 0, wz2);
+
+            const isMist = r.isMistRing || rhythm < 0.02;
+            const segAlpha = fade * (0.52 + (rhythm + 0.34) * 0.48);
+
+            ctx.beginPath();
+            ctx.moveTo(p1.x, p1.y);
+            ctx.lineTo(p2.x, p2.y);
+
+            if (isMist) {
+              ctx.strokeStyle = `rgba(74, 84, 104, ${Math.min(0.88, segAlpha * 0.9)})`;
+              ctx.lineWidth = Math.max(0.4, 0.65 * p1.scale);
+            } else {
+              ctx.strokeStyle = `rgba(10, 18, 40, ${Math.min(0.96, segAlpha)})`;
+              ctx.lineWidth = Math.max(0.7, 1.25 * p1.scale);
+            }
+
+            ctx.lineCap = 'round';
+            ctx.stroke();
+
+            if (false) {
+              ctx.beginPath();
+              ctx.arc(p2.x, p2.y, Math.max(0.8, 1.3 * p2.scale), 0, Math.PI * 2);
+              ctx.fillStyle = `rgba(6, 12, 28, ${Math.min(0.94, segAlpha)})`;
+              ctx.fill();
+            }
+          }
+          ctx.restore();
+        }
+      }
+
+      /**
+       * Render Water Splash & Wake Droplets
+       */
+      function updateAndRenderSplashes(dt) {
+        for (let i = splashes.length - 1; i >= 0; i--) {
+          const sp = splashes[i];
+          sp.age += dt;
+          if (sp.age >= sp.life) {
+            splashes.splice(i, 1);
+            continue;
+          }
+
+          sp.vy -= 56 * dt;
+          sp.x += sp.vx * dt;
+          sp.y = Math.max(0, sp.y + sp.vy * dt);
+          sp.z += sp.vz * dt;
+
+          const proj = project3D(sp.x, sp.y, sp.z);
+          const fade = sp.alpha * (1 - sp.age / sp.life);
+
+          ctx.beginPath();
+          ctx.arc(proj.x, proj.y, sp.size * proj.scale, 0, Math.PI * 2);
+          ctx.fillStyle = sp.isMist
+            ? `rgba(78, 88, 108, ${fade})`
+            : `rgba(8, 16, 36, ${fade})`;
+          ctx.fill();
+        }
+      }
+
+      /**
+       * Compute Wild Goose (大雁) 3D Flight Path & Wing Kinematics
+       * Starts immediately inside the visible left-center zone at u = 0 so it is never hidden off-screen.
+       */
+      function getWildGooseKinematics(u) {
+        const ease = u < 0.5
+          ? 2 * u * u
+          : 1 - Math.pow(-2 * u + 2, 2) / 2;
+
+        // Starts clearly inside the left side of the screen (-spanX * 0.62) and flies out the top-right
+        const spanX = Math.max(380, width * 0.56);
+        const x = -spanX * 0.62 + ease * (spanX * 1.72);
+        const z = -120 + ease * 460;
+
+        let y;
+        let pitchAngle;
+        if (u < 0.25) {
+          const p = u / 0.25;
+          y = 58 - Math.sin(p * Math.PI * 0.5) * 42; // 58 -> 16 (swoops down to skim lake)
+          pitchAngle = -0.34;
+        } else if (u < 0.62) {
+          const p = (u - 0.25) / 0.37;
+          y = 16 + Math.sin(p * Math.PI) * 5; // Skims low across water (16..21)
+          pitchAngle = -0.45 - p * 0.14;
+        } else {
+          const p = (u - 0.62) / 0.38;
+          y = 16 + Math.pow(p, 1.5) * 185; // Ascends gracefully out top-right sky
+          pitchAngle = -0.60 - p * 0.18;
+        }
+
+        const flapCycles = 6.5;
+        const flap = Math.sin(u * flapCycles * Math.PI * 2);
+
+        // Immediately visible at u = 0 (opacity = 1), fades out gently as it exits upper-right
+        let opacity = 1;
+        if (u > 0.84) opacity = Math.max(0, 1 - (u - 0.84) / 0.16);
+
+        return { x, y, z, flap, pitchAngle, opacity, progress: u };
+      }
+
+      /**
+       * Render Detailed, Unmistakable Prussian-Blue Wild Goose (大雁) & Lake Reflection
+       */
+      function renderWildGoose(goose) {
+        if (goose.opacity <= 0.01) return;
+
+        const bodyProj = project3D(goose.x, goose.y, goose.z);
+        const reflProj = project3D(goose.x, -goose.y * 0.82, goose.z);
+
+        const baseScale = bodyProj.scale * (width < 640 ? 1.24 : 1.48);
+
+        function drawGooseBody(cx, cy, s, angle, flapVal, isReflection, alpha) {
+          ctx.save();
+          ctx.translate(cx, cy);
+          ctx.rotate(angle);
+          ctx.scale(s, isReflection ? -s * 0.68 : s);
+
+          const foreWingTipY = 58 + flapVal * 32;
+          const foreWingMidY = 26 + flapVal * 15;
+          const backWingTipY = -52 - Math.sin(flapVal * 1.15 - 0.45) * 26;
+          const backWingMidY = -24 - Math.sin(flapVal * 1.15 - 0.45) * 12;
+
+          ctx.beginPath();
+          // Far / Upper Wing
+          ctx.moveTo(4, -3);
+          ctx.quadraticCurveTo(-12, backWingMidY, -44, backWingTipY);
+          ctx.quadraticCurveTo(-35, backWingTipY + 11, -24, backWingMidY + 8);
+          ctx.quadraticCurveTo(-14, -12, -8, -3);
+          ctx.closePath();
+
+          // Streamlined Torso, Fan Tail & Long Slender Neck + Head/Beak
+          ctx.moveTo(-42, 4);
+          ctx.lineTo(-47, 1);
+          ctx.lineTo(-41, -2);
+          ctx.quadraticCurveTo(-18, -6, 12, -5);
+          ctx.quadraticCurveTo(36, -7, 56, -12);
+          ctx.quadraticCurveTo(64, -14, 72, -10);
+          ctx.quadraticCurveTo(64, -6, 55, -5);
+          ctx.quadraticCurveTo(34, 2, 14, 7);
+          ctx.quadraticCurveTo(-14, 9, -42, 4);
+          ctx.closePath();
+
+          // Near / Foreground Swept Wing
+          ctx.moveTo(8, 2);
+          ctx.bezierCurveTo(2, foreWingMidY, -18, foreWingTipY - 12, -48, foreWingTipY);
+          ctx.bezierCurveTo(-36, foreWingTipY - 16, -24, foreWingMidY + 4, -16, 5);
+          ctx.closePath();
+
+          if (isReflection) {
+            ctx.fillStyle = `rgba(155, 166, 185, ${0.28 * alpha})`;
+          } else {
+            const bodyGrad = ctx.createLinearGradient(-48, -30, 72, 20);
+            bodyGrad.addColorStop(0, `rgba(8, 16, 36, ${0.78 * alpha})`);
+            bodyGrad.addColorStop(0.55, `rgba(13, 33, 79, ${0.88 * alpha})`);
+            bodyGrad.addColorStop(1, `rgba(27, 67, 153, ${0.82 * alpha})`);
+            ctx.fillStyle = bodyGrad;
+          }
+          ctx.fill();
+
+          // Clip inside goose silhouette for editorial stipple grain
+          ctx.save();
+          ctx.clip();
+
+          for (let i = 0; i < stippleDots.length; i++) {
+            const d = stippleDots[i];
+            const px = -52 + d.u * 128;
+            const py = -82 + d.v * 172;
+            const dotAlpha = (0.35 + d.u * 0.45) * alpha;
+
+            ctx.fillStyle = isReflection
+              ? `rgba(78, 88, 108, ${dotAlpha * 0.55})`
+              : (d.dark
+                  ? `rgba(10, 24, 58, ${dotAlpha * 0.65})`
+                  : `rgba(34, 78, 172, ${dotAlpha * 0.5})`);
+
+            ctx.beginPath();
+            ctx.arc(px, py, d.r, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          ctx.restore();
+
+          // Crisp calligraphic dark-indigo outline stroke
+          ctx.beginPath();
+          ctx.moveTo(72, -10);
+          ctx.quadraticCurveTo(44, -9, 12, -5);
+          ctx.moveTo(8, 2);
+          ctx.bezierCurveTo(2, foreWingMidY, -18, foreWingTipY - 12, -48, foreWingTipY);
+          ctx.moveTo(4, -3);
+          ctx.quadraticCurveTo(-12, backWingMidY, -44, backWingTipY);
+
+          ctx.strokeStyle = isReflection
+            ? `rgba(155, 166, 185, ${0.44 * alpha})`
+            : `rgba(13, 33, 79, ${0.9 * alpha})`;
+          ctx.lineWidth = isReflection ? 1.15 : 1.5;
+          ctx.lineCap = 'round';
+          ctx.stroke();
+
+          ctx.restore();
+        }
+
+        const reflStrength = Math.max(0, 1 - goose.y / 115) * goose.opacity;
+        if (reflStrength > 0.02) {
+          drawGooseBody(
+            reflProj.x,
+            reflProj.y,
+            baseScale,
+            -goose.pitchAngle * 0.6,
+            goose.flap,
+            true,
+            reflStrength
+          );
+        }
+
+        drawGooseBody(
+          bodyProj.x,
+          bodyProj.y,
+          baseScale,
+          goose.pitchAngle,
+          goose.flap,
+          false,
+          goose.opacity
+        );
+      }
+
+      /**
+       * Reveal the Bespoke Large Artistic "Nano" Wordmark
+       */
+      function revealNanoLogo() {
+        if (logoShown) return;
+        logoShown = true;
+
+        spawnLakeRipple(0, 40, 1.25, 3);
+        nanoLogoSvg.classList.add('is-visible');
+        setTimeout(() => document.querySelector('.logo-stage').classList.add('live'), 2400);
+        
+      }
+
+      /**
+       * Replay Entire Animation from Start (triggered via double-tap after completion)
+       */
+      function replayAnimation() {
+        virtualTime = 0;
+        lastFrameTime = performance.now();
+        logoRevealed = true;
+        lastGooseWakeStep = -1;
+
+        ripples3D = [];
+        splashes = [];
+        waveImpulses = [];
+        initRaindrops();
+
+        nanoLogoSvg.classList.remove('is-visible');
+        document.querySelector('.logo-stage').classList.remove('live');
+        logoShown = false;
+        
+
+        
+      }
+
+      /**
+       * Main 60fps Render Loop with Smooth Time-Acceleration Support
+       */
+      function renderLoop(now) {
+        if (!lastFrameTime) {
+          lastFrameTime = now;
+          
+        }
+
+        const rawDt = Math.min((now - lastFrameTime) / 1000, 0.05);
+        lastFrameTime = now;
+
+        // Smoothly interpolate speed multiplier:
+        // Holding pointer accelerates at 3.2x; quick tap decays smoothly from 2.8x back to 1.0x
+        const targetSpeed = isPointerDown ? 3.2 : 1.0;
+        speedMultiplier += (targetSpeed - speedMultiplier) * Math.min(1, rawDt * 6);
+
+        parX += (parTarget - parX) * Math.min(1, rawDt * 3);
+        const dt = rawDt * speedMultiplier;
+        virtualTime += dt;
+
+        ctx.clearRect(0, 0, width, height);
+
+        // Layer 1: Full-width 3D Perspective Lake Surface (with live wave disturbances)
+        render3DLake(virtualTime, dt);
+
+        // Layer 2: 3D Concentric Lake Ripples
+        updateAndRenderRipples3D(dt);
+
+        // Layer 3: Full-viewport Falling Raindrops & Surface Splashes
+        updateAndRenderRain(dt);
+        updateAndRenderSplashes(dt);
+
+        if (!logoShown && virtualTime >= 1.2) revealNanoLogo();
+
+        // Layer 5: Reveal Large Artistic "Nano" Logo as the goose ascends out of frame
+        if (virtualTime >= LOGO_REVEAL_TIME && !logoRevealed) {
+          }
+
+        requestAnimationFrame(renderLoop);
+      }
+
+      /**
+       * Screen Tap / Press Interaction:
+       * - During animation: boosts speed smoothly (tap gives a burst, press-and-hold sustains 3.2x fast-forward)
+       *   and spawns an immediate ripple on the lake
+       * - After animation completes: double-tapping replays from start; single tap drops a visible
+       *   raindrop from the sky that hits the tapped lake spot and expands into 3D concentric ripples
+       */
+      function handlePointerDown(e) {
+        isPointerDown = true;
+
+        const now = performance.now();
+        const isDoubleTap = (now - lastTapTime) < 320;
+        lastTapTime = now;
+
+        const rect = canvas.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        const sx = clientX - rect.left;
+        const sy = clientY - rect.top;
+        const lakePt = screenToLake3D(sx, sy);
+
+        if (!logoRevealed) {
+          // Boost speed immediately on tap + sustain while held
+          speedMultiplier = Math.max(speedMultiplier, 2.8);
+          spawnLakeRipple(lakePt.x, lakePt.z, 0.95, 3);
+          spawnWaterSplash(lakePt.x, 1.2, lakePt.z, 4, 0.75);
+        } else if (false) {
+          replayAnimation();
+        } else {
+          // Drop a visible raindrop toward the tapped lake location that splashes into 3D ripples
+          spawnRaindrop(lakePt.x, lakePt.z, false, true);
+        }
+      }
+
+      function handlePointerUp() {
+        isPointerDown = false;
+      }
+
+      // Event Listeners
+      window.addEventListener('resize', resize);
+      canvas.addEventListener('mousedown', handlePointerDown);
+      window.addEventListener('mouseup', handlePointerUp);
+      window.addEventListener('mousemove', function (e) {
+        parTarget = (e.clientX / width - 0.5) * 2;
+        const t = performance.now();
+        if (logoRevealed && t - lastMoveDrop > 140) {
+          lastMoveDrop = t;
+          const pt = screenToLake3D(e.clientX, Math.max(e.clientY, height * 0.5));
+          spawnRaindrop(pt.x, pt.z, false, true);
+        }
+      });
+      canvas.addEventListener('touchstart', handlePointerDown, { passive: true });
+      window.addEventListener('touchend', handlePointerUp, { passive: true });
+      window.addEventListener('touchcancel', handlePointerUp, { passive: true });
+
+      // Start on window load
+      window.onload = function () {
+        buildStipplePattern();
+        resize();
+        initRaindrops();
+        requestAnimationFrame(renderLoop);
+      };
+    })();
+  </script>
+</body>
+</html>

@@ -179,7 +179,7 @@
             };
         }
         if (faceRefs.length) {
-            body.image = faceRefs[0];
+            body.image = faceRef;
             body.reference_image = faceRefs.slice();
             body.input_reference_image = faceRefs.slice();
             body.reference_images = faceRefs.slice();
@@ -195,7 +195,7 @@
             var simple = { model: model, prompt: finalPrompt, n: 1, size: size };
             if (negative && isNai) simple.negative_prompt = negative;
             if (opts.nsfw) simple.nsfw = true;
-            if (faceRefs.length) { simple.image = faceRefs[0]; simple.reference_image = faceRefs.slice(); }
+            if (faceRefs.length) { simple.image = faceRef; simple.reference_image = faceRefs.slice(); }
             try {
                 resp = await fetch(base + '/images/generations', {
                     method: 'POST',

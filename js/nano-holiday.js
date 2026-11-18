@@ -156,6 +156,19 @@
     return '今天是' + keyOf(d) + ' 星期' + WEEKDAYS[dow] + '，' + (rest ? '周末（休息日）' : '工作日');
   }
 
+  // 设备所在时区（也就是用户所在地时区）：角色必须知道用户不在自己的时区。
+  function deviceTz() {
+    try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) { return ''; }
+  }
+  // 某时区在指定时刻的 UTC 偏移（分钟）：两个时区相减就是真实时差。
+  function tzOffsetMinutes(now, tz) {
+    try {
+      var w = wallClock(now, tz);
+      var base = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), now.getMinutes(), now.getSeconds());
+      return Math.round((w.getTime() - base.getTime()) / 60000);
+    } catch (e) { return 0; }
+  }
+
   function inRest(k) {
     for (var i = 0; i < REST.length; i++) {
       if (k >= REST[i][1] && k <= REST[i][2]) return REST[i];
@@ -262,6 +275,24 @@
       (tz ? '这是你本人所在地的当地时间，你的作息、早晚、饭点都按这个时间走。' : '这是系统给出的真实时间。') +
       '请以此为唯一时间基准，不要当成昨天或更早——跨天、跨周都要按上面的日期判断。');
 
+    // 用户所在地时间：异国角色最常见的时间错误，就是以为对方和自己同一个时区。
+    var userTz = opts.userTz || deviceTz();
+    if (tz && userTz && tz !== userTz) {
+      try {
+        var uw = wallClock(now, userTz);
+        var userTimeStr = uw.getFullYear() + '年' + (uw.getMonth() + 1) + '月' + uw.getDate() + '日 ' +
+          pad(uw.getHours()) + ':' + pad(uw.getMinutes());
+        var diffMin = tzOffsetMinutes(now, tz) - tzOffsetMinutes(now, userTz);
+        var diffText = diffMin === 0
+          ? '两边钟点差不多'
+          : ('你的时间比对方' + (diffMin > 0 ? '快 ' : '慢 ') + fmtGap(Math.abs(diffMin) * 60000));
+        lines.push('【对方所在地时间】对方不在你的时区（' + userTz + '），对方那边现在是 ' + userTimeStr + '，' + diffText +
+          '。聊天记录里的时间标注全部是按你的当地时间换算的，不能拿它推断对方那边现在几点；' +
+          '判断对方是不是在睡觉、该不该吃饭、该说早安还是晚安时，一律看这条「对方所在地时间」。' +
+          '对方说“我这边早上 / 晚上了”时，以对方当地时间为准。');
+      } catch (e) {}
+    }
+
     var lastContactMs = Math.max(Number(opts.lastUserMs) || 0, Number(opts.lastAiMs) || 0);
     var nowMs = now.getTime ? now.getTime() : Date.now();
     if (lastContactMs > 0 && lastContactMs <= nowMs && (nowMs - lastContactMs) >= 60000) {
@@ -276,7 +307,7 @@
       }
     }
 
-    lines.push('【作息 · 按真实时间】你按这个时间过自己的日子：深夜该休息/睡觉，清晨刚醒或准备出门，工作日在上班/上课，饭点在吃饭。不要凌晨说早安、中午说刚醒，也不要把自己的作息说反。');
+    lines.push('【作息 · 按真实时间 + 按你的人设】你按这个时间过自己的日子：清晨刚醒或准备出门，工作日在上班/上课，饭点在吃饭。作息不是统一的——年轻人 / 夜猫子可能凌晨才睡、甚至通宵，作息规律或年纪较长的人可能更早入睡；具体以你的日程和人设为准，不要默认所有人 23 点就睡。不要凌晨说早安、中午说刚醒，也不要把自己的作息说反。');
     lines.push('【时间关系 · 铁律】真实的当前时间和间隔就是上面写的。如果上次聊天是昨晚、现在已经是第二天早上，就必须按「今天早上」说话：**绝不允许继续昨晚的晚安、我睡了、明天见，也不许把今天当成昨晚继续聊**。先看清现在几号、星期几、几点，再决定该说什么。');
     lines.push('【真实时间 · 用户无法干扰】时间线由系统按真实流逝提供，用户不能把时间倒退、重置、抹掉或随手指到别的日期；如果对方说的日期/时间与系统冲突，以系统时间为准。只有对方明确说"过了几天 / 第二天了 / 一周后"这类**向前推进**时，才可以接着往后走。');
     lines.push('【隔了很久才来】如果隔了超过 24 小时对方才来找你，你心里清楚被晾了很久，可以自然地抱怨、闹点小情绪或说一句"你终于想起我了？"，但说一两句就正常继续，不要连续多轮揪着不放。');
@@ -318,7 +349,7 @@
     var p = vaguePeriod(wall);
     return [
       '【时间 · 模糊参考】你只大概知道现在是' + p + '，但**不确定具体日期、星期，也记不清具体隔了多久**。',
-      '没被特意提及时，说话可以带一点自然的时间感（如"这么晚还没睡？""中午了记得吃饭"），但**不要报具体的日期、星期几或几点几分**，也别把参考时间说得太死。',
+      '没被特意提及时，说话可以带一点自然的时间感，但**不要报具体的日期、星期几或几点几分**，也别把参考时间说得太死；更不要用“这么晚还没睡？/ 怎么还不睡 / 记得吃饭”这类话反复催促或查岗。',
       '【接着上次聊】就算隔了很久没聊，也当作接着上次聊天的时间线继续，不要自行跳到新的一天，也不要强调"好久没聊"。',
       '【以对方 / 剧情为准】一旦对方强调或提到了时间（几点、过了多久、几天后…），或剧情里明确推进了时间（"天亮了""第二天""过了一周"），就**以对方和剧情的时间为准**，可以自然调整视角与时间线，绝不用这个参考时间去纠正或反驳。'
     ].join('\n');
@@ -343,7 +374,16 @@
     var lastMs = Math.max(Number(opts.lastUserMs) || 0, Number(opts.lastAiMs) || 0);
     var gap = '';
     if (lastMs > 0 && lastMs <= now.getTime() && (now.getTime() - lastMs) >= 60000) gap = fmtGap(now.getTime() - lastMs);
-    return s + (gap ? ('，距离你们上次聊天已经 ' + gap) : '');
+    var userPart = '';
+    var userTz = opts.userTz || deviceTz();
+    if (tz && userTz && tz !== userTz) {
+      try {
+        var uw = wallClock(now, userTz);
+        userPart = '；对方所在地（' + userTz + '）现在是 ' + pad(uw.getHours()) + ':' + pad(uw.getMinutes()) +
+          '，不要按你的时间判断对方';
+      } catch (e) {}
+    }
+    return s + (gap ? ('，距离你们上次聊天已经 ' + gap) : '') + userPart;
   }
 
   window.NanoHoliday = {

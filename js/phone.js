@@ -11,6 +11,16 @@ function escHtml(s){
   }[m]));
 }
 
+/* 模型偶尔会把换行/空行写进字段里，直接按原样渲染会出现大片空白。
+   这里统一清理：换行归一、去掉行尾空格、最多保留一个空行。 */
+function phoneText(s){
+  return String(s ?? "")
+    .replace(/\r\n?/g, "\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 // 角色银行卡：localStorage 负责同步读取，IndexedDB 负责容量与恢复。
 function saveCharWallet(key, value){
   try{ localStorage.setItem(key, JSON.stringify(value)); }catch(e){}
@@ -278,28 +288,26 @@ function updateHomeWidgets(){
     const c1 = parseInt(cs.gridColumnStart, 10) || 1;
     const r1 = parseInt(cs.gridRowStart, 10) || 1;
     const grid = el.parentElement;
-    const rows = grid ? metrics(grid).rows : 4;
-    const desiredTop = grid ? (parseFloat(grid.dataset.top) || 0) : 0;
-    const reservedRows = grid ? (parseInt(grid.dataset.rows, 10) || 4) : 4;
-    const top = Math.min(desiredTop, Math.max(0, rows - reservedRows));
+    // 行数必须用主屏声明的行数（第一屏 5 行、第二屏 4 行），不能用可视高度反推：
+    // 反推会把第 5 行（日历）夹到第 4 行，导致图标和日历/对话小组件叠在一起。
+    const rows = grid ? rowsOf(grid) : 4;
     const w = el.dataset.w ? clamp(parseInt(el.dataset.w, 10) || 1, 1, MAX_COL) : spanValue(cs.gridColumnEnd, c1);
     const h = el.dataset.h ? clamp(parseFloat(el.dataset.h) || 1, 0.5, rows) : spanValue(cs.gridRowEnd, r1);
-    return { c: c1 - 1, r: (r1 - 1) + top, w, h };
+    return normalize({ c: c1 - 1, r: r1 - 1, w, h }, rows);
   }
   function metrics(grid){
     const cs = getComputedStyle(grid);
     const gapX = parseFloat(cs.columnGap) || 0;
     const gapY = parseFloat(cs.rowGap) || 0;
     const rect = grid.getBoundingClientRect();
-    const colW = Math.max(1, (rect.width - gapX * (MAX_COL - 1)) / MAX_COL);
-    // 行高固定与列宽一致，保证 4×2 的播放器 / 主页在所有页面大小完全相同；
-    // 整块主屏高度都作为可拖放区域，行数按可用高度自动扩展。
-    const baseRowH = Math.max(1, (rect.height - gapY * 3) / 4);
-    const rowH = Math.min(colW, baseRowH);
-    const usableH = Math.max(rect.height, rowH);
-    const rows = rowH >= colW
-      ? Math.max(4, Math.floor((usableH + gapY) / (rowH + gapY)) || 4)
-      : 4;
+    const rows = rowsOf(grid);
+    const colW = Math.max(0, (rect.width - gapX * (MAX_COL - 1)) / MAX_COL);
+    // 行高优先和列宽一致（4×2 小组件保持方形），放不下时按声明行数等分；
+    // 整块内容再垂直居中，避免底部留一大块空白。
+    const fitH = (rect.height - gapY * (rows - 1)) / rows;
+    const rowH = Math.max(0, Math.min(colW, fitH));
+    const contentH = rows * rowH + (rows - 1) * gapY;
+    const offsetY = Math.max(0, (rect.height - contentH) / 2);
     return {
       width: rect.width,
       height: rect.height,
@@ -307,7 +315,8 @@ function updateHomeWidgets(){
       gapY,
       colW,
       rowH,
-      rows
+      rows,
+      offsetY
     };
   }
   function normalize(cell, rows){
@@ -322,11 +331,14 @@ function updateHomeWidgets(){
     const m = metrics(grid);
     const n = normalize(cell, m.rows);
     el._cell = n;
+    // 主屏还没显示（角色列表页）时量到的是 0×0，全部图标都会被摆到左上角叠在一起。
+    // 先只记住格子，等主屏真正可见后再由 applyAll 统一落位。
+    if(m.colW < 2 || m.rowH < 2) return;
     el.style.position = "absolute";
     el.style.gridColumn = "auto";
     el.style.gridRow = "auto";
     el.style.left = (n.c * (m.colW + m.gapX)) + "px";
-    el.style.top = (n.r * (m.rowH + m.gapY)) + "px";
+    el.style.top = (m.offsetY + n.r * (m.rowH + m.gapY)) + "px";
     el.style.width = (n.w * m.colW + Math.max(0, n.w - 1) * m.gapX) + "px";
     el.style.height = (n.h * m.rowH + Math.max(0, n.h - 1) * m.gapY) + "px";
     el.style.margin = "0";
@@ -343,7 +355,7 @@ function updateHomeWidgets(){
     const m = metrics(grid);
     const rect = grid.getBoundingClientRect();
     const left = x - offX - rect.left;
-    const top = y - offY - rect.top;
+    const top = y - offY - rect.top - m.offsetY;
     return normalize({
       c: Math.round(left / (m.colW + m.gapX)),
       r: Math.round((top / (m.rowH + m.gapY)) / STEP) * STEP,
@@ -429,6 +441,22 @@ function updateHomeWidgets(){
     }, 430);
   }
 
+  function freeCell(grid, cell, ignoreEl){
+    const rows = rowsOf(grid);
+    let c = normalize(cell, rows);
+    const occupied = itemsIn(grid)
+      .filter(it => it !== ignoreEl && it._cell)
+      .map(it => it._cell);
+    for(let i = 0; i < 80 && occupied.some(o => overlaps(o, c)); i++){
+      if(c.r + STEP <= rows - c.h){
+        c = normalize(Object.assign({}, c, { r: c.r + STEP }), rows);
+      }else{
+        c = normalize(Object.assign({}, c, { c: (c.c + 1) % MAX_COL, r: 0 }), rows);
+      }
+    }
+    return c;
+  }
+
   function endDrag(apply){
     clearPress();
     clearTimeout(edgeTimer); edgeDir = 0;
@@ -440,7 +468,7 @@ function updateHomeWidgets(){
     if(target){
       if(el.parentElement !== target.grid) target.grid.appendChild(el);
       clearDragStyles(el);
-      setPos(el, target.cell, target.grid);
+      setPos(el, freeCell(target.grid, target.cell, el), target.grid);
     } else {
       if(el.parentElement !== origin.grid) origin.grid.appendChild(el);
       clearDragStyles(el);
@@ -464,6 +492,9 @@ function updateHomeWidgets(){
     });
     try{ localStorage.setItem(LAYOUT_KEY, JSON.stringify(map)); }catch(e){}
   }
+  function overlaps(a, b){
+    return a.c < b.c + b.w && b.c < a.c + a.w && a.r < b.r + b.h && b.r < a.r + a.h;
+  }
   function restoreLayout(){
     let map = {};
     try{ map = JSON.parse(localStorage.getItem(LAYOUT_KEY) || "{}") || {}; }catch(e){ map = {}; }
@@ -474,27 +505,53 @@ function updateHomeWidgets(){
         all.push(el);
       });
     });
+    // 每屏已占用的格子：旧版本保存过「叠在一起」的坐标，恢复时自动错开，
+    // 保证图标不会被日历 / 对话小组件压住。小组件优先落位，图标绕开它们。
+    const placed = grids.map(() => []);
+    all.sort((a, b) => (b.classList.contains("widget-large") ? 1 : 0) - (a.classList.contains("widget-large") ? 1 : 0));
     all.forEach(el => {
       const def = el._defaultCell || readDefault(el);
       const s = el.dataset.app && map[el.dataset.app];
-      let targetGrid = el.parentElement;
-      let cell = def;
-      if(s && Number.isFinite(s.g) && grids[s.g]){
-        targetGrid = grids[s.g];
-        cell = { c: s.c, r: s.r, w: def.w, h: def.h };
+      const gi = (s && Number.isFinite(s.g) && grids[s.g]) ? s.g : grids.indexOf(el.parentElement);
+      const targetGrid = grids[gi];
+      if(!targetGrid) return;
+      const rows = rowsOf(targetGrid);
+      const bucket = placed[gi] || (placed[gi] = []);
+      let cell = s ? normalize({ c: s.c, r: s.r, w: def.w, h: def.h }, rows) : normalize(def, rows);
+      if(bucket.some(r => overlaps(r, cell))) cell = normalize(def, rows);
+      let guard = 0;
+      while(bucket.some(r => overlaps(r, cell)) && guard < 30){
+        cell = normalize(Object.assign({}, cell, { r: cell.r + STEP }), rows);
+        guard++;
       }
-      if(targetGrid && el.parentElement !== targetGrid) targetGrid.appendChild(el);
-      if(targetGrid) setPos(el, cell, targetGrid);
+      bucket.push(cell);
+      if(el.parentElement !== targetGrid) targetGrid.appendChild(el);
+      el._cell = cell;
+      setPos(el, cell, targetGrid);
     });
   }
   function applyAll(){
     grids.forEach(grid => {
+      if(grid.clientWidth < 20 || grid.clientHeight < 20) return;
       itemsIn(grid).forEach(el => {
         if(el === active || !el._cell) return;
         setPos(el, el._cell, grid);
       });
     });
   }
+
+  // 主屏初始是隐藏的（先显示角色列表）。隐藏时量不到尺寸，
+  // 必须等可见后再恢复布局，否则保存的摆放会在每次进入时丢失。
+  let restored = false;
+  function tryRestore(){
+    if(restored) return true;
+    if(!grids.some(g => g.clientWidth > 20 && g.clientHeight > 20)) return false;
+    restored = true;
+    restoreLayout();
+    applyAll();
+    return true;
+  }
+  window.__phoneLayoutRestore = tryRestore;
 
   grids.forEach(grid => {
     itemsIn(grid).forEach(item => {
@@ -544,13 +601,17 @@ function updateHomeWidgets(){
   window.addEventListener("resize", () => {
     if(active) return;
     clearTimeout(resizeT);
-    resizeT = setTimeout(applyAll, 120);
+    resizeT = setTimeout(() => { if(!tryRestore()) return; applyAll(); }, 120);
   });
-  window.__phoneLayoutRefresh = applyAll;
+  window.__phoneLayoutRefresh = () => { if(tryRestore()) applyAll(); };
 
-  restoreLayout();
-  requestAnimationFrame(applyAll);
-  setTimeout(applyAll, 80);
+  // 进入角色手机、屏幕旋转、从后台回来时尺寸才真正可用：轮询到可见为止。
+  (function waitVisible(n){
+    if(tryRestore()) return;
+    if(n > 180) return;
+    requestAnimationFrame(() => waitVisible(n + 1));
+  })(0);
+  document.addEventListener("visibilitychange", () => { if(document.visibilityState === "visible") window.__phoneLayoutRefresh(); });
 })();
 
 /* =========================
@@ -1092,7 +1153,7 @@ ${ctx}
 
 ${PERSONA_RULE}
 
-请生成 5 条「${char.name}」在 B 站/短视频 App 的观看记录与收藏，不要全是同一类视频。
+请生成 4 条「${char.name}」在 B 站/短视频 App 的观看记录与收藏，不要全是同一类视频。
 要求：
 1. 至少覆盖 3 种不同分区：日常 vlog、影视解说、游戏、美食、音乐/Live、舞蹈、知识科普、健身、情感/八卦、ASMR、猎奇、动漫、成熟题材等，必须贴合角色兴趣与近期生活。
 2. 其中 1-2 条可以是他不想被人看到的「私密收藏/深夜播放」：暧昧向、情感代餐、ASMR、身材/亲密关系相关、自己偷偷搜索的尴尬内容等；这是成年虚构角色，含蓄克制，不写露骨细节，也不要违法/血腥。
@@ -1103,18 +1164,18 @@ ${PERSONA_RULE}
    - date: 观看时间，格式 "2026年8月12日 11:23"
    - duration: 视频总时长，格式 "01:42" 或 "10:00"
    - progress: 观看进度，格式 "00:03"（小于 duration；深夜私密视频可以写很早退出）
-   - desc: 视频简介（40-80 字，写清视频内容 + 角色反应）
+   - desc: 视频简介（30-60 字，写清视频内容 + 角色反应，不要写空行）
    - category: 分区/标签，如 "影视解说"、"深夜"、"ASMR"、"游戏"、"私密收藏"
    - tags: 2-3 个短标签数组
    - collected: true/false 是否收藏
    - private: true/false 是否不想被别人看到（深夜/私密/尴尬内容用 true）
    - note: 角色自己的一句备注（可选，10-30 字，例如"留着睡前看"）
-   - comments: 2-4 条弹幕/评论，每条 {"user":"网名","text":"..."}，像真实 B 站弹幕，短、玩梗、有活人感
+   - comments: 2-3 条弹幕/评论，每条 {"user":"网名","text":"..."}，像真实 B 站弹幕，短、玩梗、有活人感
 只输出 JSON 数组，形如 [{"title":"...","up":"...","date":"...","duration":"...","progress":"...","desc":"...","category":"...","tags":["..."],"collected":false,"private":false,"note":"...","comments":[{"user":"...","text":"..."}]}]`;
   const t = await callAPI(api, SYS_JSON, user);
   const a = extractJSON(t);
   if(!Array.isArray(a) || !a.length) throw new Error("视频数据格式错误");
-  return a.slice(0, 5);
+  return a.slice(0, 4);
 }
 
 async function genDiary(api, char){
@@ -1394,7 +1455,28 @@ function genPrivateLocal(char){
 /* 聊天数据兼容：旧数据是数组（只有会话），新数据是 {userRemark, chats} */
 function normalizeChatData(raw){
   const clean = arr => (Array.isArray(arr) ? arr : [])
-    .filter(it => it && typeof it === "object" && (it.name || it.lastMsg || (Array.isArray(it.messages) && it.messages.length)));
+    .filter(it => it && typeof it === "object" && (it.name || it.lastMsg || (Array.isArray(it.messages) && it.messages.length)))
+    .map(it => {
+      const msgs = (Array.isArray(it.messages) ? it.messages : [])
+        .filter(m => m && typeof m === "object" && (m.text || m.name || m.sender))
+        .map(m => Object.assign({}, m, {
+          side: (m.side === "right" || m.right) ? "right" : "left",
+          text: phoneText(m.text || ""),
+          name: String(m.name || m.sender || "").trim()
+        }));
+      const out = Object.assign({}, it, { messages: msgs });
+      if(!out.lastMsg && msgs.length) out.lastMsg = msgs[msgs.length - 1].text || "";
+      // 群聊兜底：模型没显式标 group，但左侧消息有多个发言人 → 按群聊渲染。
+      const leftNames = [...new Set(msgs.filter(m => m.side !== "right" && m.name).map(m => m.name))];
+      if(out.group){
+        if(!Array.isArray(out.members) || !out.members.length) out.members = leftNames;
+      }else if(leftNames.length >= 2){
+        out.group = true;
+        out.members = leftNames;
+        if(!/群/.test(String(out.name || ""))) out.name = String(out.name || "闲聊") + "（群）";
+      }
+      return out;
+    });
   if(Array.isArray(raw)) return {userRemark: "", chats: clean(raw)};
   if(raw && typeof raw === "object"){
     return {
@@ -1520,10 +1602,10 @@ function renderVideoList(videos){
         <div class="vd-duration">${escHtml(v.progress || "00:00")} / ${escHtml(v.duration || "00:00")}</div>
       </div>
       <div class="vd-info">
-        <div class="vd-title">${escHtml(v.title)}</div>
-        <div class="vd-up">${escHtml(v.up)}</div>
+        <div class="vd-title">${escHtml(phoneText(v.title))}</div>
+        <div class="vd-up">${escHtml(phoneText(v.up))}</div>
         <div class="vd-tags">${tags.join("")}</div>
-        <div class="vd-date">${escHtml(v.date)}</div>
+        <div class="vd-date">${escHtml(phoneText(v.date))}</div>
       </div>`;
     card.onclick = () => openVideoDetail(v);
     list.appendChild(card);
@@ -1543,18 +1625,23 @@ async function refreshVideo(){
   }
 }
 function openVideoDetail(v){
-  appHost.querySelector("[data-dtitle]").textContent = v.title || "";
-  appHost.querySelector("[data-dmeta]").textContent = (v.up || "") + " · " + (v.date || "") + (v.category ? (" · " + v.category) : "");
-  const tags = (Array.isArray(v.tags) ? v.tags : []).map(t => `<span class="vd-tag">${escHtml(t)}</span>`).join("");
+  appHost.querySelector("[data-dtitle]").textContent = phoneText(v.title || "");
+  const metaBits = [v.up, v.date, v.category].filter(Boolean).map(x => phoneText(x));
+  if(v.duration) metaBits.push("时长 " + v.duration);
+  appHost.querySelector("[data-dmeta]").textContent = metaBits.join(" · ");
+  const tags = (Array.isArray(v.tags) ? v.tags : []).map(t => `<span class="vd-tag">${escHtml(phoneText(t))}</span>`).join("");
   const comments = (Array.isArray(v.comments) ? v.comments : []).filter(c => c && (c.text || c.user)).map(c =>
-    `<div class="vd-comment"><span class="vd-comment-user">${escHtml(c.user || "网友")}</span><span class="vd-comment-text">${escHtml(c.text || "")}</span></div>`
+    `<div class="vd-comment"><span class="vd-comment-user">${escHtml(c.user || "网友")}</span><span class="vd-comment-text">${escHtml(phoneText(c.text || ""))}</span></div>`
   ).join("");
-  appHost.querySelector("[data-ddesc]").innerHTML = `
-    <div class="vd-desc-text">${escHtml(v.desc || "")}</div>
-    ${v.note ? `<div class="vd-note">${escHtml(v.note)}</div>` : ""}
-    ${tags ? `<div class="vd-tags detail">${tags}</div>` : ""}
-    ${v.private ? `<div class="vd-private-hint">这条被角色标记为不想被别人看到的内容</div>` : ""}
-    ${comments ? `<div class="vd-comments-title">弹幕 / 评论</div><div class="vd-comments">${comments}</div>` : ""}`;
+  const desc = phoneText(v.desc || "");
+  const note = phoneText(v.note || "");
+  const blocks = [];
+  if(desc) blocks.push(`<div class="vd-desc-text">${escHtml(desc)}</div>`);
+  if(note) blocks.push(`<div class="vd-note">${escHtml(note)}</div>`);
+  if(tags) blocks.push(`<div class="vd-tags detail">${tags}</div>`);
+  if(v.private) blocks.push(`<div class="vd-private-hint">这条被角色标记为不想被别人看到的内容</div>`);
+  if(comments) blocks.push(`<div class="vd-comments"><div class="vd-comments-title">弹幕 / 评论</div>${comments}</div>`);
+  appHost.querySelector("[data-ddesc]").innerHTML = blocks.join("");
   appHost.querySelector("[data-detail]").classList.add("open");
 }
 
@@ -2922,11 +3009,18 @@ function renderChatList(chats, userMsgs){
   (chats || []).forEach(c => {
     const row = document.createElement("div");
     row.className = "ct-item";
+    const isGroup = !!c.group;
+    const members = Array.isArray(c.members) ? c.members.map(n => String((n && n.name) || n || "").trim()).filter(Boolean) : [];
+    const avHtml = isGroup
+      ? (members.length
+          ? `<div class="ct-avatar group">${members.slice(0,4).map(n => `<span>${escHtml(n.slice(0,1))}</span>`).join("")}</div>`
+          : `<div class="ct-avatar">群</div>`)
+      : `<div class="ct-avatar">${escHtml(String(c.name || "?").slice(0,1))}</div>`;
     row.innerHTML = `
-      <div class="ct-avatar">${escHtml(String(c.name || "?").slice(0,1))}</div>
+      ${avHtml}
       <div class="ct-main">
-        <div class="ct-name">${escHtml(c.name || "")}</div>
-        <div class="ct-last">${escHtml(c.lastMsg || "")}</div>
+        <div class="ct-name">${escHtml(c.name || "")}${isGroup ? `<span class="ct-group-tag">群${members.length ? " · " + members.length + "人" : ""}</span>` : ""}</div>
+        <div class="ct-last">${escHtml(phoneText(c.lastMsg || ""))}</div>
       </div>
       <div class="ct-side">
         <div class="ct-time">${escHtml(c.time || "")}</div>
@@ -2958,6 +3052,7 @@ async function refreshChat(){
 }
 function openChatDetail(c){
   const isUser = !!c.isUser;
+  const isGroup = !!c.group;
   currentConv = c;
   appHost.querySelector("[data-dtitle]").textContent = c.name || "";
   const more = appHost.querySelector("[data-dmore]");
@@ -2986,14 +3081,16 @@ function openChatDetail(c){
       if(m.ts) lastTs = m.ts;
       const isRight = m.side === "right";
       const wrap = document.createElement("div");
-      wrap.className = "ct-msg" + (isRight ? " right" : "");
+      wrap.className = "ct-msg" + (isRight ? " right" : "") + (isGroup ? " grouped" : "");
       /* right = 手机主人 char；left = 对方（user 或 NPC） */
       const showAv = isRight ? !!charAv : (isUser && !!c.avatar);
       const avUrl = isRight ? charAv : (isUser ? c.avatar : "");
       const avStyle = showAv ? ` style="background-image:url('${escHtml(String(avUrl).replace(/'/g, "%27"))}')"` : "";
-      /* 有头像时不渲染首字，避免字母压在图片上 */
-      const avTxt = showAv ? "" : (isRight ? charInit : escHtml(String(c.name || "?").slice(0,1)));
-      wrap.innerHTML = `<div class="ct-msg-avatar"${avStyle}>${avTxt}</div><div class="ct-msg-bubble">${escHtml(m.text || "")}</div>`;
+      /* 有头像时不渲染首字，避免字母压在图片上；群聊左侧用发言人名字首字当头像 */
+      const senderName = String(m.name || m.sender || "").trim();
+      const avTxt = showAv ? "" : (isRight ? charInit : escHtml((senderName || c.name || "?").slice(0, 1)));
+      const nameLine = (isGroup && !isRight && senderName) ? `<div class="ct-sender">${escHtml(senderName)}</div>` : "";
+      wrap.innerHTML = `<div class="ct-msg-avatar"${avStyle}>${avTxt}</div><div class="ct-msg-body">${nameLine}<div class="ct-msg-bubble">${escHtml(phoneText(m.text || ""))}</div></div>`;
       box.appendChild(wrap);
     });
   }
@@ -3258,13 +3355,45 @@ function phoneShareToast(msg){
   clearTimeout(t._tm);
   t._tm = setTimeout(()=>{ t.style.opacity = "0"; t.style.transform = "translateX(-50%) translateY(8px)"; }, 1800);
 }
+function phoneShareClip(s, n){
+  s = String(s == null ? "" : s).replace(/\s+/g, " ").trim();
+  return s.length > n ? s.slice(0, n) + "…" : s;
+}
+/* 浏览器记录单独排版：普通浏览和无痕浏览都要完整带上。
+   之前直接塞 JSON，普通记录太长把后面的无痕部分挤出 4000 字上限，角色就看不到无痕内容了。 */
+function formatBrowserShare(data){
+  const norm = (data && Array.isArray(data.normal)) ? data.normal : [];
+  const incog = (data && Array.isArray(data.incognito)) ? data.incognito : [];
+  const one = (it, i) => {
+    it = it || {};
+    const pts = Array.isArray(it.points) ? it.points.slice(0, 3).map(x => phoneShareClip(x, 28)).join("；") : "";
+    const sec0 = (Array.isArray(it.sections) && it.sections[0]) ? it.sections[0] : null;
+    const secTxt = sec0 ? ((sec0.heading ? phoneShareClip(sec0.heading, 20) + "：" : "") + phoneShareClip(sec0.text || "", 90)) : "";
+    return (i + 1) + ". " + phoneShareClip(it.title || it.keyword || "未命名网页", 50) +
+      "\n   站点：" + phoneShareClip(it.site || "", 18) + "｜搜索：" + phoneShareClip(it.keyword || "", 30) +
+      "\n   时间：" + phoneShareClip(it.time || "", 20) + "｜访问 " + (Number(it.visits) || 1) + " 次" +
+      (it.url ? ("\n   链接：" + phoneShareClip(it.url, 90)) : "") +
+      (it.intro ? ("\n   简介：" + phoneShareClip(it.intro, 120)) : "") +
+      (secTxt ? ("\n   内容：" + secTxt) : "") +
+      (pts ? ("\n   要点：" + pts) : "") +
+      (it.quote ? ("\n   原话：" + phoneShareClip(it.quote, 50)) : "");
+  };
+  return "【普通浏览记录】\n" + (norm.length ? norm.map(one).join("\n") : "（无）") +
+    "\n\n【无痕浏览记录 · 不想被别人看到】\n" + (incog.length ? incog.map(one).join("\n") : "（无）");
+}
 async function buildAppShareText(appId){
   const app = SETTINGS_APPS.find(a => a.id === appId);
   const label = app ? app.name : appId;
   let text = "";
-  try { const saved = await dataGet(`app_${currentChar.id}_${appId}`); text = saved ? JSON.stringify(saved.data, null, 1) : ""; } catch(e){}
+  try {
+    const saved = await dataGet(`app_${currentChar.id}_${appId}`);
+    if(saved && saved.data != null){
+      text = (appId === "browser") ? formatBrowserShare(saved.data) : JSON.stringify(saved.data, null, 1);
+    }
+  } catch(e){}
   if(!text || text === "null") text = "（这个 App 还没有生成内容）";
-  if(text.length > 4000) text = text.slice(0, 4000) + "\n…（已截断）";
+  const cap = appId === "browser" ? 6000 : 4000;
+  if(text.length > cap) text = text.slice(0, cap) + "\n…（已截断）";
   return { app: appId, name: label, text: text };
 }
 function openPhoneSharePicker(){
@@ -3276,7 +3405,7 @@ function openPhoneSharePicker(){
   ov.style.cssText = "position:fixed;inset:0;z-index:250;background:rgba(0,0,0,.4);display:flex;align-items:flex-end";
   ov.innerHTML = `<div style="width:100%;max-width:430px;margin:0 auto;background:#fff;border-radius:22px 22px 0 0;padding:18px 18px calc(18px + env(safe-area-inset-bottom,0px));max-height:82vh;display:flex;flex-direction:column">
     <div style="font-size:16px;font-weight:700;margin-bottom:4px">分享给 TA</div>
-    <div style="font-size:12px;color:#8e8e93;margin-bottom:10px">勾选要分享的 App，TA 会在聊天里收到并和你讨论</div>
+    <div style="font-size:12px;color:#8e8e93;margin-bottom:10px">勾选要分享的 App；TA 收到后不会自动回复，点「回复」或发一条消息才会读</div>
     <div style="overflow:auto;flex:1">${rows}</div>
     <div style="display:flex;gap:10px;margin-top:14px">
       <button id="psAll" style="flex:1;height:44px;border:0;border-radius:12px;background:#f2f2f7;font-size:15px;font-weight:600">全选 / 全不选</button>
@@ -3435,6 +3564,17 @@ async function renderChars(){
           history.replaceState(null, '', u.pathname + (qs ? ('?' + qs) : '') + u.hash);
         } catch (e) {}
       }
+    }else{
+      // 没有指定角色：如果上次在后台生成失败还没被读过，直接进入那个角色的手机把失败面板带出来。
+      let pending = null;
+      list.forEach((c, i) => {
+        const id = String(c.id || c.charId || c.uid || c.name || ('char_' + i));
+        const rec = loadPhoneGenFail(id);
+        if(rec && (!pending || Number(rec.at || 0) > pending.at)){
+          pending = { c, id, at: Number(rec.at || 0) };
+        }
+      });
+      if(pending) enterChar(pending.c, pending.id);
     }
   } catch (e) {}
 }
@@ -3490,11 +3630,27 @@ function enterChar(c, id){
   document.getElementById("checkInnerTitle").textContent = charName(c) + " 的手机";
   applyCharCustom(id);
   updateHomeWidgets();
+  // 主屏变为可见后再恢复用户保存的图标 / 小组件摆放。
+  try{ if(window.__phoneLayoutRefresh) requestAnimationFrame(() => window.__phoneLayoutRefresh()); }catch(e){}
+  // 上次在后台生成失败：进入这个角色的手机时把失败面板补回来，方便查看原因 / 继续生成。
+  try{
+    if(!genState.running){
+      const rec = loadPhoneGenFail(id);
+      if(rec && (rec.failed || []).length){
+        lastFailedIds = rec.failed.slice();
+        genState.log = Array.isArray(rec.log) ? rec.log.slice() : [];
+        const rb = document.getElementById("genFailRetry");
+        if(rb) rb.textContent = "继续生成";
+        showGenFail(rec.msg || "以下 App 未生成完整，可点「继续生成」只补失败的部分。");
+      }
+    }
+  }catch(e){}
 }
 function leaveChar(){
   innerTop.style.display = "none";
   phoneHome.style.display = "grid";
   selectPage.classList.remove("hidden");
+  try{ hideGenFail(); }catch(e){}
   /* 关闭当前 App，避免生成过程中返回角色列表后界面还残留上一个角色的内容。
      正在进行的生成使用角色快照继续写盘，不受这里影响。 */
   try{ closeApp(); }catch(e){}
@@ -3594,7 +3750,7 @@ const MULTI_SPEC = {
   browser:`"browser":{"normal":[{"keyword":"搜索词","url":"https://example.com/a","site":"网站名","title":"网页标题","time":"今天 22:06","visits":3,"intro":"页面导语 60-120 字","sections":[{"heading":"小标题","text":"正文 80-180 字","list":["可选要点"]}],"quote":"页面原话","points":["要点一","要点二","要点三"],"comments":[{"user":"网名","text":"评论"}],"related":[{"title":"相关推荐","site":"网站名","url":"https://example.com/rel"}]}],"incognito":[{"keyword":"无痕搜索词","url":"https://example.com/b","site":"网站名","title":"网页标题","time":"今天 23:41","visits":2,"intro":"页面导语","sections":[{"heading":"小标题","text":"正文","list":["要点"]}],"quote":"页面原话","points":["要点一","要点二","要点三"],"comments":[{"user":"网名","text":"评论"}],"related":[{"title":"相关推荐","site":"网站名","url":"https://example.com/rel"}]}]}`,
   game:`"game":[{"name":"中文游戏名","id":"4827 1936","winRate":68,"matches":327,"wins":222,"losses":105,"rank":"大师","rating":2847,"rankMark":"III","recent":[{"result":"W","mode":"排位赛","time":"今天 · 21:42","kda":"18 / 6 / 11"}],"habit":"隐藏游戏习惯","weekly":[35,55,43,75,100,67,46]}]`,
   private:`"private":[{"type":"PRIVATE / 01","time":"23:41","title":"标题","preview":"一句隐晦的概述","detail":"不为人说的具体内容","tags":["心事","私密"],"level":"轻"}]`,
-  chat:`"chat":{"userRemark":"角色给用户存的备注（2-8字）","chats":[{"name":"NPC名字","lastMsg":"最后一条","time":"昨天 22:13","unread":0,"messages":[{"side":"left","text":"消息"}]}]}`,
+  chat:`"chat":{"userRemark":"角色给用户存的备注（2-8字）","chats":[{"name":"会话名 / 群名","group":false,"members":["群聊时的成员名"],"lastMsg":"最后一条","time":"昨天 22:13","unread":0,"messages":[{"side":"left","name":"这条是谁发的（群聊时填）","text":"消息"}]}]}`,
   doubao:`"doubao":[{"role":"char","content":"角色问豆包的问题"},{"role":"ai","content":"豆包的回答"}]`,
   taobao:`"taobao":{"cart":[{"name":"商品名","shop":"店铺","spec":"规格","price":"129"}],"orders":[{"shop":"店铺","name":"商品名","spec":"规格","price":"129","status":"交易成功","time":"8月27日"}],"food":[{"restaurant":"店名","dish":"菜品","price":"26.8","status":"已送达","time":"今天 12:18"}]}`,
   store:`"store":{"cart":[{"name":"商品名","shop":"店铺","spec":"规格","price":"129"}],"orders":[{"shop":"店铺","name":"商品名","spec":"规格","price":"129","status":"交易成功","time":"8月27日"}],"food":[{"restaurant":"店名","dish":"菜品","price":"26.8","status":"已送达","time":"今天 12:18"}]}`,
@@ -3602,9 +3758,9 @@ const MULTI_SPEC = {
   wallet:`"wallet":{"balance":12800.5,"transactions":[{"type":"expense","desc":"星巴克","amount":32,"time":"2026-10-24T10:15:00"},{"type":"income","desc":"工资入账","amount":12800,"time":"2026-10-23T08:00:00"}]}`
 };
 const MULTI_COUNT = {
-  video:"video 5 条（至少 3 种分区，含 1-2 条私密/深夜收藏）", diary:"diary 3 篇", album:"album 8 条（至少 4 种相册类型，含 2 条私密相册）", mail:"mail 4 封",
+  video:"video 4 条（至少 3 种分区，含 1-2 条私密/深夜收藏）", diary:"diary 3 篇", album:"album 8 条（至少 4 种相册类型，含 2 条私密相册）", mail:"mail 4 封",
   memo:"memo 约 4 条（分 2-3 组，每组 1-2 条）", browser:"browser：normal 5-6 条、incognito 3-4 条（无痕可含私密内容）", game:"game 2 个",
-  private:"private 4 条不为人说的私事 / 心事（成年角色可含亲密关系，含蓄克制）", chat:"chat：userRemark 1 条（角色给用户的备注），chats 3 个会话（每个 5-8 条消息）",
+  private:"private 4 条不为人说的私事 / 心事（成年角色可含亲密关系，含蓄克制）", chat:"chat：userRemark 1 条（角色给用户的备注），chats 3 个会话（2 个一对一 + 1 个群聊；每个 4-5 轮、8-10 条消息；群聊左侧消息必须带 name）",
   doubao:"doubao 8-10 条消息（char 与 ai 交替，构成一次完整对话）",
   taobao:"taobao：cart 2-3 件、orders 2-3 单、food 2-3 单",
   store:"store：cart 2-3 件、orders 2-3 单、food 2-3 单",
@@ -3613,8 +3769,8 @@ const MULTI_COUNT = {
 };
 
 async function buildMultiPrompt(ids, char, ctx){
-  // 输出太长时模型会从后往前截断；把钱包 / 相册 / 备忘 / 浏览器这些容易被截掉的 App 排到最前面。
-  const PREFERRED_ORDER = ["wallet","album","browser","video","memo","mapcal","taobao","store","health","game","private","doubao","chat","mail","diary"];
+  // 输出太长时模型会从后往前截断；把钱包 / 相册 / 浏览器 / 聊天这些容易被截掉的 App 排到最前面。
+  const PREFERRED_ORDER = ["wallet","album","browser","memo","chat","video","mapcal","taobao","store","health","game","private","doubao","mail","diary"];
   const orderedIds = ids.slice().sort((a, b) => {
     const ia = PREFERRED_ORDER.indexOf(a), ib = PREFERRED_ORDER.indexOf(b);
     return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib);
@@ -3690,7 +3846,7 @@ ${phoneRecentBlock(recent, orderedIds)}
 - 同批内每条至少要有 2 个只属于这次的具体新细节（人名 / 店名 / 地名 / 数字 / 物件 / 原话）；不要只换同义词，也不要套同一句式的模板。
 - 不同 App 不要复写同一个事件、同一件物品、同一家店；diary / album / private / memo 必须分属不同生活切面，不要都围绕「想你 / 忙 / 累」打转。
 - chat 的 NPC、browser 的搜索词、video 的分区、private 的秘密类型、mail 的发件人每次都要换新，不要总用同一批身份、主题和场景。
-- video：5 条，至少 3 种分区；1-2 条可以是「私密收藏 / 深夜播放」的暧昧向、ASMR、身材/亲密关系内容（成年虚构角色，含蓄克制，不写露骨细节，不违法/血腥）；video.desc 40-80 字，写清视频讲了什么 + 角色的反应；comments 是 2-4 条真实感弹幕/评论。
+- video：4 条，至少 3 种分区；1-2 条可以是「私密收藏 / 深夜播放」的暧昧向、ASMR、身材/亲密关系内容（成年虚构角色，含蓄克制，不写露骨细节，不违法/血腥）；video.desc 30-60 字，写清视频讲了什么 + 角色的反应，不要写空行；comments 是 2-3 条真实感弹幕/评论。
 - diary.content：120-200 字，有具体场景、动作、心情变化，像真人日记；不要总写同一种日常。
 - mail.body：每封 3-4 段，每段 30-60 字，有称呼、正文、落款的感觉。
 - memo：总数约 4 条，分 2-3 组；每条 content 90-150 字，写清具体经过、心情或待办细节，不要写得太短。
@@ -3699,7 +3855,7 @@ ${phoneRecentBlock(recent, orderedIds)}
 ${ids.includes("private") ? "- private.preview：一句隐晦的概述；detail：不为人说的具体内容，写角色不愿公开的私事、难以启齿的心事或亲密关系里的秘密；不要总是「自卑 / 怕失去 / 暗恋」同一套，换具体事件、具体人、具体场景；可以涉及亲密关系，但保持含蓄克制，不写露骨细节。\n" : ""}
 - game.habit：40-80 字，写清玩法习惯与心态。
 - chat.userRemark：${char.name} 在手机里给用户存的备注（2-8 字），符合两人的关系与角色对用户的称呼习惯，不要用「小姑娘/小东西/丫头/女人」这类油腻称呼。
-- chat.chats：每个会话 6-10 条消息，有来有回，单条 5-25 字；不要生成和用户本人的会话；NPC 身份、名字、关系和聊天主题每次都要换新。
+- chat.chats：3 个会话 = 2 个一对一 + 1 个群聊；每个会话 4-5 轮、8-10 条消息，有来有回，单条 5-25 字；群聊的 group=true、members 写 3-5 个成员，左侧消息必须用 name 标明是谁说的；不要生成和用户本人的会话；NPC 身份、名字、关系和聊天主题每次都要换新。
 - album：8 条，至少 4 种相册类型，其中 2 条 private=true 放进私密相册（亲密关系、暧昧合照、暧昧聊天截图、身材记录、偷偷保存的人等；成年虚构角色，但含蓄克制，不写露骨细节）；album.text 12-40 字，写清光线、地点、物件、人物局部或当时发生的小事，不要抽象心情；detail 30-70 字，写清角色为什么留着这张；场景和物件每次都要换，不要 8 条都围绕「想你 / 忙 / 累」。
 - doubao：8-10 条，char 提问与 ai 回答交替；问题贴合角色当下生活与困惑，ai 回答口语化、可带分点，单条 20-60 字。
 - taobao / store：商品名、店铺、规格、价格要像真实电商；外卖写清店名、菜品、时间与配送状态；cart/orders/food 都要有数据，店名和商品不要每次都用同一批。
@@ -3891,6 +4047,7 @@ async function genMulti(api, char, ids, opts){
       else{
         data = data.filter(it => it && typeof it === "object" && Object.keys(it).length);
         if(!data.length){ valid = false; reason = "数组里没有有效内容"; }
+        else if(id === "video") data = data.slice(0, 4);
       }
     }
     if(id === "health" && (!data || typeof data !== "object" || !data.steps)){ valid = false; reason = "缺少 steps"; }
@@ -3915,6 +4072,37 @@ async function genMulti(api, char, ids, opts){
 const genState = { running:false, ids:[], failed:[], log:[], charId:"" };
 try{ if(window.NanoRefresh) window.NanoRefresh.define({ id:'phone', name:'手机', url:'phone.html', title:'手机' }); }catch(e){}
 let lastFailedIds = [];
+
+/* 生成失败信息落盘：退出查手机后失败通知点回来 / 下次进入该角色手机时，
+   失败面板和日志仍然在，可以直接看原因或继续补生成。 */
+const PHONE_FAIL_PREFIX = "phone_gen_fail_";
+function savePhoneGenFail(charId, rec){
+  if(charId == null || charId === "") return;
+  try{ localStorage.setItem(PHONE_FAIL_PREFIX + charId, JSON.stringify(rec)); }catch(e){}
+}
+function loadPhoneGenFail(charId){
+  if(charId == null || charId === "") return null;
+  try{ return JSON.parse(localStorage.getItem(PHONE_FAIL_PREFIX + charId) || "null"); }catch(e){ return null; }
+}
+function clearPhoneGenFail(charId){
+  if(charId == null || charId === "") return;
+  try{ localStorage.removeItem(PHONE_FAIL_PREFIX + charId); }catch(e){}
+}
+
+/* 跨 iframe 的生成锁：后台还在生成时，从通知/桌面再次打开查手机不会重复调用 API。 */
+const PHONE_GEN_LOCK = "phone_gen_lock";
+function phoneGenLockBusy(){
+  try{
+    const o = JSON.parse(localStorage.getItem(PHONE_GEN_LOCK) || "null");
+    return !!(o && o.at && Date.now() - Number(o.at) < 3 * 60 * 1000);
+  }catch(e){ return false; }
+}
+function setPhoneGenLock(charId){
+  try{ localStorage.setItem(PHONE_GEN_LOCK, JSON.stringify({ charId:String(charId || ""), at:Date.now() })); }catch(e){}
+}
+function clearPhoneGenLock(){
+  try{ localStorage.removeItem(PHONE_GEN_LOCK); }catch(e){}
+}
 
 /* 直接单独打开 phone.html 时，生成过程中刷新/关闭页面会中断请求；
    在支持 beforeunload 的环境里给出提示。iframe 内退出由主框架保留后台帧。 */
@@ -4050,6 +4238,11 @@ function phoneGenCharMatches(c){
 
 async function startGeneration(ids){
   if(genState.running) return;
+  if(phoneGenLockBusy()){
+    showGenToast("正在生成中，请稍候…");
+    setTimeout(hideGenToast, 1600);
+    return;
+  }
   ids = (ids || []).filter(Boolean);
   if(!ids.length) return;
   /* 关键：生成一开始就锁定角色快照。
@@ -4059,6 +4252,9 @@ async function startGeneration(ids){
   const genChar = Object.assign({}, currentChar);
   genState.running = true;
   genState.charId = genChar.id;
+  setPhoneGenLock(genChar.id);
+  // 慢模型可能生成好几分钟：定时续期，避免锁过期后另一个页面又开一次请求。
+  const lockTimer = setInterval(() => setPhoneGenLock(genChar.id), 30000);
   /* refresh-notify.js 在 phone.js 之后加载，这里再 define 一次，
      保证生成期间退出页面时主框架能把 iframe 保留在后台继续生成。 */
   try{
@@ -4070,7 +4266,9 @@ async function startGeneration(ids){
   const api = await getApiInfo();
   if(!api){
     genState.running = false;
-    try{ if(window.NanoRefresh) NanoRefresh.fail("未读取到主 API 配置", { key:'gen' }); }catch(e){}
+    clearInterval(lockTimer);
+    clearPhoneGenLock();
+    try{ if(window.NanoRefresh) NanoRefresh.fail("未读取到主 API 配置", { key:'gen', url:'phone:' + genChar.id }); }catch(e){}
     return;
   }
   genState.ids = ids.slice();
@@ -4138,6 +4336,8 @@ async function startGeneration(ids){
     fatalMsgs.push('生成异常：' + ((e && e.message) || e));
   } finally {
     genState.running = false;
+    clearInterval(lockTimer);
+    clearPhoneGenLock();
     hideGenToast();
     if(phoneGenCharMatches(genChar)){
       try { await reRenderCurrentApp(); } catch (e) {}
@@ -4149,7 +4349,8 @@ async function startGeneration(ids){
   const retryBtn = document.getElementById("genFailRetry");
   if(!failed.length){
     if(retryBtn) retryBtn.textContent = "重新生成";
-    try{ if(window.NanoRefresh) NanoRefresh.success('已生成 ' + Object.keys(okAll).length + ' 个 App 的内容', { key:'gen' }); }catch(e){}
+    clearPhoneGenFail(genChar.id);
+    try{ if(window.NanoRefresh) NanoRefresh.success('已生成 ' + Object.keys(okAll).length + ' 个 App 的内容', { key:'gen', url:'phone:' + genChar.id, title:(genChar.name || 'TA') + ' 的手机' }); }catch(e){}
   }
   if(failed.length){
     lastFailedIds = failed;
@@ -4163,7 +4364,16 @@ async function startGeneration(ids){
       `以下 App 未生成完整：${names.join("、")}\n` +
       `可点「${done ? "继续生成" : "重新生成"}」只补失败的部分。`;
     showGenFail(msg);
-    try{ if(window.NanoRefresh) NanoRefresh.fail('以下 App 生成失败：' + names.join('、'), { key:'gen' }); }catch(e){}
+    // 落盘：退出查手机后点失败通知回来，或下次进入这个角色的手机，失败面板还在。
+    savePhoneGenFail(genChar.id, {
+      charId: genChar.id,
+      charName: genChar.name || "",
+      msg: msg,
+      failed: failed.slice(),
+      log: genState.log.slice(),
+      at: Date.now()
+    });
+    try{ if(window.NanoRefresh) NanoRefresh.fail('以下 App 生成失败：' + names.join('、'), { key:'gen', url:'phone:' + genChar.id, title:(genChar.name || 'TA') + ' 的手机' }); }catch(e){}
   }
 }
 
@@ -4177,9 +4387,15 @@ document.getElementById("genFailRetry").onclick = () => {
   if(lastFailedIds.length) startGeneration(lastFailedIds);
 };
 document.getElementById("genFailLog").onclick = () => showLogSheet(genState.log, lastFailedIds);
-document.getElementById("genFailClose").onclick = hideGenFail;
+document.getElementById("genFailClose").onclick = () => {
+  hideGenFail();
+  if(currentChar) clearPhoneGenFail(currentChar.id);
+};
 document.getElementById("genFailSheet").addEventListener("click", e => {
-  if(e.target === document.getElementById("genFailSheet")) hideGenFail();
+  if(e.target === document.getElementById("genFailSheet")){
+    hideGenFail();
+    if(currentChar) clearPhoneGenFail(currentChar.id);
+  }
 });
 
 function showLogSheet(log, failed){

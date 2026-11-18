@@ -2,13 +2,13 @@
 <html lang="zh">
 <head>
     <meta charset="UTF-8">
-    <script src="js/nano-runtime.js?v=20261115a"></script>
+    <script src="js/nano-runtime.js?v=20261118j"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <script>
     // 全站构建号：只作为版本标记记录，不再据此清空缓存或强制整页 reload。
     // 更新走增量：SW 保留旧缓存，页面先用缓存秒开、后台静默换成新文件；
     // 只有真正改过的 JS/CSS 在改版本号（?v=）后才会重新下载。
-    window.__NANO_BUILD__ = 'nano-2026-11-16-1';
+    window.__NANO_BUILD__ = 'nano-2026-11-18-2';
     (function () {
         try {
             var KEY = 'nano_build';
@@ -28,6 +28,7 @@
     <link rel="apple-touch-icon" href="icons/icon-192.png">
     <link rel="apple-touch-icon" sizes="512x512" href="icons/icon-512.png">
     <link rel="manifest" href="manifest.json">
+    <link rel="preload" href="fonts/MarckScript-Regular.woff2" as="font" type="font/woff2" crossorigin>
     <title>Nano</title>
     <!-- 只保留首屏真正会用到的外部连接；其余等打开对应页面时再建立，避免抢占首页带宽。 -->
     <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
@@ -39,6 +40,64 @@
     <link rel="stylesheet" href="common.css">
     <link rel="stylesheet" href="css/adult-gate.css?v=20261025a">
     <link rel="stylesheet" href="css/account.css?v=20261025a">
+    <style>
+        /* ===== 登录弹窗 · 黑白灰 ===== */
+        .nacc-overlay {
+            background: rgba(0, 0, 0, .38);
+            -webkit-backdrop-filter: blur(14px) saturate(60%);
+            backdrop-filter: blur(14px) saturate(60%);
+            color: #141518;
+        }
+        .nacc-card {
+            background: #fff;
+            border: 1px solid rgba(0, 0, 0, .08);
+            border-radius: 22px;
+            box-shadow: 0 26px 80px rgba(0, 0, 0, .16);
+        }
+        .nacc-head {
+            background: #fff;
+            border-bottom: 1px solid rgba(0, 0, 0, .06);
+        }
+        .nacc-title { color: #0B0C0E; font-weight: 650; letter-spacing: -.01em; }
+        .nacc-sub { color: #7C7F86; }
+        .nacc-close { background: #F3F3F4; color: #55585E; }
+        .nacc-tabs { background: #F4F4F5; border-radius: 12px; }
+        .nacc-tab { color: #8A8D93; font-weight: 600; }
+        .nacc-tab.active { background: #0B0C0E; color: #fff; box-shadow: none; }
+        .nacc-field-label { color: #55585E; font-weight: 600; }
+        .nacc-input {
+            border-color: #E3E3E6;
+            background: #fff;
+            color: #141518;
+        }
+        .nacc-input:focus {
+            border-color: #0B0C0E;
+            box-shadow: 0 0 0 3px rgba(0, 0, 0, .06);
+        }
+        .nacc-input::placeholder { color: #B1B3B8; }
+        .nacc-hint { color: #8B8E94; }
+        .nacc-error {
+            background: #F6F6F7;
+            border: 1px solid #DEDEE1;
+            color: #1B1D21;
+        }
+        .nacc-btn-primary {
+            background: #0B0C0E;
+            color: #fff;
+            box-shadow: none;
+        }
+        .nacc-btn-soft, .nacc-btn-ghost {
+            background: #F3F3F4;
+            color: #3A3D43;
+        }
+        .nacc-btn-danger {
+            background: #fff;
+            color: #141518;
+            border: 1px solid #DEDEE1;
+        }
+        .nacc-chip { border-color: #E1E2E5; color: #4A4D53; }
+        .nacc-chip.active { background: #0B0C0E; border-color: #0B0C0E; color: #fff; }
+    </style>
     <style>
         :root {
             --safe-inset-top: env(safe-area-inset-top, 0px);
@@ -862,10 +921,26 @@
     </style>
 
     <!-- ============================================================
-         开场动画（nano-splash，已内联）
+         开场动画（nano-splash · Nano Drizzle）
+         白纸 / 黑墨 / 钴蓝：细雨、湖面涟漪、雁影与艺术字标
          ============================================================ -->
     <style>
         /* ===== 开场动画样式 ===== */
+        @font-face {
+            font-family: 'Nano Script';
+            src: url('fonts/MarckScript-Regular.woff2') format('woff2');
+            font-weight: 400; font-style: normal; font-display: swap;
+        }
+        @font-face {
+            font-family: 'Nano Serif';
+            src: url('fonts/InstrumentSerif-Regular.woff2') format('woff2');
+            font-weight: 400; font-style: normal; font-display: swap;
+        }
+        @font-face {
+            font-family: 'Nano Serif';
+            src: url('fonts/InstrumentSerif-Italic.woff2') format('woff2');
+            font-weight: 400; font-style: italic; font-display: swap;
+        }
         #nano-splash {
             position: fixed; top: 0; left: 50%;
             width: 100%; max-width: 480px;
@@ -873,109 +948,155 @@
             transform: translateX(-50%);
             z-index: 2147483000;
             box-sizing: border-box;
-            background: radial-gradient(ellipse at 50% 25%, #fffdfe 0, #fff6fa 45%, #ffeef5 100%);
-            overflow: hidden; display: flex; align-items: center; justify-content: center;
-            padding: env(safe-area-inset-top, 0) 0 env(safe-area-inset-bottom, 0);
-            font-family: 'Arial Rounded MT Bold', 'Hiragino Maru Gothic ProN', 'PingFang SC', system-ui, sans-serif;
+            background: #ffffff;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", "PingFang SC", sans-serif;
             touch-action: manipulation; -webkit-tap-highlight-color: transparent;
-            transition: opacity .22s ease;
-            --ns-p1: #ffe6ef; --ns-p2: #ffd5e5; --ns-p3: #f9c6da; --ns-txt: #eba4c0;
+            transition: opacity .34s ease;
+            --ns-ink: #0A0A0C;
+            --ns-ink-2: #0A0A0C;
+            --ns-cobalt: #0A0A0C;
+            --ns-mist: #A8ADB5;
         }
         #nano-splash.ns-out { opacity: 0; pointer-events: none; }
         #nano-splash * { box-sizing: border-box; }
 
-        #nano-splash .ns-blob { position: absolute; border-radius: 50%; filter: blur(40px); opacity: .7; }
-        #nano-splash .ns-cloud {
-            position: absolute; background: #fff; border-radius: 99px;
-            box-shadow: 0 10px 24px rgba(247,190,214,.35);
-            animation: nsDrift 12s ease-in-out infinite alternate;
+        #nano-splash .ns-canvas {
+            position: absolute; inset: 0; width: 100%; height: 100%;
+            display: block; pointer-events: none;
         }
-        #nano-splash .ns-cloud::before, #nano-splash .ns-cloud::after {
-            content: ""; position: absolute; background: #fff; border-radius: 50%;
-        }
-        #nano-splash .ns-cloud::before { width: 44%; height: 160%; left: 14%; top: -72%; }
-        #nano-splash .ns-cloud::after { width: 36%; height: 125%; right: 16%; top: -46%; }
-        #nano-splash .ns-deco {
-            position: absolute; animation: nsFloat 5.5s ease-in-out infinite;
-            filter: drop-shadow(0 6px 8px rgba(247,190,214,.4));
-        }
-        #nano-splash .ns-dot {
-            position: absolute; border-radius: 50%; background: #fff;
-            box-shadow: 0 0 10px #fff; animation: nsTw 3s ease-in-out infinite;
+        #nano-splash #nsLake { z-index: 1; }
+        #nano-splash #nsRain { z-index: 4; }
+
+        /* 极细宣纸颗粒 */
+        #nano-splash .ns-grain {
+            position: absolute; inset: 0; z-index: 5; pointer-events: none; opacity: .028;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");
         }
 
-        #nano-splash .ns-stage { position: relative; width: min(440px, 90%); text-align: center; z-index: 2; }
-        #nano-splash .ns-title {
-            display: flex; justify-content: center; align-items: center;
-            font-size: min(30vw, 140px); font-weight: 700; line-height: 1;
-            color: var(--ns-p1); letter-spacing: -.02em;
-            animation: nsEnter 1s cubic-bezier(.2,1.4,.4,1) both;
-        }
-        #nano-splash .ns-title span {
-            display: inline-block; -webkit-text-stroke: 11px #fff; paint-order: stroke fill;
-            filter: drop-shadow(0 7px 0 var(--ns-p3)) drop-shadow(0 12px 14px rgba(240,170,200,.35));
-            animation: nsPop 2.6s ease-in-out infinite;
-        }
-        #nano-splash .ns-title span:nth-child(2) { animation-delay: .14s; }
-        #nano-splash .ns-title span:nth-child(3) { animation-delay: .28s; }
-        #nano-splash .ns-title svg {
-            width: .8em; height: .8em; margin-left: .05em;
-            filter: drop-shadow(0 7px 0 var(--ns-p3)) drop-shadow(0 12px 14px rgba(240,170,200,.35));
-            animation: nsPop 2.6s .42s ease-in-out infinite;
+        /* 底部留白：保证加载条不被涟漪压住 */
+        #nano-splash::after {
+            content: ""; position: absolute; left: 0; right: 0; bottom: 0;
+            height: 148px; z-index: 6; pointer-events: none;
+            background: linear-gradient(to top, #fff 0%, #fff 34%, rgba(255, 255, 255, .92) 58%, rgba(255, 255, 255, 0) 100%);
         }
 
-        #nano-splash .ns-bar { position: relative; margin: 42px 4% 0; height: 34px; }
-        #nano-splash .ns-track {
-            position: absolute; inset: 0; border-radius: 99px; background: #fff;
-            box-shadow: inset 0 3px 8px rgba(240,170,200,.28), 0 6px 18px rgba(247,190,214,.3);
+        /* 四角裁切标记 */
+        #nano-splash .ns-frame { position: absolute; inset: 26px 24px; z-index: 7; pointer-events: none; }
+        #nano-splash .ns-frame i {
+            position: absolute; width: 13px; height: 13px;
+            border: 0 solid rgba(0, 0, 0, .16);
+        }
+        #nano-splash .ns-frame i:nth-child(1) { left: 0; top: 0; border-left-width: 1px; border-top-width: 1px; }
+        #nano-splash .ns-frame i:nth-child(2) { right: 0; top: 0; border-right-width: 1px; border-top-width: 1px; }
+        #nano-splash .ns-frame i:nth-child(3) { left: 0; bottom: 0; border-left-width: 1px; border-bottom-width: 1px; }
+        #nano-splash .ns-frame i:nth-child(4) { right: 0; bottom: 0; border-right-width: 1px; border-bottom-width: 1px; }
+
+        /* ===== 艺术字标 ===== */
+        #nano-splash .ns-brand {
+            position: absolute; left: 0; right: 0; top: 36%;
+            z-index: 2; transform: translateY(-50%);
+            padding: 0 16px;
+            text-align: center; pointer-events: none;
+            animation: nsBreath 9s ease-in-out 3.2s infinite;
+        }
+        #nano-splash .ns-word,
+        #nano-splash .ns-word-text {
+            font-family: "Nano Script", "Marck Script", "Nano Serif", "Instrument Serif", "Didot", cursive !important;
+        }
+        #nano-splash .ns-word {
+            display: inline-flex; justify-content: center; align-items: center;
+            max-width: 100%; white-space: nowrap;
+            font-weight: 400; font-size: clamp(76px, 30vw, 158px);
+            line-height: 1.0; letter-spacing: 0;
+        }
+        #nano-splash .ns-word-text {
+            display: inline-block; position: relative;
+            color: #23262B;
+            background-image: linear-gradient(178deg, #14161A 0%, #2B2F36 58%, #5B6068 100%);
+            -webkit-background-clip: text; background-clip: text;
+            -webkit-text-fill-color: transparent;
+            filter: drop-shadow(0 1px 0 rgba(255, 255, 255, .7)) drop-shadow(0 16px 26px rgba(0, 0, 0, .1));
+            opacity: 0; transform: translateY(.1em) scale(.985);
+            clip-path: inset(-40% 100% -40% 0);
+            transition:
+                opacity .7s ease .04s,
+                transform .95s cubic-bezier(.16, 1, .3, 1) .04s,
+                filter .75s ease .04s,
+                clip-path 1s cubic-bezier(.22, 1, .36, 1) .04s;
+        }
+        #nano-splash.ns-reveal .ns-word-text {
+            opacity: 1; transform: none; filter: blur(0);
+            clip-path: inset(-40% -14% -40% 0);
+        }
+        #nano-splash .ns-sub,
+        #nano-splash .ns-meta {
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "PingFang SC", sans-serif !important;
+        }
+
+        #nano-splash .ns-sub {
+            margin-top: 16px;
+            display: flex; align-items: center; justify-content: center; gap: 12px;
+            font-size: 9px; font-weight: 500; letter-spacing: .52em; text-indent: .52em;
+            text-transform: uppercase; color: #6F747C;
+            opacity: 0; transform: translateY(5px);
+            transition: opacity .6s ease .34s, transform .6s ease .34s;
+        }
+        #nano-splash .ns-sub::before,
+        #nano-splash .ns-sub::after { content: ""; width: 26px; height: 1px; }
+        #nano-splash .ns-sub::before { background: linear-gradient(90deg, transparent, rgba(0, 0, 0, .32)); }
+        #nano-splash .ns-sub::after { background: linear-gradient(90deg, rgba(0, 0, 0, .32), transparent); }
+        #nano-splash.ns-reveal .ns-sub { opacity: 1; transform: none; }
+
+        /* ===== 底部细线进度 ===== */
+        #nano-splash .ns-meter {
+            position: absolute; left: 50%; bottom: calc(38px + env(safe-area-inset-bottom, 0px));
+            width: min(62%, 250px); transform: translateX(-50%);
+            z-index: 8; pointer-events: none;
+        }
+        #nano-splash .ns-rail {
+            position: relative; height: 1px;
+            background: rgba(0, 0, 0, .14);
         }
         #nano-splash .ns-fill {
-            position: absolute; left: 3px; top: 3px; bottom: 3px; width: 0;
-            border-radius: 99px; background: linear-gradient(180deg, #ffeaf2, #ffd3e4);
-            box-shadow: 0 3px 0 #f7bdd3; overflow: hidden;
-        }
-        #nano-splash .ns-fill::before {
-            content: ""; position: absolute; inset: 0;
-            background: repeating-linear-gradient(-45deg, rgba(255,255,255,.55) 0 9px, transparent 9px 18px);
-            background-size: 25px 25px; animation: nsStripe 1s linear infinite;
-        }
-        #nano-splash .ns-fill::after {
-            content: ""; position: absolute; left: 10px; right: 14px; top: 4px; height: 6px;
-            border-radius: 9px; background: rgba(255,255,255,.8);
+            position: absolute; left: 0; top: 0; height: 1px; width: 0;
+            background: linear-gradient(90deg, rgba(0, 0, 0, .18), #07080B);
+            transition: width .16s linear;
         }
         #nano-splash .ns-head {
-            position: absolute; top: 50%; left: 0; width: 34px; height: 34px; margin: -17px 0 0 -17px;
-            filter: drop-shadow(0 3px 0 #f7bdd3) drop-shadow(0 4px 6px rgba(240,170,200,.45));
+            position: absolute; top: 50%; left: 0;
+            width: 5px; height: 5px; margin: -2.5px 0 0 -2.5px;
+            border-radius: 50%; background: #07080B;
+            box-shadow: 0 0 0 3px rgba(0, 0, 0, .08);
+            transition: left .16s linear;
         }
-        #nano-splash .ns-head svg { width: 100%; height: 100%; overflow: visible; display: block; }
-        #nano-splash #nsBall { transform-box: view-box; transform-origin: 17px 17px; }
-        #nano-splash .ns-pct {
-            margin-top: 34px; color: var(--ns-txt); font-weight: 600;
-            font-size: 17px; letter-spacing: .2em;
+        #nano-splash.ns-ready .ns-head {
+            box-shadow: 0 0 0 4px rgba(0, 0, 0, .12), 0 0 14px rgba(0, 0, 0, .4);
         }
-        #nano-splash .ns-spark {
-            position: absolute; pointer-events: none; font-size: 18px;
-            animation: nsSp 1s ease-out forwards;
+        #nano-splash .ns-meta {
+            margin-top: 12px; display: flex; justify-content: space-between;
+            font-size: 8px; font-weight: 500; letter-spacing: .32em;
+            text-transform: uppercase; color: #9AA0A8;
         }
 
-        @keyframes nsDrift { to { transform: translateX(46px); } }
-        @keyframes nsFloat { 50% { transform: translateY(-14px) rotate(7deg); } }
-        @keyframes nsTw { 50% { opacity: .25; transform: scale(.6); } }
-        @keyframes nsEnter { from { transform: scale(.6) translateY(30px); opacity: 0; } }
-        @keyframes nsPop {
-            0%, 60%, 100% { transform: translateY(0) scale(1); }
-            22% { transform: translateY(-.1em) scale(1.05,.96); }
-            38% { transform: translateY(0) scale(.97,1.04); }
+        @media (max-height: 700px) {
+            #nano-splash .ns-brand { top: 34%; }
+            #nano-splash .ns-word { font-size: clamp(68px, 26vw, 132px); }
+            #nano-splash .ns-meter { bottom: calc(28px + env(safe-area-inset-bottom, 0px)); }
         }
-        @keyframes nsStripe { to { background-position: 25px 0; } }
-        @keyframes nsSp {
-            to {
-                transform: translate(var(--ns-dx, -26px), var(--ns-dy, -36px)) scale(.3) rotate(90deg);
-                opacity: 0;
-            }
+        @media (max-height: 560px) {
+            #nano-splash .ns-brand { top: 32%; }
+            #nano-splash .ns-word { font-size: clamp(56px, 22vw, 98px); }
+        }
+
+        @keyframes nsBreath {
+            0%, 100% { translate: 0 0; }
+            50% { translate: 0 -5px; }
         }
         @media (prefers-reduced-motion: reduce) {
-            #nano-splash * { animation-duration: 0s !important; }
+            #nano-splash .ns-brand { animation: none; }
+            #nano-splash .ns-word-text,
+            #nano-splash .ns-sub { transition-duration: .01s !important; transition-delay: 0s !important; }
         }
 
         /* ===== 纳米主界面外壳 ===== */
@@ -1023,184 +1144,565 @@
   </div>
 </div>
 <div class="notch-tap" id="notchTap" aria-hidden="true"></div>
-<!-- ============ 开场动画（nano-splash） ============ -->
+<!-- ============ 开场动画（nano-splash · Drizzle） ============ -->
 <div id="nano-splash" aria-hidden="true">
-  <div class="ns-blob" style="width:300px;height:300px;background:#ffe0ec;left:-80px;top:-60px"></div>
-  <div class="ns-blob" style="width:340px;height:340px;background:#fff0d9;right:-100px;bottom:-80px;opacity:.55"></div>
-  <div class="ns-blob" style="width:260px;height:260px;background:#e8f0ff;right:6%;top:-70px;opacity:.5"></div>
+  <canvas id="nsLake" class="ns-canvas"></canvas>
+  <canvas id="nsRain" class="ns-canvas"></canvas>
 
-  <div class="ns-cloud" style="width:180px;height:50px;left:5%;top:13%"></div>
-  <div class="ns-cloud" style="width:120px;height:36px;right:7%;top:24%;animation-delay:-4s"></div>
-  <div class="ns-cloud" style="width:230px;height:58px;right:10%;bottom:9%;animation-delay:-7s"></div>
-  <div class="ns-cloud" style="width:140px;height:40px;left:9%;bottom:15%;animation-delay:-2s"></div>
+  <div class="ns-frame" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
 
-  <!-- lollipop -->
-  <svg class="ns-deco" style="left:7%;top:38%" width="62" height="114" viewBox="0 0 60 110"><rect x="27" y="48" width="6" height="58" rx="3" fill="#fff" stroke="#ffe0ec" stroke-width="2"/><circle cx="30" cy="30" r="26" fill="#ffd9e8"/><path d="M30 10a20 20 0 1 1-14 6M30 19a11 11 0 1 1-8 3" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round"/><ellipse cx="20" cy="18" rx="5" ry="3" transform="rotate(-35 20 18)" fill="#fff" opacity=".8"/></svg>
-  <!-- wrapped candy -->
-  <svg class="ns-deco" style="right:6%;top:46%;animation-delay:-2s" width="88" height="50" viewBox="0 0 84 48"><path d="M24 24L2 8v32zM60 24l22-16v32z" fill="#fff0f5" stroke="#ffe0ec" stroke-width="2" stroke-linejoin="round"/><ellipse cx="42" cy="24" rx="24" ry="18" fill="#ffd3e4"/><path d="M34 8q-6 16 0 32M46 6q-6 18 0 36" stroke="#fff" stroke-width="4" fill="none" stroke-linecap="round" opacity=".8"/></svg>
-  <!-- cotton candy -->
-  <svg class="ns-deco" style="left:15%;top:70%;animation-delay:-3s" width="72" height="104" viewBox="0 0 70 100"><rect x="32" y="52" width="6" height="44" rx="3" fill="#fff" stroke="#ffe0ec" stroke-width="2"/><g fill="#ffe4ee"><circle cx="35" cy="32" r="22"/><circle cx="18" cy="40" r="15"/><circle cx="52" cy="40" r="15"/><circle cx="35" cy="48" r="14"/></g><path d="M22 30q10-10 22 0M26 42q10-8 20 0" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round"/></svg>
-  <!-- mini donut -->
-  <svg class="ns-deco" style="right:16%;top:7%;animation-delay:-1s" width="58" height="58" viewBox="0 0 100 100"><circle cx="50" cy="52" r="40" fill="#fbe6cd"/><circle cx="50" cy="48" r="37" fill="#ffd9e8"/><circle cx="50" cy="50" r="12" fill="#fff6fa"/><path d="M24 36q8-14 24-14" stroke="#fff" stroke-width="6" stroke-linecap="round" fill="none" opacity=".8"/></svg>
-  <!-- cloud sweet -->
-  <svg class="ns-deco" style="left:32%;top:7%;animation-delay:-4s" width="64" height="44" viewBox="0 0 64 44"><g fill="#fff"><circle cx="20" cy="26" r="14"/><circle cx="34" cy="18" r="16"/><circle cx="48" cy="27" r="12"/><rect x="8" y="26" width="48" height="13" rx="6"/></g></svg>
-  <svg class="ns-deco" style="right:32%;bottom:6%;animation-delay:-1.5s" width="26" height="26" viewBox="0 0 30 30"><path d="M15 2l3.5 8.5L27 12l-6.5 5.5L22 27l-7-4.5L8 27l1.5-9.5L3 12l8.5-1.5z" fill="#fff0c9"/></svg>
-  <div class="ns-dot" style="width:8px;height:8px;left:24%;top:30%"></div><div class="ns-dot" style="width:6px;height:6px;right:24%;top:36%;animation-delay:-1s"></div><div class="ns-dot" style="width:10px;height:10px;left:40%;bottom:10%;animation-delay:-2s"></div><div class="ns-dot" style="width:7px;height:7px;right:40%;top:10%;animation-delay:-.5s"></div>
-
-  <div class="ns-stage">
-    <div class="ns-title">
-      <span>N</span><span>a</span><span>n</span>
-      <svg viewBox="0 0 100 100">
-        <circle cx="50" cy="50" r="48" fill="#fff"/>
-        <circle cx="50" cy="52" r="41" fill="#f9dfc1"/>
-        <circle cx="50" cy="48" r="40" fill="#ffd9e8"/>
-        <circle cx="50" cy="48" r="14" fill="#fff"/>
-        <circle cx="50" cy="48" r="11" fill="#fff6fa"/>
-        <path d="M22 36q8-16 26-17" stroke="#fff" stroke-width="5" stroke-linecap="round" fill="none" opacity=".85"/>
-        <g stroke-linecap="round" stroke-width="5">
-          <path d="M27 31l5-3" stroke="#fff"/><path d="M71 27l4 5" stroke="#ffe3a8"/><path d="M82 52l-6 2" stroke="#fff"/>
-          <path d="M71 72l-4-4" stroke="#c4e2ff"/><path d="M30 72l5-3" stroke="#ffe3a8"/><path d="M17 52l6-1" stroke="#d8ccff"/>
-          <path d="M50 17l1 6" stroke="#c4f0da"/><path d="M52 80l1-6" stroke="#fff"/>
-        </g>
-      </svg>
-    </div>
-
-    <div class="ns-bar">
-      <div class="ns-track"></div>
-      <div class="ns-fill" id="nsFill"></div>
-      <div class="ns-head" id="nsHead">
-        <svg viewBox="0 0 34 34">
-          <circle cx="17" cy="17" r="17" fill="#fff"/>
-          <circle cx="17" cy="17" r="15.4" fill="#ffdcea"/>
-          <g id="nsBall"><path transform="translate(17 17) scale(.6) translate(-30 -30)" d="M30 30m0-3a3 3 0 1 1-3 3 7 7 0 1 1 7 7 12 12 0 1 1-12-12 17 17 0 1 1 17 17" fill="none" stroke="#fff" stroke-width="3.8" stroke-linecap="round"/>
-            <path transform="translate(17 17) scale(.6) translate(-30 -30)" d="M30 30m0-3a3 3 0 1 1-3 3 7 7 0 1 1 7 7 12 12 0 1 1-12-12 17 17 0 1 1 17 17" fill="none" stroke="#ffbcd5" stroke-width="1" stroke-linecap="round" stroke-dasharray="0 6" opacity=".0"/></g>
-          <circle cx="17" cy="17" r="15.4" fill="none" stroke="#ffc3da" stroke-width=".8"/>
-          <ellipse cx="11" cy="10" rx="3.8" ry="1.9" transform="rotate(-40 11 10)" fill="#fff" opacity=".95"/>
-          <circle cx="21.5" cy="25" r="1" fill="#fff" opacity=".9"/>
-        </svg>
-      </div>
-    </div>
-    <div class="ns-pct" id="nsPct">LOADING 0%</div>
+  <div class="ns-brand">
+    <div class="ns-word" aria-label="Nano"><span class="ns-word-text">Nano</span></div>
+    <div class="ns-sub">drizzle</div>
   </div>
+
+  <div class="ns-meter">
+    <div class="ns-rail">
+      <div class="ns-fill" id="nsFill"></div>
+      <div class="ns-head" id="nsHead"></div>
+    </div>
+    <div class="ns-meta"><span id="nsMetaLabel">Loading</span><span id="nsPct">0%</span></div>
+  </div>
+
+  <div class="ns-grain" aria-hidden="true"></div>
 </div>
 <script>
 (function () {
   var root = document.getElementById('nano-splash');
   if (!root) return;
+
+  var lake = document.getElementById('nsLake');
+  var rainLayer = document.getElementById('nsRain');
   var fill = document.getElementById('nsFill');
   var head = document.getElementById('nsHead');
-  var ball = document.getElementById('nsBall');
-  var pct  = document.getElementById('nsPct');
-  var bar  = fill ? fill.parentNode : null;
+  var pct = document.getElementById('nsPct');
+  var metaLabel = document.getElementById('nsMetaLabel');
 
-  if (!fill || !head || !ball || !pct || !bar) {
+  if (!lake || !rainLayer || !fill || !head || !pct) {
     if (root.parentNode) root.parentNode.removeChild(root);
     document.dispatchEvent(new Event('nano-splash-done'));
     return;
   }
 
-  var done = false, raf = 0, lastSp = 0, burst = false;
-  var homeReady = false, readyAt = 0;
+  var reduceMotion = false;
+  try { reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
+
+  /* ==================================================================
+     Scene · ink mountains, drizzle, continuous lake ripples
+     ================================================================== */
+  var lctx = lake.getContext('2d');
+  var rctx = rainLayer.getContext('2d');
+
+  var W = 0, H = 0, dpr = 1;
+  var cam = { fov: 660, pitch: -0.12, height: 108, z: -460 };
+  var ANCHOR = 0.64;
+
+  var rain = [], ripples = [], splashes = [], waves = [];
+  var time = 0, lastTs = 0, raf = 0, running = true;
+  var nextAmbient = 1.2;
+
+  function project(x, y, z) {
+    var relZ = z - cam.z;
+    var relY = y - cam.height;
+    var cp = Math.cos(cam.pitch);
+    var sp = Math.sin(cam.pitch);
+    var rotY = relY * cp - relZ * sp;
+    var rotZ = relY * sp + relZ * cp;
+    var safe = Math.max(rotZ, 60);
+    var s = cam.fov / safe;
+    return { x: W * 0.5 + x * s, y: H * ANCHOR - rotY * s, scale: s };
+  }
+
+  function screenToLake(sx, sy) {
+    var dx = sx - W * 0.5;
+    var dy = H * ANCHOR - sy;
+    var cp = Math.cos(cam.pitch);
+    var sp = Math.sin(cam.pitch);
+    var y0 = -cam.height;
+    var k = dy / cam.fov;
+    var denom = k * cp + sp;
+    var relZ = (y0 * cp - k * y0 * sp) / (Math.abs(denom) < 0.06 ? 0.06 : denom);
+    var rotZ = Math.max(y0 * sp + relZ * cp, 120);
+    var s = cam.fov / rotZ;
+    return {
+      x: Math.max(-760, Math.min(760, dx / s)),
+      z: Math.max(-260, Math.min(820, relZ + cam.z))
+    };
+  }
+
+  function horizonY() {
+    var p = project(0, 0, 980);
+    return Math.min(H * 0.7, Math.max(H * 0.52, p.y));
+  }
+
+  function spawnDrop(tx, tz, progress, interactive) {
+    var z = tz != null ? tz : -240 + Math.random() * 1020;
+    var probe = project(100, 0, z);
+    var halfW = Math.max(420, (W * 0.62) / Math.max(probe.scale, 0.22));
+    var x = tx != null ? tx : (Math.random() - 0.5) * 2 * halfW;
+    var topY = Math.max(460, 620 + (z + 260) * 0.55);
+    var y = interactive
+      ? Math.min(topY * 0.7, 300)
+      : (progress ? Math.pow(Math.random(), 1.4) * topY : topY + Math.random() * 70);
+    rain.push({
+      x: x,
+      y: y,
+      z: z,
+      vy: interactive ? 430 : (190 + Math.random() * 110),
+      len: interactive ? 22 : (10 + Math.random() * 14),
+      a: interactive ? 0.8 : (0.18 + Math.random() * 0.28),
+      cobalt: interactive ? true : (Math.random() > 0.42),
+      interactive: !!interactive
+    });
+  }
+
+  function initRain() {
+    rain = [];
+    var count = W < 400 ? 85 : (W < 460 ? 105 : 125);
+    for (var i = 0; i < count; i++) spawnDrop(null, null, true, false);
+  }
+
+  function spawnRipple(x, z, strength, rings) {
+    if (ripples.length > 32) ripples.splice(0, ripples.length - 32);
+    waves.push({
+      x: x, z: z,
+      amp: 1.8 * strength,
+      radius: 5,
+      speed: 70,
+      age: 0,
+      life: 1.45
+    });
+    for (var i = 0; i < rings; i++) {
+      ripples.push({
+        x: x,
+        z: z,
+        radius: 2 + i * 3.5,
+        max: (108 + i * 36) * strength,
+        speed: (44 - i * 4) * (0.9 + strength * 0.15),
+        alpha: (0.72 - i * 0.14) * Math.min(strength, 1.2),
+        delay: i * 0.11,
+        age: 0,
+        seed: Math.random() * Math.PI * 2
+      });
+    }
+  }
+
+  function spawnSplash(wx, wy, wz, count, spread) {
+    splashes.push({
+      x: wx, y: Math.max(1.4, wy), z: wz,
+      vx: 0, vy: (22 + Math.random() * 8) * spread, vz: 0,
+      size: 0.85, alpha: 0.9, age: 0, life: 0.46, mist: false
+    });
+    for (var i = 0; i < count; i++) {
+      var ang = (i / count) * Math.PI * 2 + Math.random() * 0.5;
+      var sp = (10 + Math.random() * 18) * spread;
+      splashes.push({
+        x: wx + Math.cos(ang) * 2.2,
+        y: Math.max(1, wy),
+        z: wz + Math.sin(ang) * 2.2,
+        vx: Math.cos(ang) * sp,
+        vy: (15 + Math.random() * 20) * spread,
+        vz: Math.sin(ang) * sp,
+        size: 0.45 + Math.random() * 0.45,
+        alpha: 0.72 + Math.random() * 0.2,
+        age: 0,
+        life: 0.45 + Math.random() * 0.3,
+        mist: i % 2 === 1
+      });
+    }
+  }
+
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = root.clientWidth || window.innerWidth;
+    H = root.clientHeight || window.innerHeight;
+    [lake, rainLayer].forEach(function (c) {
+      c.width = Math.floor(W * dpr);
+      c.height = Math.floor(H * dpr);
+      c.style.width = W + 'px';
+      c.style.height = H + 'px';
+    });
+    lctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    rctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    initRain();
+  }
+
+  function drawRidge(baseY, maxH, alpha, freq, phase, drift) {
+    var fill = lctx.createLinearGradient(0, baseY - maxH, 0, baseY + 90);
+    fill.addColorStop(0, 'rgba(8, 10, 14, ' + alpha + ')');
+    fill.addColorStop(0.5, 'rgba(8, 10, 14, ' + (alpha * 0.45) + ')');
+    fill.addColorStop(1, 'rgba(8, 10, 14, 0)');
+
+    lctx.beginPath();
+    lctx.moveTo(0, baseY + 100);
+    var step = 5;
+    for (var x = 0; x <= W + step; x += step) {
+      var u = x + drift;
+      var ridge =
+        (1 - Math.abs(Math.sin(u * freq + phase))) * 0.56 +
+        (1 - Math.abs(Math.sin(u * freq * 2.17 + phase * 1.7))) * 0.27 +
+        (1 - Math.abs(Math.sin(u * freq * 4.9 + phase * 0.63))) * 0.17;
+      var y = baseY - Math.pow(ridge, 1.15) * maxH;
+      lctx.lineTo(x, y);
+    }
+    lctx.lineTo(W, baseY + 100);
+    lctx.closePath();
+    lctx.fillStyle = fill;
+    lctx.fill();
+  }
+
+  function drawLake(dt) {
+    var hy = horizonY();
+    var i;
+
+    for (i = waves.length - 1; i >= 0; i--) {
+      var im = waves[i];
+      im.age += dt;
+      im.radius += im.speed * dt;
+      if (im.age >= im.life) waves.splice(i, 1);
+    }
+
+    var drift = Math.sin(time * 0.1) * 10;
+    var mh = Math.min(1, Math.max(0.7, H / 900));
+
+    // 远山：三层极淡的墨色山脊
+    drawRidge(hy - 8 * mh, 64 * mh, 0.065, 0.014, 1.1, drift);
+    drawRidge(hy + 16 * mh, 80 * mh, 0.055, 0.009, 3.9, -drift * 0.6);
+    drawRidge(hy + 46 * mh, 52 * mh, 0.045, 0.017, 5.4, drift * 0.35);
+
+    // 山脚雾带
+    var mg = lctx.createLinearGradient(0, hy - 16, 0, hy + 82);
+    mg.addColorStop(0, 'rgba(255, 255, 255, 0)');
+    mg.addColorStop(0.46, 'rgba(255, 255, 255, .55)');
+    mg.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    lctx.fillStyle = mg;
+    lctx.fillRect(0, hy - 16, W, 100);
+
+    var hg = lctx.createLinearGradient(0, 0, W, 0);
+    hg.addColorStop(0, 'rgba(0, 0, 0, .015)');
+    hg.addColorStop(0.5, 'rgba(0, 0, 0, .1)');
+    hg.addColorStop(1, 'rgba(0, 0, 0, .015)');
+    lctx.beginPath();
+    lctx.moveTo(0, hy + 2);
+    lctx.lineTo(W, hy + 2);
+    lctx.strokeStyle = hg;
+    lctx.lineWidth = 0.7;
+    lctx.stroke();
+
+    // 水面：只留几条极淡的波纹
+    var rows = 6;
+    for (var r = 0; r < rows; r++) {
+      var d = r / (rows - 1);
+      var z = 720 - Math.pow(d, 0.95) * 900;
+      var rp = project(0, 0, z);
+      if (rp.y < hy + 24 || rp.y > H + 8) continue;
+
+      var op = 0.055 - d * 0.022;
+      if (op <= 0.004) continue;
+
+      var segs = 40;
+      var span = 1100;
+      lctx.beginPath();
+      for (var s = 0; s <= segs; s++) {
+        var u = (s / segs) * 2 - 1;
+        var wx = u * span;
+        var wy =
+          Math.sin(wx * 0.009 + time * 1.1 + r * 1.3) * 2.6 +
+          Math.cos(wx * 0.021 - time * 0.8 + z * 0.01) * 1.2;
+
+        for (var k = 0; k < waves.length; k++) {
+          var wv = waves[k];
+          var dz = z - wv.z;
+          if (Math.abs(dz) > 130) continue;
+          var dx = wx - wv.x;
+          var dist = Math.sqrt(dx * dx + dz * dz);
+          var band = Math.abs(dist - wv.radius);
+          if (band < 30) {
+            var env = (1 - wv.age / wv.life) * Math.cos((band / 30) * Math.PI * 0.5);
+            wy += Math.sin((dist - wv.radius) * 0.3) * wv.amp * env;
+          }
+        }
+
+        var pt = project(wx, wy, z);
+        if (s === 0) lctx.moveTo(pt.x, pt.y);
+        else lctx.lineTo(pt.x, pt.y);
+      }
+      lctx.strokeStyle = 'rgba(10, 12, 16,' + op.toFixed(3) + ')';
+      lctx.lineWidth = 0.5;
+      lctx.stroke();
+    }
+  }
+
+  function drawRipples(dt) {
+    for (var i = ripples.length - 1; i >= 0; i--) {
+      var r = ripples[i];
+      r.age += dt;
+      if (r.age < r.delay) continue;
+
+      var prog = r.radius / r.max;
+      if (prog >= 1 || r.alpha <= 0.01) {
+        ripples.splice(i, 1);
+        continue;
+      }
+      r.radius += r.speed * (1 - prog * 0.55) * dt;
+
+      var fade = r.alpha * Math.pow(1 - prog, 1.35);
+      if (fade <= 0.005) continue;
+
+      var n = 44;
+      lctx.beginPath();
+      for (var s = 0; s <= n; s++) {
+        var th = (s / n) * Math.PI * 2;
+        var wob = 1 + Math.sin(th * 3 + r.seed) * 0.012 + Math.sin(th * 5 - r.seed) * 0.008;
+        var wx = r.x + Math.cos(th) * r.radius * wob;
+        var wz = r.z + Math.sin(th) * r.radius * wob;
+        var p = project(wx, 0, wz);
+        if (s === 0) lctx.moveTo(p.x, p.y);
+        else lctx.lineTo(p.x, p.y);
+      }
+      lctx.closePath();
+      lctx.strokeStyle = 'rgba(10, 12, 16,' + Math.min(0.8, fade).toFixed(3) + ')';
+      lctx.lineWidth = Math.max(0.5, 1.1 * (1 - prog * 0.45));
+      lctx.lineCap = 'round';
+      lctx.stroke();
+    }
+  }
+
+  function drawSplashes(dt) {
+    for (var i = splashes.length - 1; i >= 0; i--) {
+      var sp = splashes[i];
+      sp.age += dt;
+      if (sp.age >= sp.life) {
+        splashes.splice(i, 1);
+        continue;
+      }
+      sp.vy -= 56 * dt;
+      sp.x += sp.vx * dt;
+      sp.y = Math.max(0, sp.y + sp.vy * dt);
+      sp.z += sp.vz * dt;
+
+      var p = project(sp.x, sp.y, sp.z);
+      var a = sp.alpha * (1 - sp.age / sp.life);
+      lctx.beginPath();
+      lctx.arc(p.x, p.y, Math.max(0.5, sp.size * p.scale), 0, Math.PI * 2);
+      lctx.fillStyle = sp.mist
+        ? 'rgba(82, 86, 92,' + a.toFixed(3) + ')'
+        : 'rgba(8, 10, 14,' + a.toFixed(3) + ')';
+      lctx.fill();
+    }
+  }
+
+  function drawGoose(x, y, size, alpha, flap, angle) {
+    var lift = flap * 3.2;
+    lctx.save();
+    lctx.translate(x, y);
+    lctx.rotate(angle);
+    lctx.scale(size, size);
+
+    lctx.beginPath();
+    lctx.moveTo(-22, 4);
+    lctx.quadraticCurveTo(-11, -7 - lift, 0, -1);
+    lctx.quadraticCurveTo(11, -7 - lift, 22, 4);
+    lctx.quadraticCurveTo(10, 0, 0, 2.4);
+    lctx.quadraticCurveTo(-10, 0, -22, 4);
+    lctx.closePath();
+
+    lctx.fillStyle = 'rgba(10, 12, 16, ' + alpha + ')';
+    lctx.fill();
+    lctx.restore();
+  }
+
+  function drawFlock() {
+    var k = W < 420 ? 0.9 : 1;
+    var leadX = W * 0.63 + Math.min(time, 5) * W * 0.01;
+    var leadY = H * (H < 700 ? 0.52 : 0.515);
+    var birds = [
+      { x: 0, y: 0, s: 1.0, a: 0.6, ph: 0, r: -0.06 },
+      { x: -42, y: 14, s: 0.72, a: 0.44, ph: 1.4, r: 0.05 },
+      { x: -72, y: 2, s: 0.52, a: 0.32, ph: 2.3, r: -0.1 }
+    ];
+    for (var i = 0; i < birds.length; i++) {
+      var b = birds[i];
+      drawGoose(
+        leadX + b.x * k,
+        leadY + b.y * k,
+        b.s * k,
+        b.a,
+        Math.sin(time * 3.2 + b.ph),
+        b.r
+      );
+    }
+  }
+
+  function updateRain(dt) {
+    for (var i = rain.length - 1; i >= 0; i--) {
+      var d = rain[i];
+      d.y -= d.vy * dt;
+      d.x -= 7 * dt;
+
+      var top = project(d.x + 1.4, d.y + d.len, d.z);
+      var bot = project(d.x, Math.max(0, d.y), d.z);
+
+      var grad = rctx.createLinearGradient(top.x, top.y, bot.x, bot.y);
+      var inkAlpha = d.cobalt ? d.a : d.a * 0.78;
+      grad.addColorStop(0, 'rgba(10, 12, 16, 0)');
+      grad.addColorStop(1, 'rgba(10, 12, 16, ' + inkAlpha.toFixed(3) + ')');
+
+      rctx.beginPath();
+      rctx.moveTo(top.x, top.y);
+      rctx.lineTo(bot.x, bot.y);
+      rctx.strokeStyle = grad;
+      rctx.lineWidth = Math.max(0.4, (d.interactive ? 0.85 : 0.6) * bot.scale);
+      rctx.lineCap = 'round';
+      rctx.stroke();
+
+      if (d.y <= 0) {
+        var strength = d.interactive ? 0.9 : (0.85 + Math.random() * 0.25);
+        var makeRing = d.interactive || Math.random() > 0.5;
+        if (makeRing) {
+          spawnRipple(d.x, d.z, strength, d.interactive ? 2 : (Math.random() > 0.72 ? 2 : 1));
+        }
+        if (d.interactive || (makeRing && Math.random() > 0.7)) {
+          spawnSplash(d.x, 1.1, d.z, d.interactive ? 4 : 2, strength * 0.7);
+        }
+        rain.splice(i, 1);
+        if (!d.interactive) spawnDrop(null, null, false, false);
+      }
+    }
+  }
+
+  function frame(ts) {
+    if (!running) return;
+    if (!lastTs) lastTs = ts;
+    var dt = Math.min((ts - lastTs) / 1000, 0.05);
+    lastTs = ts;
+    time += dt;
+
+    if (time > nextAmbient) {
+      nextAmbient = time + 1.8 + Math.random() * 1.4;
+      var ahy = horizonY();
+      var maxY = Math.max(ahy + 70, H - 190);
+      var ap = screenToLake(
+        W * (0.12 + Math.random() * 0.76),
+        ahy + 46 + Math.random() * Math.max(30, maxY - ahy - 46)
+      );
+      spawnRipple(ap.x, ap.z, 0.55 + Math.random() * 0.25, Math.random() > 0.6 ? 2 : 1);
+    }
+
+    lctx.clearRect(0, 0, W, H);
+    rctx.clearRect(0, 0, W, H);
+
+    drawLake(dt);
+    drawRipples(dt);
+    drawSplashes(dt);
+    drawFlock();
+    updateRain(dt);
+
+    raf = requestAnimationFrame(frame);
+  }
+
+  function startScene() {
+    if (!lctx || !rctx) {
+      if (lake) lake.style.display = 'none';
+      if (rainLayer) rainLayer.style.display = 'none';
+      return;
+    }
+    resize();
+    window.addEventListener('resize', resize);
+    raf = requestAnimationFrame(frame);
+  }
+
+  /* ==================================================================
+     Reveal
+     ================================================================== */
+  var revealed = false;
+  function reveal() {
+    if (revealed) return;
+    revealed = true;
+    root.classList.add('ns-reveal');
+    if (!reduceMotion) {
+      spawnRipple(0, 160, 0.95, 2);
+      spawnSplash(0, 1.1, 160, 2, 0.5);
+    }
+  }
+
+  /* ==================================================================
+     Loading handshake · 保持与原开屏一致的事件与 API
+     ================================================================== */
+  var done = false;
+  var cur = 0.06;
+  var target = 0.06;
+  var homeReady = false;
+  var skeletonReady = false;
   var t0 = performance.now();
-  var MIN_MS = 900;      // 最短展示：避免一闪而过，但不再固定 4.5 秒
-  var MAX_MS = 9000;     // 最长等待：首页真的异常时也不至于永远卡住
-  var cur = 0, target = 0.08;
-  var G = ['♡', '✦', '✧', '●'], COL = ['#ffc2d9', '#ffd7a8', '#cfe4ff', '#fff', '#e2d6ff'];
+  var MIN_MS = 1000;
+  var MAX_MS = 9000;
 
-  function ease(x) { return x < .5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2; }
+  function paint(v) {
+    var p = Math.max(0, Math.min(1, v));
+    fill.style.width = (p * 100) + '%';
+    head.style.left = (p * 100) + '%';
+    pct.textContent = Math.round(p * 100) + '%';
+  }
 
-  function spark(x, dx, dy) {
-    var s = document.createElement('div');
-    s.className = 'ns-spark';
-    s.textContent = G[Math.floor(Math.random() * G.length)];
-    s.style.left = x + 'px';
-    s.style.top = '6px';
-    s.style.color = COL[Math.floor(Math.random() * COL.length)];
-    s.style.setProperty('--ns-dx', dx + 'px');
-    s.style.setProperty('--ns-dy', dy + 'px');
-    bar.appendChild(s);
-    setTimeout(function () { if (s.parentNode) s.parentNode.removeChild(s); }, 1000);
+  function progressLoop(now) {
+    if (done) return;
+    var elapsed = now - t0;
+
+    if (homeReady) {
+      target = 1;
+    } else if (skeletonReady) {
+      target = Math.max(target, Math.min(0.78, 0.55 + (elapsed / 6000) * 0.23));
+    } else {
+      target = Math.max(target, Math.min(0.42, 0.06 + (elapsed / 6000) * 0.36));
+    }
+
+    cur += (target - cur) * 0.14;
+    if (target >= 1 && cur > 0.995) cur = 1;
+    paint(cur);
+
+    if (homeReady && elapsed >= MIN_MS && cur >= 1) {
+      finish();
+      return;
+    }
+    requestAnimationFrame(progressLoop);
   }
 
   function removeSplash() {
     if (!root || root.__nsRemoved) return;
     root.__nsRemoved = true;
-    if (raf) { try { cancelAnimationFrame(raf); } catch (e) {} }
+    done = true;
+    running = false;
+    if (raf) {
+      try { cancelAnimationFrame(raf); } catch (e) {}
+      raf = 0;
+    }
     root.classList.add('ns-out');
-    // 淡出时先显示桌面，避免淡出结束后再闪一下白屏。
     document.dispatchEvent(new Event('nano-splash-done'));
     setTimeout(function () {
       if (root.parentNode) root.parentNode.removeChild(root);
-    }, 220);
+    }, 340);
   }
 
-  function finish(instant) {
+  function finish() {
     if (done) return;
     done = true;
-    if (raf) { try { cancelAnimationFrame(raf); } catch (e) {} }
-    pct.textContent = 'READY ♡  100%';
-    setTimeout(removeSplash, instant ? 100 : 240);
+    paint(1);
+    root.classList.add('ns-ready');
+    if (metaLabel) metaLabel.textContent = 'Ready';
+    setTimeout(removeSplash, 200);
   }
 
-  function render(v) {
-    var w = bar.clientWidth;
-    var x = v * (w - 40);
-    fill.style.width = (x + 20) + 'px';
-    head.style.left = (x + 20) + 'px';
-    ball.style.transform = 'rotate(' + (x * 3.4) + 'deg)';
-    pct.textContent = (v >= 0.995 ? 'READY ♡  ' : 'LOADING  ') + Math.round(v * 100) + '%';
+  function markSkeletonReady() {
+    if (skeletonReady) return;
+    skeletonReady = true;
+    target = Math.max(target, 0.55);
   }
 
   function markHomeReady() {
     if (homeReady) return;
     homeReady = true;
-    readyAt = performance.now();
     target = 1;
-  }
-
-  // 首页真正把角色 / 桌面数据读完才会发 nanoHomeReady；骨架画好时先走到 60%。
-  window.addEventListener('message', function (e) {
-    var d = e && e.data;
-    if (!d) return;
-    if (d.type === 'nanoHomeSkeletonReady') {
-      target = Math.max(target, 0.6);
-      return;
-    }
-    if (d.type === 'nanoHomeReady') markHomeReady();
-  });
-
-  // 首页 iframe 可能在外壳脚本执行前就已经发过信号：同时检查父窗口上的标记，避免白等。
-  try { if (window.__nanoHomeSkeletonReady) target = Math.max(target, 0.6); } catch (e) {}
-  try { if (window.__nanoHomeReady) markHomeReady(); } catch (e) {}
-
-  function frame(now) {
-    if (done) return;
-    var elapsed = now - t0;
-    if (!homeReady) {
-      // 数据还没好：最多走到 92%，让进度条反映真实的等待。
-      target = Math.max(target, Math.min(0.92, 0.08 + (elapsed / 3500) * 0.84));
-    } else if (elapsed < MIN_MS) {
-      target = Math.max(target, Math.min(0.96, 0.08 + (elapsed / MIN_MS) * 0.88));
-    } else {
-      target = 1;
-    }
-    cur += (target - cur) * 0.1;
-    if (target >= 1 && cur > 0.995) cur = 1;
-    render(ease(cur));
-    if (homeReady && elapsed >= MIN_MS && cur >= 1) {
-      if (!burst) {
-        burst = true;
-        var w = bar.clientWidth;
-        for (var i = 0; i < 14; i++) spark(w - 20, (Math.random() - .5) * 160, -30 - Math.random() * 70);
-      }
-      finish();
-      return;
-    }
-    if (now - lastSp > 150 && cur < 0.98) {
-      lastSp = now;
-      spark(ease(cur) * (bar.clientWidth - 40) + 26, -30 - Math.random() * 20, -30 - Math.random() * 20);
-    }
-    raf = requestAnimationFrame(frame);
   }
 
   function skip() {
@@ -1208,10 +1710,22 @@
     homeReady = true;
     cur = 1;
     target = 1;
-    finish(true);
+    finish();
   }
 
-  // 兜底：首页脚本异常 / 没发 ready 时，最多等 9 秒；页面 load 后 6 秒仍没信号也放行。
+  window.addEventListener('message', function (e) {
+    var d = e && e.data;
+    if (!d) return;
+    if (d.type === 'nanoHomeSkeletonReady') {
+      markSkeletonReady();
+      return;
+    }
+    if (d.type === 'nanoHomeReady') markHomeReady();
+  });
+
+  try { if (window.__nanoHomeSkeletonReady) markSkeletonReady(); } catch (e) {}
+  try { if (window.__nanoHomeReady) markHomeReady(); } catch (e) {}
+
   setTimeout(function () { if (!homeReady) markHomeReady(); }, MAX_MS);
   window.addEventListener('load', function () {
     setTimeout(function () { if (!homeReady) markHomeReady(); }, 6000);
@@ -1220,10 +1734,15 @@
   root.addEventListener('pointerdown', skip);
   window.addEventListener('keydown', function (e) { if (e.key === 'Escape') skip(); });
   window.NanoSplash = { skip: skip, done: removeSplash, ready: markHomeReady };
-  raf = requestAnimationFrame(frame);
+
+  startScene();
+  if (reduceMotion) reveal();
+  else setTimeout(reveal, 120);
+  requestAnimationFrame(progressLoop);
 })();
 </script>
 <!-- ============ 开场动画结束 ============ -->
+
 
 <script>
 document.addEventListener('nano-splash-done', function () {
@@ -3822,6 +4341,9 @@ setTimeout(function () {
                 const isChat = (data.type === 'chatApiFetch');
                 const token = data.token;
                 if (!token) return;
+                const senderWin = event.source || null;
+                // 立刻回执：子页面收到后就知道这次请求已经由外壳接管，绝不会再从 iframe 里发第二次。
+                try { if (senderWin && senderWin.postMessage) senderWin.postMessage({ type: 'chatApiStart', token: token }, '*'); } catch (e) {}
                 if (groupApiInFlight[token]) return;
                 groupApiInFlight[token] = true;
                 const resultKey = data.resultKey || ((isChat ? 'chat_api_result_' : 'group_api_result_') + token);
@@ -3832,6 +4354,7 @@ setTimeout(function () {
                     overlayFrames.concat([chatInnerFrame]).forEach(function(fr) {
                         try { if (fr && fr.contentWindow) fr.contentWindow.postMessage({ type: doneType, token: token, result: result }, '*'); } catch (e) {}
                     });
+                    try { if (senderWin && senderWin.postMessage) senderWin.postMessage({ type: doneType, token: token, result: result }, '*'); } catch (e) {}
                 };
                 try {
                     fetch(data.url, { method: data.method || 'POST', headers: data.headers || {}, body: data.body })
@@ -4969,7 +5492,7 @@ setTimeout(function () {
 <script src="js/nano-notify.js?v=20261112a"></script>
 <script src="js/nano-push.js?v=20261117a"></script>
 <script src="swipe-back.js"></script>
-<script src="js/nano-prompts.js?v=20261115a"></script>
+<script src="js/nano-prompts.js?v=20261118a"></script>
 <script src="js/ios-bridge.js?v=20261027k"></script>
 <script src="js/auto-push-bridge.js?v=20261117a"></script>
 <script>
@@ -5046,7 +5569,7 @@ setTimeout(function () {
             } catch (e) {}
         }
         // 写入 nano_characters_db，并广播，让聊天列表 / 主页（朋友圈等）都刷新出这个新好友。
-        // 与群聊「加陌生人为好友」(js/groups.js?v=20261029g addNpcFriend) 保持同一套路：isNpc:true 才会出现在列表里。
+        // 与群聊「加陌生人为好友」(js/groups.js?v=20261118h addNpcFriend) 保持同一套路：isNpc:true 才会出现在列表里。
         // 小号是角色本人披的马甲：它自己知道自己是本人，只是不能让用户知道。
         // 把「小号身份 + 本人完整人设 + 铁律」写进角色设定，线上/线下/iMessage 共用同一套提示词。
         function buildAltMaskSetting(alt) {
@@ -5132,7 +5655,7 @@ setTimeout(function () {
     })();
     </script>
 <script src="js/adult-gate.js?v=20261025g"></script>
-<script src="js/account.js?v=20261112a"></script>
+<script src="js/account.js?v=20261118b"></script>
 <script>
 // 自动备份调度：只有开启后才加载一个隐藏的备份页，在 App 打开期间按间隔上传。
 // 完全退出 App 后网页无法后台运行，下次打开会补一次。

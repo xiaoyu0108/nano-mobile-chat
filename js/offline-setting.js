@@ -171,7 +171,7 @@ async function loadAllData() {
     // 内置「文风」规则组：文风写在规则里，用户按需开启一种即可。
     // v2：同步这次升级后的日式轻小说 / 中式古风 / 情侣日常 / 文艺忧郁 / 轻笔重意等内置文风。
     try {
-      if (localStorage.getItem('nano_offline_style_group_v3') !== '1') {
+      if (localStorage.getItem('nano_offline_style_group_v4') !== '1') {
         const STYLE_GROUP_ID = 'offline-style';
         const list = (window.NanoOfflineStyles && NanoOfflineStyles.list) || [];
         if (list.length) {
@@ -192,6 +192,7 @@ async function loadAllData() {
               name: s.name,
               enabled: !!(old && old.enabled === true),
               content: s.prompt + '\n参考语感（只学节奏和语气，不要照抄内容）：\n' + s.example +
+                  '\n【差异要求】必须用可观察的文字质感把这种文风写出来：句子长短、分段方式、叙述距离、用词、对白与描写的比例、节奏、意象密度。不能只换文风名，正文还是上一套腔调；同一段剧情换一种文风，读起来必须明显不同。' +
                   '\n以上文风优先级高于默认文风；但仍必须服从角色人设、世界书、线下规则、用户行动预测和输出格式。'
             };
           });
@@ -203,7 +204,7 @@ async function loadAllData() {
           group.enabled = true;
           group.expanded = false;
           await saveRules();
-          localStorage.setItem('nano_offline_style_group_v3', '1');
+          localStorage.setItem('nano_offline_style_group_v4', '1');
         }
       }
     } catch (e) {}

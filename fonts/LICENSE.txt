@@ -1,0 +1,9 @@
+Marck Script
+Copyright 2011 The Marck Script Project Authors (https://github.com/googlefonts/MarckScript)
+Licensed under the SIL Open Font License, Version 1.1.
+
+Instrument Serif
+Copyright 2022 The Instrument Serif Project Authors (https://github.com/googlefonts/instrument-serif)
+Licensed under the SIL Open Font License, Version 1.1.
+
+License text: https://openfontlicense.org

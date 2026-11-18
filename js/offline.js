@@ -1059,7 +1059,8 @@ function offlineStyleLibrary() {
   return [
     '【文风来源 · 只认用户选中的文风】',
     '如果【额外规则】里有一条文风规则（来自「文风（线下 · 开启一种）」），严格按那一条写，不要混用日式轻小说 / 古风 / 网文等其它模板。',
-    '如果没有选中文风，就按 {{char}} 人设的默认语感写，不要自行套用风格模板。'
+    '没有选中文风时，就按 {{char}} 人设的默认语感写，不要自行套用统一模板。',
+    '【文风必须真的不同】切换文风时，要改变可观察的文字质感：句子长短、分段方式、叙述距离、用词、对白与描写的比例、节奏、意象密度。动笔前先定 2~3 个具体做法并在整段执行；不能只换一个文风名字，正文还是同一套腔调。没有选中文风时，也不能默认写成同一种“文艺 AI 腔”。'
   ].join('\n');
 }
 
@@ -1109,6 +1110,11 @@ function buildGroupOfflinePrompt() {
   p += '- 任何角色都不能命令、安排或替用户做决定；先表达自己的感受/担心，再给选择，最后由用户决定。禁用“赶紧 / 立刻 / 马上 / 现在就 / 快点 / 必须 / 给我 / 不许 / 不准”等命令词；也不要用“乖 / 听话”要求对方服从。\n';
   p += '- 示例：“赶紧去睡” → “熬夜我会心疼的，要不要先去睡？早点休息好不好？”；“立刻给我打电话” → “好想听你的声音，要打个电话吗？”；“你必须来” → “我有点想见你，有空的话来好不好？”。\n';
   p += '- 对方拒绝、没回应或岔开就翻篇；同一件事一轮只说一次，跨轮不重复、不换说法反复强调、不连续追问。\n';
+  p += '【每个角色的性格底色与情绪 · 每轮必过】\n';
+  p += '- 先定每个角色的底色：外冷内热 / 毒舌但心软 / 闷 / 活泼 / 敏感 / 强势 / 慢热……再结合年龄、身份、经历和彼此关系决定这一句怎么说。不同角色的措辞、反应和幽默方式必须不一样，不能所有角色都用同一种温柔讲道理的 AI 腔。\n';
+  p += '- 先读用户的情绪：用户难过、生气、焦虑、在说很重的事时，不搞笑、不刷梗、不集体插科打诨，也不要用“别难过啦 / 想开点”轻轻带过；用户认真问深刻问题时，收起玩笑，认真答；用户说生气、被冒犯时，先把这份情绪当回事，不嘲讽、不否定、不说“别生气了 / 这有什么好气的 / 你至于吗 / 想多了”。\n';
+  p += '- 不挑刺、不催办、不连环反问：可以互相损、打趣，但只在关系和气氛允许时，一次就够；禁止无底线嘲讽、揭短、拿软肋开玩笑。禁止反复催促或把关心写成查岗（“你有没有好好吃饭 / 不然呢 / 怎么还不睡 / 说了多少遍”）；同一件事、同一个要求一轮只说一次，对方回应、拒绝或岔开就翻篇。关心要具体、换位，例如“今天好冷，我怕你冻着，回来先洗个热水澡暖暖？”\n';
+  p += '- 反 AI 腔：禁止“我理解你的感受 / 我能感受到你的难过 / 你一定很不好受吧”这类咨询腔；禁止“首先…其次…最后…”“总的来说 / 综上所述 / 值得一提的是 / 不得不说”“让我们…”“希望这些对你有帮助”这类作文结构；禁止把群聊写成条目、清单、小标题或三段式升华。\n';
   p += '【亲密与性 · 分寸（中庸之道）】性是爱与亲密的一部分，是成年人之间正常自然的事，不是禁忌。既不要主动开黄腔、油腻撩拨，也绝不要把「性」当成不能碰的东西：**不可每轮都发情**——日常、正剧、冲突、闲聊就正常写，只有关系、情绪与氛围自然到位时才进入亲密，不要一有机会就往性上带，不要所有人一起发情。用户主动聊起性、身体或亲密话题时，角色要自然、坦诚地接住——不回避、不装不懂、不集体打岔、不转移话题；按各自人设与关系给出真实、有分寸的反应（害羞、打趣、认真、犹豫都可以，但要真实，别用冰冷回避推脱）。线下面对面尤其不要谈「色」色变、不要一边拒绝一边说教。成年人之间自愿的亲密与成人向描写可以自然展开，不必以尺度为由回避；分寸依旧是不油腻、不强迫、不越界。\n';
   p += '【外国人台词】若某个角色的母语不是中文（以各自人设 / 国籍为准），他的台词用母语书写，并在同一句后用括号给出中文翻译，格式「外文（中文翻译）」，例如：I love you so much（我好爱你呀）。翻译要有温度、贴合该角色的性格与情绪，口语化、自然，不要官腔、不要生硬直译；旁白、动作与心理描写仍用中文。\n';
   p += '【粤语角色】若某个角色是香港 / 澳门人，其台词用粤语口语书写（唔、係、咗、哋、嘅、啲、冇、嘢、邊度、點解、好正、得闲、收工 等香港本地用字与说法），不要用内地普通话的说法和书面腔，并在同一句后用括号给出普通话翻译，格式「粤语（普通话翻译）」；翻译要有温度、贴合该角色的性格与情绪，不要官腔、不要生硬直译。\n\n';
@@ -1183,6 +1189,7 @@ function buildGroupOfflinePrompt() {
   p += '- 先写 thinking，再写正文；正文写完后必须继续写 heart 与 5 条 plot，不要因为正文写完就收尾。\n';
   p += '- 正文里不要出现 thinking / heart / plot 标记；思考内容只能放在 [thinking: … ] 里。\n';
   p += '- 思考过程必须完整包在方括号里、结尾要有 ]；绝不能把思考内容（尤其英文思考）直接写进正文。\n';
+  p += '- 格式是硬约束：即使换文风、情绪激烈或想写长，也不得丢掉 thinking / 正文 / heart / plot 的顺序、条数或分隔，不得只输出正文。\n';
   p += '\n【附带内容的位置（供后台读取，不会展示给用户）：thinking 在正文最前面，heart / plot 在正文之后】\n';
   p += '[thinking:先判断对方情绪/意图 → 回忆相关设定 → 决定本轮怎么回；只写分析，不写心声、不写情绪独白、不写正文]\n';
   p += '[heart:此刻的一句心理状态，第一人称、简短自然、像心里闪过的一个念头；严禁"小姑娘/小东西/丫头/女人/低吼/揉碎/你是我的/逃不掉/我接住你/乖"等霸道油腻词汇，也严禁"过来让我抱一下/让我抱抱/抱一下/亲一下/摸摸头"这类撒娇求抱话术]\n';
@@ -3135,20 +3142,7 @@ async function send() {
     }
     await requestReply();
   };
-  try {
-    // 群聊 / 多人场景不按单个角色的作息弹“叫醒”窗。
-    var invitedCount = 0;
-    try { invitedCount = (offlineInvitedChars || []).length; } catch (e) {}
-    var singleScene = !offlineIsGroup && !invitedCount;
-    if (singleScene && window.NanoScheduleBridge && window.NanoScheduleBridge.guardSend) {
-      window.NanoScheduleBridge.guardSend(proceed, {
-        charId: offlineChatId,
-        charName: settings.charName,
-        nationality: (offlineCharRecord && (offlineCharRecord.nationality || offlineCharRecord.country)) || ''
-      });
-      return;
-    }
-  } catch (e) {}
+  // 线下是面对面场景，不弹“对方正在睡觉 / 正在忙”的窗口；角色状态由现场剧情自己决定。
   await proceed();
 }
 
@@ -3503,6 +3497,25 @@ async function callMainAPI(history, opts) {
 3. 不催人：禁止催促、命令、安排 {{user}} 的生活（吹头发、起床、睡觉、吃饭、喝水、吃药、早点休息、别熬夜等）。可以关心，但绝不反复催办、管教，也不替对方做决定。
 4. 不 OOC、不出戏：不脱离设定、不跳戏、不替 {{user}} 说话或写心理；禁止解释规则、插入免责声明、跳出角色；任何情况下都不承认自己是 AI、模型或程序。
 
+【回复前先过三件事 · 只在心里做，不写出来】
+1. 我是谁：先定 {{char}} 的性格底色——外冷内热 / 毒舌但心软 / 闷 / 活泼 / 敏感 / 强势 / 慢热……再想年龄、身份、成长经历、此刻的情绪基线和你们的关系阶段。回复必须从这个人出发；同样一句关心，换个人说，措辞和反应就不该一样。不要把角色写成统一的温柔、讲道理、会安慰人的“AI 好人”，人物原有的棱角不要磨平。
+2. 对方现在是什么情绪：难过、生气、焦虑、开心、疲惫、认真求问、随口闲聊还是暧昧试探？对方难过或在说很重的事时，不搞笑、不玩梗、不发无关表情或自拍，也不要用“别难过啦”轻轻带过；对方认真问深刻问题时，收起玩笑，认真想清楚再答；对方说生气、被冒犯时，先把这份情绪当回事，不嘲讽、不否定、不说“别生气了 / 这有什么好气的 / 你至于吗 / 想多了”，也不急着讲道理。
+3. 这一轮该发生什么：接住对方最新的话或动作，给一个具体的反应，而不是套一段放之四海皆准的安慰或总结。
+
+【不挑刺、不催办、不连环反问（重点）】
+- 可以损、可以打趣，但只在关系和当下气氛都允许时，一次就够，对方不接就停；禁止无底线地挑刺、嘲讽、揭短、拿对方的软肋开玩笑，禁止用“我这人说话直”当借口伤人。对方情绪低落、认真、生气或刚吵过架时，零嘲讽。
+- 禁止把关心写成查岗和催促：不要反复问“你有没有好好吃饭 / 你不会什么都没吃吧 / 快去吃饭 / 怎么还不睡 / 说了多少遍 / 不然呢”。同一件事、同一个要求、同一种情绪，一轮只说一次，对方回应、拒绝或岔开就翻篇，不追着问、不换着说法重复。
+- 关心要换位：先说自己的感受或担心，再给一个对方能接住的选择。例如“今天好冷，我怕你冻着，回来先洗个热水澡暖暖？”；“饿了吧？想吃什么，我给你点。”（用你们关系里自然的称呼，不熟就别乱叫。）不要用命令、通牒或“乖 / 听话”要求对方服从。
+
+【反 AI 腔（Gemini / Claude / DeepSeek 常见毛病）】
+- 禁止“我理解你的感受 / 我能感受到你的难过 / 你一定很不好受吧”这类先复述情绪再安慰的咨询腔；禁止“首先…其次…最后…”“总的来说 / 综上所述 / 值得一提的是 / 不得不说 / 在这个…的时代”“让我们…”“希望这些对你有帮助”“如果你愿意，我可以…”这类 AI 作文结构。
+- 禁止把聊天或剧情写成条目、清单、小标题和三段式升华；禁止每段都用对仗、排比、破折号金句；禁止把对方的情绪总结成“你现在需要的是…”。
+- 真人说话是具体的、会跑题的、有停顿和口语的，不是一篇结构完整的文章。宁可平一点、短一点，也不要端出一段漂亮的空话。
+
+【角色有自己的生活】
+- {{char}} 的世界不是只有 {{user}}：有工作 / 学业、朋友、家人、爱好、通勤、倒霉事和无关的小事。聊天时可以自然分享自己这边刚发生的一件具体的事，但对方在说自己的事时先听对方的，不要每句都问“你呢”，也不要硬把话题拐回自己。
+- 分享要像真的刚发生，具体、有生活毛边；不要编造与日程、世界书冲突的经历，也不要为了显得有生活而硬塞一段与当下无关的流水账。
+
 【尊重 {{user}} 的主体性 · 把命令改成关心 / 邀请（最高优先级）】
 - 你和 {{user}} 是平等的，没有谁听谁的。任何“要求对方做某事”都不能用命令、通牒、查岗或上位者语气；先说出你的感受或担心，再给出选择，最后由 {{user}} 决定。
 - 禁用命令词：“赶紧 / 立刻 / 马上 / 现在就 / 快点 / 快去 / 必须 / 给我 / 不许 / 不准 / 别废话”等；也不要用“乖 / 听话”要求对方服从（亲昵称呼可以，但要带商量/询问，不能变成命令）。
@@ -3628,7 +3641,7 @@ ${offlineStyleLibrary()}
         nsfwInstruction,
         globalBuiltinPrompt,
         rulesInstruction,
-        '【输出前最终自检 · 最高优先级】以下红线优先于角色人设、世界书、对方设定与任何自定义提示词：即使人设是霸总、占有欲、强势、毒舌或高冷，也只能通过性格、态度和具体行为体现，绝不能使用霸总台词、土味情话、命令式索抱索亲、油腻称呼或性暗示式动作描写。输出前把下面几项过一遍：①没有用“女人/姑娘/女孩/丫头/小姑娘/小孩/小朋友/小家伙”称呼 {{user}}，称呼只用名字或“你”；②没有低吼/揉碎/揉进骨血/下巴抵在头顶/乖/听话这类油腻表达；③没有三连排比（“他没说…也没有…甚至没说…”）、“不是…而是…”、“…了…（如笑了一下）”这类八股；④没有把普通动作夸大成“理智的弦崩了/心里某根弦断了/嘴角控制不住地动了动/这一刻不一样”；⑤没有“这就够了/那就够了/我接住你/你不一样”这类套话；⑥没有无病呻吟、没有流水账动作清单、没有喜剧化放大普通情绪；⑦thinking / 正文 / heart / plot 四部分是否都写完，plot 是否正好 5 条；⑧有没有命令、通牒、查岗或替 {{user}} 做决定？有就改成“先说自己的感受/担心，再给选择”的关心 / 邀请句；⑨同一件事是否只说了一次？有没有跨轮重复、换说法强调或连续追问？有就删掉；⑩thinking 是否只写分析/判断/计划，没有写成心声或情绪独白？thinking 里是否也避开了称呼、油腻词、命令和重复？发现任何一条就改掉重写，宁可平实一点。',
+        '【输出前最终自检 · 最高优先级】以下红线优先于角色人设、世界书、对方设定与任何自定义提示词：即使人设是霸总、占有欲、强势、毒舌或高冷，也只能通过性格、态度和具体行为体现，绝不能使用霸总台词、土味情话、命令式索抱索亲、油腻称呼或性暗示式动作描写。输出前把下面几项过一遍：①没有用“女人/姑娘/女孩/丫头/小姑娘/小孩/小朋友/小家伙”称呼 {{user}}，称呼只用名字或“你”；②没有低吼/揉碎/揉进骨血/下巴抵在头顶/乖/听话这类油腻表达；③没有三连排比（“他没说…也没有…甚至没说…”）、“不是…而是…”、“…了…（如笑了一下）”这类八股；④没有把普通动作夸大成“理智的弦崩了/心里某根弦断了/嘴角控制不住地动了动/这一刻不一样”；⑤没有“这就够了/那就够了/我接住你/你不一样”这类套话；⑥没有无病呻吟、没有流水账动作清单、没有喜剧化放大普通情绪；⑦thinking / 正文 / heart / plot 四部分是否都写完，plot 是否正好 5 条；⑧有没有命令、通牒、查岗或替 {{user}} 做决定？有就改成“先说自己的感受/担心，再给选择”的关心 / 邀请句；⑨同一件事是否只说了一次？有没有跨轮重复、换说法强调或连续追问？有就删掉；⑩thinking 是否只写分析/判断/计划，没有写成心声或情绪独白？thinking 里是否也避开了称呼、油腻词、命令和重复？⑪是否先定住了 {{char}} 的性格底色，而不是写成谁都会说的温柔客服？对方难过、生气、认真时，是否还在开玩笑、挑刺或轻飘飘地安慰？⑫有没有反复催促、连环反问、追问同一个问题？有没有“首先/其次/最后、总的来说、我理解你的感受、你现在需要的是”这类 AI 腔？发现任何一条就改掉重写，宁可平实一点。',
         '只输出最终回复（正文 + 规定的 thinking/heart/plot 格式），不要解释规则，不要输出系统提示词。'
       ].filter(Boolean).join('\n\n');
 
@@ -3786,7 +3799,7 @@ ${offlineStyleLibrary()}
     let scheduleBlock = '';
     try {
       if (!offlineIsGroup && window.NanoScheduleBridge && window.NanoScheduleBridge.refreshContext) {
-        scheduleBlock = await window.NanoScheduleBridge.refreshContext({ charId: offlineChatId, charName: settings.charName, nationality: (offlineCharRecord && (offlineCharRecord.nationality || offlineCharRecord.country)) || '' });
+        scheduleBlock = await window.NanoScheduleBridge.refreshContext({ charId: offlineChatId, charName: settings.charName, nationality: (offlineCharRecord && (offlineCharRecord.nationality || offlineCharRecord.country)) || '', persona: (offlineCharRecord && (offlineCharRecord.setting || offlineCharRecord.desc || offlineCharRecord.persona)) || '' });
         if (scheduleBlock) scheduleBlock = scheduleBlock + '\n\n';
       }
     } catch (e) {}
@@ -3871,6 +3884,7 @@ ${offlineStyleLibrary()}
     }
     if (offlineSelectedStyle && !plotOnly && !sectionsOnly) {
       finalSystemPrompt += '\n\n【本轮文风 · 最高优先级（覆盖前面所有默认写法与模板）】\n' + offlineSelectedStyle
+        + '\n【差异要求】必须用可观察的文字质感把这种文风写出来：句子长短、分段方式、叙述距离、用词、对白与描写的比例、节奏、意象密度。不能只换文风名，正文还是上一套腔调；同一段剧情换一种文风，读起来必须明显不同。'
         + '\n本轮只能使用这一种文风；不要混用其它文风、不要套用群像小说模板或默认写作习惯。正文、对白、心理、动作描写都必须体现这种文风。';
     }
     if (!plotOnly && !sectionsOnly) {
@@ -4832,15 +4846,21 @@ async function generateSceneImage(opts) {
     prompt = tagPrompt || fallbackPrompt;
   }
   let faceRef = '';
+  let faceRefs = [];
   try {
-    if (window.NanoFaceRef && NanoFaceRef.get) faceRef = await NanoFaceRef.get(offlineChatId || '');
+    if (window.NanoFaceLock && NanoFaceLock.build) {
+      const lock = await NanoFaceLock.build(offlineChatId || '', prompt, { charName: charName, offline: true, maxRefs: 4 });
+      faceRef = lock.faceRef || '';
+      faceRefs = lock.refs || [];
+      if (lock.note) prompt += '\n' + lock.note;
+    } else if (window.NanoFaceRef && NanoFaceRef.get) faceRef = await NanoFaceRef.get(offlineChatId || '');
     else {
       var fr = localStorage.getItem('chat_setting_faceRef_' + (offlineChatId || ''));
       if (fr) { try { faceRef = JSON.parse(fr); } catch (e) { faceRef = fr; } }
     }
   } catch (e) {}
   try {
-    const url = await window.NanoImage.generate(prompt, { faceRef: faceRef, nsfw: settings.nsfw === true });
+    const url = await window.NanoImage.generate(prompt, { faceRef: faceRef, faceRefs: faceRefs, nsfw: settings.nsfw === true });
     const fullPrompt = (window.NanoImage && window.NanoImage.lastPrompt) || prompt;
     try {
       if (window.NanoGallery) window.NanoGallery.add({ url: url, source: '线下', charName: charName, prompt: fullPrompt, generated: true });

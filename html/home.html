@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<script src="../js/nano-runtime.js?v=20261115a"></script>
+<script src="../js/nano-runtime.js?v=20261118j"></script>
 <meta charset="UTF-8">
 <script src="../js/nano-idb.js"></script>
 <script>window.__NANO_FONT_ONLY = true;</script>
@@ -795,8 +795,8 @@ const WORDER=['clock','photo','photow','call','bubbles','chatwidget','polaroidmi
    初始文案统一写在各模板的 copy 里；留空就是无文案，后续只改这里即可。
    copy 的键名对应模板里的 data-t；gray-pink 用 t0/t1（从上到下）。 */
 const BUILTIN_TEMPLATES=[
-  {file:"../gray-pink-dialog-widget.html",name:"gray-pink",label:"灰粉对话",w:4,h:1,copy:{"t0": "☆ nano在呜", "t1": "在呀 ππ"}},
-  {file:"../strip1_note.html",name:"strip1-note",label:"便签",w:4,h:1,copy:{"title": "nano", "sub": "今天也是想你的一天", "time": "12:20"}},
+  {file:"gray-pink-dialog-widget.html",name:"gray-pink",label:"灰粉对话",w:4,h:1,copy:{"t0": "☆ nano在呜", "t1": "在呀 ππ"}},
+  {file:"strip1_note.html",name:"strip1-note",label:"便签",w:4,h:1,copy:{"title": "nano", "sub": "今天也是想你的一天", "time": "12:20"}},
   {file:"builtin/blue-album.html",name:"blue-album",label:"粉丝网",w:4,h:2,copy:{"title": "NANO FAN CLUB", "sub": "“为你心动 第 10086 次”"}},
   // 日记窗已下架：保留模板和 type 索引，已放到桌面的旧组件仍能正常显示，但小组件面板不再提供。
   {file:"builtin/diary-window.html",name:"diary-window",label:"日记窗",w:2,h:2,hidden:true,sizes:[[2, 2], [3, 3], [4, 4]],copy:{"hd": "nano日记_", "d2": "·今天也有好好想你"}},

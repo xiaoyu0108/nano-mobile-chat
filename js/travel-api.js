@@ -386,25 +386,46 @@
       }
     } catch (e) {}
     var faceRef = '';
-    try { faceRef = await faceRefFor(opts.charId || ''); } catch (e) { faceRef = ''; }
-    var note = faceRef
-      ? '【锁脸说明】人物参考图只用于保持长相（五官、脸型、肤色、发色）一致；请完全忽略参考图的姿势、角度、表情、背景与构图，按当前场景重新构图。\n'
-      : '';
+    var faceRefs = [];
+    var note = '';
+    try {
+      if (opts.charId && window.NanoFaceLock && NanoFaceLock.build) {
+        var lock = await NanoFaceLock.build(opts.charId, prompt, { charName: opts.charName || '', maxRefs: 4, offline: !!opts.offline, together: !!opts.together });
+        faceRef = lock.faceRef || '';
+        faceRefs = lock.refs || [];
+        note = lock.note ? (lock.note + '\n') : '';
+      } else {
+        faceRef = await faceRefFor(opts.charId || '');
+        faceRefs = faceRef ? [faceRef] : [];
+        note = faceRef
+          ? '【锁脸 · 只锁五官】参考图只用于保持长相（五官、脸型、肤色、发色）一致；请忽略参考图的姿势、角度、表情、服装、背景与构图，按当前场景重新构图。\n'
+          : '';
+      }
+    } catch (e) {
+      try { faceRef = await faceRefFor(opts.charId || ''); } catch (e2) { faceRef = ''; }
+      faceRefs = faceRef ? [faceRef] : [];
+      note = faceRef
+        ? '【锁脸 · 只锁五官】参考图只用于保持长相（五官、脸型、肤色、发色）一致；请忽略参考图的姿势、角度、表情、服装、背景与构图，按当前场景重新构图。\n'
+        : '';
+    }
     // 有锁脸参考时先走图生图 /images/edits：不少中转站只在 edits 里认真使用参考图，
     // 普通 /images/generations 的 image 字段会被忽略，旅途照片就会“没锁脸”。
-    if (faceRef && String(faceRef).indexOf('data:') === 0) {
+    var dataRefs = (faceRefs || []).filter(function (x) { return String(x).indexOf('data:') === 0; });
+    if (dataRefs.length) {
       try {
-        var fc = faceRef.indexOf(',');
-        var fbin = atob(faceRef.slice(fc + 1));
-        var fu8 = new Uint8Array(fbin.length);
-        for (var fi = 0; fi < fbin.length; fi++) fu8[fi] = fbin.charCodeAt(fi);
-        var fmime = (faceRef.slice(5, fc).split(';')[0]) || 'image/png';
         var ffd = new FormData();
         ffd.append('model', model);
         ffd.append('prompt', note + prompt);
         ffd.append('n', '1');
         ffd.append('size', size);
-        ffd.append('image', new Blob([fu8], { type: fmime }), 'face.png');
+        dataRefs.forEach(function (ref, idx) {
+          var fc = ref.indexOf(',');
+          var fbin = atob(ref.slice(fc + 1));
+          var fu8 = new Uint8Array(fbin.length);
+          for (var fi = 0; fi < fbin.length; fi++) fu8[fi] = fbin.charCodeAt(fi);
+          var fmime = (ref.slice(5, fc).split(';')[0]) || 'image/png';
+          ffd.append('image', new Blob([fu8], { type: fmime }), 'reference-' + (idx + 1) + '.png');
+        });
         var base = toV1Base(resolveApiHost(imgUrl));
         var er = await fetch(base + '/images/edits', {
           method: 'POST',
@@ -422,12 +443,14 @@
       }
     }
     var body = { model: model || undefined, prompt: note + prompt, n: 1, size: size };
-    if (faceRef) {
-      body.image = faceRef;
-      body.reference_image = [faceRef];
-      body.input_reference_image = [faceRef];
-      body.reference_images = [faceRef];
-      body.ref_image = faceRef;
+    var refPayload = faceRefs.filter(Boolean);
+    if (refPayload.length) {
+      var singleRef = faceRef || refPayload[0];
+      body.image = singleRef;
+      body.reference_image = refPayload.slice();
+      body.input_reference_image = refPayload.slice();
+      body.reference_images = refPayload.slice();
+      body.ref_image = singleRef;
     }
     var headers = { 'Content-Type': 'application/json' };
     if (key) headers.Authorization = 'Bearer ' + key;

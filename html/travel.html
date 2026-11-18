@@ -350,7 +350,7 @@ textarea.ta:focus,.inp:focus{border-color:var(--ink)}
 <div class="ov" id="ov"><div class="sheet" id="sheet"></div></div>
 <div class="toast" id="toast"></div>
 
-<script src="../js/nano-runtime.js?v=20261115a"></script>
+<script src="../js/nano-runtime.js?v=20261118j"></script>
 <script>window.__NANO_FONT_ONLY = true;</script>
 <script src="../js/appearance.js?v=20261106a"></script>
 <script src="../js/nano-idb.js?v=20261106a"></script>
@@ -358,7 +358,7 @@ textarea.ta:focus,.inp:focus{border-color:var(--ink)}
 <script src="../js/localforage.min.js?v=20261106a"></script>
 <script src="../js/mem-link.js?v=20261111a"></script>
 <script src="../js/travel-store.js?v=20261112b"></script>
-<script src="../js/travel-api.js?v=20261102a"></script>
+<script src="../js/travel-api.js?v=20261118f"></script>
 <script>
 /* ================= 配置 / 对接口子 ================= */
 const TravelAPI = window.NanoTravelAPI || window.TravelAPI || {};
@@ -959,7 +959,8 @@ async function genPolaroidFor(c, record, opts){
   const out = await TravelAPI.generateImage({
     prompt: polaroidPrompt(c, record, sceneOnly),
     charId: sceneOnly ? '' : String(c.id),
-    charName: sceneOnly ? '' : (c.name || '')
+    charName: sceneOnly ? '' : (c.name || ''),
+    together: !sceneOnly && record && record.owner === 'us'
   });
   return out && out.src ? out.src : '';
 }

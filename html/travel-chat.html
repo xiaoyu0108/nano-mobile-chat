@@ -239,7 +239,7 @@ body.is-replay #route .st{cursor:default}
 <div id="ov"></div>
 <div id="toast"></div>
 
-<script src="../js/nano-runtime.js?v=20261115a"></script>
+<script src="../js/nano-runtime.js?v=20261118j"></script>
 <script>window.__NANO_FONT_ONLY = true;</script>
 <script src="../js/appearance.js?v=20261106a"></script>
 <script src="../js/nano-gallery.js?v=20261106a"></script>
@@ -247,7 +247,7 @@ body.is-replay #route .st{cursor:default}
 <script src="../js/mem-link.js?v=20261111a"></script>
 <script src="../js/builtin-worldbook.js?v=20261025b"></script>
 <script src="../js/travel-store.js?v=20261112b"></script>
-<script src="../js/travel-api.js?v=20261102a"></script>
+<script src="../js/travel-api.js?v=20261118f"></script>
 <script>
 /* ===== API 接入点 =====
    window.TravelAPI.generate(payload) -> {text, choices:[{type:'地点'|'美食',name,desc}]}
@@ -781,7 +781,7 @@ async function takePhoto(existing,forcedPrompt){
   S.photoBusy=true;down();
   try{
     const prompt=String(forcedPrompt||m.prompt||'').trim()||buildPhotoPrompt();
-    const out=await TravelAPI.generateImage({prompt,charId:CHAR_ID,charName:CHAR});
+    const out=await TravelAPI.generateImage({prompt,charId:CHAR_ID,charName:CHAR,together:true});
     if(!out||!out.src)throw new Error('没有返回图片');
     m.loading=false;m.fail=false;m.url=out.src;m.caption=m.caption||(DEST+' · '+tm());m.prompt=prompt;m.at=Date.now();
     refresh(m);down();toast('照片已生成');

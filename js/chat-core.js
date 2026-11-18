@@ -1225,6 +1225,14 @@
         prompt += '回复前先在脑子里过一遍：这个人的用词习惯、句子长短、称呼方式、情绪表达、幽默/冷淡/黏人的程度、在意什么、会回避什么。你每一轮都要听起来像**同一个具体的人**，和上一轮的风格、口吻、态度保持一致；把上面的通用规则当成下限，不要演成“谁都会说的客套话”。宁可短、宁可留白、宁可带点小情绪，也要像你本人，而不是一个礼貌的客服。\n';
         prompt += '同时读全上下文：不要只看最新一句，要接住前几轮的语气和话题走势，别重复已说过的内容，也别突然切换腔调或忘记刚才的约定。\n';
 
+        prompt += '\n【性格底色与情绪 · 每轮必过】\n';
+        prompt += '1. 先定人设底色：回复前先确认「我是谁」——性格底色（外冷内热 / 毒舌但心软 / 闷 / 活泼 / 敏感 / 强势 / 慢热……）、年龄与身份、成长经历、此刻的情绪基线、和对方的关系阶段。回复必须从这个具体的人出发；同样一句话换个人说，措辞、语气和反应就该不一样。不要把所有人写成同一个温柔、讲道理、会安慰人的“AI 好人”。\n';
+        prompt += '2. 先读对方情绪再开口：对方现在是难过、生气、焦虑、开心、疲惫、认真求问、随口闲聊还是暧昧试探？对方难过、受挫或在说很重的事时，不搞笑、不玩梗、不发无关表情包或自拍，也不要轻飘飘一句“别难过啦”带过；对方认真问深刻问题时，收起玩笑和轻佻，认真想清楚再答；对方说生气、被冒犯时，先把这份情绪当回事，不嘲讽、不否定、不说“别生气了 / 这有什么好气的 / 你至于吗 / 想多了”，也不急着讲道理。场合不对，再好的梗也不说。\n';
+        prompt += '3. 不挑刺、不催办、不连环反问：可以损、可以打趣，但只在关系和气氛允许时，一次就够；禁止无底线地嘲讽、揭短、拿对方软肋开玩笑，对方低落、认真、生气时零嘲讽。禁止把关心写成查岗：“你有没有好好吃饭？你不会什么都没吃吧？快去吃饭。”“不然呢？”“怎么还不睡？”这类连环追问、反问和命令都不要。关心要换位，例如“今天好冷，我怕你冻着，回来先洗个热水澡暖暖？”；“饿了吧？想吃什么，我给你点。”（用你们关系里自然的称呼，不熟就别乱叫。）对方回应、拒绝或岔开就翻篇。\n';
+        prompt += '4. 反 AI 腔：禁止“我理解你的感受 / 我能感受到你的难过 / 你一定很不好受吧”这类先复述情绪再安慰的咨询腔；禁止“首先…其次…最后…”“总的来说 / 综上所述 / 值得一提的是 / 在这个…的时代”“让我们…”“希望这些对你有帮助”“如果你愿意，我可以…”这类 AI 作文结构；禁止把聊天写成条目、清单、小标题和三段式升华。真人聊天是具体的、会跑题的、有停顿和口语的。\n';
+        prompt += '5. 你也有自己的生活：工作 / 学业、朋友、家人、爱好、通勤、倒霉事、开心事。聊天时可以自然主动分享自己这边刚发生的一件具体的事，但对方在说自己的事时先听对方的，不要每句都问“你呢”，也不要硬把话题拐回自己。分享要像真的刚发生，不要编造与日程、世界书冲突的内容。\n';
+        prompt += '6. 严格格式：即使情绪强烈、换文风或想写长，也不得丢掉必须的标记、顺序、条数和分隔；只输出角色本人该输出的内容，不解释规则、不加“好的 / 以下是”。\n';
+
         // 亲密与性按剧情自然推进：不设 NSFW 开关，也不把普通聊天往调情/荤话上带。
         // 日常就是日常；只有关系、情绪和具体情境都到位时才进入暧昧或亲密，绝不每轮发情。
         prompt += '\n【情感与分寸 · 按剧情自然推进】\n';
@@ -1273,6 +1281,8 @@
         prompt += '- [call:视频]（给对方打视频电话）\n';
         prompt += '- [image:图片描述] 例如 [image:一张夕阳]\n';
         prompt += '- 发图必须有理由：只分享你此刻真实看到/正在做的事，先自然说清“为什么发”，再发图；不要为了发图而发图。生图不一定是自拍：也可以主动发夕阳、咖啡、电脑桌面、街角、食物、小狗小猫、窗边等日常随拍；发自拍时镜头角度要随机（仰拍/俯拍/侧拍/回头/过肩/对镜/半身/全身），不要每次都同一张正面自拍。对方在说情绪、认真话题时，绝对不要用自拍或无关照片回应；除非对方明确要，否则本轮不发图。\n';
+        prompt += '- 照片里出现谁，由你的人设、关系阶段、所在位置和当下剧情决定，不要因为设置里有锁脸参考就硬画合照：异地/异国、隔着屏幕、线上聊天时，照片里不要出现用户本人（可以是你一个人，或你和当地朋友/同事/其他人的多人照）；只有你们真的在同一个地方（见面、旅行、线下相处）时，才可以出现你+用户的双人或多人同框。\n';
+        prompt += '- [image:...] 的图片描述开头必须写清出场人物，格式固定为 `人物：...`，例如“人物：我一人”“人物：我和你”“人物：我和朋友A、朋友B”“人物：无人（只拍场景）”。只写这一刻真的会在画面里的人；后面再写画面、动作、镜头。\n';
         prompt += '- 对方明确要照片/自拍/看看你时，本轮必须输出一个和请求相关的 [image:...] 标签，不能只口头说“发了/给你看/发过去了”。\n';
         const __emojiNames = getEmojiNamesForPrompt();
         if (__emojiNames.length) {
@@ -7351,6 +7361,9 @@
             instr += '- 严禁口水话与空话：禁止“在吗/在干嘛/吃了吗/睡了吗/忙不忙”“想你了”却没有下文这类没信息量的句子；禁止汇报与话题无关的日常流水账（上课/下课/写作业/做卷子/吃饭睡觉等）；禁止编造不存在的日程；禁止括号旁白；禁止复述设定或系统提示。\n';
             instr += '- 每一句都要有具体的信息或真实的情绪，让对方接得住；可以是分享一件刚好发生的小事、想起某个约定、追问上一轮没说完的点。\n';
             instr += '- 用关心 / 邀请的口吻，不命令、不施压；对方拒绝或没回应就翻篇，同一件事只说一次。\n';
+            instr += '- 先定住你的性格底色，再用只有你会用的措辞；不要写成同一种温柔 AI 腔。\n';
+            instr += '- 先看最近聊天里对方的情绪：TA 在难过、生气、忙或在说很重的事时，不要搞笑、不要挑刺、不要催办、不要连环反问。\n';
+            instr += '- 禁止“我理解你的感受 / 你现在需要的是 / 首先…其次…最后 / 总的来说 / 值得一提 / 希望这些对你有帮助”这类 AI 作文腔。\n';
             if (cotOn) instr += '- 第一个字符必须是 [think]，用 [/think] 收尾：先完成思考，再说话；思考不得出现在结尾，也不得重复输出。\n';
             instr += '输出格式（严格）：\n';
             if (cotOn) instr += '[think]……你的思考……[/think]\n';
@@ -7665,6 +7678,7 @@
             '【反重复 · 最高优先级】这条动态必须避开你最近发过的同一件事、同一个梗、同一种抱怨和同一句式；不要反复消费“吉他弦又断了 / 又加班 / 猫又打翻杯子”这类同质素材。同一个生活小事最多出现一次，这次换一个具体的新鲜事或新情绪。' + (__motifs ? ('最近反复出现的词/梗：' + __motifs + '，本次必须避开。') : '') + '\n' +
             '口语、生活化、松弛不端着。大多数情况写 100~220 字，把一件具体的事或一种情绪讲完整，带细节、有画面、有意思的表达，不要每次都只说一句话；也可以写短帖（100 字以下，2~4 句，也要有意思），偶尔写 300~500 字长文——追星/演唱会 repo、好物分享、情感经历、求助/避雷、深夜碎碎念等，要有具体细节、真实情绪和起承转合，不要 AI 腔。长度跟着角色当下的情绪、事情大小和人设走，也不要为了凑字硬写。题材从吃喝玩乐、旅游、日常碎片、宠物、天气、开心、emo、吐槽、发疯、追星、避雷、攻略、测评、健身打卡、读书、职场、提问、投票、段子、恋爱日常、热点八卦里自然长出来。广告只做隐晦暗广，先讲真实体验和小缺点。\n' +
             '不要写成流水账或日程记录：拒绝“早上…中午…晚上…”地罗列作息，也拒绝“今天天气不错 / 吃了三明治 / 上班好累 / 晚安”这类谁都能发的空话；要落到一件具体的事或一个具体的细节，有只有你此刻才会发的东西。\n' +
+            '【配图人物】imagePrompt 开头必须写 `人物：...`（例如 人物：我一人 / 人物：我和你 / 人物：我和朋友A / 人物：无人（只拍场景））。异地、异国或隔着屏幕时，照片里不要出现用户同框；只有你们真的在同一个地方时才可以双人/多人。\n' +
             '只输出一个 JSON，不要多余内容：{"text":"动态文案","wantImage":true 或 false,"imagePrompt":"若想配图，描述这张照片的画面；不配图则留空","location":"地点或空字符串"}';
         var __fi = momentCharForeign(characterData || {});
         if (__fi.foreign) {
@@ -7701,19 +7715,7 @@
         if (!content) return null;
         let obj = __parseMomentObj(content);
         if (!obj) return null;
-        // 模型偶尔无视提示词继续复读同一个梗：只重写一次，明确要求换素材。
-        if (__looksRepeated(obj.text)) {
-            suppressApiAlerts = true;
-            let retryContent = null;
-            try {
-                retryContent = await callMainApiRaw([
-                    { role: 'system', content: sys + '\n【本次重写】上一条生成又重复了你最近发过的素材，这是不允许的。请彻底换一个具体的新事件/新情绪，不要再用同样的梗、同样的抱怨或同样的关键词。' },
-                    { role: 'user', content: userMsg }
-                ], 1400, 0.95);
-            } catch (e) {} finally { suppressApiAlerts = false; }
-            const retryObj = __parseMomentObj(retryContent);
-            if (retryObj) obj = retryObj;
-        }
+        // 不复用自动重写：一次生成只调用一次 API。重复内容交给用户自己点刷新。
         return obj;
     }
     // 选出参与本次朋友圈的 3~4 位角色/NPC（当前角色 + 通讯录里其他角色）
@@ -7956,6 +7958,7 @@
             + '绝对不能是作者本人，也不能是用户本人；绝对不能让任何普通 char 点赞或评论另一个 char。\n'
             + '【回复对象】只有评论区里真正发过评论的人才能被回复；作者没在评论区留言时，NPC 不能写「回复作者」。\n'
             + '【NPC 去重】同一个 NPC 不要出现在两个不同角色的动态里；名字必须是真实姓名，禁止王姐/李哥/店老板/神秘人/旅行者这类假名。\n'
+            + '【配图人物】imagePrompt 开头必须写 `人物：...`（例如 人物：作者一人 / 人物：作者和朋友A / 人物：无人（只拍场景））。作者和用户异地/异国或隔着屏幕时，照片里不要出现用户同框；只有作者和用户真的在同一个地方时才可以双人/多人。\n'
             + (foreignAuthors.length ? ('【外语发帖】' + foreignAuthors.map(function (x) { return x.name + '（' + (x.info.nat || '外国') + '，母语 ' + x.info.lang + '）'; }).join('、') + '：动态文案必须先用母语写一句，再换行用括号附中文翻译，例如：do you like me？\n（你爱我吗？）；评论也要「外语原文（中文翻译）」，NPC 大多是 TA 国家的朋友。\n') : '')
             + 'JSON 字符串里的换行必须写成 \\n 转义。\n'
             + '只输出一个 JSON 数组，不要多余内容：[{"author":"发动态的人名（优先使用名单里的名字，不足时可是合理 NPC）","text":"动态文案","wantImage":true 或 false,"imagePrompt":"若想配图，描述这张照片的画面；不配图则留空","location":"地点或空字符串","likes":["点赞者名字"],"comments":[{"user":"评论者名字","toUser":"回复对象名字，没有就留空","text":"评论内容"}]}]';
@@ -8350,7 +8353,7 @@
             + '"confidence":0.0,'
             + '"message":"随照片一起说出口的话，1~3 条短句，用\\n分隔每条，和照片及最近聊天强相关，禁止“给你看”“在干嘛”这类口水话",'
             + '"caption":"可留空的短配文",'
-            + '"imagePrompt":"照片画面描述，具体、有画面感；若此刻并没有值得分享的具体场景则留空"}';
+            + '"imagePrompt":"照片画面描述，开头必须是`人物：...`（例如 人物：我一人 / 人物：我和你 / 人物：我和朋友A / 人物：无人（只拍场景））；异地异国或隔着屏幕时不要写用户同框；若此刻并没有值得分享的具体场景则留空"}';
         const userMsg = (setting ? ('【你的人设】\n' + setting.slice(0, 500) + '\n\n') : '')
             + (recent ? ('【最近的聊天】\n' + recent + '\n\n') : '')
             + '【现在】' + nowFull + '。如果你此刻正好在做值得分享的事，就自然分享一张现在想发给' + uName + '的照片；没有的话就把 imagePrompt 留空，不必勉强。';
@@ -9583,55 +9586,22 @@
         let body = { model: imgModel, prompt: prompt, n: 1, size: '1024x1024' };
         // 普通模型的反面词已经并进 prompt；negative_prompt 只给 NAI，避免严格 OpenAI 站拒绝未知字段。
         if (imagePresets.negative && isNaiImageModel) body.negative_prompt = imagePresets.negative;
-        // 合照锁脸：只对「合照 / 合影 / 同框 / 双人」生效，普通单人图完全不碰。
-        const coupleMode = String(getChatSetting('coupleFaceMode', 'none') || 'none');
-        if (coupleMode !== 'none' && isCouplePhotoPrompt(prompt)) {
-            const wantUser = coupleMode === 'user' || coupleMode === 'both';
-            const wantChar = coupleMode === 'char' || coupleMode === 'both';
-            let userRef = '';
-            if (wantUser) {
-                userRef = String(getChatSetting('coupleFaceUser', '') || '');
-                if (!userRef && typeof localforage !== 'undefined') {
-                    try { userRef = String((await localforage.getItem('chat_setting_coupleFaceUser_' + chatId)) || ''); } catch (e) {}
+        // 单人 / 双人 / 多人锁脸统一走 NanoFaceLock：
+        // 单人锁角色；合照按「锁我 / 锁 TA / 锁双方」带用户与角色；多人再按提示词里的角色名补参考图。
+        try {
+            if (window.NanoFaceLock && NanoFaceLock.build) {
+                const lock = await NanoFaceLock.build(chatId, prompt, {
+                    charName: (characterData && characterData.name) || chatName || '',
+                    userName: (getCurrentUser() && getCurrentUser().name) || '用户本人',
+                    maxRefs: 6
+                });
+                if (lock.refs && lock.refs.length) {
+                    faceRefs = lock.refs.slice();
+                    faceRef = lock.faceRef || faceRefs[0] || '';
                 }
-                if (!userRef) {
-                    userRef = String(currentUserAvatar || '');
-                }
-                if (!userRef) {
-                    try {
-                        const cu = getCurrentUser();
-                        if (cu && cu.id) userRef = (await getMaskAvatarFromDB(cu.id)) || '';
-                    } catch (e) {}
-                }
+                if (lock.note) { prompt += '\n' + lock.note; body.prompt = prompt; }
             }
-            let charRef = '';
-            if (wantChar) {
-                charRef = String(getChatSetting('coupleFaceChar', '') || '');
-                if (!charRef && typeof localforage !== 'undefined') {
-                    try { charRef = String((await localforage.getItem('chat_setting_coupleFaceChar_' + chatId)) || ''); } catch (e) {}
-                }
-                if (!charRef) charRef = String(faceRef || '');
-            }
-            if (wantUser && wantChar && userRef && charRef) {
-                // 两张参考图分开传给图生图：只拼成一张图时，很多网关只会锁住其中一张脸。
-                faceRefs = [userRef, charRef];
-                faceRef = await combineCoupleFaceRefs(userRef, charRef); // 只接受单图的网关兜底
-                prompt += '\n【合照锁脸】若提供多张参考图：第 1 张是用户本人，第 2 张是角色本人；若只有一张左右拼接图：左边是用户，右边是角色。必须同时保留两人的五官、脸型和发型，不要换脸或混成一个人。';
-            } else if (wantUser) {
-                if (userRef) {
-                    faceRef = userRef;
-                    faceRefs = [userRef];
-                    prompt += '\n【合照锁脸】参考图是用户本人。画面里出现用户时必须保持这张脸不变。';
-                }
-            } else if (wantChar) {
-                if (charRef) {
-                    faceRef = charRef;
-                    faceRefs = [charRef];
-                    prompt += '\n【合照锁脸】参考图是角色本人。画面里出现角色时必须保持这张脸不变。';
-                }
-            }
-            body.prompt = prompt;
-        }
+        } catch (e) {}
         const hasFace = !!(faceRef && faceRef.trim() !== '');
         let refs = [];
         if (hasFace) {
@@ -9789,7 +9759,10 @@
                 if (r && r.aborted) { cleanup(); return r; }
                 if (r && r.status && r.status >= 400) { cleanup(); return r; } // 服务器已响应，直接抛给上层
                 if (genCancelled) { cleanup(); return r; }
-                // 父页面通道失败（超时/网络/未取到结果）→ 本页直接 fetch 兜底
+                // 父页面已经确认收到请求：绝不再从本页发第二次，避免一次对话扣两次 API。
+                // 没拿到结果就交给上层弹失败提示，由用户自己决定是否重试。
+                if (r && r.parentStarted) { cleanup(); return r; }
+                // 父页面通道完全不可用（没有外壳 / 不是受支持的外壳）→ 本页直接 fetch
                 return directSend().then(function (r2) { cleanup(); return r2; });
             });
         }
@@ -9803,13 +9776,20 @@
             let settled = false;
             let poll = null;
             let capTimer = null;
+            let ackTimer = null;
+            let started = false;
             function finish(res) {
                 if (settled) return;
                 settled = true;
                 if (poll) clearInterval(poll);
                 if (capTimer) { clearTimeout(capTimer); capTimer = null; }
+                if (ackTimer) { clearTimeout(ackTimer); ackTimer = null; }
                 window.removeEventListener('message', onMsg);
                 try { window.removeEventListener('nanoAbortGeneration', onAbort); } catch (e) {}
+                // 告诉上层：父页面到底有没有开始请求，决定要不要本地兜底。
+                if (res && typeof res === 'object' && !res.aborted && typeof res.parentStarted === 'undefined') {
+                    res.parentStarted = started;
+                }
                 resolve(res);
             }
             function onAbort() { finish({ ok: false, status: 0, aborted: true, error: '已停止生成' }); }
@@ -9821,27 +9801,41 @@
                 return false;
             }
             function onMsg(e) {
-                if (e && e.data && e.data.type === 'chatApiDone' && e.data.token === payload.token) {
+                const d = e && e.data;
+                if (!d) return;
+                if (d.type === 'chatApiStart' && d.token === payload.token) {
+                    started = true;
+                    if (ackTimer) { clearTimeout(ackTimer); ackTimer = null; }
+                    return;
+                }
+                if (d.type === 'chatApiDone' && d.token === payload.token) {
                     if (!takeResult()) finish({ ok: false, status: 0, error: '未取到结果' });
                 }
             }
             if (takeResult()) return;
             window.addEventListener('message', onMsg);
             try { window.addEventListener('nanoAbortGeneration', onAbort); } catch (e) {}
-            // 上限：父页面通道迟迟没结果就放弃，交给本页直接 fetch 兜底（避免永久「输入中」）
-            capTimer = setTimeout(function () { finish({ ok: false, status: 0, error: firstErr || '请求超时' }); }, 120000);
+            // 父页面收到请求会立刻回 chatApiStart。4 秒内没有回执，说明父页面不支持这套通道，
+            // 这时本页再直连；已经有回执则只等父页面的结果，绝不重复请求。
+            ackTimer = setTimeout(function () {
+                ackTimer = null;
+                if (!started && !settled) finish({ ok: false, status: 0, error: firstErr || '父页面未响应', parentStarted: false });
+            }, 4000);
+            capTimer = setTimeout(function () {
+                finish({ ok: false, status: 0, error: started ? '生成超时，请稍后重试' : (firstErr || '请求超时') });
+            }, 300000);
             try {
                 window.parent.postMessage({
                     type: 'chatApiFetch', token: payload.token, resultKey: resultKey,
                     url: payload.url, method: payload.method, headers: payload.headers, body: payload.body
                 }, '*');
-            } catch (e) { finish({ ok: false, status: 0, error: firstErr || '无法请求' }); return; }
+            } catch (e) { finish({ ok: false, status: 0, error: firstErr || '无法请求', parentStarted: false }); return; }
             // 兜底轮询：父页面刷新丢消息时，结果仍会写到 localStorage
             let tries = 0;
             poll = setInterval(function() {
                 tries++;
                 if (takeResult()) return;
-                if (tries > 115) finish({ ok: false, status: 0, error: firstErr || '请求超时' });
+                if (tries > 295 && !started) finish({ ok: false, status: 0, error: firstErr || '请求超时', parentStarted: false });
             }, 1000);
         });
     }
@@ -10511,7 +10505,7 @@
             // （链接 / 上传图片 / 纳米助手 / 其它页面）新加的表情包，角色这一轮都能读到并使用。
             try { await getEmojiData(true); } catch (e) {}
             // 刷新角色日程上下文（当前在做什么、今天/明天安排、是否被叫醒）
-            try { if (window.NanoScheduleBridge) await window.NanoScheduleBridge.refreshContext({ charId: chatId, charName: displayName, nationality: (characterData && (characterData.nationality || characterData.country)) || '' }); } catch (e) {}
+            try { if (window.NanoScheduleBridge) await window.NanoScheduleBridge.refreshContext({ charId: chatId, charName: displayName, nationality: (characterData && (characterData.nationality || characterData.country)) || '', persona: (characterData && (characterData.setting || characterData.desc || characterData.persona)) || '' }); } catch (e) {}
             // 朋友圈/私聊互通：每轮回复前从 IndexedDB + localStorage 合并最新动态和评论。
             try { await __refreshMomentsMemoryCache(); } catch (e) {}
             // Ins/私聊互通：让角色也能读到用户/自己刚发的 Ins。
@@ -12898,6 +12892,8 @@
                     addNanoErrorNotice();
                 } else if (result && result.error) {
                     showAlert('网络错误', '无法连接 API 服务器\n' + result.error);
+                } else if (!isNanoChat) {
+                    try { showAlert('API 错误（' + ((result && result.status) || '') + '）', describeHttpError(result ? result.status : 0)); } catch (e) {}
                 }
                 return;
             }
@@ -12908,6 +12904,7 @@
             } catch (e) {}
             if (!content) {
                 if (isNanoChat) addNanoErrorNotice();
+                else { try { showAlert('生成失败', '模型没有返回内容，请稍后重试。'); } catch (e) {} }
                 return;
             }
             if (genCancelled) return;
@@ -13677,6 +13674,7 @@
             if (genCancelled) return;
             if (!reply) {
                 if (isNanoChat) addNanoErrorNotice();
+                else { try { showAlert('生成失败', '模型没有返回内容，请稍后重试。'); } catch (e) {} }
                 return;
             }
             // char 主动调用 MCP：解析 <tool> 标签 → 执行 → 继续生成最终回复
@@ -13692,6 +13690,7 @@
             if (genCancelled) return;
             if (!reply) {
                 if (isNanoChat) addNanoErrorNotice();
+                else { try { showAlert('生成失败', '模型没有返回内容，请稍后重试。'); } catch (e) {} }
                 return;
             }
             await processReply(reply, lastUserMsg);
@@ -14112,7 +14111,8 @@ if (callCard) {
                 NanoScheduleBridge.guardSend(proceed, {
                     charId: chatId,
                     charName: displayName,
-                    nationality: (characterData && (characterData.nationality || characterData.country)) || ''
+                    nationality: (characterData && (characterData.nationality || characterData.country)) || '',
+                    persona: (characterData && (characterData.setting || characterData.desc || characterData.persona)) || ''
                 });
                 return;
             }
@@ -14132,7 +14132,8 @@ if (callCard) {
                 NanoScheduleBridge.guardSend(function () { triggerReply(); }, {
                     charId: chatId,
                     charName: displayName,
-                    nationality: (characterData && (characterData.nationality || characterData.country)) || ''
+                    nationality: (characterData && (characterData.nationality || characterData.country)) || '',
+                    persona: (characterData && (characterData.setting || characterData.desc || characterData.persona)) || ''
                 });
                 return;
             }
@@ -15268,10 +15269,10 @@ if (callCard) {
                 content: combined
             });
         } catch (e) {}
-        try { addSystemNotice('你把「' + (p.name || 'TA') + '」手机里的 ' + items.length + ' 个 App 内容分享给了 TA'); } catch (e) {}
+        try { addSystemNotice('你把「' + (p.name || 'TA') + '」手机里的 ' + items.length + ' 个 App 内容分享给了 TA。想听 TA 的想法，点「回复」或发一条消息再让 TA 读。'); } catch (e) {}
         try { renderMessages(); saveMessages(); scrollToBottom(); } catch (e) {}
-        // 分享后让 TA 立刻读一遍并作出反应（否则角色会“无动于衷”）
-        try { if (!isProcessingApi) { isWaitingForReply = true; triggerReply(); } } catch (e) {}
+        // 不自动调用 API：等用户点击回复/发消息后再让角色读这些内容并回应。
+        try { isWaitingForReply = true; updateSendButtonMode(); } catch (e) {}
     }
     // 同人文 App：把故事作为卡片发到角色私聊，并让 TA 读完后回应
     function consumePendingFanficCard() {

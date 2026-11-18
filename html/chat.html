@@ -2,8 +2,8 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <script src="../js/nano-runtime.js?v=20261115a"></script>
-  <script src="../js/group-store.js?v=20261103a"></script>
+  <script src="../js/nano-runtime.js?v=20261118j"></script>
+  <script src="../js/group-store.js?v=20261118d"></script>
   <script src="../js/appearance.js?v=20261110c"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <link rel="icon" href="../icons/icon-192.png" />
@@ -1207,6 +1207,8 @@
   let searchKw = '';
   let activePage = 'chat';
   let groupAvatarTemp = '';
+  let __groupSig = '';
+  let __groupHydrating = false;
 
   const $ = function (id) { return document.getElementById(id); };
 
@@ -1670,7 +1672,7 @@
     } catch (e) { return null; }
   }
 
-  function mapGroups(groups) {
+  function mapGroups(groups, dataMap) {
     const pinned = getPinnedIds();
     return groups.filter(function (g) {
       if (!g || g.pending) return false;
@@ -1680,7 +1682,7 @@
       return true;
     }).map(function (g) {
       const last = getGroupLastMessage(g.id);
-      const gd = readGroupLocal(g.id) || {};
+      const gd = (dataMap && dataMap[String(g.id)]) || readGroupLocal(g.id) || {};
       const hasAvatar = Object.prototype.hasOwnProperty.call(gd, 'avatar');
       const hasName = Object.prototype.hasOwnProperty.call(gd, 'name');
       return {
@@ -1700,6 +1702,12 @@
     });
   }
 
+  function groupSig(list) {
+    return JSON.stringify((list || []).map(function (x) {
+      return [x.id, x.name, x.avatar, x.msg, x.time, x.pinned];
+    }));
+  }
+
   function loadGroups() {
     let groups = [];
     try {
@@ -1707,6 +1715,38 @@
       groups = raw ? (JSON.parse(raw).groups || []) : [];
     } catch (e) {}
     groupsData = mapGroups(groups);
+    __groupSig = groupSig(groupsData);
+    // localStorage 写满时群资料只会落到 IndexedDB：异步再读一次权威数据。
+    hydrateGroupsFromIDB();
+  }
+
+  async function hydrateGroupsFromIDB() {
+    if (__groupHydrating || !window.GroupStore || !GroupStore.get) return;
+    __groupHydrating = true;
+    try {
+      // IDB 写入是异步的：短延迟 + 再读一次，避免刚建群/刚改资料时读到旧值。
+      let raw = await GroupStore.get(GROUP_KEY);
+      if (!raw) return;
+      let groups = [];
+      try { groups = JSON.parse(raw).groups || []; } catch (e) { return; }
+      const dataMap = {};
+      await Promise.all(groups.map(async function (g) {
+        try {
+          const r = await GroupStore.get(GROUP_DATA_PREFIX + g.id);
+          if (r) dataMap[String(g.id)] = JSON.parse(r);
+        } catch (e) {}
+      }));
+      const next = mapGroups(groups, dataMap);
+      const sig = groupSig(next);
+      if (sig !== __groupSig) {
+        __groupSig = sig;
+        groupsData = next;
+        if (currentTab === 'groups') renderCurrent();
+      }
+    } catch (e) {
+    } finally {
+      __groupHydrating = false;
+    }
   }
 
   /* ================= 渲染 ================= */
@@ -2009,7 +2049,7 @@
       const img = new Image();
       img.onload = function () {
         try {
-          const max = 320;
+          const max = 512;
           const scale = Math.min(1, max / Math.max(img.width || 1, img.height || 1));
           const w = Math.max(1, Math.round((img.width || max) * scale));
           const h = Math.max(1, Math.round((img.height || max) * scale));
@@ -2019,7 +2059,7 @@
           ctx.fillStyle = '#ffffff';
           ctx.fillRect(0, 0, w, h);
           ctx.drawImage(img, 0, 0, w, h);
-          const out = cv.toDataURL('image/jpeg', 0.82);
+          const out = cv.toDataURL('image/jpeg', 0.9);
           cb(out && out.length < src.length ? out : src);
         } catch (e) { cb(src); }
       };
@@ -2103,10 +2143,22 @@
     };
 
     try {
-      const raw = JSON.parse(localStorage.getItem(GROUP_KEY) || '{}');
-      raw.groups = Array.isArray(raw.groups) ? raw.groups : [];
-      raw.groups.push(group);
-      localStorage.setItem(GROUP_KEY, JSON.stringify(raw));
+      // 以 IndexedDB 里的群列表为准：localStorage 写满后它可能是旧的，
+      // 直接 push 会把别处刚改的群名 / 成员覆盖掉。
+      let raw = null;
+      if (window.GroupStore && GroupStore.get) {
+        try { raw = await GroupStore.get(GROUP_KEY); } catch (e) {}
+      }
+      if (!raw) { try { raw = localStorage.getItem(GROUP_KEY); } catch (e) {} }
+      const data = raw ? (JSON.parse(raw) || {}) : {};
+      data.groups = Array.isArray(data.groups) ? data.groups : [];
+      data.groups.push(group);
+      const payload = JSON.stringify(data);
+      if (window.GroupStore && GroupStore.set) {
+        await GroupStore.set(GROUP_KEY, payload);
+      } else {
+        localStorage.setItem(GROUP_KEY, payload);
+      }
     } catch (e) {
       alert('群聊保存失败：本地存储空间不足。请换一张更小的群头像，或清理部分聊天图片后重试。');
       return;
@@ -2129,18 +2181,24 @@
           msgCount: 0
         };
       });
-      localStorage.setItem(GROUP_DATA_PREFIX + group.id, JSON.stringify({
+      const gdPayload = JSON.stringify({
         name: name,
         notice: '',
         avatar: groupAvatarTemp || '',
         ownerId: 'me',
         members: memberObjects
-      }));
+      });
+      if (window.GroupStore && GroupStore.set) {
+        await GroupStore.set(GROUP_DATA_PREFIX + group.id, gdPayload);
+      } else {
+        localStorage.setItem(GROUP_DATA_PREFIX + group.id, gdPayload);
+      }
     } catch (e) {
       try {
-        const raw = JSON.parse(localStorage.getItem(GROUP_KEY) || '{}');
-        raw.groups = (raw.groups || []).filter(function (g) { return String(g.id) !== String(group.id); });
-        localStorage.setItem(GROUP_KEY, JSON.stringify(raw));
+        const raw = localStorage.getItem(GROUP_KEY);
+        const data = raw ? JSON.parse(raw) : {};
+        data.groups = (data.groups || []).filter(function (g) { return String(g.id) !== String(group.id); });
+        localStorage.setItem(GROUP_KEY, JSON.stringify(data));
       } catch (e2) {}
       alert('群聊资料保存失败：本地存储空间不足。请换一张更小的群头像后重试。');
       return;
@@ -2346,6 +2404,8 @@
       }
       if (d.type === 'groupsDataUpdated' || d.type === 'groupChatCreated') {
         loadGroups();
+        // IndexedDB 是异步写入的：稍后再按权威数据补一次，保证刚改的群名/头像立即同步。
+        setTimeout(function () { loadGroups(); }, 700);
         if (currentTab === 'groups') renderCurrent();
         renderProfile();
       }

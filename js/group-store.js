@@ -13,6 +13,31 @@
     var SCOPE_OWNER_KEY = 'nano_group_scope_owner';
     var UID_SESSION_KEY = 'nano_current_mask_id';
     var activeUid = '';
+    // 内存镜像：localStorage 写满时，群资料只有 IndexedDB 里是最新的。
+    // 所有 group_ 读取都先看这里，保证「刚保存的新群名 / 新头像」立即可见，
+    // 而不是被 localStorage 里的旧值挡住。
+    var mirror = Object.create(null);
+    // 本页已经写过的 key：ready() 回填 IndexedDB 时不要用旧值覆盖刚写入的新值。
+    var written = Object.create(null);
+    function mirrorSet(k, v) {
+        try { mirror[String(k)] = String(v); } catch (e) {}
+    }
+    function mirrorGet(k) {
+        try { return Object.prototype.hasOwnProperty.call(mirror, String(k)) ? mirror[String(k)] : undefined; } catch (e) { return undefined; }
+    }
+    function mirrorDel(k) {
+        try { delete mirror[String(k)]; } catch (e) {}
+    }
+    // 只镜像小体积的群资料 / 群列表；群消息和背景可能几十 MB，不放进内存镜像。
+    function shouldMirror(k) {
+        if (typeof k !== 'string') return false;
+        return k === 'nano_groups_data' ||
+            k.indexOf('nano_groups_data' + SCOPE_MARK) === 0 ||
+            k.indexOf('group_data_') === 0 ||
+            k.indexOf('group_settings_') === 0 ||
+            k.indexOf('nano_group_settings') === 0 ||
+            k.indexOf('nano_group_create_count') === 0;
+    }
 
     function isScopedGroupKey(k) {
         return typeof k === 'string' && k.indexOf(SCOPE_MARK) !== -1;
@@ -66,8 +91,13 @@
     function setCurrentUid(uid) {
         uid = (uid == null ? '' : String(uid)).trim();
         if (!uid) return '';
+        var changed = String(activeUid) !== String(uid);
         activeUid = uid;
         try { sessionStorage.setItem(UID_SESSION_KEY, uid); } catch (e) {}
+        // 换面具后重新从 IndexedDB 回填一次，内存镜像才能拿到这个 user 的最新群资料。
+        if (changed) {
+            try { readyPromise = null; ready(); } catch (e) {}
+        }
         return uid;
     }
 
@@ -182,6 +212,8 @@
     function readScopedGroupValue(k) {
         var uid = currentUid();
         var sk = scopedKey(k, uid);
+        var hit = mirrorGet(sk);
+        if (hit !== undefined) return hit;
         try {
             var own = rawGetItem(sk);
             if (own !== null) return own;
@@ -196,6 +228,7 @@
         if (owner !== uid) return null;
         try { rawSetItem(sk, legacy); } catch (e) {}
         try { rawRemoveItem(k); } catch (e) {}
+        if (shouldMirror(sk)) mirrorSet(sk, legacy);
         idbPut(sk, legacy);
         idbDelete(k);
         return legacy;
@@ -213,24 +246,37 @@
             rawRemoveItem = origRemove;
             localStorage.getItem = function (k) {
                 if (isBaseGroupKey(k)) return readScopedGroupValue(k);
+                if (isScopedGroupKey(k) && isGroupKey(k)) {
+                    var m = mirrorGet(k);
+                    if (m !== undefined) return m;
+                }
                 return origGet(k);
             };
             localStorage.setItem = function (k, v) {
+                v = String(v);
                 if (isBaseGroupKey(k)) {
                     var uid = currentUid();
                     k = scopedKey(k, uid);
                     claimScopeOwner(uid);
+                    written[k] = 1;
+                    mirrorSet(k, v);
                     idbPut(k, v);
                 } else if (isScopedGroupKey(k) && isGroupKey(k)) {
+                    written[k] = 1;
+                    mirrorSet(k, v);
                     idbPut(k, v);
+                } else {
+                    try { origSet(k, v); } catch (e) {}
+                    return;
                 }
-                // localStorage 写满时也不能丢数据：IndexedDB 里已经镜像了这次写入。
+                // localStorage 写满时也不能丢数据：IndexedDB / 内存镜像里已经保存了这次写入。
                 try { origSet(k, v); } catch (e) {}
             };
             localStorage.removeItem = function (k) {
                 if (isBaseGroupKey(k)) {
                     var uid = currentUid();
                     var sk = scopedKey(k, uid);
+                    mirrorDel(sk);
                     if (claimScopeOwner(uid) === uid) {
                         idbDelete(sk);
                         try { origRemove(k); } catch (e) {}
@@ -238,7 +284,7 @@
                     try { origRemove(sk); } catch (e) {}
                     return;
                 }
-                if (isScopedGroupKey(k) && isGroupKey(k)) idbDelete(k);
+                if (isScopedGroupKey(k) && isGroupKey(k)) { mirrorDel(k); idbDelete(k); }
                 try { origRemove(k); } catch (e) {}
             };
         } catch (e) {}
@@ -279,6 +325,8 @@
                             var rowUid = tail;
                             try { rowUid = decodeURIComponent(tail); } catch (e2) { rowUid = tail; }
                             if (String(rowUid) !== String(uid)) return;
+                            // IndexedDB 是权威副本：即使 localStorage 里还留着旧值，也先让读取走新值。
+                            if (!written[k] && shouldMirror(k)) mirrorSet(k, row.value);
                         }
                         if (rawGetItem(k) === null) {
                             if (rawSetItem) rawSetItem(k, row.value);
@@ -294,7 +342,9 @@
     // 立即启动一次回填并挂上写入镜像（不阻塞页面脚本）
     try { ready(); patchStorage(); hydrateUidFromMaskDB(); } catch (e) {}
 
-    // 其它页面切换面具时，失效缓存并重新从面具数据取 uid
+    // 其它页面切换面具时，失效缓存并重新从面具数据取 uid；
+    // 其它页面写了群资料（群名/群头像等）时，同步更新本页的内存镜像，
+    // 否则 localStorage.getItem 会一直返回本页加载时的旧值，把新资料挡掉。
     try {
         window.addEventListener('storage', function (e) {
             if (!e || !e.key) return;
@@ -305,6 +355,15 @@
                     var uid = uidFromMaskData(d);
                     if (uid) activeUid = uid;
                 } catch (err) {}
+                return;
+            }
+            if (isGroupKey(e.key)) {
+                if (e.newValue == null) mirrorDel(e.key);
+                else {
+                    mirrorSet(e.key, e.newValue);
+                    // 已由别的页面写入，ready() 回填时不要用旧的 IndexedDB 行覆盖。
+                    written[e.key] = 1;
+                }
             }
         });
     } catch (e) {}

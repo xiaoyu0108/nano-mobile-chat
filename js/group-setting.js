@@ -47,6 +47,7 @@
             name: rg.name || '',
             notice: '',
             avatar: rg.avatar || '',
+            profileTs: Number(rg.profileTs) || 0,
             ownerId: 'me',
             members: names.map(function(nm, i){
                 var id = ids[i] || ('m' + i);
@@ -72,6 +73,7 @@
                 if (data.groups[i] && data.groups[i].id === chatId) {
                     data.groups[i].name = group.name || '';
                     data.groups[i].avatar = group.avatar || '';
+                    data.groups[i].profileTs = Number(group.profileTs) || 0;
                     data.groups[i].members = group.members.map(function(m){ return m.id; });
                     data.groups[i].memberNames = group.members.map(function(m){ return m.name; });
                     break;
@@ -82,10 +84,43 @@
         try {
             if (window.parent && window.parent !== window) {
                 window.parent.postMessage({ type: 'groupsDataUpdated', groupId: chatId }, '*');
+                // IndexedDB 写入是异步的：稍后再广播一次，让群聊页/聊天列表拿到真正落盘的资料。
+                setTimeout(function(){
+                    try { window.parent.postMessage({ type: 'groupsDataUpdated', groupId: chatId }, '*'); } catch(e) {}
+                }, 320);
             }
         } catch(e){}
     }
-    function saveGroup(g){ try { localStorage.setItem(GROUP_KEY, JSON.stringify(g)); } catch(e){} }
+    // 群资料以 IndexedDB 为准：页面刚打开时 localStorage 可能是旧值。
+    // 在读完权威副本之前先不落盘，避免 resolveIdentities 用旧群名/旧头像覆盖新值。
+    var __groupWriteReady = false;
+    function writeGroupNow(g){ try { localStorage.setItem(GROUP_KEY, JSON.stringify(g)); } catch(e){} }
+    function saveGroup(g){
+        if (!__groupWriteReady || !g) return;
+        // 别的页面可能刚改过群资料：profileTs 更大的一方为准。
+        try {
+            var curRaw = localStorage.getItem(GROUP_KEY);
+            if (curRaw) {
+                var cur = JSON.parse(curRaw);
+                if (cur && cur.members) {
+                    var curTs = Number(cur.profileTs) || 0;
+                    var ownTs = Number(g.profileTs) || 0;
+                    if (curTs > ownTs) {
+                        g.name = cur.name;
+                        g.avatar = cur.avatar;
+                        g.notice = cur.notice;
+                        g.profileTs = cur.profileTs;
+                    }
+                }
+            }
+        } catch (e) {}
+        writeGroupNow(g);
+    }
+    function markGroupWriteReady(){
+        if (__groupWriteReady) return;
+        __groupWriteReady = true;
+        try { saveGroup(group); } catch (e) {}
+    }
     function loadSettings(){
         try { var raw = localStorage.getItem(SETTINGS_KEY); if (raw){ var s=JSON.parse(raw); if(s) return Object.assign({}, defaultSettings, s); } } catch(e){}
         return Object.assign({}, defaultSettings);
@@ -180,6 +215,7 @@
                 m.initial = (m.nick || m.name || '?').charAt(0);
             });
             if (mask) {
+                try { if (mask.id != null && window.GroupStore && GroupStore.setCurrentUid) GroupStore.setCurrentUid(mask.id); } catch (e0) {}
                 currentUser.name = mask.name || currentUser.name;
                 currentUser.nick = mask.name || currentUser.nick;
                 currentUser.initial = currentUser.name.charAt(0);
@@ -316,12 +352,12 @@
 
     $('editNameItem').addEventListener('click', function(){
         openEditModal('群名称', '输入新的群名称', group.name, function(val){
-            if (val) { var oldName = group.name; group.name = val; saveGroup(group); syncToRegistry(); pushPendingChange('用户把群名从「' + (oldName || '群聊') + '」改成了「' + val + '」'); renderAll(); }
+            if (val) { var oldName = group.name; group.name = val; group.profileTs = Date.now(); saveGroup(group); syncToRegistry(); pushPendingChange('用户把群名从「' + (oldName || '群聊') + '」改成了「' + val + '」'); renderAll(); }
         });
     });
     $('editNoticeItem').addEventListener('click', function(){
         openEditModal('群公告', '输入新的群公告', group.notice, function(val){
-            group.notice = val; saveGroup(group); renderAll();
+            group.notice = val; group.profileTs = Date.now(); saveGroup(group); renderAll();
         });
     });
 
@@ -350,7 +386,7 @@
             var img = new Image();
             img.onload = function(){
                 try {
-                    var max = 320;
+                    var max = 512;
                     var scale = Math.min(1, max / Math.max(img.width || 1, img.height || 1));
                     var w = Math.max(1, Math.round((img.width || max) * scale));
                     var h = Math.max(1, Math.round((img.height || max) * scale));
@@ -360,7 +396,7 @@
                     ctx.fillStyle = '#ffffff';
                     ctx.fillRect(0, 0, w, h);
                     ctx.drawImage(img, 0, 0, w, h);
-                    var out = cv.toDataURL('image/jpeg', 0.82);
+                    var out = cv.toDataURL('image/jpeg', 0.9);
                     cb(out && out.length < src.length ? out : src);
                 } catch(e){ cb(src); }
             };
@@ -379,8 +415,10 @@
     $('avatarCancel').addEventListener('click', function(){ $('avatarModal').classList.remove('active'); });
     $('avatarConfirm').addEventListener('click', function(){
         var old = group.avatar;
+        var oldTs = Number(group.profileTs) || 0;
         var nextAvatar = avatarTemp || '';
         group.avatar = nextAvatar;
+        group.profileTs = Date.now();
         saveGroup(group);
         syncToRegistry();
         var finish = function () {
@@ -390,6 +428,7 @@
         };
         var fail = function () {
             group.avatar = old;
+            group.profileTs = oldTs;
             saveGroup(group);
             syncToRegistry();
             alert('群头像保存失败：本地存储空间不足，请换一张更小的图片。');
@@ -905,17 +944,27 @@
 
     // ========== 初始化 ==========
     renderAll();
-    resolveIdentities().then(function(){ renderAll(); });
-    // localStorage 满时新头像可能只写进 IndexedDB：异步补读一次，避免页面显示旧头像。
-    if (window.GroupStore && GroupStore.get) {
+    (function(){
+        // 先把当前面具告诉 group-store，并把 IndexedDB 里的权威群资料读出来，
+        // 再让 resolveIdentities 同步成员资料 —— 否则 localStorage 写满时会用旧群名/旧头像覆盖新值。
+        try {
+            var m = getCurrentMask();
+            if (m && m.id != null && window.GroupStore && GroupStore.setCurrentUid) GroupStore.setCurrentUid(m.id);
+        } catch (e) {}
+        var after = function(){ markGroupWriteReady(); resolveIdentities().then(function(){ renderAll(); }); };
+        if (!(window.GroupStore && GroupStore.get)) { after(); return; }
         GroupStore.get(GROUP_KEY).then(function (raw) {
-            if (!raw) return;
-            var g = null;
-            try { g = JSON.parse(raw); } catch (e) { return; }
-            if (!g || !g.members) return;
-            if (String(g.avatar || '') === String(group.avatar || '') && String(g.name || '') === String(group.name || '')) return;
-            group = g;
-            renderAll();
-        }).catch(function(){});
-    }
+            if (raw) {
+                try {
+                    var g = JSON.parse(raw);
+                    if (g && g.members) {
+                        var cur = '';
+                        try { cur = JSON.stringify(group); } catch (e) {}
+                        if (raw !== cur) { group = g; renderAll(); }
+                    }
+                } catch (e) {}
+            }
+            after();
+        }).catch(function(){ after(); });
+    })();
 })();
