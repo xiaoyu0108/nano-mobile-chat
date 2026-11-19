@@ -8,18 +8,24 @@ import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
+import android.util.Base64;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewOutlineProvider;
 import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
 import android.webkit.WebResourceRequest;
@@ -28,10 +34,14 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.net.URLConnection;
 
 /**
@@ -55,6 +65,7 @@ public class FloatChatService extends Service {
     private LinearLayout panel;
     private FrameLayout bubble;
     private TextView bubbleText;
+    private ImageView bubbleImage;
     private TextView titleText;
     private WebView webView;
     private WindowManager.LayoutParams params;
@@ -165,11 +176,14 @@ public class FloatChatService extends Service {
         ballBg.setShape(GradientDrawable.OVAL);
         ballBg.setColor(Color.parseColor("#FF9FBE"));
         ballBg.setStroke(dp(1), Color.parseColor("#66FFFFFF"));
-        if (avatar != null && avatar.startsWith("data:image")) {
-            // 自定义头像不在这里解码，避免大图拖慢悬浮球；用姓名首字足够。
-        }
         bubble.setBackground(ballBg);
+        bubble.setClipToOutline(true);
+        bubble.setOutlineProvider(ViewOutlineProvider.BACKGROUND);
         bubble.setElevation(dp(8));
+        bubbleImage = new ImageView(this);
+        bubbleImage.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        bubbleImage.setVisibility(View.GONE);
+        bubble.addView(bubbleImage, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         bubbleText = new TextView(this);
         bubbleText.setText(avatarInitial());
         bubbleText.setTextColor(Color.WHITE);
@@ -277,6 +291,7 @@ public class FloatChatService extends Service {
             return;
         }
         loadChatUrl();
+        applyAvatar();
     }
 
     private String avatarInitial() {
@@ -285,9 +300,98 @@ public class FloatChatService extends Service {
         return n.substring(0, 1);
     }
 
+    private void applyAvatar() {
+        if (bubbleImage == null || bubbleText == null) return;
+        final String src = avatar == null ? "" : avatar.trim();
+        if (src.isEmpty()) {
+            bubbleImage.setVisibility(View.GONE);
+            bubbleText.setVisibility(View.VISIBLE);
+            return;
+        }
+        Thread t = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                final Bitmap bmp = decodeAvatar(src);
+                if (bmp == null) return;
+                new Handler(Looper.getMainLooper()).post(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (bubbleImage == null || bubbleText == null || !src.equals(avatar)) {
+                            bmp.recycle();
+                            return;
+                        }
+                        bubbleImage.setImageBitmap(bmp);
+                        bubbleImage.setVisibility(View.VISIBLE);
+                        bubbleText.setVisibility(View.GONE);
+                    }
+                });
+            }
+        }, "nano-float-avatar");
+        t.setDaemon(true);
+        t.start();
+    }
+
+    private Bitmap decodeAvatar(String src) {
+        try {
+            if (src.startsWith("data:")) {
+                int comma = src.indexOf(',');
+                if (comma < 0) return null;
+                String head = src.substring(0, comma);
+                String data = src.substring(comma + 1);
+                byte[] bytes;
+                if (head.toLowerCase().contains(";base64")) {
+                    bytes = Base64.decode(data, Base64.DEFAULT);
+                } else {
+                    bytes = Uri.decode(data).getBytes("UTF-8");
+                }
+                return decodeBytes(bytes);
+            }
+            if (src.startsWith("content://") || src.startsWith("file://")) {
+                InputStream is = getContentResolver().openInputStream(Uri.parse(src));
+                if (is == null) return null;
+                try { return decodeStream(is); } finally { try { is.close(); } catch (Throwable ignored) {} }
+            }
+            if (src.startsWith("http://") || src.startsWith("https://")) {
+                HttpURLConnection conn = (HttpURLConnection) new URL(src).openConnection();
+                conn.setConnectTimeout(5000);
+                conn.setReadTimeout(5000);
+                conn.setInstanceFollowRedirects(true);
+                conn.setRequestProperty("User-Agent", "NanoApp/2.0");
+                try { return decodeStream(conn.getInputStream()); } finally { conn.disconnect(); }
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "avatar decode failed", t);
+        }
+        return null;
+    }
+
+    private Bitmap decodeStream(InputStream is) {
+        try {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = is.read(buf)) > 0) out.write(buf, 0, n);
+            return decodeBytes(out.toByteArray());
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    private Bitmap decodeBytes(byte[] bytes) {
+        BitmapFactory.Options bounds = new BitmapFactory.Options();
+        bounds.inJustDecodeBounds = true;
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.length, bounds);
+        int sample = 1;
+        while (bounds.outWidth / sample > 320 || bounds.outHeight / sample > 320) sample *= 2;
+        BitmapFactory.Options opts = new BitmapFactory.Options();
+        opts.inSampleSize = sample;
+        return BitmapFactory.decodeByteArray(bytes, 0, bytes.length, opts);
+    }
+
     private void updateTitle() {
         if (titleText != null) titleText.setText(charName == null || charName.isEmpty() ? "聊天" : charName);
         if (bubbleText != null) bubbleText.setText(avatarInitial());
+        applyAvatar();
     }
 
     private void loadChatUrl() {

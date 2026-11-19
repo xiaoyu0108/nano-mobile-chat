@@ -68,7 +68,7 @@
 .ni-title-pill {
   position: absolute;
   left: 50%;
-  top: 50%;
+  top: calc(var(--safe-top, env(safe-area-inset-top, 0px)) + 29px);
   transform: translate(-50%, -50%);
   max-width: calc(100% - 216px);
   height: 38px;
@@ -595,7 +595,6 @@
   font-size: 13px;
   line-height: 1;
   cursor: pointer;
-}
 }
 
 .ni-size[hidden] { display: none; }

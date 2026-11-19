@@ -50,6 +50,7 @@ public class ScreenCaptureService extends Service {
     private static final String CHANNEL_ID = "nano_screen_capture";
     private static final int NOTIF_ID = 7421;
     private static final long FRAME_INTERVAL_MS = 1000L;
+    private static final long SHARE_TICK_MS = 30000L;
     private static final int MAX_EDGE = 1280;
     private static final int JPEG_QUALITY = 70;
 
@@ -225,6 +226,7 @@ public class ScreenCaptureService extends Service {
             running = true;
             starting = false;
             lastError = "";
+            scheduleShareTick();
             Log.i(TAG, "screen capture started " + captureWidth + "x" + captureHeight);
         } catch (Throwable t) {
             starting = false;
@@ -239,6 +241,21 @@ public class ScreenCaptureService extends Service {
         captureThread = new HandlerThread("nano-screen-capture");
         captureThread.start();
         captureHandler = new Handler(captureThread.getLooper());
+    }
+
+    private final Runnable shareTickRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (stopping || !running) return;
+            try { MainActivity.requestScreenShareTick(); } catch (Throwable ignored) {}
+            if (mainHandler != null && !stopping) mainHandler.postDelayed(this, SHARE_TICK_MS);
+        }
+    };
+
+    private void scheduleShareTick() {
+        if (mainHandler == null) return;
+        mainHandler.removeCallbacks(shareTickRunnable);
+        mainHandler.postDelayed(shareTickRunnable, SHARE_TICK_MS);
     }
 
     private void computeCaptureSize() {
@@ -439,7 +456,10 @@ public class ScreenCaptureService extends Service {
         running = false;
         starting = false;
         try {
-            if (mainHandler != null) mainHandler.removeCallbacks(rebuildRunnable);
+            if (mainHandler != null) {
+                mainHandler.removeCallbacks(rebuildRunnable);
+                mainHandler.removeCallbacks(shareTickRunnable);
+            }
         } catch (Throwable ignored) {
         }
         stopDisplayListener();

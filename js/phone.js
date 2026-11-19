@@ -254,7 +254,7 @@ function updateHomeWidgets(){
   const hint = document.getElementById("moveHint");
   if(!grids.length) return;
 
-  const LAYOUT_KEY = "glass_phone_layout_v13";
+  const LAYOUT_KEY = "glass_phone_layout_v14";
   const MAX_COL = 4, STEP = 0.1;
   let active = null, ghost = null, timer = null;
   let longPressed = false, startX = 0, startY = 0, offX = 0, offY = 0, pointerId = null;
@@ -457,6 +457,25 @@ function updateHomeWidgets(){
     return c;
   }
 
+  // 从整块网格里找离目标最近的空位。旧版本保存的坐标可能全部叠在同一格：
+  // 只往下挪会在最后一行卡住，导致所有 App 继续重叠；这里改为扫描全部格子。
+  function nearestFreeCell(rows, cell, bucket){
+    const base = normalize(cell, rows);
+    if(!bucket.some(o => overlaps(o, base))) return base;
+    let best = null;
+    let bestDist = Infinity;
+    const maxR = Math.max(0, Math.round((rows - base.h) * 10) / 10);
+    for(let r = 0; r <= maxR + 0.0001; r = Math.round((r + STEP) * 10) / 10){
+      for(let c = 0; c <= MAX_COL - base.w; c++){
+        const cand = normalize({ c, r, w: base.w, h: base.h }, rows);
+        if(bucket.some(o => overlaps(o, cand))) continue;
+        const dist = Math.abs(cand.c - base.c) + Math.abs(cand.r - base.r);
+        if(dist < bestDist){ best = cand; bestDist = dist; }
+      }
+    }
+    return best || base;
+  }
+
   function endDrag(apply){
     clearPress();
     clearTimeout(edgeTimer); edgeDir = 0;
@@ -517,13 +536,10 @@ function updateHomeWidgets(){
       if(!targetGrid) return;
       const rows = rowsOf(targetGrid);
       const bucket = placed[gi] || (placed[gi] = []);
-      let cell = s ? normalize({ c: s.c, r: s.r, w: def.w, h: def.h }, rows) : normalize(def, rows);
-      if(bucket.some(r => overlaps(r, cell))) cell = normalize(def, rows);
-      let guard = 0;
-      while(bucket.some(r => overlaps(r, cell)) && guard < 30){
-        cell = normalize(Object.assign({}, cell, { r: cell.r + STEP }), rows);
-        guard++;
-      }
+      const savedCell = s ? normalize({ c: s.c, r: s.r, w: def.w, h: def.h }, rows) : normalize(def, rows);
+      // 找不到空位时退回默认位置；再不行就放在最近的空位，绝不把旧坐标硬塞到同一格。
+      let cell = nearestFreeCell(rows, savedCell, bucket);
+      if(bucket.some(r => overlaps(r, cell))) cell = nearestFreeCell(rows, normalize(def, rows), bucket);
       bucket.push(cell);
       if(el.parentElement !== targetGrid) targetGrid.appendChild(el);
       el._cell = cell;

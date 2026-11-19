@@ -74,6 +74,8 @@ public class MainActivity extends Activity {
     private static final String PREF_TOKEN = "account_token";
     private static final String PREF_USER = "account_user";
     private static final String PREF_DEVICE = "device_id";
+    private static java.lang.ref.WeakReference<MainActivity> sInstance =
+            new java.lang.ref.WeakReference<>(null);
 
     private static final String DOWNLOAD_HOOK_JS =
             "(function(){" +
@@ -114,6 +116,7 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        sInstance = new java.lang.ref.WeakReference<>(this);
         NanoNotifications.ensureChannels(this);
         applyEdgeToEdge();
 
@@ -844,6 +847,27 @@ public class MainActivity extends Activity {
                 });
     }
 
+    // 屏幕共享服务每 30 秒回调一次：后台 WebView 的 JS 定时器会被系统降频，
+    // 由原生前台服务主动推一次 tick，保证切到其他 App / 悬浮窗时也会继续调用 API 点评。
+    static void requestScreenShareTick() {
+        MainActivity a;
+        try { a = sInstance.get(); } catch (Throwable t) { a = null; }
+        if (a != null) a.runScreenShareTick();
+    }
+
+    private void runScreenShareTick() {
+        runOnUiThread(() -> {
+            if (webView == null || !ScreenCaptureService.isRunning()) return;
+            try { webView.onResume(); } catch (Throwable ignored) {}
+            try {
+                webView.evaluateJavascript(
+                        "(function(){try{if(window.ScreenShare&&ScreenShare.tickNow)ScreenShare.tickNow();}catch(e){}})()",
+                        null);
+            } catch (Throwable ignored) {
+            }
+        });
+    }
+
     @Override
     protected void onPause() {
         // 屏幕共享期间不暂停 WebView 定时器，否则切到其他 App 后
@@ -870,6 +894,11 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        try {
+            MainActivity a = sInstance.get();
+            if (a == this) sInstance.clear();
+        } catch (Throwable ignored) {
+        }
         try {
             if (isFinishing()) {
                 ScreenCaptureService.stop(this);

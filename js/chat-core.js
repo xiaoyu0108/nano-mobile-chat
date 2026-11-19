@@ -15318,7 +15318,7 @@ if (callCard) {
                 content: combined
             });
         } catch (e) {}
-        try { addSystemNotice('你把「' + (p.name || 'TA') + '」手机里的 ' + items.length + ' 个 App 内容分享给了 TA。想听 TA 的想法，点「回复」或发一条消息再让 TA 读。'); } catch (e) {}
+        try { addSystemNotice('已把「' + (p.name || 'TA') + '」的手机内容分享给 TA。'); } catch (e) {}
         try { renderMessages(); saveMessages(); scrollToBottom(); } catch (e) {}
         // 不自动调用 API：等用户点击回复/发消息后再让角色读这些内容并回应。
         try { isWaitingForReply = true; updateSendButtonMode(); } catch (e) {}

@@ -6,7 +6,7 @@
 // ============================================================
 (function () {
     'use strict';
-    var VERSION = '20261118c';
+    var VERSION = '20261119a';
     try { console.log('[ScreenShare] build ' + VERSION + ' loaded'); } catch (e) {}
 
     var INTERVAL = 30000; // 每 30 秒看一帧（一次截图 = 一次 API 调用：看一次 + 输出回复）
@@ -38,7 +38,7 @@
         return null;
     }
 
-    var SS = { active: false, info: null, cfg: null, ctx: {}, stream: null, panel: null, log: null, statusEl: null, video: null, lastAt: 0, busy: false, timer: null, comments: [], cardPosted: false, mode: 'screen', native: false };
+    var SS = { active: false, info: null, cfg: null, ctx: {}, stream: null, panel: null, log: null, statusEl: null, video: null, lastAt: 0, busy: false, timer: null, comments: [], mode: 'screen', native: false };
 
     // 当前私聊帧打开的是哪个角色。postToChat 只发给当前帧，
     // 如果它是别的角色/根本没打开，直接 post 等于把消息丢掉。
@@ -73,32 +73,7 @@
         } catch (e) {}
     }
 
-    // 面板放在外壳（index.html）里，切到别的页面也会一直显示；点评同时收集成一张卡片
-    function postCard() {
-        if (SS.cardPosted || !SS.info || !SS.comments.length) return;
-        SS.cardPosted = true;
-        try {
-            var what = SS.mode === 'camera' ? '你的镜头' : (SS.mode === 'photo' ? '你发来的截图' : '你的屏幕');
-            var detail = '（' + (SS.info.name || 'TA') + ' 看了' + what + '）\n' + SS.comments.map(function (b) {
-                var p = splitBy(b); return '　' + p.main + (p.sub ? ('（' + p.sub + '）') : '');
-            }).join('\n');
-            var card = {
-                type: 'NANO_TAKEOVER_CARD',
-                chatId: String(SS.info.id),
-                title: (SS.info.name || 'TA') + ' 看了' + what,
-                summary: '共 ' + SS.comments.length + ' 条点评',
-                detail: detail,
-                log: [{ name: (SS.mode === 'camera' ? '镜头' : (SS.mode === 'photo' ? '截图' : '屏幕')), bubbles: SS.comments.slice() }],
-                startedAt: Date.now()
-            };
-            if (openChatId() === String(SS.info.id)) {
-                var s = shell();
-                if (s && s.postToChat && s.postToChat(card)) return;
-            }
-            // 私聊没打开 / 开的是别人：先暂存，进入该角色私聊时 chat-core 会补成卡片。
-            try { sessionStorage.setItem('nano_pending_takeover_card', JSON.stringify(card)); } catch (e) {}
-        } catch (e) {}
-    }
+    // 点评直接作为角色消息进入私聊；不再额外生成一张总结卡片，避免停止分享后重复。
 
     /* ---------------- API ---------------- */
     function parseLocal() { try { var raw = localStorage.getItem('nano_api_config'); return raw ? JSON.parse(raw) : null; } catch (e) { return null; } }
@@ -444,7 +419,7 @@
         if (!info.id || !text) return;
         injectCss();
         SS.active = true; SS.info = info; SS.mode = 'text'; SS.cfg = null;
-        SS.comments = []; SS.cardPosted = false;
+        SS.comments = [];
         try { if (window.NanoNotify && NanoNotify.ensurePermission) NanoNotify.ensurePermission(); } catch (e) {}
         buildPanel(info, 'text');
         setStatus('正在读取人设与 API…');
@@ -457,7 +432,6 @@
         setStatus('正在看…');
         addLine('（' + (info.name || 'TA') + ' 看到了你屏幕上的一段内容）');
         try { await requestCommentText(text); } catch (e) { addLine('出错：' + ((e && e.message) || e), true); setStatus('出错'); }
-        try { postCard(); } catch (e) {}
         try { setTimeout(function () { stop(); }, 1600); } catch (e) {}
     }
 
@@ -508,6 +482,11 @@
         captureAndComment();
     }
 
+    // 安卓前台服务每 30 秒从原生侧主动唤醒一次，避免后台 WebView 定时器被系统降频。
+    function tickNow() {
+        try { tick(); } catch (e) {}
+    }
+
     /* ---------------- 启动 / 停止 ---------------- */
     function canScreenShare() {
         if (nativeApi()) return true;
@@ -525,12 +504,12 @@
         if (nativeOk) {
             // 安卓 APK：走原生 MediaProjection，系统会显示录屏授权和持续通知。
             title = '让「' + escHtml(info.name) + '」看你真实的屏幕？';
-            desc = '会调起安卓系统录屏授权。TA 每 30 秒看一次，每次只调用一次模型，并把点评发进你们的私聊。共享期间会有系统通知，可随时停止。';
+            desc = '调起系统录屏授权。TA 每 30 秒看一次，点评会发进私聊。可随时停止。';
             actions = '<button class="ss-cancel">取消</button><button class="ss-ok">开始共享</button>';
         } else if (screenOk) {
             // 电脑 Chrome / Edge 能真正共享屏幕，保留完整流程。
             title = '让「' + escHtml(info.name) + '」看你真实的屏幕？';
-            desc = '会请求屏幕共享权限（建议选「整个屏幕」，这样你切换窗口 TA 也能看到）。TA 每 30 秒看一次，每次只调用一次模型，并把点评直接发进你们的私聊。可随时停止。';
+            desc = '请求屏幕共享权限（选「整个屏幕」）。TA 每 30 秒看一次，点评会发进私聊。可随时停止。';
             actions = '<button class="ss-cancel">取消</button><button class="ss-ok">开始共享</button>';
         } else {
             // 手机浏览器 / 旧版 APK 拿不到录屏接口：引导到屏幕速聊或更新 APK。
@@ -561,7 +540,7 @@
     async function runStream(info, stream, mode) {
         SS.active = true; SS.info = info; SS.stream = stream; SS.native = false; SS.lastAt = Date.now(); SS.cfg = null;
         SS.mode = mode || 'screen';
-        SS.comments = []; SS.cardPosted = false;
+        SS.comments = [];
         try { if (window.NanoNotify && NanoNotify.ensurePermission) NanoNotify.ensurePermission(); } catch (e) {}
         buildPanel(info, SS.mode);
         try {
@@ -583,15 +562,14 @@
             if (__sN && __sN.postToChat) {
                 __sN.postToChat({
                     type: 'NANO_SYS_NOTICE', chatId: String(info.id),
-                    text: (SS.mode === 'camera' ? '你打开了镜头共享，TA 正在看你' : '你打开了屏幕共享，TA 正在看你的屏幕（窥屏中）')
+                    text: (SS.mode === 'camera' ? '镜头共享已开启' : '屏幕共享已开启')
                 });
             }
         } catch (e) {}
         try {
             stream.getVideoTracks()[0].addEventListener('ended', function () {
-                setStatus('已结束（点评已收进聊天卡片）');
+                setStatus('已结束');
                 if (SS.timer) { clearInterval(SS.timer); SS.timer = null; }
-                postCard();
             });
         } catch (e) {}
         SS.lastAt = 0;
@@ -605,7 +583,7 @@
         if (!api) return;
         SS.active = true; SS.info = info; SS.stream = null; SS.native = true;
         SS.lastAt = Date.now(); SS.cfg = null; SS.mode = 'screen';
-        SS.comments = []; SS.cardPosted = false;
+        SS.comments = [];
         try { if (window.NanoNotify && NanoNotify.ensurePermission) NanoNotify.ensurePermission(); } catch (e) {}
         buildPanel(info, 'native');
         setStatus('等待系统录屏授权…');
@@ -709,10 +687,9 @@
     function stop() {
         var wasActive = !!SS.active;
         if (!wasActive && !SS.panel) return;
-        if (wasActive) postCard();
         // 私聊里补一条结束提示
         if (wasActive) {
-            try { var __sS = shell(); if (__sS && __sS.postToChat && SS.info) __sS.postToChat({ type: 'NANO_SYS_NOTICE', chatId: String(SS.info.id), text: '你结束了屏幕共享' }); } catch (e) {}
+            try { var __sS = shell(); if (__sS && __sS.postToChat && SS.info) __sS.postToChat({ type: 'NANO_SYS_NOTICE', chatId: String(SS.info.id), text: '屏幕共享已结束' }); } catch (e) {}
         }
         if (SS.native) {
             try {
@@ -731,7 +708,7 @@
         try { document.title = 'Nano'; } catch (e) {}
     }
 
-    window.ScreenShare = { version: VERSION, start: start, stop: stop, commentText: runText, isActive: function () { return SS.active; } };
+    window.ScreenShare = { version: VERSION, start: start, stop: stop, commentText: runText, tickNow: tickNow, isActive: function () { return SS.active; } };
 
     window.addEventListener('message', function (e) {
         var d = e && e.data;

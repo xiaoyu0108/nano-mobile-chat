@@ -1875,12 +1875,14 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
     overflow: hidden;
     text-overflow: ellipsis;
 }
-/* 系统提示：完整显示且不换行 */
-.message-row.sys-notice .message-content { max-width: 98% !important; }
+/* 系统提示：完整显示，过长自动换行，避免把聊天页撑出横向滚动 */
+.message-row.sys-notice .message-content { max-width: 94% !important; }
 .message-row.sys-notice .recall-notice {
     display: inline-block;
-    max-width: none !important;
-    white-space: nowrap !important;
+    max-width: 100% !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere;
+    word-break: break-word;
     overflow: visible !important;
     text-overflow: clip !important;
 }
