@@ -1209,6 +1209,7 @@
   let groupAvatarTemp = '';
   let __groupSig = '';
   let __groupHydrating = false;
+  let __groupHydratePending = false;
 
   const $ = function (id) { return document.getElementById(id); };
 
@@ -1721,7 +1722,9 @@
   }
 
   async function hydrateGroupsFromIDB() {
-    if (__groupHydrating || !window.GroupStore || !GroupStore.get) return;
+    if (!window.GroupStore || !GroupStore.get) return;
+    // 同一时间只跑一次，但在跑的过程中如果又收到刷新请求，结束后必须再读一次。
+    if (__groupHydrating) { __groupHydratePending = true; return; }
     __groupHydrating = true;
     try {
       // IDB 写入是异步的：短延迟 + 再读一次，避免刚建群/刚改资料时读到旧值。
@@ -1746,6 +1749,10 @@
     } catch (e) {
     } finally {
       __groupHydrating = false;
+      if (__groupHydratePending) {
+        __groupHydratePending = false;
+        setTimeout(function () { hydrateGroupsFromIDB(); }, 80);
+      }
     }
   }
 
@@ -2404,8 +2411,10 @@
       }
       if (d.type === 'groupsDataUpdated' || d.type === 'groupChatCreated') {
         loadGroups();
-        // IndexedDB 是异步写入的：稍后再按权威数据补一次，保证刚改的群名/头像立即同步。
-        setTimeout(function () { loadGroups(); }, 700);
+        // IndexedDB 写入是异步的：手机上大图头像落盘更慢，多补几次直到读到的签名更新。
+        [350, 1200, 3000].forEach(function (ms) {
+          setTimeout(function () { loadGroups(); }, ms);
+        });
         if (currentTab === 'groups') renderCurrent();
         renderProfile();
       }
@@ -2447,6 +2456,19 @@
         loadGroups();
         loadFriends().then(function () { renderCurrent(); renderProfile(); });
       }
+    });
+    // 手机端从群设置返回、或 WebView 被系统暂停后恢复时，主动按 IndexedDB 权威数据刷新一次，
+    // 不依赖 storage 事件（配额写失败时不会触发）和 700ms 一次性重试。
+    function refreshGroupsWhenVisible() {
+      loadGroups();
+      [200, 900, 2400].forEach(function (ms) { setTimeout(function () { loadGroups(); }, ms); });
+    }
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'visible') refreshGroupsWhenVisible();
+    });
+    window.addEventListener('pageshow', refreshGroupsWhenVisible);
+    window.addEventListener('focus', function () {
+      if (currentTab === 'groups') refreshGroupsWhenVisible();
     });
   }
 

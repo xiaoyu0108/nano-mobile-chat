@@ -514,7 +514,7 @@
         } else {
             // 手机浏览器 / 旧版 APK 拿不到录屏接口：引导到屏幕速聊或更新 APK。
             title = '当前设备不能直接共享屏幕';
-            desc = '电脑端请用 Chrome / Edge。安卓请更新到最新 APK 后重试；iPhone 可用「屏幕速聊」快捷指令截屏，回复会直接弹在系统窗口里。';
+            desc = '电脑请用 Chrome / Edge；最新安卓 APK 已支持系统级共享屏幕，更新后重试即可。iPhone 可用「屏幕速聊」快捷指令截屏，回复会直接弹在系统窗口里。';
             actions = '<button class="ss-cancel">知道了</button><button class="ss-ios">去配置「屏幕速聊」</button>';
         }
         var el = document.createElement('div'); el.className = 'ss-confirm';
@@ -670,7 +670,7 @@
             if (!window.isSecureContext) {
                 msg = '当前是 http:// 打开的不安全环境，浏览器不会提供录屏接口，所以也不会弹授权。\n请改用 https:// 打开，或用电脑 Chrome / Edge。';
             } else if (!gdm) {
-                msg = '这个浏览器的网页端没有屏幕共享接口（iOS 的网页端通常都不支持网页录屏）。\n想看真实屏幕请用电脑 Chrome / Edge 打开。';
+                msg = '这个浏览器的网页端没有屏幕共享接口（iOS 的网页端通常都不支持网页录屏）。\n电脑请用 Chrome / Edge；安卓请使用最新 APK 直接共享屏幕。';
             } else {
                 msg = '无法开始屏幕共享：' + (lastErr ? ((lastErr.name ? lastErr.name + '：' : '') + (lastErr.message || lastErr)) : '未知原因');
             }

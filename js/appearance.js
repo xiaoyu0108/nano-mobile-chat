@@ -258,6 +258,16 @@
         '.message-row.tip-row-wrap .message-avatar,.message-row.centered .message-avatar,' +
         '.message-row.recalled .message-avatar,.message-row.sys-notice .message-avatar' +
         '{display:none !important;}' +
+        // 群聊必须显示成员头像：私聊美化常把 .message-avatar 隐藏（私聊用顶栏头像），
+        // 这些规则会同时命中 groups（body 也带 nano-chat-inner），导致群聊头像全部消失。
+        'html body.nano-groups.nano-chat-inner .message-row .message-avatar,' +
+        'html body.nano-groups.nano-chat-inner .typing-indicator .ti-avatar' +
+        '{display:flex !important;visibility:visible !important;opacity:1 !important;}' +
+        'html body.nano-groups.nano-chat-inner .message-row.tip-row-wrap .message-avatar,' +
+        'html body.nano-groups.nano-chat-inner .message-row.centered .message-avatar,' +
+        'html body.nano-groups.nano-chat-inner .message-row.recalled .message-avatar,' +
+        'html body.nano-groups.nano-chat-inner .message-row.sys-notice .message-avatar' +
+        '{display:none !important;}' +
         '.message-row.centered .message-content,.message-row.sys-notice .message-content' +
         '{max-width:88%;align-items:center;}' +
         // 撤回消息：外层行、内容盒、气泡全部居中，避免因 left/right 的 align-items 造成偏左

@@ -1196,8 +1196,7 @@ async function ensureTranslatedLines(ch, lines) {
   natives.forEach((t, k) => { if (!zhOut[k]) { missIdx.push(k); missTexts.push(t); } });
   if (missTexts.length) {
     let res = await translateLines(missTexts);
-    // 仅在完全失败（没有结果）时才重试一次，避免行数不符就重复调用、翻倍烧 token
-    if (!res || !res.length) { const retry = await translateLines(missTexts); if (retry && retry.length) res = retry; }
+    // 翻译也只请求一次；失败就保留原文，不自动补用。
     missIdx.forEach((k, j) => {
       const t = (res && res[j]) ? String(res[j]).trim() : '';
       if (t) { zhOut[k] = t; __transCache[natives[k]] = t; }

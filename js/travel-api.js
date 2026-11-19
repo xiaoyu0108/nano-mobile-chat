@@ -17,6 +17,14 @@
   'use strict';
   if (window.NanoTravelAPI) return;
 
+  // 一起去的生成中断：页面上的「中断」按钮调用 abortChat()，
+  // 直接取消当前 fetch（父窗口代理通道也会在本地立即结束等待）。
+  var activeChatAbort = null;
+  function abortChat() {
+    try { if (activeChatAbort) activeChatAbort.abort(); } catch (e) {}
+    activeChatAbort = null;
+  }
+
   function trim(u) { return String(u || '').trim().replace(/\/+$/, ''); }
   function uid(p) { return (p || 'ta') + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 
@@ -118,13 +126,14 @@
     return toV1Base(resolveApiHost(u)) + '/embeddings';
   }
 
-  function waitParentResult(token, resultKey, timeout) {
+  function waitParentResult(token, resultKey, timeout, signal) {
     return new Promise(function (resolve, reject) {
       var done = false;
       function finish(fromMsg) {
         if (done) return;
         done = true;
         window.removeEventListener('message', onMsg);
+        if (signal) signal.removeEventListener('abort', onAbort);
         setTimeout(function () {
           try {
             var raw = localStorage.getItem(resultKey);
@@ -134,22 +143,36 @@
           } catch (e) { reject(e); }
         }, fromMsg ? 40 : 0);
       }
+      function onAbort() {
+        if (done) return;
+        done = true;
+        window.removeEventListener('message', onMsg);
+        try { if (window.parent && window.parent !== window) window.parent.postMessage({ type: 'chatApiAbort', token: token }, '*'); } catch (e) {}
+        var e = new Error('已中断生成');
+        e.aborted = true;
+        reject(e);
+      }
       function onMsg(ev) {
         if (!ev || !ev.data || ev.data.type !== 'chatApiDone' || ev.data.token !== token) return;
         finish(true);
       }
       window.addEventListener('message', onMsg);
+      if (signal) {
+        if (signal.aborted) { onAbort(); return; }
+        signal.addEventListener('abort', onAbort, { once: true });
+      }
       setTimeout(function () {
         if (done) return;
         done = true;
         window.removeEventListener('message', onMsg);
+        if (signal) signal.removeEventListener('abort', onAbort);
         var e = new Error('后台仍在生成，可稍后回来查看');
         e.background = true;
         reject(e);
       }, timeout || 120000);
     });
   }
-  function requestViaParent(url, headers, body, token, resultKey) {
+  function requestViaParent(url, headers, body, token, resultKey, signal) {
     return new Promise(function (resolve, reject) {
       if (!(window.parent && window.parent !== window)) {
         reject(new Error('没有可用的代理窗口'));
@@ -162,7 +185,7 @@
             url: url, method: 'POST', headers: headers, body: body
           }, '*');
         } catch (e) { reject(e); return; }
-        waitParentResult(token, resultKey, 120000).then(function (r) {
+        waitParentResult(token, resultKey, 120000, signal).then(function (r) {
           if (!r.ok) {
             var msg = r.error || ('HTTP ' + (r.status || ''));
             if (!r.error && r.text) msg += '\n' + String(r.text).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 400);
@@ -179,11 +202,11 @@
       }, 20);
     });
   }
-  function postJson(url, headers, body, tag) {
-    // 先尝试同页直接请求（和查手机一致，网关允许跨域）。
-    // 失败（CORS / 网络）再走父窗口代理，避免“后台无法返回结果”卡死。
+  function postJson(url, headers, body, tag, signal) {
+    // 内嵌页面统一走父窗口代理，只发一次请求；避免「同页请求失败 → 父窗口再发一次」
+    // 导致上游已经扣费但前端又重复扣一次。独立打开时才直连。
     function direct() {
-      return fetch(url, { method: 'POST', headers: headers, body: body }).then(function (r) {
+      return fetch(url, { method: 'POST', headers: headers, body: body, signal: signal }).then(function (r) {
         return r.text().then(function (t) {
           if (!r.ok) {
             throw new Error('HTTP ' + r.status + (t ? ' · ' + String(t).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 300) : ''));
@@ -196,11 +219,14 @@
       });
     }
     if (!(window.parent && window.parent !== window)) return direct();
-    return direct().catch(function () {
-      var token = (tag || 'travel') + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-      var resultKey = 'travel_result_' + token;
-      return requestViaParent(url, headers, body, token, resultKey);
-    });
+    if (signal && signal.aborted) {
+      var ae0 = new Error('已中断生成');
+      ae0.aborted = true;
+      return Promise.reject(ae0);
+    }
+    var token = (tag || 'travel') + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    var resultKey = 'travel_result_' + token;
+    return requestViaParent(url, headers, body, token, resultKey, signal);
   }
 
   function repairJsonText(text) {
@@ -249,6 +275,42 @@
     return null;
   }
 
+  function anthropicBody(model, messages, maxTokens, temperature) {
+    var sys = [], msgs = [];
+    (messages || []).forEach(function (m) {
+      if (!m) return;
+      if (m.role === 'system') { sys.push(String(m.content || '')); return; }
+      var role = m.role === 'assistant' ? 'assistant' : 'user';
+      var c = m.content;
+      if (Array.isArray(c)) {
+        var blocks = [];
+        c.forEach(function (p) {
+          if (!p) return;
+          if (p.type === 'text') blocks.push({ type: 'text', text: String(p.text || '') });
+          else if (p.type === 'image_url') {
+            var url = String((p.image_url && p.image_url.url) || '');
+            var mm = url.match(/^data:([^;,]+);base64,(.+)$/);
+            if (mm) blocks.push({ type: 'image', source: { type: 'base64', media_type: mm[1], data: mm[2] } });
+            else if (/^https?:\/\//i.test(url)) blocks.push({ type: 'image', source: { type: 'url', url: url } });
+          } else if (typeof p === 'string') blocks.push({ type: 'text', text: p });
+        });
+        msgs.push({ role: role, content: blocks });
+      } else {
+        msgs.push({ role: role, content: String(c == null ? '' : c) });
+      }
+    });
+    if (!msgs.length) msgs.push({ role: 'user', content: '（继续）' });
+    if (msgs[0] && msgs[0].role === 'assistant') msgs.unshift({ role: 'user', content: '（继续）' });
+    var out = { model: model, max_tokens: maxTokens, temperature: temperature, messages: msgs };
+    if (sys.length) out.system = sys.join('\n\n').slice(0, 24000);
+    return out;
+  }
+  function anthropicUrl(base) {
+    var u = String(base || '').replace(/\/+$/, '');
+    if (/\/messages$/i.test(u)) return u;
+    return u + '/messages';
+  }
+
   async function callChat(opts) {
     opts = opts || {};
     var cfg = await readApiConfig();
@@ -257,24 +319,70 @@
     var model = opts.model || cfg.mainModel || 'gpt-4o-mini';
     if (!url) throw new Error('还没有配置主 API，请到「API → 主 API」填写地址、Key 和模型');
     var endpoint = textEndpoint(url);
+    var isAnthropic = String(cfg.mainApiType || '').toLowerCase() === 'anthropic';
+    if (isAnthropic) endpoint = anthropicUrl(toV1Base(resolveApiHost(url)));
     var headers = { 'Content-Type': 'application/json' };
-    if (key) headers.Authorization = 'Bearer ' + key;
-    var bodyObj = {
-      model: model,
-      temperature: opts.temperature == null ? 0.85 : opts.temperature,
-      max_tokens: Math.max(400, Number(opts.maxTokens) || 2200),
-      stream: false,
-      messages: Array.isArray(opts.messages) ? opts.messages : []
-    };
-    if (opts.json) bodyObj.response_format = { type: 'json_object' };
+    if (isAnthropic) {
+      headers['x-api-key'] = key;
+      headers['anthropic-version'] = '2023-06-01';
+      headers['anthropic-dangerous-direct-browser-access'] = 'true';
+    } else if (key) headers.Authorization = 'Bearer ' + key;
+    var ctrl = null;
+    var ownsCtrl = false;
+    if (opts.signal) ctrl = opts.signal;
+    else {
+      try { ctrl = new AbortController(); ownsCtrl = true; } catch (e) { ctrl = null; }
+    }
+    if (ownsCtrl && ctrl) activeChatAbort = ctrl;
+    function abortedError() {
+      var e = new Error('已中断生成');
+      e.aborted = true;
+      return e;
+    }
+    if (ctrl && ctrl.aborted) throw abortedError();
+    var bodyObj = isAnthropic
+      ? anthropicBody(model, opts.messages, Math.max(400, Number(opts.maxTokens) || 2200), opts.temperature == null ? 0.85 : opts.temperature)
+      : {
+          model: model,
+          temperature: opts.temperature == null ? 0.85 : opts.temperature,
+          max_tokens: Math.max(400, Number(opts.maxTokens) || 2200),
+          stream: false,
+          messages: Array.isArray(opts.messages) ? opts.messages : []
+        };
+    if (opts.json && !isAnthropic) bodyObj.response_format = { type: 'json_object' };
     async function once(withJson) {
       var b = Object.assign({}, bodyObj);
       if (!withJson) delete b.response_format;
-      var raw = await postJson(endpoint, headers, JSON.stringify(b), 'travelchat');
+      var raw = await postJson(endpoint, headers, JSON.stringify(b), 'travelchat', ctrl ? ctrl.signal : null);
       var j = {};
       try { j = JSON.parse(raw || '{}'); } catch (e) { j = {}; }
+      if (j && !j.choices && Array.isArray(j.content)) {
+        var atxt = j.content.map(function (x) { return (x && (x.text || x.content)) || ''; }).join('');
+        j = { choices: [{ message: { content: atxt }, finish_reason: j.stop_reason === 'max_tokens' ? 'length' : (j.stop_reason || 'stop') }] };
+      }
+      if ((!j || !j.choices) && /(^|\n)\s*data:\s*/i.test(String(raw || ''))) {
+        var ctext = '', creason = '', cfinish = '';
+        String(raw || '').split(/\r?\n/).forEach(function (line) {
+          var lm = line.match(/^\s*data:\s?(.*)$/);
+          if (!lm) return;
+          var p = String(lm[1] || '').trim();
+          if (!p || p === '[DONE]') return;
+          var o = null;
+          try { o = JSON.parse(p); } catch (e2) { return; }
+          var ch0 = (o && o.choices && o.choices[0]) || {};
+          var d0 = ch0.delta || ch0.message || {};
+          if (typeof d0.content === 'string') ctext += d0.content;
+          else if (Array.isArray(d0.content)) ctext += d0.content.map(function (x) { return (x && (x.text || x.content)) || ''; }).join('');
+          if (typeof d0.reasoning_content === 'string') creason += d0.reasoning_content;
+          if (ch0.finish_reason) cfinish = ch0.finish_reason;
+        });
+        j = { choices: [{ message: { content: ctext, reasoning_content: creason }, finish_reason: cfinish }] };
+      }
       var ch = (j.choices && j.choices[0]) || {};
       var txt = (ch.message && ch.message.content) || ch.text || '';
+      if (Array.isArray(txt)) {
+        txt = txt.map(function (p) { return typeof p === 'string' ? p : ((p && (p.text || p.content)) || ''); }).join('');
+      }
       if (!txt && ch.message && ch.message.reasoning_content) txt = ch.message.reasoning_content;
       return { txt: String(txt || ''), finish: ch.finish_reason || '' };
     }
@@ -282,8 +390,12 @@
     try {
       out = await once(!!opts.json);
     } catch (e) {
-      if (!opts.json) throw e;
-      out = await once(false);
+      var aborted = !!(ctrl && ctrl.aborted) || !!(e && (e.name === 'AbortError' || e.aborted));
+      if (aborted) throw abortedError();
+      // 只请求一次：JSON 模式失败也不自动去掉 response_format 重发。
+      throw e;
+    } finally {
+      if (ownsCtrl && activeChatAbort === ctrl) activeChatAbort = null;
     }
     // 一次调用生成完整内容；截断或空内容不再自动重复生成，交给上层提示用户重试。
     if (!out.txt.trim()) throw new Error('主 API 没有返回内容');
@@ -412,35 +524,32 @@
     // 普通 /images/generations 的 image 字段会被忽略，旅途照片就会“没锁脸”。
     var dataRefs = (faceRefs || []).filter(function (x) { return String(x).indexOf('data:') === 0; });
     if (dataRefs.length) {
-      try {
-        var ffd = new FormData();
-        ffd.append('model', model);
-        ffd.append('prompt', note + prompt);
-        ffd.append('n', '1');
-        ffd.append('size', size);
-        dataRefs.forEach(function (ref, idx) {
-          var fc = ref.indexOf(',');
-          var fbin = atob(ref.slice(fc + 1));
-          var fu8 = new Uint8Array(fbin.length);
-          for (var fi = 0; fi < fbin.length; fi++) fu8[fi] = fbin.charCodeAt(fi);
-          var fmime = (ref.slice(5, fc).split(';')[0]) || 'image/png';
-          ffd.append('image', new Blob([fu8], { type: fmime }), 'reference-' + (idx + 1) + '.png');
-        });
-        var base = toV1Base(resolveApiHost(imgUrl));
-        var er = await fetch(base + '/images/edits', {
-          method: 'POST',
-          headers: { Authorization: 'Bearer ' + key },
-          body: ffd
-        });
-        if (er.ok) {
-          var ed = await er.json();
-          var eit = ed && ed.data && ed.data[0];
-          var esrc = eit && (eit.url || (eit.b64_json ? 'data:image/png;base64,' + eit.b64_json : ''));
-          if (esrc) return finalizeImage({ src: esrc, kind: 'api', prompt: prompt }, prompt, opts.charName || '');
-        }
-      } catch (e) {
-        console.warn('[Travel] 锁脸图生图失败，改用普通生图:', e && e.message);
-      }
+      // 只发一次图生图；失败就当作这次没有照片，不再自动改用普通生图扣第二次。
+      var ffd = new FormData();
+      ffd.append('model', model);
+      ffd.append('prompt', note + prompt);
+      ffd.append('n', '1');
+      ffd.append('size', size);
+      dataRefs.forEach(function (ref, idx) {
+        var fc = ref.indexOf(',');
+        var fbin = atob(ref.slice(fc + 1));
+        var fu8 = new Uint8Array(fbin.length);
+        for (var fi = 0; fi < fbin.length; fi++) fu8[fi] = fbin.charCodeAt(fi);
+        var fmime = (ref.slice(5, fc).split(';')[0]) || 'image/png';
+        ffd.append('image', new Blob([fu8], { type: fmime }), 'reference-' + (idx + 1) + '.png');
+      });
+      var base = toV1Base(resolveApiHost(imgUrl));
+      var er = await fetch(base + '/images/edits', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + key },
+        body: ffd
+      });
+      if (!er.ok) throw new Error('图生图接口返回 HTTP ' + er.status);
+      var ed = await er.json();
+      var eit = ed && ed.data && ed.data[0];
+      var esrc = eit && (eit.url || (eit.b64_json ? 'data:image/png;base64,' + eit.b64_json : ''));
+      if (!esrc) throw new Error('图生图接口没有返回图片');
+      return finalizeImage({ src: esrc, kind: 'api', prompt: prompt }, prompt, opts.charName || '');
     }
     var body = { model: model || undefined, prompt: note + prompt, n: 1, size: size };
     var refPayload = faceRefs.filter(Boolean);
@@ -455,13 +564,7 @@
     var headers = { 'Content-Type': 'application/json' };
     if (key) headers.Authorization = 'Bearer ' + key;
     var raw;
-    try {
-      raw = await postJson(imageEndpoint(imgUrl), headers, JSON.stringify(body), 'travelimg');
-    } catch (e) {
-      if (!faceRef) throw e;
-      var plain = { model: model || undefined, prompt: prompt, n: 1, size: size };
-      raw = await postJson(imageEndpoint(imgUrl), headers, JSON.stringify(plain), 'travelimg');
-    }
+    raw = await postJson(imageEndpoint(imgUrl), headers, JSON.stringify(body), 'travelimg');
     return finalizeImage(parseImageText(raw, prompt), prompt, opts.charName || '');
   }
 
@@ -471,6 +574,7 @@
     readMemoryConfig: readMemoryConfig,
     callChat: callChat,
     callJson: callJson,
+    abortChat: abortChat,
     embed: embed,
     generateImage: generateImage,
     finalizeImage: finalizeImage,

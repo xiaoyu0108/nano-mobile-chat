@@ -2013,6 +2013,72 @@ async function fetchTextWithTimeout(target, headers, ms) {
     clearTimeout(timer);
   }
 }
+async function fetchDouyinComments(awemeId, mobileUA) {
+  if (!awemeId) return [];
+  const endpoints = [
+    'https://www.iesdouyin.com/web/api/v2/comment/list/?aweme_id=' + encodeURIComponent(awemeId) + '&cursor=0&count=12&item_type=0',
+    'https://www.douyin.com/aweme/v1/web/comment/list/?aweme_id=' + encodeURIComponent(awemeId) + '&cursor=0&count=12'
+  ];
+  for (const target of endpoints) {
+    const r = await fetchTextWithTimeout(target, {
+      'User-Agent': mobileUA,
+      'Accept': 'application/json, text/plain, */*',
+      'Referer': 'https://www.douyin.com/'
+    }, 5000);
+    if (!r || !r.text) continue;
+    try {
+      const j = JSON.parse(r.text);
+      const list = (j && (j.comments || (j.data && j.data.comments))) || [];
+      const out = [];
+      list.forEach(function (c) {
+        if (!c) return;
+        const text = String(c.text || c.content || '').replace(/\s+/g, ' ').trim();
+        if (!text) return;
+        out.push({
+          author: String((c.user && (c.user.nickname || c.user.unique_id)) || ''),
+          text: text.slice(0, 300),
+          likes: Number(c.digg_count || c.like_count || 0) || 0,
+          replies: Number(c.reply_comment_total || 0) || 0
+        });
+      });
+      if (out.length) return out.slice(0, 12);
+    } catch (e) {}
+  }
+  return [];
+}
+function findDouyinAweme(obj, depth) {
+  if (!obj || typeof obj !== 'object' || (depth || 0) > 8) return null;
+  if (obj.desc && (obj.author || obj.video) && (obj.aweme_id || obj.awemeId || obj.statistics)) return obj;
+  if (obj.aweme_detail && obj.aweme_detail.desc) return obj.aweme_detail;
+  const keys = Object.keys(obj);
+  for (let i = 0; i < keys.length; i++) {
+    try {
+      const hit = findDouyinAweme(obj[keys[i]], (depth || 0) + 1);
+      if (hit) return hit;
+    } catch (e) {}
+  }
+  return null;
+}
+function parseDouyinHtml(text) {
+  const s = String(text || '');
+  const tryJson = function (raw) {
+    if (!raw) return null;
+    let t = raw.trim().replace(/;$/, '');
+    try { return findDouyinAweme(JSON.parse(t), 0); } catch (e) {}
+    try { return findDouyinAweme(JSON.parse(decodeURIComponent(t)), 0); } catch (e) {}
+    return null;
+  };
+  let m = s.match(/<script[^>]+id=["']RENDER_DATA["'][^>]*>([\s\S]*?)<\/script>/i);
+  let hit = m ? tryJson(m[1]) : null;
+  if (hit) return hit;
+  m = s.match(/window\._ROUTER_DATA\s*=\s*(\{[\s\S]*?\})\s*;?\s*<\/script>/i) ||
+      s.match(/window\.__INITIAL_STATE__\s*=\s*(\{[\s\S]*?\})\s*;?\s*<\/script>/i);
+  hit = m ? tryJson(m[1]) : null;
+  if (hit) return hit;
+  m = s.match(/"aweme_id"\s*:\s*"(\d{8,})"[\s\S]{0,200000}?"desc"\s*:\s*"((?:\\.|[^"\\])*)"/);
+  if (m) return { aweme_id: m[1], desc: m[2].replace(/\\n/g, ' ').replace(/\\"/g, '"') };
+  return null;
+}
 async function fetchLinkPreview(url, env) {
   let u;
   try { u = new URL(String(url || '')); } catch (e) { return null; }
@@ -2038,12 +2104,17 @@ async function fetchLinkPreview(url, env) {
   let firstOk = false;
   if (first && first.text) {
     const data = parseLinkPage(first.text);
-    const ok = (data.title || data.content) && !linkLooksBlocked(first.resp.url || u.href, data);
+    // 抖音首页/分享页经常也能解析出一个泛化标题，但它不是视频正文；
+    // 抖音统一走下面的 iteminfo/详情接口，避免“只拿到抖音两个字和一张 logo”。
+    const isDouyinHost = /douyin|iesdouyin/i.test(u.hostname);
+    const ok = !isDouyinHost && (data.title || data.content) && !linkLooksBlocked(first.resp.url || u.href, data);
     if (ok) {
       return Object.assign({ url: first.resp.url || u.href }, data);
     }
-    const cover = linkCoverOnly(data, first.resp.url || u.href);
-    if (cover) return cover;
+    if (!isDouyinHost) {
+      const cover = linkCoverOnly(data, first.resp.url || u.href);
+      if (cover) return cover;
+    }
     firstOk = false;
   }
   // 抖音/淘宝移动页经常只给登录弹窗；再用桌面 UA 抓一次，很多商品/视频详情
@@ -2057,11 +2128,11 @@ async function fetchLinkPreview(url, env) {
     }, 10000);
     if (desk && desk.text) {
       const d2 = parseLinkPage(desk.text);
-      if ((d2.title || d2.content || (d2.images && d2.images.length)) && !linkLooksBlocked(desk.resp.url || u.href, d2)) {
+      if (!/douyin|iesdouyin/i.test(u.hostname) && (d2.title || d2.content || (d2.images && d2.images.length)) && !linkLooksBlocked(desk.resp.url || u.href, d2)) {
         return Object.assign({ url: desk.resp.url || u.href, via: 'desktop' }, d2);
       }
       const cover2 = linkCoverOnly(d2, desk.resp.url || u.href);
-      if (cover2) return cover2;
+      if (cover2 && !/douyin|iesdouyin/i.test(u.hostname)) return cover2;
     }
   }
   // 小红书被跳到登录/滑块页：用 redirectPath / 最终 URL 里的笔记 id + xsec_token 换 /explore 地址再试。
@@ -2100,19 +2171,72 @@ async function fetchLinkPreview(url, env) {
       }, 10000);
       if (a && a.text) {
         try {
-          const aj = JSON.parse(a.text);
-          const item = aj && aj.item_list && aj.item_list[0];
+          let item = null;
+          try {
+            const aj = JSON.parse(a.text);
+            item = (aj && aj.item_list && aj.item_list[0]) || null;
+          } catch (e) {}
+          if (!item) {
+            // iteminfo 被限流时，再试网页版详情接口。
+            const d = await fetchTextWithTimeout('https://www.douyin.com/aweme/v1/web/aweme/detail/?aweme_id=' + vm[1] + '&aid=6383', {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+              'Accept': 'application/json, text/plain, */*',
+              'Referer': 'https://www.douyin.com/'
+            }, 8000);
+            if (d && d.text) {
+              try {
+                const dj = JSON.parse(d.text);
+                item = (dj && (dj.aweme_detail || (dj.aweme_details && dj.aweme_details[0]))) || null;
+              } catch (e) {}
+            }
+          }
+          if (!item && first && first.text) item = parseDouyinHtml(first.text);
           if (item) {
             const desc = String(item.desc || '').replace(/\s+/g, ' ').trim();
-            const cover = item.video && item.video.cover && item.video.cover.url_list && item.video.cover.url_list[0] ||
-              (item.video && item.video.dynamic_cover && item.video.dynamic_cover.url_list && item.video.dynamic_cover.url_list[0]) || '';
+            const author = String((item.author && (item.author.nickname || item.author.unique_id)) || '');
+            const coverObj = item.video && (item.video.cover || item.video.dynamic_cover || item.video.origin_cover);
+            const cover = (typeof coverObj === 'string' && coverObj) ||
+              (coverObj && Array.isArray(coverObj.url_list) && coverObj.url_list[0]) ||
+              (coverObj && Array.isArray(coverObj.uri) && coverObj.uri[0]) ||
+              (item.video && item.video.play_addr && item.video.play_addr.url_list && item.video.play_addr.url_list[0]) || '';
+            const stats = item.statistics || {};
+            const music = (item.music && (item.music.title || item.music.author)) ? String(item.music.title || item.music.author) : '';
+            const tags = (Array.isArray(item.text_extra) ? item.text_extra : []).map(function (t) {
+              return t && t.hashtag_name ? '#' + t.hashtag_name : '';
+            }).filter(Boolean);
+            const comments = await fetchDouyinComments(item.aweme_id || item.awemeId || vm[1], mobileUA);
+            const statLine = [
+              stats.digg_count != null ? ('点赞 ' + stats.digg_count) : '',
+              stats.comment_count != null ? ('评论 ' + stats.comment_count) : '',
+              stats.share_count != null ? ('分享 ' + stats.share_count) : '',
+              stats.collect_count != null ? ('收藏 ' + stats.collect_count) : ''
+            ].filter(Boolean).join(' · ');
+            const contentParts = [
+              desc,
+              author ? ('作者：' + author) : '',
+              tags.length ? tags.join(' ') : '',
+              music ? ('音乐：' + music) : '',
+              statLine
+            ].filter(Boolean);
+            if (comments.length) {
+              contentParts.push('热评：\n' + comments.slice(0, 8).map(function (c, i) {
+                return (i + 1) + '. ' + (c.author ? (c.author + '：') : '') + c.text + (c.likes ? ('（赞 ' + c.likes + '）') : '');
+              }).join('\n'));
+            }
             if (desc || cover) {
               return {
                 url: finalUrl,
                 via: 'douyin-api',
+                platform: 'douyin',
                 title: (desc || '抖音视频').slice(0, 120),
                 desc: desc.slice(0, 180),
-                content: [desc, item.author && item.author.nickname ? ('作者：' + item.author.nickname) : ''].filter(Boolean).join('\n').slice(0, 7000),
+                content: contentParts.join('\n').slice(0, 7000),
+                author: author,
+                stats: stats,
+                comments: comments,
+                music: music,
+                tags: tags,
+                awemeId: String(item.aweme_id || item.awemeId || vm[1] || ''),
                 images: cover ? [linkAbsImg(cover)] : [],
                 price: ''
               };
@@ -4026,6 +4150,31 @@ export default {
       }
       return item;
     }
+    // 置顶列表独立存 KV，Supabase / KV 两种后端都能用；数组顺序就是置顶顺序。
+    async function readMarketPins() {
+      try {
+        const raw = await marketKv(env).get('market:pins');
+        const arr = raw ? JSON.parse(raw) : [];
+        return Array.isArray(arr) ? arr.map(String).filter(Boolean) : [];
+      } catch (e) { return []; }
+    }
+    async function writeMarketPins(pins) {
+      await marketKv(env).put('market:pins', JSON.stringify((pins || []).slice(0, 100)));
+    }
+    function applyMarketPins(items, pins) {
+      const set = {};
+      (pins || []).forEach(function (id, i) { set[String(id)] = i; });
+      (items || []).forEach(function (x) {
+        if (!x || !x.id) return;
+        x.pinned = Object.prototype.hasOwnProperty.call(set, String(x.id));
+        x.pinRank = x.pinned ? set[String(x.id)] : 9999;
+      });
+      return items.sort(function (a, b) {
+        if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
+        if (a.pinned && b.pinned) return (a.pinRank || 0) - (b.pinRank || 0);
+        return (Number(b.created) || 0) - (Number(a.created) || 0);
+      });
+    }
 
     // GET /market/file?key=market/...   从 R2 读集市图片/附件（没配 MEDIA_PUBLIC_BASE 时的代理）
     if (pathname === '/market/file' && request.method === 'GET') {
@@ -4061,6 +4210,8 @@ export default {
               if (x && x.id && !seen[x.id]) items.push(mergeMarketCounts(Object.assign({}, x), counts));
             });
           }
+          const pins = await readMarketPins();
+          applyMarketPins(items, pins);
           return json({ ok: true, backend: 'supabase', items: items });
         } catch (e) {
           console.warn('[market] supabase list failed, fallback KV:', e && e.message);
@@ -4070,6 +4221,7 @@ export default {
       try { const raw = await marketKv(env).get('market:index'); items = raw ? JSON.parse(raw) : []; } catch (e) { items = []; }
       const counts = await readMarketCounts();
       items = (Array.isArray(items) ? items : []).map(function (x) { return mergeMarketCounts(x, counts); });
+      applyMarketPins(items, await readMarketPins());
       return json({ ok: true, backend: 'kv', items: items });
     }
 
@@ -4175,6 +4327,67 @@ export default {
       return json({ ok: true, value: cur[field] });
     }
 
+    async function marketAdminOk(request, env, body) {
+      const h = String(request.headers.get('Authorization') || '');
+      const token = h.replace(/^Bearer\s+/i, '').trim() || String((body && body.accountToken) || '');
+      const auth = token ? await accAuth(env, token) : null;
+      const chk = await accAdminAccess(request, env, body, auth);
+      return !!chk.ok;
+    }
+
+    // POST /market/admin/pin   { id, pinned }  管理员置顶/取消置顶
+    if (pathname === '/market/admin/pin' && request.method === 'POST') {
+      let body = {};
+      try { body = await request.json(); } catch (e) {}
+      if (!(await marketAdminOk(request, env, body))) return json({ ok: false, error: 'forbidden' }, 403);
+      const id = String(body.id || '').trim();
+      if (!id) return json({ ok: false, error: 'no id' }, 400);
+      let pins = await readMarketPins();
+      if (body.pinned) pins = [id].concat(pins.filter(function (x) { return x !== id; }));
+      else pins = pins.filter(function (x) { return x !== id; });
+      await writeMarketPins(pins);
+      return json({ ok: true, pinned: !!body.pinned, pins: pins });
+    }
+
+    // POST /market/admin/delete   { id }  管理员删除任意帖子
+    if (pathname === '/market/admin/delete' && request.method === 'POST') {
+      let body = {};
+      try { body = await request.json(); } catch (e) {}
+      if (!(await marketAdminOk(request, env, body))) return json({ ok: false, error: 'forbidden' }, 403);
+      const id = String(body.id || '').trim();
+      if (!id) return json({ ok: false, error: 'no id' }, 400);
+      let removed = false;
+      if (supabaseConf(env)) {
+        try {
+          const rows = await supabase(env, '/rest/v1/market_items?id=eq.' + encodeURIComponent(id) + '&select=item,summary&limit=1');
+          if (Array.isArray(rows) && rows[0]) {
+            if (env.MEDIA || supabaseConf(env)) { try { await deleteMarketBlobs(env, rows[0].item, rows[0].summary); } catch (e) {} }
+            await supabase(env, '/rest/v1/market_items?id=eq.' + encodeURIComponent(id), { method: 'DELETE' });
+            removed = true;
+          }
+        } catch (e) {
+          console.warn('[market] admin supabase delete failed, fallback KV:', e && e.message);
+        }
+      }
+      if (!removed) {
+        const key = 'market:post:' + id;
+        const raw = await marketKv(env).get(key);
+        if (raw) {
+          let rec = null;
+          try { rec = JSON.parse(raw); } catch (e) {}
+          if (env.MEDIA || supabaseConf(env)) { try { await deleteMarketBlobs(env, rec && rec.item); } catch (e) {} }
+          await marketKv(env).delete(key);
+          removed = true;
+        }
+      }
+      let items = [];
+      try { const rawIdx = await marketKv(env).get('market:index'); items = rawIdx ? JSON.parse(rawIdx) : []; } catch (e) { items = []; }
+      items = items.filter(function (x) { return x && x.id !== id; });
+      await marketKv(env).put('market:index', JSON.stringify(items));
+      await writeMarketPins((await readMarketPins()).filter(function (x) { return x !== id; }));
+      return removed ? json({ ok: true }) : json({ ok: false, error: 'not found' }, 404);
+    }
+
     // POST /market/delete        删除：{ id, token }
     if (pathname === '/market/delete' && request.method === 'POST') {
       let body = {};
@@ -4187,6 +4400,7 @@ export default {
             if (rows[0].token && rows[0].token !== token) return json({ ok: false, error: 'forbidden' }, 403);
             if (env.MEDIA || supabaseConf(env)) { try { await deleteMarketBlobs(env, rows[0].item, rows[0].summary); } catch (e) {} }
             await supabase(env, '/rest/v1/market_items?id=eq.' + encodeURIComponent(id), { method: 'DELETE' });
+            await writeMarketPins((await readMarketPins()).filter(function (x) { return x !== id; }));
             return json({ ok: true });
           }
         } catch (e) {
@@ -4204,6 +4418,7 @@ export default {
       try { const rawIdx = await marketKv(env).get('market:index'); items = rawIdx ? JSON.parse(rawIdx) : []; } catch (e) { items = []; }
       items = items.filter((x) => x && x.id !== id);
       await marketKv(env).put('market:index', JSON.stringify(items));
+      await writeMarketPins((await readMarketPins()).filter(function (x) { return x !== id; }));
       return json({ ok: true });
     }
 

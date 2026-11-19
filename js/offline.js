@@ -3372,17 +3372,8 @@ async function requestReply(opts) {
     // 续写：不新增存档消息，只在本次请求末尾临时加一条「继续」，让模型接着上一张卡片往下写
     if (continueMode) history.push({ role: 'user', content: '（继续）' });
     let result;
-    try {
-      result = await callMainAPI(history, { continue: continueMode });
-    } catch (err) {
-      // 用户主动停止 / 超时中止：不重试、不弹错误框
-      if (err && err.aborted) throw err;
-      // 4xx（Key 无效 / 参数超限 / 内容被拒）重试无意义，直接抛出；
-      // 5xx 或网络抖动才重试一次。
-      if (err && err.status >= 400 && err.status < 500) throw err;
-      await new Promise(r => setTimeout(r, 1200));
-      result = await callMainAPI(history, { continue: continueMode });
-    }
+    // 只允许一次请求：失败就如实报错，不自动重发同一轮（避免用户不知情时重复扣费）。
+    result = await callMainAPI(history, { continue: continueMode });
     let reply = typeof result === 'string' ? result : (result?.reply ?? result?.content ?? result?.message ?? '');
     // 一次 API 调用直接生成完整回复（正文 + thinking/heart/plot/状态栏）。
     // 缺失字段不再自动追加请求补生成，避免在用户不知情时重复消耗 API。
@@ -3698,6 +3689,10 @@ ${offlineStyleLibrary()}
     if (!/\/v1$/i.test(mainUrl)) mainUrl += '/v1';
     const mainKey = String(apiConfig.mainKey || '').trim();
     const mainModel = apiConfig.mainModel || '';
+    const isAnthropic = String(apiConfig.mainApiType || '').toLowerCase() === 'anthropic';
+    const mainEndpoint = isAnthropic
+      ? (/\/messages$/i.test(mainUrl) ? mainUrl : mainUrl + '/messages')
+      : (mainUrl + '/chat/completions');
 
     // 兼容部分 API 不接受首条消息为 assistant：把开头的角色开场白并入系统提示，
     // 其余历史保持原样（正常对话首条是 user，这段逻辑不产生任何改动）。
@@ -3912,7 +3907,14 @@ ${offlineStyleLibrary()}
       if (offlineTokenCeiling > 0) offlineMaxTokens = Math.min(offlineMaxTokens, offlineTokenCeiling);
     }
 
-    const body = {
+    const body = isAnthropic ? {
+      model: mainModel,
+      system: finalSystemPrompt,
+      messages: history.map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content || '') })),
+      max_tokens: offlineMaxTokens,
+      temperature: 0.8,
+      stream: false
+    } : {
       model: mainModel,
       messages: [
       { role: 'system', content: finalSystemPrompt },
@@ -3933,39 +3935,24 @@ ${offlineStyleLibrary()}
     let response;
     let preReadRaw = '';
     try {
-      // 有些模型 / 中转不接受过大的 max_tokens（Claude 常见 400：max_tokens > 模型输出上限）。
-      // 与线上聊天一致：遇到 400 且错误信息指向 token 上限时，自动逐档下降重试。
-      for (let __try = 0; __try < 6; __try++) {
-        response = await fetch(mainUrl + '/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Authorization': 'Bearer ' + mainKey,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(body),
-          signal: __ctrl ? __ctrl.signal : undefined
-        });
-        if (response.ok) break;
+      // 只发一次：即使中转返回 token 上限错误，也不自动降档重发（避免重复扣费）。
+      response = await fetch(mainEndpoint, {
+        method: 'POST',
+        headers: isAnthropic ? {
+          'x-api-key': mainKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true',
+          'Content-Type': 'application/json'
+        } : {
+          'Authorization': 'Bearer ' + mainKey,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body),
+        signal: __ctrl ? __ctrl.signal : undefined
+      });
+      if (!response.ok) {
         preReadRaw = '';
         try { preReadRaw = await response.text(); } catch (e) {}
-        let __apiMsg = '';
-        try {
-          const d = JSON.parse(preReadRaw || '{}');
-          __apiMsg = (d && d.error && (d.error.message || d.error)) || (d && d.message) || '';
-        } catch (e) {
-          __apiMsg = String(preReadRaw || '').replace(/\s+/g, ' ').trim().slice(0, 400);
-        }
-        if (typeof __apiMsg !== 'string') { try { __apiMsg = JSON.stringify(__apiMsg); } catch (e) { __apiMsg = String(__apiMsg); } }
-        const __tokenErr = response.status === 400
-          && /max[_\s-]?tokens|maximum context|context length|token limit|too many tokens|prompt is too long/i.test(__apiMsg);
-        if (__tokenErr && Number(body.max_tokens) > 1024) {
-          // 先退到 4096，再逐档下降；比直接减半更适合「只超了一点」的情况。
-          const __cur = Number(body.max_tokens) || 0;
-          body.max_tokens = Math.max(1024, Math.min(4096, __cur - 1024));
-          offlineTokenCeiling = Number(body.max_tokens) || 0;
-          continue;
-        }
-        break;
       }
     } catch (netErr) {
       const aborted = !!(__ctrl && __ctrl.signal && __ctrl.signal.aborted) || !!(netErr && (netErr.name === 'AbortError' || /abort/i.test(String(netErr.message || ''))));
@@ -4019,10 +4006,16 @@ ${offlineStyleLibrary()}
     }
 
     const data = await response.json();
-    try { lastOfflineFinishReason = String(data.choices?.[0]?.finish_reason || ''); } catch (e) { lastOfflineFinishReason = ''; }
+    try {
+      lastOfflineFinishReason = isAnthropic
+        ? (data.stop_reason === 'max_tokens' ? 'length' : String(data.stop_reason || ''))
+        : String(data.choices?.[0]?.finish_reason || '');
+    } catch (e) { lastOfflineFinishReason = ''; }
     // 如果这次用手动更大的上限成功了，说明模型支持，清掉之前自动降档留下的上限。
     try { if (offlineTokenCeiling > 0 && Number(body.max_tokens) > offlineTokenCeiling) offlineTokenCeiling = 0; } catch (e) {}
-    const reply = data.choices?.[0]?.message?.content?.trim();
+    const reply = isAnthropic
+      ? (Array.isArray(data.content) ? data.content.map(function (x) { return (x && (x.text || x.content)) || ''; }).join('') : '').trim()
+      : data.choices?.[0]?.message?.content?.trim();
     if (!reply) throw new Error('API 返回内容为空');
     return reply;
 

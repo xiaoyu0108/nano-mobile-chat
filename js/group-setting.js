@@ -66,28 +66,32 @@
     function syncToRegistry(){
         try {
             var raw = localStorage.getItem(GROUPS_KEY);
-            if (!raw) return;
-            var data = JSON.parse(raw);
-            if (!data || !Array.isArray(data.groups)) return;
-            for (var i = 0; i < data.groups.length; i++) {
-                if (data.groups[i] && data.groups[i].id === chatId) {
-                    data.groups[i].name = group.name || '';
-                    data.groups[i].avatar = group.avatar || '';
-                    data.groups[i].profileTs = Number(group.profileTs) || 0;
-                    data.groups[i].members = group.members.map(function(m){ return m.id; });
-                    data.groups[i].memberNames = group.members.map(function(m){ return m.name; });
-                    break;
+            if (raw) {
+                var data = JSON.parse(raw);
+                if (data && Array.isArray(data.groups)) {
+                    for (var i = 0; i < data.groups.length; i++) {
+                        if (data.groups[i] && data.groups[i].id === chatId) {
+                            data.groups[i].name = group.name || '';
+                            data.groups[i].avatar = group.avatar || '';
+                            data.groups[i].profileTs = Number(group.profileTs) || 0;
+                            data.groups[i].members = group.members.map(function(m){ return m.id; });
+                            data.groups[i].memberNames = group.members.map(function(m){ return m.name; });
+                            break;
+                        }
+                    }
+                    localStorage.setItem(GROUPS_KEY, JSON.stringify(data));
                 }
             }
-            localStorage.setItem(GROUPS_KEY, JSON.stringify(data));
         } catch(e){}
+        // 即使注册表暂时读不到，也必须广播：群列表会直接从 group_data_<id> / IndexedDB 读取。
+        // 手机上大图头像落盘慢，多广播几次，避免群聊和群列表停在旧头像/旧群名。
         try {
             if (window.parent && window.parent !== window) {
-                window.parent.postMessage({ type: 'groupsDataUpdated', groupId: chatId }, '*');
-                // IndexedDB 写入是异步的：稍后再广播一次，让群聊页/聊天列表拿到真正落盘的资料。
-                setTimeout(function(){
-                    try { window.parent.postMessage({ type: 'groupsDataUpdated', groupId: chatId }, '*'); } catch(e) {}
-                }, 320);
+                [0, 320, 1200, 2600].forEach(function(ms){
+                    setTimeout(function(){
+                        try { window.parent.postMessage({ type: 'groupsDataUpdated', groupId: chatId }, '*'); } catch(e) {}
+                    }, ms);
+                });
             }
         } catch(e){}
     }

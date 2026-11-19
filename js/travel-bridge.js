@@ -140,16 +140,24 @@
   function resumedLongEnough() {
     var at = resumeAfterLongGap();
     if (!at) return true;
-    if (Date.now() - at < 2 * 86400000) return false;
-    // 重新聊之后，至少跨两个不同日期都有真实消息，才算「重新聊了 2 天」。
+    // 断聊 7 天后，必须连续聊满 3 个自然日才恢复报备。
     var days = {};
     realMessageList().forEach(function (m) {
       var t = msgTs(m);
       if (!t || t < at) return;
       var d = new Date(t);
-      days[d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate()] = true;
+      days[d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')] = true;
     });
-    return Object.keys(days).length >= 2;
+    var keys = Object.keys(days).sort();
+    var streak = 1;
+    for (var i = 1; i < keys.length; i++) {
+      var a = new Date(keys[i - 1] + 'T00:00:00');
+      var b = new Date(keys[i] + 'T00:00:00');
+      if (Math.round((b - a) / 86400000) === 1) streak++;
+      else streak = 1;
+      if (streak >= 3) return true;
+    }
+    return false;
   }
   function characterProfileText() {
     var parts = [];
@@ -590,6 +598,10 @@
           // 聊天里的报备卡片只放地点/日期/画面说明；「心得/感悟」留在旅途 App 里，
           // 不再作为气泡或卡片正文发到私聊。
           var caption = String(r.caption || '').trim();
+          // 气泡和卡片来自同一次报备 API 的结果，不额外再调用一次。
+          var bubble = String(r.bubble || '').trim() ||
+            ('刚从' + (r.place || r.title || '外面') + '回来，' + (caption || '路上一切都好。'));
+          chat().addMessage('left', bubble, nowTime());
           chat().addMessage('left', '', nowTime(), null, false, true, {
             cardType: 'travelReport',
             travelKind: 'report',
@@ -621,12 +633,13 @@
     var m = store() && store().getMask ? store().getMask() : {};
     return 'nano_travel_report_global_' + ((m && m.id) || 'default');
   }
-  // 与「旅途」App 的随机拍立得共用同一把锁：两条路径合计约 5 天只分享一次。
+  // 与「旅途」App 的随机拍立得共用同一把锁：两条路径合计约 7 天只分享一次。
   function sharedShareKey() {
     var m = store() && store().getMask ? store().getMask() : {};
     return 'nano_travel_share_at_' + ((m && m.id) || 'default');
   }
-  var REPORT_EVERY = 5 * 86400000;   // 约 5 天由一位 char 主动报备一次旅程
+  function reportFailKey() { return 'nano_travel_report_fail_' + chatId; }
+  var REPORT_EVERY = 7 * 86400000;   // 一个 char 约 7 天主动报备一次
   function canReport() {
     var s = store();
     if (!s) return false;
@@ -635,11 +648,12 @@
     if (!recentlyChatting(12)) return false;
     // 必须是已经聊得很熟的角色；刚点开、没聊过或只有系统提示时不报备。
     if (!isFamiliar()) return false;
+    // 断聊超过 7 天后，必须连续聊 3 天才恢复。
+    if (!resumedLongEnough()) return false;
     try {
-      var shared = JSON.parse(localStorage.getItem(sharedShareKey()) || 'null');
-      if (shared && Date.now() - Number(shared.at || 0) < REPORT_EVERY) return false;
-      var globalLock = JSON.parse(localStorage.getItem(reportGlobalKey()) || 'null');
-      if (globalLock && Date.now() - Number(globalLock.at || 0) < REPORT_EVERY) return false;
+      // 生成失败也不自动补用：失败后同样锁 7 天，避免反复扣费。
+      var failedAt = Number(localStorage.getItem(reportFailKey()) || 0);
+      if (failedAt && Date.now() - failedAt < REPORT_EVERY) return false;
       var lock = JSON.parse(localStorage.getItem(reportLockKey()) || 'null');
       if (lock && Date.now() - Number(lock.at || 0) < REPORT_EVERY) return false;
     } catch (e) {}
@@ -668,7 +682,7 @@
       + (persona ? ('角色设定：' + String(persona).slice(0, 1400) + '。') : '')
       + (foreign ? ('你的母语是' + (lang || '外语') + '：thought 必须用母语写，thoughtZh 给对应的中文翻译；' ) : 'thoughtZh 留空字符串；')
       + '只输出合法 JSON，不要解释。格式：'
-      + '{"place":"目的地/地点","from":"出发地","to":"到达地","type":"hsr|train|plane|taxi|bike|bus","date":"YYYY-MM-DD","time":"HH:MM","no":"车次/航班/车牌","seat":"座位/里程","price":数字,"thought":"一句真实心得","thoughtZh":"中文翻译或空","caption":"对拍立得画面的一句客观说明，不要写心得/感悟，24字以内","photoPrompt":"用于生图的画面描述"}'
+      + '{"bubble":"发给用户的 1-2 句聊天气泡，和这次出行有关，自然口语","place":"目的地/地点","from":"出发地","to":"到达地","type":"hsr|train|plane|taxi|bike|bus","date":"YYYY-MM-DD","time":"HH:MM","no":"车次/航班/车牌","seat":"座位/里程","price":数字,"thought":"一句真实心得","thoughtZh":"中文翻译或空","caption":"对拍立得画面的一句客观说明，不要写心得/感悟，24字以内","photoPrompt":"用于生图的画面描述"}'
       + '。要求：像真实日常出行，不要夸张；地点符合角色所在城市/世界观；thought 不超过 40 字；photoPrompt 描述光线、地点、氛围，可以是人像，也可以只是风景、街角、食物、车票、窗边、影子或手部，不要出现文字。'
       + 'photoPrompt 开头必须写 `人物：...`；这是你一个人的出行记录，通常写「人物：我一人」或「人物：无人（只拍场景）」，不要出现用户。';
     var usr = '今天是 ' + today() + '。请生成一段你一个人出门的记录，或者你为了散心临时去的地方。';
@@ -694,6 +708,7 @@
       thought: String(j.thought || j.note || '').trim(),
       thoughtZh: String(j.thoughtZh || '').trim(),
       caption: String(j.caption || '').trim(),
+      bubble: String(j.bubble || '').trim().slice(0, 200),
       photoPrompt: String(j.photoPrompt || '').trim(),
       owner: 'char',
       source: 'report',
@@ -725,10 +740,10 @@
       });
       var rec = normalizeRecord(j, charData);
       rec.tripId = newTripId();
-      // 分享时 75% 概率生图；只有开启「允许生图」的角色才真的调用生图。
+      // 分享时 80% 概率生图；只有开启「允许生图」的角色才真的调用生图。
       // 画面随机：人像 / 风景 / 随机角落 / 生活细节都会出现，不再固定成一种。
       try {
-        if (rec.photoPrompt && charAllowsImage(chatId) && Math.random() < 0.75 && api() && api().generateImage) {
+        if (rec.photoPrompt && charAllowsImage(chatId) && Math.random() < 0.8 && api() && api().generateImage) {
           var roll = Math.random();
           var withChar = roll < 0.42;
           var photoPrompt = String(rec.photoPrompt).slice(0, 800);
@@ -752,7 +767,7 @@
       await store().addCharTrip(chatId, rec);
       await store().addPendingReport(chatId, {
         tripId: rec.tripId, title: rec.place, place: rec.place, date: rec.date,
-        thought: rec.thought, thoughtZh: rec.thoughtZh || '', caption: rec.caption, note: '',
+        thought: rec.thought, thoughtZh: rec.thoughtZh || '', caption: rec.caption, bubble: rec.bubble || '', note: '',
         img: rec.polaroid || '', at: Date.now()
       });
       markReport();
@@ -760,6 +775,8 @@
       await deliver();
       return true;
     } catch (e) {
+      // 失败不自动补用：同样锁 7 天，避免角色每隔一小时反复调用 API。
+      try { localStorage.setItem(reportFailKey(), String(Date.now())); } catch (e2) {}
       return false;
     } finally {
       reportBusy = false;
@@ -953,6 +970,7 @@
       params.set('date', String(cd.date || ''));
       if (cd.title) params.set('title', String(cd.title).slice(0, 120));
       if (cd.thought) params.set('thought', String(cd.thought).slice(0, 600));
+      params.set('v', '20261119a');
       openFull('travel-chat.html?' + params.toString(), '旅途回顾');
       return;
     }
@@ -980,6 +998,14 @@
     params.set('time', cd.time || '');
     params.set('days', cd.days || '1');
     params.set('note', cd.note || '');
+    params.set('v', '20261119a');
+    // 同一趟旅行中断后（悬浮球返回、切后台、大退）再次点开卡片时，
+    // 继续之前的存档，而不是从头开始。
+    try {
+      var activeKey = 'nano_travel_active_' + chatId;
+      var markKey = 'nano_travel_resume_' + chatId;
+      if (localStorage.getItem(activeKey) || localStorage.getItem(markKey)) params.set('resume', '1');
+    } catch (e) {}
     openFull('travel-chat.html?' + params.toString(), '一起去');
   }
   function acceptInvite(msg) {

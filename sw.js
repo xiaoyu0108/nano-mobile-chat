@@ -13,7 +13,7 @@
 'use strict';
 
 // 缓存代号固定不变：发版不要改这里。改了会触发一次整站缓存清理，所有页面又要重新下载。
-var CACHE = 'nano-static-v407';
+var CACHE = 'nano-static-v409';
 var STATIC_RE = /\.(css|js|png|jpg|jpeg|webp|svg|gif|ico|woff2?|ttf|mp3)$/i;
 var HTML_NET_TIMEOUT_MS = 250;        // 首屏 HTML 有缓存时最多等 0.25 秒，超时立刻上缓存
 

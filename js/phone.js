@@ -323,6 +323,15 @@ function updateHomeWidgets(){
     const maxRows = Math.max(1, Number(rows) || 4);
     const w = clamp(Number(cell.w) || 1, 1, MAX_COL);
     const h = clamp(Number(cell.h) || 1, 0.5, maxRows);
+    // 自由摆放：x/y 是相对主屏的 0~1 比例，不再吸附 4 列网格，也不再限制在中间几行。
+    if(cell && (cell.free || cell.x != null || cell.y != null)){
+      return {
+        free: true,
+        x: clamp(Number(cell.x) || 0, 0, 1),
+        y: clamp(Number(cell.y) || 0, 0, 1),
+        w, h
+      };
+    }
     const c = clamp(Math.round(Number(cell.c) || 0), 0, MAX_COL - w);
     const r = clamp(Math.round((Number(cell.r) || 0) / STEP) * STEP, 0, Math.round((maxRows - h) * 10) / 10);
     return { c, r, w, h };
@@ -334,22 +343,57 @@ function updateHomeWidgets(){
     // 主屏还没显示（角色列表页）时量到的是 0×0，全部图标都会被摆到左上角叠在一起。
     // 先只记住格子，等主屏真正可见后再由 applyAll 统一落位。
     if(m.colW < 2 || m.rowH < 2) return;
+    const itemW = n.w * m.colW + Math.max(0, n.w - 1) * m.gapX;
+    const itemH = n.h * m.rowH + Math.max(0, n.h - 1) * m.gapY;
+    let left, top;
+    if(n.free){
+      left = clamp(n.x * m.width, 0, Math.max(0, m.width - itemW));
+      top = clamp(n.y * m.height, 0, Math.max(0, m.height - itemH));
+    }else{
+      left = n.c * (m.colW + m.gapX);
+      top = m.offsetY + n.r * (m.rowH + m.gapY);
+    }
     el.style.position = "absolute";
     el.style.gridColumn = "auto";
     el.style.gridRow = "auto";
-    el.style.left = (n.c * (m.colW + m.gapX)) + "px";
-    el.style.top = (m.offsetY + n.r * (m.rowH + m.gapY)) + "px";
-    el.style.width = (n.w * m.colW + Math.max(0, n.w - 1) * m.gapX) + "px";
-    el.style.height = (n.h * m.rowH + Math.max(0, n.h - 1) * m.gapY) + "px";
+    el.style.left = left + "px";
+    el.style.top = top + "px";
+    el.style.width = itemW + "px";
+    el.style.height = itemH + "px";
     el.style.margin = "0";
   }
   function cellOf(el){ return el._cell || el._defaultCell || readDefault(el); }
+  function currentPageGrid(){
+    if(!pagesEl || !grids.length) return null;
+    const w = pagesEl.clientWidth || 1;
+    const idx = clamp(Math.round(pagesEl.scrollLeft / w), 0, grids.length - 1);
+    return grids[idx] || grids[0];
+  }
   function gridAt(x, y){
     for(const g of grids){
       const r = g.getBoundingClientRect();
       if(x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return g;
     }
+    // 允许拖到主屏上下边缘（甚至略超出）：落到当前页最近的网格，而不是直接取消放置。
+    if(pagesEl){
+      const pr = pagesEl.getBoundingClientRect();
+      if(x >= pr.left && x <= pr.right && y >= pr.top && y <= pr.bottom) return currentPageGrid();
+    }
     return null;
+  }
+  function freeFromPoint(grid, x, y, w, h){
+    const m = metrics(grid);
+    const rect = grid.getBoundingClientRect();
+    const itemW = w * m.colW + Math.max(0, w - 1) * m.gapX;
+    const itemH = h * m.rowH + Math.max(0, h - 1) * m.gapY;
+    const left = clamp(x - offX - rect.left, 0, Math.max(0, rect.width - itemW));
+    const top = clamp(y - offY - rect.top, 0, Math.max(0, rect.height - itemH));
+    return {
+      free: true,
+      x: rect.width ? left / rect.width : 0,
+      y: rect.height ? top / rect.height : 0,
+      w, h
+    };
   }
   function cellFromPoint(grid, x, y, w, h){
     const m = metrics(grid);
@@ -418,7 +462,8 @@ function updateHomeWidgets(){
     }
     if(ghost.parentElement !== grid) grid.appendChild(ghost);
     ghost.style.display = "";
-    const cell = cellFromPoint(grid, x, y, origin.cell.w, origin.cell.h);
+    // 自由摆放：不吸附列/行，指针落在哪里就放在哪里。
+    const cell = freeFromPoint(grid, x, y, origin.cell.w, origin.cell.h);
     setPos(ghost, cell, grid);
     dropTarget = { grid, cell };
   }
@@ -487,7 +532,8 @@ function updateHomeWidgets(){
     if(target){
       if(el.parentElement !== target.grid) target.grid.appendChild(el);
       clearDragStyles(el);
-      setPos(el, freeCell(target.grid, target.cell, el), target.grid);
+      // 自由坐标直接落位，不做碰撞挤压/回网格。
+      setPos(el, target.cell, target.grid);
     } else {
       if(el.parentElement !== origin.grid) origin.grid.appendChild(el);
       clearDragStyles(el);
@@ -506,7 +552,9 @@ function updateHomeWidgets(){
       itemsIn(grid).forEach(el => {
         if(!el.dataset.app || !el._cell) return;
         const c = el._cell;
-        map[el.dataset.app] = { g: gi, c: c.c, r: c.r, w: c.w, h: c.h };
+        map[el.dataset.app] = c.free
+          ? { g: gi, x: c.x, y: c.y, w: c.w, h: c.h }
+          : { g: gi, c: c.c, r: c.r, w: c.w, h: c.h };
       });
     });
     try{ localStorage.setItem(LAYOUT_KEY, JSON.stringify(map)); }catch(e){}
@@ -536,8 +584,17 @@ function updateHomeWidgets(){
       if(!targetGrid) return;
       const rows = rowsOf(targetGrid);
       const bucket = placed[gi] || (placed[gi] = []);
+      if(s && Number.isFinite(Number(s.x)) && Number.isFinite(Number(s.y))){
+        // 新版本的自由坐标：允许重叠，不再自动挤到空位。
+        const cell = normalize({ x: s.x, y: s.y, w: def.w, h: def.h, free: true }, rows);
+        bucket.push(cell);
+        if(el.parentElement !== targetGrid) targetGrid.appendChild(el);
+        el._cell = cell;
+        setPos(el, cell, targetGrid);
+        return;
+      }
       const savedCell = s ? normalize({ c: s.c, r: s.r, w: def.w, h: def.h }, rows) : normalize(def, rows);
-      // 找不到空位时退回默认位置；再不行就放在最近的空位，绝不把旧坐标硬塞到同一格。
+      // 旧版网格坐标：保留自动错开，避免历史叠在一起的图标继续重叠。
       let cell = nearestFreeCell(rows, savedCell, bucket);
       if(bucket.some(r => overlaps(r, cell))) cell = nearestFreeCell(rows, normalize(def, rows), bucket);
       bucket.push(cell);

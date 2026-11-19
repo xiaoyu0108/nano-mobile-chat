@@ -371,10 +371,18 @@
       footer: '提前照顾好自己'
     };
     var card = { id: 'cycle_' + month + '_' + charId, chatId: charId, cardData: cardData, ts: Date.now() };
+    var bubble = st.daysUntil === 0
+      ? '你经期好像就是这两天了，别硬撑，热水和暖宝宝先备好。'
+      : (st.daysUntil > 0
+        ? ('你经期还有 ' + st.daysUntil + ' 天，这几天别太累，冰的也少喝一点。')
+        : '这几天在经期，能躺着就别坐着，我在这儿。');
+    card.bubble = bubble;
     try {
       if (cur && String(cur) === String(charId) && window.__chat && window.__chat.addMessage) {
         var now = new Date();
-        window.__chat.addMessage('left', '', pad(now.getHours()) + ':' + pad(now.getMinutes()), null, false, true, cardData);
+        var hm = pad(now.getHours()) + ':' + pad(now.getMinutes());
+        window.__chat.addMessage('left', bubble, hm);
+        window.__chat.addMessage('left', '', hm, null, false, true, cardData);
       } else {
         var q = {};
         try { q = JSON.parse(localStorage.getItem('nano_pending_cycle_cards') || '{}') || {}; } catch (e) { q = {}; }

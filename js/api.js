@@ -227,6 +227,7 @@
             mainKey: (document.getElementById('mainKey') || {}).value || '',
             mainPreset: (document.getElementById('mainPreset') || {}).value || '',
             mainModel: (document.getElementById('mainModelSelect') || {}).value || '',
+            mainApiType: (document.getElementById('mainApiType') || {}).value || 'openai',
             mainTemp: parseFloat((document.getElementById('mainTemp') || {}).value) || 0.7,
             subUrl: normUrl((document.getElementById('subUrl') || {}).value),
             subKey: (document.getElementById('subKey') || {}).value || '',
@@ -318,6 +319,7 @@
 
         function setVal(id, val) { var el = document.getElementById(id); if (el && val !== undefined && val !== null) el.value = val; }
         setVal('mainUrl', data.mainUrl); setVal('mainKey', data.mainKey); setVal('mainPreset', data.mainPreset); setVal('mainModelSelect', data.mainModel);
+        setVal('mainApiType', data.mainApiType || 'openai');
         setVal('subUrl', data.subUrl); setVal('subKey', data.subKey); setVal('subPreset', data.subPreset); setVal('subModelSelect', data.subModel);
         setVal('linkParserUrl', data.linkParserUrl); setVal('linkParserToken', data.linkParserToken);
         setVal('imgUrl', data.imgUrl); setVal('imgKey', data.imgKey); setVal('imgPreset', data.imgPreset); setVal('imgModelSelect', data.imgModel);
@@ -666,11 +668,14 @@
                 // TTS：拉取的是语音模型（不是用户音色）；音色 ID 在下面手动填写
                 models = builtinTtsModels(extra.type);
             } else {
-                // 通用 /models
-                var response = await fetch(baseUrl + '/models', {
-                    method: 'GET',
-                    headers: { 'Authorization': 'Bearer ' + cleanKeyStr, 'Content-Type': 'application/json' }
-                });
+            // 通用 /models
+            var modelHeaders = extra.anthropic
+                ? { 'x-api-key': cleanKeyStr, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true', 'Content-Type': 'application/json' }
+                : { 'Authorization': 'Bearer ' + cleanKeyStr, 'Content-Type': 'application/json' };
+            var response = await fetch(baseUrl + '/models', {
+                method: 'GET',
+                headers: modelHeaders
+            });
                 if (!response.ok) {
                     var errorMsg = 'HTTP ' + response.status;
                     try { var errData = await response.json(); errorMsg = (errData.error && errData.error.message) || errData.message || errorMsg; } catch (e) {}
@@ -954,7 +959,9 @@
         });
 
         // 拉取
-        setupFetch('mainFetch', 'mainUrl', 'mainKey', 'mainModelSelect', 'mainStatus', 'mainModelWrap');
+        setupFetch('mainFetch', 'mainUrl', 'mainKey', 'mainModelSelect', 'mainStatus', 'mainModelWrap', function () {
+            return { anthropic: String((document.getElementById('mainApiType') || {}).value || '') === 'anthropic' };
+        });
         setupFetch('subFetch', 'subUrl', 'subKey', 'subModelSelect', 'subStatus', 'subModelWrap');
         setupFetch('imgFetch', 'imgUrl', 'imgKey', 'imgModelSelect', 'imgStatus', 'imgModelWrap');
         setupFetch('ttsFetch', 'ttsUrl', 'ttsKey', 'ttsModelSelect', 'ttsStatus', 'ttsModelWrap', function () {

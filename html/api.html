@@ -50,6 +50,13 @@
                                 <input class="form-control" id="mainUrl" placeholder="https://api.example.com/v1" />
                             </div>
                             <div class="form-group">
+                                <label class="form-label">接口格式</label>
+                                <select class="form-control" id="mainApiType">
+                                    <option value="openai">OpenAI 兼容 (/chat/completions)</option>
+                                    <option value="anthropic">Anthropic Claude 原生 (/messages)</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
                                 <label class="form-label">API Key</label>
                                 <div class="key-input-wrap">
                                     <input class="form-control" id="mainKey" placeholder="sk-..." type="text" data-masked-key="1" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
@@ -402,7 +409,7 @@
     </div>
 
     <script defer src="../js/nano-tts.js?v=20261111a"></script>
-    <script defer src="../js/api.js?v=20261116a"></script>
+    <script defer src="../js/api.js?v=20261119a"></script>
 <script defer src="../js/nano-own-back.js"></script>
 <script defer src="../swipe-back.js"></script>
 </body>

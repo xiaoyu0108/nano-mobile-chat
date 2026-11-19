@@ -76,6 +76,8 @@ html::-webkit-scrollbar,body::-webkit-scrollbar,#scroll::-webkit-scrollbar,.card
 @keyframes bp{to{transform:translate(var(--x),var(--y)) scale(.2);opacity:0}}
 .ty i{display:inline-block;width:5px;height:5px;margin-right:5px;border-radius:50%;background:var(--g3);animation:b 1s infinite}
 .ty i:nth-child(2){animation-delay:.15s}.ty i:nth-child(3){animation-delay:.3s}
+.ty .ty-stop{margin-left:10px;border:1px solid var(--g2);background:#fff;color:var(--g3);border-radius:99px;font-size:11px;line-height:22px;padding:0 10px;vertical-align:middle;cursor:pointer}
+.ty .ty-stop:active{transform:scale(.94);color:var(--pk2);border-color:var(--pk)}
 @keyframes b{50%{opacity:.2;transform:translateY(-4px)}}
 .chips{display:flex;gap:8px;padding:8px 18px 0;overflow-x:auto}
 .chips button{display:flex;align-items:center;gap:5px;border:1px solid var(--g2);border-radius:99px;padding:0 12px;font-size:12px;line-height:26px;color:#555;white-space:nowrap;background:#fff;transition:.2s}
@@ -153,9 +155,42 @@ html::-webkit-scrollbar,body::-webkit-scrollbar,#scroll::-webkit-scrollbar,.card
   box-shadow:0 8px 22px rgba(200,93,122,.055)}
 .m.narr .nt::before,.m.narr .nt::after{display:none}
 .m.narr .acts{justify-content:center;margin-top:4px}
-/* 回顾模式：隐藏输入和编辑入口，只保留当时的页面 */
+/* 回顾模式：韩系简约封面 + 留白排版，隐藏输入和编辑入口 */
 body.is-replay .bar,body.is-replay .chips{display:none}
 body.is-replay #route .st{cursor:default}
+body.is-replay{background:#fbfaf8}
+body.is-replay #app{background:#fbfaf8}
+body.is-replay header{padding:14px 14px 12px;border-bottom:1px solid #eee9e5;background:#fbfaf8}
+body.is-replay header .t{padding-left:2px}
+body.is-replay header .t b{font-size:17px;font-weight:500;letter-spacing:.03em;color:#2c2b29}
+body.is-replay header small{font-size:10.5px;color:#b0a8a1;letter-spacing:.08em;margin-top:2px}
+body.is-replay .route{padding:10px 16px 6px;gap:6px;background:#fbfaf8;border-bottom:1px solid #f1ece8;overflow-x:auto}
+body.is-replay .route .st{font-size:10.5px;color:#b5ada6;letter-spacing:.04em;opacity:1}
+body.is-replay .route .st i{background:#e8dfd9;width:5px;height:5px}
+body.is-replay .route .st.p{color:#8e8580}
+body.is-replay .route .st.c{color:#c47d89}
+body.is-replay .route .st.c i{background:#dca3ad}
+body.is-replay #scroll{padding:0 18px 40px}
+body.is-replay .m{margin:18px 0}
+body.is-replay .m .b{font-size:14.5px;line-height:1.95;letter-spacing:.01em;color:#3a3734}
+body.is-replay .char{max-width:82%}
+body.is-replay .char .b{background:#fff;border:1px solid #efe9e4;border-radius:18px 18px 18px 6px;padding:12px 15px;box-shadow:0 2px 10px rgba(80,60,50,.03)}
+body.is-replay .user{max-width:78%}
+body.is-replay .user .b{background:#f6ecee;border:1px solid #f0e2e5;border-radius:18px 18px 6px 18px;padding:11px 14px;color:#4a3d41}
+body.is-replay .who{font-size:10.5px;color:#b8afa8;letter-spacing:.05em;margin-bottom:4px}
+body.is-replay .tr{color:#a39a93;font-size:12px;border-top:1px dashed #efe9e4;margin-top:8px;padding-top:7px}
+body.is-replay .m.narr .b{background:transparent;border:0;padding:10px 0;text-align:center;color:#9c938c;font-size:12.5px;line-height:2;letter-spacing:.03em}
+body.is-replay .m.sys .b{background:transparent;border:0;color:#c0b6ae;font-size:11px}
+body.is-replay .m.photo .b{padding:0;background:transparent;border:0;box-shadow:none}
+body.is-replay .m.photo .card{background:#fff;border:1px solid #eee7e1;border-radius:14px;padding:8px 8px 12px;box-shadow:0 10px 26px rgba(80,60,50,.06)}
+body.is-replay .m.photo img{border-radius:8px}
+body.is-replay .m.photo .cap{font-size:11.5px;color:#a79d96;letter-spacing:.02em;padding:8px 4px 0}
+body.is-replay .replay-cover{padding:26px 4px 20px;margin-bottom:4px;border-bottom:1px solid #eee9e5}
+body.is-replay .rc-kicker{font-size:9.5px;letter-spacing:.28em;color:#c6b8ad;text-transform:uppercase;margin-bottom:12px}
+body.is-replay .rc-title{font-size:26px;line-height:1.35;font-weight:400;letter-spacing:.01em;color:#2f2c2a;margin:0 0 8px}
+body.is-replay .rc-meta{font-size:11.5px;color:#b0a69e;letter-spacing:.06em}
+body.is-replay .rc-summary{margin-top:16px;font-size:13px;line-height:1.9;color:#7d746d;letter-spacing:.01em;max-width:92%}
+body.is-replay .rc-line{width:26px;height:1px;background:#d9c9bd;margin-top:18px}
 /* 旅行记录列表 */
 .rcrow{display:flex;align-items:center;gap:6px;margin-top:10px}
 .rcrow .rc{flex:1;margin-top:0}
@@ -247,7 +282,7 @@ body.is-replay #route .st{cursor:default}
 <script src="../js/mem-link.js?v=20261111a"></script>
 <script src="../js/builtin-worldbook.js?v=20261025b"></script>
 <script src="../js/travel-store.js?v=20261112b"></script>
-<script src="../js/travel-api.js?v=20261118f"></script>
+<script src="../js/travel-api.js?v=20261119c"></script>
 <script>
 /* ===== API 接入点 =====
    window.TravelAPI.generate(payload) -> {text, choices:[{type:'地点'|'美食',name,desc}]}
@@ -295,6 +330,7 @@ const RESUME_MARK_KEY = 'nano_travel_resume_' + CHAR_ID;
 let REPLAY_MODE = false;
 let REPLAY_FROM_LIVE = false;
 let LIVE_STATE = null;
+let REPLAY_META = null;
 /* 旅途中的照片要持久保存：localStorage 只做快速兜底，完整会话（含 dataURL 图片）
    同步写一份到 IndexedDB，避免退出再回来看到照片被“销毁”。 */
 const ACTIVE_DB = 'nano_travel_chat_db';
@@ -689,13 +725,32 @@ function card(c){
   draw();return d;
 }
 function refresh(m){const o=log.querySelector('[data-id="'+m.id+'"]');if(o)o.replaceWith(node(m,REPLAY_MODE))}
-function render(){log.innerHTML='';S.msgs.forEach(m=>log.append(node(m,REPLAY_MODE)))}
+function replayCover(){
+  if(!REPLAY_META)return null;
+  const box=E('div','replay-cover');
+  const kick=E('div','rc-kicker');kick.textContent='TRIP MEMORIES';
+  const title=E('h2','rc-title');title.textContent=REPLAY_META.title||'旅途回顾';
+  const meta=E('div','rc-meta');
+  meta.textContent=[REPLAY_META.date,REPLAY_META.count?REPLAY_META.count+' 段记录':'',REPLAY_META.place].filter(Boolean).join('  ·  ');
+  box.append(kick,title,meta);
+  if(REPLAY_META.summary){
+    const sum=E('p','rc-summary');sum.textContent=REPLAY_META.summary;box.append(sum);
+  }
+  const line=E('div','rc-line');box.append(line);
+  return box;
+}
+function render(){
+  log.innerHTML='';
+  if(REPLAY_MODE){const c=replayCover();if(c)log.append(c)}
+  S.msgs.forEach(m=>log.append(node(m,REPLAY_MODE)));
+  try{autosave()}catch(e){}
+}
 
 /* ---------- send / reply (reply = the only API call) ---------- */
 const syncBtn=()=>{const h=inp.value.trim();$('#send').textContent=h?'发送':'回复';$('#send').classList.toggle('re',!h)};
 inp.oninput=()=>{inp.style.height='auto';inp.style.height=inp.scrollHeight+'px';syncBtn()};
 inp.onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing&&inp.value.trim()){e.preventDefault();$('#send').click()}};
-function say(t){const m={id:++S.uid,role:'user',text:t};S.msgs.push(m);log.append(node(m));down()}
+function say(t){const m={id:++S.uid,role:'user',text:t};S.msgs.push(m);log.append(node(m));down();autosave()}
 $('#send').onclick=()=>{const t=inp.value.trim();if(t){say(t);inp.value='';inp.style.height='auto';syncBtn()}else reply()};
 ACT.forEach(a=>{const b=E('button');b.innerHTML=I(a[0],14)+a[1];b.onclick=a[2];$('#chips').append(b)});
 function addNarr(text){
@@ -880,39 +935,9 @@ async function buildContext(p,hist,decisions){
 }
 const charCount=s=>String(s==null?'':s).replace(/\s+/g,'').length;
 async function ensureTravelLength(text,desired,built){
-  const target=Math.max(0,Number(desired)||0);
-  if(!target)return {text,extended:false};
-  let out=String(text||'').trim(),n=charCount(out),tries=0,extended=false;
-  while(n<target&&tries<3){
-    const need=target-n;
-    let raw='';
-    try{
-      raw=await TravelAPI.callChat({
-        messages:built.messages.concat([
-          {role:'assistant',content:out},
-          {role:'user',content:'【续写补足 · 只输出正文】上一段正文只写了 '+n+' 字，还没有达到 '+target+' 字的要求。'
-            +'请从最后一句自然接着往下写，至少再写 '+Math.max(need,120)+' 字；不要重复已经写过的内容，不要总结，不要提前收尾，不要输出 JSON、标题或解释。'}
-        ]),
-        temperature:0.85,maxTokens:Math.max(900,Math.min(8000,Math.round(Math.max(need,120)*2.4)))
-      });
-    }catch(e){break}
-    let add=String(raw||'').trim();
-    try{
-      const j=TravelAPI.looseJson(raw);
-      if(j&&typeof j==='object'&&!Array.isArray(j)){
-        const picked=String(j.text||j.narrative||j.reply||j.content||'').trim();
-        if(picked)add=picked;
-      }
-    }catch(e){}
-    if(/^[\s]*[\[{]/.test(add)&&/"(?:text|narrative|choices)"\s*:/.test(add))add='';
-    add=add.replace(/^```[\w-]*\s*/,'').replace(/\s*```$/,'').trim();
-    if(charCount(add)<20)break;
-    const next=out.replace(/\s+$/,'')+'\n\n'+add;
-    const nn=charCount(next);
-    if(nn<=n)break;
-    out=next;n=nn;tries++;extended=true;
-  }
-  return {text:out,extended};
+  // 一次回复只允许一次 API 调用：字数不足也不再自动「续写补足」扣第二次额度。
+  // 想要更长可以自己点「续写」，或者把每次回复字数设置调高。
+  return {text,extended:false};
 }
 async function travelGenerate(p){
   const hist=p.history||[],decisions=p.decisions||[];
@@ -926,9 +951,8 @@ async function travelGenerate(p){
   if(!data||typeof data!=='object'){
     const txt=String(raw||'').trim();
     if(!txt)throw new Error('主 API 没有返回内容');
-    const fixed=await ensureTravelLength(txt,targetLen,built);
-    const tr=foreign?await translateToZh(fixed.text):'';
-    return {text:fixed.text,translation:tr,choices:fallbackChoices()};
+    // 不把“解析失败”伪装成正常旅行；保留模型原文片段作为失败原因。
+    throw new Error('模型没有按旅行 JSON 格式返回，无法安全解析。原文开头：'+txt.slice(0,180));
   }
   let text=String(data.text||data.reply||'').trim();
   if(!text){text=String(data.narrative||'').trim()}
@@ -939,7 +963,7 @@ async function travelGenerate(p){
   text=fixed.text;
   if(foreign&&fixed.extended)translation=await translateToZh(text);
   let choices=normalizeChoices(data.choices);
-  if(choices.length<3){const f=fallbackChoices();choices=choices.concat(f).slice(0,3)}
+  // 不再用内置 mock 选项补足；模型给几个就保留几个。
   return {text:macro(text),translation:macro(translation),choices};
 }
 
@@ -951,7 +975,9 @@ async function reply(old,opt){
   const hist=S.msgs.slice(0,at);
   const decisions=hist.flatMap(x=>(x.choices||[]).filter(c=>c.s&&!c.sent).map(c=>({type:c.type,name:c.name,choice:c.s})));
   const settings={len:Math.max(50,+$('#len').value||500),person:$('#person').value,userMode:$('#umode').value,userModeDesc:UM[$('#umode').value],style:$('#styleTxt').value.trim()};
-  const ty=E('div','m ty');ty.innerHTML='<i></i><i></i><i></i>';log.append(ty);down();
+  const ty=E('div','m ty');ty.innerHTML='<i></i><i></i><i></i><button type="button" class="ty-stop" aria-label="中断生成">中断</button>';log.append(ty);down();
+  const tyStop=ty.querySelector('.ty-stop');
+  if(tyStop)tyStop.onclick=function(){try{TravelAPI.abortChat()}catch(e){}};
   let res;
   try{
     res=await window.TravelAPI.generate({
@@ -961,7 +987,8 @@ async function reply(old,opt){
     });
   }catch(e){
     ty.remove();S.busy=false;$('#send').disabled=false;
-    S.msgs.splice(at,0,{id:++S.uid,role:'sys',text:'连接失败：'+((e&&e.message)||'请检查主 API')});render();return;
+    const aborted=!!(e&&(e.aborted||e.name==='AbortError'||/中断/.test(String(e.message||''))));
+    S.msgs.splice(at,0,{id:++S.uid,role:'sys',text:aborted?'已中断生成':'连接失败：'+((e&&e.message)||'请检查主 API')});render();return;
   }
   ty.remove();
   hist.forEach(x=>(x.choices||[]).forEach(c=>{if(c.s)c.sent=true}));
@@ -971,6 +998,7 @@ async function reply(old,opt){
   m.typing=false;m.fresh=true;refresh(m);
   if(!cont){S.n++;setSub();drawRoute();}
   S.busy=false;$('#send').disabled=false;if(at===S.msgs.length-1)down();
+  autosave();
   decisions.filter(d=>d.choice==='go').forEach((d,i)=>setTimeout(()=>markDone(d.name),700*(i+1)));
 }
 
@@ -1068,7 +1096,10 @@ async function loadRecords(){
 function normalizeReplayRecord(rec){
   rec=rec||{};
   const rawMsgs=Array.isArray(rec.msgs)?rec.msgs:[];
-  const journey=rawMsgs.length?rawMsgs:(Array.isArray(rec.journey)?rec.journey:[]);
+  const storeJourney=Array.isArray(rec.journey)?rec.journey:[];
+  // 回顾必须覆盖整段旅程：旅途记录里的 journey 通常最完整；
+  // 本地 rec.msgs 可能只是旧版本截断后的副本，只有更长时才采用它。
+  const journey=storeJourney.length>=rawMsgs.length?storeJourney:rawMsgs;
   const stops=Array.isArray(rec.stops)?rec.stops:(Array.isArray(rec.places)?rec.places:[]);
   return {
     id:String(rec.id||rec.tripId||'replay'),
@@ -1137,12 +1168,20 @@ function enterReplay(rec,opts){
     if(r.settings.style!=null)$('#styleTxt').value=r.settings.style;
   }
   setReplayChrome(true);
+  REPLAY_META={
+    title:r.dest||r.title||'旅途回顾',
+    date:r.date||'',
+    place:r.dest||r.title||'',
+    count:src.length,
+    summary:r.summary||''
+  };
   $('#tTitle').textContent=r.dest||r.title||'旅途回顾';
   $('#sub').textContent=[r.date,'已经结束的旅程'].filter(Boolean).join(' · ');
   render();drawRoute();scr.scrollTop=0;
 }
 function exitReplay(){
   closeAll();
+  REPLAY_META=null;
   if(REPLAY_FROM_LIVE&&LIVE_STATE){
     const L=LIVE_STATE;LIVE_STATE=null;REPLAY_FROM_LIVE=false;REPLAY_MODE=false;
     S.msgs=L.msgs;S.plan=L.plan;S.gi=L.gi;S.n=L.n;S.uid=L.uid;S.busy=false;S.photoBusy=false;
@@ -1250,6 +1289,9 @@ drawStyles(ST[0]?0:'');$('#styleTxt').value=ST[0]?ST[0].t:'';
 /* ---------- exit: summarize, write memory, sync travel app ---------- */
 $('#back').onclick=()=>{ if(REPLAY_MODE){exitReplay();return;} open_('#dlg'); };
 $('#stay').onclick=closeAll;
+// 先绑定离开按钮：后面的初始化代码即使抛错，也不会出现「继续旅行能点、回到线上/直接退出没反应」。
+$('#online').onclick=()=>exit('online');
+$('#leave').onclick=()=>exit('leave');
 function fresh(){
   S.msgs=[];S.plan=[];S.gi=0;S.n=0;S.busy=false;S.photoBusy=false;S.exiting=false;$('#send').disabled=false;
   ACTIVE_LAST_PHOTO=null;$('#sum').checked=true;
@@ -1279,6 +1321,13 @@ function resumeMark(){
     charName:CHAR,userName:USER,dest:DEST,invite:Object.assign({},INVITE),
     tripId:TRIP_ID,savedAt:Date.now()
   };
+}
+let autosaveTimer=null;
+function autosave(){
+  if(REPLAY_MODE||S.exiting)return;
+  clearTimeout(autosaveTimer);
+  // 每轮消息后落盘，避免手机直接大退、悬浮球返回或进程被杀后丢掉最近一段旅程。
+  autosaveTimer=setTimeout(()=>{try{saveActiveSession()}catch(e){}},350);
 }
 function saveActiveSession(){
   if(REPLAY_MODE) return null;
@@ -1318,7 +1367,7 @@ function saveActiveSession(){
           pointer:true,version:1,
           charId:CHAR_ID,userId:(readMask().id||USER_ID),chatId:CHAT_ID||CHAR_ID,
           charName:CHAR,userName:USER,dest:DEST,invite:Object.assign({},INVITE),
-          tripId:TRIP_ID,savedAt:0
+          tripId:TRIP_ID,savedAt:Date.now()
         };
         localStorage.setItem(ACTIVE_KEY,JSON.stringify(pointer));
       }catch(e3){}
@@ -1340,7 +1389,7 @@ async function restoreActiveSession(){
   // 两份都有时取更新的那份；IDB 通常带完整图片。
   if(local&&(!sess||Number(local.savedAt||0)>Number(sess.savedAt||0)))sess=local;
   if(!sess||String(sess.charId||'')!==String(CHAR_ID))return false;
-  if(sess.savedAt&&Date.now()-Number(sess.savedAt)>7*24*3600*1000)return false;
+  if(sess.savedAt&&Date.now()-Number(sess.savedAt)>90*24*3600*1000)return false;
   DEST=sess.dest||DEST;Object.assign(INVITE,sess.invite||{});GUIDE=buildGuide(DEST);
   if(sess.charName)CHAR=sess.charName;
   if(sess.userName)USER=sess.userName;
@@ -1395,17 +1444,24 @@ async function summarizeTrip(hist){
   const txt=await TravelAPI.callChat({messages:[{role:'system',content:sys},{role:'user',content:usr}],temperature:0.75,maxTokens:1000});
   return String(txt||'').trim();
 }
-async function generateTripCardMeta(brief,visited){
+async function generateTripMeta(hist,visited){
   try{
     const foreign=charIsForeign();
-    const sys='你是角色「'+CHAR+'」。你和「'+USER+'」刚刚结束一趟真实的旅行。请为这次旅行生成一张可以放进「旅途」App 的旅程卡片。'
+    const lines=(hist||[]).filter(x=>x&&x.role!=='sys'&&(x.text||x.role==='photo')).map(x=>{
+      if(x.role==='photo')return '（拍立得）'+(x.caption||'');
+      const raw=String(x.text||'').replace(/\s+/g,' ');
+      const tr=x.translation?('（中文：'+String(x.translation).replace(/\s+/g,' ')+'）'):'';
+      if(x.role==='narr')return '（旁白）'+raw;
+      return (x.role==='user'?USER:CHAR)+'：'+raw+tr;
+    }).join('\n').slice(-9000);
+    const sys='你是角色「'+CHAR+'」。你和「'+USER+'」刚刚结束一趟真实的旅行。请只输出一个合法 JSON，不要解释，也不要分段输出。'
       +'必须严格保持人设，严禁 OOC、霸总腔、油腻情话；不要编造没有发生的事。'
       +(foreign?('你的母语是'+charLanguageName()+'：thought 用母语写，thoughtZh 给中文翻译；'):'thoughtZh 留空字符串；')
-      +'只输出合法 JSON，不要解释。格式：{"title":"一句话标题，不超过18字","thought":"你作为角色写下的旅程心得，80-160字，第一人称","thoughtZh":"中文翻译或空","caption":"拍立得的一句话说明，不超过24字"}';
-    const usr='目的地：'+DEST+'；天数：'+(INVITE.days||'1')+'；到过：'+(visited.join('、')||'未记录')
-      +'；同行：'+CHAR+' 和 '+USER+'。\n旅程总结：\n'+String(brief||'').slice(0,1800)
-      +'\n\n请生成这张旅程卡片。';
-    const j=await TravelAPI.callJson({messages:[{role:'system',content:sys},{role:'user',content:usr}],temperature:0.8,maxTokens:800});
+      +'格式：{"summary":"供角色以后回忆的旅行记忆，250-450字，第一人称","title":"一句话标题，不超过18字","thought":"旅程心得，80-160字，第一人称","thoughtZh":"中文翻译或空","caption":"拍立得的一句话说明，不超过24字"}';
+    const usr='目的地：'+DEST+'；日期：'+(INVITE.date||'')+'；天数：'+(INVITE.days||'1')+'；到过：'+(visited.join('、')||'未记录')
+      +'；同行：'+CHAR+' 和 '+USER+'；行程：'+JSON.stringify(S.plan)+'\n对话与场景：\n'+lines
+      +'\n\n请生成这次旅行的记忆和旅程卡片。';
+    const j=await TravelAPI.callJson({messages:[{role:'system',content:sys},{role:'user',content:usr}],temperature:0.78,maxTokens:1400});
     return j&&typeof j==='object'?j:null;
   }catch(e){return null}
 }
@@ -1416,37 +1472,38 @@ async function travelExit(i){
   const summarize=!!(i.summarize || final);
   const hasContent=S.msgs.some(m=>m.role!=='sys')||S.plan.length>0;
   const hist=(i.history&&i.history.length)?i.history:S.msgs.map(x=>({role:x.role,text:x.text||'',translation:x.translation||'',caption:x.caption||'',url:x.url||'',choices:x.choices||[]}));
-  let brief='';
-  if(summarize && hasContent){
-    try{brief=await summarizeTrip(hist)}catch(e){brief=''}
-  }
-  if(!brief)brief=localSummary();
   const visited=[...new Set(S.plan.filter(p=>p.done).map(p=>p.name))];
   if(!visited.length&&GUIDE[S.gi])visited.push(GUIDE[S.gi][0]);
+  // 结束/退出只调用一次文本 API：同一份 JSON 同时给出记忆总结和旅程卡片内容。
+  // 失败就使用本地总结，不自动重试、不再额外调用第二次。
+  let brief='', cardMeta=null;
+  if(summarize && hasContent){
+    try{
+      cardMeta=await generateTripMeta(hist,visited);
+      brief=String((cardMeta&&cardMeta.summary)||'').trim();
+    }catch(e){cardMeta=null}
+  }
+  if(!brief)brief=localSummary();
   const lastPhotoMsg=[...S.msgs].reverse().find(m=>m.role==='photo'&&m.url);
   const lastPhoto=lastPhotoMsg?{url:lastPhotoMsg.url,caption:lastPhotoMsg.caption||''}:ACTIVE_LAST_PHOTO;
   const mask=readMask();
   const uid=USER_ID||mask.id||'default';
   const dm=String(INVITE.date||'').match(/\d{4}[-/]\d{1,2}[-/]\d{1,2}/);
   const date=dm?dm[0].replace(/\//g,'-'):new Date().toISOString().slice(0,10);
-  // 结束这趟旅程时，用 API 把总结加工成一张真正的旅程卡片
-  let cardMeta=null;
-  if(final&&hasContent){
-    try{cardMeta=await generateTripCardMeta(brief,visited)}catch(e){cardMeta=null}
-  }
+  // final 时使用上面同一次生成的卡片内容；直接退出时卡片内容不写，但记忆总结仍然复用这次调用。
   const cardTitle=String((cardMeta&&cardMeta.title)||('我们 · '+DEST)).trim();
   const cardThought=String((cardMeta&&cardMeta.thought)||brief||'').trim();
   // 卡片和旅途记录共用同一次卡片 API 的结果；不再为了翻译再调用一次 API。
   let cardThoughtZh=String((cardMeta&&cardMeta.thoughtZh)||'').trim();
   const cardCaption=String((cardMeta&&cardMeta.caption)||(lastPhoto&&lastPhoto.caption)||'').trim();
 
-  // 完整回顾：保留这次旅行的叙事流程（限制长度，避免撑爆本地存储）
-  const journey=(hist||[]).filter(x=>x&&x.role!=='sys').slice(-200).map(x=>{
+  // 完整回顾：从旅程开头到最后一句都保留（写进 IndexedDB，不受 localStorage 小配额限制）。
+  const journey=(hist||[]).filter(x=>x&&x.role!=='sys').map(x=>{
     // 照片保留完整 dataURL，写进旅途（IndexedDB），不再按大小丢弃。
     return {
-      role:x.role,text:String(x.text||'').slice(0,2000),
-      translation:String(x.translation||'').slice(0,2000),
-      caption:String(x.caption||'').slice(0,300),url:String(x.url||'')
+      role:x.role,text:String(x.text||'').slice(0,20000),
+      translation:String(x.translation||'').slice(0,20000),
+      caption:String(x.caption||'').slice(0,1000),url:String(x.url||'')
     };
   });
   // 每一步单独兜底，避免某一步失败导致卡片和旅途记录都写不进去。
@@ -1458,16 +1515,15 @@ async function travelExit(i){
   try{ if(window.NanoTravelStore&&hasContent) await NanoTravelStore.load(true); }catch(e){}
   if(summarize&&hasContent){
     try{
-      let emb=null;
-      try{emb=await TravelAPI.embed(brief)}catch(e){}
       let already=false;
       try{
         const old=await NanoTravelStore.readTravelMemories(CHAR_ID);
         already=(old||[]).some(m=>m&&m.travelMeta&&String(m.travelMeta.tripId||'')===String(TRIP_ID));
       }catch(e){}
       if(!already){
+        // 不再额外调用 embedding API 扣一次额度；记忆正文本身足够被读取。
         await NanoTravelStore.addTravelMemory({
-          charId:CHAR_ID,userId:uid,summary:brief,embedding:emb,charName:CHAR,tripId:TRIP_ID,
+          charId:CHAR_ID,userId:uid,summary:brief,embedding:null,charName:CHAR,tripId:TRIP_ID,
           date,places:visited,meta:{dest:DEST,days:INVITE.days||'1',note:INVITE.note||'',source:'travel-chat'}
         });
       }
@@ -1540,37 +1596,48 @@ async function exit(mode){
   }
   closeAll();
   toast(final?'正在整理这次旅行…':'正在保存行程…');
+  const data={
+    mode,final,summarize:final ? true : $('#sum').checked,
+    history:S.msgs.map(x=>({role:x.role,text:x.text||'',translation:x.translation||'',caption:x.caption||'',url:x.url||'',choices:(x.choices||[]).map(c=>({type:c.type,name:c.name,desc:c.desc,s:c.s}))})),
+    plan:S.plan,records:recSum()
+  };
+  // 离开不能被总结 / 写卡片卡死：给总结一个上限时间，超时就先离开，
+  // 本地续玩存档已经保存好，下次回来仍能继续。
   try{
-    await window.TravelAPI.onExit({
-      mode,final,summarize:final ? true : $('#sum').checked,
-      history:S.msgs.map(x=>({role:x.role,text:x.text||'',translation:x.translation||'',caption:x.caption||'',url:x.url||'',choices:(x.choices||[]).map(c=>({type:c.type,name:c.name,desc:c.desc,s:c.s}))})),
-      plan:S.plan,records:recSum()
-    });
+    await Promise.race([
+      Promise.resolve(window.TravelAPI.onExit(data)).catch(()=>{}),
+      new Promise(r=>setTimeout(r,final?10000:2200))
+    ]);
   }catch(e){}
-  if(window.parent&&window.parent!==window){
+  let left=false;
+  function leaveNow(){
+    if(left)return;left=true;
     try{
+      if(window.parent&&window.parent!==window){
+        if(final){
+          clearTravelResume();
+          try{localStorage.setItem('nano_chat_mode_'+(CHAT_ID||CHAR_ID),'online')}catch(e){}
+          window.parent.postMessage({type:'openChat',chatId:CHAT_ID||CHAR_ID,chatName:CHAR,name:CHAR,reload:true},'*');
+        }else{
+          window.parent.postMessage({
+            type:'nanoTravelExitToChat',
+            chatId:CHAT_ID||CHAR_ID,charId:CHAR_ID,charName:CHAR,userId:(readMask().id||USER_ID),
+            dest:DEST,tripId:TRIP_ID,invite:Object.assign({},INVITE)
+          },'*');
+        }
+        return;
+      }
       if(final){
         clearTravelResume();
-        try{localStorage.setItem('nano_chat_mode_'+(CHAT_ID||CHAR_ID),'online')}catch(e){}
-        window.parent.postMessage({type:'openChat',chatId:CHAT_ID||CHAR_ID,chatName:CHAR,name:CHAR,reload:true},'*');
+        location.href='chat_inner.html?chat='+encodeURIComponent(CHAT_ID||CHAR_ID)+'&name='+encodeURIComponent(CHAR);
       }else{
-        window.parent.postMessage({
-          type:'nanoTravelExitToChat',
-          chatId:CHAT_ID||CHAR_ID,charId:CHAR_ID,charName:CHAR,userId:(readMask().id||USER_ID),
-          dest:DEST,tripId:TRIP_ID,invite:Object.assign({},INVITE)
-        },'*');
+        location.href='chat.html';
       }
     }catch(e){}
-    return;
   }
-  if(final){
-    clearTravelResume();
-    location.href='chat_inner.html?chat='+encodeURIComponent(CHAT_ID||CHAR_ID)+'&name='+encodeURIComponent(CHAR);
-  }else{
-    location.href='chat.html';
-  }
+  leaveNow();
+  setTimeout(function(){ S.exiting=false; }, 6000);
 }
-$('#online').onclick=()=>exit('online');$('#leave').onclick=()=>exit('leave');
 $('#again').onclick=()=>{$('#cover').classList.remove('on');fresh()};
 
 window.addEventListener('message', function(e){
@@ -1616,7 +1683,8 @@ document.addEventListener('visibilitychange', function(){
       }
       return;
     }
-    if(RESUME){
+    const hasSavedTrip=RESUME||!!localStorage.getItem(ACTIVE_KEY);
+    if(hasSavedTrip){
       restored=await restoreActiveSession();
       // IndexedDB 刚打开/上一页刚写入时偶尔会比新页面慢一拍，多给几次机会，
       // 避免把「还在落盘」的存档误判成没有存档而掉回线上。
@@ -1624,8 +1692,8 @@ document.addEventListener('visibilitychange', function(){
         await new Promise(r=>setTimeout(r,180*(attempt+1)));
         restored=await restoreActiveSession();
       }
-      // 存档确实过期/损坏时才清掉，避免下次还试图恢复却总是掉回线上。
-      if(!restored){ clearTravelResume(); }
+      // 只有确认存档过期/损坏时才清掉；页面刚打开还没落盘时不要误删。
+      if(!restored && RESUME) clearTravelResume();
     }
   }catch(e){}
   if(!restored)fresh();

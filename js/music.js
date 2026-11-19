@@ -2566,7 +2566,7 @@
   async function getAiApiConf() {
     var cfg = await aiApiGet('nano_api_config');
     if (!cfg) return null;
-    if (cfg.subToggle !== false && cfg.subUrl && cfg.subKey) {
+    if (cfg.subToggle === true && cfg.subUrl && cfg.subKey) {
       return { url: cfg.subUrl, key: cfg.subKey, model: cfg.subModel || cfg.mainModel || '', temp: cfg.subTemp != null ? cfg.subTemp : 0.85 };
     }
     if (cfg.mainUrl && cfg.mainKey) {

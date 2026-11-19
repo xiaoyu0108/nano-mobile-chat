@@ -1107,7 +1107,7 @@
     </style>
 
 
-    <script defer src="js/appearance.js?v=20261115a"></script>
+    <script defer src="js/appearance.js?v=20261119a"></script>
 </head>
 <body class="nano-index">
 <!-- 旧的“每次访问清缓存 + reload”已移除：它会造成进入页面时反复整页刷新。
@@ -2044,6 +2044,7 @@ setTimeout(function () {
         let lastGroupUrl = null;
         let lastGroupTitle = '';
         const groupApiInFlight = {};
+        const groupApiAbort = {};
 
         function getChatInnerIframe() {
             try {
@@ -2595,11 +2596,17 @@ setTimeout(function () {
                             settingsPageStack.push({
                                 url: curUrl,
                                 title: overlayTitle.textContent || '',
-                                source: currentOverlaySource || 'settings'
+                                source: currentOverlaySource || 'settings',
+                                // 记录这一层是从哪个页面打开的；返回时只有当前页仍是 from 才弹栈，
+                                // 避免旧栈把用户带到无关页面（表现就是“先乱跳一个页面”）。
+                                from: String(url).split('#')[0].split('?')[0]
                             });
                         }
                     }
                 }
+            } catch (e) {}
+            try {
+                if (!skipStack && source !== 'settings') settingsPageStack.length = 0;
             } catch (e) {}
             // 防止双击同一个入口时连续设置 iframe.src，导致加载被中断成白屏
             try {
@@ -2782,8 +2789,17 @@ setTimeout(function () {
             // 从设置里打开的二级页面：返回上一页（设置），不直接回桌面
             try {
                 if (wasOverlaySource === 'settings' && settingsPageStack.length) {
-                    const prev = settingsPageStack.pop();
-                    if (prev && prev.url) {
+                    const curUrl = (function () {
+                        try {
+                            return String(overlayFrame.getAttribute('data-loaded-url') || overlayFrame.src || '')
+                                .split('#')[0].split('?')[0];
+                        } catch (e) { return ''; }
+                    })();
+                    const prev = settingsPageStack[settingsPageStack.length - 1];
+                    // 只有“当前页正是 prev 打开的那一页”才回上一页；否则说明栈已经过期，
+                    // 直接收起浮层，避免先跳到无关页面再返回。
+                    if (prev && prev.url && (!prev.from || !curUrl || prev.from === curUrl)) {
+                        settingsPageStack.pop();
                         openFullscreen(prev.url, prev.title || '', true, prev.source || 'settings', true);
                         return;
                     }
@@ -4337,6 +4353,12 @@ setTimeout(function () {
                 return;
             }
 
+            if (data.type === 'chatApiAbort' || data.type === 'groupApiAbort') {
+                const at = data.token;
+                try { if (at && groupApiAbort[at]) groupApiAbort[at].abort(); } catch (e) {}
+                return;
+            }
+
             if (data.type === 'groupApiFetch' || data.type === 'chatApiFetch') {
                 const isChat = (data.type === 'chatApiFetch');
                 const token = data.token;
@@ -4348,21 +4370,25 @@ setTimeout(function () {
                 groupApiInFlight[token] = true;
                 const resultKey = data.resultKey || ((isChat ? 'chat_api_result_' : 'group_api_result_') + token);
                 const doneType = isChat ? 'chatApiDone' : 'groupApiDone';
+                let apiCtrl = null;
+                try { if (typeof AbortController !== 'undefined') { apiCtrl = new AbortController(); groupApiAbort[token] = apiCtrl; } } catch (e) {}
                 const storeResult = function(result) {
                     try { localStorage.setItem(resultKey, JSON.stringify(result)); } catch (e) {}
                     delete groupApiInFlight[token];
+                    try { delete groupApiAbort[token]; } catch (e) {}
                     overlayFrames.concat([chatInnerFrame]).forEach(function(fr) {
                         try { if (fr && fr.contentWindow) fr.contentWindow.postMessage({ type: doneType, token: token, result: result }, '*'); } catch (e) {}
                     });
                     try { if (senderWin && senderWin.postMessage) senderWin.postMessage({ type: doneType, token: token, result: result }, '*'); } catch (e) {}
                 };
                 try {
-                    fetch(data.url, { method: data.method || 'POST', headers: data.headers || {}, body: data.body })
+                    fetch(data.url, { method: data.method || 'POST', headers: data.headers || {}, body: data.body, signal: apiCtrl ? apiCtrl.signal : undefined })
                         .then(function(resp) {
                             return resp.text().then(function(t) { return { ok: resp.ok, status: resp.status, text: t }; });
                         })
                         .catch(function(err) {
-                            return { ok: false, status: 0, error: String((err && err.message) || err) };
+                            const aborted = !!(apiCtrl && apiCtrl.signal && apiCtrl.signal.aborted) || !!(err && (err.name === 'AbortError' || /abort/i.test(String(err.message || ''))));
+                            return { ok: false, status: 0, error: aborted ? '已停止生成' : String((err && err.message) || err), aborted: aborted };
                         })
                         .then(storeResult);
                 } catch (err) {
@@ -4982,7 +5008,7 @@ setTimeout(function () {
                         activeTravelKeyCharId = String(travelExitHint.charId || chatId);
                     }
                 }
-                if (activeTravel && activeTravel.savedAt && Date.now() - Number(activeTravel.savedAt) > 7 * 24 * 3600 * 1000) {
+                if (activeTravel && activeTravel.savedAt && Date.now() - Number(activeTravel.savedAt) > 90 * 24 * 3600 * 1000) {
                     try { localStorage.removeItem('nano_travel_active_' + (activeTravelKeyCharId || chatId)); } catch(e) {}
                     try { localStorage.removeItem('nano_travel_resume_' + (activeTravelKeyCharId || chatId)); } catch(e) {}
                     activeTravel = null;
@@ -5002,6 +5028,7 @@ setTimeout(function () {
                     params.set('time', av.time || '');
                     params.set('days', av.days || '1');
                     params.set('note', av.note || '');
+                    params.set('v', '20261119a');
                     try { if (window.__nanoTravelExitHint) delete window.__nanoTravelExitHint[String(chatId)]; } catch(e) {}
                     isChatInnerActive = false;
                     currentOverlaySource = 'main';
@@ -5502,11 +5529,11 @@ setTimeout(function () {
     var files = [
         'js/keep-alive.js?v=20261112a',
         'js/char-takeover.js?v=20261117a',
-        'js/screen-share.js?v=20261119a',
+        'js/screen-share.js?v=20261119b',
         'js/float-chat.js?v=20261118a',
         'js/online-catchup.js?v=20261115a',
         'js/whisper-store.js?v=20261026a',
-        'js/char-secret-chat.js?v=20261029f'
+        'js/char-secret-chat.js?v=20261119a'
     ];
     function load() {
         files.forEach(function (src) {
@@ -5656,7 +5683,7 @@ setTimeout(function () {
     })();
     </script>
 <script src="js/adult-gate.js?v=20261025g"></script>
-<script src="js/account.js?v=20261118b"></script>
+<script src="js/account.js?v=20261119a"></script>
 <script>
 // 自动备份调度：只有开启后才加载一个隐藏的备份页，在 App 打开期间按间隔上传。
 // 完全退出 App 后网页无法后台运行，下次打开会补一次。

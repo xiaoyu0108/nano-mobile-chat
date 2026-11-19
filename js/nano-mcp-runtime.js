@@ -41,7 +41,8 @@
     { name: 'get_location', description: '读取用户当前所在位置（会请求定位授权），返回地址与坐标', inputSchema: { type: 'object', properties: {} } },
     { name: 'open_map', description: '在地图上打开一个地点或坐标', inputSchema: { type: 'object', properties: { place: { type: 'string', description: '地点名，如 长沙五一广场' }, lat: { type: 'number', description: '纬度（可选）' }, lng: { type: 'number', description: '经度（可选）' } } } },
     { name: 'open_url', description: '在浏览器里打开一个网页', inputSchema: { type: 'object', properties: { url: { type: 'string', description: 'https 开头的网址' } }, required: ['url'] } },
-    { name: 'open_app', description: '打开手机 App：小红书 / 抖音 / QQ / 微信 / 微博 / 淘宝 / 支付宝 / B站 / 浏览器', inputSchema: { type: 'object', properties: { app: { type: 'string', description: 'xiaohongshu | douyin | qq | wechat | weibo | taobao | alipay | bilibili | browser' } }, required: ['app'] } }
+    { name: 'open_app', description: '打开手机 App：小红书 / 抖音 / QQ / 微信 / 微博 / 淘宝 / 支付宝 / B站 / 浏览器', inputSchema: { type: 'object', properties: { app: { type: 'string', description: 'xiaohongshu | douyin | qq | wechat | weibo | taobao | alipay | bilibili | browser' } }, required: ['app'] } },
+    { name: 'parse_douyin', description: '解析抖音分享链接：读取视频文案、作者、话题、音乐、点赞/评论数据、封面和热评。用户发来抖音链接、或问这个视频讲了什么时调用', inputSchema: { type: 'object', properties: { url: { type: 'string', description: '抖音分享链接或包含链接的整段分享文案' } }, required: ['url'] } }
   ];
   function nativeServer() { return { id: NATIVE_ID, name: 'Nano 原生工具', url: 'native://companion', native: true, preset: 'native' }; }
 
@@ -114,6 +115,158 @@
     });
     return lines.length ? lines.join('\n') : '暂时没有取到热点，请稍后再试';
   }
+  function dyTimeout(p, ms) {
+    return Promise.race([
+      p,
+      new Promise(function (_, rej) { setTimeout(function () { rej(new Error('timeout')); }, ms || 9000); })
+    ]);
+  }
+  function dyExtractUrl(raw) {
+    var s = String(raw || '');
+    var m = s.match(/https?:\/\/[^\s"'<>]+/g) || [];
+    for (var i = 0; i < m.length; i++) {
+      if (/douyin\.com|iesdouyin\.com|v\.douyin\.com/i.test(m[i])) return m[i].replace(/[),，。]+$/, '');
+    }
+    return m[0] || '';
+  }
+  function dyExtractId(url, html) {
+    var m = String(url || '').match(/\/(?:video|note|slides)\/(\d{8,})/);
+    if (m) return m[1];
+    m = String(html || '').match(/"aweme_id"\s*:\s*"(\d{8,})"/);
+    if (m) return m[1];
+    m = String(url || '').match(/[?&](?:modal_id|aweme_id|item_id)=(\d{8,})/);
+    return m ? m[1] : '';
+  }
+  async function dyFetchJson(url, ms) {
+    var proxies = [
+      function (u) { return u; },
+      function (u) { return 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u); },
+      function (u) { return 'https://corsproxy.io/?url=' + encodeURIComponent(u); }
+    ];
+    for (var i = 0; i < proxies.length; i++) {
+      try {
+        var r = await dyTimeout(fetch(proxies[i](url), { cache: 'no-store' }), ms || 8000);
+        if (!r || !r.ok) continue;
+        var t = await r.text();
+        try { return JSON.parse(t); } catch (e) {}
+        return { __html: t };
+      } catch (e) {}
+    }
+    return null;
+  }
+  async function dyHtml(url, ms) {
+    var proxies = [
+      function (u) { return 'https://r.jina.ai/' + u; },
+      function (u) { return 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u); },
+      function (u) { return 'https://corsproxy.io/?url=' + encodeURIComponent(u); }
+    ];
+    for (var i = 0; i < proxies.length; i++) {
+      try {
+        var r = await dyTimeout(fetch(proxies[i](url), { cache: 'no-store' }), ms || 9000);
+        if (r && r.ok) return await r.text();
+      } catch (e) {}
+    }
+    return '';
+  }
+  async function nativeParseDouyin(args) {
+    var url = dyExtractUrl((args && (args.url || args.text)) || '');
+    if (!url) throw new Error('请提供抖音分享链接');
+    var out = { title: '', desc: '', author: '', content: '', cover: '', stats: {}, comments: [], music: '', tags: [], awemeId: '' };
+    // 1) 优先用 Worker 的分享链接解析（服务端抓取，能拿到文案/作者/封面/热评）
+    try {
+      var base = baseURL();
+      var tok = '';
+      try { tok = localStorage.getItem('nano_peek_token') || localStorage.getItem('nano_push_token') || ''; } catch (e) {}
+      var wr = await dyTimeout(fetch(base + '/link/preview?url=' + encodeURIComponent(url) + (tok ? ('&token=' + encodeURIComponent(tok)) : ''), { cache: 'no-store' }), 12000);
+      if (wr && wr.ok) {
+        var wj = await wr.json();
+        if (wj && wj.ok) {
+          out.title = String(wj.title || '');
+          out.desc = String(wj.desc || '');
+          out.content = String(wj.content || '');
+          out.author = String(wj.author || '');
+          out.cover = (wj.images && wj.images[0]) || '';
+          out.stats = wj.stats || {};
+          out.comments = Array.isArray(wj.comments) ? wj.comments : [];
+          out.music = String(wj.music || '');
+          out.tags = Array.isArray(wj.tags) ? wj.tags : [];
+          out.awemeId = String(wj.awemeId || '');
+        }
+      }
+    } catch (e) {}
+    // 2) Worker 未部署新字段 / 短链无法解析时，客户端再走公开接口补一次
+    if (!out.awemeId || !out.desc || !out.comments.length) {
+      var html = '';
+      if (!out.awemeId) {
+        try { html = await dyHtml(url, 9000); } catch (e) {}
+        out.awemeId = dyExtractId(url, html);
+      }
+      if (!out.awemeId) {
+        var tm = String(html || '').match(/https?:\/\/(?:www\.)?douyin\.com\/(?:video|note|slides)\/(\d{8,})/);
+        if (tm) out.awemeId = tm[1];
+      }
+      if (out.awemeId) {
+        var info = await dyFetchJson('https://www.iesdouyin.com/web/api/v2/aweme/iteminfo/?item_ids=' + encodeURIComponent(out.awemeId), 9000);
+        var item = info && info.item_list && info.item_list[0];
+        if (!item) {
+          var dj = await dyFetchJson('https://www.douyin.com/aweme/v1/web/aweme/detail/?aweme_id=' + encodeURIComponent(out.awemeId) + '&aid=6383', 9000);
+          item = (dj && (dj.aweme_detail || (dj.aweme_details && dj.aweme_details[0]))) || null;
+        }
+        if (item) {
+          out.desc = out.desc || String(item.desc || '').replace(/\s+/g, ' ').trim();
+          out.title = out.title || out.desc.slice(0, 120);
+          out.author = out.author || String((item.author && (item.author.nickname || item.author.unique_id)) || '');
+          out.stats = (out.stats && Object.keys(out.stats).length) ? out.stats : (item.statistics || {});
+          out.music = out.music || String((item.music && (item.music.title || item.music.author)) || '');
+          out.tags = (out.tags && out.tags.length) ? out.tags : (Array.isArray(item.text_extra) ? item.text_extra.map(function (t) { return t && t.hashtag_name ? '#' + t.hashtag_name : ''; }).filter(Boolean) : []);
+          if (!out.cover) {
+            var cov = item.video && (item.video.cover || item.video.dynamic_cover || item.video.origin_cover);
+            out.cover = (typeof cov === 'string' && cov) ||
+              (cov && Array.isArray(cov.url_list) && cov.url_list[0]) ||
+              (cov && Array.isArray(cov.uri) && cov.uri[0]) || '';
+          }
+        }
+        if (!out.comments.length) {
+          var cj = await dyFetchJson('https://www.iesdouyin.com/web/api/v2/comment/list/?aweme_id=' + encodeURIComponent(out.awemeId) + '&cursor=0&count=12&item_type=0', 9000);
+          var list = (cj && (cj.comments || (cj.data && cj.data.comments))) || [];
+          out.comments = list.map(function (c) {
+            return {
+              author: String((c.user && (c.user.nickname || c.user.unique_id)) || ''),
+              text: String(c.text || c.content || '').replace(/\s+/g, ' ').trim().slice(0, 300),
+              likes: Number(c.digg_count || c.like_count || 0) || 0
+            };
+          }).filter(function (c) { return c.text; }).slice(0, 12);
+        }
+      }
+    }
+    var lines = [];
+    if (out.desc) lines.push('文案：' + out.desc);
+    if (out.author) lines.push('作者：' + out.author);
+    if (out.tags && out.tags.length) lines.push('话题：' + out.tags.join(' '));
+    if (out.music) lines.push('音乐：' + out.music);
+    var st = out.stats || {};
+    var stLine = [
+      st.digg_count != null ? ('点赞 ' + st.digg_count) : '',
+      st.comment_count != null ? ('评论 ' + st.comment_count) : '',
+      st.share_count != null ? ('分享 ' + st.share_count) : '',
+      st.collect_count != null ? ('收藏 ' + st.collect_count) : ''
+    ].filter(Boolean).join(' · ');
+    if (stLine) lines.push('数据：' + stLine);
+    if (out.comments && out.comments.length) {
+      lines.push('热评：');
+      out.comments.slice(0, 8).forEach(function (c, i) {
+        lines.push((i + 1) + '. ' + (c.author ? (c.author + '：') : '') + c.text + (c.likes ? ('（赞 ' + c.likes + '）') : ''));
+      });
+    }
+    if (out.cover) lines.push('封面图：' + out.cover);
+    if (!lines.length) {
+      // 至少返回分享文案，避免角色只看到一条链接
+      var share = String((args && (args.text || args.url)) || '').replace(url, ' ').replace(/\s+/g, ' ').trim();
+      if (share) lines.push('分享文案：' + share);
+      lines.push('（抖音页面被反爬拦截，以上是分享文案；不要回复“打不开”，根据已有信息自然接话。）');
+    }
+    return lines.join('\n');
+  }
   function nativeOpenUrl(args) {
     var url = String((args && args.url) || '').trim();
     if (!/^https?:\/\//i.test(url)) throw new Error('url 需以 http(s):// 开头');
@@ -151,6 +304,7 @@
     if (tool === 'open_map') return nativeOpenMap(args || {});
     if (tool === 'open_url') return nativeOpenUrl(args || {});
     if (tool === 'open_app') return nativeOpenApp(args || {});
+    if (tool === 'parse_douyin') return await nativeParseDouyin(args || {});
     throw new Error('未知原生工具：' + tool);
   }
 

@@ -7466,11 +7466,11 @@
             const __onlyPunct = function (s) {
                 return /^[\s.。…·．\-—_~～!！?？,，、;；:：'"“”‘’|｜]+$/.test(String(s || ''));
             };
-            let bubbles = String(cleaned).split(/\n+/).map(function (s) { return s.trim(); }).filter(function (s) { return s && !__onlyPunct(s); }).slice(0, 3);
+            let bubbles = String(cleaned).split(/\n+/).map(function (s) { return s.trim(); }).filter(function (s) { return s && !__onlyPunct(s); }).slice(0, 8);
             // 模型只给一整段时按句子拆成多条气泡；外文「原文||翻译」格式不拆
             if (bubbles.length === 1 && bubbles[0].indexOf('||') < 0 && bubbles[0].length > 16) {
                 const parts = bubbles[0].split(/(?<=[。！？!?…])/).map(function (s) { return s.trim(); }).filter(function (s) { return s && !__onlyPunct(s); });
-                if (parts.length > 1) bubbles = parts.slice(0, 3);
+                if (parts.length > 1) bubbles = parts.slice(0, 8);
             }
             if (!bubbles.length && !tags.length) return null;
             return { bubbles: bubbles, tags: tags, heart: heart, think: think, cotOn: cotOn };
@@ -8084,16 +8084,7 @@
                 }
             }
             if (!Array.isArray(p.comments)) p.comments = [];
-            for (let ci = 0; ci < others.length && p.comments.length < 4 && postFallback.length; ci++) {
-                const who = others[(pi + ci) % others.length];
-                if (!who) continue;
-                if (p.comments.some(function (c) { return c && momentNameKey(c.user) === momentNameKey(who); })) continue;
-                p.comments.push({
-                    user: who, toUser: '',
-                    text: postFallback[(pi + ci + String(p.author || '').length) % postFallback.length]
-                });
-                touched = true;
-            }
+            // 不再用内置模板伪造评论文案；模型没写评论就只保留点赞。
             if (touched) { try { await saveMomentPost(p); } catch (e) {} }
         }
     }
@@ -9841,7 +9832,10 @@
                 }
                 resolve(res);
             }
-            function onAbort() { finish({ ok: false, status: 0, aborted: true, error: '已停止生成' }); }
+            function onAbort() {
+                try { window.parent.postMessage({ type: 'chatApiAbort', token: payload.token }, '*'); } catch (e) {}
+                finish({ ok: false, status: 0, aborted: true, error: '已停止生成' });
+            }
             function takeResult() {
                 try {
                     const raw = localStorage.getItem(resultKey);
@@ -9971,10 +9965,16 @@
                     site: linkSiteLabel(url),
                     title: String(title || firstLine || linkSiteLabel(url)).replace(/\s+/g, ' ').slice(0, 120),
                     desc: blocked ? '' : String(c.desc || content.replace(/\s+/g, ' ')).replace(/\s+/g, ' ').slice(0, 160),
-                    image: (c.images && c.images[0]) || '',
-                    price: blocked ? '' : (c.price || ''),
-                    content: content.slice(0, 7000),
-                    at: Date.now()
+                image: (c.images && c.images[0]) || '',
+                price: blocked ? '' : (c.price || ''),
+                content: content.slice(0, 7000),
+                author: blocked ? '' : String(c.author || ''),
+                stats: (!blocked && c.stats && typeof c.stats === 'object') ? c.stats : null,
+                comments: (!blocked && Array.isArray(c.comments)) ? c.comments.slice(0, 12) : [],
+                music: blocked ? '' : String(c.music || ''),
+                tags: (!blocked && Array.isArray(c.tags)) ? c.tags.slice(0, 20) : [],
+                awemeId: String(c.awemeId || ''),
+                at: Date.now()
                 };
                 __linkPreviewCache[url] = preview;
                 return preview;
@@ -10383,14 +10383,7 @@
         if (!url) return '';
         if (/^data:image\//i.test(url)) return url;
         if (!/^https?:\/\//i.test(url)) return '';
-        if (!/(xhscdn|xiaohongshu|douyinpic|byteimg|hdslb|sinaimg|alicdn)/i.test(url)) return url;
-        try {
-            var base = autoPushBase();
-            if (!base) return '';
-            var tok = autoPushToken() || '';
-            var r = await fetch(base + '/image?url=' + encodeURIComponent(url) + (tok ? ('&token=' + encodeURIComponent(tok)) : ''), { cache: 'no-store' });
-            if (!r.ok) return '';
-            var blob = await r.blob();
+        async function blobToData(blob) {
             if (!blob || !/^image\//i.test(blob.type || '') || blob.size > 3 * 1024 * 1024) return '';
             return await new Promise(function (resolve) {
                 try {
@@ -10400,7 +10393,30 @@
                     fr.readAsDataURL(blob);
                 } catch (e) { resolve(''); }
             });
-        } catch (e) { return ''; }
+        }
+        var needsProxy = /(xhscdn|xiaohongshu|douyinpic|byteimg|hdslb|sinaimg|alicdn)/i.test(url);
+        if (!needsProxy) return url;
+        try {
+            var base = autoPushBase();
+            if (base) {
+                var tok = autoPushToken() || '';
+                var r = await fetch(base + '/image?url=' + encodeURIComponent(url) + (tok ? ('&token=' + encodeURIComponent(tok)) : ''), { cache: 'no-store' });
+                if (r.ok) {
+                    var data = await blobToData(await r.blob());
+                    if (data) return data;
+                }
+            }
+        } catch (e) {}
+        // Worker 图片代理失败时，再用公共图片代理转成 dataURL，尽量让模型真的看到封面。
+        try {
+            var pr = await fetch('https://wsrv.nl/?url=' + encodeURIComponent(url), { cache: 'no-store' });
+            if (pr.ok) {
+                var pd = await blobToData(await pr.blob());
+                if (pd) return pd;
+            }
+        } catch (e) {}
+        // 最后把原图 URL 交给模型网关自行抓取。
+        return url;
     }
     async function buildLinkContext(text) {
         var links = findSharedLinks(text);
@@ -10422,8 +10438,27 @@
             if (c) {
                 if (c.title) block = '标题：' + c.title + '\n' + block;
                 if (c.price) block += '\n价格：¥' + c.price;
+                if (c.author) block += '\n作者：' + c.author;
+                if (c.tags && c.tags.length) block += '\n话题：' + c.tags.join(' ');
+                if (c.music) block += '\n音乐：' + c.music;
+                if (c.stats && Object.keys(c.stats).length) {
+                    var st = c.stats;
+                    var stLine = [
+                        st.digg_count != null ? ('点赞 ' + st.digg_count) : '',
+                        st.comment_count != null ? ('评论 ' + st.comment_count) : '',
+                        st.share_count != null ? ('分享 ' + st.share_count) : '',
+                        st.collect_count != null ? ('收藏 ' + st.collect_count) : ''
+                    ].filter(Boolean).join(' · ');
+                    if (stLine) block += '\n数据：' + stLine;
+                }
                 var body = c.content || c.desc || '';
                 if (body) block += '\n内容 / 文案（可能包含正文、评论或热评）：\n' + body;
+                if (c.comments && c.comments.length) {
+                    block += '\n热评：\n' + c.comments.slice(0, 8).map(function (cm, ci) {
+                        return (ci + 1) + '. ' + (cm && cm.author ? (cm.author + '：') : '') + String((cm && cm.text) || '') +
+                            (cm && cm.likes ? ('（赞 ' + cm.likes + '）') : '');
+                    }).join('\n');
+                }
                 if (share) block += '\n用户分享时附带的文字：' + share;
                 if (!body) {
                     var guessedBody = guessLinkTitle(text, links[i]);
@@ -10453,6 +10488,139 @@
         };
     }
 
+    // 有些中转站 / 推理模型会把正文放在数组 content、reasoning_content，
+    // 或只返回 finish_reason=length 的空 content；这里统一提取，避免“扣费了却显示没返回内容”。
+    function extractChoiceReply(data) {
+        const choice = (data && data.choices && data.choices[0]) || null;
+        const msg = (choice && choice.message) || {};
+        let text = msg.content;
+        if (text == null && choice && choice.text != null) text = choice.text;
+        if (Array.isArray(text)) {
+            text = text.map(function (part) {
+                if (typeof part === 'string') return part;
+                return (part && (part.text || part.content)) || '';
+            }).join('');
+        } else if (text && typeof text === 'object') {
+            text = text.text || text.content || '';
+        }
+        if (typeof text !== 'string') text = '';
+        const refusal = typeof msg.refusal === 'string' ? msg.refusal : '';
+        const reasoning = msg.reasoning_content || msg.reasoning || msg.thinking ||
+            (choice && (choice.reasoning_content || choice.reasoning)) || '';
+        return {
+            text: text,
+            reasoning: typeof reasoning === 'string' ? reasoning : '',
+            refusal: refusal,
+            finish: (choice && choice.finish_reason) || ''
+        };
+    }
+    let lastEmptyReplyInfo = '';
+
+    // 兼容中转站忽略 stream:false 直接返回 SSE 的情况，否则正文会被当成 JSON 解析失败。
+    function parseChatPayload(rawText) {
+        const raw = String(rawText || '').trim();
+        if (!raw) return {};
+        const sse = /(^|\n)\s*data:\s*/i.test(raw);
+        if (sse) {
+            let content = '', reasoning = '', finish = '';
+            raw.split(/\r?\n/).forEach(function (line) {
+                const m = line.match(/^\s*data:\s?(.*)$/);
+                if (!m) return;
+                const p = String(m[1] || '').trim();
+                if (!p || p === '[DONE]') return;
+            let o = null;
+            try { o = JSON.parse(p); } catch (e) { return; }
+            // Anthropic 原生流：content_block_delta / message_delta
+            if (o && /^content_block_delta$/i.test(String(o.type || ''))) {
+                if (o.delta && typeof o.delta.text === 'string') content += o.delta.text;
+                return;
+            }
+            if (o && /^content_block_start$/i.test(String(o.type || ''))) {
+                if (o.content_block && typeof o.content_block.text === 'string') content += o.content_block.text;
+                return;
+            }
+            if (o && /^message_delta$/i.test(String(o.type || ''))) {
+                if (o.delta && o.delta.stop_reason) finish = o.delta.stop_reason === 'max_tokens' ? 'length' : o.delta.stop_reason;
+                return;
+            }
+            const ch = (o && o.choices && o.choices[0]) || {};
+                const d = ch.delta || ch.message || {};
+                if (typeof d.content === 'string') content += d.content;
+                else if (Array.isArray(d.content)) content += d.content.map(function (x) { return (x && (x.text || x.content)) || ''; }).join('');
+                if (typeof d.reasoning_content === 'string') reasoning += d.reasoning_content;
+                if (ch.finish_reason) finish = ch.finish_reason;
+            });
+            if (content || reasoning) {
+                return { choices: [{ message: { content: content, reasoning_content: reasoning }, finish_reason: finish || 'stop' }] };
+            }
+        }
+        try {
+            const safeRaw = raw.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '');
+            const j = JSON.parse(safeRaw);
+            // Anthropic 原生返回：content: [{type:'text',text:'...'}], stop_reason
+            if (j && !j.choices && Array.isArray(j.content)) {
+                const text = j.content.map(function (x) {
+                    return (x && (x.text || x.content)) || (typeof x === 'string' ? x : '');
+                }).join('');
+                const finish = j.stop_reason === 'max_tokens' ? 'length' : (j.stop_reason || 'stop');
+                return { choices: [{ message: { content: text }, finish_reason: finish }] };
+            }
+            return j;
+        } catch (e) {
+            // 极少数中转站直接返回纯文本：不要当成解析失败丢掉正文。
+            if (!/^\s*<(?:!doctype\s+html|html[\s>])/i.test(raw) && !/^\s*\{/.test(raw)) {
+                return { choices: [{ message: { content: raw }, finish_reason: 'stop' }] };
+            }
+            return {};
+        }
+    }
+
+    function buildAnthropicBody(model, history, maxTokens, temperature) {
+        const sys = [];
+        const msgs = [];
+        (history || []).forEach(function (m) {
+            if (!m) return;
+            if (m.role === 'system') {
+                const c = m.content;
+                if (typeof c === 'string') sys.push(c);
+                else if (Array.isArray(c)) sys.push(c.map(function (x) { return (x && (x.text || x.content)) || ''; }).join(''));
+                return;
+            }
+            const role = m.role === 'assistant' ? 'assistant' : 'user';
+            const c = m.content;
+            if (Array.isArray(c)) {
+                const blocks = [];
+                c.forEach(function (p) {
+                    if (!p) return;
+                    if (p.type === 'text') blocks.push({ type: 'text', text: String(p.text || '') });
+                    else if (p.type === 'image_url') {
+                        const url = String((p.image_url && p.image_url.url) || '');
+                        const mm = url.match(/^data:([^;,]+);base64,(.+)$/);
+                        if (mm) blocks.push({ type: 'image', source: { type: 'base64', media_type: mm[1], data: mm[2] } });
+                        else if (/^https?:\/\//i.test(url)) blocks.push({ type: 'image', source: { type: 'url', url: url } });
+                    } else if (typeof p === 'string') blocks.push({ type: 'text', text: p });
+                });
+                msgs.push({ role: role, content: blocks });
+            } else {
+                msgs.push({ role: role, content: String(c == null ? '' : c) });
+            }
+        });
+        if (!msgs.length) msgs.push({ role: 'user', content: '（继续）' });
+        if (msgs[0] && msgs[0].role === 'assistant') msgs.unshift({ role: 'user', content: '（继续）' });
+        return {
+            model: model,
+            max_tokens: maxTokens,
+            temperature: (typeof temperature === 'number') ? temperature : 0.7,
+            system: sys.length ? sys.join('\n\n').slice(0, 24000) : undefined,
+            messages: msgs
+        };
+    }
+    function anthropicEndpoint(baseUrl) {
+        var u = String(baseUrl || '').replace(/\/+$/, '');
+        if (/\/messages$/i.test(u)) return u;
+        return u + '/messages';
+    }
+
     async function callApi(userMessage, extraContext) {
         // 首轮回复前确保长期记忆已经读完，但最多等 2 秒，不能因为记忆库慢卡住聊天。
         try {
@@ -10469,6 +10637,7 @@
             return null;
         }
         try {
+            lastEmptyReplyInfo = '';
             let baseUrl = toV1Base(resolveApiHost(config.mainUrl));
             const key = config.mainKey.trim();
             const model = config.mainModel;
@@ -10780,8 +10949,32 @@
                 const m = messages[i];
                 if (m && m.type === 'right' && !m.recalled) { __lastUserId = m.id || ''; break; }
             }
-            const payload = {
-                token: 'creq_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+            const __maxTokens = isNanoChat ? (function () {
+                const v = parseInt(getChatSetting('nanoMaxTokens', 0), 10);
+                return Math.min(v > 0 ? v : 32768, 131072);
+            })() : (function () {
+                const v = parseInt(getChatSetting('replyMaxTokens', 0), 10);
+                if (v > 0) return Math.min(v, 32768);
+                return 8192;
+            })();
+            const __temp = (typeof config.mainTemp === 'number' ? config.mainTemp : parseFloat(config.mainTemp)) || 0.7;
+            const __isAnthropic = String(config.mainApiType || '').toLowerCase() === 'anthropic';
+            const __token = 'creq_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+            const payload = __isAnthropic ? {
+                token: __token,
+                __chatId: chatId,
+                __lastUserId: __lastUserId,
+                url: anthropicEndpoint(baseUrl),
+                method: 'POST',
+                headers: {
+                    'x-api-key': key,
+                    'anthropic-version': '2023-06-01',
+                    'anthropic-dangerous-direct-browser-access': 'true',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(buildAnthropicBody(model, history, __maxTokens, __temp))
+            } : {
+                token: __token,
                 __chatId: chatId,
                 __lastUserId: __lastUserId,
                 url: baseUrl + '/chat/completions',
@@ -10790,18 +10983,9 @@
                 body: JSON.stringify({
                     model: model,
                     messages: history,
-                    // 纳米要输出完整 CSS + action；普通聊天也给足 token，避免 [heart]/[think] 写长后被截断。
-                    // 可在「聊天设置」里用「回复字数上限」覆盖。
-                    max_tokens: isNanoChat ? (function () {
-                        // 纳米要输出完整 CSS + action，默认给足（可在「纳米设置」里改）
-                        const v = parseInt(getChatSetting('nanoMaxTokens', 0), 10);
-                        return Math.min(v > 0 ? v : 32768, 131072);
-                    })() : (function () {
-                        const v = parseInt(getChatSetting('replyMaxTokens', 0), 10);
-                        if (v > 0) return Math.min(v, 16384);
-                        return 3000;
-                    })(),
-                    temperature: (typeof config.mainTemp === 'number' ? config.mainTemp : parseFloat(config.mainTemp)) || 0.7
+                    // 纳米要输出完整 CSS + action；普通聊天默认给足 token，避免长回复被截断。
+                    max_tokens: __maxTokens,
+                    temperature: __temp
                 })
             };
             storeChatRequest(payload);
@@ -10824,9 +11008,19 @@
                 return null;
             }
 
-            const data = JSON.parse(result.text || '{}');
-            try { lastFinishReason = (data.choices && data.choices[0] && data.choices[0].finish_reason) || ''; } catch (e) { lastFinishReason = ''; }
-            return data.choices?.[0]?.message?.content || null;
+            const data = parseChatPayload(result.text);
+            const picked = extractChoiceReply(data);
+            lastFinishReason = picked.finish || '';
+            let content = String(picked.text || '').trim();
+            // 正文为空但模型把内容写进了思维链：至少别让用户只看到“没返回内容”。
+            if (!content && picked.reasoning.trim()) content = picked.reasoning.trim();
+            if (!content) {
+                lastEmptyReplyInfo = picked.finish === 'length'
+                    ? '模型把这一轮的 max_tokens 全部用完了，正文没有输出（常见于推理模型）。请到「聊天设置 → 回复字数上限」调高后重试，或换一个非推理模型。'
+                    : (picked.refusal || '模型返回成功，但正文为空。可能被内容过滤、模型参数不兼容，或该中转站没有正确返回 choices[0].message.content。');
+                return null;
+            }
+            return content;
         } catch (error) {
             console.error('[Chat API] 异常', error);
             const addr = (typeof baseUrl !== 'undefined' && baseUrl)
@@ -10841,6 +11035,8 @@
     function cleanReplyText(raw) {
         if (typeof raw !== 'string') return raw;
         let s = raw;
+        // Claude / 部分中转会带回控制字符或代理对残留，浏览器能显示但下游标签解析会报错或被截断。
+        s = s.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '');
         // ```json ... ``` 之类的代码块：抽出里面的正文；若整段是 {"bubbles":[...]} 就转成逐条文本
         s = s.replace(/```[a-zA-Z0-9_-]*\s*([\s\S]*?)```/g, function (m, inner) {
             const t = String(inner || '').trim();
@@ -10957,16 +11153,23 @@
         return getApiConfig().then(function (config) {
             if (!config || !config.mainUrl || !config.mainKey || !config.mainModel) return null;
             const baseUrl = toV1Base(resolveApiHost(config.mainUrl));
-            return fetch(baseUrl + '/chat/completions', {
-                method: 'POST',
-                headers: { 'Authorization': 'Bearer ' + String(config.mainKey).trim(), 'Content-Type': 'application/json' },
-                body: JSON.stringify({
+            const isAnthropic = String(config.mainApiType || '').toLowerCase() === 'anthropic';
+            const url = isAnthropic ? anthropicEndpoint(baseUrl) : (baseUrl + '/chat/completions');
+            const body = isAnthropic
+                ? JSON.stringify(buildAnthropicBody(config.mainModel, messages, maxTokens || 700, (typeof temperature === 'number') ? temperature : 0.85))
+                : JSON.stringify({
                     model: config.mainModel,
                     messages: messages,
                     max_tokens: maxTokens || 700,
                     temperature: (typeof temperature === 'number') ? temperature : 0.85
-                })
-            }).then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
+                });
+            const headers = isAnthropic
+                ? { 'x-api-key': String(config.mainKey).trim(), 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true', 'Content-Type': 'application/json' }
+                : { 'Authorization': 'Bearer ' + String(config.mainKey).trim(), 'Content-Type': 'application/json' };
+            return fetch(url, { method: 'POST', headers: headers, body: body }).then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
+                if (isAnthropic && d && Array.isArray(d.content)) {
+                    return d.content.map(function (x) { return (x && (x.text || x.content)) || ''; }).join('') || null;
+                }
                 return (d && d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content) || null;
             }).catch(function () { return null; });
         }).catch(function () { return null; });
@@ -11050,28 +11253,34 @@
             const selfName = displayName || '角色';
             let specs = parseGroupSpecs(parts.slice(1).join('|'));
 
-            // 人设缺失时用一次 API 生成完整人设；仍失败则用基本人设兜底
+            // 人设缺失时用一次 API 生成完整人设；失败就明确提示，不再用内置基本人设冒充。
             const needApi = specs.length === 0 || specs.some(function (s) { return !s.setting; });
             if (needApi) {
                 const generated = await generateNpcSpecs(gname, specs.map(function (s) { return s.name; }));
-                if (generated.length) {
-                    if (!specs.length) {
-                        specs = generated.slice(0, 5);
-                    } else {
-                        const byName = {};
-                        generated.forEach(function (g) { byName[g.name] = g.setting; });
-                        specs.forEach(function (s) { if (!s.setting) s.setting = byName[s.name] || ''; });
-                        generated.forEach(function (g) {
-                            if (specs.length < 5 && !specs.some(function (s) { return s.name === g.name; })) specs.push(g);
-                        });
-                    }
+                if (!generated.length) {
+                    try {
+                        showAlert('建群失败', '生成群成员人设的 API 没有返回可用内容。请检查主 API 地址 / Key / 额度，本次不会用内置 mock 人设继续建群。');
+                    } catch (e) {}
+                    return;
+                }
+                if (!specs.length) {
+                    specs = generated.slice(0, 5);
+                } else {
+                    const byName = {};
+                    generated.forEach(function (g) { byName[g.name] = g.setting; });
+                    specs.forEach(function (s) { if (!s.setting) s.setting = byName[s.name] || ''; });
+                    generated.forEach(function (g) {
+                        if (specs.length < 5 && !specs.some(function (s) { return s.name === g.name; })) specs.push(g);
+                    });
                 }
             }
+            specs = specs.filter(function (s) { return s && s.name && String(s.setting || '').trim(); });
+            if (!specs.length) {
+                try { showAlert('建群失败', '群成员没有可用人设，本次不会用内置 mock 继续。请重新让角色建群。'); } catch (e) {}
+                return;
+            }
             specs = specs.map(function (s, i) {
-                return {
-                    name: s.name,
-                    setting: s.setting || (s.name + '是群聊「' + gname + '」里的成员，' + selfName + '的朋友，性格随和、说话自然。')
-                };
+                return { name: s.name, setting: s.setting };
             }).slice(0, 6);
 
             const members = [{
@@ -12948,12 +13157,19 @@
             }
             let content = null;
             try {
-                const data = JSON.parse(result.text || '{}');
-                content = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+                const data = parseChatPayload(result.text);
+                const picked = extractChoiceReply(data);
+                content = String(picked.text || '').trim();
+                if (!content && picked.reasoning.trim()) content = picked.reasoning.trim();
+                if (!content) {
+                    lastEmptyReplyInfo = picked.finish === 'length'
+                        ? '模型把这一轮的 max_tokens 全部用完了，正文没有输出（常见于推理模型）。请到「聊天设置 → 回复字数上限」调高后重试，或换一个非推理模型。'
+                        : (picked.refusal || '模型返回成功，但正文为空。可能被内容过滤、模型参数不兼容，或该中转站没有正确返回 choices[0].message.content。');
+                }
             } catch (e) {}
             if (!content) {
                 if (isNanoChat) addNanoErrorNotice();
-                else { try { showAlert('生成失败', '模型没有返回内容，请稍后重试。'); } catch (e) {} }
+                else { try { showAlert('生成失败', lastEmptyReplyInfo || '模型没有返回内容，请稍后重试。'); } catch (e) {} }
                 return;
             }
             if (genCancelled) return;
@@ -13723,7 +13939,7 @@
             if (genCancelled) return;
             if (!reply) {
                 if (isNanoChat) addNanoErrorNotice();
-                else { try { showAlert('生成失败', '模型没有返回内容，请稍后重试。'); } catch (e) {} }
+                else { try { showAlert('生成失败', lastEmptyReplyInfo || '模型没有返回内容，请稍后重试。'); } catch (e) {} }
                 return;
             }
             // char 主动调用 MCP：解析 <tool> 标签 → 执行 → 继续生成最终回复
@@ -13739,7 +13955,7 @@
             if (genCancelled) return;
             if (!reply) {
                 if (isNanoChat) addNanoErrorNotice();
-                else { try { showAlert('生成失败', '模型没有返回内容，请稍后重试。'); } catch (e) {} }
+                else { try { showAlert('生成失败', lastEmptyReplyInfo || '模型没有返回内容，请稍后重试。'); } catch (e) {} }
                 return;
             }
             await processReply(reply, lastUserMsg);
@@ -13764,6 +13980,43 @@
     let __schedReportBusy = false;
     let __schedImgWarned = false;
     // 只有真正聊熟的角色才自动报备；刚点开/没聊过的角色不弹日程卡。
+    // 断聊超过 7 天后，必须连续聊满 3 个自然日才恢复报备。
+    function localDayKey(ts) {
+        const d = new Date(Number(ts) || 0);
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    }
+    function resumedThreeDays() {
+        const rows = [];
+        try {
+            messages.forEach(function (m) {
+                if (!m || m.recalled || m.isCard) return;
+                if (m.cardData && m.cardData.systemNotice) return;
+                if (!String(m.text || m.transcript || '').trim()) return;
+                if (m.type !== 'left' && m.type !== 'right') return;
+                const ts = Number(m.ts || 0);
+                if (ts) rows.push(ts);
+            });
+        } catch (e) { return true; }
+        if (rows.length < 2) return true;
+        rows.sort(function (a, b) { return a - b; });
+        let resumeAt = 0;
+        for (let i = 1; i < rows.length; i++) {
+            if (rows[i] - rows[i - 1] >= 7 * 86400000) resumeAt = rows[i];
+        }
+        if (!resumeAt) return true;
+        const days = {};
+        rows.forEach(function (ts) { if (ts >= resumeAt) days[localDayKey(ts)] = true; });
+        const keys = Object.keys(days).sort();
+        let streak = 1;
+        for (let i = 1; i < keys.length; i++) {
+            const a = new Date(keys[i - 1] + 'T00:00:00');
+            const b = new Date(keys[i] + 'T00:00:00');
+            if (Math.round((b - a) / 86400000) === 1) streak++;
+            else streak = 1;
+            if (streak >= 3) return true;
+        }
+        return false;
+    }
     function hasFamiliarRealChat() {
         let total = 0, mine = 0, theirs = 0, first = 0;
         const cutoff = Date.now() - 12 * 3600 * 1000;
@@ -13783,14 +14036,75 @@
             });
         } catch (e) { return false; }
         const oldEnough = !first || (Date.now() - first >= 2 * 86400000);
-        // 报备门槛：至少 200 条真实消息，双方各 60 条，认识 2 天以上，且近 12 小时聊过。
-        return total >= 200 && mine >= 60 && theirs >= 60 && recent && oldEnough;
+        // 报备门槛：至少 200 条真实消息，双方各 60 条，认识 2 天以上，近 12 小时聊过；
+        // 若中间断聊超过 7 天，还必须恢复为连续聊天 3 天。
+        return total >= 200 && mine >= 60 && theirs >= 60 && recent && oldEnough && resumedThreeDays();
     }
+    async function generateReportText(r) {
+        // 一次报备只允许一次文本 API：同一个请求同时生成「聊天气泡」和「卡片内容」。
+        // 失败/解析不了就用日程本地文案兜底，绝不自动重试或补第二次。
+        try {
+            const cfg = await getApiConfig();
+            if (!cfg || !cfg.mainUrl || !cfg.mainKey || !cfg.mainModel) return null;
+            const url = toV1Base(resolveApiHost(cfg.mainUrl)) + '/chat/completions';
+            const persona = (characterData && (characterData.setting || characterData.desc || characterData.persona)) || '';
+            const sys = '你是角色「' + displayName() + '」。这是后台日程报备任务，不是普通聊天。'
+                + '严格保持人设，不要 OOC、不要油腻情话。只输出合法 JSON，不要解释、不要 markdown。'
+                + '格式：{"bubble":"给 user 发的 1-2 句聊天气泡，和这次日程有关，自然口语","title":"报备卡片标题，不超过12字","note":"卡片正文，40-100字，写你刚做了什么、现场细节和感受"}';
+            const usr = '角色设定：' + String(persona).slice(0, 1500)
+                + '\n日程：' + String(r.title || '') + '；地点：' + String(r.place || '') + '；时间：' + String(r.start || '') + '-' + String(r.end || '')
+                + '；原备注：' + String(r.note || '') + '；日期：' + String(r.date || '')
+                + '\n请像刚结束这件事一样，生成一条气泡和卡片内容。';
+            const payload = {
+                token: 'sched_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
+                url: url,
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + cfg.mainKey },
+                body: JSON.stringify({
+                    model: cfg.mainModel,
+                    temperature: 0.8,
+                    max_tokens: 420,
+                    stream: false,
+                    messages: [{ role: 'system', content: sys }, { role: 'user', content: usr }]
+                })
+            };
+            const result = await sendChatRequest(payload);
+            if (!result || !result.ok) return null;
+            const data = parseChatPayload(result.text);
+            const picked = extractChoiceReply(data);
+            const raw = String(picked.text || picked.reasoning || '').trim();
+            if (!raw) return null;
+            let obj = null;
+            try {
+                const m = raw.match(/\{[\s\S]*\}/);
+                if (m) obj = JSON.parse(m[0]);
+            } catch (e) {}
+            if (!obj || typeof obj !== 'object') {
+                return { bubble: raw.replace(/^```[\w-]*\s*|\s*```$/g, '').slice(0, 160), title: '', note: '' };
+            }
+            return {
+                bubble: String(obj.bubble || '').trim().slice(0, 200),
+                title: String(obj.title || '').trim().slice(0, 40),
+                note: String(obj.note || '').trim().slice(0, 300)
+            };
+        } catch (e) { return null; }
+    }
+
     async function deliverScheduleReports() {
         if (isChatOfflineMode()) return;
+        if (isProcessingApi || isWaitingForReply) return;
         if (!hasFamiliarRealChat()) return;
+        // 把「已经满足 12 小时 + 连续聊天 3 天」的资格同步给日程页，
+        // 避免日程页在聊天页没打开时自行生成报备图。
+        try { localStorage.setItem('nano_schedule_report_ok_' + chatId, String(Date.now())); } catch (e) {}
         if (__schedReportBusy || !window.NanoScheduleBridge || !NanoScheduleBridge.takeReports) return;
         if (!isStorageReady) return;
+        // 一个角色 7 天最多报备一次：报备频率低，避免频繁生成卡片和图片。
+        const reportLockKey = 'nano_schedule_report_at_' + chatId;
+        try {
+            const last = Number(localStorage.getItem(reportLockKey) || 0);
+            if (last && Date.now() - last < 7 * 86400000) return;
+        } catch (e) {}
         __schedReportBusy = true;
         try {
             // 若当前日程刚开始且还没有照片，聊天页也会尝试生成一次（需在 API 页配置生图接口）
@@ -13808,21 +14122,26 @@
             const now = new Date();
             const timeStr = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
             let added = 0;
-            list.forEach(function (r) {
-                if (!r || !r.img) return;
+            // 7 天一次：一次最多投递一条报备；没有图片也照常发卡片和气泡。
+            const r = list[0];
+            if (r) {
+                const txt = await generateReportText(r);
+                const bubble = (txt && txt.bubble) || ('刚从' + (r.place || r.title || '外面') + '回来，' + (r.note || '今天也发生了些小事'));
+                if (bubble) addMessage('left', bubble, timeStr);
                 addMessage('left', '', timeStr, null, false, true, {
                     cardType: 'scheduleReport',
                     eventId: r.eventId || '',
-                    title: r.title || '刚刚的记录',
+                    title: (txt && txt.title) || r.title || '刚刚的记录',
                     place: r.place || '',
                     date: r.date || new Date().toISOString().slice(0, 10),
                     start: r.start || '',
                     end: r.end || '',
-                    note: r.note || '',
+                    note: (txt && txt.note) || r.note || '',
                     img: r.img
                 });
                 added++;
-            });
+                try { localStorage.setItem(reportLockKey, String(Date.now())); } catch (e) {}
+            }
             if (added) {
                 saveMessages();
                 renderMessages();
@@ -15134,7 +15453,9 @@ if (callCard) {
             var cd = card.cardData || card;
             if (!cd || cd.cardType !== 'cycle') return;
             var now = new Date();
-            addMessage('left', '', String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0'), null, false, true, cd);
+            var hm = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+            if (card.bubble) addMessage('left', String(card.bubble), hm);
+            addMessage('left', '', hm, null, false, true, cd);
         } catch (e) {}
     }
     function consumePendingCharSay() {

@@ -413,8 +413,8 @@
             var item = {
                 who: who,
                 name: who === 'a' ? (a.name || 'A') : (b.name || 'B'),
-                text: body.slice(0, 800),
-                translation: clean(translation).slice(0, 800)
+                text: body.slice(0, 4000),
+                translation: clean(translation).slice(0, 4000)
             };
             out.push(item);
             last = item;
@@ -449,7 +449,7 @@
             + (aRecent ? '【用户和你最近的聊天】\n' + aRecent.replace(/对方：/g, (a.name || 'A') + '：') + '\n\n' : '')
             + (prevChat ? '【你们上次私下聊到】\n' + prevChat + '\n（这次可以接着上次的情绪/话题，但不要原样重复。）\n\n' : '')
             + '现在你们两人私下聊起来。可以谈用户、试探对方、吃醋、交换信息、撒谎或挑拨。\n'
-            + '请写出一段自然、有实质内容的对话，正好 2 轮。每一轮 2~4 个气泡（同一角色可以连续发多条），每个气泡 1~2 句，要具体、有情绪和细节，不要只回一句短话。\n'
+            + '请一次写完 2~3 轮、总共 6~8 个气泡（同一角色可以连续发多条），每个气泡 1~2 句，要具体、有情绪和细节，不要只回一句短话。\n'
             + '每行一个气泡，严格用「' + (a.name || 'A') + '：内容」或「' + (b.name || 'B') + '：内容」的格式；不要旁白、不要动作描写、不要解释、不要省略号。\n'
             + '严格遵循双方人设、世界书和长期记忆，不要 OOC，不要编造与设定冲突的内容。\n'
             + '【语言与翻译】按角色自然的语言说话。只要某句不是简体中文，必须在该句末尾用「（中文：简体中文翻译）」附上翻译；中文句子不用加。名字前缀保持原文，不要翻译。';
@@ -616,7 +616,6 @@
         var aReady = ca.privateEnabled && ca.relationIds.indexOf(String(b.id)) > -1;
         var bReady = cb.privateEnabled && cb.relationIds.indexOf(String(a.id)) > -1;
         if (!aReady && !bReady) throw new Error('请先在任意一方的「角色关系」里开启悄悄话并勾选对方');
-        var calls = Number(opts.calls) === 2 ? 2 : 1;
         if (!acquireLock()) throw new Error('正在生成另一段悄悄话，请稍后再试');
         try {
             var mask = homeMask();
@@ -645,28 +644,20 @@
                 memA: await getMemoryTextFor(a.id),
                 memB: await getMemoryTextFor(b.id)
             };
-            var out1 = await callApi([
+            var out = await callApi([
                 { role: 'system', content: buildFirstPrompt(a, b, mask, aRecent, bRecent, prevChat, extraCtx) },
-                { role: 'user', content: '（现在开始。只输出带「名字：」前缀的对话行）' }
-            ], 2600);
-            var lines = parseDialogue(out1, a, b);
-            if (!lines.length) throw new Error('模型没有按对话格式返回，请重试');
-            if (calls === 2) {
-                var transcript = lines.map(function (l) { return l.name + '：' + l.text; }).join('\n');
-                var out2 = await callApi([
-                    { role: 'system', content: buildContinuePrompt(a, b, transcript, extraCtx) },
-                    { role: 'user', content: '（继续，只输出带「名字：」前缀的对话行）' }
-                ], 2000);
-                var more = parseDialogue(out2, a, b);
-                if (more.length) lines = lines.concat(more);
-            }
+                { role: 'user', content: '（现在开始。一次写完 2~3 轮、6~8 个气泡，只输出带「名字：」前缀的对话行）' }
+            ], 5200);
+            var lines = parseDialogue(out, a, b);
+            // 保留已经成功解析的部分；即使没有完全写完也不重试、不补第二次 API。
+            if (!lines.length) throw new Error('模型没有按对话格式返回内容（不是网络错误），本次不自动重试，请稍后手动再试');
             lines = lines.slice(0, 20);
             var rec = {
                 id: 'sc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
                 at: Date.now(),
                 maskId: String(opts.maskId || currentMaskId()),
                 source: opts.source || 'manual',
-                calls: calls,
+                calls: 1,
                 a: { id: a.id, name: a.name || 'A', avatar: a.avatar || '' },
                 b: { id: b.id, name: b.name || 'B', avatar: b.avatar || '' },
                 lines: lines
@@ -675,15 +666,14 @@
             all.push(rec);
             var saved = saveRecords(all);
 
-            // 记忆只写提炼后的中文摘要（外语附翻译），不再把整段对白照抄进记忆库。
-            var memA = '';
-            var memB = '';
+            // 记忆不额外调用 API：直接把这次悄悄话的关键行写进双方记忆库。
             try {
-                memA = await summarizeForMemory(a, b, lines);
-                memB = await summarizeForMemory(b, a, lines);
+                var briefLines = lines.slice(0, 8).map(function (l) {
+                    return (l.name || '') + '：' + String(l.text || '').slice(0, 120);
+                }).join('\n');
+                await appendMemory(a.id, '和' + (b.name || 'B') + '私下聊过：\n' + briefLines);
+                await appendMemory(b.id, '和' + (a.name || 'A') + '私下聊过：\n' + briefLines);
             } catch (e) {}
-            if (memA) await appendMemory(a.id, memA);
-            if (memB) await appendMemory(b.id, memB);
             notifyMemory(a.id); notifyMemory(b.id);
 
             var now = Date.now();
@@ -829,7 +819,6 @@
         if (!d || !d.type) return;
         if (d.type === 'nanoSecretGenerate') {
             generate(d.aId, d.bId, {
-                calls: d.calls,
                 source: 'manual',
                 show: true,
                 maskId: d.maskId,

@@ -145,7 +145,7 @@ async function getSubApiConfig() {
     key: cfg.subKey || '',
     model: cfg.subModel || cfg.mainModel || '',
     temp: cfg.subTemp != null ? cfg.subTemp : (cfg.mainTemp != null ? cfg.mainTemp : 0.7),
-    enabled: cfg.subToggle !== false
+    enabled: cfg.subToggle === true
   };
 }
 

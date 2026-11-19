@@ -891,7 +891,10 @@
         return relay(url, headers, body);
       });
     }
-    return viaEdits().catch(function () { return viaJson(); });
+    // 只尝试一种生图方式：有 data 参考图走 edits，否则走 generations。
+    // 失败不自动换接口重发，避免一次报备产生两次生图扣费。
+    var hasDataRefs = faceRefs.some(function (x) { return String(x).indexOf('data:') === 0; });
+    return hasDataRefs ? viaEdits() : viaJson();
   }
 
   function buildImagePrompt(data, ev) {
@@ -969,6 +972,7 @@
       fresh.imgGenDay = today();
       fresh.imgGenAt = Date.now();
       fresh.lastCharId = fresh.lastCharId || id;
+      try { localStorage.setItem('nano_schedule_report_made_' + id, String(Date.now())); } catch (e) {}
       return writeStore(fresh).then(function () {
         try {
           if (window.parent && window.parent !== window) {
@@ -977,6 +981,23 @@
         } catch (e) {}
         return true;
       });
+    });
+  }
+
+  function finishReportWithoutImage(id, name, eventId) {
+    return readStore().then(function (fresh) {
+      var data = findData(fresh, id, name);
+      if (!data) return false;
+      var target = null;
+      (data.events || []).forEach(function (x) { if (x && String(x.id) === String(eventId)) target = x; });
+      if (!target) return false;
+      target.report = { at: Date.now(), note: String(target.note || target.title || '').trim().slice(0, 80), delivered: false };
+      target.imgTriedAt = Date.now();
+      fresh.imgGenDay = today();
+      fresh.imgGenAt = Date.now();
+      fresh.lastCharId = fresh.lastCharId || id;
+      try { localStorage.setItem('nano_schedule_report_made_' + id, String(Date.now())); } catch (e) {}
+      return writeStore(fresh).then(function () { return true; });
     });
   }
 
@@ -1077,25 +1098,44 @@
     opts = opts || {};
     var id = String(opts.charId || getCharId() || '');
     var name = String(opts.charName || getCharName() || '');
-    // 未开启「允许生图」的 char：不生成日程照片。
-    if (!charAllowsImage(id)) return Promise.resolve({ ok: true, skipped: true });
+    var canImage = charAllowsImage(id);
     return readStore().then(function (store) {
       var data = findData(store, id, name);
       if (!data || !Array.isArray(data.events)) return { ok: true, skipped: true };
       if (data.photoReport === false) return { ok: true, skipped: true };
+      // 只给近 12 小时还在聊天的角色生成报备，且必须由聊天页确认已满足
+      // 「断聊 7 天后连续聊 3 天」的规则，避免日程页自行提前生成图片。
+      try {
+        var okAt = Number(localStorage.getItem('nano_schedule_report_ok_' + id) || 0);
+        if (!okAt || Date.now() - okAt > 15 * 60 * 1000) return { ok: true, skipped: true };
+        var act = JSON.parse(localStorage.getItem('nano_chat_activity') || '{}') || {};
+        var lastChat = Number(act[id] || 0);
+        if (!lastChat || Date.now() - lastChat > 12 * 3600 * 1000) return { ok: true, skipped: true };
+      } catch (e) {}
+      // 一个角色 7 天只生成一次报备（无论有没有图）；投递次数由聊天页单独控制。
+      try {
+        var lastReport = Number(localStorage.getItem('nano_schedule_report_made_' + id) || 0);
+        if (lastReport && Date.now() - lastReport < 7 * 86400000) return { ok: true, skipped: true };
+      } catch (e) {}
       var d = today();
       var localLock = '';
       try { localLock = localStorage.getItem(imgDayKey(id)) || ''; } catch (e) {}
-      if (localLock === d || data.imgGenDay === d) return { ok: true, skipped: true };
+      var imgLocked = localLock === d || data.imgGenDay === d;
       var nm = nowMin();
       var due = data.events.filter(function (e) {
-        return e && e.status === 'todo' && e.date === d && !e.img && !isSleepEvent(e) &&
-          (!e.imgTriedAt || Date.now() - e.imgTriedAt > 30 * 60 * 1000) &&
+        return e && e.status === 'todo' && e.date === d && !e.report && !isSleepEvent(e) &&
           toMin(e.start) <= nm && nm <= toMin(e.end) + 120;
       });
       if (!due.length) return { ok: true, skipped: true };
       due.sort(function (a, b) { return toMin(a.start) - toMin(b.start); });
       var ev = due[0];
+      // 报备不一定生图：约 80% 生图，20% 只发卡片和气泡。
+      // 生图失败也不再自动补用第二次；直接走无图报备。
+      if (!canImage || imgLocked || Math.random() >= 0.8) {
+        return finishReportWithoutImage(id, name, ev.id).then(function () {
+          return { ok: true, noImage: true };
+        });
+      }
       var prompt = buildImagePrompt(data, ev);
       return Promise.all([
         readApiConfig(),
@@ -1151,7 +1191,13 @@
           });
         });
       }).catch(function (e) {
-        return { ok: false, error: (e && e.message) || '生图失败', background: !!(e && e.background) };
+        if (e && e.background) return { ok: false, error: (e && e.message) || '生图失败', background: true };
+        // 生图失败不再重试/补用第二次 API；照常发一条无图报备。
+        return finishReportWithoutImage(id, name, ev.id).then(function () {
+          return { ok: true, noImage: true, error: (e && e.message) || '生图失败' };
+        }).catch(function () {
+          return { ok: false, error: (e && e.message) || '生图失败' };
+        });
       });
     }).catch(function (e) {
       return { ok: false, error: (e && e.message) || '读取日程失败' };
@@ -1173,7 +1219,7 @@
       var cutoff = Date.now() - 24 * 3600 * 1000;
       var changed = false;
       data.events.forEach(function (e) {
-        if (!e || !e.img || !e.report || e.report.delivered) return;
+        if (!e || !e.report || e.report.delivered) return;
         var at = Number(e.report.at || 0);
         if (at && at < cutoff) { e.report.delivered = true; changed = true; return; }
         e.report.delivered = true;
@@ -1192,7 +1238,7 @@
           start: e.start || '',
           end: e.end || '',
           note: reportNote || e.note || e.title || '',
-          img: e.img.src || '',
+          img: (e.img && e.img.src) || '',
           at: at || Date.now()
         });
       });

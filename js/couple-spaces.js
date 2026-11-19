@@ -1628,7 +1628,7 @@ function questionsFromApi(raw, count, fallbackPool) {
     });
   }
   if (out.length < count) {
-    return out.concat(randomQuestions(fallbackPool, count - out.length));
+    throw new Error('模型只返回了 ' + out.length + '/' + count + ' 道可用题目，没有使用内置 mock 补题。请重试或换模型。');
   }
   return out.slice(0, count);
 }
@@ -1651,7 +1651,9 @@ function answersFromApi(raw, count, optionCount) {
   const out = [];
   for (let i = 0; i < count; i++) {
     let v = parseInt(arr[i], 10);
-    if (isNaN(v)) v = Math.floor(Math.random() * optionCount);
+    if (isNaN(v)) {
+      throw new Error('模型没有返回完整的答题结果（缺少第 ' + (i + 1) + ' 题），没有使用内置随机答案。请重试。');
+    }
     out.push(Math.max(0, Math.min(optionCount - 1, v)));
   }
   return out;

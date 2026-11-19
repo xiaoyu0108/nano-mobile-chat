@@ -199,6 +199,10 @@
     var base = baseURL();
     opts = opts || {};
     opts.headers = Object.assign({ 'Content-Type': 'application/json' }, opts.headers || {});
+    try {
+      var accTok = localStorage.getItem('nano_account_token') || '';
+      if (accTok && !opts.headers.Authorization) opts.headers.Authorization = 'Bearer ' + accTok;
+    } catch (e) {}
     var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
     if (ctrl) { opts.signal = ctrl.signal; setTimeout(function () { try { ctrl.abort(); } catch (e) {} }, 9000); }
     return fetch(base + path, opts).then(function (r) {
@@ -208,6 +212,9 @@
   }
   var MODE = { server: 'server', local: 'local' };
   var mode = MODE.local;
+  function isAdmin() {
+    try { return String(localStorage.getItem('nano_account_role') || '') === 'admin'; } catch (e) { return false; }
+  }
 
   /* ============================================================
      本机存储（自己的资源 / 离线缓存）
@@ -278,7 +285,11 @@
       if (!q) return true;
       var hay = [p.title, p.desc, p.author, (p.tags || []).join(' ')].join(' ').toLowerCase();
       return hay.indexOf(q) >= 0;
-    }).sort(function (a, b) { return (b.created || 0) - (a.created || 0); });
+    }).sort(function (a, b) {
+    if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
+    if (a.pinned && b.pinned) return (Number(a.pinRank) || 0) - (Number(b.pinRank) || 0);
+    return (b.created || 0) - (a.created || 0);
+  });
   }
 
   /* ============================================================
@@ -322,7 +333,7 @@
     return '<article class="post" data-post="' + p.id + '">'
       + '<div class="post-head">' + avatarHTML(p.avatar, p.author)
       + '<div class="post-head-info"><div class="author">' + esc(p.author) + '</div><div class="date">' + esc(p.date) + '</div></div>'
-      + '<span class="post-tag">' + esc(catName(p.category))
+      + '<span class="post-tag">' + (p.pinned ? '<i class="pin-dot">置顶</i> · ' : '') + esc(catName(p.category))
       + (p.category === 'prompt' ? (' · ' + esc(promptPartName(p.promptPart))) : (p.category === 'other' ? (' · ' + esc(otherTypeName(p.otherType))) : ''))
       + '</span></div>'
       + cover
@@ -433,7 +444,10 @@
       + gallery + filesHTML
       + '<div class="detail-bottom-bar">'
       + '<button class="detail-reaction' + (p.likedByMe ? ' liked' : '') + '" id="detailLike">' + ICONS.like + ' ' + (p.likes || 0) + '</button>'
-      + (isOwner(p.id)
+      + (isAdmin() && mode === MODE.server
+        ? '<button class="detail-admin" id="detailPin" title="置顶/取消置顶">' + (p.pinned ? '取消置顶' : '置顶') + '</button>'
+        : '')
+      + ((isOwner(p.id) || isAdmin())
         ? '<button class="detail-delete" id="detailDelete" title="删除这条资源">' + ICONS.trash + '</button>'
         : '<button class="detail-reaction" id="detailHide" title="只在本机隐藏这条资源">本机隐藏</button>')
       + '</div>'
@@ -523,6 +537,34 @@
       if (detailId === id) closeDetail();
       toast(/http 403/.test(msg) ? '服务器上的旧资源缺少删除凭证，已从本机隐藏' : '资源已删除');
     } catch (e) { toast('删除失败'); }
+  }
+
+  async function adminDeletePost(id) {
+    try {
+      await api('/market/admin/delete', { method: 'POST', body: JSON.stringify({ id: id }) });
+      hidden[id] = 1; saveHidden();
+      await idbDel('posts', id).catch(function () {});
+      feed = feed.filter(function (p) { return p.id !== id; });
+      delete fullCache[id];
+      renderHome(); updateProfile();
+      if (detailId === id) closeDetail();
+      toast('已删除该资源');
+    } catch (e) { toast('管理员删除失败：' + String((e && e.message) || e)); }
+  }
+
+  async function togglePinPost(id, pinned) {
+    try {
+      await api('/market/admin/pin', { method: 'POST', body: JSON.stringify({ id: id, pinned: !!pinned }) });
+      var it = feed.filter(function (x) { return x.id === id; })[0];
+      if (it) { it.pinned = !!pinned; it.pinRank = pinned ? -1 : 9999; }
+      feed.sort(function (a, b) {
+        if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
+        return (b.created || 0) - (a.created || 0);
+      });
+      renderHome();
+      if (detailId === id) await openDetail(id);
+      toast(pinned ? '已置顶' : '已取消置顶');
+    } catch (e) { toast('置顶失败：' + String((e && e.message) || e)); }
   }
 
   /* ============================================================
@@ -1583,8 +1625,18 @@
     var cached = fullCache[detailId];
     var sum = feed.filter(function (x) { return x.id === detailId; })[0] || {};
     var p = Object.assign({}, sum, cached || {});
-    if (e.target.closest('#detailLike')) { await toggleLike(detailId); return; }
-    if (e.target.closest('#detailDelete')) { if (confirm('确定删除这条资源吗？')) deletePost(detailId); return; }
+  if (e.target.closest('#detailLike')) { await toggleLike(detailId); return; }
+  if (e.target.closest('#detailPin')) {
+    if (confirm(p.pinned ? '取消置顶这条资源？' : '把这条资源置顶到最上方？')) togglePinPost(detailId, !p.pinned);
+    return;
+  }
+  if (e.target.closest('#detailDelete')) {
+    if (confirm('确定删除这条资源吗？')) {
+      if (isAdmin() && mode === MODE.server) adminDeletePost(detailId);
+      else deletePost(detailId);
+    }
+    return;
+  }
     if (e.target.closest('#detailHide')) {
       var hideId = detailId;
       hidden[hideId] = 1; saveHidden();

@@ -1280,9 +1280,9 @@
             importPngFromFile(file, false);
             return;
         }
-        if (lowerName.endsWith('.json')) {
+        if (lowerName.endsWith('.json') || file.type === 'application/json') {
             fileInput.value = '';
-            showInfo('不支持 JSON', '角色导入只接受 PNG 角色卡、TXT / DOC / DOCX 文本，不再直接导入 JSON 文件。');
+            importJsonFromFile(file);
             return;
         }
         // ===== 处理 DOC / DOCX 文件（按需加载解析库，不影响页面加载速度） =====
@@ -1432,18 +1432,23 @@
             showInfo('这是用户人设票根', '这张票根是「用户人设」，请到人设页面用「导入 PNG」来导入。');
             return;
         }
-        const blob = new Blob([arrayBuffer], { type: fileType || 'image/png' });
-        const tempImgUrl = URL.createObjectURL(blob);
+        let tempImgUrl = '';
+        if (arrayBuffer) {
+            try {
+                const blob = new Blob([arrayBuffer], { type: fileType || 'image/png' });
+                tempImgUrl = URL.createObjectURL(blob);
+            } catch (e) { tempImgUrl = ''; }
+        }
         let compressedAvatar = '';
         try {
             compressedAvatar = await compressImage(parsed.avatar || tempImgUrl, 180, 180, 0.7);
-            if (!compressedAvatar && parsed.avatar) {
+            if (!compressedAvatar && parsed.avatar && tempImgUrl) {
                 compressedAvatar = await compressImage(tempImgUrl, 180, 180, 0.7);
             }
         } catch (e) {
-            try { compressedAvatar = await compressImage(tempImgUrl, 180, 180, 0.7); } catch (e2) { compressedAvatar = ''; }
+            try { if (tempImgUrl) compressedAvatar = await compressImage(tempImgUrl, 180, 180, 0.7); } catch (e2) { compressedAvatar = ''; }
         }
-        URL.revokeObjectURL(tempImgUrl);
+        try { if (tempImgUrl) URL.revokeObjectURL(tempImgUrl); } catch (e) {}
 
         if (isEditMode) exitEditMode();
         openEditModal(null);
@@ -1539,6 +1544,54 @@
         });
     }
 
+    // ===== JSON 角色卡：和 PNG 票根共用同一个「导入 PNG」入口 =====
+    async function importJsonFromFile(file) {
+        return new Promise(function (resolve) {
+            const reader = new FileReader();
+            reader.onload = async function (ev) {
+                try {
+                    const raw = String(ev.target.result || '').trim();
+                    if (!raw) {
+                        showInfo('导入失败', 'JSON 文件是空的。');
+                        resolve(false);
+                        return;
+                    }
+                    let cardData = parseLooseJson(raw);
+                    if (!cardData) {
+                        try { cardData = unwrapCard(JSON.parse(raw)); } catch (e) {}
+                    }
+                    if (!cardData) {
+                        showInfo('无法识别', '这个 JSON 不是有效的角色卡（酒馆 / Nano 角色卡 JSON 都可以）。');
+                        resolve(false);
+                        return;
+                    }
+                    const parsed = parseCardData(cardData);
+                    if (!parsed.name && !parsed.setting && !(parsed.greetings && parsed.greetings.length)) {
+                        showInfo('无法识别', '这个 JSON 里没有找到角色名、设定或开场白，可能不是角色卡。');
+                        resolve(false);
+                        return;
+                    }
+                    if (parsed.nanoKind === 'user') {
+                        showInfo('这是用户人设', '这份 JSON 是「用户人设」，请到人设页面用「导入 PNG / JSON」来导入。');
+                        resolve(false);
+                        return;
+                    }
+                    await applyImportedCharacter(parsed, null, '');
+                    resolve(true);
+                } catch (err) {
+                    console.error('JSON 角色卡导入失败:', err);
+                    showInfo('导入失败', '解析 JSON 遇到错误: ' + ((err && err.message) || '未知错误'));
+                    resolve(false);
+                }
+            };
+            reader.onerror = function () {
+                showInfo('错误', '读取文件失败');
+                resolve(false);
+            };
+            reader.readAsText(file);
+        });
+    }
+
     // ===== 事件绑定 =====
     addBtn.addEventListener('click', function(e) {
         e.stopPropagation();
@@ -1612,7 +1665,7 @@
         if (!file) return;
         importPngFileInput.value = '';
         if (/\.json$/i.test(file.name || '') || file.type === 'application/json') {
-            showInfo('不支持 JSON', '角色导入只接受 PNG 角色卡。请导入酒馆 PNG，或把设定作为 TXT / DOCX 文本导入。');
+            await importJsonFromFile(file);
             return;
         }
         ensurePako().then(function() {
@@ -1657,6 +1710,10 @@
         const file = this.files[0];
         if (!file) return;
         importNanoPngFileInput.value = '';
+        if (/\.json$/i.test(file.name || '') || file.type === 'application/json') {
+            await importJsonFromFile(file);
+            return;
+        }
         await importPngFromFile(file, true);
     });
 

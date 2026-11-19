@@ -182,7 +182,8 @@
     function markGrayPinkTheme() {
         try {
             var css = localStorage.getItem('beautify_chat_v2') || '';
-            if (/--gp-|灰粉|gray-pink|#f9d5e0|topbar-avatar::before/i.test(css)) document.body.classList.add('nano-gp-chat');
+            var isGp = /--gp-|灰粉|gray-pink|#f9d5e0|topbar-avatar::before/i.test(css);
+            document.body.classList.toggle('nano-gp-chat', isGp);
         } catch (e) {}
     }
     markGrayPinkTheme();

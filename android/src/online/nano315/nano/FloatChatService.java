@@ -69,6 +69,8 @@ public class FloatChatService extends Service {
     private TextView titleText;
     private WebView webView;
     private WindowManager.LayoutParams params;
+    private GradientDrawable panelBgDrawable;
+    private TextView resizeHandle;
     private boolean expanded = false;
     private int screenW = 0;
     private int screenH = 0;
@@ -164,10 +166,12 @@ public class FloatChatService extends Service {
         if (windowManager == null) return;
         root = new FrameLayout(this);
         root.setClipToOutline(true);
+        // 收起时根布局必须透明，否则圆球外面会露出一个白色圆角方形底。
+        root.setBackgroundColor(Color.TRANSPARENT);
         GradientDrawable panelBg = new GradientDrawable();
         panelBg.setColor(Color.WHITE);
         panelBg.setCornerRadius(dp(18));
-        root.setBackground(panelBg);
+        panelBgDrawable = panelBg;
 
         // 收起状态：圆形悬浮球
         bubble = new FrameLayout(this);
@@ -272,6 +276,18 @@ public class FloatChatService extends Service {
 
         root.addView(bubble);
         root.addView(panel, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        // 展开后右下角的缩放手柄：拖动即可调整悬浮窗大小（会记住上次尺寸）。
+        resizeHandle = new TextView(this);
+        resizeHandle.setText("◢");
+        resizeHandle.setTextSize(13);
+        resizeHandle.setTextColor(Color.parseColor("#B99AA5"));
+        resizeHandle.setGravity(Gravity.CENTER);
+        resizeHandle.setBackgroundColor(Color.parseColor("#00FFFFFF"));
+        resizeHandle.setVisibility(View.GONE);
+        resizeHandle.setOnTouchListener(new ResizeTouch());
+        FrameLayout.LayoutParams rhLp = new FrameLayout.LayoutParams(dp(30), dp(30), Gravity.BOTTOM | Gravity.END);
+        root.addView(resizeHandle, rhLp);
 
         params = new WindowManager.LayoutParams(
                 dp(56), dp(56),
@@ -408,8 +424,13 @@ public class FloatChatService extends Service {
         expanded = true;
         bubble.setVisibility(View.GONE);
         panel.setVisibility(View.VISIBLE);
-        int w = Math.min(dp(360), Math.round(screenW * 0.92f));
-        int h = Math.min(dp(540), Math.round(screenH * 0.72f));
+        root.setBackground(panelBgDrawable);
+        if (resizeHandle != null) resizeHandle.setVisibility(View.VISIBLE);
+        int w = getSavedSize("float_w", Math.min(dp(360), Math.round(screenW * 0.92f)));
+        int h = getSavedSize("float_h", Math.min(dp(540), Math.round(screenH * 0.72f)));
+        // 尺寸至少能正常看聊天，最大不超过屏幕。
+        w = Math.max(dp(260), Math.min(w, Math.round(screenW * 0.96f)));
+        h = Math.max(dp(260), Math.min(h, Math.round(screenH * 0.90f)));
         if (params != null) {
             params.width = w;
             params.height = h;
@@ -418,8 +439,8 @@ public class FloatChatService extends Service {
                     | WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH;
             params.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
                     | WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN;
-            params.x = Math.max(dp(8), screenW - w - dp(10));
-            params.y = Math.max(dp(56), Math.round(screenH * 0.12f));
+            params.x = Math.max(dp(8), Math.min(params.x, screenW - w - dp(8)));
+            params.y = Math.max(dp(8), Math.min(params.y, screenH - h - dp(8)));
             if (windowManager != null) {
                 try { windowManager.updateViewLayout(root, params); } catch (Throwable ignored) {}
             }
@@ -436,6 +457,8 @@ public class FloatChatService extends Service {
         hideKeyboard();
         if (webView != null) webView.clearFocus();
         panel.setVisibility(View.GONE);
+        if (resizeHandle != null) resizeHandle.setVisibility(View.GONE);
+        root.setBackgroundColor(Color.TRANSPARENT);
         bubble.setVisibility(View.VISIBLE);
         if (params != null) {
             params.width = dp(56);
@@ -444,12 +467,25 @@ public class FloatChatService extends Service {
                     | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
                     | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS;
             params.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN;
-            params.x = Math.max(dp(8), screenW - dp(68));
-            params.y = Math.max(dp(72), Math.round(screenH * 0.22f));
+            params.x = Math.max(dp(8), Math.min(params.x, screenW - dp(64)));
+            params.y = Math.max(dp(8), Math.min(params.y, screenH - dp(64)));
             if (windowManager != null) {
                 try { windowManager.updateViewLayout(root, params); } catch (Throwable ignored) {}
             }
         }
+    }
+
+    private int getSavedSize(String key, int fallback) {
+        try {
+            return getSharedPreferences("nano_float", MODE_PRIVATE).getInt(key, fallback);
+        } catch (Throwable e) { return fallback; }
+    }
+
+    private void saveSize(int w, int h) {
+        try {
+            getSharedPreferences("nano_float", MODE_PRIVATE).edit()
+                    .putInt("float_w", w).putInt("float_h", h).apply();
+        } catch (Throwable ignored) {}
     }
 
     private void hideKeyboard() {
@@ -480,7 +516,7 @@ public class FloatChatService extends Service {
                         int w = params.width > 0 ? params.width : dp(56);
                         int h = params.height > 0 ? params.height : dp(56);
                         params.x = Math.max(-dp(8), Math.min(screenW - w + dp(8), downParamX + Math.round(dx)));
-                        params.y = Math.max(0, Math.min(screenH - dp(48), downParamY + Math.round(dy)));
+                        params.y = Math.max(-dp(8), Math.min(screenH - h + dp(8), downParamY + Math.round(dy)));
                         try { if (windowManager != null) windowManager.updateViewLayout(root, params); } catch (Throwable ignored) {}
                     }
                     return true;
@@ -491,6 +527,40 @@ public class FloatChatService extends Service {
                     if (!wasDrag && v == bubble) {
                         expand();
                     }
+                    return true;
+            }
+            return false;
+        }
+    }
+
+    private final class ResizeTouch implements View.OnTouchListener {
+        private float startX, startY;
+        private int startW, startH;
+
+        @Override
+        public boolean onTouch(View v, MotionEvent e) {
+            if (params == null || !expanded) return false;
+            switch (e.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    startX = e.getRawX();
+                    startY = e.getRawY();
+                    startW = params.width;
+                    startH = params.height;
+                    return true;
+                case MotionEvent.ACTION_MOVE:
+                    int w = Math.round(startW + (e.getRawX() - startX));
+                    int h = Math.round(startH + (e.getRawY() - startY));
+                    w = Math.max(dp(260), Math.min(w, Math.round(screenW * 0.96f)));
+                    h = Math.max(dp(260), Math.min(h, Math.round(screenH * 0.90f)));
+                    params.width = w;
+                    params.height = h;
+                    params.x = Math.max(0, Math.min(params.x, screenW - w));
+                    params.y = Math.max(0, Math.min(params.y, screenH - h));
+                    try { if (windowManager != null) windowManager.updateViewLayout(root, params); } catch (Throwable ignored) {}
+                    return true;
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL:
+                    saveSize(params.width, params.height);
                     return true;
             }
             return false;

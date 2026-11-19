@@ -6,7 +6,7 @@
   <script src="../js/nano-gallery.js?v=20261102a"></script>
 <script>window.__NANO_FONT_ONLY = true;</script>
 <script src="../js/appearance.js?v=20261110c"></script>
-<script src="../js/schedule-bridge.js?v=20261118g"></script>
+<script src="../js/schedule-bridge.js?v=20261119b"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
 <title>日程</title>
@@ -136,10 +136,12 @@ svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stro
 .empty .btn{margin:18px auto 0;max-width:200px}
 
 /* ---------- 底部操作 ---------- */
-.dock{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--safe-bottom, env(safe-area-inset-bottom, 0px)) + 14px);background:#000;color:#fff;border-radius:999px;padding:6px;display:flex;gap:2px;z-index:20}
-.dock button{display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 15px 7px;border-radius:999px;font-size:10px;letter-spacing:.06em;transition:background .15s}
-.dock button:active{background:#333}
-.dock svg.i{width:19px;height:19px}
+.dock{position:fixed;right:calc(var(--safe-right, env(safe-area-inset-right, 0px)) + 18px);left:auto;bottom:calc(var(--safe-bottom, env(safe-area-inset-bottom, 0px)) + 82px);transform:none;background:transparent;color:#5d5653;border-radius:999px;padding:0;display:flex;gap:2px;z-index:30}
+.dock button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;width:46px;height:46px;padding:0;border-radius:50%;font-size:10px;letter-spacing:.06em;transition:transform .15s,background .15s;background:rgba(255,255,255,.52);border:1px solid rgba(80,60,50,.10);box-shadow:0 8px 24px rgba(80,60,50,.10);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);color:#5d5653}
+.dock button:active{background:rgba(255,255,255,.82);transform:scale(.92)}
+.dock button:disabled{opacity:.55}
+.dock button span{display:none}
+.dock svg.i{width:20px;height:20px}
 
 /* ---------- 抽屉 ---------- */
 .scrim{position:fixed;inset:0;background:rgba(0,0,0,.38);opacity:0;pointer-events:none;transition:opacity .25s;z-index:40}
@@ -1254,6 +1256,7 @@ async function refreshSchedule(note){
   }
   if(oldJob)clearJob(oldJob.token);
   refreshing=true;render();
+  toast('正在刷新日程…');
   const ds=dates();
   let evs=null;
   try{

@@ -770,11 +770,13 @@
     });
   }
 
-  function ensureImport(opts) {
-    opts = opts || {};
-    var needActivation = opts.needActivation === true;
-    function attempt(retry) {
-      if (localMode()) return confirmImportPolicy();
+    function ensureImport(opts) {
+        opts = opts || {};
+        var needActivation = opts.needActivation === true;
+        function attempt(retry) {
+            // 本机模式没有账号/服务器权限体系，导入不再弹「导入须知」确认框，
+            // 避免每次导入角色 / 集市 PNG 卡片都被拦一下。
+            if (localMode()) return Promise.resolve(true);
       if (!currentAuth()) {
         return loginOverlay({ reason: '导入前请先登录账号。' }).then(function (ok) {
           if (!ok) return false;

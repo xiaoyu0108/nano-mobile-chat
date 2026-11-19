@@ -287,7 +287,7 @@
             console.log('📡 [AI识别] 读取到配置:', config);
             
             // 优先使用副 API
-            if (config.subToggle !== false && config.subUrl && config.subKey) {
+            if (config.subToggle === true && config.subUrl && config.subKey) {
                 console.log('📡 [AI识别] 使用副 API');
                 return {
                     label: '副 API',
