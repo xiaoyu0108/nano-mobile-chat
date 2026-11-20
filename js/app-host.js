@@ -488,7 +488,14 @@
         }
         function onMsg(e) {
           var d = e.data;
-          if (d && d.type === 'chatApiDone' && d.token === token) { if (!take()) finish({ ok: false, error: '未取到结果' }); }
+          if (!d || d.type !== 'chatApiDone' || d.token !== token) return;
+          // 结果会随消息一起返回；localStorage 满或不可用时也能拿到，避免白扣 API。
+          if (d.result && typeof d.result === 'object') {
+            try { localStorage.removeItem(resultKey); } catch (err) {}
+            finish(d.result);
+            return;
+          }
+          if (!take()) finish({ ok: false, error: '未取到结果' });
         }
         if (take()) return;
         window.addEventListener('message', onMsg);

@@ -1277,7 +1277,7 @@
             var done=false;
             function finish(d){ if(done)return; done=true; try{localStorage.removeItem(resultKey);}catch(e){} window.removeEventListener('storage',onStorage); window.removeEventListener('message',onMsg); resolve(d); }
             function onStorage(e){ if(e&&e.key===resultKey&&e.newValue){ var o=null; try{o=JSON.parse(e.newValue);}catch(err){} finish(o); } }
-            function onMsg(e){ var d=e.data; if(d&&d.type==='chatApiDone'&&d.token===token){ var v=null; try{v=localStorage.getItem(resultKey);}catch(err){} finish(v?JSON.parse(v):null); } }
+            function onMsg(e){ var d=e.data; if(d&&d.type==='chatApiDone'&&d.token===token){ if(d.result&&typeof d.result==='object'){ finish(d.result); return; } var v=null; try{v=localStorage.getItem(resultKey);}catch(err){} finish(v?JSON.parse(v):null); } }
             window.addEventListener('storage',onStorage); window.addEventListener('message',onMsg);
             if(window.parent!==window){
                 try{ window.parent.postMessage({type:'chatApiFetch',token:token,resultKey:resultKey,url:payload.url,method:'POST',headers:payload.headers,body:payload.body},'*'); }

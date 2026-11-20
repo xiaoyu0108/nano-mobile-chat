@@ -9852,6 +9852,13 @@
                     return;
                 }
                 if (d.type === 'chatApiDone' && d.token === payload.token) {
+                    // 主页面会把结果直接放进 postMessage；iPhone Safari 的 localStorage
+                    // 容易写满 / 被隔离，此时绝不能丢掉已经生成好的回复（否则会重复扣费）。
+                    if (d.result && typeof d.result === 'object') {
+                        try { localStorage.removeItem(resultKey); } catch (err) {}
+                        finish(d.result);
+                        return;
+                    }
                     if (!takeResult()) finish({ ok: false, status: 0, error: '未取到结果' });
                 }
             }
@@ -11009,6 +11016,13 @@
             }
 
             const data = parseChatPayload(result.text);
+            // 有些中转站会用 HTTP 200 返回 {"error": {...}}；以前会被当成“正文为空”，
+            // 这里直接把服务端原因显示出来，避免用户不明所以地反复重试。
+            if (data && data.error && !data.choices) {
+                const em = (data.error && (data.error.message || data.error.msg)) || data.error;
+                lastEmptyReplyInfo = '接口返回错误：' + String(typeof em === 'string' ? em : JSON.stringify(em)).slice(0, 300);
+                return null;
+            }
             const picked = extractChoiceReply(data);
             lastFinishReason = picked.finish || '';
             let content = String(picked.text || '').trim();
@@ -11018,6 +11032,8 @@
                 lastEmptyReplyInfo = picked.finish === 'length'
                     ? '模型把这一轮的 max_tokens 全部用完了，正文没有输出（常见于推理模型）。请到「聊天设置 → 回复字数上限」调高后重试，或换一个非推理模型。'
                     : (picked.refusal || '模型返回成功，但正文为空。可能被内容过滤、模型参数不兼容，或该中转站没有正确返回 choices[0].message.content。');
+                const rawHint = String(result.text || '').replace(/\s+/g, ' ').slice(0, 200);
+                if (rawHint) lastEmptyReplyInfo += '\n\n服务器原始返回：' + rawHint;
                 return null;
             }
             return content;

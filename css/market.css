@@ -802,3 +802,6 @@ body,.app,main,.page,.detail-page,.detail-content{background:#fff!important;colo
 .nav-btn{color:#8a8a8a!important}
 .nav-btn.active{color:#0a0a0a!important}
 .detail-delete,.btn-danger{background:#f4f4f4!important;color:#111!important;border-color:#e5e5e5!important}
+/* 点赞后的高亮必须是深底白字，不能被上面的白底 !important 覆盖成“空白按钮” */
+.detail-reaction.liked{background:#0a0a0a!important;border-color:#0a0a0a!important;color:#fff!important}
+.detail-reaction.liked svg{fill:#fff!important;stroke:#fff!important}

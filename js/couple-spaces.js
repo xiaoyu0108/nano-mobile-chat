@@ -390,6 +390,8 @@ function sendProxyRequest(payload) {
     function onMsg(e) {
       const d = e && e.data;
       if (d && d.type === 'chatApiDone' && d.token === payload.token) {
+        // 结果会随消息一起返回；localStorage 满或不可用时也能拿到，避免白扣 API。
+        if (d.result && typeof d.result === 'object') { finish(d.result); return; }
         if (!take()) finish({ ok: false, status: 0, error: '未取到结果' });
       }
     }

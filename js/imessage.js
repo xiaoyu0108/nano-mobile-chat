@@ -343,6 +343,8 @@ function sendApiFetch(payload, tokenOverride, resultKeyOverride) {
     function onMsg(e) {
       const d = e.data;
       if (d && d.type === 'chatApiDone' && d.token === token) {
+        // 结果会随消息一起返回；localStorage 满或不可用时也能拿到，避免白扣 API。
+        if (d.result && typeof d.result === 'object') { finish(d.result); return; }
         let v = null; try { v = localStorage.getItem(resultKey); } catch (err) {}
         finish(v ? safeParse(v, null) : null);
       }

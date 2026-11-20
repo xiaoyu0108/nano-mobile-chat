@@ -1026,14 +1026,16 @@
       var done = false;
       function onMsg(ev) {
         if (!ev || !ev.data || ev.data.type !== 'chatApiDone' || ev.data.token !== token) return;
-        finish(true);
+        // 结果会随消息一起返回；localStorage 满或不可用时也能拿到，避免白扣 API。
+        finish(true, ev.data.result);
       }
-      function finish(fromMsg) {
+      function finish(fromMsg, directResult) {
         if (done) return;
         done = true;
         window.removeEventListener('message', onMsg);
         setTimeout(function () {
           try {
+            if (directResult && typeof directResult === 'object') { resolve(directResult); return; }
             var raw = localStorage.getItem(resultKey);
             if (!raw) throw new Error('后台没有返回结果');
             localStorage.removeItem(resultKey);
