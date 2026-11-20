@@ -178,7 +178,7 @@
     var userLeft = !!group.userLeft;
     var msgIdCounter = 0;
 
-    // 标记当前是否套用了灰粉聊天模板：只有灰粉下才把右上角强制成摄像头按钮。
+    // 标记当前是否套用了灰粉聊天模板：群聊复用私聊的输入胶囊/发送键规则。
     function markGrayPinkTheme() {
         try {
             var css = localStorage.getItem('beautify_chat_v2') || '';
@@ -189,25 +189,6 @@
     markGrayPinkTheme();
     window.addEventListener('nano-chat-theme-applied', markGrayPinkTheme);
 
-    // 旧版灰粉模板存进 beautify_chat_v2 后，仍会把群聊发送按钮当成私聊按钮移到输入框里，
-    // 也会让顶栏保留摄像头样式。这里在主题应用后把发送按钮放回群聊底栏。
-    function enforceGroupGrayPinkDom() {
-        try {
-            var bar = document.querySelector('.bottom-bar');
-            var btn = document.getElementById('sendBtn');
-            if (bar && btn && btn.parentNode !== bar) bar.appendChild(btn);
-        } catch (e) {}
-    }
-    [0, 120, 500, 1500].forEach(function (ms) { setTimeout(enforceGroupGrayPinkDom, ms); });
-    window.addEventListener('nano-chat-theme-applied', function () {
-        setTimeout(enforceGroupGrayPinkDom, 80);
-    });
-    try {
-        var _barWatch = document.querySelector('.bottom-bar');
-        if (_barWatch && window.MutationObserver) {
-            new MutationObserver(enforceGroupGrayPinkDom).observe(_barWatch, { childList: true, subtree: true });
-        }
-    } catch (e) {}
     messages.forEach(function(m){ var n = parseInt((m.id||'').replace('msg_','')); if (n > msgIdCounter) msgIdCounter = n; });
 
     function recalcLevels(){
@@ -371,8 +352,16 @@
         if ($('noticeClose')) $('noticeClose').style.display = hasNotice ? '' : 'none';
         document.title = group.name || '群聊';
         var av = $('topbarAvatar');
-        if (group.avatar) av.innerHTML = '<img src="' + group.avatar + '">';
-        else av.textContent = '群';
+        var im = $('avatarImage');
+        var ph = $('avatarPlaceholder');
+        if (group.avatar) {
+            if (im) { im.src = group.avatar; im.style.display = 'block'; }
+            if (ph) ph.style.display = 'none';
+        } else {
+            if (im) { im.removeAttribute('src'); im.style.display = 'none'; }
+            if (ph) { ph.textContent = '群'; ph.style.display = 'flex'; }
+            else if (av) av.textContent = '群';
+        }
         if (window.parent !== window) window.parent.postMessage({ type:'groupChatTitle', title: group.name || '群聊' }, '*');
         try { applyChatInsets(); } catch (e) {}
     }
@@ -1136,7 +1125,20 @@
             sendBtn.classList.remove('reply-mode');
             if (icon) icon.className = 'fas fa-arrow-up';
         }
+        syncGrayPinkComposer();
     }
+    // 灰粉等私聊美化模板只在私聊里把发送键塞进输入胶囊；群聊用同一套 DOM，
+    // 这里补一次，旧版已保存的主题也能直接复用私聊底栏样式。
+    function syncGrayPinkComposer(){
+        if (!document.body.classList.contains('nano-gp-chat')) return;
+        var shell = document.querySelector('.input-shell');
+        var row = shell && shell.querySelector('.input-row');
+        if (sendBtn && row && sendBtn.parentNode !== row) row.appendChild(sendBtn);
+        if (shell) shell.classList.toggle('gp-typing', messageInput.value.trim() !== '');
+    }
+    window.addEventListener('nano-chat-theme-applied', function () {
+        setTimeout(syncGrayPinkComposer, 80);
+    });
     sendBtn.addEventListener('click', function(){
         if (userLeft) { triggerReply(); return; }
         var text = messageInput.value.trim();
@@ -2549,6 +2551,7 @@
     messageInput.addEventListener('input', function(){
         var v = this.value;
         updateSendState();
+        syncGrayPinkComposer();
         updateGroupEmojiRecommend();
         var atIdx = v.lastIndexOf('@');
         if (atIdx > -1 && atIdx === v.length - 1) showMentionDropdown('');
@@ -3567,6 +3570,7 @@ messageContainer.addEventListener('click', function(e){
     renderHeader();
     renderMessages();
     updateSendState();
+    syncGrayPinkComposer();
     consumePendingChanges();
     // 首屏也从 IndexedDB 补一次：localStorage 写满时群名 / 头像可能停在旧值。
     try { readGroupStored(); } catch (e) {}

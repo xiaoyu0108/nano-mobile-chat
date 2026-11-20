@@ -275,7 +275,7 @@
     }
 
     // ============================================================
-    // 4. API 配置读取（优先副 API，没配置则用主 API）
+    // 4. API 配置读取（统一使用主 API）
     // ============================================================
     function getActiveApiConfig() {
         return idbGet(API_STORE, 'nano_api_config').then(function(config) {
@@ -286,18 +286,6 @@
             
             console.log('📡 [AI识别] 读取到配置:', config);
             
-            // 优先使用副 API
-            if (config.subToggle === true && config.subUrl && config.subKey) {
-                console.log('📡 [AI识别] 使用副 API');
-                return {
-                    label: '副 API',
-                    url: config.subUrl,
-                    key: config.subKey,
-                    model: config.subModel || config.mainModel || ''
-                };
-            }
-            
-            // 其次使用主 API
             if (config.mainUrl && config.mainKey) {
                 console.log('📡 [AI识别] 使用主 API');
                 return {

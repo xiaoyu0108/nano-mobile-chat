@@ -41,7 +41,7 @@
   "id": "my-nano-app",
   "name": "Nano 应用模板",
   "icon": "◆",
-  "color": "#5B6CFF",
+  "color": "#111111",
   "desc": "完整可改写的 App 模板：首页 / 示例清单 / 二级页 / 设置 / DIY 返回栈 / 高权限",
   "version": "3.0.0",
   "highPermission": true,
@@ -50,33 +50,33 @@
 <style>
   *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
   :root{
-    --theme:#5B6CFF;
-    --theme-soft:color-mix(in srgb,var(--theme) 11%,#fff);
-    --ink:#171925;
-    --ink-2:#4c5064;
-    --muted:#8a8fa3;
-    --line:rgba(25,30,60,.09);
-    --bg:#f5f6fa;
-    --surface:#fff;
-    --danger:#ff3b30;
-    --ok:#1fa971;
+    --theme:#111111;
+    --theme-soft:#f3f3f3;
+    --ink:#111111;
+    --ink-2:#4a4a4a;
+    --muted:#8b8b8b;
+    --line:rgba(0,0,0,.08);
+    --bg:#ffffff;
+    --surface:#ffffff;
+    --danger:#666666;
+    --ok:#333333;
     --font:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",Arial,sans-serif;
     --safe-top:env(safe-area-inset-top,0px);
     --safe-bottom:env(safe-area-inset-bottom,0px);
-    --shadow:0 12px 34px rgba(30,35,80,.08);
+    --shadow:0 14px 38px rgba(0,0,0,.09);
   }
   html,body{width:100%;height:100%;overflow:hidden;position:fixed;inset:0;
     background:var(--bg);color:var(--ink);font-family:var(--font)}
   button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   img{display:block}
   .app{position:absolute;inset:0;display:flex;flex-direction:column;
-    background:radial-gradient(120% 65% at 50% -10%,var(--theme-soft),transparent 55%),var(--bg)}
+    background:var(--bg)}
 
   /* 顶栏：背景一直铺到灵动岛/刘海后面，按钮用 --safe-top 躲开它 */
   .topbar{flex:none;z-index:20;display:flex;align-items:center;gap:8px;
     padding:calc(var(--safe-top) + 8px) 12px 8px;min-height:56px;
-    background:rgba(245,246,250,.82);
-    -webkit-backdrop-filter:blur(18px) saturate(1.2);backdrop-filter:blur(18px) saturate(1.2);
+    background:rgba(255,255,255,.78);
+    -webkit-backdrop-filter:blur(18px) saturate(1.1);backdrop-filter:blur(18px) saturate(1.1);
     border-bottom:1px solid var(--line)}
   .tb-btn{width:38px;height:38px;border-radius:13px;flex:none;display:grid;place-items:center;
     background:rgba(255,255,255,.72);border:1px solid var(--line);color:var(--ink)}
@@ -90,7 +90,7 @@
     border:1px solid var(--line);font-size:12px;font-weight:700;color:var(--theme)}
   .tb-action:active{transform:scale(.96)}
 
-  .screen{flex:1;overflow-y:auto;overflow-x:hidden;padding:4px 14px calc(92px + var(--safe-bottom));
+  .screen{flex:1;overflow-y:auto;overflow-x:hidden;padding:4px 14px calc(24px + var(--safe-bottom));
     scrollbar-width:none;overscroll-behavior:contain}
   .screen::-webkit-scrollbar{display:none}
   .screen.enter{animation:screenIn .22s cubic-bezier(.3,.8,.35,1)}
@@ -98,40 +98,56 @@
 
   .tabbar{position:absolute;left:10px;right:10px;bottom:calc(8px + var(--safe-bottom));
     display:flex;justify-content:space-around;align-items:center;padding:7px 6px;
-    background:rgba(255,255,255,.9);border:1px solid var(--line);border-radius:22px;
-    box-shadow:var(--shadow);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);z-index:12}
+    background:rgba(255,255,255,.62);border:1px solid rgba(0,0,0,.06);border-radius:22px;
+    box-shadow:var(--shadow);-webkit-backdrop-filter:blur(20px) saturate(120%);backdrop-filter:blur(20px) saturate(120%);z-index:12}
   .tabbar[hidden]{display:none}
   .tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:5px 2px;
     border-radius:15px;color:var(--muted);font-size:10.5px;font-weight:700}
   .tab svg{width:21px;height:21px}
   .tab.on{color:var(--theme);background:var(--theme-soft)}
 
-  .hero{padding:14px 2px 4px}
-  .hero-row{display:flex;align-items:center;gap:12px}
-  .avatar{width:54px;height:54px;border-radius:19px;flex:none;overflow:hidden;
+  .hero{margin-top:12px;padding:18px;border-radius:26px;
+    background:rgba(255,255,255,.7);border:1px solid rgba(0,0,0,.06);
+    box-shadow:0 16px 40px rgba(0,0,0,.09);
+    -webkit-backdrop-filter:blur(20px) saturate(120%);backdrop-filter:blur(20px) saturate(120%)}
+  .hero-row{display:flex;align-items:center;gap:14px}
+  .avatar{width:60px;height:60px;border-radius:21px;flex:none;overflow:hidden;
     background:var(--theme-soft);display:grid;place-items:center;color:var(--theme);
-    font-weight:800;font-size:21px}
+    font-weight:800;font-size:23px;border:1px solid var(--line)}
   .avatar img{width:100%;height:100%;object-fit:cover}
-  .hero-name{font-size:23px;font-weight:850;letter-spacing:-.5px}
-  .hero-sub{font-size:12px;color:var(--muted);margin-top:3px;line-height:1.55}
-  .section{margin-top:22px}
-  .section-head{display:flex;align-items:baseline;justify-content:space-between;margin:0 2px 10px}
-  .section-title{font-size:13px;font-weight:800;color:var(--ink-2)}
-  .section-more{font-size:11px;color:var(--theme);font-weight:700}
+  .hero-kicker{font-size:10px;font-weight:800;letter-spacing:.18em;color:var(--muted);margin-bottom:4px}
+  .hero-name{font-size:26px;font-weight:850;letter-spacing:-.6px;line-height:1.1}
+  .hero-sub{font-size:12px;color:var(--muted);margin-top:5px;line-height:1.55}
+  .section{margin-top:26px}
+  .section-head{display:flex;align-items:baseline;justify-content:space-between;margin:0 4px 10px}
+  .section-title{font-size:11px;font-weight:800;color:var(--muted);letter-spacing:.14em;text-transform:uppercase}
+  .section-more{font-size:11px;color:var(--ink-2);font-weight:700}
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-  .card{background:var(--surface);border:1px solid var(--line);border-radius:20px;
-    padding:15px;box-shadow:0 8px 24px rgba(30,35,80,.045)}
-  .quick{display:flex;flex-direction:column;align-items:flex-start;gap:8px;text-align:left;min-height:112px}
-  .quick:active{transform:scale(.98)}
-  .quick .emoji{font-size:25px;line-height:1}
-  .quick b{font-size:14.5px;font-weight:800}
-  .quick span{font-size:11.5px;line-height:1.55;color:var(--muted)}
-  .quick .tagline{font-size:10px;font-weight:800;color:var(--theme);background:var(--theme-soft);
-    border-radius:999px;padding:3px 8px;margin-top:auto}
-  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}
-  .stat{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:12px;text-align:center}
-  .stat .n{font-size:20px;font-weight:850;color:var(--theme)}
-  .stat .l{font-size:10px;color:var(--muted);margin-top:3px}
+  .card{background:rgba(255,255,255,.7);border:1px solid rgba(0,0,0,.06);border-radius:22px;
+    padding:16px;box-shadow:0 14px 36px rgba(0,0,0,.07);
+    -webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px)}
+  /* 悬浮透明快捷按钮：一整块玻璃面板，内部按钮保持透明 */
+  .quick-dock{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:8px;
+    background:rgba(255,255,255,.7);border:1px solid rgba(0,0,0,.06);border-radius:24px;
+    box-shadow:0 16px 40px rgba(0,0,0,.09);-webkit-backdrop-filter:blur(20px) saturate(120%);
+    backdrop-filter:blur(20px) saturate(120%)}
+  .quick-btn{display:flex;align-items:center;gap:10px;text-align:left;min-height:64px;
+    padding:10px 12px;border-radius:17px;background:transparent;transition:background .16s,transform .16s}
+  .quick-btn:hover{background:rgba(0,0,0,.035)}
+  .quick-btn:active{transform:scale(.975);background:rgba(0,0,0,.06)}
+  .quick-btn .qb-icon{width:36px;height:36px;border-radius:50%;flex:none;display:grid;place-items:center;
+    background:rgba(0,0,0,.045);color:#111;font-size:17px;line-height:1}
+  .quick-btn .qb-icon svg{width:17px;height:17px;display:block}
+  .quick-btn .qb-text{min-width:0}
+  .quick-btn b{display:block;font-size:12.5px;font-weight:750;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .quick-btn .qb-desc{display:block;font-size:10px;line-height:1.4;color:var(--muted);margin-top:2px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .stats{display:flex;align-items:center;margin-top:18px;padding:12px 2px;
+    border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+  .stat{flex:1;text-align:center;border-left:1px solid var(--line)}
+  .stat:first-child{border-left:0}
+  .stat .n{font-size:19px;font-weight:850;color:var(--ink)}
+  .stat .l{font-size:10px;color:var(--muted);margin-top:3px;letter-spacing:.04em}
   .chips{display:flex;flex-wrap:wrap;gap:7px}
   .chip{display:inline-flex;align-items:center;gap:6px;padding:7px 11px;border-radius:999px;
     background:var(--surface);border:1px solid var(--line);font-size:11.5px;color:var(--ink-2);font-weight:600}
@@ -142,18 +158,22 @@
   .char .avatar{width:56px;height:56px;border-radius:19px;margin:0 auto 5px;font-size:20px}
   .char .name{font-size:10.5px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
-  .row{display:flex;align-items:center;gap:11px;width:100%;padding:12px 13px;
+  .row{display:flex;align-items:center;gap:12px;width:100%;padding:13px 15px;
     background:var(--surface);border:1px solid var(--line);border-radius:16px;text-align:left}
-  .row:active{background:#fafbff}
-  .row .icon{width:38px;height:38px;border-radius:12px;flex:none;display:grid;place-items:center;
-    background:var(--theme-soft);color:var(--theme);font-size:17px;font-weight:800}
+  .row:active{background:#f7f7f7}
+  .row .icon{width:38px;height:38px;border-radius:50%;flex:none;display:grid;place-items:center;
+    background:var(--theme-soft);color:var(--theme);font-size:15px;font-weight:800}
   .row .main{flex:1;min-width:0}
   .row .t{font-size:13.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .row .d{font-size:11px;color:var(--muted);margin-top:2px;line-height:1.45;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .row .v{font-size:10.5px;color:var(--muted);flex:none}
-  .row .chev{width:8px;height:13px;flex:none;color:#c7c9d6}
-  .list{display:flex;flex-direction:column;gap:8px}
+  .row .chev{width:8px;height:13px;flex:none;color:#c7c7c7}
+  .list{display:flex;flex-direction:column;background:var(--surface);
+    border:1px solid var(--line);border-radius:20px;overflow:hidden;box-shadow:0 12px 34px rgba(0,0,0,.05)}
+  .list .row{border:0;border-bottom:1px solid var(--line);border-radius:0;background:transparent;padding:14px 16px}
+  .list .row:last-child{border-bottom:0}
+  .list .row:active{background:#f7f7f7}
 
   .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;
     padding:11px 16px;border-radius:14px;background:var(--theme);color:#fff;
@@ -167,7 +187,8 @@
   .btn:disabled{opacity:.4}
 
   .empty{padding:46px 18px;text-align:center;color:var(--muted)}
-  .empty .big{font-size:32px;color:#d4d6e2;margin-bottom:10px}
+  .empty .big{font-size:32px;color:#b9b9b9;margin-bottom:10px}
+  .empty .big svg{width:34px;height:34px;margin:0 auto;display:block}
   .empty b{display:block;font-size:14px;color:var(--ink-2);margin-bottom:5px}
   .empty span{font-size:12px;line-height:1.65}
   .notice{font-size:11px;line-height:1.65;color:var(--muted);margin-top:10px}
@@ -237,7 +258,7 @@
   .modal-btn.danger{background:var(--danger);color:#fff}
   .boot{padding:70px 24px;text-align:center;color:var(--muted);font-size:13px;line-height:1.7}
   .boot b{display:block;color:var(--ink);font-size:17px;margin-bottom:8px}
-  @media(max-width:360px){.grid2{grid-template-columns:1fr}.quick{min-height:auto}}
+  @media(max-width:360px){.grid2{grid-template-columns:1fr}.quick-dock{grid-template-columns:1fr}.quick-btn{min-height:56px}}
 </style>
 </head>
 <body>
@@ -264,7 +285,7 @@
 
   var DEFAULT = {
     name: 'Nano 应用模板',
-    icon: { letter: '◆', color: '#5B6CFF', image: '' },
+    icon: { letter: '◆', color: '#111111', image: '' },
     charIds: [],
     useCharPersona: true,
     useUserPersona: true,
@@ -488,22 +509,22 @@
       var chars = App.chars.slice(0, 8);
       var recent = App.items.slice(0, 3);
       return '<div class="hero"><div class="hero-row">' + avatarOf(App.user, true) +
-        '<div><div class="hero-name">你好，' + esc(App.user.name || '我') + '</div>' +
+        '<div><div class="hero-kicker">NANO APP</div><div class="hero-name">你好，' + esc(App.user.name || '我') + '</div>' +
         '<div class="hero-sub">' + (App.chars.length ? ('已连接 ' + App.chars.length + ' 个角色 · 高权限已开启') : '还没有角色，去设置里选择') + '</div></div></div>' +
         '<div class="stats"><div class="stat"><div class="n">' + App.items.length + '</div><div class="l">示例条目</div></div>' +
         '<div class="stat"><div class="n">' + App.chars.length + '</div><div class="l">角色</div></div>' +
         '<div class="stat"><div class="n">' + (App.apiConnected ? '在线' : '未连') + '</div><div class="l">主 API</div></div></div></div>' +
         '<div class="notice">「示例清单」只是模板演示功能；应用真正的身份证是 HTML 里的 nano-manifest。</div>' +
-        '<div class="section"><div class="section-head"><span class="section-title">快速开始</span></div><div class="grid2">' +
-        '<button class="card quick" data-tab="items"><span class="emoji">☑</span><b>示例清单</b><span>增删改查 + 二级详情页</span><span class="tagline">完整示例</span></button>' +
-        '<button class="card quick" data-new="1"><span class="emoji">＋</span><b>新建示例条目</b><span>往示例清单加一条记录</span><span class="tagline">写数据</span></button>' +
-        '<button class="card quick" data-go="guide"><span class="emoji">⌘</span><b>DIY 指南</b><span>页面、返回、Nano API 全写清楚</span><span class="tagline">改模板</span></button>' +
-        '<button class="card quick" data-tab="settings"><span class="emoji">⚙</span><b>设置</b><span>名称 / 图标 / 字体 / 角色 / 权限</span><span class="tagline">自定义</span></button>' +
+        '<div class="section"><div class="section-head"><span class="section-title">快速开始</span></div><div class="quick-dock">' +
+        '<button class="quick-btn" data-tab="items"><span class="qb-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11"/><path d="m3 6 1.5 1.5L7 5"/><path d="m3 12 1.5 1.5L7 11"/><path d="m3 18 1.5 1.5L7 17"/></svg></span><span class="qb-text"><b>示例清单</b><span class="qb-desc">增删改查 + 二级详情</span></span></button>' +
+        '<button class="quick-btn" data-new="1"><span class="qb-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span><span class="qb-text"><b>新建条目</b><span class="qb-desc">写入一条示例记录</span></span></button>' +
+        '<button class="quick-btn" data-go="guide"><span class="qb-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5z"/></svg></span><span class="qb-text"><b>DIY 指南</b><span class="qb-desc">页面 / 返回 / API</span></span></button>' +
+        '<button class="quick-btn" data-tab="settings"><span class="qb-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="2"/><circle cx="15" cy="17" r="2"/></svg></span><span class="qb-text"><b>设置</b><span class="qb-desc">名称 / 字体 / 角色</span></span></button>' +
         '</div></div>' +
         '<div class="section"><div class="section-head"><span class="section-title">最近示例条目</span><button class="section-more" data-tab="items">全部</button></div>' +
         (recent.length ? '<div class="list">' + recent.map(function (it) {
           return '<button class="row" data-item="' + esc(it.id) + '"><span class="icon">' + esc(String(it.title).charAt(0)) + '</span><span class="main"><span class="t">' + esc(it.title) + '</span><span class="d">' + esc(it.note || '还没有备注') + '</span></span><span class="v">' + timeText(it.updatedAt) + '</span></button>';
-        }).join('') + '</div>' : '<div class="card empty"><div class="big">☑</div><b>示例清单还是空的</b><span>点「新建示例条目」开始。</span></div>') +
+        }).join('') + '</div>' : '<div class="card empty"><div class="big"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11"/><path d="m3 6 1.5 1.5L7 5"/><path d="m3 12 1.5 1.5L7 11"/><path d="m3 18 1.5 1.5L7 17"/></svg></div><b>示例清单还是空的</b><span>点「新建示例条目」开始。</span></div>') +
         '</div>' +
         '<div class="section"><div class="section-head"><span class="section-title">我的角色</span><button class="section-more" data-tab="settings">管理</button></div>' +
         (chars.length ? '<div class="char-row">' + chars.map(function (c) {
@@ -534,7 +555,7 @@
         '<div class="addbar"><input id="newItemInput" placeholder="写一条示例记录…" autocomplete="off"><button class="btn" id="newItemBtn">添加</button></div>' +
         (App.items.length ? '<div class="list">' + App.items.map(function (it) {
           return '<button class="row" data-item="' + esc(it.id) + '"><span class="icon">' + esc(String(it.title).charAt(0)) + '</span><span class="main"><span class="t">' + esc(it.title) + '</span><span class="d">' + esc(it.note || '还没有备注') + '</span></span><span class="v">' + timeText(it.updatedAt) + '</span><svg class="chev" viewBox="0 0 8 13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m1 1 5 5.5L1 12"/></svg></button>';
-        }).join('') + '</div>' : '<div class="card empty"><div class="big">☑</div><b>示例清单是空的</b><span>在上面输入一条，按「添加」。</span></div>') +
+        }).join('') + '</div>' : '<div class="card empty"><div class="big"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11"/><path d="m3 6 1.5 1.5L7 5"/><path d="m3 12 1.5 1.5L7 11"/><path d="m3 18 1.5 1.5L7 17"/></svg></div><b>示例清单是空的</b><span>在上面输入一条，按「添加」。</span></div>') +
         '<div class="notice">点条目进入详情页。详情页的返回只回示例清单，不会直接回首页。</div>';
     },
     mount: function (el) {
@@ -560,7 +581,7 @@
     hideTab: true,
     html: function (p) {
       var it = itemById(p && p.id);
-      if (!it) return '<div class="card empty"><div class="big">◌</div><b>找不到这条清单</b><span>可能已经被删除。</span></div>';
+      if (!it) return '<div class="card empty"><div class="big"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M8 12h8"/></svg></div><b>找不到这条清单</b><span>可能已经被删除。</span></div>';
       return '<div class="detail-card"><div class="detail-meta">创建于 ' + esc(new Date(it.createdAt).toLocaleString()) + '</div>' +
         '<div class="field"><label>标题</label><input id="itemTitle" value="' + esc(it.title) + '" maxlength="60"></div>' +
         '<div class="field"><label>备注</label><textarea id="itemNote" placeholder="写点细节…">' + esc(it.note) + '</textarea></div>' +
@@ -605,7 +626,7 @@
       return '<div class="card"><div class="section-title" style="margin-bottom:10px">应用</div>' +
         '<div class="field"><label>名称</label><input id="stName" maxlength="16" value="' + esc(c.name) + '"></div>' +
         '<div class="field"><label>图标（字母 / Emoji）</label><input id="stLetter" maxlength="4" value="' + esc(c.icon.letter || '') + '"></div>' +
-        '<div class="field"><label>主题色</label><div class="field-row"><input type="color" id="stColor" value="' + esc(c.icon.color || '#5B6CFF') + '"><span class="notice" style="margin:0">按钮、导航、图标都会跟着变</span></div></div>' +
+        '<div class="field"><label>主题色</label><div class="field-row"><input type="color" id="stColor" value="' + esc(c.icon.color || '#111111') + '"><span class="notice" style="margin:0">按钮、导航、图标都会跟着变</span></div></div>' +
         '<div class="field"><label>自定义字体 URL（可选）</label><div class="field-row"><input id="stFont" placeholder="https://…/font.woff2" value="' + esc(c.fontUrl || '') + '"></div><div class="notice">只支持能直接跨域加载的字体直链；不再经过任何代理。</div></div>' +
         '</div>' +
         '<div class="card" style="margin-top:12px"><div class="section-title" style="margin-bottom:10px">参与角色</div>' +
@@ -651,7 +672,7 @@
       if (saveBtn) saveBtn.onclick = function () {
         App.config.name = ($('stName').value || '').trim() || '我的应用';
         App.config.icon.letter = ($('stLetter').value || '').trim() || '◆';
-        App.config.icon.color = $('stColor').value || '#5B6CFF';
+        App.config.icon.color = $('stColor').value || '#111111';
         App.config.fontUrl = ($('stFont').value || '').trim();
         applyFont();
         save();

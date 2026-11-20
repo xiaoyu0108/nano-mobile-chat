@@ -137,18 +137,6 @@ async function getMainApiConfig() {
   return base;
 }
 
-async function getSubApiConfig() {
-  const cfg = await apiGet('nano_api_config');
-  if (!cfg) return { url: '', key: '', model: '', temp: 0.7, enabled: false };
-  return {
-    url: cfg.subUrl || '',
-    key: cfg.subKey || '',
-    model: cfg.subModel || cfg.mainModel || '',
-    temp: cfg.subTemp != null ? cfg.subTemp : (cfg.mainTemp != null ? cfg.mainTemp : 0.7),
-    enabled: cfg.subToggle === true
-  };
-}
-
 async function callApiWith(conf, messages) {
   if (!conf || !conf.url || !conf.key) throw new Error('未配置 API，请先在 API 设置里填写中转地址和 Key');
   try {
@@ -181,14 +169,8 @@ async function callMainApi(messages) {
   return callApiWith(await getMainApiConfig(), messages);
 }
 
-// apiPref:'sub' → 优先副 API，未配置副 API 时自动回退主 API；其它一律用主 API
-async function callChatApi(messages, apiPref) {
-  if (apiPref === 'sub') {
-    try {
-      const sub = await getSubApiConfig();
-      if (sub.enabled && sub.url && sub.key) return await callApiWith(sub, messages);
-    } catch (e) { /* 副 API 不可用，回退主 API */ }
-  }
+// 统一使用主 API；副 API 已移除（可在悬浮球切换主 API 预设）
+async function callChatApi(messages) {
   return callMainApi(messages);
 }
 

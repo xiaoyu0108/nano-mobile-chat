@@ -2562,13 +2562,10 @@
       });
     }).catch(function() { return null; });
   }
-  // 返回可用配置：副 API 优先，未配置/未开启则用主 API
+  // 返回可用配置：统一使用主 API
   async function getAiApiConf() {
     var cfg = await aiApiGet('nano_api_config');
     if (!cfg) return null;
-    if (cfg.subToggle === true && cfg.subUrl && cfg.subKey) {
-      return { url: cfg.subUrl, key: cfg.subKey, model: cfg.subModel || cfg.mainModel || '', temp: cfg.subTemp != null ? cfg.subTemp : 0.85 };
-    }
     if (cfg.mainUrl && cfg.mainKey) {
       return { url: cfg.mainUrl, key: cfg.mainKey, model: cfg.mainModel || '', temp: cfg.mainTemp != null ? cfg.mainTemp : 0.85 };
     }

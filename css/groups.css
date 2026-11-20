@@ -587,12 +587,13 @@ html.keyboard-open body.nano-groups .bottom-bar {
     box-shadow: 0 4px 16px rgba(0,0,0,0.08);
 }
 .quote-bar.active { display: flex; }
-.quote-bar .qb-name { font-weight: 600; color: #007aff; flex-shrink: 0; }
-.quote-bar .qb-text {
+/* 与私聊 chat_inner 保持同一套引用条类名，美化模板可直接复用 */
+.quote-bar .quote-name { font-weight: 600; color: #1c1c1e; margin-right: 2px; flex-shrink: 0; }
+.quote-bar .quote-text {
     color: #8e8e93; flex: 1; min-width: 0;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.quote-bar .qb-cancel {
+.quote-bar .quote-cancel {
     border: none; background: rgba(0,0,0,0.06); color: #8e8e93;
     width: 18px; height: 18px; border-radius: 50%;
     cursor: pointer; font-size: 11px; line-height: 1;
@@ -1343,64 +1344,6 @@ html.keyboard-open body.nano-groups .bottom-bar {
 .bubble-card .ship-line { flex: 1; height: 2px; margin: 0 3px; background: #ece3d7; }
 .bubble-card .ship-line.on { background: #c58a4c; }
 
-/* ============================================================
-   群聊右上角始终显示群头像（或「群」字）：
-   私聊美化模板里的摄像头 / 设置按钮样式不能带到群聊。
-   ============================================================ */
-body.nano-groups.nano-chat-inner .topbar-avatar {
-    font-size: 17px !important;
-    color: #8e8e93 !important;
-    overflow: hidden;
-}
-body.nano-groups.nano-chat-inner .topbar-avatar > img {
-    display: block !important;
-    visibility: visible !important;
-    opacity: 1 !important;
-    width: 100% !important;
-    height: 100% !important;
-    object-fit: cover !important;
-    border-radius: 50% !important;
-}
-body.nano-groups.nano-chat-inner .topbar-avatar > span {
-    display: flex !important;
-    visibility: visible !important;
-    opacity: 1 !important;
-}
-body.nano-groups.nano-chat-inner .topbar-avatar::before {
-    content: none !important;
-    display: none !important;
-}
-body.nano-groups.nano-chat-inner .message-avatar {
-    display: flex !important;
-}
-body.nano-groups.nano-chat-inner .message-row.tip-row-wrap .message-avatar,
-body.nano-groups.nano-chat-inner .message-row.centered .message-avatar,
-body.nano-groups.nano-chat-inner .message-row.recalled .message-avatar,
-body.nano-groups.nano-chat-inner .message-row.sys-notice .message-avatar {
-    display: none !important;
-}
-body.nano-groups.nano-chat-inner .bottom-bar .send-btn {
-    width: 42px !important;
-    height: 42px !important;
-    min-width: 42px !important;
-    border-radius: 50% !important;
-    background: #2c2c2e !important;
-    color: #fff !important;
-    display: flex !important;
-    align-items: center;
-    justify-content: center;
-    box-shadow: 0 2px 8px rgba(44, 44, 46, .3) !important;
-}
-body.nano-groups.nano-chat-inner .bottom-bar .send-btn i,
-body.nano-groups.nano-chat-inner .bottom-bar .send-btn svg {
-    display: block !important;
-    color: #fff !important;
-    stroke: #fff !important;
-    font-size: 16px !important;
-}
-body.nano-groups.nano-chat-inner .bottom-bar .send-btn.reply-mode::after {
-    display: none !important;
-}
 .multi-select-bar #msForward { color: #0a84ff; font-weight: 500; }
 .bubble-card .fw-box { max-height: 280px; overflow: auto; }
 .bubble-card .fw-box details summary { cursor: pointer; font-weight: 600; color: #6b5b4a; }

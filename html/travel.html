@@ -653,7 +653,7 @@ function openUs(id){
   CUR = {kind:'us', id}; S.panel = null; S.gen = {thought:true, polaroid:true}; S.busy = null;
   openSheet(`
     <div class="sh-head"><h3>共同的旅程</h3><div class="acts">${actShare(p)}${actGen}</div></div>
-    <div class="us-title"><h2>${esc(p.place)}</h2><div class="d">${fmtD(p.date)}${p.days?' · '+esc(String(p.days))+'天':''}${p.ticketNo?' · 票号 '+esc(p.ticketNo):''}</div>
+    <div class="us-title"><h2>${esc(p.place)}（${esc([ME_NAME,CHAR_NAME].filter(Boolean).filter((n,i,a)=>a.indexOf(n)===i).join(' * '))}）</h2><div class="d">${fmtD(p.date)}${p.days?' · '+esc(String(p.days))+'天':''}${p.ticketNo?' · 票号 '+esc(p.ticketNo):''}</div>
       <div class="cost"><small>总花费</small><b><i>¥</i>${fmtM(costOf(p))}</b></div></div>
     <div id="panel"></div>
     <div class="sec"><h4>${ic('i-camera')}拍立得</h4><div id="polBox"></div></div>

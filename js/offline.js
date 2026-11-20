@@ -5158,10 +5158,10 @@ async function offExtractViaMain(chatText, label, opts) {
     + '要求：\n'
     + '- 只保留有长期价值的关键点，合并同类，删掉寒暄、日常口水话和没有后续影响的小事；\n'
     + '- 每条 60~160 字，至少包含：当时的具体场景/对话细节 + 我当时的感受 + 这件事对我和TA意味着什么；不要只写一句结论或几个字；\n'
-    + '- 【语言】记忆正文必须用简体中文；外语原话只保留少量，并在后面用「（中文：……）」附上翻译，绝不能只输出外语；\n'
+    + '- 【语言】记忆正文必须用简体中文概括；绝不能只输出外语；\n'
     + '- 最多 5 条，宁缺毋滥；确实没有值得记的就什么都不要输出；\n'
     + '- 一行一条，格式：【类型|重要度】内容；重要度 1~5 由我判断，不能全部写 3：5=刻骨铭心/改变关系，4=重要且长期影响，3=稳定信息，2=轻量偏好，1=可记可不记；\n'
-    + '- 保留名字、地点、数字、具体物品和原话，不要模糊概括；不要编号、不要解释、不要照抄对话原文。\n\n对话：\n' + chatText;
+    + '- 保留名字、地点、数字、具体物品，不要模糊概括；不要编号、不要解释、不要照抄对话原文。\n\n对话：\n' + chatText;
   const resp = await fetch(url + '/chat/completions', {
     method: 'POST',
     headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json' },
@@ -5181,42 +5181,6 @@ function offGuessImportance(type, content) {
   if (String(content || '').length > 120) return 4;
   return 3;
 }
-function offExtractQuoteEntries(msgs, chatId, baseTs, relatedChar) {
-  const special = /一直|永远|一辈子|下辈子|爱你|喜欢你|想你|在乎你|等你|别走|别离开|对不起|原谅|分手|和好|结婚|嫁给我|娶你|答应我|答应你|承诺|约定|说好|保证|不会离开|陪你|生日|纪念日|秘密|只有你|离不开你/;
-  const out = [];
-  const seen = {};
-  (Array.isArray(msgs) ? msgs : []).forEach(function (m, idx) {
-    if (!m || !m.content) return;
-    const text = String(m.content).trim();
-    if (!text || text.length < 2 || text.length > 160) return;
-    if (!special.test(text)) return;
-    const k = text.replace(/\s+/g, '');
-    if (seen[k]) return;
-    seen[k] = 1;
-    if (out.length >= 8) return;
-    const isUser = m.role === 'user';
-    const who = isUser ? (settings.userName || '用户') : (m.name || relatedChar || settings.charName || '角色');
-    const ts = Number(m.ts) || (Number(baseTs) || Date.now()) + idx;
-    out.push({
-      id: 'omq' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
-      ts: ts,
-      date: new Date(ts).toISOString(),
-      time: new Date(ts).toLocaleString('zh-CN'),
-      type: '原话',
-      importance: 5,
-      chatId: chatId,
-      relatedChar: relatedChar || settings.charName || '',
-      content: who + '说过：「' + text + '」',
-      sourceText: text,
-      sourceSpeaker: isUser ? 'user' : 'char',
-      sourceMsgId: m.id || '',
-      embedding: null,
-      hasVector: false
-    });
-  });
-  return out;
-}
-
 async function offBuildMemoryEntries(summary, chatId, baseTs, relatedChar) {
   let items = String(summary || '').split('\n').map(l => l.trim()).map(l => l.replace(/^[-*\d.\s、)]+/, '')).filter(l => l && l.length >= 6);
   const seen = {};
@@ -5374,7 +5338,6 @@ async function offSummarizeCharOnce(target, force) {
   if (!summary) return 0;
   var targetId = target && target.id != null ? target.id : offlineChatId;
   var entries = await offBuildMemoryEntries(summary, targetId, offlineMsgTs(take[0]), defaultName);
-  entries = entries.concat(offExtractQuoteEntries(take, targetId, offlineMsgTs(take[0]), defaultName));
   if (!entries.length) return 0;
   if (window.NanoMemLink && window.NanoMemLink.append) {
     await window.NanoMemLink.append(targetId, entries);

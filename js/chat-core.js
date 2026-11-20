@@ -2921,7 +2921,7 @@
 要求：
 - 每条 60~160 字，是「事后回想」的提炼，不是逐句复述聊天；不要把整段对话照抄进记忆，也不要只写一句空结论。
 - 至少包含当时的具体场景/细节 + 我当时的感受 + 这件事对我意味着什么；保留名字、地点、数字、具体物品。
-- 【语言】记忆正文必须用简体中文写。如果原对话是韩语/英语/日语等外语，只保留少量关键原话，并在后面用「（中文：……）」附上翻译；绝对不能只输出外语。`;
+- 【语言】记忆正文必须用简体中文写。如果原对话是韩语/英语/日语等外语，用简体中文概括即可；绝对不能只输出外语。`;
     }
 
     function __memCallLlm(baseUrl, key, model, chatText, charName, currentUser) {
@@ -2991,44 +2991,6 @@
         return items;
     }
 
-    function __memExtractQuoteItems(segment, charName, baseTs) {
-        const special = /一直|永远|一辈子|下辈子|爱你|喜欢你|想你|在乎你|等你|别走|别离开|对不起|原谅|分手|和好|结婚|嫁给我|娶你|答应我|答应你|承诺|约定|说好|保证|不会离开|陪你|生日|纪念日|秘密|只有你|离不开你/;
-        const out = [];
-        const seen = {};
-        const arr = Array.isArray(segment) ? segment : [];
-        arr.forEach(function (m, idx) {
-            if (!m || m.recalled || m.isTip || m.isCard || m.isImage) return;
-            const text = String(m.text || '').trim();
-            if (!text || text.length < 2 || text.length > 160) return;
-            if (!special.test(text)) return;
-            const k = text.replace(/\s+/g, '');
-            if (seen[k]) return;
-            seen[k] = 1;
-            const isUser = m.type === 'right';
-            const speaker = isUser ? 'user' : 'char';
-            const who = isUser ? '用户' : (charName || '角色');
-            const ts = Number(m.ts) || (Number(baseTs) || Date.now()) + idx;
-            out.push({
-                id: 'memq_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
-                type: '原话',
-                content: who + '说过：「' + text + '」',
-                sourceText: text,
-                sourceSpeaker: speaker,
-                sourceMsgId: m.id || '',
-                importance: 5,
-                embedding: null,
-                hasVector: false,
-                ts: ts,
-                date: new Date(ts).toISOString(),
-                relatedChar: charName,
-                chatId: chatId,
-                source: 'auto'
-            });
-            if (out.length >= 8) return;
-        });
-        return out;
-    }
-
     function __memAppendMemory(item) {
         // 记忆卡片以 chatId 为 key 存在 config 存储（与记忆页读取一致）
         // 小号聊天产生的记忆统一计入大号（origin）记忆库
@@ -3089,8 +3051,7 @@
         }).then(function(res2) {
             __autoSummaryBusy = false;
             if (!res2 || !res2.summary || !res2.summary.trim()) return null;
-            const items = __memParseSummary(res2.summary, charName, res2.baseTs)
-                .concat(__memExtractQuoteItems(res2.segment || [], charName, res2.baseTs));
+            const items = __memParseSummary(res2.summary, charName, res2.baseTs);
             if (items.length === 0) return null;
             // 尝试向量化（若本页配置了 Embedding API）
             return Promise.all([

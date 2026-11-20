@@ -99,67 +99,6 @@
                         </div>
                     </div>
 
-                    <!-- 副 API -->
-                    <div class="api-card">
-                        <div class="api-card-header" style="margin-bottom:4px;">
-                            <span class="api-card-title">副 API</span>
-                            <button class="toggle-switch" id="subToggle"></button>
-                        </div>
-                        <div id="subApiContent" style="display:none;padding-top:6px;">
-                            <div class="form-group">
-                                <label class="form-label">预设</label>
-                                <div class="preset-row">
-                                    <select class="form-control" id="subPreset"></select>
-                                    <button class="btn btn-xs btn-danger" id="subDeletePreset">删除</button>
-                                </div>
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">中转地址 <span class="hint">(以 /v1 结尾)</span></label>
-                                <input class="form-control" id="subUrl" placeholder="https://api.example.com/v1" />
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">API Key</label>
-                                <div class="key-input-wrap">
-                                    <input class="form-control" id="subKey" placeholder="sk-..." type="text" data-masked-key="1" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
-                                    <button class="eye-btn" data-target="subKey" type="button"><i class="fas fa-eye"></i></button>
-                                </div>
-                            </div>
-                            <div class="form-row">
-                                <div class="form-group" style="flex:2;">
-                                    <label class="form-label">预设名称</label>
-                                    <input class="form-control" id="subPresetName" placeholder="输入预设名称..." />
-                                </div>
-                                <div class="form-group" style="flex:1;max-width:56px;">
-                                    <label class="form-label" style="opacity:0;">&nbsp;</label>
-                                    <button class="btn btn-sm btn-success" id="subSavePreset">保存</button>
-                                </div>
-                                <div class="form-group" style="flex:1;max-width:56px;">
-                                    <label class="form-label" style="opacity:0;">&nbsp;</label>
-                                    <button class="btn btn-sm btn-primary" id="subEditPreset">修改</button>
-                                </div>
-                            </div>
-                            <div class="btn-group">
-                                <button class="btn btn-primary" id="subFetch"><i class="fas fa-cloud-download-alt"></i> 拉取</button>
-                                <button class="btn" id="subSave"><i class="fas fa-save"></i> 保存配置</button>
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">温度 <span id="subTempVal" class="temp-val">0.7</span></label>
-                                <input type="range" class="temp-range" id="subTemp" min="0" max="2" step="0.1" value="0.7" />
-                                <div class="temp-hint"><span>0 · 严格人设</span><span>2 · 自由发挥</span></div>
-                            </div>
-                            <div class="model-select-wrap" id="subModelWrap">
-                                <label class="form-label">选择模型</label>
-                                <div class="model-search-row">
-                                    <input class="form-control" id="subModelSearch" placeholder="搜索模型..." />
-                                    <button class="btn btn-xs" id="subModelSearchBtn">搜索</button>
-                                    <button class="btn btn-xs" id="subModelClearBtn">清除</button>
-                                </div>
-                                <select class="form-control model-select" id="subModelSelect"><option value="">请先拉取...</option></select>
-                            </div>
-                            <div class="connection-status" id="subStatus"></div>
-                        </div>
-                    </div>
-
                     <!-- 链接解析服务（可选） -->
                     <div class="api-card">
                         <div class="api-card-header" style="margin-bottom:4px;">

@@ -85,7 +85,6 @@
   var $iconModal  = document.getElementById('iconModal');
   var $iconPrev   = document.getElementById('iconPrev');
   var $iconLetter = document.getElementById('iconLetter');
-  var $iconColor  = document.getElementById('iconColor');
   var $iconAvatar = document.getElementById('iconAvatar');
   var $iconUpload = document.getElementById('iconUpload');
   var $iconClear  = document.getElementById('iconClear');
@@ -284,6 +283,17 @@
   var allApps = [];
   var keyword = '';
 
+  // AppStore 统一黑白图标：彩色 Emoji 不直接渲染，改为应用名首字母；
+  // 图片图标只保留灰阶，避免列表里出现彩色块。
+  function monoIconText(icon, name) {
+    var raw = icon == null ? '' : String(icon).trim();
+    var emoji = false;
+    try { emoji = /[\p{Extended_Pictographic}\u{1F000}-\u{1FAFF}]/u.test(raw); }
+    catch (e) { emoji = /[\uD800-\uDBFF][\uDC00-\uDFFF]/.test(raw); }
+    if (raw && !emoji && raw.length <= 4) return raw;
+    return String(name || raw || '?').charAt(0).toUpperCase();
+  }
+
   function renderList() {
     var apps = allApps.filter(function (a) {
       if (!keyword) return true;
@@ -327,10 +337,10 @@
         img.src = app.icon; img.alt = '';
         icon.appendChild(img);
       } else {
-        icon.textContent = (app.icon && String(app.icon).length <= 4)
-          ? app.icon
-          : (app.name || '?').charAt(0).toUpperCase();
-        if (/^#[0-9a-f]{3,8}$/i.test(app.color || '')) { icon.style.background = app.color; icon.style.color = '#fff'; }
+        icon.textContent = monoIconText(app.icon, app.name);
+        // 商店统一黑白图标，不显示应用自定义彩色底
+        icon.style.background = '#f2f2f2';
+        icon.style.color = '#111';
       }
       row.appendChild(icon);
 
@@ -476,12 +486,13 @@
     if (!$iconPrev) return;
     if (iconEditImage) {
       $iconPrev.textContent = '';
-      $iconPrev.style.background = '#e5e5ea';
+      $iconPrev.style.background = '#f2f2f2';
       $iconPrev.innerHTML = '<img src="' + iconEditImage.replace(/"/g, '&quot;') + '" style="width:100%;height:100%;object-fit:cover">';
     } else {
       $iconPrev.innerHTML = '';
-      $iconPrev.textContent = ($iconLetter.value || 'A');
-      $iconPrev.style.background = $iconColor.value || '#4a6cf7';
+      $iconPrev.textContent = monoIconText($iconLetter.value, iconEditApp && iconEditApp.name);
+      $iconPrev.style.background = '#f2f2f2';
+      $iconPrev.style.color = '#111';
     }
   }
   function openIconEditor(app) {
@@ -490,7 +501,6 @@
     var isImg = /^(data:image\/|https?:\/\/|blob:)/i.test(icon);
     iconEditImage = isImg ? icon : '';
     $iconLetter.value = isImg ? '' : (icon || (app.name || 'A').charAt(0));
-    $iconColor.value = /^#[0-9a-f]{3,8}$/i.test(app.color || '') ? app.color : '#4a6cf7';
     paintIconPrev();
     $iconModal.classList.add('on');
   }
@@ -500,7 +510,6 @@
     $iconModal.addEventListener('click', function (e) { if (e.target === $iconModal) closeIconEditor(); });
     $iconCancel.addEventListener('click', closeIconEditor);
     $iconLetter.addEventListener('input', paintIconPrev);
-    $iconColor.addEventListener('input', paintIconPrev);
     $iconAvatar.addEventListener('click', function () {
       $iconAvatar.disabled = true;
       readMyAvatar().then(function (av) {
@@ -527,7 +536,7 @@
       var app = iconEditApp;
       var letter = ($iconLetter.value || '').trim();
       app.icon = iconEditImage || letter || (app.name || 'A').charAt(0);
-      app.color = $iconColor.value || '';
+      app.color = '#111111';
       dbPut(app).then(function () {
         closeIconEditor();
         toast('图标已更新');
@@ -674,7 +683,7 @@
 '  body{margin:0;padding:24px;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;background:#f2f2f7;color:#111}',
 '  h1{font-size:20px;margin:0 0 10px}',
 '  .card{background:#fff;border-radius:16px;padding:16px;margin-top:14px;box-shadow:0 1px 3px rgba(0,0,0,.05)}',
-'  button{padding:10px 16px;border:0;border-radius:12px;background:#4a6cf7;color:#fff;font-size:14px}',
+'  button{padding:10px 16px;border:0;border-radius:12px;background:#111111;color:#fff;font-size:14px}',
 '  #out{margin-top:12px;font-size:14px;line-height:1.6;white-space:pre-wrap}',
 '</style>',
 '</head>',
@@ -733,17 +742,23 @@
 
   function updateUsage() {
     if (!$usageValue) return;
-    if (!(navigator.storage && navigator.storage.estimate)) {
-      $usageValue.textContent = '—';
-      return;
-    }
-    navigator.storage.estimate().then(function (est) {
-      var usage = (est && est.usage) || 0;
+    // 只统计应用商店里实际导入的 HTML 与各应用自身数据，不再用整站估算值冒充。
+    Promise.all([
+      computeUsageByApp(),
+      (navigator.storage && navigator.storage.estimate)
+        ? navigator.storage.estimate().catch(function () { return null; })
+        : Promise.resolve(null)
+    ]).then(function (res) {
+      var list = res[0] || [];
+      var est = res[1] || null;
+      var usage = list.reduce(function (sum, item) {
+        return sum + (item.htmlBytes || 0) + (item.dataBytes || 0);
+      }, 0);
       var quota = (est && est.quota) || 0;
-      $usageValue.textContent = usage ? formatBytes(usage) : '—';
 
-      if ($ringUsed) $ringUsed.textContent = usage ? formatBytes(usage) : '—';
-      if ($ringQuota) $ringQuota.textContent = quota ? formatBytes(quota) : '—';
+      $usageValue.textContent = formatBytes(usage);
+      if ($ringUsed) $ringUsed.textContent = formatBytes(usage);
+      if ($ringQuota) $ringQuota.textContent = quota ? formatBytes(quota) : '本机';
 
       var pct = quota ? Math.min(100, (usage / quota) * 100) : 0;
       if ($ringPercent) $ringPercent.textContent = pct < 1 && usage > 0 ? '<1%' : Math.round(pct) + '%';
@@ -752,8 +767,9 @@
         $ringBar.style.strokeDashoffset = String(offset);
       }
 
-      var appCount = allApps.length;
-      if ($ringApps) $ringApps.textContent = appCount ? (appCount + ' 个应用') : '没有应用';
+      if ($ringApps) $ringApps.textContent = list.length
+        ? (list.length + ' 个应用 · 按实际导入文件与数据统计')
+        : '没有应用';
     }).catch(function () { $usageValue.textContent = '—'; });
   }
 
@@ -814,9 +830,7 @@
           img.src = item.icon; img.alt = '';
           ic.appendChild(img);
         } else {
-          ic.textContent = (item.icon && String(item.icon).length <= 4)
-            ? item.icon
-            : (item.name || '?').charAt(0).toUpperCase();
+          ic.textContent = monoIconText(item.icon, item.name);
         }
         el.appendChild(ic);
 

@@ -80,7 +80,7 @@
     var PROMPTS_KEY = 'nano_api_prompts';
 
     // Tab 定义：tabId -> 前缀（用于预设名去重）
-    var TAB_PREFIX = { main: 'main_', sub: 'sub_', img: 'img_', tts: 'tts_', prompt: 'prompt_' };
+    var TAB_PREFIX = { main: 'main_', img: 'img_', tts: 'tts_', prompt: 'prompt_' };
 
     // ===== 工具 =====
     function cleanKey(k) {
@@ -131,13 +131,13 @@
         return true;
     }
     function getWrapId(selectId) {
-        return { mainModelSelect: 'mainModelWrap', imgModelSelect: 'imgModelWrap', subModelSelect: 'subModelWrap', ttsModelSelect: 'ttsModelWrap' }[selectId];
+        return { mainModelSelect: 'mainModelWrap', imgModelSelect: 'imgModelWrap', ttsModelSelect: 'ttsModelWrap' }[selectId];
     }
     function getSearchId(selectId) {
-        return { mainModelSelect: 'mainModelSearch', imgModelSelect: 'imgModelSearch', subModelSelect: 'subModelSearch', ttsModelSelect: 'ttsModelSearch' }[selectId];
+        return { mainModelSelect: 'mainModelSearch', imgModelSelect: 'imgModelSearch', ttsModelSelect: 'ttsModelSearch' }[selectId];
     }
     async function initModelLists() {
-        var ids = ['mainModelSelect', 'imgModelSelect', 'subModelSelect', 'ttsModelSelect'];
+        var ids = ['mainModelSelect', 'imgModelSelect', 'ttsModelSelect'];
         for (var i = 0; i < ids.length; i++) {
             var loaded = await loadModelList(ids[i]);
             if (loaded) {
@@ -148,9 +148,9 @@
     }
 
     // ===== 连接状态 =====
-    var statusIdMap = { mainModelSelect: 'mainStatus', imgModelSelect: 'imgStatus', subModelSelect: 'subStatus', ttsModelSelect: 'ttsStatus' };
-    var urlMap = { mainModelSelect: 'mainUrl', imgModelSelect: 'imgUrl', subModelSelect: 'subUrl', ttsModelSelect: 'ttsUrl' };
-    var keyMap = { mainModelSelect: 'mainKey', imgModelSelect: 'imgKey', subModelSelect: 'subKey', ttsModelSelect: 'ttsKey' };
+    var statusIdMap = { mainModelSelect: 'mainStatus', imgModelSelect: 'imgStatus', ttsModelSelect: 'ttsStatus' };
+    var urlMap = { mainModelSelect: 'mainUrl', imgModelSelect: 'imgUrl', ttsModelSelect: 'ttsUrl' };
+    var keyMap = { mainModelSelect: 'mainKey', imgModelSelect: 'imgKey', ttsModelSelect: 'ttsKey' };
 
     function updateConnectionStatus(statusId, urlId, keyId, modelId) {
         var statusEl = document.getElementById(statusId);
@@ -189,9 +189,8 @@
 
     // ===== 预设列表（按 tab 保存） =====
     async function savePresetListToStorage() {
-        var presets = { main: [], sub: [], img: [], tts: [], prompt: [] };
+        var presets = { main: [], img: [], tts: [], prompt: [] };
         document.querySelectorAll('#mainPreset option').forEach(function (o) { if (o.value) presets.main.push(o.value); });
-        document.querySelectorAll('#subPreset option').forEach(function (o) { if (o.value) presets.sub.push(o.value); });
         document.querySelectorAll('#imgPreset option').forEach(function (o) { if (o.value) presets.img.push(o.value); });
         document.querySelectorAll('#ttsPreset option').forEach(function (o) { if (o.value) presets.tts.push(o.value); });
         document.querySelectorAll('#promptPresetSelect option').forEach(function (o) { if (o.value) presets.prompt.push(o.value); });
@@ -200,8 +199,8 @@
 
     async function loadPresetListFromStorage() {
         var presets = await getData(PRESET_LIST_KEY, null);
-        if (!presets) presets = { main: [], sub: [], img: [], tts: [], prompt: [] };
-        [['mainPreset', 'main'], ['subPreset', 'sub'], ['imgPreset', 'img'], ['ttsPreset', 'tts'], ['promptPresetSelect', 'prompt']]
+        if (!presets) presets = { main: [], img: [], tts: [], prompt: [] };
+        [['mainPreset', 'main'], ['imgPreset', 'img'], ['ttsPreset', 'tts'], ['promptPresetSelect', 'prompt']]
             .forEach(function (pair) {
                 var select = document.getElementById(pair[0]);
                 if (!select) return;
@@ -229,12 +228,6 @@
             mainModel: (document.getElementById('mainModelSelect') || {}).value || '',
             mainApiType: (document.getElementById('mainApiType') || {}).value || 'openai',
             mainTemp: parseFloat((document.getElementById('mainTemp') || {}).value) || 0.7,
-            subUrl: normUrl((document.getElementById('subUrl') || {}).value),
-            subKey: (document.getElementById('subKey') || {}).value || '',
-            subPreset: (document.getElementById('subPreset') || {}).value || '',
-            subModel: (document.getElementById('subModelSelect') || {}).value || '',
-            subTemp: parseFloat((document.getElementById('subTemp') || {}).value) || 0.7,
-            subToggle: document.getElementById('subToggle') && document.getElementById('subToggle').classList.contains('active'),
             linkParserUrl: normUrl((document.getElementById('linkParserUrl') || {}).value),
             linkParserToken: (document.getElementById('linkParserToken') || {}).value || '',
             imgUrl: normUrl((document.getElementById('imgUrl') || {}).value),
@@ -256,7 +249,6 @@
         await savePresetListToStorage();
         await saveModelList('mainModelSelect');
         await saveModelList('imgModelSelect');
-        await saveModelList('subModelSelect');
         await saveModelList('ttsModelSelect');
         // 主 API 改了（地址 / Key / 模型）就立刻通知外壳同步给 Worker，
         // 这样窥屏/主动消息下一次请求读取到的就是当前配置，而不是旧模型。
@@ -320,7 +312,6 @@
         function setVal(id, val) { var el = document.getElementById(id); if (el && val !== undefined && val !== null) el.value = val; }
         setVal('mainUrl', data.mainUrl); setVal('mainKey', data.mainKey); setVal('mainPreset', data.mainPreset); setVal('mainModelSelect', data.mainModel);
         setVal('mainApiType', data.mainApiType || 'openai');
-        setVal('subUrl', data.subUrl); setVal('subKey', data.subKey); setVal('subPreset', data.subPreset); setVal('subModelSelect', data.subModel);
         setVal('linkParserUrl', data.linkParserUrl); setVal('linkParserToken', data.linkParserToken);
         setVal('imgUrl', data.imgUrl); setVal('imgKey', data.imgKey); setVal('imgPreset', data.imgPreset); setVal('imgModelSelect', data.imgModel);
         setVal('ttsUrl', data.ttsUrl); setVal('ttsKey', data.ttsKey); setVal('ttsGroupId', data.ttsGroupId);
@@ -331,7 +322,7 @@
         // 按接口类型应用默认地址 / 显隐 GroupId / 拉取按钮文案
         applyTtsTypeUI(data.ttsType || 'openai', false);
 
-        ['main', 'sub', 'img'].forEach(function (p) {
+        ['main', 'img'].forEach(function (p) {
             var t = data[p + 'Temp'];
             if (t !== undefined) {
                 var el = document.getElementById(p + 'Temp');
@@ -340,11 +331,6 @@
                 if (valEl) valEl.textContent = parseFloat(t).toFixed(1);
             }
         });
-
-        var subToggle = document.getElementById('subToggle');
-        var subContent = document.getElementById('subApiContent');
-        if (data.subToggle) { subToggle.classList.add('active'); subContent.style.display = 'block'; }
-        else { subToggle.classList.remove('active'); subContent.style.display = 'none'; }
 
         // 恢复 Tab
         if (data.activeTab) {
@@ -846,7 +832,6 @@
 
         updateConnectionStatus('mainStatus', 'mainUrl', 'mainKey', 'mainModelSelect');
         updateConnectionStatus('imgStatus', 'imgUrl', 'imgKey', 'imgModelSelect');
-        updateConnectionStatus('subStatus', 'subUrl', 'subKey', 'subModelSelect');
         updateConnectionStatus('ttsStatus', 'ttsUrl', 'ttsKey', 'ttsModelSelect');
 
         // Tab 切换
@@ -885,7 +870,7 @@
         });
 
         // 温度
-        setupTemp('mainTemp'); setupTemp('imgTemp'); setupTemp('subTemp');
+        setupTemp('mainTemp'); setupTemp('imgTemp');
 
         // 提示词折叠
         var promptToggle = document.getElementById('promptToggle');
@@ -909,7 +894,6 @@
 
         // 预设切换
         document.getElementById('mainPreset').addEventListener('change', function () { loadPreset('main_', 'mainPreset', 'mainUrl', 'mainKey', 'mainModelSelect'); });
-        document.getElementById('subPreset').addEventListener('change', function () { loadPreset('sub_', 'subPreset', 'subUrl', 'subKey', 'subModelSelect'); });
         document.getElementById('imgPreset').addEventListener('change', function () { loadPreset('img_', 'imgPreset', 'imgUrl', 'imgKey', 'imgModelSelect'); });
         document.getElementById('ttsPreset').addEventListener('change', async function () {
             await loadPreset('tts_', 'ttsPreset', 'ttsUrl', 'ttsKey', 'ttsModelSelect');
@@ -941,7 +925,7 @@
         }
 
         // 状态更新
-        ['main', 'img', 'sub', 'tts'].forEach(function (p) {
+        ['main', 'img', 'tts'].forEach(function (p) {
             var urlId = p + 'Url', keyId = p + 'Key', modelId = p + 'ModelSelect', statusId = p + 'Status';
             [urlId, keyId, modelId].forEach(function (id) {
                 var el = document.getElementById(id);
@@ -949,20 +933,10 @@
             });
         });
 
-        // 副 API 开关
-        var subToggle = document.getElementById('subToggle');
-        var subContent = document.getElementById('subApiContent');
-        subToggle.addEventListener('click', function () {
-            this.classList.toggle('active');
-            subContent.style.display = this.classList.contains('active') ? 'block' : 'none';
-            saveAllToStorage();
-        });
-
         // 拉取
         setupFetch('mainFetch', 'mainUrl', 'mainKey', 'mainModelSelect', 'mainStatus', 'mainModelWrap', function () {
             return { anthropic: String((document.getElementById('mainApiType') || {}).value || '') === 'anthropic' };
         });
-        setupFetch('subFetch', 'subUrl', 'subKey', 'subModelSelect', 'subStatus', 'subModelWrap');
         setupFetch('imgFetch', 'imgUrl', 'imgKey', 'imgModelSelect', 'imgStatus', 'imgModelWrap');
         setupFetch('ttsFetch', 'ttsUrl', 'ttsKey', 'ttsModelSelect', 'ttsStatus', 'ttsModelWrap', function () {
             return { type: document.getElementById('ttsType').value, groupId: document.getElementById('ttsGroupId').value };
@@ -1148,7 +1122,6 @@
 
         // 保存预设
         setupSavePreset('main_', 'mainSavePreset', 'mainPresetName', 'mainPreset', 'mainUrl', 'mainKey', 'mainModelSelect');
-        setupSavePreset('sub_', 'subSavePreset', 'subPresetName', 'subPreset', 'subUrl', 'subKey', 'subModelSelect');
         setupSavePreset('img_', 'imgSavePreset', 'imgPresetName', 'imgPreset', 'imgUrl', 'imgKey', 'imgModelSelect');
         setupSavePreset('tts_', 'ttsSavePreset', 'ttsPresetName', 'ttsPreset', 'ttsUrl', 'ttsKey', 'ttsModelSelect', function () {
             return {
@@ -1161,7 +1134,6 @@
 
         // 修改预设
         setupEditPreset('main_', 'mainEditPreset', 'mainPresetName', 'mainPreset', 'mainUrl', 'mainKey', 'mainModelSelect');
-        setupEditPreset('sub_', 'subEditPreset', 'subPresetName', 'subPreset', 'subUrl', 'subKey', 'subModelSelect');
         setupEditPreset('img_', 'imgEditPreset', 'imgPresetName', 'imgPreset', 'imgUrl', 'imgKey', 'imgModelSelect');
         setupEditPreset('tts_', 'ttsEditPreset', 'ttsPresetName', 'ttsPreset', 'ttsUrl', 'ttsKey', 'ttsModelSelect', function () {
             return {
@@ -1174,13 +1146,11 @@
 
         // 删除预设
         document.getElementById('mainDeletePreset').addEventListener('click', function () { deletePreset('main_', 'mainPreset'); });
-        document.getElementById('subDeletePreset').addEventListener('click', function () { deletePreset('sub_', 'subPreset'); });
         document.getElementById('imgDeletePreset').addEventListener('click', function () { deletePreset('img_', 'imgPreset'); });
         document.getElementById('ttsDeletePreset').addEventListener('click', function () { deletePreset('tts_', 'ttsPreset'); });
 
         // 保存配置
         setupSave('mainSave', 'main_', 'mainPreset', 'mainUrl', 'mainKey', 'mainModelSelect');
-        setupSave('subSave', 'sub_', 'subPreset', 'subUrl', 'subKey', 'subModelSelect');
         setupSave('imgSave', 'img_', 'imgPreset', 'imgUrl', 'imgKey', 'imgModelSelect');
         setupSave('ttsSave', 'tts_', 'ttsPreset', 'ttsUrl', 'ttsKey', 'ttsModelSelect', function () {
             return {
@@ -1291,7 +1261,6 @@
         // 模型搜索
         setupModelSearch('mainModelSelect', 'mainModelSearch', 'mainModelSearchBtn', 'mainModelClearBtn');
         setupModelSearch('imgModelSelect', 'imgModelSearch', 'imgModelSearchBtn', 'imgModelClearBtn');
-        setupModelSearch('subModelSelect', 'subModelSearch', 'subModelSearchBtn', 'subModelClearBtn');
         setupModelSearch('ttsModelSelect', 'ttsModelSearch', 'ttsModelSearchBtn', 'ttsModelClearBtn');
 
         // 自动保存
@@ -1312,7 +1281,6 @@
             }).then(function () {
                 updateConnectionStatus('mainStatus', 'mainUrl', 'mainKey', 'mainModelSelect');
                 updateConnectionStatus('imgStatus', 'imgUrl', 'imgKey', 'imgModelSelect');
-                updateConnectionStatus('subStatus', 'subUrl', 'subKey', 'subModelSelect');
                 updateConnectionStatus('ttsStatus', 'ttsUrl', 'ttsKey', 'ttsModelSelect');
             });
         });

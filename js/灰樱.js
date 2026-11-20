@@ -3593,10 +3593,10 @@ async function offExtractViaMain(chatText) {
     + '【视角铁律】每条都必须用「我」来写；不要写「' + charName + '和' + userName + '……」这种第三人称总结；不是复述对话，而是像我在事后回想。\n'
     + '- 只保留有长期价值的关键点，合并同类，删掉寒暄、日常口水话和没有后续影响的小事；\n'
     + '- 每条 60~160 字，至少包含：当时的具体场景/对话细节 + 我当时的感受 + 这件事对我和TA意味着什么；不要只写一句结论或几个字；\n'
-    + '- 【语言】记忆正文必须用简体中文；外语原话只保留少量，并在后面用「（中文：……）」附上翻译，绝不能只输出外语；\n'
+    + '- 【语言】记忆正文必须用简体中文概括；绝不能只输出外语；\n'
     + '- 最多 5 条，宁缺毋滥；确实没有值得记的就什么都不要输出；\n'
     + '- 一行一条，格式：【类型|重要度】内容；重要度 1~5 由我判断，不能全部写 3：5=刻骨铭心/改变关系，4=重要且长期影响，3=稳定信息，2=轻量偏好，1=可记可不记；\n'
-    + '- 保留名字、地点、数字、具体物品和原话；不要编号、不要解释、不要照抄对话原文。\n\n对话：\n' + chatText;
+    + '- 保留名字、地点、数字、具体物品；不要编号、不要解释、不要照抄对话原文。\n\n对话：\n' + chatText;
   const resp = await fetch(url + '/chat/completions', {
     method: 'POST',
     headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json' },
@@ -3695,47 +3695,12 @@ async function offEmbedMany(texts) {
   } catch (e) { return arr.map(function () { return null; }); }
 }
 
-function offExtractQuoteEntries(msgs, chatId) {
-  const special = /一直|永远|一辈子|下辈子|爱你|喜欢你|想你|在乎你|等你|别走|别离开|对不起|原谅|分手|和好|结婚|嫁给我|娶你|答应我|答应你|承诺|约定|说好|保证|不会离开|陪你|生日|纪念日|秘密|只有你|离不开你/;
-  const out = [], seen = {};
-  (Array.isArray(msgs) ? msgs : []).forEach(function (m, idx) {
-    if (!m || !m.content) return;
-    const text = String(m.content).trim();
-    if (!text || text.length < 2 || text.length > 160 || !special.test(text)) return;
-    const k = text.replace(/\s+/g, '');
-    if (seen[k]) return;
-    seen[k] = 1;
-    if (out.length >= 8) return;
-    const isUser = m.role === 'user';
-    const who = isUser ? (settings.userName || '用户') : (m.name || settings.charName || '角色');
-    const ts = Number(m.ts) || Date.now() + idx;
-    out.push({
-      id: 'gmq' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
-      time: new Date(ts).toLocaleString('zh-CN'),
-      ts: ts,
-      date: new Date(ts).toISOString(),
-      type: '原话',
-      importance: 5,
-      chatId: chatId || offlineChatId,
-      relatedChar: settings.charName || '',
-      content: who + '说过：「' + text + '」',
-      sourceText: text,
-      sourceSpeaker: isUser ? 'user' : 'char',
-      sourceMsgId: m.id || '',
-      embedding: null,
-      hasVector: false
-    });
-  });
-  return out;
-}
 // 通用：把一段文本（可能跨多个楼层）一次性总结成记忆并入库。返回写入条数。
 async function summarizeTextToMemory(chatText, chatId, seg) {
   if (!chatText || !String(chatText).trim()) return 0;
   const summary = await offExtractViaMain(chatText);
   if (!summary) return 0;
   const entries = await offBuildMemoryEntries(summary, chatId || offlineChatId);
-  const quotes = offExtractQuoteEntries(seg || [], chatId || offlineChatId);
-  if (quotes.length) entries.push.apply(entries, quotes);
   if (!entries.length) return 0;
   if (window.NanoMemLink && window.NanoMemLink.append) {
     await window.NanoMemLink.append(chatId || offlineChatId, entries);   // 小号记忆计入大号记忆库

@@ -266,7 +266,7 @@ body.nano-chat-inner .typing-indicator .ti-bubble::after {
 body.nano-chat-inner .typing-indicator .dot { background: #f8b6c8; }
 
 /* ============================================================
-   2.1 群聊：同款灰粉气泡（保留群头像与昵称，不隐藏身份）
+   2.1 群聊：同款灰粉气泡（昵称保留；头像/底栏跟随私聊同一套规则）
    ============================================================ */
 body.nano-groups .bubble {
   position: relative;
@@ -321,6 +321,8 @@ body.nano-groups .bubble.me::after {
 }
 body.nano-groups .bubble.grouped::after { display: block !important; }
 body.nano-groups .msg-name-line { order: -2; }
+/* 顶栏标题与私聊完全一致：群人数副标题不参与灰粉标题胶囊布局 */
+body.nano-groups .topbar-title .g-meta { display: none !important; }
 body.nano-groups .voice-bubble.left { background: #4a4a4a; color: #ffffff; }
 body.nano-groups .voice-bubble.right { background: #f9d5e0; color: #5a5a5a; }
 body.nano-groups .voice-bubble.left::before,
@@ -794,15 +796,6 @@ body.nano-groups .msg-tool-res {
   white-space: pre-wrap;
   word-break: break-word;
 }
-
-/* ============================================================
-   6.2 群聊专属修正：右上角保持摄像头按钮，保留成员头像/发送按钮
-   ============================================================ */
-body.nano-groups .message-avatar { display: flex !important; }
-body.nano-groups .message-row.tip-row-wrap .message-avatar,
-body.nano-groups .message-row.centered .message-avatar,
-body.nano-groups .message-row.recalled .message-avatar,
-body.nano-groups .message-row.sys-notice .message-avatar { display: none !important; }
 
 /* ============================================================
    7. 卡片 —— 长方形：左 SVG / 右文字 / 底部接收·退还
@@ -1300,30 +1293,6 @@ body.nano-chat-inner .bubble-card.location .loc-bubble-map {
 }
 
 /* ============================================================
-   9.1 群聊底栏：恢复群聊自己的深色发送按钮，保证能正常发送
-   ============================================================ */
-body.nano-groups .bottom-bar > .send-btn {
-  width: 42px;
-  height: 42px;
-  min-width: 42px;
-  margin-left: 0;
-  border-radius: 50%;
-  background: #2c2c2e !important;
-  color: #ffffff !important;
-  box-shadow: 0 2px 8px rgba(44, 44, 46, 0.3) !important;
-  display: flex !important;
-  align-items: center;
-  justify-content: center;
-}
-body.nano-groups .bottom-bar > .send-btn i {
-  display: block !important;
-  color: #ffffff !important;
-  font-size: 16px !important;
-}
-body.nano-groups .bottom-bar > .send-btn.reply-mode::after { display: none !important; }
-body.nano-groups .bottom-bar > .send-btn:active { transform: scale(0.9); background: #1c1c1e !important; }
-
-/* ============================================================
    10. DIY：在灰粉模板里直接内置背景图 / 覆盖「上传的背景图」★
    ------------------------------------------------------------
    原理：
@@ -1466,18 +1435,18 @@ body.nano-groups .bottom-bar > .send-btn:active { transform: scale(0.9); backgro
     mo.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['src'] });
   } catch (e) {}
 
-  // 输入框与话筒/发送按钮同处一颗胶囊；加号留在外面
-  if (isPrivate && !isNewNanoUI && sendBtn && inputRow && sendBtn.parentNode !== inputRow) {
+  // 输入框与话筒/发送按钮同处一颗胶囊；加号留在外面（私聊 / 群聊完全一致）
+  if ((isPrivate || isGroup) && !isNewNanoUI && sendBtn && inputRow && sendBtn.parentNode !== inputRow) {
     inputRow.appendChild(sendBtn);
     movedSend = true;
   }
   function onInput() { syncComposer(); }
-  if (isPrivate && !isNewNanoUI && input) {
+  if ((isPrivate || isGroup) && !isNewNanoUI && input) {
     ['input', 'change', 'keyup', 'compositionend', 'paste', 'cut'].forEach(function (ev) {
       input.addEventListener(ev, onInput);
     });
   }
-  if (isPrivate && !isNewNanoUI) interval = setInterval(syncComposer, 350);
+  if ((isPrivate || isGroup) && !isNewNanoUI) interval = setInterval(syncComposer, 350);
 
   // 顶栏右侧视频按钮 = 设置页（独立打开 chat_inner 时也能跳转）
   var gear = document.getElementById('topbarAvatar');
@@ -1494,7 +1463,7 @@ body.nano-groups .bottom-bar > .send-btn:active { transform: scale(0.9); backgro
     clearTimeout(timer);
     if (interval) clearInterval(interval);
     try { mo.disconnect(); } catch (e) {}
-    if (isPrivate && input) {
+    if ((isPrivate || isGroup) && input) {
       ['input', 'change', 'keyup', 'compositionend', 'paste', 'cut'].forEach(function (ev) {
         input.removeEventListener(ev, onInput);
       });

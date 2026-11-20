@@ -6,8 +6,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>群聊</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" media="print" onload="this.media='all'">
-<link rel="stylesheet" href="../css/groups.css?v=20261119a">
- <script defer src="../js/appearance.js?v=20261119a"></script>
+<link rel="stylesheet" href="../css/groups.css?v=20261120a">
+ <script defer src="../js/appearance.js?v=20261120a"></script>
 <script defer src="../js/nano-notify.js?v=20261112a"></script>
 <script defer src="../js/reroll-reason.js?v=20261022a"></script>
 <script defer src="../js/nano-badge.js?v=20261108a"></script>
@@ -25,7 +25,10 @@
             群聊
             <span class="g-meta" id="groupMeta"></span>
         </div>
-        <div class="topbar-avatar" id="topbarAvatar">群</div>
+        <div class="topbar-avatar" id="topbarAvatar">
+            <span id="avatarPlaceholder">群</span>
+            <img id="avatarImage" style="display:none;" alt="头像">
+        </div>
     </header>
 
     <div class="group-notice-bar" id="groupNoticeBar" style="display:none;">
@@ -56,9 +59,9 @@
     </div>
 
     <!-- 正在输入指示（屏幕左下角，生成回复期间持续显示） -->
-    <div class="group-typing" id="groupTyping">
-        <div class="gt-avatar" id="groupTypingAvatar">群</div>
-        <div class="gt-bubble"><span></span><span></span><span></span></div>
+    <div class="group-typing typing-indicator" id="groupTyping">
+        <div class="gt-avatar ti-avatar" id="groupTypingAvatar">群</div>
+        <div class="gt-bubble ti-bubble"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
     </div>
 
     <footer class="bottom-bar">
@@ -72,9 +75,9 @@
             <div class="above-input" id="aboveInput">
                 <div class="mention-dropdown" id="mentionDropdown"></div>
                 <div class="quote-bar" id="quoteBar">
-                    <span class="qb-name" id="quoteName"></span>
-                    <span class="qb-text" id="quoteText"></span>
-                    <button class="qb-cancel" id="quoteCancel">×</button>
+                    <span class="quote-name" id="quoteName"></span>
+                    <span class="quote-text" id="quoteText"></span>
+                    <button class="quote-cancel" id="quoteCancel">&times;</button>
                 </div>
             </div>
             <div class="input-row">
@@ -275,7 +278,7 @@
 <script defer src="../js/avatar-frame.js?v=20261111b"></script>
     <script defer src="../js/nano-prompts.js?v=20261118a"></script>
     <script defer src="../js/nano-pay.js?v=20261020j"></script>
-    <script defer src="../js/groups.js?v=20261119a"></script>
+    <script defer src="../js/groups.js?v=20261120a"></script>
 <script defer src="../js/api-float.js?v=20261023a"></script>
 <script defer src="../swipe-back.js"></script>
 </body>

@@ -1238,12 +1238,20 @@ async function applyRealData(){
           time: p.time || '刚刚', unread: !!p.unread
         };
       });
-      // 补回不在角色库里的好友记录（例如角色马甲假身份）
-      const extras = (S._dmFriendsPersist || []).filter(f => deleted.indexOf(f.name)<0 && !fromChars.some(x => x.name === f.name));
+      // 补回不在角色库里的好友记录（例如角色马甲假身份 / 主播），
+      // 但带 charId 的记录必须属于当前 user 绑定的角色，避免不同 user 的私聊混在一起。
+      const visibleIds = new Set(S._realChars.map(c => String(c.id)));
+      const extras = (S._dmFriendsPersist || []).filter(f =>
+        deleted.indexOf(f.name) < 0 &&
+        !fromChars.some(x => x.name === f.name) &&
+        (!f.charId || visibleIds.has(String(f.charId)))
+      );
       S.dmFriends = sortByPin(fromChars.concat(extras.map(f => Object.assign({}, f, { isChar: !!f.charId }))));
     } else if ((S._dmFriendsPersist || []).length) {
-      // 角色库为空时，仍还原已保存的好友列表，避免会话记录凭空消失
-      S.dmFriends = sortByPin(S._dmFriendsPersist.filter(f=>(S.dmDeleted||[]).indexOf(f.name)<0).map(f => Object.assign({}, f, { isChar: !!f.charId })));
+      // 角色库为空时，只还原不依赖角色库的好友（主播等），不再把别人的角色带进来
+      S.dmFriends = sortByPin(S._dmFriendsPersist
+        .filter(f => (S.dmDeleted||[]).indexOf(f.name) < 0 && !f.charId)
+        .map(f => Object.assign({}, f, { isChar: !!f.charId })));
     }
 
     // 直播房间的主播头像尽量对齐角色库
@@ -3403,9 +3411,9 @@ const HaloData = (() => {
           const origin = (chars || []).find((x) => x && String(x.id) === String(c.altOriginId));
           if (origin && origin.bindUser != null && String(origin.bindUser) !== '') return String(origin.bindUser) === String(maskId);
         }
-        return true;
+        return false;
       }
-      return true;
+      return false;
     });
   }
 

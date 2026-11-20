@@ -1158,8 +1158,11 @@ function enterReplay(rec,opts){
   S.plan=(r.plan||[]).slice();
   S.n=0;
   const planText=(r.plan||[]).map(x=>x&&x.name).filter(Boolean).join('、');
-  const src=r.msgs.length?r.msgs:(r.summary?[{role:'narr',text:r.summary}]
-    :(planText?[{role:'narr',text:'这趟走过：'+planText+'。'}]:[]));
+  const hasMsgs=r.msgs.length>0;
+  // 回顾只展示整段旅程本身；没有消息时才把总结作为正文，避免总结和正文重复出现两次。
+  const src=hasMsgs?r.msgs:(planText?[{role:'narr',text:'这趟走过：'+planText+'。'}]:[]);
+  const who=[r.charName,r.userName].filter(Boolean).filter((n,i,a)=>a.indexOf(n)===i);
+  const reviewTitle=(r.dest||r.title||'旅途回顾')+(who.length?('（'+who.join(' * ')+'）'):'');
   S.msgs=src.map((m,i)=>Object.assign({},m,{id:'rp'+i,edit:false,typing:false,fresh:false}));
   if(r.settings){
     if(r.settings.len!=null)$('#len').value=r.settings.len;
@@ -1169,13 +1172,13 @@ function enterReplay(rec,opts){
   }
   setReplayChrome(true);
   REPLAY_META={
-    title:r.dest||r.title||'旅途回顾',
+    title:reviewTitle,
     date:r.date||'',
     place:r.dest||r.title||'',
-    count:src.length,
-    summary:r.summary||''
+    count:src.length||(hasMsgs?0:(r.summary?1:0)),
+    summary:hasMsgs?'':(r.summary||'')
   };
-  $('#tTitle').textContent=r.dest||r.title||'旅途回顾';
+  $('#tTitle').textContent=reviewTitle;
   $('#sub').textContent=[r.date,'已经结束的旅程'].filter(Boolean).join(' · ');
   render();drawRoute();scr.scrollTop=0;
 }

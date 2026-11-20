@@ -728,7 +728,6 @@
 
     var DEFAULT_SETTINGS = {
         mainApi: '', mainKey: '', mainModel: '', mainTemperature: 0.7,
-        subApi: '', subKey: '', subModel: '', subEnabled: false,
         imageApi: '', imageKey: '', imageModel: '', imageEnabled: false,
         imagePositivePrompt: '', imageNegativePrompt: ''
     };
@@ -781,19 +780,14 @@
     // 兼容旧的 nano_settings_data（若存在则优先使用其字段）
     function readLegacySettings() {
         var s = readJsonLS(SETTINGS_STORAGE_KEY);
-        if (!s || (!s.mainApi && !s.subApi && !s.imageApi)) return null;
+        if (!s || (!s.mainApi && !s.imageApi)) return null;
         var mainApi = s.mainApi || {};
-        var subApi = s.subApi || {};
         var imageApi = s.imageApi || {};
         return {
             mainApi: mainApi.url || '',
             mainKey: mainApi.key || '',
             mainModel: mainApi.model || '',
             mainTemperature: mainApi.temperature || 0.7,
-            subApi: (subApi.enabled ? subApi.url : '') || '',
-            subKey: (subApi.enabled ? subApi.key : '') || '',
-            subModel: subApi.model || mainApi.model || '',
-            subEnabled: subApi.enabled || false,
             imageApi: (imageApi.enabled ? imageApi.url : '') || '',
             imageKey: (imageApi.enabled ? imageApi.key : '') || '',
             imageModel: imageApi.model || '',
@@ -820,10 +814,6 @@
                 mainKey: cfg.mainKey || '',
                 mainModel: cfg.mainModel || '',
                 mainTemperature: (typeof cfg.mainTemp === 'number' ? cfg.mainTemp : parseFloat(cfg.mainTemp)) || 0.7,
-                subApi: cfg.subUrl || '',
-                subKey: cfg.subKey || '',
-                subModel: cfg.subModel || cfg.mainModel || '',
-                subEnabled: !!cfg.subToggle && !!cfg.subUrl,
                 imageApi: cfg.imgUrl || '',
                 imageKey: cfg.imgKey || '',
                 imageModel: cfg.imgModel || '',
@@ -1438,32 +1428,23 @@
         };
     }
 
-    // ===== 主 API 调用（opts.apiPref: main 用主 API；sub/auto 优先副 API，未配置则主 API） =====
+    // ===== 主 API 调用（统一使用主 API，可在悬浮球切换预设） =====
     async function fetchAIResponse(promptText, isContext, opts) {
         // 每次请求都重新读当前 API 配置，保证跟随 API 页/悬浮球的实时切换。
         try { settings = await getSettings(); } catch (e) {}
         opts = opts || {};
         var apiUrl, apiKey, model, apiLabel;
-        var subReady = settings.subEnabled && settings.subApi && settings.subApi.indexOf('http') === 0;
-        var useSub = subReady && opts.apiPref !== 'main';
-        if (useSub) {
-            apiUrl = settings.subApi;
-            apiKey = settings.subKey;
-            model = settings.subModel || settings.mainModel || '';
-            apiLabel = '副 API';
-        } else {
-            apiUrl = settings.mainApi;
-            apiKey = settings.mainKey;
-            model = settings.mainModel || '';
-            apiLabel = '主 API';
-        }
+        apiUrl = settings.mainApi;
+        apiKey = settings.mainKey;
+        model = settings.mainModel || '';
+        apiLabel = '主 API';
 
         if (!apiUrl || apiUrl.trim() === '') {
             throw {
                 type: 'text', stage: 'config',
                 apiLabel: apiLabel, model: model,
                 reason: apiLabel + '地址为空',
-                hint: '请进入设置页面，填写' + apiLabel + '的完整 URL。' + (apiLabel === '主 API' ? '（若已启用副 API，请确认副 API 地址是否正确）' : '')
+                hint: '请进入设置页面，填写' + apiLabel + '的完整 URL。'
             };
         }
         if (apiUrl.indexOf('http://') !== 0 && apiUrl.indexOf('https://') !== 0) {
