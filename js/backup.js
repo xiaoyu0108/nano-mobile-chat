@@ -82,36 +82,95 @@ function isIOSDevice() {
     } catch (e) { return false; }
 }
 
-function downloadBlob(blob, filename) {
-    // 只在 iOS 用系统分享：iOS 独立窗口用 <a download> 会卡在“存储到文件”页且退不回。
-    // 安卓/桌面仍用普通下载，文件会正常进系统「下载」目录（用户找得到）。
-    if (isIOSDevice()) {
-        try {
-            if (navigator.canShare && navigator.share) {
-                const file = new File([blob], filename, { type: blob.type || 'application/octet-stream' });
-                if (navigator.canShare({ files: [file] })) {
-                    navigator.share({ files: [file], title: filename }).catch(() => {});
-                    return;
-                }
+function fmtBytes(n) {
+    n = Number(n) || 0;
+    if (n < 1024) return n + ' B';
+    if (n < 1048576) return (n / 1024).toFixed(1) + ' KB';
+    if (n < 1073741824) return (n / 1048576).toFixed(1) + ' MB';
+    return (n / 1073741824).toFixed(2) + ' GB';
+}
+
+function anchorDownload(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    return true;
+}
+
+// iOS 的 navigator.share() 必须在用户点击的同一个手势里调用。
+// 导出要先把数据读完（可能几十秒），异步结束后再调用会被系统拒绝，
+// 以前的代码把这个异常吞掉了，表现就是“点了导出但什么都没发生”。
+// 所以 iOS 先把文件准备好，再弹一个保存按钮，让用户在点击手势里真正触发分享。
+let __pendingSaveBlob = null;
+function showSaveFileSheet(blob, filename) {
+    __pendingSaveBlob = { blob: blob, filename: filename };
+    let ov = document.getElementById('nanoSaveFileOverlay');
+    if (!ov) {
+        ov = document.createElement('div');
+        ov.id = 'nanoSaveFileOverlay';
+        ov.className = 'alert-overlay';
+        ov.innerHTML =
+            '<div class="alert-box">' +
+            '<div class="alert-header">' +
+            '<div class="alert-title">备份文件已生成</div>' +
+            '<div class="alert-message" id="nanoSaveFileMsg"></div>' +
+            '</div>' +
+            '<div class="alert-buttons">' +
+            '<button class="alert-btn alert-btn-cancel" id="nanoSaveFileClose">关闭</button>' +
+            '<button class="alert-btn alert-btn-confirm" id="nanoSaveFileBtn">保存到文件</button>' +
+            '</div></div>';
+        document.body.appendChild(ov);
+        ov.querySelector('#nanoSaveFileClose').onclick = function () {
+            ov.classList.remove('active');
+            __pendingSaveBlob = null;
+        };
+        ov.querySelector('#nanoSaveFileBtn').onclick = function () {
+            const p = __pendingSaveBlob;
+            if (!p) return;
+            // 这里仍在用户点击手势内，iOS 才会允许弹出系统分享 / 存储到文件。
+            let file = null;
+            try { file = new File([p.blob], p.filename, { type: p.blob.type || 'application/octet-stream' }); } catch (e) {}
+            if (file && navigator.canShare && navigator.share) {
+                try {
+                    if (navigator.canShare({ files: [file] })) {
+                        navigator.share({ files: [file], title: p.filename }).then(function () {
+                            ov.classList.remove('active');
+                            __pendingSaveBlob = null;
+                        }).catch(function (err) {
+                            if (err && err.name === 'AbortError') return;
+                            try { anchorDownload(p.blob, p.filename); } catch (e) {}
+                        });
+                        return;
+                    }
+                } catch (e) {}
             }
-        } catch (e) {}
-        try {
-            blob.text().then((t) => { try { navigator.clipboard.writeText(t); alert('已复制到剪贴板，可粘贴保存'); } catch (e2) {} });
-        } catch (e2) {}
-        return;
+            try {
+                anchorDownload(p.blob, p.filename);
+                ov.classList.remove('active');
+                __pendingSaveBlob = null;
+            } catch (e) {
+                alert('保存失败：' + (e && e.message ? e.message : e));
+            }
+        };
     }
-    // 非 iOS：普通下载
-    try {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        a.rel = 'noopener';
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 2000);
-    } catch (e) {
+    const msg = ov.querySelector('#nanoSaveFileMsg');
+    if (msg) msg.textContent = filename + '\n' + fmtBytes(blob.size || 0) + '\n\n点击「保存到文件」后，在系统面板里选择存储位置。';
+    ov.classList.add('active');
+}
+
+function downloadBlob(blob, filename) {
+    // iOS 独立窗口 / App 内用 <a download> 经常没反应，而且分享必须由点击手势触发。
+    // iOS 统一弹保存按钮；安卓 / 桌面直接下载。
+    if (isIOSDevice()) {
+        try { showSaveFileSheet(blob, filename); return; } catch (e) {}
+    }
+    try { anchorDownload(blob, filename); } catch (e) {
         try {
             blob.text().then((t) => { try { navigator.clipboard.writeText(t); alert('已复制到剪贴板，可粘贴保存'); } catch (e2) {} });
         } catch (e2) {}
@@ -447,114 +506,249 @@ async function collectAllData(opts = { binary: false }) {
     return data;
 }
 
-/** 导出为 JSON（二进制转 base64 内嵌，保证完整） */
-async function exportJson() {
-    const data = await collectAllData({ binary: true });
-    const text = JSON.stringify(data);
-    downloadBlob(new Blob([text], { type: 'application/json' }), timestampName('Nano', 'json'));
+function backupRecordCount(data) {
+    let n = 0;
+    const dbs = (data && data.indexedDB) || {};
+    Object.keys(dbs).forEach(function (dbName) {
+        const stores = (dbs[dbName] && dbs[dbName].stores) || {};
+        Object.keys(stores).forEach(function (s) { n += (stores[s] || []).length; });
+    });
+    return n;
 }
 
-/** 导出为 ZIP（结构清晰，二进制单独存放，体积更小） */
-async function exportZip() {
-    await ensureJSZip();
-
-    const zip = new JSZip();
-    const meta = {
-        type: 'full-site-backup',
-        version: 1,
-        exportedAt: new Date().toISOString(),
-        origin: location.origin,
-        format: 'zip'
+// 逐段序列化：不再对整份备份对象做一次 JSON.stringify（会同时占用
+// 「整份数据 + 整段 JSON 字符串」两份内存，手机很容易直接闪退）。
+// 每条记录写入后立刻置空，峰值只多出当前这一条记录。
+function* backupJsonChunks(data, onRecord) {
+    const js = function (v) {
+        const s = JSON.stringify(v);
+        return s === undefined ? 'null' : s;
     };
-
-    // ---------- IndexedDB ----------
-    const idbRoot = zip.folder('indexedDB');
-    const dbs = await listDatabases();
-
-    for (const { name, version } of dbs) {
-        let db;
-        try {
-            db = await openDatabase(name, version);
-        } catch {
-            continue;
-        }
-        const storeNames = Array.from(db.objectStoreNames);
-        if (storeNames.length === 0) { db.close(); continue; }
-
-        const dbFolder = idbRoot.folder(safeName(name));
-        dbFolder.file('__meta__.json', JSON.stringify({ version }));
-
-        // schema（keyPath / autoIncrement），导入时按原样重建 store
-        const schemaOut = {};
-
-        // 每个 store 单独一个只读事务（避免事务被提前提交）
+    yield '{"meta":' + js(data.meta || {});
+    yield ',"indexedDB":{';
+    const dbs = data.indexedDB || {};
+    let di = 0;
+    const dbNames = Object.keys(dbs);
+    for (const dbName of dbNames) {
+        const db = dbs[dbName] || {};
+        if (di++) yield ',';
+        yield js(dbName) + ':{"version":' + js(db.version) + ',"schema":' + js(db.schema || {}) + ',"stores":{';
+        const stores = db.stores || {};
+        let si = 0;
+        const storeNames = Object.keys(stores);
         for (const storeName of storeNames) {
-            let records = [];
-            try {
-                const tx = db.transaction(storeName, 'readonly');
-                const store = tx.objectStore(storeName);
-                schemaOut[storeName] = {
-                    keyPath: store.keyPath === undefined ? null : store.keyPath,
-                    autoIncrement: !!store.autoIncrement
-                };
-                records = await getAllRecords(store);
-                await txDone(tx);
-            } catch (e) {
-                console.warn('读取 store 失败:', name, storeName, e);
-                records = [];
+            if (si++) yield ',';
+            const arr = stores[storeName] || [];
+            yield js(storeName) + ':[';
+            for (let i = 0; i < arr.length; i++) {
+                if (i) yield ',';
+                yield js(arr[i]);
+                arr[i] = null;   // 已写入 JSON，立刻释放这条记录（尤其是大图片 / 语音）
+                if (typeof onRecord === 'function') onRecord();
             }
-            const storeFolder = dbFolder.folder(safeName(storeName));
-
-            const metaRecords = [];
-            let binIndex = 0;
-
-            for (const rec of records) {
-                const keyInfo = encodeKey(rec.key);
-                if (isBinary(rec.value)) {
-                    const binName = `bin_${binIndex++}.bin`;
-                    const mime = rec.value instanceof Blob ? rec.value.type : '';
-                    let blob;
-                    if (rec.value instanceof Blob) blob = rec.value;
-                    else if (rec.value instanceof ArrayBuffer) blob = new Blob([rec.value]);
-                    else if (ArrayBuffer.isView(rec.value)) {
-                        blob = new Blob([rec.value.buffer.slice(
-                            rec.value.byteOffset,
-                            rec.value.byteOffset + rec.value.byteLength
-                        )]);
-                    }
-                    storeFolder.file(binName, blob);
-                    metaRecords.push({
-                        key: keyInfo,
-                        __binaryFile: binName,
-                        mime
-                    });
-                } else {
-                    metaRecords.push({ key: keyInfo, value: rec.value });
-                }
-            }
-            storeFolder.file('records.json', JSON.stringify(metaRecords));
+            yield ']';
+            stores[storeName] = null;
         }
-        dbFolder.file('__schema__.json', JSON.stringify(schemaOut));
-        db.close();
+        yield '}}';
+        dbs[dbName] = null;
     }
+    yield '}';
+    const tailKeys = ['localStorage', 'sessionStorage', 'cacheStorage'];
+    for (const k of tailKeys) {
+        if (data[k] == null) continue;
+        const s = js(data[k]);
+        data[k] = null;
+        yield ',"' + k + '":' + s;
+    }
+    yield '}';
+}
 
-    // ---------- localStorage ----------
-    zip.file('localStorage.json', JSON.stringify(collectStorage(localStorage)));
+async function jsonDataToBlob(data, onPct) {
+    const total = backupRecordCount(data);
+    let done = 0;
+    const parts = [];
+    for (const part of backupJsonChunks(data, function () {
+        done++;
+        if (typeof onPct === 'function' && (done % 25 === 0 || done === total)) {
+            onPct(total ? Math.min(1, done / total) : 0);
+        }
+    })) {
+        parts.push(part);
+    }
+    return new Blob(parts, { type: 'application/json' });
+}
 
-    // ---------- sessionStorage ----------
-    zip.file('sessionStorage.json', JSON.stringify(collectStorage(sessionStorage)));
+/** 导出为 JSON（binary=false 时跳过图片/语音，做轻量备份） */
+async function exportJson(opts) {
+    opts = opts || {};
+    const binary = opts.binary !== false;
+    showProgress(binary ? '正在导出 JSON（含图片/语音）' : '正在导出 JSON（轻量）');
+    try {
+        if (binary) {
+            setProgress(1, '检查数据体积…');
+            const bytes = await estimateBinaryBytes().catch(function () { return 0; });
+            // JSON 要把二进制转成 base64，内存占用约为原数据的数倍；
+            // 超过安全线时直接提示改用 ZIP / 轻量，避免手机闪退后什么也没留下。
+            const limitMb = isIOSDevice() ? 150 : 800;
+            if (bytes / 1048576 >= limitMb) {
+                throw new Error('图片 / 语音约 ' + fmtBytes(bytes) +
+                    '，JSON 导出需要额外数倍内存，无法在本机安全完成。\n请改用「导出为 ZIP」，或取消勾选「包含图片 / 语音」做轻量备份。');
+            }
+        }
+        setProgress(2, '读取数据库…');
+        const data = await collectAllData({ binary: binary });
+        setProgress(40, '整理 JSON…');
+        const blob = await jsonDataToBlob(data, function (p) {
+            setProgress(40 + p * 55, '序列化 ' + Math.round(p * 100) + '%');
+        });
+        setProgress(97, '准备保存…');
+        downloadBlob(blob, timestampName('Nano', 'json'));
+        setProgress(100, '完成');
+    } finally {
+        setTimeout(hideProgress, 900);
+    }
+}
 
-    // ---------- CacheStorage ----------
-    // 跳过 Service Worker 缓存（可再生资源），让备份更小、导出/导入更快
-
-    zip.file('meta.json', JSON.stringify(meta));
-
-    const blob = await zip.generateAsync({
-        type: 'blob',
-        compression: 'DEFLATE',
-        compressionOptions: { level: 6 }
+// 用 JSZip 的流式生成器逐块输出，避免最后再生成一整段巨大的二进制。
+function generateZipBlob(zip, onPct) {
+    return new Promise(function (resolve, reject) {
+        let stream;
+        try {
+            stream = zip.generateInternalStream({
+                type: 'uint8array',
+                compression: 'DEFLATE',
+                compressionOptions: { level: 6 },
+                streamFiles: true
+            });
+        } catch (e) { reject(e); return; }
+        const chunks = [];
+        stream.on('data', function (chunk, meta) {
+            if (chunk && chunk.length) chunks.push(chunk);
+            if (typeof onPct === 'function' && meta && typeof meta.percent === 'number') onPct(meta.percent / 100);
+        });
+        stream.on('error', function (err) { reject(err); });
+        stream.on('end', function () { resolve(new Blob(chunks, { type: 'application/zip' })); });
+        try { stream.resume(); } catch (e) { reject(e); }
     });
-    downloadBlob(blob, timestampName('Nano', 'zip'));
+}
+
+/** 导出为 ZIP（binary=false 时跳过图片/语音） */
+async function exportZip(opts) {
+    opts = opts || {};
+    const binary = opts.binary !== false;
+    showProgress(binary ? '正在导出 ZIP（含图片/语音）' : '正在导出 ZIP（轻量）');
+    try {
+        setProgress(1, '加载压缩组件…');
+        await ensureJSZip();
+
+        const zip = new JSZip();
+        const meta = {
+            type: 'full-site-backup',
+            version: 1,
+            exportedAt: new Date().toISOString(),
+            origin: location.origin,
+            format: 'zip',
+            binary: binary
+        };
+
+        // ---------- IndexedDB ----------
+        const idbRoot = zip.folder('indexedDB');
+        const dbs = await listDatabases();
+
+        for (const { name, version } of dbs) {
+            let db;
+            try {
+                db = await openDatabase(name, version);
+            } catch {
+                continue;
+            }
+            const storeNames = Array.from(db.objectStoreNames);
+            if (storeNames.length === 0) { db.close(); continue; }
+
+            const dbFolder = idbRoot.folder(safeName(name));
+            dbFolder.file('__meta__.json', JSON.stringify({ version }));
+
+            // schema（keyPath / autoIncrement），导入时按原样重建 store
+            const schemaOut = {};
+
+            // 每个 store 单独一个只读事务；用 cursor 逐条写入 ZIP，
+            // 不再先把整个 store 读进内存（大聊天记录 / 图片库会直接爆内存）。
+            for (const storeName of storeNames) {
+                const storeFolder = dbFolder.folder(safeName(storeName));
+                const metaRecords = [];
+                let binIndex = 0;
+                try {
+                    const tx = db.transaction(storeName, 'readonly');
+                    const store = tx.objectStore(storeName);
+                    schemaOut[storeName] = {
+                        keyPath: store.keyPath === undefined ? null : store.keyPath,
+                        autoIncrement: !!store.autoIncrement
+                    };
+                    await new Promise(function (resolve) {
+                        let req;
+                        try { req = store.openCursor(); } catch (e) { resolve(); return; }
+                        req.onsuccess = function (e) {
+                            const cursor = e.target.result;
+                            if (!cursor) { resolve(); return; }
+                            try {
+                                const keyInfo = encodeKey(cursor.key);
+                                const value = cursor.value;
+                                if (isBinary(value)) {
+                                    const mime = value instanceof Blob ? value.type : '';
+                                    if (!binary) {
+                                        metaRecords.push({ key: keyInfo, __binarySkipped: true, mime: mime });
+                                    } else {
+                                        const binName = `bin_${binIndex++}.bin`;
+                                        let blob;
+                                        if (value instanceof Blob) blob = value;
+                                        else if (value instanceof ArrayBuffer) blob = new Blob([value]);
+                                        else if (ArrayBuffer.isView(value)) {
+                                            blob = new Blob([value.buffer.slice(
+                                                value.byteOffset,
+                                                value.byteOffset + value.byteLength
+                                            )]);
+                                        }
+                                        // 图片 / 音频 / 视频本身已经压缩过，再 DEFLATE 又慢又占内存，直接存储。
+                                        storeFolder.file(binName, blob, { compression: 'STORE' });
+                                        metaRecords.push({ key: keyInfo, __binaryFile: binName, mime: mime });
+                                    }
+                                } else {
+                                    metaRecords.push({ key: keyInfo, value: value });
+                                }
+                            } catch (err) { console.warn('读取记录失败:', name, storeName, err); }
+                            try { cursor.continue(); } catch (err) { resolve(); }
+                        };
+                        req.onerror = function () { resolve(); };
+                    });
+                } catch (e) {
+                    console.warn('读取 store 失败:', name, storeName, e);
+                }
+                storeFolder.file('records.json', JSON.stringify(metaRecords));
+                metaRecords.length = 0;
+            }
+            dbFolder.file('__schema__.json', JSON.stringify(schemaOut));
+            db.close();
+        }
+
+        // ---------- localStorage / sessionStorage ----------
+        zip.file('localStorage.json', JSON.stringify(collectStorage(localStorage)));
+        zip.file('sessionStorage.json', JSON.stringify(collectStorage(sessionStorage)));
+
+        // ---------- CacheStorage ----------
+        // 跳过 Service Worker 缓存（可再生资源），让备份更小、导出/导入更快
+
+        zip.file('meta.json', JSON.stringify(meta));
+
+        setProgress(30, '打包 ZIP…');
+        const blob = await generateZipBlob(zip, function (p) {
+            setProgress(30 + p * 65, '压缩 ' + Math.round(p * 100) + '%');
+        });
+        setProgress(97, '准备保存…');
+        downloadBlob(blob, timestampName('Nano', 'zip'));
+        setProgress(100, '完成');
+    } finally {
+        setTimeout(hideProgress, 900);
+    }
 }
 
 function collectStorage(storage) {
@@ -861,6 +1055,8 @@ async function importFromZip(file, onProgress) {
                         if (!binFile) continue;
                         const ab = await binFile.async('arraybuffer');
                         value = new Blob([ab], { type: rec.mime || '' });
+                    } else if (rec.__binarySkipped) {
+                        continue;
                     } else {
                         value = rec.value;
                     }
@@ -971,19 +1167,60 @@ const alertOverlay = $('iosAlert');
 const alertTitle = $('alertTitle');
 const alertMessage = $('alertMessage');
 const alertConfirmBtn = $('alertConfirmBtn');
+const alertBinaryOption = $('alertBinaryOption');
+const alertIncludeBinary = $('alertIncludeBinary');
 let currentAction = null;
 let pendingFile = null;
+let __alertSeq = 0;
+
+function isExportAction(a) { return a === 'exportJson' || a === 'exportZip'; }
+
+// 对话框里的体积提示用浏览器自带的快速估算（不会逐条读数据库），
+// 真正导出前的精确检查放在 exportJson 里。避免一打开对话框就把大库读一遍。
+function estimateQuickBytes() {
+    try {
+        if (navigator.storage && navigator.storage.estimate) {
+            return navigator.storage.estimate()
+                .then(function (e) { return Number(e && e.usage) || 0; })
+                .catch(function () { return 0; });
+        }
+    } catch (e) {}
+    return Promise.resolve(0);
+}
 
 function openAlert(actionType, extra = null) {
     currentAction = actionType;
+    const seq = ++__alertSeq;
     alertConfirmBtn.classList.remove('danger');
+    if (alertBinaryOption) alertBinaryOption.classList.toggle('show', isExportAction(actionType));
+
+    const askBinary = function (title, baseText) {
+        alertTitle.textContent = title;
+        alertMessage.textContent = baseText;
+        let pref = true;
+        try { pref = localStorage.getItem('nano_backup_include_binary') !== '0'; } catch (e) {}
+        if (alertIncludeBinary) alertIncludeBinary.checked = pref;
+        // 快速预检本机数据体积：太大时默认切到轻量，避免手机内存不足导致失败。
+        estimateQuickBytes().then(function (bytes) {
+            if (seq !== __alertSeq || currentAction !== actionType) return;
+            if (!bytes) return;
+            const limitMb = isIOSDevice() ? 200 : 1000;
+            const big = bytes / 1048576 >= limitMb;
+            if (big) {
+                if (alertIncludeBinary) alertIncludeBinary.checked = false;
+                alertMessage.textContent = '本机数据约 ' + fmtBytes(bytes) +
+                    '（含缓存）。\n数据量偏大，完整导出很容易因内存不足失败；已默认改为「轻量备份」（不含图片 / 语音）。\n仍要完整导出可勾选下面的选项，或改用云端备份（流式上传，更适合大数据）。';
+            } else {
+                alertMessage.textContent = '本机数据约 ' + fmtBytes(bytes) +
+                    '（含缓存）。\n取消勾选可只导出文字数据（更快、更稳）。';
+            }
+        }).catch(function () {});
+    };
 
     if (actionType === 'exportJson') {
-        alertTitle.textContent = '导出为 JSON';
-        alertMessage.textContent = '将打包全站数据（含二进制，base64 内嵌）。文件可能较大，是否继续？';
+        askBinary('导出为 JSON', '将打包全站数据。是否继续？');
     } else if (actionType === 'exportZip') {
-        alertTitle.textContent = '导出为 ZIP';
-        alertMessage.textContent = '将打包全站数据，二进制单独存放，体积更小。是否继续？';
+        askBinary('导出为 ZIP', '将打包全站数据，二进制单独存放。是否继续？');
     } else if (actionType === 'importConfirm') {
         alertTitle.textContent = '导入并覆盖';
         alertMessage.textContent = `即将导入「${extra}」。\n警告：当前所有数据将被清空并覆盖，且不可恢复！`;
@@ -1000,13 +1237,17 @@ function closeAlert() {
 
 async function executeAction() {
     const action = currentAction;
+    const includeBinary = alertIncludeBinary ? !!alertIncludeBinary.checked : true;
+    if (isExportAction(action)) {
+        try { localStorage.setItem('nano_backup_include_binary', includeBinary ? '1' : '0'); } catch (e) {}
+    }
     closeAlert();
 
     try {
         if (action === 'exportJson') {
-            await withLoading('btnExportJson', '导出中', exportJson);
+            await withLoading('btnExportJson', '导出中', function () { return exportJson({ binary: includeBinary }); });
         } else if (action === 'exportZip') {
-            await withLoading('btnExportZip', '导出中', exportZip);
+            await withLoading('btnExportZip', '导出中', function () { return exportZip({ binary: includeBinary }); });
         } else if (action === 'importConfirm' && pendingFile) {
             showProgress('正在导入备份');
             try {
@@ -1045,7 +1286,25 @@ async function executeAction() {
     } catch (e) {
         pendingFile = null;
         try { fileInput.value = ''; } catch (e2) {}
-        setTimeout(() => alert('操作失败：' + (e.message || e)), 100);
+        const msg = String((e && e.message) || e || '');
+        const memoryLike = /memory|内存|allocation|Invalid string|length|quota|out of/i.test(msg);
+        if (isExportAction(action) && includeBinary && memoryLike) {
+            const goLite = confirm('完整导出失败：' + msg + '\n\n原因多半是图片 / 语音太多、内存不够。\n是否改为「轻量备份」（不含图片 / 语音）再试一次？');
+            if (goLite) {
+                try {
+                    if (action === 'exportJson') {
+                        await withLoading('btnExportJson', '导出中', function () { return exportJson({ binary: false }); });
+                    } else {
+                        await withLoading('btnExportZip', '导出中', function () { return exportZip({ binary: false }); });
+                    }
+                } catch (e3) {
+                    setTimeout(() => alert('轻量导出也失败：' + ((e3 && e3.message) || e3)), 100);
+                }
+                return;
+            }
+            return;
+        }
+        setTimeout(() => alert('操作失败：' + msg), 100);
     }
 }
 

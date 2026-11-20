@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>备份与恢复</title>
-    <link rel="stylesheet" href="../css/backup.css">
+    <link rel="stylesheet" href="../css/backup.css?v=20261120a">
     <link rel="stylesheet" href="../css/panel-ui.css?v=20261109a">
 <script defer src="../js/appearance.js?v=20261110c"></script>
 </head>
@@ -64,7 +64,7 @@
             </button>
         </section>
         <div class="section-footer">
-            导出全部数据：IndexedDB、localStorage、sessionStorage。日常备份推荐用 <b>JSON</b>（可读、最稳、不依赖网络）；<b>ZIP</b> 体积更小、含二进制，但需要 JSZip（已内置，联网时也可回退 CDN）。
+            导出全部数据：IndexedDB、localStorage、sessionStorage。图片 / 语音多时，建议取消勾选「包含图片 / 语音」做轻量备份，或改用 ZIP / 云端备份；JSON 完整备份需要 base64，体积和内存占用最大，手机容易失败。<b>ZIP</b> 需要 JSZip（已内置，联网时也可回退 CDN）。
         </div>
 
         <!-- ================= 云端备份 ================= -->
@@ -185,6 +185,10 @@
             <div class="alert-header">
                 <div class="alert-title" id="alertTitle">提示</div>
                 <div class="alert-message" id="alertMessage">内容</div>
+                <label class="alert-option" id="alertBinaryOption">
+                    <input type="checkbox" id="alertIncludeBinary" checked>
+                    <span>包含图片 / 语音（完整备份，文件更大）</span>
+                </label>
             </div>
             <div class="alert-buttons">
                 <button class="alert-btn alert-btn-cancel" onclick="closeAlert()" data-close>取消</button>
@@ -203,7 +207,7 @@
     </div>
 
     <script defer src="../js/jszip.min.js"></script>
-    <script defer src="../js/backup.js?v=20261106a"></script>
+    <script defer src="../js/backup.js?v=20261120a"></script>
 <script defer src="../js/api-float.js"></script>
 <script defer src="../swipe-back.js"></script>
 </body>
