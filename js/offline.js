@@ -373,6 +373,16 @@ let offlineChatId = '';
 // 线下期间新到的线上消息留给线上自己按时间线总结。
 const offlineStartedAt = Date.now();
 try { offlineChatId = new URLSearchParams(window.location.search).get('chat') || ''; } catch (e) { offlineChatId = ''; }
+// 角色主动邀请 / 强制进入线下：进入后由角色先开口（不再等用户发第一条）
+let offlineAutoFirst = false;
+let offlineForceEnter = false;
+let offlineAutoAt = '';
+try {
+  const _sp = new URLSearchParams(window.location.search);
+  offlineAutoFirst = _sp.get('first') === '1' || _sp.get('first') === 'true';
+  offlineForceEnter = _sp.get('force') === '1' || _sp.get('force') === 'true';
+  offlineAutoAt = _sp.get('at') || '';
+} catch (e) { offlineAutoFirst = false; offlineForceEnter = false; offlineAutoAt = ''; }
 // 美化预览模式：同一套真实页面，只用来在设置页里实时展示样式，不读写消息、不跑定时
 let OFFLINE_PREVIEW = false;
 try { OFFLINE_PREVIEW = new URLSearchParams(window.location.search).get('preview') === '1'; } catch (e) { OFFLINE_PREVIEW = false; }
@@ -3371,6 +3381,13 @@ async function requestReply(opts) {
     const history = messages.map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.content, name: m.name, ts: Number(m.ts) || Number(String(m.id || '').split('-')[0]) || 0 }));
     // 续写：不新增存档消息，只在本次请求末尾临时加一条「继续」，让模型接着上一张卡片往下写
     if (continueMode) history.push({ role: 'user', content: '（继续）' });
+    // 角色主动邀请 / 强制进入线下：只把这条指令临时塞进本次请求，不写进聊天记录
+    if (opts && opts.autoOpen) {
+      history.push({ role: 'user', content: opts.forceOpen
+        ? '（你刚刚在情绪最紧绷的时刻把对方直接拉到了线下，此刻你们已经面对面。请你先开口：描写当下的场景、你的动作和神态，再说出你想说的话。不要替对方说话，也不要解释系统或设定。）'
+        : '（你刚刚把对方约到了线下，此刻你们已经面对面。请你先开口：描写当下的场景、你的动作和神态，再说出你想说的话。不要替对方说话，也不要解释系统或设定。）'
+      });
+    }
     let result;
     // 只允许一次请求：失败就如实报错，不自动重发同一轮（避免用户不知情时重复扣费）。
     result = await callMainAPI(history, { continue: continueMode });
@@ -5546,8 +5563,23 @@ async function init() {
     setTimeout(function() { summarizeOfflineMemories(); }, 3000);
   }
 
-  // 剧情第一页：有开场白就先让用户选择进入方式
-  try { maybeShowOpeningPicker(); } catch (e) {}
+  // 角色主动邀请 / 强制线下：角色先开口；否则走原来的开场白选择
+  if (offlineAutoFirst) {
+    let _hasPending = false;
+    try { _hasPending = !!localStorage.getItem(PENDING_KEY); } catch (e) {}
+    let _already = false;
+    const _autoKey = 'offline_auto_first_' + (offlineChatId || 'none') + '_' + (offlineAutoAt || '0');
+    try { _already = sessionStorage.getItem(_autoKey) === '1'; } catch (e) {}
+    if (!_hasPending && !_already) {
+      try { sessionStorage.setItem(_autoKey, '1'); } catch (e) {}
+      setTimeout(function () {
+        try { requestReply({ autoOpen: true, forceOpen: offlineForceEnter }); } catch (e) {}
+      }, 500);
+    }
+  } else {
+    // 剧情第一页：有开场白就先让用户选择进入方式
+    try { maybeShowOpeningPicker(); } catch (e) {}
+  }
 }
 
 // ============================================================

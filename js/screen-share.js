@@ -532,7 +532,7 @@
             try {
                 var sh = shell();
                 var url = 'ios-setting.html?chat=' + encodeURIComponent(info.id) + '&name=' + encodeURIComponent(info.name);
-                if (sh && sh.open) sh.open(url, '窥屏', 'more');
+                if (sh && sh.open) sh.open(url, 'Share', 'more');
             } catch (e) {}
         };
     }
@@ -556,7 +556,7 @@
         if (!cfgOk) { setStatus('主 API 未配置'); addLine('主 API 未配置，无法点评。', true); }
         else setStatus(SS.mode === 'camera' ? '正在看你的镜头…' : '盯着你的屏幕…');
         addLine(SS.mode === 'camera' ? '（TA 开始看你的镜头了）' : '（TA 开始看你的屏幕了）');
-        // 在私聊里留一条系统提示：让他知道「你已经把屏幕共享给 TA（窥屏）」
+        // 在私聊里留一条系统提示：让他知道「你已经把屏幕共享给 TA（Share）」
         try {
             var __sN = shell();
             if (__sN && __sN.postToChat) {

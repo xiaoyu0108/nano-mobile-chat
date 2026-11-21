@@ -525,7 +525,15 @@
                 var chatId = k.slice(prefix.length);
                 var arr = [];
                 try { arr = JSON.parse(localStorage.getItem(k) || '[]') || []; } catch (e) { arr = []; }
-                arr.forEach(function (c) { if (c) { var cc = Object.assign({}, c); cc._chatId = chatId; out.push(cc); } });
+                arr.forEach(function (c) {
+                    if (!c) return;
+                    // 已停用 / 已拒绝的亲属卡不再出现在钱包里（记录本身仍保留在亲属卡页）
+                    var st = String(c.status || '');
+                    if (st && st !== 'active' && st !== 'pending') return;
+                    var cc = Object.assign({}, c);
+                    cc._chatId = chatId;
+                    out.push(cc);
+                });
             }
         } catch (e) {}
         return out;

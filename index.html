@@ -8,7 +8,7 @@
     // 全站构建号：只作为版本标记记录，不再据此清空缓存或强制整页 reload。
     // 更新走增量：SW 保留旧缓存，页面先用缓存秒开、后台静默换成新文件；
     // 只有真正改过的 JS/CSS 在改版本号（?v=）后才会重新下载。
-    window.__NANO_BUILD__ = 'nano-2026-11-18-5';
+    window.__NANO_BUILD__ = 'nano-2026-11-21-2';
     (function () {
         try {
             var KEY = 'nano_build';
@@ -1911,6 +1911,32 @@ setTimeout(function () {
             clearTimeout(overlayLoadingFallback);
             if (overlayLoading) overlayLoading.classList.remove('show');
         }
+        // 换页时先把旧 iframe 的旧内容藏起来，等新页面 load / ready 再显示。
+        // 否则同一个 iframe 被复用时会先闪一下上一个页面，看起来像「返回时乱跳页面」。
+        function hideFrameUntilLoad(f) {
+            if (!f) return;
+            try {
+                f.setAttribute('data-frame-loading', '1');
+                f.style.opacity = '0';
+                setTimeout(function () {
+                    try {
+                        if (f.getAttribute('data-frame-loading') === '1') {
+                            f.removeAttribute('data-frame-loading');
+                            f.style.opacity = '';
+                        }
+                    } catch (e) {}
+                }, 5000);
+            } catch (e) {}
+        }
+        function showFrameLoaded(f) {
+            if (!f) return;
+            try {
+                if (f.getAttribute('data-frame-loading') === '1') {
+                    f.removeAttribute('data-frame-loading');
+                    f.style.opacity = '';
+                }
+            } catch (e) {}
+        }
         // 子页面脚本一开始执行就通知宿主，不必等图片/CDN 全部加载完。
         // 只接受「当前可见帧」的 ready，避免后台预热的隐藏帧把加载提示提前收掉。
         window.addEventListener('message', function (e) {
@@ -1920,6 +1946,7 @@ setTimeout(function () {
                 for (var i = 0; i < frames.length; i++) {
                     var f = frames[i];
                     if (f && f.contentWindow === e.source && f.style.display !== 'none') {
+                        showFrameLoaded(f);
                         hidePageLoading();
                         return;
                     }
@@ -1931,6 +1958,7 @@ setTimeout(function () {
         overlayFrames.forEach(function (f) {
             if (!f) return;
             f.addEventListener('load', function () {
+                showFrameLoaded(f);
                 if (f === overlayFrame) hidePageLoading();
             });
         });
@@ -2253,6 +2281,7 @@ setTimeout(function () {
                 showPageLoading('正在打开聊天…');
                 f.setAttribute('data-chat-id', chatId);
                 f.setAttribute('data-loaded-url', url);
+                hideFrameUntilLoad(f);
                 f.src = url;
             }
             // 聊天内页已经加载（复用时更明显）：立刻让它补发本地暂存的主动消息，
@@ -2366,6 +2395,7 @@ setTimeout(function () {
             }
             showPageLoading('正在打开…');
             overlayFrame.setAttribute('data-loaded-url', url);
+            hideFrameUntilLoad(overlayFrame);
             overlayFrame.src = url;
             markOverlayUsed(overlayFrame);
         }
@@ -2634,6 +2664,7 @@ setTimeout(function () {
                 } catch (e) {}
                 showVoiceFrame();
                 showPageLoading('正在接通…');
+                hideFrameUntilLoad(voiceCallFrame);
                 voiceCallFrame.src = url;
                 overlay.classList.add('no-header');
                 overlayTitle.textContent = '';
@@ -2642,6 +2673,7 @@ setTimeout(function () {
                 showMusicFrame();
                 if (frameBase(musicFrame) !== 'music.html') {
                     showPageLoading('正在打开…');
+                    hideFrameUntilLoad(musicFrame);
                     musicFrame.src = url;
                 } else {
                     hidePageLoading();
@@ -2665,6 +2697,7 @@ setTimeout(function () {
                 showMomentsFrame();
                 if (frameBase(momentsFrame) !== 'moments.html') {
                     showPageLoading('正在打开…');
+                    hideFrameUntilLoad(momentsFrame);
                     momentsFrame.src = url;
                 } else {
                     hidePageLoading();
@@ -2677,6 +2710,7 @@ setTimeout(function () {
                 showInsFrame();
                 if (frameBase(insFrame) !== 'ins.html') {
                     showPageLoading('正在打开…');
+                    hideFrameUntilLoad(insFrame);
                     insFrame.src = url;
                 } else {
                     hidePageLoading();
@@ -2757,6 +2791,7 @@ setTimeout(function () {
                 if (target) {
                     overlayFrame = target;
                     overlayFrame.setAttribute('data-loaded-url', chatUrl);
+                    hideFrameUntilLoad(overlayFrame);
                     overlayFrame.src = chatUrl;
                     overlayFrame.style.display = 'block';
                     hideOtherGenericFrame();
@@ -2919,6 +2954,7 @@ setTimeout(function () {
                     wasOverlaySource !== 'chat_inner') {
                     try { sessionStorage.setItem('nano_chat_active_page', JSON.stringify({ page: 'chat', at: Date.now() })); } catch (e) {}
                     if (frameBase(overlayFrame) !== 'chat.html') {
+                        hideFrameUntilLoad(overlayFrame);
                         overlayFrame.src = withBuild('chat.html');
                     } else {
                         try { overlayFrame.contentWindow.postMessage({ type: 'nanoChatGoHome' }, '*'); } catch (e) {}
@@ -2949,11 +2985,13 @@ setTimeout(function () {
                             chatFrame.setAttribute('data-loaded-url', chatUrl);
                         } else {
                             chatFrame.setAttribute('data-loaded-url', chatUrl);
+                            hideFrameUntilLoad(chatFrame);
                             chatFrame.src = chatUrl;
                         }
                         showOverlayFrame();
                     } else {
                         groupFrame.setAttribute('data-loaded-url', chatUrl);
+                        hideFrameUntilLoad(groupFrame);
                         groupFrame.src = chatUrl;
                         showOverlayFrame();
                     }
@@ -2976,6 +3014,7 @@ setTimeout(function () {
                     hideOtherGenericFrame();
                 } else {
                     overlayFrame.style.display = 'block';
+                    hideFrameUntilLoad(overlayFrame);
                     overlayFrame.src = withBuild(lastGroupUrl);
                 }
                 chatInnerFrame.style.display = 'none';
@@ -3006,6 +3045,7 @@ setTimeout(function () {
                         try { overlayFrame.contentWindow.postMessage({ type: 'nanoOverlayReopen' }, '*'); } catch (e) {}
                     } else {
                         showPageLoading('正在打开…');
+                        hideFrameUntilLoad(overlayFrame);
                         overlayFrame.src = withBuild('chat.html');
                     }
                     showOverlayFrame();
@@ -3022,6 +3062,7 @@ setTimeout(function () {
             // 从设置页进入的二级页面：关闭后回到设置页
             try {
                 if (wasOverlaySource === 'settings' && frameBase(overlayFrame) !== 'settings.html') {
+                    hideFrameUntilLoad(overlayFrame);
                     overlayFrame.src = withBuild('settings.html');
                     showOverlayFrame();
                     overlay.classList.add('active');
@@ -3081,6 +3122,7 @@ setTimeout(function () {
                 currentOverlaySource = 'discover';
                 pickOverlayFrame('appstore.html');
                 showOverlayFrame();
+                hideFrameUntilLoad(overlayFrame);
                 overlayFrame.src = withBuild('appstore.html');
                 overlay.classList.add('active');
                 overlay.classList.add('no-header');
@@ -5529,7 +5571,7 @@ setTimeout(function () {
     var files = [
         'js/keep-alive.js?v=20261112a',
         'js/char-takeover.js?v=20261117a',
-        'js/screen-share.js?v=20261119b',
+        'js/screen-share.js?v=20261121a',
         'js/float-chat.js?v=20261118a',
         'js/online-catchup.js?v=20261115a',
         'js/whisper-store.js?v=20261026a',

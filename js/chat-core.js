@@ -1317,6 +1317,7 @@
         prompt += '- [情侣头像:用户照片] 你想换一个有点情侣感的头像时，从对方最近发来的照片里随机截取一块，换成你自己的头像，例如 [情侣头像:用户照片]。这只改你自己的头像；【绝对禁止】修改、覆盖或替用户更换 TA 的头像——用户的头像是用户自己的，任何情况下都不要碰。仅关系亲密、你也愿意时偶尔用。\n';
         prompt += '- [纪念日:标题|YYYY-MM-DD|每年] 你主动记下一个对你们重要的日子（真的想记时才用，别频繁）。例如 [纪念日:第一次见面|2024-05-20|每年]；不重复的写 [纪念日:一起看日出|2025-06-01]。记下后对方在情侣空间能看到。\n';
         prompt += '- [微信号:新号] 你偶尔任性地把自己的微信号改成新的（独占一行，很少用、别频繁），例如 [微信号:chenyu_0713]。改完对方在角色资料里能看到你的新微信号。\n';
+        prompt += '- [网名:新网名] 你可以给自己设一个网名，也可以偶尔换掉它（独占一行，例如 [网名:夜航船]）。换网名要符合你此刻的心情或人设，频率很低，不要每轮都改，也不要在吵架时拿它当逃避。\n';
         prompt += '- [继续拉黑]（等同于 [拉黑我]）只有当用户做了让你非常生气、越界或伤到你的事——例如小号/马甲身份被对方笃定地识破并反复追问、你觉得没法再聊下去时——你决定关闭线上聊天（拉黑 TA）时才用，独占一行；平时绝对不要乱用。被拉黑后对方线上发来的消息会显示“已拒收”，你也可以稍后再决定是否 [加回我]。\n';
         prompt += '- [加回我] 当你决定把之前被你拉黑的用户重新加回线上聊天时使用，独占一行。\n';
         prompt += '用户可能会用你的亲属卡（亲密付）消费，系统会给你一条提示；你可以偶尔自然地提一句（比如"你刚是不是刷了我的卡"），但不要每一笔都追问或计较。\n';
@@ -1499,6 +1500,11 @@
         }
         prompt += '你也可以主动邀请对方一起听歌：只在氛围自然、你真的想和对方分享音乐时才用，单独一行输出 [邀请一起听] 并配一句自然的话，频率要低，不要反复邀请。\n';
         prompt += '如果你们正在一起听，而你想结束（要去忙、想睡觉、音乐不合适、心情变了），可以单独一行输出 [结束一起听] 并自然说一句；不要不打招呼就消失。\n';
+        if (!isNanoChat) {
+            prompt += '\n【线下 · 见面】\n';
+            prompt += '你们也可以从线上走到线下。想见对方、异地思念、气氛正好、想当面把话说清楚时，可以主动约见面：单独一行输出 [邀请线下:一句自然的理由或想做的事]，系统会生成一张邀请卡片，由对方决定同意或拒绝。频率要低，不要每轮都约。\n';
+            prompt += '只有在「情绪或关系真的到了严峻时刻」才可以用 [强制线下:一句理由] 把对方直接拉到线下：例如两个人吵到临界、对方崩溃或遇到危险、异地思念到无法继续隔着屏幕、必须当面解决。强制线下是极少数的强情节手段，绝不能当日常撒娇或玩笑用；没有真正的危机就不要输出。\n';
+        }
         try {
             var __travelPrompt = window.NanoTravelBridge && NanoTravelBridge.promptBlock ? NanoTravelBridge.promptBlock() : '';
             if (__travelPrompt) prompt += '\n' + __travelPrompt + '\n';
@@ -3118,6 +3124,47 @@
         return text;
     }
 
+    // 角色自己设置/更换网名：[网名:新网名]
+    // 存到角色库的 nickname 字段，同时记到本地聊天设置；有备注时备注优先显示。
+    function saveCharOnlineName(v) {
+        v = String(v || '').trim().replace(/[\[\]【】]/g, '').slice(0, 20);
+        if (!v) return;
+        try { localStorage.setItem('chat_setting_online_name_' + chatId, JSON.stringify(v)); } catch (e) {}
+        try {
+            var remark = '';
+            try { remark = JSON.parse(localStorage.getItem('chat_setting_remark_' + chatId) || '""') || ''; } catch (e) {}
+            if (!String(remark || '').trim()) {
+                displayName = v;
+                try { chatTitle.textContent = displayName; } catch (e) {}
+                try { if (avatarPlaceholder && avatarPlaceholder.style.display !== 'none') avatarPlaceholder.textContent = displayName.charAt(0).toUpperCase(); } catch (e) {}
+            }
+        } catch (e) {}
+        try {
+            var req = indexedDB.open('nano_characters_db', 1);
+            req.onupgradeneeded = function (e) { try { var d = e.target.result; if (!d.objectStoreNames.contains('characters')) d.createObjectStore('characters', { keyPath: 'id' }); } catch (err) {} };
+            req.onsuccess = function (e) {
+                var db = e.target.result;
+                try {
+                    var tx = db.transaction('characters', 'readwrite');
+                    var st = tx.objectStore('characters');
+                    var g = st.get(chatId);
+                    // 只写 nickname，绝不修改角色库里的真名 name
+                    g.onsuccess = function () { var c = g.result || { id: chatId, name: chatName || displayName }; c.nickname = v; st.put(c); };
+                    tx.oncomplete = function () { try { db.close(); } catch (e2) {} };
+                } catch (err) { try { db.close(); } catch (e2) {} }
+            };
+        } catch (e) {}
+        // 注意：这里不能带 name，否则会被聊天页当成「角色真名」覆盖 chatName；
+        // 网名只更新显示名，真名仍用于角色库匹配。
+        try { window.parent.postMessage({ type: 'nanoCharUpdated', chatId: chatId, nickname: v }, '*'); } catch (e) {}
+        try { addSystemNotice('TA 把网名改成了「' + v + '」'); } catch (e) {}
+    }
+    function settleOnlineNameFromReplyText(text) {
+        var m = String(text || '').match(/\[\s*(?:网名|昵称|nickname)\s*[:：]\s*([^\]\n]{1,20})\s*\]/i);
+        if (m) { saveCharOnlineName(m[1]); return String(text).replace(m[0], '').trim(); }
+        return text;
+    }
+
     // 消费外部（Meet 加好友）注入的欢迎消息
     function consumeChatInject() {
         try {
@@ -3308,6 +3355,15 @@
             if (remark) {
                 try { remark = JSON.parse(remark); } catch(e) {}
                 if (remark) displayName = remark;
+            }
+            // 角色自己设的网名：没有用户备注时优先显示
+            if (!remark) {
+                let onName = localStorage.getItem('chat_setting_online_name_' + chatId);
+                if (onName) {
+                    try { onName = JSON.parse(onName); } catch (e) {}
+                }
+                if (!onName && characterData && characterData.nickname) onName = characterData.nickname;
+                if (onName && typeof onName === 'string') displayName = onName;
             }
         } catch(e) {}
         chatTitle.textContent = displayName;
@@ -4050,6 +4106,25 @@
                 footer = '<span class="card-footer-text">等待 ' + (cardData.toName || '对方') + ' 回应</span>';
             }
             return '<div class="card-main"><div class="icon-wrap">' + icon + '</div><div><div class="card-title">一起听</div><div class="card-sub">' + sub + '</div></div></div><div class="card-footer">' + footer + '</div>';
+        } else if (cardData.cardType === 'offline') {
+            const oSt = cardData.status || 'pending';
+            const oForce = !!cardData.force;
+            const oNote = String(cardData.note || '').replace(/[<>&"]/g, '');
+            const oIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-5.5 7-11a7 7 0 1 0-14 0c0 5.5 7 11 7 11z"/><circle cx="12" cy="10" r="2.6"/></svg>';
+            let oTitle = oForce ? '线下 · 强制见面' : '线下邀请';
+            if (oSt === 'accepted') oTitle = oForce ? '线下 · 已被拉到面前' : '线下 · 已同意';
+            else if (oSt === 'rejected') oTitle = '线下 · 已拒绝';
+            else if (oSt === 'expired') oTitle = '线下 · 已过期';
+            const oSub = oNote || (oForce ? '这一刻不想再隔着屏幕。' : '出来见一面吧。');
+            let oFooter = '';
+            if (oSt === 'pending' && (cardData.direction || 'char') === 'char') {
+                oFooter = '<span class="card-footer-text">TA 想见到你</span><span class="card-actions"><button class="card-btn return-btn" data-act="offline-reject">拒绝</button><button class="card-btn" data-act="offline-accept">同意</button></span>';
+            } else if (oSt === 'accepted') {
+                oFooter = '<span class="card-footer-text">已进入线下</span>';
+            } else if (oSt === 'rejected') {
+                oFooter = '<span class="card-footer-text">你拒绝了这次见面</span>';
+            }
+            return '<div class="card-main"><div class="icon-wrap">' + oIcon + '</div><div><div class="card-title">' + oTitle + '</div><div class="card-sub">' + oSub + '</div></div></div><div class="card-footer">' + oFooter + '</div>';
         } else if (cardData.cardType === 'charSecretChat') {
             const clean = function (v) { return String(v == null ? '' : v).replace(/[<>&"]/g, ''); };
             const icon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zM8 11c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>';
@@ -4150,6 +4225,7 @@
             if (cardData.cardType === 'gift') return cardData.title || '一个礼物';
             if (cardData.cardType === 'call') return cardData.missed ? '未接电话' : '一次语音通话';
             if (cardData.cardType === 'listen') return '一起听邀请';
+            if (cardData.cardType === 'offline') return cardData.force ? '一次强制见面' : '线下见面邀请';
             if (cardData.cardType === 'couple') return cardData.title || '情侣空间分享';
             if (cardData.cardType === 'travelInvite') return '一起去邀请 · ' + (cardData.dest || '');
             if (cardData.cardType === 'travelReport') return (cardData.travelKind === 'together' ? '我们的旅行 · ' : '旅途报备 · ') + (cardData.place || cardData.title || '');
@@ -4947,7 +5023,7 @@
             }
         }
 
-        cleaned = text.replace(/\[(transfer|gift|storegift|商城|voice|语音|语音消息|call|heart|image|textimage|text-image|文字图|文字图片|图片|照片|自拍|reply|mem|回忆|记忆|sharechat|分享聊天|creategroup|inviteme|acceptinvite|rejectinvite|familycard|亲属卡|takeout|外卖|跑腿|errand|location|定位|act|动描|altprobe|小号|emoji|sticker|表情包|表情|anniv|纪念日|微信号|wechat)\s*:\s*[^\]]*?(?:\]|$)/gi, '').trim();
+        cleaned = text.replace(/\[(transfer|gift|storegift|商城|voice|语音|语音消息|call|heart|image|textimage|text-image|文字图|文字图片|图片|照片|自拍|reply|mem|回忆|记忆|sharechat|分享聊天|creategroup|inviteme|acceptinvite|rejectinvite|familycard|亲属卡|takeout|外卖|跑腿|errand|location|定位|act|动描|altprobe|小号|emoji|sticker|表情包|表情|anniv|纪念日|微信号|wechat|网名|nickname)\s*:\s*[^\]]*?(?:\]|$)/gi, '').trim();
 
         return { tags: results, cleanedText: cleaned };
     }
@@ -7234,6 +7310,69 @@
         });
     }
 
+    // ===== 线下邀请 / 强制线下 =====
+    // 角色主动约用户见面，或在线下危机/异地思念到临界时把用户直接拉进线下。
+    function openOfflineFromChat(first, force) {
+        let url = 'offline.html?chat=' + encodeURIComponent(chatId || 'default');
+        // 线下是现实见面，用角色真名，不用网名
+        const realName = chatName || displayName;
+        if (realName) url += '&name=' + encodeURIComponent(realName);
+        if (first) { url += '&first=1&at=' + Date.now(); }
+        if (force) url += '&force=1';
+        try {
+            if (window.parent !== window) {
+                window.parent.postMessage({ type: 'openFullscreen', url: url, title: '线下', source: 'chat_inner' }, '*');
+                return;
+            }
+        } catch (e) {}
+        try { window.location.href = url; } catch (e) {}
+    }
+    function createCharOfflineCard(status, note, force) {
+        const now = new Date();
+        const h = String(now.getHours()).padStart(2, '0');
+        const m = String(now.getMinutes()).padStart(2, '0');
+        // 新的线下邀请出现时，把上一张还没处理完的邀请标成已过期
+        messages.forEach(function (m) {
+            if (m && !m.recalled && m.isCard && m.cardData && m.cardData.cardType === 'offline' &&
+                (m.cardData.status || 'pending') === 'pending') {
+                m.cardData.status = 'expired';
+            }
+        });
+        messages.push({
+            id: 'offline_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+            type: 'left', text: '', time: h + ':' + m, status: null, recalled: false,
+            isCard: true,
+            cardData: { cardType: 'offline', direction: 'char', status: status || 'pending', note: String(note || '').trim(), force: !!force },
+            isVoice: false, voiceData: null, isImage: false, imageData: null,
+            quote: null, transcript: null, translation: null, favorite: false, turn: null
+        });
+        try { renderMessages(); saveMessages(); scrollToBottom(); } catch (e) {}
+    }
+    function settleOfflineFromReplyText(rawText) {
+        let body = String(rawText || '');
+        const forceRe = /\[(?:强制线下|强制见面|强拉线下|拉进线下|强拉你下线)\s*[:：]?\s*([^\]]*)\]/i;
+        const inviteRe = /\[(?:邀请线下|线下邀请|邀请见面|见面邀请|一起去线下|来线下)\s*[:：]?\s*([^\]]*)\]/i;
+        const fm = body.match(forceRe);
+        const im = fm ? null : body.match(inviteRe);
+        if (!fm && !im) return { body: body, settled: 0 };
+        // 纳米助手不能把用户拉进线下剧情
+        if (isNanoChat || !!(characterData && characterData.nanoAssistant)) {
+            body = body.replace(forceRe, '').replace(inviteRe, '').replace(/\n{3,}/g, '\n\n').trim();
+            return { body: body, settled: 0 };
+        }
+        const note = String((fm ? fm[1] : im[1]) || '').replace(/^[:：\s]+/, '').trim().slice(0, 60);
+        body = body.replace(forceRe, '').replace(inviteRe, '').replace(/\n{3,}/g, '\n\n').trim();
+        if (fm) {
+            createCharOfflineCard('accepted', note, true);
+            try { addSystemNotice('TA 直接来到你面前，把你拉进了线下'); } catch (e) {}
+            setTimeout(function () { try { openOfflineFromChat(true, true); } catch (e) {} }, 620);
+        } else {
+            createCharOfflineCard('pending', note, false);
+            try { addSystemNotice('TA 邀请你进入线下'); } catch (e) {}
+        }
+        return { body: body, settled: 1 };
+    }
+
     function setQuote(msgId, text) {
         quoteTargetId = msgId;
         const quotedMsg = messages.find(m => m.id === msgId);
@@ -9291,6 +9430,11 @@
                     return '用户给你发来一张「一起听」邀请卡片' + (song ? ('，邀请你一起听' + song) : '，邀请你一起听歌') + st + '（这是卡片消息，不是空白）';
                 }
                     return '你给用户发了一张「一起听」邀请卡片' + (song ? ('，想和TA一起听' + song) : '') + st;
+            } else if (cd.cardType === 'offline') {
+                const st = status === 'accepted' ? '（已进入线下）' : (status === 'rejected' ? '（已拒绝）' : (status === 'expired' ? '（已过期）' : '（等待回应）'));
+                const note = cd.note ? ('，理由：' + cd.note) : '';
+                if (cd.force) return '你在线下危机时刻直接把用户拉进了线下' + note + '（这是系统生成的线下见面卡片，不是空白消息）';
+                return '你给用户发了一张「线下见面」邀请卡片' + note + st;
             } else if (cd.cardType === 'couple') {
                 const title = cd.title || '情侣空间';
                 const detail = String(cd.coupleDetail || cd.coupleSummary || '').trim();
@@ -11936,6 +12080,10 @@
         const listenEndSettle = settleListenEndFromReplyText(replyBody);
         replyBody = listenEndSettle.body;
 
+        // 线下邀请 / 强制线下（[邀请线下:理由] / [强制线下:理由]）
+        const offlineSettle = settleOfflineFromReplyText(replyBody);
+        replyBody = offlineSettle.body;
+
         // 「旅途 · 一起去」：接受/婉拒用户的邀请，或主动发出邀请卡片
         try {
             if (window.NanoTravelBridge && NanoTravelBridge.settleFromReplyText) {
@@ -11960,6 +12108,8 @@
         replyBody = settleAvatarFromReplyText(replyBody);
         // 角色自己改微信号：[微信号:新号]
         replyBody = settleWechatFromReplyText(replyBody);
+        // 角色自己设置 / 更换网名：[网名:新网名]
+        replyBody = settleOnlineNameFromReplyText(replyBody);
         // 不再为「一起听」表态单独补一次 API 调用：本轮主回复一次到位，
         // 没表态时让卡片保持 pending，等下一次正常回复再结算，避免一轮多次调用。
         if (replyBody.indexOf('[邀请一起听]') !== -1) {
@@ -14261,6 +14411,17 @@
             else if (act === 'reject') rejectGroupInvite(msg);
             else if (act === 'listen-accept') { setListenStatus(msg, 'accepted'); addSystemNotice('你接受了一起听邀请'); notifyListenAccepted(msg); }
             else if (act === 'listen-reject') { setListenStatus(msg, 'rejected'); addSystemNotice('你婉拒了一起听邀请'); }
+            else if (act === 'offline-accept') {
+                msg.cardData.status = 'accepted';
+                try { renderMessages(); saveMessages(); } catch (e) {}
+                addSystemNotice('你同意了线下邀请');
+                setTimeout(function () { try { openOfflineFromChat(true, false); } catch (e) {} }, 320);
+            }
+            else if (act === 'offline-reject') {
+                msg.cardData.status = 'rejected';
+                try { renderMessages(); saveMessages(); } catch (e) {}
+                addSystemNotice('你拒绝了线下邀请');
+            }
             else if (act === 'family-accept') acceptFamilyCard(msg);
             else if (act === 'family-reject') rejectFamilyCard(msg);
             else if (act === 'altfriend-accept') acceptAltFriend(msg);

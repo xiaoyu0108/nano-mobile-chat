@@ -1624,7 +1624,9 @@
       return {
         id: id,
         type: 'single',
-        name: remark || c.name || '未命名',
+        name: remark || c.nickname || c.name || '未命名',
+        rawName: c.name || '未命名',
+        nickname: c.nickname || '',
         avatar: c.avatar || '',
         msg: last ? ((last.type === 'right' ? '我：' : '') + previewText(last)) : (c.setting ? String(c.setting).slice(0, 20) + '...' : '点击开始对话'),
         time: timeText(last),
@@ -1789,7 +1791,7 @@
       const avatar = '<div class="avatar"' + bg + '>' + (item.avatar ? '' : esc(initial)) + '</div>';
       const unread = getUnread(item.id);
       const unreadHtml = unread > 0 ? '<span class="chat-unread">' + (unread > 99 ? '99+' : unread) + '</span>' : '';
-      return '<div class="chat-item ' + (item.pinned ? 'pinned' : '') + '" data-id="' + escAttr(item.id) + '" data-type="' + item.type + '" data-name="' + escAttr(item.name) + '" data-avatar="' + escAttr(item.avatar || '') + '">' +
+      return '<div class="chat-item ' + (item.pinned ? 'pinned' : '') + '" data-id="' + escAttr(item.id) + '" data-type="' + item.type + '" data-name="' + escAttr(item.rawName || item.name) + '" data-avatar="' + escAttr(item.avatar || '') + '">' +
         '<div class="swipe-actions">' +
           '<button class="pin-btn" data-action="pin"><svg viewBox="0 0 24 24"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/></svg><span>' + (item.pinned ? '取消置顶' : '置顶') + '</span></button>' +
           '<button class="del-btn" data-action="delete"><svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg><span>删除</span></button>' +

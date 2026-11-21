@@ -488,6 +488,24 @@
                     ['发起人', lDir === 'user' ? me : other, 'user'],
                     ['邀请状态', st === 'accepted' ? '一起听中' : (st === 'rejected' ? '已婉拒' : (st === 'ended' ? '已结束' : (st === 'expired' ? '已过期' : '待回应'))), 'box']
                 ]) + lFoot;
+        } else if (type === 'offline') {
+            var oDir = cd.direction || (side === 'right' ? 'user' : 'char');
+            var oForce = !!cd.force;
+            var oHead = st === 'accepted'
+                ? (oForce ? '线下 · 已被拉到面前' : '线下 · 已同意')
+                : (st === 'rejected' ? '线下 · 已拒绝' : (st === 'expired' ? '线下 · 已过期' : (oForce ? '线下 · 强制见面' : '线下邀请')));
+            var oIcon = st === 'accepted' ? 'checkCircle' : ((st === 'rejected' || st === 'expired') ? 'x' : 'pin');
+            var oFoot = '';
+            if (st === 'pending' && oDir === 'char') oFoot = actions([['拒绝', 'offline-reject', false], ['同意', 'offline-accept', true]]);
+            else if (st === 'pending') oFoot = statusFoot('等待 ' + other + ' 回应');
+            html = header(oIcon, oHead, time) +
+                mainTitle('pin', '线下', oForce ? 'TA 把你拉到了面前' : '想见你', cd.note || (oForce ? '这一刻不想再隔着屏幕。' : '出来见一面吧。')) +
+                info([
+                    ['发起人', oDir === 'user' ? me : other, 'user'],
+                    ['方式', oForce ? '强制见面' : '见面邀请', 'pin'],
+                    ['状态', st === 'accepted' ? '已进入线下' : (st === 'rejected' ? '已拒绝' : (st === 'expired' ? '已过期' : '待回应')), 'box'],
+                    ['时间', time || '刚刚', 'clock']
+                ]) + oFoot;
         } else if (type === 'couple') {
             var kind = cd.coupleKind || '';
             var kindMap = {

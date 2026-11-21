@@ -4,7 +4,7 @@
 <script defer src="../js/nano-runtime.js?v=20261118j"></script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>窥屏</title>
+  <title>Share</title>
   <link rel="stylesheet" href="../css/ios-setting.css?v=20261023e">
   <script defer src="../js/localforage.min.js?v=20261027a"></script>
   <script defer src="../js/appearance.js?v=20261110c"></script>
@@ -14,15 +14,15 @@
     <button class="sk-back" data-back aria-label="返回">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
     </button>
-    <span class="sk-title">窥屏</span>
+    <span class="sk-title">Share</span>
     <span class="sk-top-spacer"></span>
   </header>
 
   <main class="sk-wrap">
     <div class="sk-hero">
-      <div class="sk-hero-kicker">SCREEN PEEK</div>
+      <div class="sk-hero-kicker">SHARE</div>
       <div class="sk-hero-title">让 TA 看看你的屏幕</div>
-      <div class="sk-hero-sub">窥屏不是监视，是让角色看你正在看的内容，然后像坐在你旁边一样吐槽、关心、吃醋。选一个方式开始。</div>
+      <div class="sk-hero-sub">Share 不是监视，是让角色看你正在看的内容，然后像坐在你旁边一样吐槽、关心、吃醋。选一个方式开始。</div>
     </div>
 
     <div class="sk-missing" id="skMissing" hidden></div>
@@ -46,7 +46,11 @@
         <span>立即开始共享屏幕</span>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>
       </button>
-      <div class="sk-mode-foot">电脑需要 Chrome / Edge；安卓请使用最新 APK，首次会弹出系统录屏授权。iPhone 网页端拿不到录屏权限，请用下面的手机方式。</div>
+      <button class="sk-big-btn soft" id="isStartFloat" type="button" style="margin-top:10px">
+        <span>开启悬浮聊天（安卓 APK）</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="14" rx="2"/><rect x="12" y="10" width="7" height="6" rx="1"/></svg>
+      </button>
+      <div class="sk-mode-foot">电脑需要 Chrome / Edge；安卓请使用最新 APK，首次会弹出系统录屏授权。悬浮聊天也只在安卓 APK 可用；iPhone 网页端拿不到录屏权限，请用下面的手机方式。</div>
     </section>
 
     <!-- 方式二：手机，屏幕速聊 -->
@@ -130,7 +134,7 @@
           <button class="sk-copy-btn" id="isPeekSave" style="flex:1" type="button">保存配置</button>
           <button class="sk-copy-btn" id="isPeekRestore" style="background:#fff;color:var(--sk-pink-deep);border:1px solid var(--sk-line);box-shadow:none" type="button">还原初始</button>
         </div>
-        <div class="sk-note">「还原初始」会把服务端地址恢复成默认 Worker，并<b>重新生成一枚 pk</b>（所以旧 pk 一定会变）；还原后要重新复制快捷指令里的地址 / 令牌 / JSON。如果 Worker 设了 <code>PEEK_TOKEN</code>，还要把 Worker 的 secret 改成新 pk；公用模式（<code>PEEK_PUBLIC=1</code>）不用改 Worker。<br>这个地址会同时用于「窥屏」和「Web Push」。保存后去 <b>设置 → 其他 → Web Push</b> 点一次「开启 / 重新订阅」；VAPID 公钥会自动从 Worker 的 <code>/vapid</code> 获取。<br>默认用作者的公用 Worker 就能玩；如果经常失败、额度不足，或想和朋友隔离数据，可以换成自己的 Worker，详细步骤见下面的 <b>「自己部署 Worker（详细教程）」</b>。<br>给其他人公用时，在 Worker 里设置 <code>PEEK_PUBLIC=1</code>，每个浏览器的令牌会把数据彼此隔离。<br>公用模式不会使用站长的模型 API：每个人都要在自己的 Nano 里配置主 API，否则只会收到“请先配置你自己的 API”的提示。</div>
+        <div class="sk-note">「还原初始」会把服务端地址恢复成默认 Worker，并<b>重新生成一枚 pk</b>（所以旧 pk 一定会变）；还原后要重新复制快捷指令里的地址 / 令牌 / JSON。如果 Worker 设了 <code>PEEK_TOKEN</code>，还要把 Worker 的 secret 改成新 pk；公用模式（<code>PEEK_PUBLIC=1</code>）不用改 Worker。<br>这个地址会同时用于「Share」和「Web Push」。保存后去 <b>设置 → 其他 → Web Push</b> 点一次「开启 / 重新订阅」；VAPID 公钥会自动从 Worker 的 <code>/vapid</code> 获取。<br>默认用作者的公用 Worker 就能玩；如果经常失败、额度不足，或想和朋友隔离数据，可以换成自己的 Worker，详细步骤见下面的 <b>「自己部署 Worker（详细教程）」</b>。<br>给其他人公用时，在 Worker 里设置 <code>PEEK_PUBLIC=1</code>，每个浏览器的令牌会把数据彼此隔离。<br>公用模式不会使用站长的模型 API：每个人都要在自己的 Nano 里配置主 API，否则只会收到“请先配置你自己的 API”的提示。</div>
       </div>
     </details>
 
@@ -138,16 +142,16 @@
       <summary><span>自己部署 Worker（详细教程）</span><svg class="sk-fold-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></summary>
       <div class="sk-fold-body">
         <div class="sk-guide">
-          <p>默认用作者的 Worker 就能玩。如果你经常遇到慢、额度不足，或者想和朋友隔离数据，就按下面部署一个自己的。部署一次，<b>窥屏和 Web Push 都会走你的 Worker</b>。</p>
+          <p>默认用作者的 Worker 就能玩。如果你经常遇到慢、额度不足，或者想和朋友隔离数据，就按下面部署一个自己的。部署一次，<b>Share 和 Web Push 都会走你的 Worker</b>。</p>
 
           <button class="sk-big-btn soft" type="button" data-copy="isDeployPrompt" style="margin:4px 0 8px">复制给 AI 的部署指令</button>
           <div class="sk-note" style="margin-bottom:14px">复制后发给任意 AI（ChatGPT / Claude / 豆包等），让它按「电脑」或「只用手机」一步一步教你。下面也有一份手动步骤。</div>
-          <textarea id="isDeployPrompt" hidden>你在帮我部署一个 Cloudflare Worker，用来给 Nano（一个网页版 AI 聊天 PWA）提供「窥屏 / 屏幕速聊」和「Web Push」。请一步一步指导我，不要一次给太多步骤；每步等我确认后再继续。
+          <textarea id="isDeployPrompt" hidden>你在帮我部署一个 Cloudflare Worker，用来给 Nano（一个网页版 AI 聊天 PWA）提供「Share / 屏幕速聊」和「Web Push」。请一步一步指导我，不要一次给太多步骤；每步等我确认后再继续。
 
 背景：
 - 我有一个 Nano 网页，已经能打开。
 - 我要部署的是站长提供的 push-worker。
-- 部署后，把 Worker 地址填进 Nano 的「查手机 → 设置 → 窥屏 → 手机上玩 → 服务端地址」，窥屏和 Web Push 都会走它。
+- 部署后，把 Worker 地址填进 Nano 的「查手机 → 设置 → Share → 手机上玩 → 服务端地址」，Share 和 Web Push 都会走它。
 - 模型 API 不需要在 Worker 里配；Nano 会把我的主 API 同步过去。
 - 我不能用作者的 Worker，想自己部署。
 
@@ -172,9 +176,9 @@
 6. wrangler deploy，记下 https://...workers.dev 地址。
 7. 浏览器打开 地址/vapid，应返回 {"ok":true,"key":"..."}。
 8. 在 Nano 的「服务端地址」填这个地址，保存；如果设了 PUSH_TOKEN 就填下面的输入框。
-9. 打开对应角色的窥屏页，重新复制接口地址/令牌/JSON 到快捷指令。
+9. 打开对应角色的 Share 页，重新复制接口地址/令牌/JSON 到快捷指令。
 10. 去 设置 → 其他 → Web Push，点「开启 / 重新订阅」。
-11. 测试：跑一次窥屏，回 Nano 私聊看消息；看 Cloudflare Logs 有没有 POST /peek。
+11. 测试：跑一次 Share，回 Nano 私聊看消息；看 Cloudflare Logs 有没有 POST /peek。
 
 === 路径 B：只用手机（Cloudflare 网页控制台） ===
 1. 手机浏览器打开 dash.cloudflare.com，登录。
@@ -187,7 +191,7 @@
 6. 不需要 KV；Worker 第一次运行会自动在 D1 里建表。如果仍提示 PUSH_KV，说明粘贴的是旧版代码。
 7. 部署后打开 https://你的worker.workers.dev/vapid，应返回 key。
 8. 在 Nano 的「服务端地址」填这个地址，保存；有 PUSH_TOKEN 就填。
-9. 更新窥屏快捷指令的接口地址/令牌/JSON。
+9. 更新 Share快捷指令的接口地址/令牌/JSON。
 10. 设置 → 其他 → Web Push → 开启/重新订阅。
 11. 测试同上。
 
@@ -279,7 +283,7 @@ wrangler secret put PUSH_TOKEN</pre>
           <h4>8. 验证</h4>
           <ul>
             <li><code>/vapid</code> 能返回 <code>key</code>；</li>
-            <li>运行窥屏快捷指令能收到回复；</li>
+            <li>运行 Share快捷指令能收到回复；</li>
             <li>回到 Nano 私聊能看到这一轮；</li>
             <li>Web Push 显示「已开启」；</li>
             <li>Cloudflare → Workers → 你的 Worker → Logs 能看到 <code>POST /peek</code>。</li>
@@ -305,7 +309,7 @@ wrangler secret put PUSH_TOKEN</pre>
   <div class="sk-toast" id="isToast"></div>
   <script defer src="../js/nano-prompts.js?v=20261118a"></script>
   <script defer src="../js/qa-bridge.js?v=20261027a"></script>
-<script defer src="../js/ios-setting.js?v=20261028e"></script>
+<script defer src="../js/ios-setting.js?v=20261121a"></script>
   <script defer src="../swipe-back.js"></script>
 </body>
 </html>

@@ -193,7 +193,7 @@
     fanfic:   { url: 'fanfic.html', title: 'Fanfic', showBack: true },
     mall:     { url: 'mall.html', title: 'Store 商城', showBack: true },
   appstore: { url: 'appstore.html', title: 'App Store', showBack: true },
-    screenpeek: { url: 'ios-setting.html', title: '窥屏', showBack: true }
+    screenpeek: { url: 'ios-setting.html', title: 'Share', showBack: true }
   };
 
   Array.prototype.forEach.call(document.querySelectorAll('.entry[data-app]'), function (el) {

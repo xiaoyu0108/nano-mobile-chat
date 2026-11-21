@@ -90,17 +90,12 @@
             icon: '<rect x="6" y="2" width="12" height="20" rx="3"/><path d="M11 18h2"/>',
             color: '#FF3B30'
         },
-        {
-            id: 'floatchat',
-            label: '悬浮聊天',
-            icon: '<rect x="3" y="4" width="18" height="14" rx="2"/><rect x="12" y="10" width="7" height="6" rx="1"/>',
-            color: '#AF52DE'
-        },
     ];
 
     // 「接管手机」重新放回聊天加号菜单；
     // 「看屏幕 / 屏幕共享」只在电脑端可用，保留在「查手机 → 设置」里，不进加号菜单，这里过滤掉。
-    const REMOVED_MENU_IDS = ['listen-accept', 'listen-end', 'screenshare'];
+    // 「悬浮聊天」已移到 Share（原窥屏）页面里触发，加号菜单不再显示。
+    const REMOVED_MENU_IDS = ['listen-accept', 'listen-end', 'screenshare', 'floatchat'];
 
     // ===== IndexedDB 操作 =====
     const DB_NAME = 'nano_chat_menu_db';

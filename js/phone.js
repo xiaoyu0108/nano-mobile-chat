@@ -3283,7 +3283,7 @@ async function openSettings(){
       <div class="st-row">
         <button class="st-btn" data-act="ios-screen">
           <div>
-            <div class="st-btn-title">iOS 快捷指令 · 窥屏</div>
+            <div class="st-btn-title">iOS 快捷指令 · Share</div>
             <div class="st-btn-sub">手机用屏幕速聊：截图 → 服务端 → 回复弹通知，回到 Nano 自动进聊天</div>
           </div>
           <svg class="st-btn-chev" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></svg>
@@ -4561,7 +4561,7 @@ async function openWallet(){
   return openHostedApp("wallet", "phone-wallet.html?chat=" + encodeURIComponent(id) + "&name=" + encodeURIComponent(nm), "renderCharWallet");
 }
 
-/* 窥屏配置：内嵌在本 App 内，返回时回到「设置」而不是退出手机 */
+/* Share配置：内嵌在本 App 内，返回时回到「设置」而不是退出手机 */
 async function openScreenSetup(){
   currentAppId = "screensetup";
   const url = "ios-setting.html?chat=" + encodeURIComponent(currentChar.id) + "&name=" + encodeURIComponent(currentChar.name || "");
@@ -4595,7 +4595,7 @@ window.addEventListener("message", e => {
     try{ renderChars(); updateHomeWidgets(); }catch(err){}
   }
   else if(d && d.type === "startScreenShare"){
-    // 窥屏页嵌在「查手机」里时，把共享请求继续交给外壳
+    // Share页嵌在「查手机」里时，把共享请求继续交给外壳
     try{
       if(window.parent && window.parent !== window) window.parent.postMessage(d, "*");
       else if(window.ScreenShare && window.ScreenShare.start) window.ScreenShare.start({ id:d.charId, name:d.charName, avatar:d.avatar });

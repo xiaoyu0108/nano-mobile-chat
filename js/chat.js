@@ -740,20 +740,22 @@
             img.src = item.avatar;
             avatar.appendChild(img);
         } else {
-            avatar.textContent = item.name ? item.name.charAt(0).toUpperCase() : '?';
+            avatar.textContent = (item.nickname || item.name) ? String(item.nickname || item.name).charAt(0).toUpperCase() : '?';
         }
         div.appendChild(avatar);
 
         const info = document.createElement('div');
         info.className = 'chat-info';
 
-        // ===== 1. 同步备注昵称，去掉点和 user 名字 =====
+        // ===== 1. 同步备注昵称 / 角色自己的网名，去掉点和 user 名字 =====
         const name = document.createElement('div');
         name.className = 'chat-name';
         let displayName = item.name || '未命名';
         const remark = getRemark(chatId);
         if (remark) {
             displayName = remark;
+        } else if (item.nickname) {
+            displayName = item.nickname;
         }
         name.textContent = displayName;
         info.appendChild(name);

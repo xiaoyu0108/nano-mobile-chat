@@ -8,7 +8,7 @@
     { id: 'halo', name: 'Halo', icon: 'halo' }, { id: 'instagram', name: 'Instagram', icon: 'instagram' }, { id: 'together', name: 'Books', icon: 'together' },
     { id: 'music', name: '音乐', icon: 'music' }, { id: 'memory', name: '记忆宫殿', icon: 'memory' }, { id: 'imessage', name: 'iMessage', icon: 'imessage' },
     { id: 'qa', name: '问答邮箱', icon: 'qa' }, { id: 'pomodoro', name: '番茄钟', icon: 'pomodoro' }, { id: 'nano', name: 'Nano', icon: 'nano' },
-    { id: 'peek', name: '窥屏', icon: 'peek' }, { id: 'market', name: '共享集市', icon: 'market' }, { id: 'shop', name: '商城', icon: 'shop' },
+    { id: 'peek', name: 'Share', icon: 'peek' }, { id: 'market', name: '共享集市', icon: 'market' }, { id: 'shop', name: '商城', icon: 'shop' },
     { id: 'schedule', name: '日程', icon: 'schedule' }, { id: 'travel', name: '旅途', icon: 'travel' }, { id: 'mcp', name: 'MCP', icon: 'mcp' }, { id: 'tide', name: '月潮', icon: 'tide' },
     { id: 'fanfic', name: '同人文', icon: 'fanfic' }, { id: 'store', name: '应用商店', icon: 'store' }, { id: 'book', name: '世界书', icon: 'book' },
     { id: 'beauty', name: '美化', icon: 'beauty' }, { id: 'phone', name: '查手机', icon: 'phone' }, { id: 'settings', name: '设置', icon: 'settings' }

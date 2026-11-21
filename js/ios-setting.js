@@ -1,5 +1,5 @@
 // ============================================================
-// ios-setting.js — iOS「快捷指令 · 窥屏」图形化配置
+// ios-setting.js — iOS「快捷指令 · Share」图形化配置
 // 读取角色库 + 主 API（无需单独配置），生成可直接粘贴进
 // 「快捷指令」的接口、令牌、请求体 JSON 与完整步骤。
 // 换角色时自动更新角色 ID 和 JSON。
@@ -159,7 +159,7 @@
             localStorage.setItem(PEEK_INIT_TOKEN_KEY, tok);
             localStorage.setItem(PEEK_TOKEN_KEY, tok);
             localStorage.setItem(PEEK_URL_KEY, PEEK_DEFAULT_URL);
-            // Web Push 和窥屏共用同一个 Worker，地址一起还原
+            // Web Push 和 Share 共用同一个 Worker，地址一起还原
             localStorage.setItem('nano_push_endpoint', PEEK_DEFAULT_URL);
             localStorage.removeItem('nano_push_vapid');
             // 清掉人设同步缓存，下一次会用新令牌重新同步
@@ -214,7 +214,7 @@
         });
     }
     function recentContext() {
-        // chat-core 在 IndexedDB 保存消息时同步维护了轻量镜像；优先读它，否则窥屏人设里
+        // chat-core 在 IndexedDB 保存消息时同步维护了轻量镜像；优先读它，否则Share人设里
         // 永远看不到你们刚聊过什么（旧 localStorage 副本在有 IndexedDB 时不会写）。
         try {
             var mirror = localStorage.getItem('nano_recent_text_' + selectedId);
@@ -381,7 +381,7 @@
         el.innerHTML = ''
             + '<h4>最简版（先照这个配，能跑通再加功能）</h4>'
             + '<ol>'
-            + '<li>快捷指令 App → <b>+</b> 新建，命名「窥屏」。</li>'
+            + '<li>快捷指令 App → <b>+</b> 新建，命名「Share」。</li>'
             + '<li>加动作：<code>截屏</code> → <code>Base64 编码</code>（关闭换行）。</li>'
             + '<li>加 <code>获取 URL 内容</code>：<br>'
             + '地址 <code>' + esc(ep || '（先填服务端地址）') + '</code><br>'
@@ -404,7 +404,7 @@
             + '</ol>'
             + '<h4>完整版（可选：缩放/压缩/识图兜底）</h4>'
             + '<ol>'
-            + '<li>打开「快捷指令」App，右上角 <b>+</b> 新建，命名「窥屏」。</li>'
+            + '<li>打开「快捷指令」App，右上角 <b>+</b> 新建，命名「Share」。</li>'
             + '<li>添加动作 <code>截屏</code>。</li>'
             + '<li>添加动作 <code>调整图像大小</code>：宽度填 <b>900</b>，高度留空（自动）。原图直接 Base64 经常会导致请求超时。</li>'
             + '<li>添加动作 <code>转换图像</code>：格式选 <b>JPEG</b>，质量 <b>0.7</b>。不转换就一定要把下面 image 前缀改成 <code>data:image/png;base64,</code>。</li>'
@@ -444,8 +444,8 @@
             + '</ol>'
             + '<h4>更顺手的触发</h4>'
             + '<ol>'
-            + '<li><b>轻点背面</b>：设置 → 辅助功能 → 触控 → 轻点背面 → 轻点两下 → 选「窥屏」。</li>'
-            + '<li><b>辅助触控</b>：设置 → 辅助功能 → 触控 → 辅助触控 → 轻点两下 → 选「窥屏」。</li>'
+            + '<li><b>轻点背面</b>：设置 → 辅助功能 → 触控 → 轻点背面 → 轻点两下 → 选「Share」。</li>'
+            + '<li><b>辅助触控</b>：设置 → 辅助功能 → 触控 → 辅助触控 → 轻点两下 → 选「Share」。</li>'
             + '</ol>'
             + '<div class="warn">换角色时，角色 ID 和两段 JSON 会自动更新。请重新复制一次 JSON；旧的快捷指令仍然指向旧 ID。</div>';
     }
@@ -457,7 +457,7 @@
         var ep = baseUrl ? (baseUrl + '/peek') : '（先填服务端地址）';
         var tok = getPeekToken();
         return [
-            '窥屏 · 手机版（屏幕速聊）',
+            'Share · 手机版（屏幕速聊）',
             '',
             '角色：' + name,
             '角色 ID：' + id,
@@ -471,7 +471,7 @@
             peekBody('text'),
             '',
             '最简版（先照这个配）：',
-            '1. 新建快捷指令「窥屏」→ 截屏 → Base64 编码（关闭换行）。',
+            '1. 新建快捷指令「Share」→ 截屏 → Base64 编码（关闭换行）。',
             '2. 获取 URL 内容：POST 上面的接口地址；头部 X-Peek-Token = 上面的令牌；请求体选「文件」引用文本：',
             '   {"chatId":"' + id + '","appId":"' + appId() + '","token":"' + tok + '","image":"data:image/jpeg;base64,<Base64结果>"}',
             '   把 <Base64结果> 换成 Base64 变量。',
@@ -479,7 +479,7 @@
             '连续聊：显示提醒后加「要求输入」→ 再发一次 URL 请求（请求体换成 {"chatId":"' + id + '","text":"<要求输入的变量>"}）→ reply → 显示提醒；把这四步放进「重复」50/100 次。输入“退出”时用「如果」停止。',
             '',
             '完整版步骤：',
-            '1. 打开「快捷指令」App，右上角 + 新建，命名「窥屏」。',
+            '1. 打开「快捷指令」App，右上角 + 新建，命名「Share」。',
             '2. 添加动作：截屏 → 调整图像大小（宽 900，高留空）→ 转换图像（JPEG 0.7）→ Base64 编码（关闭行长度换行）。',
             '   原图直接 Base64 很容易请求超时；一定要先缩放和压成 JPEG。',
             '3. 添加「获取 URL 内容」：地址填上面的接口地址，方法 POST。',
@@ -522,7 +522,34 @@
             window.ScreenShare.start(info);
             return;
         }
-        toast('请从 App 里的「查手机 → 设置」打开窥屏');
+        toast('请从 App 里的「查手机 → 设置」打开 Share');
+    }
+
+    // 安卓 APK：从 Share 页直接开启系统悬浮聊天窗
+    function startFloatChat() {
+        var info = {
+            chatId: String(selectedId || ''),
+            charName: charName(),
+            avatar: (currentChar() && currentChar().avatar) || ''
+        };
+        if (!info.chatId) { toast('先选一个角色'); return; }
+        try {
+            var t = window.parent;
+            if (t && t !== window) {
+                t.postMessage({ type: 'nanoFloatChat', chatId: info.chatId, charName: info.charName, avatar: info.avatar }, '*');
+                toast('已请求开启悬浮聊天');
+                return;
+            }
+        } catch (e) {}
+        if (window.NanoApp && typeof window.NanoApp.startFloatingChat === 'function') {
+            var r = '';
+            try { r = window.NanoApp.startFloatingChat(JSON.stringify(info)); } catch (e) {}
+            if (r === 'permission') toast('请允许 Nano「显示在其他应用上层」，授权后返回会自动打开');
+            else if (r === 'started') toast('悬浮聊天已开启，切到其他 App 也能继续聊');
+            else toast('当前页面不能打开悬浮窗');
+            return;
+        }
+        toast('悬浮聊天需要安卓 APK');
     }
 
     function refresh() {
@@ -602,6 +629,8 @@
         });
         var startBtn = $('isStartShare');
         if (startBtn) startBtn.addEventListener('click', startRealShare);
+        var floatBtn = $('isStartFloat');
+        if (floatBtn) floatBtn.addEventListener('click', startFloatChat);
         var guideBtn = $('isCopyGuide');
         if (guideBtn) guideBtn.addEventListener('click', function () { copy(guideText()); });
         var peekRestore = $('isPeekRestore');
@@ -616,7 +645,7 @@
             try { old = peekBase(localStorage.getItem(PEEK_URL_KEY) || localStorage.getItem('nano_push_endpoint') || ''); } catch (e) {}
             try {
                 localStorage.setItem(PEEK_URL_KEY, next);
-                // Web Push 和窥屏用同一个 Worker：保存一次，两边都生效
+                // Web Push 和 Share 用同一个 Worker：保存一次，两边都生效
                 localStorage.setItem('nano_push_endpoint', next);
                 // 换了 Worker，旧的 VAPID 公钥 / 旧订阅 / 人设同步缓存都不能用
                 if (old && next && old !== next) {
