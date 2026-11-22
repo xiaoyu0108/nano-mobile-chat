@@ -391,7 +391,30 @@
             var key = isBaseGroupKey(k) ? scopedKey(k, currentUid()) : k;
             return idbPut(key, v);
         },
-        remove: function (k) { try { localStorage.removeItem(k); } catch (e) {} }
+        remove: function (k) {
+            var key = isBaseGroupKey(k) ? scopedKey(k, currentUid()) : k;
+            try { localStorage.removeItem(k); } catch (e) {}
+            mirrorDel(key);
+            try { rawRemoveItem(key); } catch (e) {}
+            try { if (isBaseGroupKey(k)) rawRemoveItem(k); } catch (e) {}
+            return idbDelete(key);
+        },
+        // 从 IndexedDB 重新读取一次并刷新本页镜像/localStorage。
+        // 其它 iframe 删除群聊时，如果 localStorage 配额已满、写盘失败，
+        // 本页收不到 storage 事件，只靠内存镜像会一直看到旧群列表。
+        refresh: function (k) {
+            var key = isBaseGroupKey(k) ? scopedKey(k, currentUid()) : k;
+            return idbGet(key).then(function (v) {
+                if (v == null) {
+                    mirrorDel(key);
+                    try { rawRemoveItem(key); } catch (e) {}
+                } else {
+                    mirrorSet(key, v);
+                    if (rawSetItem) { try { rawSetItem(key, v); } catch (e) {} }
+                }
+                return v;
+            });
+        }
     };
 
     // ===== 群邀请（群聊 ⇄ 私聊互通的邀请卡片数据） =====

@@ -1031,8 +1031,7 @@
     // ============================================================
     function handleRecharge() {
         var val = parseFloat(rechargeAmount.value);
-        if (!val || val <= 0) { showToast('请输入有效的充值金额'); return; }
-        if (val > 100000) { showToast('单次充值不能超过 100,000 元'); return; }
+        if (!val || val <= 0 || !isFinite(val)) { showToast('请输入有效的充值金额'); return; }
         updateWalletBalance(val, '充值 ' + formatMoneyRaw(val) + ' 元').then(function() {
             closeModal(rechargeModal);
             rechargeAmount.value = '';

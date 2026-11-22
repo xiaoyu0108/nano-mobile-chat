@@ -1060,6 +1060,32 @@ function maybePushMeetReadd(charId, charName, chat, greeting) {
   } catch (e) {}
 }
 
+// ===== 拉黑后的线下挽回 =====
+// 线上拉黑只关闭线上聊天；角色仍可在 iMessage 里直接来到线下找人。
+// 模型输出 [强制线下:一句理由] 时，打开线下页并让角色先开口。
+let __lastIMOfflineOpenAt = 0;
+function openOfflineFromIMessage(charId, charName, raw) {
+  const m = String(raw || '').match(/\[(?:强制线下|强制见面|强拉线下|拉进线下)\s*[:：]?\s*([^\]]*)\]/i);
+  if (!m) return false;
+  if (Date.now() - __lastIMOfflineOpenAt < 8000) return true;
+  __lastIMOfflineOpenAt = Date.now();
+  const name = String(charName || '').trim();
+  let url = 'offline.html?chat=' + encodeURIComponent(charId || 'default');
+  if (name) url += '&name=' + encodeURIComponent(name);
+  url += '&first=1&force=1&at=' + Date.now();
+  try {
+    if (window.parent !== window) {
+      window.parent.postMessage({ type: 'openFullscreen', url: url, title: '线下', showBack: true, source: 'main' }, '*');
+      return true;
+    }
+  } catch (e) {}
+  try { window.location.href = url; } catch (e) {}
+  return true;
+}
+function stripIMOfflineTags(s) {
+  return String(s || '').replace(/\[(?:强制线下|强制见面|强拉线下|拉进线下|邀请线下|线下邀请|邀请见面|见面邀请)\s*[:：]?\s*[^\]]*\]/gi, '').trim();
+}
+
 async function doReply() {
   const c = state.current;
   if (!c) return;
@@ -1072,9 +1098,17 @@ async function doReply() {
     else out = await genStrangerReply(c);
   } finally { setBusy(''); }
   if (!out || !out.bubbles || !out.bubbles.length) { toastMsg('没有收到回复' + (lastApiError ? ('：' + lastApiError) : '')); return; }
+  // 拉黑后的线下挽回：角色可以直接出现在线下，先把人带到面前，再显示留下的短信
+  const imOffline = c.kind === 'char' ? openOfflineFromIMessage(c.charId, c.name, out.raw) : false;
   // 关键：始终写入发起回复的那个会话 c，而不是当前打开的会话
   if (c.kind === 'char') {
-    out.bubbles = (out.bubbles || []).map(function (b) { return String(b).replace(/\[(加好友|加微信|加回我|加我)\]/g, '').trim(); }).filter(Boolean);
+    out.bubbles = (out.bubbles || []).map(function (b) {
+      return stripIMOfflineTags(String(b).replace(/\[(加好友|加微信|加回我|加我)\]/g, '')).trim();
+    }).filter(Boolean);
+  }
+  if (!out.bubbles.length) {
+    if (!imOffline) toastMsg('没有收到回复' + (lastApiError ? ('：' + lastApiError) : ''));
+    return;
   }
   await appendToChat(c, bubblesToMessages(out.bubbles, c.kind));
   if (c.kind === 'char') {
@@ -1125,6 +1159,7 @@ async function genCharReply(c) {
   sys += '你是「' + (ch.name || c.name) + '」。\n';
   sys += ctx;
   if (getSetting(c.charId, 'blocked', false)) sys += '【状态】用户把你在线上聊天里拉黑了，但这里是 iMessage，你们仍能正常聊天。你可以主动一点，试着沟通、解释或挽回。\n';
+  if (getSetting(c.charId, 'blocked', false)) sys += '【线下挽回】如果短信已经说不通、你真的很想当面把话说清楚，可以单独一行输出 [强制线下:一句自然的理由]，系统会直接把你带到 TA 面前。这是少用的强情节，只在情绪到了、必须当面解决时才用；平时不要用。\n';
   if (getSetting(c.charId, 'charBlocked', false)) sys += '【状态】你之前关掉了线上聊天（拉黑了用户）。你可以决定是否加回：愿意就单独输出一行 [加回我]，否则输出 [继续拉黑]。\n';
   sys += '【加好友】如果你想在微信/Meet 里主动把 TA 加为好友或加回来（会把好友申请发到 TA 的 Meet，由 TA 决定是否同意），单独输出一行 [加好友]，并配一句自然的招呼；不想加就不要输出。\n';
   sys += '【表情包】用户可能发来 [表情包：名称]。它只是随手一张图，最多表示一点模糊的情绪；看懂大致气氛就行，不要逐字解读、不要当成用户真的去做了什么，也不用追问或刻意提起。（不需要自己也发表情标签）。\n';
@@ -1430,8 +1465,9 @@ async function applyRefreshRaw(raw, picks, altId) {
     if (!text) continue;
     const chat = ensureCharChat(ch);
     const rawText = String(text);
+    openOfflineFromIMessage(ch.id, ch.name, rawText);
     if (/\[(加好友|加微信|加回我|加我)\]/i.test(rawText)) maybePushMeetReadd(ch.id, ch.name, chat, rawText.replace(/\[[^\]]*\]/g, ' '));
-    const rawLines = rawText.replace(/\[(加好友|加微信|加回我|加我)\]/gi, '').split(/\n+/).map(s => s.replace(/^["'「]|["'」]$/g, '').trim()).filter(s => s && !/^[\s.。…·．\-—_~～!！?？,，、;；:：'"“”‘’|｜]+$/.test(s)).slice(0, 3);
+    const rawLines = stripIMOfflineTags(rawText).replace(/\[(加好友|加微信|加回我|加我)\]/gi, '').split(/\n+/).map(s => s.replace(/^["'「]|["'」]$/g, '').trim()).filter(s => s && !/^[\s.。…·．\-—_~～!！?？,，、;；:：'"“”‘’|｜]+$/.test(s)).slice(0, 3);
     if (!rawLines.length) continue;
     const msgs = bubblesToMessages(rawLines, 'char');
     if (!msgs.length) continue;
@@ -1526,6 +1562,7 @@ async function buildRefreshReq() {
     try { ctx = await charContextText(c, oldChat.history || []); } catch (e) {}
     charBlocks += '\n【角色：' + c.name + '】\n' + String(ctx || '').slice(0, 2200) +
       (pc.blocked ? '\n状态：用户刚刚把你拉黑了，你只能通过短信联系 TA，消息要围绕被拉黑/被冷落/想挽回或质问展开。' : '') +
+      (pc.blocked ? '\n如果文字已经说不通、你真的很想当面把话说清楚，可以在这一行的短信内容最后单独写 [强制线下:一句自然的理由]，系统会把你带到 TA 面前；少用。' : '') +
       (recent ? ('\n最近短信：\n' + recent) : '') + '\n';
   }
   // 角色小号：同样并入这一次刷新，不额外调用 API；每天最多一个，同一角色 14 天一次
@@ -1575,7 +1612,8 @@ async function buildRefreshReq() {
 async function applyReplyRaw(chatId, raw) {
   const c = state.chats.find(x => x.id === chatId);
   if (!c) return;
-  const body = String(raw || '').replace(/\[(加回我|取消拉黑|解除拉黑|unblockuser|继续拉黑|拉黑用户|拉黑我|blockuser|加好友|加微信|加我)\]/g, '');
+  if (c.kind === 'char') openOfflineFromIMessage(c.charId, c.name, raw);
+  const body = stripIMOfflineTags(String(raw || '')).replace(/\[(加回我|取消拉黑|解除拉黑|unblockuser|继续拉黑|拉黑用户|拉黑我|blockuser|加好友|加微信|加我)\]/g, '');
   // 外语译文已在同一次后台生成里以「原文||中文」返回，这里不再追加翻译调用。
   let lines = splitBubbles(body);
   const msgs = bubblesToMessages(lines, c.kind);

@@ -58,7 +58,7 @@
             var arr = data && data.groups;
             if (!Array.isArray(arr)) return null;
             for (var i = 0; i < arr.length; i++) {
-                if (!arr[i] || arr[i].id !== chatId) continue;
+                if (!arr[i] || String(arr[i].id) !== String(chatId)) continue;
                 try {
                     if (arr[i].ownerUid && window.GroupStore && GroupStore.currentUid &&
                         String(arr[i].ownerUid) !== String(GroupStore.currentUid())) return null;
@@ -179,12 +179,19 @@
     var msgIdCounter = 0;
 
     // 标记当前是否套用了灰粉聊天模板：群聊复用私聊的输入胶囊/发送键规则。
+    // 注意：不能再用 topbar-avatar::before / #f9d5e0 这种通用写法判断 ——
+    // 很多自定义美化只是给顶栏头像加了伪元素，会被误判成灰粉，进而把发送键
+    // 塞进输入胶囊；切回初见/其它模板后又不会还原，底栏就一直是错的。
+    function isGrayPinkChatCss(css) {
+        return /--gp-ink|--gp-pink|灰粉对话|gray-pink/i.test(String(css || ''));
+    }
     function markGrayPinkTheme() {
         try {
             var css = localStorage.getItem('beautify_chat_v2') || '';
-            var isGp = /--gp-|灰粉|gray-pink|#f9d5e0|topbar-avatar::before/i.test(css);
-            document.body.classList.toggle('nano-gp-chat', isGp);
+            document.body.classList.toggle('nano-gp-chat', isGrayPinkChatCss(css));
         } catch (e) {}
+        // 此刻 groups.js 可能还没执行到变量初始化，延迟一拍再同步底栏。
+        setTimeout(function(){ try { syncGrayPinkComposer(); } catch (e) {} }, 0);
     }
     markGrayPinkTheme();
     window.addEventListener('nano-chat-theme-applied', markGrayPinkTheme);
@@ -588,6 +595,12 @@
         var card = document.createElement('div');
         var cls = 'bubble-card ' + type + ' ' + (cd.cardType || '');
         if (cd.opened) cls += ' opened';
+        // 与私聊 chat-core 保持一致：状态类要带上，美化和「已收下/已退还」胶囊
+        // 都靠这些 class 区分（群聊之前漏了，导致同一张卡在群里看不出结果）。
+        if (cd.claimed) cls += ' claimed';
+        if (cd.response) cls += ' response';
+        if (cd.status && /^(received|returned|accepted|rejected)$/.test(String(cd.status))) cls += ' ' + cd.status;
+        if (cd.missed) cls += ' missed';
         card.className = cls;
         // 任意 DIY：卡片数据可以直接指定宽度/最小高度
         try {
@@ -1129,12 +1142,37 @@
     }
     // 灰粉等私聊美化模板只在私聊里把发送键塞进输入胶囊；群聊用同一套 DOM，
     // 这里补一次，旧版已保存的主题也能直接复用私聊底栏样式。
+    // 关键：只还原「我们自己移动过」的发送键，切回初见/其它模板时一定要放回底栏，
+    // 否则输入胶囊里会一直多出一个发送键，看起来就是群聊底栏坏了。
+    var gpSendMovedByUs = false;
+    var gpSendOrigParent = null;
+    var gpSendOrigNext = null;
     function syncGrayPinkComposer(){
-        if (!document.body.classList.contains('nano-gp-chat')) return;
         var shell = document.querySelector('.input-shell');
         var row = shell && shell.querySelector('.input-row');
-        if (sendBtn && row && sendBtn.parentNode !== row) row.appendChild(sendBtn);
-        if (shell) shell.classList.toggle('gp-typing', messageInput.value.trim() !== '');
+        var isGp = document.body.classList.contains('nano-gp-chat');
+        if (isGp) {
+            if (sendBtn && row && sendBtn.parentNode !== row) {
+                if (!gpSendMovedByUs) {
+                    gpSendOrigParent = sendBtn.parentNode;
+                    gpSendOrigNext = sendBtn.nextSibling;
+                    gpSendMovedByUs = true;
+                }
+                row.appendChild(sendBtn);
+            }
+            if (shell) shell.classList.toggle('gp-typing', messageInput.value.trim() !== '');
+            return;
+        }
+        if (gpSendMovedByUs && sendBtn && gpSendOrigParent) {
+            try {
+                if (gpSendOrigNext && gpSendOrigNext.parentNode === gpSendOrigParent) gpSendOrigParent.insertBefore(sendBtn, gpSendOrigNext);
+                else gpSendOrigParent.appendChild(sendBtn);
+            } catch (e) {}
+        }
+        gpSendMovedByUs = false;
+        gpSendOrigParent = null;
+        gpSendOrigNext = null;
+        if (shell) shell.classList.remove('gp-typing');
     }
     window.addEventListener('nano-chat-theme-applied', function () {
         setTimeout(syncGrayPinkComposer, 80);

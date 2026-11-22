@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <script src="../js/nano-runtime.js?v=20261118j"></script>
-  <script src="../js/group-store.js?v=20261118d"></script>
-  <script src="../js/appearance.js?v=20261110c"></script>
+  <script src="../js/group-store.js?v=20261122a"></script>
+  <script src="../js/appearance.js?v=20261122a"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <link rel="icon" href="../icons/icon-192.png" />
   <title>纳米 · 聊天</title>
@@ -2008,18 +2008,51 @@
   async function deleteItem(id, type) {
     if (type === 'group') {
       if (!confirm('删除该群聊？聊天记录也会一并删除。')) return;
+      const gid = String(id);
+      // 群列表/群资料以 IndexedDB 为权威副本：只删 localStorage 时，
+      // 配额写满或下次 hydrate 会把群又读回来，表现就是「删除也删不了」。
+      let payload = null;
       try {
-        const raw = JSON.parse(localStorage.getItem(GROUP_KEY) || '{}');
-        raw.groups = (raw.groups || []).filter(function (g) { return String(g.id) !== String(id); });
-        localStorage.setItem(GROUP_KEY, JSON.stringify(raw));
+        let rawStr = localStorage.getItem(GROUP_KEY);
+        if (!rawStr && window.GroupStore && GroupStore.get) {
+          try { rawStr = await GroupStore.get(GROUP_KEY); } catch (e) {}
+        }
+        if (rawStr) {
+          const raw = JSON.parse(rawStr) || {};
+          if (!Array.isArray(raw.groups)) raw.groups = [];
+          raw.groups = raw.groups.filter(function (g) { return String(g.id) !== gid; });
+          payload = JSON.stringify(raw);
+        }
       } catch (e) {}
-      try { localStorage.removeItem(GROUP_DATA_PREFIX + id); } catch (e) {}
-      try { localStorage.removeItem(GROUP_MSG_PREFIX + id); } catch (e) {}
-      savePinnedIds(getPinnedIds().filter(function (x) { return String(x) !== String(id); }));
+      if (payload != null) {
+        try {
+          if (window.GroupStore && GroupStore.set) await GroupStore.set(GROUP_KEY, payload);
+          else localStorage.setItem(GROUP_KEY, payload);
+        } catch (e) {}
+      }
+      ['group_data_', 'group_msgs_', 'group_settings_', 'group_bg_', 'group_req_',
+       'group_reply_pending_', 'group_pending_changes_', 'group_api_result_',
+       'group_mem_tick_', 'group_summary_state_'].forEach(function (prefix) {
+        const k = prefix + gid;
+        try {
+          if (window.GroupStore && GroupStore.remove) GroupStore.remove(k);
+          else localStorage.removeItem(k);
+        } catch (e) {}
+      });
+      savePinnedIds(getPinnedIds().filter(function (x) { return String(x) !== gid; }));
+      try {
+        if (window.GroupInvites) {
+          (GroupInvites.list() || []).forEach(function (inv) {
+            if (inv && String(inv.groupId || '') === gid) GroupInvites.remove(inv.id);
+          });
+        }
+      } catch (e) {}
+      try { if (window.NanoBadge) NanoBadge.markRead(gid); } catch (e) {}
+      try { if (window.GroupStore && GroupStore.refresh) await GroupStore.refresh(GROUP_KEY); } catch (e) {}
       loadGroups();
       renderCurrent();
       renderProfile();
-      post({ type: 'groupsDataUpdated', groupId: id });
+      post({ type: 'groupsDataUpdated', groupId: gid });
       return;
     }
 

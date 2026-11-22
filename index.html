@@ -8,7 +8,7 @@
     // 全站构建号：只作为版本标记记录，不再据此清空缓存或强制整页 reload。
     // 更新走增量：SW 保留旧缓存，页面先用缓存秒开、后台静默换成新文件；
     // 只有真正改过的 JS/CSS 在改版本号（?v=）后才会重新下载。
-    window.__NANO_BUILD__ = 'nano-2026-11-21-2';
+    window.__NANO_BUILD__ = 'nano-2026-11-21-7';
     (function () {
         try {
             var KEY = 'nano_build';
@@ -4941,6 +4941,13 @@ setTimeout(function () {
                 lastGroupTitle = '';
                 currentOverlaySource = 'main';
                 closeFullscreen();
+                // 群已从注册表移除：通知聊天列表重新从 IndexedDB 读一次，
+                // 避免 localStorage 配额写满时 storage 事件没触发、群卡片删不掉。
+                try {
+                    document.querySelectorAll('iframe').forEach(function (fr) {
+                        try { fr.contentWindow.postMessage({ type: 'groupsDataUpdated', groupId: data.chatId || '' }, '*'); } catch (e) {}
+                    });
+                } catch (e) {}
             }
 
             if (data.type === 'nanoAppExit') {

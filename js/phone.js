@@ -2910,6 +2910,7 @@ async function loadUserChatMessages(){
     .map(m => ({
       side: m.type === "left" ? "right" : "left",
       text: m.transcript || m.text || "",
+      translation: m.translation || "",
       time: m.time || "",
       ts: m.ts || null
     }))
@@ -3123,6 +3124,41 @@ async function refreshChat(){
     if(list) list.innerHTML = `<div class="app-error">生成失败：${escHtml(e.message)}</div>`;
   }
 }
+/* ---------- 查手机聊天：外文自动补中文译文 ---------- */
+const __phoneTransCache = Object.create(null);
+function phoneNeedsTranslation(text){
+  const s = String(text || "").trim();
+  if(!s) return false;
+  // 已经带了中文翻译就不再重复翻
+  if(/（中文[:：]|\(中文[:：]/.test(s)) return false;
+  // 韩/日/俄/阿/泰/印地等非拉丁文字：一律翻
+  if(/[\u3040-\u30ff\uac00-\ud7af\u0400-\u04ff\u0600-\u06ff\u0e00-\u0e7f\u0900-\u097f]/.test(s)) return true;
+  const cjk = (s.match(/[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/g) || []).length;
+  const latin = (s.match(/[A-Za-zÀ-ÖØ-öø-ÿĀ-ž]/g) || []).length;
+  // 中文为主、只夹了几个英文单词：不翻
+  if(cjk >= 2 && latin <= cjk * 2) return false;
+  return latin >= 3;
+}
+function phoneApplyTranslation(el, text){
+  if(!el || !phoneNeedsTranslation(text) || !window.NanoTranslate) return;
+  const key = String(text);
+  const done = function(tr){
+    tr = String(tr || "").trim();
+    if(!tr || !document.body.contains(el) || el.querySelector(".ct-msg-trans")) return;
+    const d = document.createElement("div");
+    d.className = "ct-msg-trans";
+    d.style.cssText = "margin-top:4px;font-size:12px;line-height:1.35;opacity:.72;white-space:pre-wrap;word-break:break-word;";
+    d.textContent = "（中文：" + tr + "）";
+    el.appendChild(d);
+  };
+  if(__phoneTransCache[key]){ done(__phoneTransCache[key]); return; }
+  try{
+    window.NanoTranslate.toZh(key).then(function(tr){
+      tr = String(tr || "").trim();
+      if(tr){ __phoneTransCache[key] = tr; done(tr); }
+    }).catch(function(){});
+  }catch(e){}
+}
 function openChatDetail(c){
   const isUser = !!c.isUser;
   const isGroup = !!c.group;
@@ -3165,6 +3201,18 @@ function openChatDetail(c){
       const nameLine = (isGroup && !isRight && senderName) ? `<div class="ct-sender">${escHtml(senderName)}</div>` : "";
       wrap.innerHTML = `<div class="ct-msg-avatar"${avStyle}>${avTxt}</div><div class="ct-msg-body">${nameLine}<div class="ct-msg-bubble">${escHtml(phoneText(m.text || ""))}</div></div>`;
       box.appendChild(wrap);
+      try{
+        const bubble = wrap.querySelector(".ct-msg-bubble");
+        if (m.translation) {
+          const d = document.createElement("div");
+          d.className = "ct-msg-trans";
+          d.style.cssText = "margin-top:4px;font-size:12px;line-height:1.35;opacity:.72;white-space:pre-wrap;word-break:break-word;";
+          d.textContent = "（中文：" + m.translation + "）";
+          bubble.appendChild(d);
+        } else {
+          phoneApplyTranslation(bubble, phoneText(m.text || ""));
+        }
+      }catch(e){}
     });
   }
   appHost.querySelector("[data-detail]").classList.add("open");

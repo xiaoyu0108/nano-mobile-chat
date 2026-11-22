@@ -211,11 +211,19 @@
         var s = String(dir || '');
         var speed = 1;
         var pitch = 0;
-        if (/(慢|放缓|舒缓|拖长|停顿)/.test(s)) speed = 0.92;
-        else if (/(快|加快|急促|连珠)/.test(s)) speed = 1.08;
-        if (/(低沉|压低|低音|沙哑)/.test(s)) pitch = -2;
-        else if (/(高|尖|上扬|明亮)/.test(s)) pitch = 2;
-        return { speed: speed, pitch: pitch };
+        var emotion = 'neutral';
+        if (/(愤怒|生气|火大|压着火|火气|吼)/.test(s)) { emotion = 'angry'; speed = 1.06; pitch = 1; }
+        else if (/(难过|伤心|哭|哽咽|委屈|失望|低落)/.test(s)) { emotion = 'sad'; speed = 0.9; pitch = -2; }
+        else if (/(开心|高兴|轻快|兴奋|雀跃)/.test(s)) { emotion = 'happy'; speed = 1.09; pitch = 2; }
+        else if (/(紧张|害怕|慌|呼吸略急|发紧)/.test(s)) { emotion = 'fearful'; speed = 1.04; pitch = 1; }
+        else if (/(温柔|轻声|放软|软|哄)/.test(s)) { emotion = 'soft'; speed = 0.94; pitch = -1; }
+        else {
+            if (/(慢|放缓|舒缓|拖长|停顿)/.test(s)) speed = 0.92;
+            else if (/(快|加快|急促|连珠)/.test(s)) speed = 1.08;
+            if (/(低沉|压低|低音|沙哑)/.test(s)) pitch = -2;
+            else if (/(高|尖|上扬|明亮)/.test(s)) pitch = 2;
+        }
+        return { speed: speed, pitch: pitch, emotion: emotion };
     }
 
     function hexToBytes(hex) {
@@ -249,7 +257,7 @@
         var type = String(cfg.ttsType || 'openai').toLowerCase();
         if (type.indexOf('fish') === 0) type = 'fishaudio';
         var instructions = String(opts.instructions || '').trim();
-        var tone = toneFromDirection(opts.direction);
+        var tone = toneFromDirection(opts.direction || text);
         text = ttsScript(text, type);
         if (!text) throw new Error('这条语音没有可朗读的文字');
         if (type === 'minimax') {
@@ -261,7 +269,15 @@
                 model: cfg.ttsModel,
                 text: text,
                 stream: false,
-                voice_setting: { voice_id: cfg.ttsVoice || cfg.ttsModel, speed: tone.speed, vol: 1, pitch: tone.pitch },
+                voice_setting: (function () {
+                    var vs = { voice_id: cfg.ttsVoice || cfg.ttsModel, speed: tone.speed, vol: 1, pitch: tone.pitch };
+                    // speech-02 系列才支持 emotion；旧模型只靠 speed/pitch，避免多传字段被拒。
+                    var mm = String(cfg.ttsModel || '').toLowerCase();
+                    if (/speech-0?2|speech-2|speech-2\.5/.test(mm)) {
+                        vs.emotion = (opts.emotion || tone.emotion || 'neutral');
+                    }
+                    return vs;
+                })(),
                 audio_setting: { sample_rate: 32000, bitrate: 128000, format: 'mp3' }
             };
             var mmJson = null, mmLastErr = null;
@@ -428,7 +444,12 @@
                 body: JSON.stringify({
                     text: text,
                     model_id: elModel,
-                    voice_settings: { stability: 0.5, similarity_boost: 0.75 }
+                    voice_settings: {
+                        stability: tone.emotion === 'neutral' ? 0.5 : 0.38,
+                        similarity_boost: 0.75,
+                        style: tone.emotion === 'neutral' ? 0.15 : 0.55,
+                        use_speaker_boost: true
+                    }
                 })
             });
             if (!elResp.ok) {
@@ -566,8 +587,10 @@
                 else if (/[\u3040-\u30ff]/.test(String(text))) autoLang = 'ja-JP';
                 else if (!/[\u4e00-\u9fff]/.test(String(text)) && /[a-zA-Z]/.test(String(text))) autoLang = 'en-US';
                 u.lang = opts.lang || autoLang;
-                u.rate = typeof opts.rate === 'number' ? opts.rate : 1;
-                u.pitch = typeof opts.pitch === 'number' ? opts.pitch : 1;
+                var nTone = toneFromDirection(opts.direction || text);
+                u.rate = typeof opts.rate === 'number' ? opts.rate : nTone.speed;
+                u.pitch = typeof opts.pitch === 'number' ? opts.pitch : (1 + nTone.pitch * 0.1);
+                u.volume = 1;
                 try {
                     var voices = window.speechSynthesis.getVoices() || [];
                     var want = String(u.lang).toLowerCase().slice(0, 2);
@@ -632,7 +655,7 @@
         var chatId = String(opts.chatId || '');
         var preset = (opts.preset === undefined || opts.preset === null) ? getChatPresetName(chatId) : String(opts.preset || '');
         var guideTag = chatId ? hashText(getChatVoiceGuide(chatId) + '|' + getChatTtsPrompt(chatId)) : '';
-        return chatId + '|' + preset + '|' + guideTag + '|' + String(text || '').slice(0, 120);
+        return chatId + '|' + preset + '|' + guideTag + '|' + String(opts.direction || '') + '|' + String(opts.emotion || '') + '|' + String(text || '').slice(0, 120);
     }
     async function ensureVoiceBlob(text, opts) {
         opts = opts || {};
@@ -647,7 +670,8 @@
         if (!opts.fresh && hit && hit.blob) return { blob: hit.blob, key: key, cfg: cfg };
         var blob = await synth(t, cfg, {
             instructions: resolveChatInstructions(chatId, opts),
-            direction: opts.direction || getChatTtsPrompt(chatId)
+            direction: opts.direction || t || getChatTtsPrompt(chatId),
+            emotion: opts.emotion || ''
         });
         if (!blob || !blob.size) throw new Error('TTS 没有返回音频');
         voiceCache[key] = { blob: blob, text: t, preset: opts.preset || '', at: Date.now() };

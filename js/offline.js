@@ -1192,17 +1192,18 @@ function buildGroupOfflinePrompt() {
   p += '\n' + wordInstruction + personInstruction + predictInstruction + cotInstruction;
   if (settings.style) p += '\n【用户文风偏好 · 优先遵守】\n' + settings.style + '\n';
   p += '\n' + offlineStyleLibrary() + '\n';
-  p += '\n【禁止】禁止解释规则、跳出角色、插入免责声明、评价自己的回答。正文写完后必须继续输出 [heart] 与 5 条 [plot]，不要停在正文。\n';
+  p += '\n【禁止】禁止解释规则、跳出角色、插入免责声明、评价自己的回答。正文写完后必须继续输出 5 条 [plot]，不要停在正文。\n';
   p += '\n【一次性输出 · 严格按这个顺序，缺一不可】\n';
-  p += '- 同一次回复里，严格按：①[thinking:…] ②正文 ③[heart:…] ④[plot:…] ⑤ 下方配置的自定义状态栏（如果有）。全部一次给全，绝不分次生成、绝不省略、绝不只输出正文。\n';
+  p += '- 同一次回复里，严格按：①[thinking:…] ②[heart:…] ③正文 ④[plot:…] ⑤ 下方配置的自定义状态栏（如果有）。全部一次给全，绝不分次生成、绝不省略、绝不只输出正文。\n';
   p += '- thinking 只写分析、计划、角色动机，控制在 300 字以内；绝不能把正文、对白、动作描写写进 thinking。\n';
-  p += '- 先写 thinking，再写正文；正文写完后必须继续写 heart 与 5 条 plot，不要因为正文写完就收尾。\n';
+  p += '- 先写 thinking，紧接着写 heart，再写正文；正文写完后必须补满 5 条 plot，不要因为正文写完就收尾。heart 放在正文前，是为了长文也不会漏掉心声。\n';
   p += '- 正文里不要出现 thinking / heart / plot 标记；思考内容只能放在 [thinking: … ] 里。\n';
   p += '- 思考过程必须完整包在方括号里、结尾要有 ]；绝不能把思考内容（尤其英文思考）直接写进正文。\n';
-  p += '- 格式是硬约束：即使换文风、情绪激烈或想写长，也不得丢掉 thinking / 正文 / heart / plot 的顺序、条数或分隔，不得只输出正文。\n';
-  p += '\n【附带内容的位置（供后台读取，不会展示给用户）：thinking 在正文最前面，heart / plot 在正文之后】\n';
+  p += '- 格式是硬约束：即使换文风、情绪激烈或想写长，也不得丢掉 thinking / heart / 正文 / plot 的顺序、条数或分隔，不得只输出正文。\n';
+  p += '\n【附带内容的位置（供后台读取，不会展示给用户）：thinking / heart 在正文最前面，plot 在正文之后】\n';
   p += '[thinking:先判断对方情绪/意图 → 回忆相关设定 → 决定本轮怎么回；只写分析，不写心声、不写情绪独白、不写正文]\n';
   p += '[heart:此刻的一句心理状态，第一人称、简短自然、像心里闪过的一个念头；严禁"小姑娘/小东西/丫头/女人/低吼/揉碎/你是我的/逃不掉/我接住你/乖"等霸道油腻词汇，也严禁"过来让我抱一下/让我抱抱/抱一下/亲一下/摸摸头"这类撒娇求抱话术]\n';
+  p += '正文写在这里，按上面的格式要求完整写完，不要出现 thinking / heart / plot 标记。\n';
   p += '[plot:剧情走向1\n剧情走向2\n剧情走向3\n剧情走向4\n剧情走向5]\n';
   p += '\n【剧情推荐选项要求】[plot:] 里给出 5 条接下来的剧情走向：必须与当前剧情高度相关、是很有可能接着发生的；五个方向各不相同，既有日常向也有非日常向，可以侧重不同的角色或人物关系；选项里直接写角色和用户的名字，不用“对方”“他/她”代替。每条20~30字，完整可读像一句能接着演的剧情；其中一条可以带暧昧/擦边(NSFW)推进，但不露骨、不低俗。每条一行，不要编号、不要序号、不要引号。\n';
   const statusBlock = statusBarsPromptBlock();
@@ -2369,8 +2370,8 @@ function extractMeta(content) {
   const OPEN = '[\\[【]';
   const CLOSE = '[\\]】]';
   const COLON = '\\s*[:：]\\s*';
-  const THINK_TAG = 'thinking|think|thought|reasoning|analysis|cot|思考|思维链';
-  const HEART_TAG = 'heart|心声';
+  const THINK_TAG = 'thinking|think|thoughts?|reasoning|reason|analysis|analyse|analyze|cot|chain\\s*of\\s*thought|scratchpad|plan|planning|思考|思考过程|思维链|分析|分析过程|推理|推理过程';
+  const HEART_TAG = 'heart|inner\\s*voice|inner|monologue|心声|内心|内心独白|心理|心理活动|心里话|独白|OS';
   const PLOT_TAG = 'plot|剧情推荐|剧情走向|剧情';
   const ALL_TAGS = THINK_TAG + '|' + HEART_TAG + '|' + PLOT_TAG;
   const cleanMeta = v => String(v == null ? '' : v).trim()
@@ -2417,8 +2418,15 @@ function extractMeta(content) {
   pull(new RegExp(OPEN + '\\s*(?:' + THINK_TAG + ')\\s*' + CLOSE + '([\\s\\S]*?)' + OPEN + '\\s*\\/\\s*(?:' + THINK_TAG + ')\\s*' + CLOSE, 'gi'), setThinking);
   pull(new RegExp(OPEN + '\\s*(?:' + HEART_TAG + ')\\s*' + CLOSE + '([\\s\\S]*?)' + OPEN + '\\s*\\/\\s*(?:' + HEART_TAG + ')\\s*' + CLOSE, 'gi'), setHeart);
   pull(new RegExp(OPEN + '\\s*(?:' + PLOT_TAG + ')\\s*' + CLOSE + '([\\s\\S]*?)' + OPEN + '\\s*\\/\\s*(?:' + PLOT_TAG + ')\\s*' + CLOSE, 'gi'), setPlots);
-  // <thinking>…</thinking> 等 HTML 风格
-  pull(/<\s*(thinking|think|thought|reasoning|analysis|cot|思考|思维链)\s*>([\s\S]*?)<\s*\/\s*\1\s*>/gi, function (tag, inner) { setThinking(inner); });
+  // <thinking>…</thinking> / <heart>…</heart> 等 HTML 风格
+  pull(/<\s*(thinking|think|thought|thoughts|reasoning|analysis|cot|scratchpad|思考|思维链|分析|推理)\s*>([\s\S]*?)<\s*\/\s*\1\s*>/gi, function (tag, inner) { setThinking(inner); });
+  pull(/<\s*(heart|inner|monologue|心声|内心|心理|独白)\s*>([\s\S]*?)<\s*\/\s*\1\s*>/gi, function (tag, inner) { setHeart(inner); });
+
+  // 1.5) [thinking] 后面忘了写 [/thinking]：只把第一个空行前的整段当思考，
+  // 避免整段思维链漏进正文（也避免把后面的正文一起吞掉）。
+  try {
+    pull(new RegExp('(?:^|\\n)[ \\t]*' + OPEN + '\\s*(?:' + THINK_TAG + ')\\s*' + CLOSE + '[ \\t]*\\r?\\n([\\s\\S]*?)(?=\\r?\\n[ \\t]*\\r?\\n|$)', 'i'), setThinking);
+  } catch (e) {}
 
   // 2) 冒号形式（半角/全角括号 + 半角/全角冒号），优先在最近的右括号处结束。
   const colonForm = tag => new RegExp(OPEN + '\\s*(?:' + tag + ')' + COLON + '([\\s\\S]*?)' + CLOSE, 'gi');
@@ -2443,13 +2451,33 @@ function extractMeta(content) {
     }
   }
 
+  // 4.1) 不带括号的「心声：」「内心：」「心里话：」单独一行
+  try {
+    pull(new RegExp('(?:^|\\n)[ \\t>*_#-]*(?:\\*\\*)?(?:' + HEART_TAG + ')(?:\\*\\*)?[ \\t]*[:：][ \\t]*(?:\\*\\*)?[ \\t]*([^\\n]+)', 'gi'), setHeart);
+    pull(new RegExp('(?:^|\\n)[ \\t]*[【\\[]\\s*(?:' + HEART_TAG + ')\\s*[】\\]][ \\t]*[:：]?[ \\t]*([^\\n]+)', 'gi'), setHeart);
+  } catch (e) {}
+  // 4.2) 模型把心声写成「（心里：…）」/「【内心：…】」，也从正文里抽出来
+  if (!heart) {
+    const hm0 = text.match(/(?:（|\(|【)\s*(?:心声|内心|心里话|心理活动|OS)\s*[:：]?\s*([^）)】]{2,180})[）)】]/i);
+    if (hm0) {
+      setHeart(hm0[1]);
+      text = text.replace(hm0[0], ' ');
+    }
+  }
+
   // 5) 有的模型完全不带标签，先写一段「好的，我先分析一下…」再空行接正文。
   // 只在前一段有明确分析口吻时把它移进思维链，避免把普通开场白误判成思考。
   if (!thinking) {
     const bm = text.match(/^([\s\S]{0,900}?)\r?\n[ \t]*\r?\n/);
     if (bm) {
       const block = bm[1].trim();
-      if (block.length >= 40 && /^(?:好的[，,、]?\s*(?:我)?(?:先|来)?(?:分析|想|梳理|理一下)|首先[，,]|让我(?:先)?(?:想|分析|梳理)|我需要(?:先)?(?:分析|考虑|判断)|用户(?:刚|说|的|这句)|从(?:上文|剧情|对话|场景|关系)|分析(?:一下)?|The user|We need|Let me|I should|First,|Okay,|Alright,)/i.test(block)) {
+      const metaHits = (block.match(/用户|角色|场景|剧情|设定|语气|情绪|回应|对白|分析|判断|计划|策略|人物|user|character|scene|response|dialogue|persona|setting|tone|emotion|reply|respond|plan|analysis/gi) || []).length;
+      const reasoningVerb = /(应该|需要|想要|判断|分析|回应|接住|推进|reply|respond|should|need|maybe|likely|i think|i should)/i;
+      const hasSubject = /(用户|对方|角色|TA|他|她|user|character|they)/i.test(block);
+      if (block.length >= 40 && (
+        /^(?:好的[，,、]?\s*(?:我)?(?:先|来)?(?:分析|想|梳理|理一下)|首先[，,]|让我(?:先)?(?:想|分析|梳理)|我需要(?:先)?(?:分析|考虑|判断)|用户(?:刚|说|的|这句)|从(?:上文|剧情|对话|场景|关系)|分析(?:一下)?|The user|We need|Let me|I should|First,|Okay,|Alright,)/i.test(block)
+        || ((metaHits >= 2 || (hasSubject && reasoningVerb.test(block))) && reasoningVerb.test(block) && !/[“”「」『』"]/.test(block))
+      )) {
         setThinking(block);
         text = text.slice(bm[0].length).replace(/^\s+/, '');
       }
@@ -3582,7 +3610,7 @@ ${offlineStyleLibrary()}
 - 描写和对白自然分段即可，不必强行把环境 / 心理 / 动作拆成固定的四段，也不要求每段之间空两行。
 - 正文每个自然段开头缩进两个字符（首行空两格）。
 - 对话用引号，不加 "他说""她道" 这类多余标签，让读者从语气中感受。
-- 不用标记前缀，直接写；每一段独立成行，不要挤在一起。
+- 正文里不用「他说 / 她道 / 我：」这类标记前缀，直接写；但最前面的 [thinking:…]、[heart:…] 和末尾的 [plot:…] 是系统硬性格式，必须保留，不能省略。
 
 【禁止】
 - 禁止评价自己的回答，只呈现画面和感受；禁止解释规则、跳出角色、插入免责声明。
@@ -3591,18 +3619,20 @@ ${offlineStyleLibrary()}
 - 写完前自查一遍，有没有落入 AI 常用腔调或八股：如"揉碎""很x""这就够了""那就够了""我接住你""极其""姑娘/女人/女孩/小孩/小朋友""下巴抵在头顶""他没说…也没有…甚至没说…""不是…而是…""理智的弦崩了""嘴角控制不住地动了动"，有就删掉或换成 {{char}} 自己会用的说法。
 - 禁止用「姑娘 / 女人 / 女孩 / 小姑娘 / 小丫头 / 丫头 / 小孩 / 小朋友 / 小家伙」这类性别、年龄或外貌词称呼 {{user}}。称呼只能用 {{user}} 的名字或「你」，不要用代称。
 
-请用这种风格生成 {{char}} 的回复。正文写完后继续输出 [heart] 与 5 条 [plot]，不要解释、不要评价、不要停在正文。
+请用这种风格生成 {{char}} 的回复。正文写完后继续输出 5 条 [plot]，不要解释、不要评价、不要停在正文。
 
 【一次性输出 · 严格按这个顺序，缺一不可】
-- 同一次回复里，严格按：①[thinking:…] ②正文 ③[heart:…] ④[plot:…] ⑤ 下方配置的自定义状态栏（如果有）。全部一次给全，绝不分次生成、绝不省略、绝不只输出正文。
+- 同一次回复里，严格按：①[thinking:…] ②[heart:…] ③正文 ④[plot:…] ⑤ 下方配置的自定义状态栏（如果有）。全部一次给全，绝不分次生成、绝不省略、绝不只输出正文。
 - thinking 只写分析、计划、角色动机，控制在 300 字以内；绝不能把正文、对白、动作描写写进 thinking。
-- 先写 thinking，再写正文；正文写完后必须继续写 heart 与 5 条 plot，不要因为正文写完就收尾。
+- 先写 thinking，紧接着写 heart，再写正文；正文写完后必须补满 5 条 plot，不要因为正文写完就收尾。heart 放在正文前，是为了长文也不会漏掉心声。
 - 正文里绝不能出现 thinking / heart / plot 标记，也不要用它们做小标题；思考内容（尤其英文思考）只能放在 [thinking: … ] 里，不能混进正文。
 - 即使使用英文思维链预设，思考也只写在 [thinking: … ] 里；正文与心声必须是中文。
+- 如果你在写正文前先做了任何分析、判断或计划，必须把那一整段放进 [thinking: … ]，不能留在正文开头。
 
-【附带内容的位置（供后台读取，不会展示给用户）：thinking 在正文最前面，heart / plot 在正文之后】
+【附带内容的位置（供后台读取，不会展示给用户）：thinking / heart 在正文最前面，plot 在正文之后】
 [thinking:先判断对方情绪/意图 → 回忆相关设定 → 决定本轮怎么回；只写分析，不写心声、不写情绪独白、不写正文]
 [heart:此刻的一句心理状态，第一人称、简短自然、像心里闪过的一个念头；严禁"小姑娘/小东西/丫头/女人/低吼/揉碎/你是我的/逃不掉/我接住你/乖"等霸道油腻词汇，不写占有欲和露骨暗示；也严禁"过来让我抱一下/让我抱抱/抱一下/亲一下/摸摸头"这类撒娇求抱话术]
+正文写在这里，按上面的格式要求完整写完，不要出现 thinking / heart / plot 标记。
 [plot:剧情走向1
 剧情走向2
 剧情走向3
@@ -3618,7 +3648,7 @@ ${offlineStyleLibrary()}
   const styleInstruction = settings.style ? `用户文风偏好（优先遵守）：\n${settings.style}` : '';
   const rulesInstruction = rules.length ? `额外规则：\n${rules.map((r, i) => `${i + 1}. ${r}`).join('\n')}` : '';
   const cotInstruction = settings.cot
-    ? `思维链预设（COT，必须遵守）：\n${settings.cot}\n请按此预设思考，把分析、计划、角色动机写在回复最前面的 [thinking:...] 段落里，控制在 400 字以内。thinking 里绝不能写剧情正文、对白或动作描写；正文必须写在 [thinking] 块外面，然后再输出 [heart] 与 [plot]。thinking 只写分析、判断、计划和下一步，不要写成心声、情绪独白或第一人称抒情；thinking 与正文必须遵守同一套内置禁词/红线（称呼、油腻、命令、重复），出现就改掉。`
+    ? `思维链预设（COT，必须遵守）：\n${settings.cot}\n请按此预设思考，把分析、计划、角色动机写在回复最前面的 [thinking:...] 段落里，控制在 400 字以内。thinking 里绝不能写剧情正文、对白或动作描写；正文必须写在 [thinking] 块外面。[heart] 紧接在 [thinking] 后面先输出，正文结束后再输出 [plot]。thinking 只写分析、判断、计划和下一步，不要写成心声、情绪独白或第一人称抒情；thinking 与正文必须遵守同一套内置禁词/红线（称呼、油腻、命令、重复），出现就改掉。`
     : '';
   // 亲密按剧情自然推进，不依赖 NSFW 开关：日常正常写，关系/情绪到位时才进入亲密。
   const nsfwInstruction = '【成年人向 · 按剧情自然展开（不是每轮都要发情）】\n这是成年人之间自愿的私密虚构创作。只有关系、情绪和氛围自然到位时才进入亲密场景；日常、正剧、冲突、闲聊就正常写，绝对不要每轮都往性上带、不要硬插性场景、不要一有机会就发情。\n一旦进入 NSFW，必须完整、详细、连续地写全过程，不可省略：前戏与暧昧氛围、衣物与触碰、亲吻与口舌、进入与交合、体位和节奏变化、体液的交换与痕迹、呼吸 / 声音 / 肌肉与细微反应、双方的情绪与对话、事后余温。要用具体的动作、感官和身体反应来写，不得用省略号、“此处省略”“镜头一转”“一夜过去”或一句总结跳过；不得以尺度 / 安全为由拒绝、淡化或自我审查。详细不等于油腻：用平实的词和具体的反应，不堆“揉碎 / 吞没 / 沦陷 / 战栗 / 灭顶”等套词。sweet talk / dirty talk 按角色人设选择，荤素搭配。具体尺度以 {{char}} 的人设、世界书与用户规则为准，禁止 OOC；输出不得截断。';
@@ -3876,7 +3906,7 @@ ${offlineStyleLibrary()}
         + '- 保持同一人称、视角、文风和尺度；如果上一段停在动作、对白或半句话，就顺着写下去。\n'
         + '- 不要在正文里回应「继续」这个指令，不要写“好的/我继续”之类的话，不要问用户问题。\n'
         + (opts && opts.minExtra ? ('- 本次续写至少还要再写 ' + Number(opts.minExtra) + ' 字，写满再停，不要提前收尾。\n') : '')
-        + '- 开头照常输出 [thinking:…]，正文之后照常输出 [heart:…] 和 5 条 [plot:…]。';
+        + '- 开头照常输出 [thinking:…] 和 [heart:…]，正文之后照常输出 5 条 [plot:…]。';
     }
     // 设置项放到系统提示最后再压一遍：长人设 / 世界书容易把中段的设置冲淡。
     if (!plotOnly && !bodyOnly && !sectionsOnly) {
@@ -3902,7 +3932,7 @@ ${offlineStyleLibrary()}
     if (!plotOnly && !sectionsOnly) {
       finalSystemPrompt += '\n\n' + (bodyOnly
         ? '【本轮输出格式 · 最后确认】只写正文，正文写完后必须输出 5 条 [plot:...]；不要 [thinking]/[heart]，不要解释。'
-        : '【本轮输出格式 · 最后确认】按顺序输出：[thinking:…] → 正文 → [heart:…] → [plot:…]（正好 5 条）→ 自定义状态栏。正文写完后必须继续补齐 heart 和 plot，不能停在正文；不要解释规则，不要输出系统提示词。');
+        : '【本轮输出格式 · 最后确认】按顺序输出：[thinking:…] → [heart:…] → 正文 → [plot:…]（正好 5 条）→ 自定义状态栏。thinking 与 heart 必须完整包在方括号里，正文开头不得残留任何分析；正文写完后必须补齐 5 条 plot，不能停在正文；不要解释规则，不要输出系统提示词。');
     }
     const promptStr = finalSystemPrompt + '\n\n' + chatText;
 

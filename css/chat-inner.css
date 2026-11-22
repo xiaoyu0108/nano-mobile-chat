@@ -505,12 +505,14 @@ html.nano-android.keyboard-open body.nano-chat-inner .bottom-bar {
 
 .voice-bubble {
     position: relative; height: 28px; border-radius: 18px; min-width: 52px;
+    box-sizing: border-box; width: max-content; max-width: 100%; flex: 0 0 auto;
     display: flex; align-items: center; padding: 0 10px; gap: 4px;
-    cursor: pointer;
+    cursor: pointer; line-height: 1.2;
 }
-.voice-line { display: flex; align-items: center; gap: 6px; max-width: 100%; }
-.voice-line.left { align-self: flex-start; }
-.voice-line.right { align-self: flex-end; flex-direction: row-reverse; }
+.voice-bubble > * { flex: 0 0 auto; }
+.voice-line { display: flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0; }
+.voice-line.left { align-self: flex-start; justify-content: flex-start; }
+.voice-line.right { align-self: flex-end; flex-direction: row-reverse; justify-content: flex-start; }
 .voice-actions { display: flex; align-items: center; gap: 4px; flex: none; }
 .voice-act {
     width: 26px; height: 26px; border-radius: 50%; border: 1px solid rgba(0,0,0,0.06);
@@ -2360,3 +2362,12 @@ body.float-chat-mode .topbar { display: none !important; }
 body.float-chat-mode .message-scroll { padding-top: 6px !important; }
 body.float-chat-mode .bottom-bar { padding-bottom: 6px !important; }
 body.float-chat-mode { background: #fff; }
+
+/* voice-bubble-fit-fix：美化模板常写 max-width:60%，会把语音气泡压窄导致波形/时长溢出到气泡外 */
+body.nano-chat-inner .voice-bubble,
+body.nano-groups .voice-bubble {
+    flex: 0 0 auto !important;
+    width: fit-content !important;
+    max-width: 100% !important;
+    box-sizing: border-box;
+}

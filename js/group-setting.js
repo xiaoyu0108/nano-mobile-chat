@@ -36,7 +36,7 @@
             var data = JSON.parse(raw);
             var arr = data && data.groups;
             if (!Array.isArray(arr)) return null;
-            for (var i = 0; i < arr.length; i++) { if (arr[i] && arr[i].id === chatId) return arr[i]; }
+            for (var i = 0; i < arr.length; i++) { if (arr[i] && String(arr[i].id) === String(chatId)) return arr[i]; }
         } catch(e){}
         return null;
     }
@@ -70,7 +70,7 @@
                 var data = JSON.parse(raw);
                 if (data && Array.isArray(data.groups)) {
                     for (var i = 0; i < data.groups.length; i++) {
-                        if (data.groups[i] && data.groups[i].id === chatId) {
+                        if (data.groups[i] && String(data.groups[i].id) === String(chatId)) {
                             data.groups[i].name = group.name || '';
                             data.groups[i].avatar = group.avatar || '';
                             data.groups[i].profileTs = Number(group.profileTs) || 0;
@@ -914,22 +914,64 @@
     $('dissolveCancel').addEventListener('click', function(){ $('dissolveModal').classList.remove('active'); });
     $('dissolveConfirm').addEventListener('click', function(){
         clearGroupMemories(chatId);
-        localStorage.removeItem(GROUP_KEY);
-        localStorage.removeItem(MSG_KEY);
-        localStorage.removeItem(SETTINGS_KEY);
-        localStorage.removeItem(BG_KEY);
-        localStorage.removeItem('group_pending_changes_' + chatId);
-        // 从群列表移除，chat 页面的群卡片随之消失
+        // 群数据以 IndexedDB 为权威副本：localStorage.removeItem 在配额写满/补丁未生效时
+        // 可能只删掉缓存，刷新后群又被 IndexedDB 回填回来。GroupStore.remove 会同时删 IDB。
+        var removeGroupKey = function (k) {
+            try {
+                if (window.GroupStore && GroupStore.remove) GroupStore.remove(k);
+                else localStorage.removeItem(k);
+            } catch (e) { try { localStorage.removeItem(k); } catch (e2) {} }
+        };
+        [GROUP_KEY, MSG_KEY, SETTINGS_KEY, BG_KEY,
+         'group_pending_changes_' + chatId, 'group_req_' + chatId,
+         'group_reply_pending_' + chatId, 'group_api_result_' + chatId,
+         'group_mem_tick_' + chatId, 'group_summary_state_' + chatId].forEach(removeGroupKey);
+        // 清掉这个群的群邀请，避免解散后还留下可点的旧邀请卡
+        try {
+            if (window.GroupInvites) {
+                (GroupInvites.list() || []).forEach(function (inv) {
+                    if (inv && String(inv.groupId || '') === String(chatId)) GroupInvites.remove(inv.id);
+                });
+            }
+        } catch (e) {}
+        // 从群列表移除，chat 页面的群卡片随之消失。
+        // 优先走 GroupStore.set：它会把新列表同时写进 IndexedDB；
+        // 只写 localStorage 时如果配额已满会静默失败，群列表就永远删不掉。
+        var registrySaved = null;
         try {
             var raw = localStorage.getItem(GROUPS_KEY);
             if (raw) {
                 var d = JSON.parse(raw);
-                if (d && Array.isArray(d.groups)) {
-                    d.groups = d.groups.filter(function(g){ return g && g.id !== chatId; });
-                    localStorage.setItem(GROUPS_KEY, JSON.stringify(d));
-                }
+                if (!d || typeof d !== 'object') d = {};
+                if (!Array.isArray(d.groups)) d.groups = [];
+                d.groups = d.groups.filter(function(g){ return g && String(g.id) !== String(chatId); });
+                registrySaved = JSON.stringify(d);
             }
         } catch(e){}
+        if (registrySaved != null) {
+            try {
+                if (window.GroupStore && GroupStore.set) {
+                    registrySaved = GroupStore.set(GROUPS_KEY, registrySaved);
+                } else {
+                    localStorage.setItem(GROUPS_KEY, registrySaved);
+                    registrySaved = null;
+                }
+            } catch (e) { registrySaved = null; }
+        }
+        // 告诉外壳/聊天列表：群列表变了。即使 localStorage 写满，列表也能从 IndexedDB 重读。
+        var broadcastGone = function () {
+            try {
+                if (window.parent !== window) {
+                    window.parent.postMessage({ type:'groupsDataUpdated', groupId: chatId }, '*');
+                    window.parent.postMessage({ type:'groupDeleted', groupId: chatId }, '*');
+                }
+            } catch (e) {}
+        };
+        if (registrySaved && typeof registrySaved.then === 'function') {
+            registrySaved.then(broadcastGone).catch(broadcastGone);
+        } else {
+            setTimeout(broadcastGone, 60);
+        }
         $('dissolveModal').classList.remove('active');
         showAlert('提示', '群聊已解散');
         setTimeout(function(){

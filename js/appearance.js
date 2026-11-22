@@ -388,6 +388,77 @@
         '.nano-chat-inner .bubble-card.takeout .card-footer{order:4!important;padding:0 10px 9px!important;}' +
         '.nano-chat-inner .bubble-card.takeout .card-footer-text{color:#a1838e!important;font-size:10px!important;}';
 }
+// 初见（内置初始模板）里群聊底栏单独写了一套，和私聊不一致。
+// 群聊页本身已经带 body.nano-chat-inner，这里把群聊底栏统一成私聊那套，
+// 避免同一套「初见」在群聊里看起来像坏掉。灰粉/自定义模板有自己的底栏，不覆盖。
+function classicGroupDockCompatCss(css) {
+    var s = String(css || '');
+    if (!s) return '';
+    if (/--gp-ink|--gp-pink|灰粉对话|gray-pink/i.test(s)) return '';
+    // 只认「初见」内置模板里那套群聊底栏（8px 12px 4px + 22px 胶囊）。
+    // 用户自己重写过的群聊底栏不强行覆盖，避免把 DIY 样式冲掉。
+    if (!/\.nano-groups\s*\.bottom-bar\s*\{[^}]*padding\s*:\s*var\(\s*--chat-bottombar-pad\s*,\s*8px\s+12px\s+4px\s*\)/.test(s)) return '';
+    if (!/\.nano-groups\s*\.input-shell\s*\{[^}]*border-radius\s*:\s*22px/.test(s)) return '';
+    return [
+        'body.nano-groups .bottom-bar{position:relative;z-index:30;width:100%;flex-shrink:0;',
+        'padding:var(--chat-bottombar-pad,6px 14px calc(4px + var(--nano-safe-bottom,env(safe-area-inset-bottom,0px))));',
+        'display:flex;align-items:center;justify-content:space-between;gap:8px;background:transparent;}',
+        'body.nano-groups .more-btn{width:42px;height:42px;border:0.5px solid rgba(255,255,255,0.5);border-radius:50%;',
+        'background:rgba(255,255,255,0.65);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);',
+        'display:flex;align-items:center;justify-content:center;color:var(--chat-text);',
+        'box-shadow:0 4px 16px rgba(0,0,0,0.04),inset 0 1px 0 rgba(255,255,255,0.6);}',
+        'body.nano-groups .more-btn svg{width:20px;height:20px;stroke:currentColor;stroke-width:2;fill:none;}',
+        'body.nano-groups .input-shell{flex:1;min-width:0;display:flex;flex-direction:column;padding:2px 6px 2px 14px;',
+        'background:rgba(255,255,255,0.32);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);',
+        'border-radius:30px;border:0.5px solid rgba(255,255,255,0.5);min-height:42px;justify-content:center;',
+        'box-shadow:0 4px 16px rgba(0,0,0,0.04),inset 0 1px 0 rgba(255,255,255,0.6);}',
+        'body.nano-groups .input-row{display:flex;align-items:center;gap:4px;width:100%;padding:0;min-height:0;}',
+        'body.nano-groups .input{flex:1;border:none;outline:none;background:transparent;font-size:16px;',
+        'color:var(--chat-text);padding:6px 2px;min-width:0;font-family:inherit;}',
+        'body.nano-groups .emoji-voice-group{display:flex;align-items:center;gap:2px;flex-shrink:0;}',
+        'body.nano-groups .emoji-btn,body.nano-groups .voice-btn{width:32px;height:32px;border:none;border-radius:50%;',
+        'background:transparent;display:flex;align-items:center;justify-content:center;color:var(--chat-sub);font-size:17px;}',
+        'body.nano-groups .send-btn{width:42px;height:42px;border:none;border-radius:50%;background:var(--bubble-me);',
+        'display:flex;align-items:center;justify-content:center;color:#fff;font-size:17px;',
+        'box-shadow:0 4px 16px rgba(44,44,46,0.28);}'
+    ].join('');
+}
+
+// 灰粉模板为了卡片更干净，把 .card-header（状态行）和 .info-section 都隐藏了；
+// 转账/礼物进入已收下/已退还后 footer 又是空的，结果完全看不出结果。
+// 这里在金额卡右侧补一个状态胶囊，只对灰粉模板生效。
+function grayPinkCardStatusFix(css) {
+    if (!/--gp-ink|--gp-pink|灰粉对话|gray-pink/i.test(String(css || ''))) return '';
+    return [
+        'body.nano-chat-inner .bubble-card.transfer.received .main-section::after,',
+        'body.nano-chat-inner .bubble-card.transfer.returned .main-section::after,',
+        'body.nano-chat-inner .bubble-card.gift.received .main-section::after,',
+        'body.nano-chat-inner .bubble-card.gift.returned .main-section::after{',
+        'display:inline-flex;align-items:center;justify-content:center;flex:none;align-self:center;margin-left:auto;',
+        'padding:3px 7px;border-radius:999px;font-size:10px;font-weight:650;line-height:1.2;white-space:nowrap;}',
+        'body.nano-chat-inner .bubble-card.transfer.received .main-section::after,',
+        'body.nano-chat-inner .bubble-card.gift.received .main-section::after{background:#e9f8ee;color:#2f9e57;}',
+        'body.nano-chat-inner .bubble-card.transfer.returned .main-section::after,',
+        'body.nano-chat-inner .bubble-card.gift.returned .main-section::after{background:#f4f1f2;color:#8a7f83;}',
+        'body.nano-chat-inner .bubble-card.transfer.received:not(.response).left .main-section::after{content:"已收款";}',
+        'body.nano-chat-inner .bubble-card.transfer.received:not(.response).right .main-section::after{content:"对方已收款";}',
+        'body.nano-chat-inner .bubble-card.transfer.returned:not(.response).left .main-section::after{content:"已退还";}',
+        'body.nano-chat-inner .bubble-card.transfer.returned:not(.response).right .main-section::after{content:"对方已退还";}',
+        'body.nano-chat-inner .bubble-card.transfer.response.received.right .main-section::after{content:"你已收下";}',
+        'body.nano-chat-inner .bubble-card.transfer.response.received.left .main-section::after{content:"对方已收下";}',
+        'body.nano-chat-inner .bubble-card.transfer.response.returned.right .main-section::after{content:"你已退还";}',
+        'body.nano-chat-inner .bubble-card.transfer.response.returned.left .main-section::after{content:"对方已退还";}',
+        'body.nano-chat-inner .bubble-card.gift.received:not(.response).left .main-section::after{content:"礼物已查收";}',
+        'body.nano-chat-inner .bubble-card.gift.received:not(.response).right .main-section::after{content:"对方已查收";}',
+        'body.nano-chat-inner .bubble-card.gift.returned:not(.response).left .main-section::after{content:"礼物已拒收";}',
+        'body.nano-chat-inner .bubble-card.gift.returned:not(.response).right .main-section::after{content:"对方已拒收";}',
+        'body.nano-chat-inner .bubble-card.gift.response.received.right .main-section::after{content:"你已收下";}',
+        'body.nano-chat-inner .bubble-card.gift.response.received.left .main-section::after{content:"对方已收下";}',
+        'body.nano-chat-inner .bubble-card.gift.response.returned.right .main-section::after{content:"你已拒收";}',
+        'body.nano-chat-inner .bubble-card.gift.response.returned.left .main-section::after{content:"对方已拒收";}'
+    ].join('');
+}
+
 function applyChatCss(css) {
         // 聊天 CSS 仅作用于单聊/群聊内页（额外的聊天专用覆盖）
         if (!isChatInterior) return;
@@ -404,7 +475,8 @@ function applyChatCss(css) {
             return;
         }
         applyStyle('nano-beautify-chat', css || '');
-        applyStyle('nano-beautify-chat-fix', CHAT_STRUCT_FIX + legacyCardCompatCss(css) + grayPinkTakeoutFix(css));
+        applyStyle('nano-beautify-chat-fix', CHAT_STRUCT_FIX + legacyCardCompatCss(css) + grayPinkTakeoutFix(css) +
+            classicGroupDockCompatCss(css) + grayPinkCardStatusFix(css));
         applyStyle('nano-chat-float', NANO_CHAT_FLOAT_CSS);
         reorderChatLayers();
         // 通知聊天页：模板 CSS 已更新（例如 --nano-trans-separate 改变了翻译 DOM 结构）

@@ -372,7 +372,44 @@
         front.addEventListener('touchend', function() { x0 = null; y0 = null; }, { passive: true });
     }
 
-    function wrapChatItem(itemDiv, item) {
+    function deleteGroupChat(group) {
+        const gid = group && group.id;
+        if (!gid) return;
+        if (!window.confirm('删除群聊「' + (group.name || '群聊') + '」？聊天记录也会一并删除。')) return;
+        // 先从群列表注册表移除
+        try {
+            const raw = localStorage.getItem(GROUP_STORAGE_KEY);
+            if (raw) {
+                const d = JSON.parse(raw);
+                if (d && Array.isArray(d.groups)) {
+                    d.groups = d.groups.filter(function(g) { return g && g.id !== gid; });
+                    const json = JSON.stringify(d);
+                    if (window.GroupStore && GroupStore.set) GroupStore.set(GROUP_STORAGE_KEY, json);
+                    else localStorage.setItem(GROUP_STORAGE_KEY, json);
+                }
+            }
+        } catch (e) {}
+        // 删掉这个群的所有内部数据（GroupStore 会同步删除 IndexedDB）
+        ['group_data_', 'group_msgs_', 'group_settings_', 'group_bg_', 'group_req_',
+         'group_reply_pending_', 'group_pending_changes_', 'group_api_result_',
+         'group_mem_tick_', 'group_summary_state_'].forEach(function(prefix) {
+            var k = prefix + gid;
+            try {
+                if (window.GroupStore && GroupStore.remove) GroupStore.remove(k);
+                else localStorage.removeItem(k);
+            } catch (e) {}
+        });
+        try {
+            const ids = getPinnedIds().filter(function(id) { return id !== gid; });
+            savePinnedIds(ids);
+        } catch (e) {}
+        try { if (window.NanoBadge) NanoBadge.markRead(gid); } catch (e) {}
+        try { window.parent.postMessage({ type: 'groupsDataUpdated', groupId: gid }, '*'); } catch (e) {}
+        try { window.parent.postMessage({ type: 'groupDeleted', groupId: gid }, '*'); } catch (e) {}
+        renderAll();
+    }
+
+    function wrapChatItem(itemDiv, item, opts) {
         const wrap = document.createElement('div');
         wrap.className = 'chat-item-wrap';
         try {
@@ -387,7 +424,8 @@
         del.className = 'chat-swipe-btn del';
         del.textContent = '删除';
         pin.addEventListener('click', function(e) { e.stopPropagation(); togglePin(item.id); });
-        del.addEventListener('click', function(e) { e.stopPropagation(); deleteChat(item.id); });
+        const onDelete = (opts && typeof opts.onDelete === 'function') ? opts.onDelete : function() { deleteChat(item.id); };
+        del.addEventListener('click', function(e) { e.stopPropagation(); onDelete(); });
         actions.appendChild(pin);
         actions.appendChild(del);
         const front = document.createElement('div');
@@ -710,7 +748,9 @@
             }).forEach(group => {
                 if (group && group.pending) return; // 未同意入群的邀请群不显示
                 const div = createGroupItem(group);
-                chatList.appendChild(div);
+                chatList.appendChild(wrapChatItem(div, group, {
+                    onDelete: function() { deleteGroupChat(group); }
+                }));
             });
         }
     }
@@ -1483,7 +1523,13 @@
             }
         }
         if (data && (data.type === 'currentMaskChanged' || data.type === 'homeDataUpdated' || data.type === 'contactsDataUpdated' || data.type === 'groupsDataUpdated')) {
-            renderAll();
+            // 群列表可能是在别的 iframe 里删掉的；localStorage 写满时本页镜像不会更新，
+            // 先从 IndexedDB 重读一次再渲染。
+            if (data.type === 'groupsDataUpdated' && window.GroupStore && GroupStore.refresh) {
+                Promise.resolve(GroupStore.refresh(GROUP_STORAGE_KEY)).then(renderAll).catch(function() { renderAll(); });
+            } else {
+                renderAll();
+            }
         }
         // 从会话内页或缓存帧返回：立即刷新，清掉已读的红点
         if (data && (data.type === 'nanoOverlayClosed' || data.type === 'nanoOverlayOpen' || data.type === 'nanoOverlayReopen')) {
@@ -1517,7 +1563,9 @@
     // ===== 群资料/群消息变化 → 刷新群聊卡片 =====
     window.addEventListener('storage', function(e) {
         if (!e || !e.key) return;
-        if (e.key === GROUP_STORAGE_KEY || e.key.indexOf(GROUP_DATA_PREFIX) === 0 || e.key.indexOf(GROUP_MSG_PREFIX) === 0
+        let isGroupKey = false;
+        try { isGroupKey = !!(window.GroupStore && GroupStore.isGroupKey && GroupStore.isGroupKey(e.key)); } catch (err) {}
+        if (e.key === GROUP_STORAGE_KEY || isGroupKey || e.key.indexOf(GROUP_DATA_PREFIX) === 0 || e.key.indexOf(GROUP_MSG_PREFIX) === 0
             || e.key === 'nano_unread_counts' || e.key === 'nano_chat_activity') {
             renderAll();
         }

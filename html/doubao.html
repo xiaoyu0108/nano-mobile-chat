@@ -6,6 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <title>豆包 · Char 对话</title>
 <script src="../js/appearance.js?v=20261110c"></script>
+<script src="../js/nano-translate.js?v=20261122a"></script>
 <style>
 :root{
   --bg:#fff;
@@ -356,6 +357,38 @@ function scrollBottom(){
   chat.scrollTo({top:chat.scrollHeight,behavior:'smooth'});
 }
 
+/* ---------- 外文自动补中文译文 ---------- */
+var __dbTransCache=Object.create(null);
+function dbNeedsTranslation(text){
+  var s=String(text||'').trim();
+  if(!s) return false;
+  if(/（中文[:：]|\(中文[:：]/.test(s)) return false;
+  if(/[\u3040-\u30ff\uac00-\ud7af\u0400-\u04ff\u0600-\u06ff\u0e00-\u0e7f\u0900-\u097f]/.test(s)) return true;
+  var cjk=(s.match(/[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/g)||[]).length;
+  var latin=(s.match(/[A-Za-zÀ-ÖØ-öø-ÿĀ-ž]/g)||[]).length;
+  if(cjk>=2&&latin<=cjk*2) return false;
+  return latin>=3;
+}
+function dbApplyTranslation(el,text){
+  if(!el||!dbNeedsTranslation(text)||!window.NanoTranslate) return;
+  var key=String(text);
+  var done=function(tr){
+    tr=String(tr||'').trim();
+    if(!tr||!document.body.contains(el)||el.querySelector('.db-trans')) return;
+    var d=document.createElement('div');
+    d.className='db-trans';
+    d.style.cssText='margin-top:6px;font-size:12px;line-height:1.4;opacity:.68;white-space:pre-wrap;word-break:break-word;';
+    d.textContent='（中文：'+tr+'）';
+    el.appendChild(d);
+  };
+  if(__dbTransCache[key]){ done(__dbTransCache[key]); return; }
+  try{
+    window.NanoTranslate.toZh(key).then(function(tr){
+      tr=String(tr||'').trim();
+      if(tr){ __dbTransCache[key]=tr; done(tr); }
+    }).catch(function(){});
+  }catch(e){}
+}
 function makeMessage(role,text){
   const wrap=document.createElement('div');
   wrap.className='message '+role;
@@ -364,6 +397,7 @@ function makeMessage(role,text){
     b.className='bubble';
     b.textContent=text;
     wrap.appendChild(b);
+    dbApplyTranslation(b,text);
   }else{
     const card=document.createElement('div');
     card.className='ai-card';
@@ -371,6 +405,7 @@ function makeMessage(role,text){
     p.textContent=text;
     card.appendChild(p);
     wrap.appendChild(card);
+    dbApplyTranslation(card,text);
   }
   return wrap;
 }

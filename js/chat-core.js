@@ -1056,6 +1056,16 @@
     function isConflictNow() {
         try { return recentUserTexts(3).some(looksLikeConflict); } catch (e) { return false; }
     }
+    // 关系紧张时，禁止自动塞日程报备/日常卡片；双方最近几条消息里出现分手、吵架、拉黑等词都算。
+    function isRelationshipTenseNow() {
+        try {
+            if (isConflictNow()) return true;
+            const recent = (messages || []).filter(function (m) {
+                return m && !m.recalled && !m.isCard && String(m.text || '').trim();
+            }).slice(-8);
+            return recent.some(function (m) { return looksLikeConflict(m.text); });
+        } catch (e) { return false; }
+    }
     function conflictPromptBlock() {
         if (!isConflictNow()) return '';
         const lines = [
@@ -3461,7 +3471,28 @@
 
     // 用「当前私聊绑定的 TTS 预设」朗读；没绑定就回落到全局 TTS 配置。
     // presetName 存在 chat_setting_ttsPreset_<角色id>（私聊设置里选）。
-    function buildTtsInstructions() {
+    // 根据这条语音的台词判断情绪，让 TTS 不要用平静客服腔念生气/难过的话
+    function detectVoiceEmotion(text) {
+        const s = String(text || '');
+        if (/(生气|愤怒|火大|气死|气疯|凭什么|够了|闭嘴|滚|别碰我|分手|离婚|吵架|吼|你走)/.test(s)) {
+            return { key: 'angry', direction: '愤怒、压着火气，语速略快，声音压低，句与句之间有克制的停顿' };
+        }
+        if (/(哭|难过|伤心|委屈|失望|心痛|舍不得|算了|离开|不要走|想你想到)/.test(s)) {
+            return { key: 'sad', direction: '难过、气息发紧，语速偏慢，尾音下沉，允许一点鼻音' };
+        }
+        if (/(开心|高兴|太好了|惊喜|兴奋|哈哈|笑死)/.test(s)) {
+            return { key: 'happy', direction: '开心、语气上扬，语速明快，尾音轻快' };
+        }
+        if (/(害怕|紧张|担心|不敢|慌|怎么办)/.test(s)) {
+            return { key: 'fearful', direction: '紧张、呼吸略急，声音发紧，语速稍快' };
+        }
+        if (/(想你|喜欢你|抱抱|温柔|晚安|乖|别怕|我在)/.test(s)) {
+            return { key: 'soft', direction: '放软、轻声，语速慢一点，尾音温柔' };
+        }
+        return { key: 'neutral', direction: '自然口语，情绪跟随台词，不要平铺直叙' };
+    }
+
+    function buildTtsInstructions(voiceText) {
         const parts = [];
         const prompt = String(getChatSetting('ttsPrompt', '') || '').trim();
         if (prompt) parts.push('【用户朗读规范 · 优先级最高】\n' + prompt);
@@ -3475,6 +3506,10 @@
             } catch (e) {}
         }
         parts.push('【朗读要求】\n按语义断句，句子之间自然停顿；情绪随台词起伏，允许轻微呼吸声、气声和尾音；不要把括号里的动作、旁白或舞台提示念出来。');
+        if (voiceText) {
+            const emo = detectVoiceEmotion(voiceText);
+            parts.push('【这条语音的情绪 · 必须演出来】\n' + emo.direction + '。不要用平静、匀速、客服播报式的语气；生气要有火气和停顿，难过要有哽咽和低音，开心要真的轻快。');
+        }
         return parts.join('\n\n').slice(0, 4000);
     }
     function refreshTtsVoiceGuide() {
@@ -3488,10 +3523,13 @@
         if (!window.NanoTTS) { na(); return; }
         // 关闭 TTS 的角色：语音气泡只做波形动画，不再偷偷合成或使用浏览器语音。
         if (window.NanoTTS.isEnabled && window.NanoTTS.isEnabled(chatId) === false) { na(); return; }
-        const guide = buildTtsInstructions();
+        const emo = detectVoiceEmotion(text);
+        const guide = buildTtsInstructions(text);
         try { if (window.NanoTTS.setVoiceGuide) window.NanoTTS.setVoiceGuide(chatId, guide); } catch (e) {}
-        opts = Object.assign({ chatId: chatId, instructions: guide }, opts || {});
+        opts = Object.assign({ chatId: chatId, instructions: guide, direction: emo.direction, emotion: emo.key }, opts || {});
         if (!opts.instructions) opts.instructions = guide;
+        if (!opts.direction) opts.direction = emo.direction;
+        if (!opts.emotion) opts.emotion = emo.key;
         if (window.NanoTTS.speakForChat) {
             window.NanoTTS.speakForChat(text, opts).then(function (r) {
                 if (r === false) na(); else done(true);
@@ -7174,6 +7212,7 @@
             if (!wasBlocked) {
                 try { window.parent.postMessage({ type: 'nanoCharBlocked', chatId: chatId }, '*'); } catch (e) {}
                 try { addSystemNotice('对方已把你拉黑，你的消息将被拒收（可在 iMessage 里联系 TA）'); } catch (e) {}
+                try { scheduleAutoPushSync(1200); } catch (e) {}
             }
         }
         if (/\[加回我\]|\[取消拉黑\]|\[解除拉黑\]|\[unblockuser\]/.test(body)) {
@@ -7181,6 +7220,7 @@
             body = body.replace(/\[(加回我|取消拉黑|解除拉黑|unblockuser)\]/g, '');
             changed = true;
             try { window.parent.postMessage({ type: 'nanoCharUnblocked', chatId: chatId }, '*'); } catch (e) {}
+            try { scheduleAutoPushSync(1200); } catch (e) {}
         }
         return { body: body.trim(), changed: changed };
     }
@@ -7355,6 +7395,7 @@
         const fm = body.match(forceRe);
         const im = fm ? null : body.match(inviteRe);
         if (!fm && !im) return { body: body, settled: 0 };
+        // 注意：拉黑只限制线上聊天；强制线下是角色当面挽回/和好的手段，不能因为拉黑被禁掉。
         // 纳米助手不能把用户拉进线下剧情
         if (isNanoChat || !!(characterData && characterData.nanoAssistant)) {
             body = body.replace(forceRe, '').replace(inviteRe, '').replace(/\n{3,}/g, '\n\n').trim();
@@ -7645,6 +7686,11 @@
             if (autoMsgTimer) { clearTimeout(autoMsgTimer); autoMsgTimer = null; }
             return;
         }
+        // 拉黑 / 被拉黑：停止一切主动消息，避免绕过拉黑继续出现。
+        if (getChatSetting('blocked', false) || getChatSetting('charBlocked', false)) {
+            if (autoMsgTimer) { clearTimeout(autoMsgTimer); autoMsgTimer = null; }
+            return;
+        }
         // 角色已进入线下：退出线下之前，线上不发任何主动消息。
         if (isChatOfflineMode()) {
             if (autoMsgTimer) { clearTimeout(autoMsgTimer); autoMsgTimer = null; }
@@ -7680,6 +7726,10 @@
             try {
                 const out = await generateProactiveMessage();
                 if (!out || ((!out.bubbles || !out.bubbles.length) && (!out.tags || !out.tags.length))) return;
+                // 冷战/分手/吵架期间，主动消息只保留文字和语音，不要塞报备、外卖、礼物等生活卡片。
+                if (isRelationshipTenseNow() && Array.isArray(out.tags) && out.tags.length) {
+                    out.tags = out.tags.filter(function (t) { return t && t.kind === 'voice'; });
+                }
                 const beforeIds = {}; messages.forEach(function (m) { if (m && m.id) beforeIds[m.id] = 1; });
                 if (out.cotOn && out.think) pendingTurnThink = out.think;
                 for (let i = 0; i < out.bubbles.length; i++) {
@@ -8618,6 +8668,11 @@
     async function runScheduledAutoMoment() {
         // 开关关闭后，任何延迟到达的旧任务都不允许再调用 API。
         if (!window.__autoMomentEnabled) {
+            if (autoMomentTimer) { clearTimeout(autoMomentTimer); autoMomentTimer = null; }
+            return;
+        }
+        // 拉黑 / 被拉黑：停止自动朋友圈。
+        if (getChatSetting('blocked', false) || getChatSetting('charBlocked', false)) {
             if (autoMomentTimer) { clearTimeout(autoMomentTimer); autoMomentTimer = null; }
             return;
         }
@@ -13819,6 +13874,12 @@
                 // 否则只开了 A 的主动消息时，Worker 也会随机挑到已经关掉的 B。
                 var __flags = autoFlagsOf(c);
                 var msgOn = __flags.msg, momentOn = __flags.moment;
+                // 拉黑 / 被拉黑：后台 Worker 也不允许再给这个角色生成主动消息/朋友圈。
+                try {
+                    var __blk = JSON.parse(localStorage.getItem('chat_setting_blocked_' + c.id) || 'false') === true;
+                    var __cblk = JSON.parse(localStorage.getItem('chat_setting_charBlocked_' + c.id) || 'false') === true;
+                    if (__blk || __cblk) { msgOn = false; momentOn = false; }
+                } catch (e) {}
                 return {
                     id: String(c.id), name: String(c.name),
                     avatar: String(c.avatar || ''),
@@ -14219,6 +14280,8 @@
 
     async function deliverScheduleReports() {
         if (isChatOfflineMode()) return;
+        // 正在闹分手/冷战/吵架时，不要突然发日程报备卡片，先把情绪接住。
+        if (isRelationshipTenseNow()) return;
         if (isProcessingApi || isWaitingForReply) return;
         if (!hasFamiliarRealChat()) return;
         // 把「已经满足 12 小时 + 连续聊天 3 天」的资格同步给日程页，
