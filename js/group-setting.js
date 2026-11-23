@@ -24,7 +24,7 @@
         ownerId: 'me',
         members: []
     };
-    var defaultSettings = { timeAware: true, allowImage: false, myTitle: '群主', myLevel: 1, myNick: '你', myMsgCount: 0 };
+    var defaultSettings = { timeAware: true, allowImage: false, myTitle: '', myLevel: 1, myNick: '你', myMsgCount: 0 };
 
     var MEMBER_BG = ['#2c5fb1','#b1552c','#2c7a3e','#6d2cb1','#d96f3a','#0a84ff','#ff375f','#30d158'];
     function memberBg(i){ return MEMBER_BG[i % MEMBER_BG.length]; }
@@ -43,22 +43,44 @@
     function buildFromRegistry(rg){
         var names = rg.memberNames || [];
         var ids = rg.members || [];
+        var memSettings = Array.isArray(rg.memberSettings) ? rg.memberSettings : [];
         return {
             name: rg.name || '',
             notice: '',
             avatar: rg.avatar || '',
             profileTs: Number(rg.profileTs) || 0,
-            ownerId: 'me',
+            // 用户自己建的群才是群主；角色建的群，用户只是成员
+            ownerId: rg.ownerIsUser ? 'me' : (rg.createdBy || 'me'),
+            ownerName: rg.ownerName || '',
             members: names.map(function(nm, i){
                 var id = ids[i] || ('m' + i);
                 nm = nm || id;
-                return { id:id, name:nm, nick:nm, initial:nm.charAt(0), bg:memberBg(i), role:'成员', title:'', level:1, msgCount:0 };
+                return { id:id, name:nm, nick:nm, initial:nm.charAt(0), bg:memberBg(i), role:'成员', title:'', level:1, msgCount:0,
+                    setting: memSettings[i] || '' };
             })
         };
     }
 
+    function mergeRegistryMemberSettings(g, rg){
+        if (!g || !g.members || !rg || !Array.isArray(rg.memberSettings)) return g;
+        var ids = Array.isArray(rg.members) ? rg.members : [];
+        g.members.forEach(function(m){
+            if (!m || (m.setting && String(m.setting).trim())) return;
+            var i = -1;
+            for (var k = 0; k < ids.length; k++) { if (String(ids[k]) === String(m.id)) { i = k; break; } }
+            if (i > -1 && rg.memberSettings[i]) m.setting = rg.memberSettings[i];
+        });
+        return g;
+    }
+
     function loadGroup(){
-        try { var raw = localStorage.getItem(GROUP_KEY); if (raw){ var g=JSON.parse(raw); if(g&&g.members) return g; } } catch(e){}
+        try {
+            var raw = localStorage.getItem(GROUP_KEY);
+            if (raw) {
+                var g = JSON.parse(raw);
+                if (g && g.members) return mergeRegistryMemberSettings(g, loadRegistryGroup());
+            }
+        } catch(e){}
         var rg = loadRegistryGroup();
         if (rg) return buildFromRegistry(rg);
         return JSON.parse(JSON.stringify(defaultGroup));
@@ -76,6 +98,9 @@
                             data.groups[i].profileTs = Number(group.profileTs) || 0;
                             data.groups[i].members = group.members.map(function(m){ return m.id; });
                             data.groups[i].memberNames = group.members.map(function(m){ return m.name; });
+                            data.groups[i].memberSettings = group.members.map(function(m){ return String(m.setting || ''); });
+                            data.groups[i].createdBy = (group.ownerId && String(group.ownerId) !== 'me') ? group.ownerId : (data.groups[i].createdBy || '');
+                            data.groups[i].ownerIsUser = isUserOwner();
                             break;
                         }
                     }
@@ -147,6 +172,16 @@
     var group = loadGroup();
     var settings = loadSettings();
     var messages = loadMsgs();
+
+    function isUserOwner(){
+        return !(group && group.ownerId && String(group.ownerId) !== 'me');
+    }
+    function currentSelfTitle(){
+        var t = settings.myTitle ? String(settings.myTitle).trim() : '';
+        if (isUserOwner()) return t || '群主';
+        if (!t || t === '群主') return '成员';
+        return t;
+    }
 
     var currentUser = { id:'me', name:'你', nick:'你', initial:'你', avatar:'', bg:'#34c759' };
 
@@ -251,6 +286,13 @@
         $('timeSwitch').checked = !!settings.timeAware;
         $('imageSwitch').checked = !!settings.allowImage;
 
+        // 只有群主能转让/解散：被角色邀请进群的用户永远不是群主
+        var owner = isUserOwner();
+        var trItem = $('transferItem');
+        var dsItem = $('dissolveItem');
+        if (trItem) trItem.style.display = owner ? '' : 'none';
+        if (dsItem) dsItem.style.display = owner ? '' : 'none';
+
         renderMemberList();
     }
 
@@ -259,8 +301,8 @@
         el.innerHTML = '';
 
         // 我自己
-        var isOwner = !(group.ownerId && group.ownerId !== 'me');
-        var selfTitle = isOwner ? (settings.myTitle || '群主') : (settings.myTitle || '成员');
+        var isOwner = isUserOwner();
+        var selfTitle = currentSelfTitle();
         var selfLevel = settings.myLevel || 1;
         var selfAvatar = currentUser.avatar ? '<img src="' + currentUser.avatar + '">' : (currentUser.initial || '你');
         var selfRow = document.createElement('div');
@@ -305,7 +347,7 @@
             btn.addEventListener('click', function(e){
                 e.stopPropagation();
                 if (btn.classList.contains('title-btn')) {
-                    if (btn.dataset.me) openTitleModal(-2, currentUser.nick || '你', settings.myTitle || '群主');
+                    if (btn.dataset.me) openTitleModal(-2, currentUser.nick || '你', currentSelfTitle());
                     else {
                         var i = parseInt(btn.dataset.idx);
                         openTitleModal(i, group.members[i].nick || group.members[i].name, group.members[i].title || '');

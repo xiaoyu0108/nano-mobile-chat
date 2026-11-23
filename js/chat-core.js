@@ -1309,6 +1309,7 @@
         }
         prompt += '- [creategroup:群名|成员=人设,成员=人设] 你根据自己的人设/生活/世界书新建一个群聊（群主是你自己，不是用户）并邀请用户加入，成员要带 2~5 个你的朋友等 NPC（用“名字=人设”写清各自性格/身份，人设里不要出现逗号），例如 [creategroup:乐队闲聊|陈屿=主唱性格火爆,林晚=鼓手话少内敛]。名字必须是符合你国籍/世界观的真实人名，优先使用世界书/人设里已有的相关人物，禁止旅行者/新朋友/老张/小A 这类占位名字。仅在用户明确说“建个群/拉我进群/有没有不带我的群”或剧情自然需要时使用。\n';
         prompt += '- [分享聊天:朋友名|发生了什么] 你偶尔可以把「你和朋友」的聊天记录打包转发给用户看，例如 [分享聊天:林晚|她今天在便利店把咖啡洒了一身]。只有真的有趣、有情绪、想和用户分享时才用；每次对话最多一次，不要连续使用，聊天内容要短、口语、像真实朋友。\n';
+        prompt += '- [推荐好友:朋友名|人设] 把你现实中的朋友以「名片」形式推荐给用户认识，例如 [推荐好友:林晚|插画师，安静慢热，是你多年的朋友]。人设要写清身份、性格、说话习惯、和你的关系；名字必须符合你的国籍与语言，禁止占位名，不要推荐用户已经认识的人。用户点「加好友」后，系统会把 TA 加进好友列表，之后就能私聊。用户明确说“推荐个朋友/介绍朋友给我认识”时就用这张卡片；平时只在自然场合偶尔推荐，一次对话最多一张，不要连续推荐。\n';
         try {
             const __friendNames = __shareFriendNames();
             if (__friendNames.length) prompt += '（你平时可以聊天的朋友：' + __friendNames.join('、') + '，优先用这些名字。）\n';
@@ -2252,7 +2253,7 @@
                             action: msg.cardData.action,
                             altName: msg.cardData.altName,
                             altSetting: msg.cardData.altSetting,
-                            altFirst: msg.cardData.altFirst,
+                            altFirst: msg.cardData.altFirst, recName: msg.cardData.recName, recSetting: msg.cardData.recSetting, recAvatar: msg.cardData.recAvatar, recNationality: msg.cardData.recNationality, recGender: msg.cardData.recGender, recLanguage: msg.cardData.recLanguage, recFromId: msg.cardData.recFromId,
                             title: msg.cardData.title,
                             sub: msg.cardData.sub,
                             items: (Array.isArray(msg.cardData.items) ? msg.cardData.items.slice(0, 30).map(function (it) { return { who: String((it && it.who) || '').slice(0, 40), text: String((it && it.text) || '').slice(0, 300), time: String((it && it.time) || '').slice(0, 20) }; }) : null),
@@ -2335,7 +2336,7 @@
                             isImage: msg.isImage || false,
                             isCard: msg.isCard || false,
                             isVoice: msg.isVoice || false,
-                            cardData: msg.cardData ? { cardType: msg.cardData.cardType, missed: msg.cardData.missed, claimed: msg.cardData.claimed, status: msg.cardData.status, response: msg.cardData.response, amount: msg.cardData.amount, issuer: msg.cardData.issuer, holder: msg.cardData.holder, familyId: msg.cardData.familyId, limit: msg.cardData.limit, food: msg.cardData.food, shop: msg.cardData.shop, price: msg.cardData.price, note: msg.cardData.note, place: msg.cardData.place, lat: msg.cardData.lat, lng: msg.cardData.lng, distance: msg.cardData.distance, eta: msg.cardData.eta, paidBy: msg.cardData.paidBy, action: msg.cardData.action, altName: msg.cardData.altName, altSetting: msg.cardData.altSetting, altFirst: msg.cardData.altFirst, title: msg.cardData.title, sub: msg.cardData.sub, items: (Array.isArray(msg.cardData.items) ? msg.cardData.items.slice(0, 30).map(function (it) { return { who: String((it && it.who) || '').slice(0, 40), text: String((it && it.text) || '').slice(0, 300), time: String((it && it.time) || '').slice(0, 20) }; }) : null), count: msg.cardData.count, thought: String(msg.cardData.thought || '').slice(0, 600), thoughtZh: String(msg.cardData.thoughtZh || '').slice(0, 600), caption: String(msg.cardData.caption || '').slice(0, 200), tripId: msg.cardData.tripId, travelKind: msg.cardData.travelKind, days: msg.cardData.days, ticketNo: msg.cardData.ticketNo, fromName: msg.cardData.fromName, secretRecordId: msg.cardData.secretRecordId, secretAt: msg.cardData.secretAt, secretLines: (Array.isArray(msg.cardData.secretLines) ? msg.cardData.secretLines.slice(0, 20).map(function(l){return {who:l.who,name:String(l.name||'').slice(0,40),text:String(l.text||'').slice(0,800),translation:String(l.translation||'').slice(0,800)};}) : null), footer: msg.cardData.footer, storyId: msg.cardData.storyId, excerpt: msg.cardData.excerpt, content: msg.cardData.content, genres: msg.cardData.genres, chapters: msg.cardData.chapters, ending: msg.cardData.ending, callId: msg.cardData.callId, video: msg.cardData.video, duration: msg.cardData.duration, direction: msg.cardData.direction, toName: msg.cardData.toName, systemNotice: msg.cardData.systemNotice, familyCardId: msg.cardData.familyCardId, familyCardChatId: msg.cardData.familyCardChatId, familyCardName: msg.cardData.familyCardName, familyLimit: msg.cardData.familyLimit, familySpent: msg.cardData.familySpent, nanoError: msg.cardData.nanoError, coupleKind: msg.cardData.coupleKind, coupleSummary: msg.cardData.coupleSummary, coupleDetail: msg.cardData.coupleDetail, shareId: msg.cardData.shareId, eventId: msg.cardData.eventId, date: msg.cardData.date, start: msg.cardData.start, end: msg.cardData.end, mood: msg.cardData.mood, img: (typeof msg.cardData.img === 'string' && msg.cardData.img.indexOf('data:') !== 0) ? msg.cardData.img : null } : null,
+                            cardData: msg.cardData ? { cardType: msg.cardData.cardType, missed: msg.cardData.missed, claimed: msg.cardData.claimed, status: msg.cardData.status, response: msg.cardData.response, amount: msg.cardData.amount, issuer: msg.cardData.issuer, holder: msg.cardData.holder, familyId: msg.cardData.familyId, limit: msg.cardData.limit, food: msg.cardData.food, shop: msg.cardData.shop, price: msg.cardData.price, note: msg.cardData.note, place: msg.cardData.place, lat: msg.cardData.lat, lng: msg.cardData.lng, distance: msg.cardData.distance, eta: msg.cardData.eta, paidBy: msg.cardData.paidBy, action: msg.cardData.action, altName: msg.cardData.altName, altSetting: msg.cardData.altSetting, altFirst: msg.cardData.altFirst, recName: msg.cardData.recName, recSetting: msg.cardData.recSetting, recAvatar: msg.cardData.recAvatar, recNationality: msg.cardData.recNationality, recGender: msg.cardData.recGender, recLanguage: msg.cardData.recLanguage, recFromId: msg.cardData.recFromId, title: msg.cardData.title, sub: msg.cardData.sub, items: (Array.isArray(msg.cardData.items) ? msg.cardData.items.slice(0, 30).map(function (it) { return { who: String((it && it.who) || '').slice(0, 40), text: String((it && it.text) || '').slice(0, 300), time: String((it && it.time) || '').slice(0, 20) }; }) : null), count: msg.cardData.count, thought: String(msg.cardData.thought || '').slice(0, 600), thoughtZh: String(msg.cardData.thoughtZh || '').slice(0, 600), caption: String(msg.cardData.caption || '').slice(0, 200), tripId: msg.cardData.tripId, travelKind: msg.cardData.travelKind, days: msg.cardData.days, ticketNo: msg.cardData.ticketNo, fromName: msg.cardData.fromName, secretRecordId: msg.cardData.secretRecordId, secretAt: msg.cardData.secretAt, secretLines: (Array.isArray(msg.cardData.secretLines) ? msg.cardData.secretLines.slice(0, 20).map(function(l){return {who:l.who,name:String(l.name||'').slice(0,40),text:String(l.text||'').slice(0,800),translation:String(l.translation||'').slice(0,800)};}) : null), footer: msg.cardData.footer, storyId: msg.cardData.storyId, excerpt: msg.cardData.excerpt, content: msg.cardData.content, genres: msg.cardData.genres, chapters: msg.cardData.chapters, ending: msg.cardData.ending, callId: msg.cardData.callId, video: msg.cardData.video, duration: msg.cardData.duration, direction: msg.cardData.direction, toName: msg.cardData.toName, systemNotice: msg.cardData.systemNotice, familyCardId: msg.cardData.familyCardId, familyCardChatId: msg.cardData.familyCardChatId, familyCardName: msg.cardData.familyCardName, familyLimit: msg.cardData.familyLimit, familySpent: msg.cardData.familySpent, nanoError: msg.cardData.nanoError, coupleKind: msg.cardData.coupleKind, coupleSummary: msg.cardData.coupleSummary, coupleDetail: msg.cardData.coupleDetail, shareId: msg.cardData.shareId, eventId: msg.cardData.eventId, date: msg.cardData.date, start: msg.cardData.start, end: msg.cardData.end, mood: msg.cardData.mood, img: (typeof msg.cardData.img === 'string' && msg.cardData.img.indexOf('data:') !== 0) ? msg.cardData.img : null } : null,
                             voiceData: msg.voiceData ? { duration: msg.voiceData.duration, ttsText: msg.voiceData.ttsText || '' } : null,
                             transcript: msg.transcript || null,
                             translation: msg.translation || null,
@@ -4078,6 +4079,18 @@
             else if (st === 'rejected') footer = '<span class="card-footer-text">已拒绝</span>';
             else footer = '<span class="card-footer-text">想加你为好友</span><span class="card-actions"><button class="card-btn" data-act="altfriend-accept">接受</button><button class="card-btn return-btn" data-act="altfriend-reject">拒绝</button></span>';
             return '<div class="card-main"><div class="icon-wrap">' + icon + '</div><div><div class="card-title">' + name + '</div><div class="card-sub">' + (setting || '陌生人') + '</div></div></div>' + (first ? '<div class="card-note">' + first + '</div>' : '') + '<div class="card-footer">' + footer + '</div>';
+       } else if (cardData.cardType === 'friendRec') {
+            const clean = function (v) { return String(v == null ? '' : v).replace(/[<>&"]/g, ''); };
+            const st = cardData.status || 'pending';
+            const name = clean(cardData.recName || '朋友');
+            const setting = clean(cardData.recSetting || '');
+            const from = clean(cardData.fromName || '角色');
+            const icon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>';
+            let footer;
+            if (st === 'accepted') footer = '<span class="card-footer-text">已添加为好友，可在聊天页找到 TA</span>';
+            else if (st === 'rejected') footer = '<span class="card-footer-text">已忽略这张名片</span>';
+            else footer = '<span class="card-footer-text">「' + from + '」推荐给你</span><span class="card-actions"><button class="card-btn" data-act="recfriend-accept">加好友</button><button class="card-btn return-btn" data-act="recfriend-reject">忽略</button></span>';
+            return '<div class="card-main"><div class="icon-wrap">' + icon + '</div><div><div class="card-title">' + name + '</div><div class="card-sub">' + (setting || ('来自「' + from + '」的朋友')) + '</div></div></div>' + '<div class="card-footer">' + footer + '</div>';
        } else if (cardData.cardType === 'invite') {
             const st = cardData.status || 'pending';
             const icon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/></svg>';
@@ -4270,6 +4283,7 @@
             if (cardData.cardType === 'travelShare') return '旅途分享 · ' + (cardData.place || cardData.title || '');
             if (cardData.cardType === 'memoryRecall') return '一条旧记录 · ' + (cardData.text || cardData.sub || cardData.title || '');
             if (cardData.cardType === 'forwardBundle') return '转发聊天记录 · ' + (cardData.count || 0) + ' 条';
+            if (cardData.cardType === 'friendRec') return '好友推荐 · ' + (cardData.recName || '朋友');
             return cardData.sub || '一条卡片消息';
         }
         if (isVoice) return (transcript && transcript.trim()) ? transcript : '一段语音';
@@ -4954,10 +4968,10 @@
     function extractTagsFromText(text) {
         text = String(text == null ? '' : text).replace(/\[reply\s*\]/gi, '[reply:]');
         // 兼容全角括号 / 全角冒号：Claude、Gemini 偶尔会写成【voice：8|…】或 [语音：8|…]
-        text = text.replace(/[【［]\s*(voice|语音|语音消息|transfer|gift|call|image|emoji|takeout|外卖|跑腿|location|定位|reply|mem|回忆|记忆|sharechat|分享聊天)\s*[:：]\s*([^】］]*?)\s*[】］]/gi, function (m, k, v) {
+        text = text.replace(/[【［]\s*(voice|语音|语音消息|transfer|gift|call|image|emoji|takeout|外卖|跑腿|location|定位|reply|mem|回忆|记忆|sharechat|分享聊天|recommendfriend|friendrec|推荐好友|好友推荐)\s*[:：]\s*([^】］]*?)\s*[】］]/gi, function (m, k, v) {
             return '[' + k + ':' + v + ']';
         });
-        text = text.replace(/\[(voice|语音|语音消息|transfer|gift|call|image|emoji|takeout|外卖|跑腿|location|定位|reply|mem|回忆|记忆|sharechat|分享聊天)\s*：\s*/gi, '[$1:');
+        text = text.replace(/\[(voice|语音|语音消息|transfer|gift|call|image|emoji|takeout|外卖|跑腿|location|定位|reply|mem|回忆|记忆|sharechat|分享聊天|recommendfriend|friendrec|推荐好友|好友推荐)\s*：\s*/gi, '[$1:');
         const results = [];
         let cleaned = text;
 
@@ -4997,7 +5011,7 @@
             return ' ';
         });
 
-        const tagRegex = /\[(transfer|gift|storegift|商城|voice|语音|语音消息|call|heart|image|textimage|text-image|文字图|文字图片|图片|照片|自拍|reply|mem|回忆|记忆|sharechat|分享聊天|creategroup|inviteme|acceptinvite|rejectinvite|familycard|亲属卡|takeout|外卖|跑腿|errand|location|定位|act|动描|altprobe|小号|emoji|sticker|表情包|表情|anniv|纪念日)\s*:\s*([^\]]*?)(?:\]|$)/gi;
+        const tagRegex = /\[(transfer|gift|storegift|商城|voice|语音|语音消息|call|heart|image|textimage|text-image|文字图|文字图片|图片|照片|自拍|reply|mem|回忆|记忆|sharechat|分享聊天|creategroup|inviteme|acceptinvite|rejectinvite|recommendfriend|friendrec|推荐好友|好友推荐|familycard|亲属卡|takeout|外卖|跑腿|errand|location|定位|act|动描|altprobe|小号|emoji|sticker|表情包|表情|anniv|纪念日)\s*:\s*([^\]]*?)(?:\]|$)/gi;
         let match;
         while ((match = tagRegex.exec(text)) !== null) {
             const kind = match[1].toLowerCase();
@@ -5032,6 +5046,8 @@
                 results.push({ kind: 'mem', payload: payload });
             } else if (kind === 'sharechat' || kind === '分享聊天') {
                 if (payload) results.push({ kind: 'sharechat', payload: payload });
+            } else if (kind === 'recommendfriend' || kind === 'friendrec' || kind === '推荐好友' || kind === '好友推荐') {
+                if (payload) results.push({ kind: 'recommendfriend', payload: payload });
             } else if (kind === 'creategroup') {
                 if (payload) results.push({ kind: 'creategroup', payload: payload });
             } else if (kind === 'inviteme') {
@@ -5061,7 +5077,7 @@
             }
         }
 
-        cleaned = text.replace(/\[(transfer|gift|storegift|商城|voice|语音|语音消息|call|heart|image|textimage|text-image|文字图|文字图片|图片|照片|自拍|reply|mem|回忆|记忆|sharechat|分享聊天|creategroup|inviteme|acceptinvite|rejectinvite|familycard|亲属卡|takeout|外卖|跑腿|errand|location|定位|act|动描|altprobe|小号|emoji|sticker|表情包|表情|anniv|纪念日|微信号|wechat|网名|nickname)\s*:\s*[^\]]*?(?:\]|$)/gi, '').trim();
+        cleaned = text.replace(/\[(transfer|gift|storegift|商城|voice|语音|语音消息|call|heart|image|textimage|text-image|文字图|文字图片|图片|照片|自拍|reply|mem|回忆|记忆|sharechat|分享聊天|creategroup|inviteme|acceptinvite|rejectinvite|recommendfriend|friendrec|推荐好友|好友推荐|familycard|亲属卡|takeout|外卖|跑腿|errand|location|定位|act|动描|altprobe|小号|emoji|sticker|表情包|表情|anniv|纪念日|微信号|wechat|网名|nickname)\s*:\s*[^\]]*?(?:\]|$)/gi, '').trim();
 
         return { tags: results, cleanedText: cleaned };
     }
@@ -6927,6 +6943,106 @@
         });
     }
 
+    // ===== 好友推荐名片：角色把自己的朋友以卡片推荐给用户 =====
+    function handleRecommendFriendTag(payload, timeStr) {
+        try {
+            const parts = String(payload || '').split(/[|｜]/);
+            let name = String(parts[0] || '').replace(/[<>&"]/g, '').trim().slice(0, 24);
+            if (!name) return;
+            const setting = String(parts[1] || '').trim().slice(0, 4000);
+            const nat = String(parts[2] || charNationality() || '未知').trim().slice(0, 40);
+            const gender = String(parts[3] || '未知').trim().slice(0, 12);
+            const lang = String(parts[4] || charLanguage() || '').trim().slice(0, 40);
+            // 同一张待处理名片只出现一次，避免连续回复刷屏
+            const dup = (messages || []).some(function (m) {
+                return m && m.cardData && m.cardData.cardType === 'friendRec' &&
+                    String(m.cardData.recName || '') === name &&
+                    (m.cardData.status || 'pending') === 'pending';
+            });
+            if (dup) return;
+            addMessage('left', '', timeStr || '', null, false, true, {
+                cardType: 'friendRec', recName: name, recSetting: setting,
+                recNationality: nat, recGender: gender, recLanguage: lang,
+                recFromId: chatId, fromName: displayName || '角色', status: 'pending'
+            });
+        } catch (e) {}
+    }
+    function createRecommendedFriend(cd) {
+        return new Promise(function (resolve) {
+            try {
+                var req = indexedDB.open('nano_characters_db', 1);
+                req.onupgradeneeded = function (e) { try { var d = e.target.result; if (!d.objectStoreNames.contains('characters')) d.createObjectStore('characters', { keyPath: 'id' }); } catch (err) {} };
+                req.onsuccess = function () {
+                    try {
+                        var db = req.result;
+                        var name = String(cd.recName || '朋友').replace(/[<>&"]/g, '').trim().slice(0, 24);
+                        var fromName = String(cd.fromName || displayName || '角色').replace(/[<>&"]/g, '');
+                        var setting = String(cd.recSetting || '').trim();
+                        var rel = '【关系】TA 是「' + fromName + '」现实中的朋友，由「' + fromName + '」介绍给用户认识。';
+                        var rec = {
+                            id: 'rec_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+                            name: name,
+                            avatar: cd.recAvatar || '',
+                            gender: String(cd.recGender || '未知'),
+                            nationality: String(cd.recNationality || '未知'),
+                            language: String(cd.recLanguage || ''),
+                            setting: setting ? (setting + '\n' + rel) : rel,
+                            isNpc: true,
+                            bindUser: String(getCurrentMaskId()),
+                            recommendedBy: String(cd.recFromId || chatId || ''),
+                            recommendedByName: fromName,
+                            source: 'recommend'
+                        };
+                        var tx = db.transaction('characters', 'readwrite');
+                        tx.objectStore('characters').put(rec);
+                        tx.oncomplete = function () { try { db.close(); } catch (e) {} resolve(rec); };
+                        tx.onerror = function () { try { db.close(); } catch (e) {} resolve(null); };
+                    } catch (e) { resolve(null); }
+                };
+                req.onerror = function () { resolve(null); };
+            } catch (e) { resolve(null); }
+        });
+    }
+    function acceptRecommendFriend(msg) {
+        if (!msg || !msg.cardData) return;
+        const cd = msg.cardData;
+        if ((cd.status || 'pending') !== 'pending') return;
+        const uid = String(getCurrentMaskId());
+        const name = String(cd.recName || '').trim();
+        if (!name) return;
+        // 已经是这个 user 的好友：不重复创建，直接把卡片标记为已添加
+        const exists = (allCharacters || []).find(function (c) {
+            return c && !c.nanoAssistant && String(c.name) === name &&
+                (!c.bindUser || String(c.bindUser) === uid);
+        });
+        if (exists) {
+            cd.status = 'accepted';
+            try { addSystemNotice('「' + name + '」已经在你的好友列表里了'); } catch (e) {}
+            try { renderMessages(); saveMessages(); } catch (e) {}
+            return;
+        }
+        cd.status = 'accepted';
+        createRecommendedFriend(cd).then(function (rec) {
+            if (!rec) {
+                cd.status = 'pending';
+                try { addSystemNotice('添加好友失败，请稍后重试'); } catch (e) {}
+                try { renderMessages(); saveMessages(); } catch (e) {}
+                return;
+            }
+            try { allCharacters.push(rec); } catch (e) {}
+            try { addSystemNotice('你通过「' + (cd.fromName || '角色') + '」认识了「' + rec.name + '」，已加入好友列表'); } catch (e) {}
+            try { if (window.parent !== window) window.parent.postMessage({ type: 'NANO_FRIEND_ADDED', chatId: rec.id, name: rec.name }, '*'); } catch (e) {}
+            try { if (window.parent !== window) window.parent.postMessage({ type: 'nanoCharUpdated' }, '*'); } catch (e) {}
+            try { renderMessages(); saveMessages(); } catch (e) {}
+        });
+    }
+    function rejectRecommendFriend(msg) {
+        if (!msg || !msg.cardData) return;
+        msg.cardData.status = 'rejected';
+        try { addSystemNotice('你忽略了「' + (msg.cardData.recName || '朋友') + '」的名片'); } catch (e) {}
+        try { renderMessages(); saveMessages(); } catch (e) {}
+    }
+
     // ===== 小号试探（角色开小号加用户）=====
     // 小号必须「自己知道自己是角色本人」，只是不能让用户知道；
     // 因此把本人身份 + 完整人设写进小号角色设定里，交给线上/线下/iMessage 共用。
@@ -7528,6 +7644,8 @@
                     if (em && em.url) addMessage('left', '', timeStr, null, false, false, null, null, null, null, false, null, true, { url: em.url, desc: '表情包', emojiName: em.name || '表情', isEmoji: true });
                 } else if (tag.kind === 'sharechat') {
                     await handleShareChatTag(tag.payload, timeStr);
+                } else if (tag.kind === 'recommendfriend') {
+                    handleRecommendFriendTag(tag.payload, timeStr);
                 }
             } catch (e) {}
         }
@@ -8011,7 +8129,34 @@
             (allCharacters || []).find(function (c) { return c && c.name && momentNameKey(c.name) === ak; }) || { name: authorName };
         return momentPersonKnows(person, author);
     }
-    // 已添加到通讯录的 NPC / 小号同样按 char 看待：char 之间绝对不能互动。
+    // 角色关系闸口：只有「角色关系」里双向绑定的两个角色，才允许朋友圈互动。
+    function momentCharObj(nameOrObj) {
+        if (!nameOrObj) return null;
+        var n = typeof nameOrObj === 'object' ? nameOrObj.name : nameOrObj;
+        var c = socialCharByName(n, allCharacters) ||
+            (allCharacters || []).find(function (x) { return x && x.name && momentNameKey(x.name) === momentNameKey(n); }) || null;
+        // 只认当前 user 面具下的角色，避免跨人设误判关系。
+        if (c && currentUser && c.bindUser && String(c.bindUser) !== String(currentUser.id)) return null;
+        return c;
+    }
+    function momentRelationGate(a, b) {
+        var ca = momentCharObj(a), cb = momentCharObj(b);
+        if (!ca || !cb) return false; // 角色只能和另一个绑定了关系的角色互动
+        if (String(ca.id || ca.name) === String(cb.id || cb.name)) return true;
+        try {
+            if (window.NanoSocialGraph && NanoSocialGraph.hasRelation) return !!NanoSocialGraph.hasRelation(ca, cb);
+        } catch (e) {}
+        return false;
+    }
+    function momentRelationLabel(a, b) {
+        var ca = momentCharObj(a), cb = momentCharObj(b);
+        if (!ca || !cb) return '';
+        try {
+            if (window.NanoSocialGraph && NanoSocialGraph.relationLabel) return NanoSocialGraph.relationLabel(ca, cb) || '';
+        } catch (e) {}
+        return '';
+    }
+    // 已添加到通讯录的 NPC / 小号同样按角色看待：互动必须受「角色关系」闸口约束。
     function momentPlainCharMap() {
         const map = {};
         (allCharacters || []).forEach(function (c) {
@@ -8031,27 +8176,35 @@
         items.forEach(function (o) {
             if (!o) return;
             const authorKey = momentNameKey(o.author);
-            // 点赞：不允许作者自己、用户、任何普通 char；NPC/小号可以点赞。
+            // 点赞：不允许作者自己、用户；普通 char 只能给绑定了角色关系的角色点赞。
             o.likes = (Array.isArray(o.likes) ? o.likes : []).filter(function (raw) {
                 const key = momentNameKey(raw);
                 if (!key || key === authorKey || key === userKey) return false;
-                if (plain[key]) return false;   // char 之间绝不互相点赞
+                if (plain[key]) return momentRelationGate(momentCharObj(raw), momentCharObj(o.author));
                 if (!momentBoundNpcKnownTo(raw, o.author)) return false; // NPC/小号不能跨角色乱入
                 return true;
             }).map(function (n) { return String(n).trim(); });
-            // 评论：只保留 NPC/小号；普通 char 一律不出现。NPC 可以回复作者 char。
+            // 评论：普通 char 只有在和作者绑定了角色关系时才能出现；NPC/小号不受角色关系限制。
             o.comments = (Array.isArray(o.comments) ? o.comments : []).filter(function (c) {
                 if (!c || !c.user) return false;
                 const uKey = momentNameKey(c.user);
                 if (!uKey || uKey === authorKey || uKey === userKey) return false;
-                if (plain[uKey]) return false;  // char 之间绝不互相评论/回复
-                if (!momentBoundNpcKnownTo(c.user, o.author)) return false; // NPC/小号不能跨角色乱入
+                const commenterChar = plain[uKey] ? momentCharObj(c.user) : null;
+                if (commenterChar && !momentRelationGate(commenterChar, momentCharObj(o.author))) return false;
+                if (!commenterChar && !momentBoundNpcKnownTo(c.user, o.author)) return false; // NPC/小号不能跨角色乱入
                 if (c.toUser) {
                     const tKey = momentNameKey(c.toUser);
                     if (!tKey || tKey === uKey || tKey === userKey) delete c.toUser;
-                    // NPC 只能回复作者、其他 NPC；不能回复无关 char
-                    else if (plain[tKey] && tKey !== authorKey) delete c.toUser;
-                    else c.toUser = String(c.toUser).trim();
+                    else {
+                        const targetChar = plain[tKey] ? momentCharObj(c.toUser) : null;
+                        if (targetChar && commenterChar) {
+                            // 角色之间只在绑定关系内建立回复；否则退化成普通评论。
+                            if (!momentRelationGate(commenterChar, targetChar)) delete c.toUser;
+                            else c.toUser = String(c.toUser).trim();
+                        } else if (targetChar) {
+                            c.toUser = String(c.toUser).trim(); // NPC 可以回复绑定的角色
+                        } else c.toUser = String(c.toUser).trim();
+                    }
                 }
                 c.user = String(c.user).trim();
                 return true;
@@ -8145,16 +8298,30 @@
             const full = (allCharacters || []).find(function (x) { return x && (String(x.id) === String(a.id) || x.name === a.name); }) || a;
             return { name: a.name, info: momentCharForeign(full) };
         }).filter(function (x) { return x.info && x.info.foreign; });
+        // 角色关系网：只有这里列出的成对角色，才允许在朋友圈互动。
+        const __relChars = (allCharacters || []).filter(function (c) {
+            if (!c || !c.name || c.nanoAssistant) return false;
+            if (currentUser && c.bindUser && String(c.bindUser) !== String(currentUser.id)) return false;
+            return true;
+        });
+        const __relLines = [];
+        for (let __ri = 0; __ri < __relChars.length; __ri++) {
+            for (let __rj = __ri + 1; __rj < __relChars.length; __rj++) {
+                const __lb = momentRelationLabel(__relChars[__ri], __relChars[__rj]);
+                if (__lb) __relLines.push('· ' + __relChars[__ri].name + ' ↔ ' + __relChars[__rj].name + '：' + __lb);
+            }
+        }
+        const __relInfo = __relLines.length ? ('【角色关系网 · 朋友圈互动唯一许可名单】\n' + __relLines.join('\n')) : '【角色关系网】当前没有绑定任何角色关系，所有角色之间都不允许互动。';
         let sys = '下面这几位是用户的好友，他们的动态会出现在同一个朋友圈里：' + authorNames + '。\n'
             + '请一次性生成 ' + totalPosts + ' 条朋友圈动态（3~5 条），每条动态必须自带 2~4 个点赞和 3~4 条评论，不能只写文案。\n'
-            + '【最高优先级】任何 char 之间都绝对不允许互相评论、回复、点赞或接话，即使角色关系/悄悄话记录写了认识也不行。已经加为好友的 NPC、小号同样算 char（小号和大号是同一个人，更不能互相互动）；char 只能和用户、以及评论区现场虚构的普通 NPC 互动；char 的动态下评论区只能出现普通 NPC。\n'
+            + '【角色关系闸口 · 最高优先级】角色之间只有上面【角色关系网】里明确绑定的两人，才可以偶尔互相评论、回复、点赞或接话，且语气必须贴合关系标签（恋人/宿敌/同事/家人…）；没有绑定关系的角色之间绝对不允许任何互动，即使人设/世界书写了认识也不行。已经加为好友的 NPC、小号同样按角色处理（小号和大号是同一个人，没绑定就不能互动）；角色可以正常和用户、以及评论区现场虚构的普通 NPC 互动。不要每条动态都让关系网里的角色全部出现，偶尔互动即可。\n'
             + '【发帖人】优先让「' + (authors[0] && authors[0].name) + '」至少发 1 条；其余动态由名单里的其他角色发，数量不够时由作者可能认识的 NPC 发帖补足到 ' + totalPosts + ' 条。作者不要重复太多，内容贴合各自人设、身份和当天心情。\n'
             + '【拒绝流水账】严禁把动态写成日程记录或流水账：不要“早上…中午…晚上…”地罗列作息，也不要“今天天气不错 / 吃了三明治 / 上班好累 / 晚安”这种谁都能发的空话。每条都要落到一件具体的事或一个具体的细节（一个地点、一个人、一句话、刚发生的一个小插曲，或一种有来由的情绪），要有只有这个人此刻才会发的东西。宁少勿滥。\n'
             + '【反重复 · 最高优先级】同一位作者的新动态绝对不能重复 TA 最近发过的同一件事、同一个梗、同一种抱怨或同一句式（例如反复写“吉他弦又断了”）。同一个生活小事最多出现一次；如果最近反复出现某个词/梗，这次必须彻底换一个具体的新素材。不同作者的动态也不能同质化。\n'
             + '【文案长度】这一批约一半写短帖（100 字以下，2~4 句，也要有意思），一半写中等长度（100~220 字，把一件具体的事或情绪讲完整，有细节、有画面）；偶尔挑 1 条写 300~500 字长文——追星/演唱会 repo、好物分享、情感经历、求助/避雷、深夜碎碎念等，要有细节、真实情绪和起承转合，不要 AI 腔。不要每次都只说一句话，也不要为了凑字硬写。\n'
             + '【重要 · 朋友圈不是聊天】这是发在朋友圈的动态，不是私聊：不要对任何人说话，不要提问，不要出现「你要不要/你去吗/在吗/一起吃吗」这类约人或聊天的语气；只分享自己的日常与心情。禁止 AI 腔、禁止解释、禁止出戏。\n'
-            + '【互动规则】每条必须写 2~4 个点赞、3~4 条评论。点赞者/评论者只能是作者生活里真实存在的同学、朋友、同事、家人、邻居等 NPC（可以虚构真实完整姓名），可以是动态作者/评论区里的人。'
-            + '绝对不能是作者本人，也不能是用户本人；绝对不能让任何普通 char 点赞或评论另一个 char。\n'
+            + '【互动规则】每条必须写 2~4 个点赞、3~4 条评论。点赞者/评论者主要是作者生活里真实存在的同学、朋友、同事、家人、邻居等 NPC（可以虚构真实完整姓名）；也可以是【角色关系网】里与作者绑定了关系的角色，但必须贴合关系标签。'
+            + '绝对不能是作者本人或用户本人；没绑定角色关系的角色绝对不许点赞或评论。\n'
             + '【回复对象】只有评论区里真正发过评论的人才能被回复；作者没在评论区留言时，NPC 不能写「回复作者」。\n'
             + '【NPC 去重】同一个 NPC 不要出现在两个不同角色的动态里；名字必须是真实姓名，禁止王姐/李哥/店老板/神秘人/旅行者这类假名。\n'
             + '【配图人物】imagePrompt 开头必须写 `人物：...`（例如 人物：作者一人 / 人物：作者和朋友A / 人物：无人（只拍场景））。作者和用户异地/异国或隔着屏幕时，照片里不要出现用户同框；只有作者和用户真的在同一个地方时才可以双人/多人。\n'
@@ -8163,6 +8330,7 @@
             + '只输出一个 JSON 数组，不要多余内容：[{"author":"发动态的人名（优先使用名单里的名字，不足时可是合理 NPC）","text":"动态文案","wantImage":true 或 false,"imagePrompt":"若想配图，描述这张照片的画面；不配图则留空","location":"地点或空字符串","likes":["点赞者名字"],"comments":[{"user":"评论者名字","toUser":"回复对象名字，没有就留空","text":"评论内容"}]}]';
         try { if (window.NanoPrompts && NanoPrompts.appendTo) sys = NanoPrompts.appendTo(sys, 'moments', { keepFormat: true }); } catch (e) {}
         const userMsg = '【朋友圈成员与人设】\n' + authorInfo + '\n\n'
+            + __relInfo + '\n\n'
             + (mem ? ('【最近发生的事】\n' + mem + '\n\n') : '')
             + (__chatInfo ? ('【真实聊天近况（动态可以自然接上，但不要复述原文、不要写成聊天回复）】\n' + __chatInfo + '\n\n') : '')
             + (__recentInfo ? ('【各自最近发过的动态（本次必须避开，不要重复同样的事/梗/句式）】\n' + __recentInfo + '\n\n') : '')
@@ -8270,7 +8438,11 @@
                 const key = momentNameKey(n);
                 if (key === momentNameKey(uName)) return '';
                 if (authorName && key === momentNameKey(authorName)) return '';
-                if (plainChars[key]) return '';        // 普通 char 绝不参与互动
+                if (plainChars[key]) {
+                    // 角色只能在「角色关系」绑定过的角色动态下互动。
+                    const pc = momentCharObj(n), ac = momentCharObj(authorName);
+                    if (!pc || !ac || !momentRelationGate(pc, ac)) return '';
+                }
                 const cn = canonicalName(n);
                 if (momentBadNpcName(cn)) return '';
                 return cn;
@@ -8280,7 +8452,6 @@
                 if (!n || n === '用户' || n === '我') return '';
                 const key = momentNameKey(n);
                 if (key === momentNameKey(uName)) return '';
-                if (plainChars[key] && key !== momentNameKey(authorName)) return '';
                 if (momentBadNpcName(n) && key !== momentNameKey(authorName)) return '';
                 return canonicalName(n);
             };
@@ -8310,6 +8481,12 @@
                     var txt = c.text || c.content || c.comment || c.message || '';
                     if (!u || !String(txt).trim()) return;
                     var to = pickTarget(c.toUser || c.replyTo || c.to || c.target, au.name);
+                    if (to) {
+                        const cu = momentCharObj(u), tu = momentCharObj(to);
+                        // 角色之间只有绑定关系内才能回复；否则退化为普通评论。
+                        if (cu && tu && !momentRelationGate(cu, tu)) to = '';
+                        else if (plainChars[momentNameKey(to)] && !tu) to = '';
+                    }
                     comments.push({ user: u, toUser: to, text: String(txt).trim().slice(0, 120) });
                 });
                 const post = {
@@ -9522,6 +9699,9 @@
             } else if (cd.cardType === 'addfriend') {
                 const st = status === 'accepted' ? '（用户已接受，已成为好友）' : (status === 'rejected' ? '（用户已拒绝）' : '（待用户处理）');
                 return '你开的一个小号「' + (cd.altName || '小号') + '」向用户发起了加好友申请' + st + '（这是一张卡片消息，不是空白）。';
+            } else if (cd.cardType === 'friendRec') {
+                const st = status === 'accepted' ? '（用户已添加为好友）' : (status === 'rejected' ? '（用户忽略了名片）' : '（等待用户决定）');
+                return '你把朋友「' + (cd.recName || '朋友') + '」以名片形式推荐给了用户' + (cd.recSetting ? ('，人设：' + String(cd.recSetting).slice(0, 200)) : '') + st + '（这是好友推荐卡片，不是空白消息）。';
             } else if (cd.cardType === 'fanfic') {
                 const body = String(cd.content || cd.excerpt || '').slice(0, 10000);
                 return '用户把你们俩的同人文《' + (cd.title || '未命名') + '》分享给你看（' + (cd.genres || '未选题材') + ' · ' + (cd.chapters || 0) + ' 章 · ' + (cd.ending || 'HE') + '）。\n' +
@@ -11324,6 +11504,22 @@
     function currentChatIdSafe() {
         try { return new URLSearchParams(location.search).get('chat') || 'char'; } catch (e) { return 'char'; }
     }
+    // 角色所属国家 / 母语：角色自建群时，NPC 必须与角色同国籍、同语言
+    const GROUP_LANG_MAP = { '美国':'英文','英国':'英文','加拿大':'英文','澳大利亚':'英文','新西兰':'英文','法国':'法文','德国':'德文','奥地利':'德文','日本':'日文','韩国':'韩文','朝鲜':'韩文','俄罗斯':'俄文','西班牙':'西班牙文','墨西哥':'西班牙文','意大利':'意大利文','葡萄牙':'葡萄牙文','巴西':'葡萄牙文','泰国':'泰文','越南':'越南文','印度':'印地文','阿拉伯':'阿拉伯文','荷兰':'荷兰文','瑞典':'瑞典文','土耳其':'土耳其文' };
+    function charNationality() {
+        try { return String((characterData && (characterData.nationality || characterData.country)) || '').trim(); } catch (e) { return ''; }
+    }
+    function charLanguage() {
+        try {
+            if (characterData && characterData.language) return String(characterData.language).trim();
+            const n = charNationality();
+            for (const k in GROUP_LANG_MAP) { if (n.indexOf(k) > -1) return GROUP_LANG_MAP[k]; }
+        } catch (e) {}
+        return '';
+    }
+    function charBindUser() {
+        try { return characterData && characterData.bindUser != null ? String(characterData.bindUser) : ''; } catch (e) { return ''; }
+    }
     // 直接向主 API 发一次请求（用于建群时生成 NPC 人设）
     function callMainApiRaw(messages, maxTokens, temperature) {
         return getApiConfig().then(function (config) {
@@ -11353,8 +11549,10 @@
     // NPC 名字合理性：真人名长度与字符范围，过滤乱码/怪名/占位名
     function isNormalNpcName(nm) {
         nm = String(nm || '').trim();
-        if (!nm || nm.length > 12) return false;
-        if (!/^[\u4e00-\u9fa5A-Za-z][\u4e00-\u9fa5A-Za-z0-9·.\- ]*$/.test(nm)) return false;
+        if (!nm || nm.length > 16) return false;
+        // 允许中日韩、拉丁（含重音）、西里尔、阿拉伯、泰文等真实人名用字
+        var nameRe = /^[\u4e00-\u9fa5A-Za-z\u3040-\u30ff\u31f0-\u31ff\uac00-\ud7af\u00c0-\u024f\u0400-\u04ff\u0600-\u06ff\u0e00-\u0e7f][\u4e00-\u9fa5A-Za-z0-9·.\- '’\u3040-\u30ff\u31f0-\u31ff\uac00-\ud7af\u00c0-\u024f\u0400-\u04ff\u0600-\u06ff\u0e00-\u0e7f]*$/;
+        if (!nameRe.test(nm)) return false;
         const bad = ['旅行者', '旅行家', '冒险者', '新朋友', '老朋友', '老友', '朋友', '群友', '同事', '同学', '邻居', '路人', '陌生人', '网友', '某人', '神秘人', '好友', '群成员', '成员', '用户', '玩家', '角色', 'npc', '未知', '老板', '闺蜜', '兄弟', '姐妹'];
         const lower = nm.toLowerCase();
         for (let i = 0; i < bad.length; i++) { if (lower.indexOf(bad[i]) > -1) return false; }
@@ -11399,9 +11597,12 @@
             wbText = [wb.front, wb.middle].filter(Boolean).join('\n').slice(0, 1600);
         } catch (e) { wbText = ''; }
         const wantNames = (names || []).filter(Boolean);
+        const selfNat = charNationality();
+        const selfLang = charLanguage();
         const sys = '你在帮角色「' + selfName + '」构思群聊「' + gname + '」里的群成员（NPC）。\n' +
             '硬性要求：\n' +
             '1. 这些 NPC 都是' + selfName + '在现实中真实认识的人（家人/朋友/同事/同学/邻居等），和' + selfName + '、和「' + uName + '」都有具体关系。\n' +
+            '1.1 所有 NPC 必须与「' + selfName + '」同国籍、同母语' + (selfNat ? ('（' + selfNat + (selfLang ? ' · ' + selfLang : '') + '）') : (selfLang ? ('（' + selfLang + '）') : '')) + '：' + selfName + '说哪种语言，这些 NPC 就用哪种语言说话、用该国的真实名字，不要混入其他国家的朋友。\n' +
             '2. 名字必须是符合该角色国籍与世界观的真实人名：中文角色用正常的中文姓名（如「陈屿」「林晚」），外国角色用该国真实姓名（如「Emily Carter」「佐藤健」）；禁止使用任何占位式/泛称名字，例如：旅行者、旅行家、冒险者、新朋友、老朋友、老友、朋友、群友、同事、同学、邻居、路人、陌生人、网友、某人、小A、老张、小李、甲乙丙丁、A、B、NPC、角色、神秘人 等。不要用“老X/小X”这种随便的称呼当人名。\n' +
             '3. 如果【世界书】或【' + selfName + '的人设】里已经出现了具体的相关人物（家人/朋友/同事等），必须优先使用这些已有人物的真实名字，不要另造无关的人。\n' +
             '4. 人设要贴合' + selfName + '的世界观与生活背景，写清：身份、性格、说话习惯、与' + selfName + '的关系、与' + uName + '的关系。\n' +
@@ -11411,6 +11612,7 @@
         const userMsg = (selfSetting ? ('【' + selfName + '的人设】\n' + selfSetting + '\n\n') : '') +
             (wbText ? ('【世界书】\n' + wbText + '\n\n') : '') +
             '【用户】' + uName + (uSetting ? ('\n' + uSetting) : '') + '\n' +
+            '【国籍 / 母语】' + (selfNat || '未设定') + (selfLang ? (' · ' + selfLang) : '') + '\n' +
             '【群名】' + gname + '\n' +
             (wantNames.length ? ('【需要补全的人设】' + wantNames.join('、')) : '【请生成 2~4 个合理的群成员】');
         // 一次请求生成完整的人设名单；失败就直接交给本地基本人设兜底，不再重复调用。
@@ -11427,6 +11629,14 @@
             const gname = (parts[0] || '新群').trim() || '新群';
             const charId = currentChatIdSafe();
             const selfName = displayName || '角色';
+            // 群归属角色绑定的 user（面具），而不是当前页面的临时面具：
+            // 否则「美国角色」的群会跑到别人设的群聊列表里。
+            const bindUid = charBindUser();
+            const charNat = charNationality();
+            const charLang = charLanguage();
+            try {
+                if (bindUid && window.GroupStore && GroupStore.setCurrentUid) GroupStore.setCurrentUid(bindUid);
+            } catch (e) {}
             let specs = parseGroupSpecs(parts.slice(1).join('|'));
 
             // 人设缺失时用一次 API 生成完整人设；失败就明确提示，不再用内置基本人设冒充。
@@ -11462,13 +11672,15 @@
             const members = [{
                 id: charId, name: selfName, nick: selfName, initial: selfName.charAt(0),
                 bg: GROUP_BG[0], avatar: (characterData && characterData.avatar) || '',
-                role: '群主', title: '群主', level: 1, msgCount: 0
+                role: '群主', title: '群主', level: 1, msgCount: 0,
+                nationality: charNat, language: charLang
             }];
             specs.forEach(function (s, i) {
                 members.push({
                     id: 'npc_' + Date.now() + '_' + i, name: s.name, nick: s.name, initial: s.name.charAt(0),
                     bg: GROUP_BG[(i + 1) % GROUP_BG.length], avatar: '', role: '成员', title: '',
-                    level: 1, msgCount: 0, isNpc: true, setting: s.setting
+                    level: 1, msgCount: 0, isNpc: true, setting: s.setting,
+                    nationality: charNat, language: charLang
                 });
             });
 
@@ -11481,15 +11693,27 @@
                     id: 'g' + Date.now(), name: gname, avatar: '',
                     members: members.map(function (m) { return m.id; }),
                     memberNames: members.map(function (m) { return m.name; }),
-                    createdBy: charId, ownerName: selfName,
-                    ownerUid: (window.GroupStore && GroupStore.currentUid) ? GroupStore.currentUid() : '',
+                    memberSettings: members.map(function (m) { return m.setting || ''; }),
+                    createdBy: charId, ownerName: selfName, ownerIsUser: false,
+                    ownerUid: bindUid || ((window.GroupStore && GroupStore.currentUid) ? GroupStore.currentUid() : ''),
+                    bindUser: bindUid,
                     createdAt: Date.now(), pending: true
                 };
                 reg.groups.unshift(group);
                 localStorage.setItem('nano_groups_data', JSON.stringify(reg));
+            } else {
+                // 同名群已存在：补全成员人设，保证点 NPC 头像能看到人设
+                group.memberSettings = members.map(function (m) { return m.setting || ''; });
+                group.bindUser = bindUid || group.bindUser || '';
+                if (bindUid) group.ownerUid = bindUid;
+                group.ownerIsUser = false;
+                try { localStorage.setItem('nano_groups_data', JSON.stringify(reg)); } catch (e) {}
             }
             localStorage.setItem('group_data_' + group.id, JSON.stringify({
-                name: gname, notice: '', avatar: '', ownerId: charId, ownerName: selfName, members: members, userLeft: true
+                name: gname, notice: '', avatar: '', ownerId: charId, ownerName: selfName,
+                ownerUid: bindUid || ((window.GroupStore && GroupStore.currentUid) ? GroupStore.currentUid() : ''),
+                bindUser: bindUid,
+                members: members, userLeft: true
             }));
             // 用户是被邀请进群的一方，进群后身份为普通成员
             try {
@@ -11509,6 +11733,10 @@
             const parts = String(payload || '').split('|');
             const gname = (parts[0] || '').trim();
             if (!gname) return;
+            const bindUid = charBindUser();
+            try {
+                if (bindUid && window.GroupStore && GroupStore.setCurrentUid) GroupStore.setCurrentUid(bindUid);
+            } catch (e) {}
             const group = findGroupByName(gname);
             if (!group) return;
             createInviteCardForGroup(group, displayName || '角色');
@@ -11520,18 +11748,37 @@
             const cd = msg.cardData || {};
             const gid = cd.groupId;
             if (!gid) return;
+            const charId = currentChatIdSafe();
+            const charName = (characterData && characterData.name) || cd.fromName || displayName || '角色';
+            const bindUid = charBindUser();
+            try {
+                if (bindUid && window.GroupStore && GroupStore.setCurrentUid) GroupStore.setCurrentUid(bindUid);
+            } catch (e) {}
             const key = 'group_data_' + gid;
             const gd = JSON.parse(localStorage.getItem(key) || 'null') || {};
+            if (!Array.isArray(gd.members)) gd.members = [];
+            // 群是角色建的/角色邀请的：群主只能是角色，绝不可能是用户
+            if (!gd.ownerId || String(gd.ownerId) === 'me') gd.ownerId = charId;
+            if (!gd.ownerName) gd.ownerName = cd.fromName || charName;
+            if (bindUid) gd.ownerUid = bindUid;
+            if (bindUid) gd.bindUser = bindUid;
+            if (!gd.members.some(function (m) { return m && String(m.id) === String(charId); })) {
+                gd.members.push({
+                    id: charId, name: charName, nick: charName, initial: charName.charAt(0),
+                    bg: '#007aff', avatar: (characterData && characterData.avatar) || '',
+                    role: '群主', title: '群主', level: 1, msgCount: 0,
+                    setting: (characterData && (characterData.setting || characterData.desc || characterData.persona)) || '',
+                    nationality: charNationality(), language: charLanguage()
+                });
+            }
             gd.userLeft = false;
             localStorage.setItem(key, JSON.stringify(gd));
-            // 角色自建的群：群主是角色，用户进群后是普通成员
+            // 角色邀请用户进群：用户进群后是普通成员（即使群资料暂时读不到也不当群主）
             try {
-                if (gd.ownerId && gd.ownerId !== 'me') {
-                    const skey = 'group_settings_' + gid;
-                    const st = JSON.parse(localStorage.getItem(skey) || 'null') || {};
-                    st.myTitle = '成员';
-                    localStorage.setItem(skey, JSON.stringify(st));
-                }
+                const skey = 'group_settings_' + gid;
+                const st = JSON.parse(localStorage.getItem(skey) || 'null') || {};
+                st.myTitle = '成员';
+                localStorage.setItem(skey, JSON.stringify(st));
             } catch (e) {}
             try {
                 const pk = 'group_pending_changes_' + gid;
@@ -11545,19 +11792,31 @@
             try {
                 const reg2 = JSON.parse(localStorage.getItem('nano_groups_data') || '{}') || {};
                 if (!Array.isArray(reg2.groups)) reg2.groups = [];
-                let gEntry = reg2.groups.find(function(x){ return x && x.id === gid; });
+                let gEntry = reg2.groups.find(function(x){ return x && String(x.id) === String(gid); });
                 if (!gEntry) {
-                    const gdata = JSON.parse(localStorage.getItem('group_data_' + gid) || 'null') || {};
                     gEntry = {
                         id: gid,
-                        name: gdata.name || cd.groupName || '群聊',
-                        avatar: gdata.avatar || '',
-                        ownerName: gdata.ownerName || (cd.fromName || '角色'),
-                        members: Array.isArray(gdata.members) ? gdata.members.map(function(m){ return m && (m.id || m.name); }).filter(Boolean) : [],
-                        memberNames: Array.isArray(gdata.members) ? gdata.members.map(function(m){ return m && (m.nick || m.name); }).filter(Boolean) : [],
+                        name: gd.name || cd.groupName || '群聊',
+                        avatar: gd.avatar || '',
+                        ownerName: gd.ownerName || (cd.fromName || '角色'),
+                        createdBy: gd.ownerId || charId,
+                        ownerIsUser: false,
+                        ownerUid: bindUid || gd.ownerUid || '',
+                        bindUser: bindUid,
+                        members: Array.isArray(gd.members) ? gd.members.map(function(m){ return m && (m.id || m.name); }).filter(Boolean) : [],
+                        memberNames: Array.isArray(gd.members) ? gd.members.map(function(m){ return m && (m.nick || m.name); }).filter(Boolean) : [],
+                        memberSettings: Array.isArray(gd.members) ? gd.members.map(function(m){ return (m && m.setting) || ''; }) : [],
                         createdAt: Date.now()
                     };
                     reg2.groups.unshift(gEntry);
+                } else {
+                    if (bindUid) { gEntry.ownerUid = bindUid; gEntry.bindUser = bindUid; }
+                    if (!gEntry.createdBy) gEntry.createdBy = gd.ownerId || charId;
+                    gEntry.ownerIsUser = false;
+                    if (!Array.isArray(gEntry.memberSettings)) gEntry.memberSettings = [];
+                    gEntry.members = Array.isArray(gd.members) ? gd.members.map(function(m){ return m && (m.id || m.name); }).filter(Boolean) : (gEntry.members || []);
+                    gEntry.memberNames = Array.isArray(gd.members) ? gd.members.map(function(m){ return m && (m.nick || m.name); }).filter(Boolean) : (gEntry.memberNames || []);
+                    gEntry.memberSettings = Array.isArray(gd.members) ? gd.members.map(function(m){ return (m && m.setting) || ''; }) : gEntry.memberSettings;
                 }
                 gEntry.pending = false;
                 localStorage.setItem('nano_groups_data', JSON.stringify(reg2));
@@ -11602,7 +11861,7 @@
             let reg = {};
             try { reg = JSON.parse(localStorage.getItem('nano_groups_data') || '{}') || {}; } catch (e) { reg = {}; }
             const groups = Array.isArray(reg.groups) ? reg.groups : [];
-            const g = groups.find(function (x) { return x && x.id === gid; });
+            const g = groups.find(function (x) { return x && String(x.id) === String(gid); });
             const key = 'group_data_' + gid;
             const gd = JSON.parse(localStorage.getItem(key) || 'null') || {};
             if (!Array.isArray(gd.members)) gd.members = [];
@@ -11610,7 +11869,9 @@
                 gd.members.push({
                     id: charId, name: charName, nick: charName, initial: charName.charAt(0),
                     bg: '#007aff', avatar: (characterData && characterData.avatar) || '',
-                    role: '成员', title: '', level: 1, msgCount: 0
+                    role: '成员', title: '', level: 1, msgCount: 0,
+                    setting: (characterData && (characterData.setting || characterData.desc || characterData.persona)) || '',
+                    nationality: charNationality(), language: charLanguage()
                 });
             }
             localStorage.setItem(key, JSON.stringify(gd));
@@ -11624,10 +11885,9 @@
                 }
             } catch (e) {}
             if (g) {
-                if (!Array.isArray(g.members)) g.members = [];
-                if (g.members.indexOf(charId) === -1) g.members.push(charId);
-                if (!Array.isArray(g.memberNames)) g.memberNames = [];
-                if (g.memberNames.indexOf(charName) === -1) g.memberNames.push(charName);
+                g.members = gd.members.map(function(m){ return m && (m.id || m.name); }).filter(Boolean);
+                g.memberNames = gd.members.map(function(m){ return m && (m.nick || m.name); }).filter(Boolean);
+                g.memberSettings = gd.members.map(function(m){ return (m && m.setting) || ''; });
                 localStorage.setItem('nano_groups_data', JSON.stringify(reg));
             }
             const inviterName = (inv && inv.fromName) || '角色';
@@ -12230,6 +12490,8 @@
                         try { createGroupFromTag(tag.payload); } catch (e) {}
                     } else if (tag.kind === 'sharechat') {
                         try { handleShareChatTag(tag.payload, timeStr); } catch (e) {}
+                    } else if (tag.kind === 'recommendfriend') {
+                        try { handleRecommendFriendTag(tag.payload, timeStr); } catch (e) {}
                     } else if (tag.kind === 'inviteme') {
                         try { inviteMeToGroupFromTag(tag.payload); } catch (e) {}
                     } else if (tag.kind === 'familycard') {
@@ -12362,6 +12624,8 @@
                             handleMemoryRecallTag(tag.payload, timeStr);
                         } else if (tag.kind === 'sharechat') {
                             handleShareChatTag(tag.payload, timeStr);
+                        } else if (tag.kind === 'recommendfriend') {
+                            handleRecommendFriendTag(tag.payload, timeStr);
                         } else if (tag.kind === 'creategroup') {
                             createGroupFromTag(tag.payload);
                         } else if (tag.kind === 'emoji') {
@@ -14489,6 +14753,8 @@
             else if (act === 'family-reject') rejectFamilyCard(msg);
             else if (act === 'altfriend-accept') acceptAltFriend(msg);
             else if (act === 'altfriend-reject') rejectAltFriend(msg);
+            else if (act === 'recfriend-accept') acceptRecommendFriend(msg);
+            else if (act === 'recfriend-reject') rejectRecommendFriend(msg);
             else if (act === 'takeout-accept') acceptTakeout(msg);
             else if (act === 'takeout-reject') rejectTakeout(msg);
             else if (act === 'store-gift-confirm') confirmStoreGift(msg);

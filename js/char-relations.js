@@ -176,14 +176,14 @@
         var note = $('autoNote');
         if (!note) return;
         if (!cfg.privateEnabled) {
-            note.textContent = '悄悄话未开启。开启后约 3 天自动刷新一次（只在你打开 App 时检查，一次只生成一段，避免浪费 API）。开启后勾选对方即可，对方会自动同步。';
+            note.textContent = '悄悄话未开启。开启后约 3 天自动刷新一次（只在你打开 App 时检查，一次只生成一段，避免浪费 API）。开启后勾选对方即可，对方会自动同步。角色关系也会决定朋友圈里谁可以互相评论/点赞。';
             return;
         }
         var last = Math.max(cfg.lastAutoAt || 0, cfg.lastManualAt || 0);
         if (!cfg.relationIds.length) {
-            note.textContent = '悄悄话已开启。下一步勾选对方即可，对方会自动同步；约 3 天自动检查一次。';
+            note.textContent = '悄悄话已开启。下一步勾选对方即可，对方会自动同步；约 3 天自动检查一次。没绑定关系的角色不会在朋友圈里互动。';
         } else if (!last) {
-            note.textContent = '悄悄话已开启，已和 ' + cfg.relationIds.length + ' 个角色建立关系（对方已自动同步）。约 3 天自动检查一次。';
+            note.textContent = '悄悄话已开启，已和 ' + cfg.relationIds.length + ' 个角色建立关系（对方已自动同步）。约 3 天自动检查一次；这层关系也决定朋友圈互动，没绑定的角色不会互相评论/点赞。';
         } else {
             var next = last + 3 * 24 * 3600 * 1000;
             note.textContent = '悄悄话已开启。上次刷新：' + new Date(last).toLocaleString('zh-CN') +
@@ -228,7 +228,11 @@
             row.addEventListener('click', function () {
                 var id = row.getAttribute('data-id');
                 var idx = cfg.relationIds.indexOf(String(id));
-                if (idx > -1) cfg.relationIds.splice(idx, 1);
+                if (idx > -1) {
+                    cfg.relationIds.splice(idx, 1);
+                    if (cfg.labels) delete cfg.labels[String(id)];
+                    unsyncRelationFrom(String(id));
+                }
                 else {
                     cfg.relationIds.push(String(id));
                     if (!cfg.labels) cfg.labels = {};
@@ -295,6 +299,20 @@
             if (!other.labels) other.labels = {};
             if (cfg.labels && cfg.labels[String(otherId)]) other.labels[String(chatId)] = cfg.labels[String(otherId)];
             localStorage.setItem(cfgKey(otherId), JSON.stringify(other));
+        } catch (e) {}
+    }
+    // 取消勾选时也要把对方那份关系清掉，否则朋友圈的「角色关系闸口」会误以为还绑定着。
+    function unsyncRelationFrom(otherId) {
+        if (!chatId) return;
+        try {
+            var other = readCfg(otherId);
+            var before = Array.isArray(other.relationIds) ? other.relationIds.slice() : [];
+            other.relationIds = before.filter(function (x) { return String(x) !== String(chatId); });
+            var hadLabel = !!(other.labels && other.labels[String(chatId)]);
+            if (other.labels) delete other.labels[String(chatId)];
+            if (other.relationIds.length !== before.length || hadLabel) {
+                localStorage.setItem(cfgKey(otherId), JSON.stringify(other));
+            }
         } catch (e) {}
     }
 

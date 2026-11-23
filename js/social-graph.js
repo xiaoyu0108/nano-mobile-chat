@@ -151,12 +151,19 @@
   }
 
   window.NanoSocialGraph = {
-    version: '20261026a',
+    version: '20261123a',
     norm: norm,
     idOf: idOf,
     namesOf: namesOf,
     knows: knows,
     knowsStrict: knowsStrict,
+    // 严格“角色关系绑定”：只认 nano_char_rel_<mask>_<id>.relationIds 双向勾选，
+    // 不把人设里偶然提到的名字、同属一个 user 等算作绑定。
+    hasRelation: relPair,
+    relationLabel: function (a, b) {
+      if (!relPair(a, b)) return '';
+      return label(a, b) || '朋友';
+    },
     label: label,
     filterKnown: filterKnown,
     findByName: findByName

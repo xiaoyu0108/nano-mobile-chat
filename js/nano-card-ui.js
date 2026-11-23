@@ -710,6 +710,19 @@
                 trImgHtml +
                 mainTitle(isReport ? 'pin' : 'image', '', trTitle, trSub) +
                 trThoughtHtml;
+        } else if (type === 'friendRec') {
+            var frName = String(cd.recName || '朋友');
+            var frSetting = String(cd.recSetting || '').trim();
+            var frFrom = String(cd.fromName || other);
+            var frHead = st === 'accepted' ? '名片已添加' : (st === 'rejected' ? '名片已忽略' : '好友推荐');
+            var frIcon = st === 'accepted' ? 'checkCircle' : (st === 'rejected' ? 'x' : 'userPlus');
+            var frFoot = '';
+            if (st === 'pending') frFoot = actions([['忽略', 'recfriend-reject', false], ['加好友', 'recfriend-accept', true]]);
+            else frFoot = statusFoot(st === 'accepted' ? '已加入好友列表，可在聊天页私聊' : '已忽略这张名片');
+            html = header(frIcon, frHead, time) +
+                mainTitle('userPlus', '推荐好友', frName, frFrom ? ('来自「' + frFrom + '」') : '') +
+                (frSetting ? note(frSetting) : '') +
+                frFoot;
         } else if (type === 'cycle') {
             html = header('calendar', cd.title || '经期提醒', time) +
                 mainTitle('calendar', '经期提醒', cd.sub || '', cd.date || '', cd) +

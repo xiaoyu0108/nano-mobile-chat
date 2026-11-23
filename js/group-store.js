@@ -368,10 +368,10 @@
         });
     } catch (e) {}
 
-    // 群成员按创建者 user 记录；旧群没有 ownerUid 时不做过滤，保持兼容。
+    // 群成员按创建者 user 记录；旧群没有 ownerUid（或早期误写成 default）时不做过滤，保持兼容。
     function groupBelongsToCurrentUser(g) {
         if (!g || typeof g !== 'object') return false;
-        if (!g.ownerUid) return true;
+        if (!g.ownerUid || String(g.ownerUid) === 'default') return true;
         return String(g.ownerUid) === String(currentUid());
     }
 

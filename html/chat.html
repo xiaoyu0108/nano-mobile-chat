@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <script src="../js/nano-runtime.js?v=20261118j"></script>
-  <script src="../js/group-store.js?v=20261122a"></script>
+  <script src="../js/group-store.js?v=20261123a"></script>
   <script src="../js/appearance.js?v=20261122a"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <link rel="icon" href="../icons/icon-192.png" />
@@ -1469,6 +1469,7 @@
       if (t === 'transfer') return '[转账]';
       if (t === 'gift') return '[礼物]';
       if (t === 'call') return m.cardData.missed ? '[未接电话]' : '[语音通话]';
+      if (t === 'friendRec') return '[好友推荐]' + (m.cardData.recName || '朋友');
       return '[卡片消息]';
     }
     if (m.isVoice) return '[语音]';
@@ -1677,12 +1678,21 @@
 
   function mapGroups(groups, dataMap) {
     const pinned = getPinnedIds();
-    return groups.filter(function (g) {
+    // 群列表去重：同一群在注册表里出现两次时，删除一个群会一次性消失两行，
+    // 看起来像「删了一个群却删掉两个群」。同 id 只保留一条（优先非 pending 的最新数据）。
+    const uniq = new Map();
+    (groups || []).forEach(function (g) {
+      if (!g || g.id == null || g.id === '') return;
+      const key = String(g.id);
+      const prev = uniq.get(key);
+      if (!prev) { uniq.set(key, g); return; }
+      if (prev.pending && !g.pending) { uniq.set(key, g); return; }
+      if (!prev.pending && g.pending) return;
+      uniq.set(key, Object.assign({}, prev, g));
+    });
+    return Array.from(uniq.values()).filter(function (g) {
       if (!g || g.pending) return false;
-      try {
-        if (window.GroupStore && GroupStore.groupBelongsToCurrentUser && !GroupStore.groupBelongsToCurrentUser(g)) return false;
-      } catch (e) {}
-      return true;
+      return groupVisibleForMask(g);
     }).map(function (g) {
       const last = getGroupLastMessage(g.id);
       const gd = (dataMap && dataMap[String(g.id)]) || readGroupLocal(g.id) || {};
@@ -1703,6 +1713,30 @@
       if ((b.lastTs || 0) !== (a.lastTs || 0)) return (b.lastTs || 0) - (a.lastTs || 0);
       return String(b.id).localeCompare(String(a.id));
     });
+  }
+
+  // 群归属哪个面具：优先看群里真实角色绑定的 user（char 邀请的群只属于该 char 绑定的人设），
+  // 其次才看创建者记录的 ownerUid。这样即使旧数据 ownerUid 写错，也不会串到别人设。
+  function groupVisibleForMask(g) {
+    if (!currentUser) return true;
+    const uid = String(currentUser.id);
+    const ids = Array.isArray(g.members) ? g.members.map(function (x) { return String(x); }) : [];
+    const names = Array.isArray(g.memberNames) ? g.memberNames.map(function (x) { return String(x); }) : [];
+    const bound = {};
+    let hasBound = false;
+    (allChars || []).forEach(function (c) {
+      if (!c || c.nanoAssistant) return;
+      const cid = String(c.id == null ? '' : c.id);
+      const cname = String(c.name || '');
+      const inGroup = (cid && ids.indexOf(cid) !== -1) || (cname && names.indexOf(cname) !== -1);
+      if (!inGroup) return;
+      const b = (c.bindUser == null ? '' : String(c.bindUser));
+      if (b) { bound[b] = 1; hasBound = true; }
+    });
+    if (hasBound) return !!bound[uid];
+    const ob = (g.ownerUid != null ? String(g.ownerUid) : (g.bindUser != null ? String(g.bindUser) : ''));
+    if (ob && ob !== 'default') return ob === uid;
+    return true;
   }
 
   function groupSig(list) {
@@ -2178,9 +2212,15 @@
       avatar: groupAvatarTemp || '',
       members: selected,
       memberNames: memberNames,
+      memberSettings: selected.map(function (id) {
+        const c = chars.find(function (ch) { return String(ch.id) === String(id); }) || {};
+        return String(c.setting || c.desc || c.persona || '');
+      }),
       createdBy: current ? current.id : null,
       createdByName: current ? current.name : '未知',
+      ownerIsUser: true,
       ownerUid: current ? String(current.id) : '',
+      bindUser: current ? String(current.id) : '',
       createdAt: Date.now()
     };
 
@@ -2220,7 +2260,10 @@
           role: '成员',
           title: '',
           level: 1,
-          msgCount: 0
+          msgCount: 0,
+          setting: String(c.setting || c.desc || c.persona || ''),
+          nationality: String(c.nationality || c.country || ''),
+          language: String(c.language || '')
         };
       });
       const gdPayload = JSON.stringify({

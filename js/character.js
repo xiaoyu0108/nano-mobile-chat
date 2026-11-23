@@ -1834,6 +1834,16 @@
             renderAll(); 
             cleanupResidualCharacters();
         }
+        if (data && (data.type === 'contactsDataUpdated' || data.type === 'nanoCharUpdated')) {
+            // 私聊里「好友推荐」等场景新加的角色：角色库已打开时也立即刷新
+            try {
+                if (isEditMode || (editModal && editModal.classList.contains('show'))) return;
+                idbGetAll().then(function(chars) {
+                    data.chars = chars || [];
+                    renderAll();
+                }).catch(function() {});
+            } catch (e) {}
+        }
         if (data && data.type === 'updateWorldbooks') {
             loadWorldbooks();
             populateWorldbookSelect();

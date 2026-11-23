@@ -45,7 +45,7 @@
         avatar: '',
         members: []
     };
-    var defaultSettings = { timeAware: true, allowImage: false, myTitle: '群主', myLevel: 1, myNick: '你', myMsgCount: 0 };
+    var defaultSettings = { timeAware: true, allowImage: false, myTitle: '', myLevel: 1, myNick: '你', myMsgCount: 0 };
 
     var MEMBER_BG = ['#2c5fb1','#b1552c','#2c7a3e','#6d2cb1','#d96f3a','#0a84ff','#ff375f','#30d158'];
     function memberBg(i){ return MEMBER_BG[i % MEMBER_BG.length]; }
@@ -71,21 +71,43 @@
     function buildFromRegistry(rg){
         var names = rg.memberNames || [];
         var ids = rg.members || [];
+        var memSettings = Array.isArray(rg.memberSettings) ? rg.memberSettings : [];
         return {
             name: rg.name || '',
             notice: '',
             avatar: rg.avatar || '',
-            ownerId: 'me',
+            // 用户自己建的群才是群主；角色建的群（有 createdBy 角色 id）用户只是成员
+            ownerId: rg.ownerIsUser ? 'me' : (rg.createdBy || 'me'),
+            ownerName: rg.ownerName || '',
             members: names.map(function(nm, i){
                 var id = ids[i] || ('m' + i);
                 nm = nm || id;
-                return { id:id, name:nm, nick:nm, initial:nm.charAt(0), bg:memberBg(i), role:'成员', title:'', level:1, msgCount:0 };
+                return { id:id, name:nm, nick:nm, initial:nm.charAt(0), bg:memberBg(i), role:'成员', title:'', level:1, msgCount:0,
+                    setting: memSettings[i] || '' };
             })
         };
     }
+    function mergeRegistryMemberSettings(g, rg){
+        if (!g || !g.members || !rg || !Array.isArray(rg.memberSettings)) return g;
+        var ids = Array.isArray(rg.members) ? rg.members : [];
+        g.members.forEach(function(m){
+            if (!m || (m.setting && String(m.setting).trim())) return;
+            var i = -1;
+            for (var k = 0; k < ids.length; k++) { if (String(ids[k]) === String(m.id)) { i = k; break; } }
+            if (i < 0) return;
+            if (rg.memberSettings[i]) m.setting = rg.memberSettings[i];
+        });
+        return g;
+    }
 
     function loadGroup(){
-        try { var raw = localStorage.getItem(GROUP_KEY); if (raw){ var g=JSON.parse(raw); if(g&&g.members) return g; } } catch(e){}
+        try {
+            var raw = localStorage.getItem(GROUP_KEY);
+            if (raw) {
+                var g = JSON.parse(raw);
+                if (g && g.members) return mergeRegistryMemberSettings(g, loadRegistryGroup());
+            }
+        } catch(e){}
         var rg = loadRegistryGroup();
         if (rg) return buildFromRegistry(rg);
         return JSON.parse(JSON.stringify(defaultGroup));
@@ -178,6 +200,17 @@
     var userLeft = !!group.userLeft;
     var msgIdCounter = 0;
 
+    // 群主判定：只有明确是「用户自己」的群才算群主；角色建群时用户只是成员。
+    function isUserOwner(){
+        return !(group && group.ownerId && String(group.ownerId) !== 'me');
+    }
+    function currentSelfTitle(){
+        var t = settings.myTitle ? String(settings.myTitle).trim() : '';
+        if (isUserOwner()) return t || '群主';
+        if (!t || t === '群主' || t === '群主/管理员') return '成员';
+        return t;
+    }
+
     // 标记当前是否套用了灰粉聊天模板：群聊复用私聊的输入胶囊/发送键规则。
     // 注意：不能再用 topbar-avatar::before / #f9d5e0 这种通用写法判断 ——
     // 很多自定义美化只是给顶栏头像加了伪元素，会被误判成灰粉，进而把发送键
@@ -220,7 +253,7 @@
     var currentUser = {
         id:'me', name:'你', nick: settings.myNick || '你', initial:'你', bg:'#34c759',
         avatar: '',
-        title: settings.myTitle || '群主',
+        title: currentSelfTitle(),
         level: settings.myLevel || 1
     };
 
@@ -414,7 +447,7 @@
     function renderMessages(){
         recalcLevels();
         currentUser.level = settings.myLevel || 1;
-        currentUser.title = settings.myTitle || '群主';
+        currentUser.title = currentSelfTitle();
         var total = messages.length;
         var CHUNK = 100;
         var sig = total + '|' + (total ? messages[total - 1].id : '');
@@ -478,9 +511,14 @@
         // 系统提示：居中灰色小条
         if (m.isTip) {
             row.classList.add('tip-row-wrap');
+            if (m.isNarration) row.classList.add('narration-row');
             var tip = document.createElement('div');
-            tip.className = 'tip-row';
-            tip.textContent = m.text || '';
+            tip.className = 'tip-row' + (m.isNarration ? ' narration-tip' : '');
+            tip.textContent = m.isNarration ? ('旁白 · ' + (m.text || '')) : (m.text || '');
+            if (m.isNarration) {
+                tip.style.fontStyle = 'italic';
+                tip.style.color = '#6b6b8a';
+            }
             row.appendChild(tip);
             return row;
         }
@@ -912,6 +950,39 @@
                     if (!rec && (c.name === who.nick || c.name === who.name)) rec = c;
                 });
             }
+            // 群成员资料里的 setting 可能因为旧数据/配额丢失，回退到角色库里的真实人设
+            if (!setting && rec) {
+                setting = String(rec.setting || rec.desc || rec.persona || '').trim();
+            }
+            // 群 NPC 如果已经被加为好友，角色库里也有一份带 setting 的记录
+            if (!setting && who.isNpc) {
+                (chars || []).forEach(function(c){
+                    if (setting || !c) return;
+                    if (!c.isNpc) return;
+                    if (String(c.id) === String(who.id) || c.name === who.nick || c.name === who.name) {
+                        setting = String(c.setting || '').trim();
+                    }
+                });
+            }
+            // 最后回退到群注册表里保存的成员人设
+            if (!setting) {
+                try {
+                    var rg = loadRegistryGroup();
+                    if (rg && Array.isArray(rg.memberSettings) && Array.isArray(rg.members)) {
+                        var idx = -1;
+                        for (var ri = 0; ri < rg.members.length; ri++) {
+                            if (String(rg.members[ri]) === String(who.id)) { idx = ri; break; }
+                        }
+                        if (idx < 0 && Array.isArray(rg.memberNames)) {
+                            for (var rj = 0; rj < rg.memberNames.length; rj++) {
+                                var rn = String(rg.memberNames[rj] || '');
+                                if (rn && (rn === String(who.name || '') || rn === String(who.nick || ''))) { idx = rj; break; }
+                            }
+                        }
+                        if (idx > -1 && rg.memberSettings[idx]) setting = String(rg.memberSettings[idx]).trim();
+                    }
+                } catch (e) {}
+            }
             var isFriend = !!(rec && !rec.nanoAssistant && (!rec.bindUser || !mid || String(rec.bindUser) === mid));
             var hint = isFriend
                 ? '你们已经是好友，点击“进入私聊”继续聊天'
@@ -1049,6 +1120,47 @@
             if (list.length > 300) list = list.slice(list.length - 300);
             return memPutCfg('memlist_' + charId, list);
         }).catch(function(){});
+    }
+
+    // ===== 私聊 → 群聊上下文：读取各角色与用户最近的私聊原文 =====
+    // 长期记忆每 15 轮才沉淀一次，刚在私聊里说好的事进群后往往还没进记忆，
+    // 这里直接把最近的私聊带进群聊 prompt，避免角色「一进群就失忆」。
+    var groupPrivateChatMap = {};
+    function lfGetItem(key){
+        return new Promise(function(resolve){
+            try {
+                if (typeof localforage === 'undefined') { resolve(localStorage.getItem(key)); return; }
+                localforage.getItem(key).then(function(v){ resolve(v); }).catch(function(){ resolve(localStorage.getItem(key)); });
+            } catch (e) { try { resolve(localStorage.getItem(key)); } catch (e2) { resolve(null); } }
+        });
+    }
+    function loadRecentPrivateChats(ids){
+        groupPrivateChatMap = {};
+        var uName = (currentMaskData && currentMaskData.name) || settings.myNick || '用户';
+        var list = (ids || []).filter(function(id){ return id && id !== 'me' && String(id).indexOf('npc_') !== 0; });
+        return Promise.all(list.map(function(id){
+            // 先读轻量 hot 快照（只有最近若干条），没有再退回完整历史，避免每次建 prompt 都读几十 MB
+            return lfGetItem('chat_hot_' + id).then(function(hot){
+                if (hot && Array.isArray(hot.items) && hot.items.length) return hot.items;
+                if (Array.isArray(hot) && hot.length) return hot;
+                return lfGetItem('chat_messages_' + id).then(function(full){
+                    return Array.isArray(full) ? full : [];
+                });
+            }).then(function(arr){
+                var mem = null;
+                group.members.forEach(function(x){ if (!mem && x && String(x.id) === String(id)) mem = x; });
+                var cName = (mem && (mem.nick || mem.name)) || '角色';
+                var lines = (arr || []).filter(function(mm){
+                    return mm && !mm.recalled && !mm.isCard && !mm.isImage && !mm.isVoice && !mm.isTip &&
+                        (mm.type === 'left' || mm.type === 'right') && String(mm.text || '').trim();
+                }).slice(-14).map(function(mm){
+                    var who = mm.type === 'right' ? uName : cName;
+                    var txt = String(mm.text || '').replace(/\[[^\]]*\]/g, ' ').replace(/\s+/g, ' ').trim();
+                    return txt ? (who + '：' + txt.slice(0, 220)) : '';
+                }).filter(Boolean);
+                if (lines.length) groupPrivateChatMap[String(id)] = { name: cName, lines: lines };
+            }).catch(function(){});
+        })).then(function(){ return groupPrivateChatMap; }).catch(function(){ groupPrivateChatMap = {}; return groupPrivateChatMap; });
     }
     function escapeRegExp(s){ return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
     // 群聊结束后：把每位成员在这次群聊中的表现写回 TA 自己的长期记忆（不额外调用 API）
@@ -1615,6 +1727,26 @@
         prompt += '【群成员人设 · 必须逐条精读并严格代入（含本群昵称/头衔）】\n';
         prompt += '每个角色的说话方式、用词、态度都必须从他/她自己的设定出发，绝不能把 A 的性格安到 B 身上。\n';
         if (group.members.length === 0) prompt += '（当前群里没有其他角色）\n';
+        // 群主（角色）的国籍/语言：旧群的 NPC 成员可能没有记录国籍，
+        // 此时按群主所属国家/语言说话，避免美国角色的群里冒出中文 NPC。
+        var __groupLangSrc = null;
+        group.members.forEach(function(m){
+            var cc = groupCharMap[m.id] || groupCharMap[m.name] || null;
+            if (cc && m.role === '群主') { __groupLangSrc = cc; }
+            else if (cc && !__groupLangSrc) { __groupLangSrc = cc; }
+            else if (!__groupLangSrc && m && (m.nationality || m.language)) { __groupLangSrc = m; }
+        });
+        function memberLangRule(name, obj){
+            if (!obj) return '';
+            if (isGroupForeignMember(obj)) {
+                var flang = groupMemberLanguage(obj) || '外语';
+                return '（' + name + '是外国人，母语是' + flang + '：TA 说的每句话都用自己的母语，并按「外文||中文翻译」输出在同一行，例如 Hello there||你好；系统会把中文翻译显示在这条消息下方。中文翻译要有温度、贴合TA的性格与情绪，口语化、自然，不要官腔、不要生硬直译。）\n';
+            }
+            if (isGroupCantoneseMember(obj)) {
+                return '（' + name + '是香港人，母语是粤语：TA 说粤语口语，用香港本地用字与说法（唔、係、咗、哋、嘅、啲、冇、嘢、邊度、點解、得闲、收工 等），不要用内地普通话的说法和书面腔；并按「粤语||普通话翻译」在同一行输出，例如 唔該晒你||真是谢谢你；翻译要有温度、贴合TA的性格与情绪，不要官腔、不要生硬直译。）\n';
+            }
+            return '';
+        }
         group.members.forEach(function(m){
             var c = groupCharMap[m.id] || groupCharMap[m.name] || null;
             var name = (m.nick || m.name || '成员');
@@ -1623,19 +1755,20 @@
             if (m.title) prompt += '［头衔：' + m.title + '］';
             if (c) {
                 if (c.gender && c.gender !== '未知') prompt += '（性别：' + c.gender + '）';
-                if (c.nationality && c.nationality !== '未知') prompt += '（国籍：' + c.nationality + '）';
+                var natC = c.nationality || c.country || m.nationality || '';
+                if (natC && natC !== '未知') prompt += '（国籍：' + natC + '）';
                 prompt += '\n';
                 if (c.setting && String(c.setting).trim()) prompt += String(c.setting).trim() + '\n';
-                if (isGroupForeignMember(c)) {
-                    var flang = groupMemberLanguage(c) || '外语';
-                    prompt += '（' + name + '是外国人，母语是' + flang + '：TA 说的每句话都用自己的母语，并按「外文||中文翻译」输出在同一行，例如 Hello there||你好；系统会把中文翻译显示在这条消息下方。中文翻译要有温度、贴合TA的性格与情绪，口语化、自然，不要官腔、不要生硬直译。）\n';
-                } else if (isGroupCantoneseMember(c)) {
-                    prompt += '（' + name + '是香港人，母语是粤语：TA 说粤语口语，用香港本地用字与说法（唔、係、咗、哋、嘅、啲、冇、嘢、邊度、點解、得闲、收工 等），不要用内地普通话的说法和书面腔；并按「粤语||普通话翻译」在同一行输出，例如 唔該晒你||真是谢谢你；翻译要有温度、贴合TA的性格与情绪，不要官腔、不要生硬直译。）\n';
-                }
+                prompt += memberLangRule(name, isGroupForeignMember(c) || isGroupCantoneseMember(c) ? c : m);
             } else if (m.setting && String(m.setting).trim()) {
-                prompt += '（群内 NPC）\n' + String(m.setting).trim() + '\n';
+                prompt += '（群内 NPC）\n';
+                var natN = m.nationality || m.country || '';
+                if (natN && natN !== '未知') prompt += '（国籍：' + natN + '）\n';
+                prompt += String(m.setting).trim() + '\n';
+                prompt += memberLangRule(name, (m.nationality || m.language) ? m : (__groupLangSrc || m));
             } else {
                 prompt += '\n（暂无详细设定，请按名字与群聊语境自然扮演）\n';
+                prompt += memberLangRule(name, (m.nationality || m.language) ? m : (__groupLangSrc || m));
             }
         });
 
@@ -1662,6 +1795,18 @@
         });
         if (memLines.length) {
             prompt += '\n【各角色对你的长期记忆 · 来自你们的私聊，请自然体现，不要生硬复述】\n' + memLines.join('\n') + '\n';
+        }
+
+        // 各角色与用户最近的私聊原文：群聊必须能接上私聊里的计划/约定，不能一进群就失忆
+        var __pcBlocks = [];
+        group.members.forEach(function(m){
+            var pc = groupPrivateChatMap[String(m.id)];
+            if (!pc || !pc.lines || !pc.lines.length) return;
+            __pcBlocks.push('◇ 「' + (m.nick || m.name || '成员') + '」和用户最近的私聊：\n' + pc.lines.join('\n'));
+        });
+        if (__pcBlocks.length) {
+            prompt += '\n【各角色与用户的私聊近况 · 必须在群里自然承接】\n' + __pcBlocks.join('\n\n') +
+                '\n（这些是你们进群前/最近在私聊里说过的话。群里谈到相关计划、约定、话题或对方要进群做什么时，要接得上，不要装作不知道；但这些私聊只属于你和用户，不要当成群里其他角色说过的话。）\n';
         }
 
         if (pendingNotes.length) {
@@ -1823,7 +1968,12 @@
             var desc = describeGroupMsgForAI(m);
             if (!desc) return;
             if (m.isTip) {
-                history.push({ role:'user', content:'（系统提示）' + desc });
+                if (m.isNarration) {
+                    // 旁白：以场景说明的形式给模型，不归属用户，也不归属任何角色
+                    history.push({ role:'user', content:'（旁白 · 非用户发言、非任何角色台词，只是场景/环境/心理的客观说明，不要把它当成用户说的话）：' + desc });
+                } else {
+                    history.push({ role:'user', content:'（系统提示）' + desc });
+                }
             } else if (m.type === 'right') {
                 var imgUrl = (m.isImage && m.imageData && typeof m.imageData.url === 'string' && m.imageData.url.indexOf('data:image') === 0) ? m.imageData.url : null;
                 if (imgUrl) {
@@ -2520,7 +2670,8 @@
             return Promise.all([
                 getCharactersFromDB(),
                 loadGroupWorldbooks(),
-                loadGroupMemories(group.members.map(function(m){ return m.id; }))
+                loadGroupMemories(group.members.map(function(m){ return m.id; })),
+                loadRecentPrivateChats(group.members.map(function(m){ return m.id; }))
             ]).then(function(res){
                 var chars = res[0] || [];
                 var map = {};
@@ -2997,6 +3148,22 @@
         });
     }
 
+    // ========== 旁白 ==========
+    function openNarrationPopup(){
+        openActionPopup({
+            title: '旁白', subtitle: '以系统消息发送，角色会当作场景旁白，不会当成你说的话',
+            body: '<textarea id="narrText" placeholder="描写场景、环境、气氛或某个角色的动作与心理，例如：窗外开始下雨，房间里安静下来..." style="width:100%;min-height:110px;resize:none;border:1px solid rgba(0,0,0,0.08);border-radius:12px;padding:12px;font-size:15px;font-family:inherit;outline:none;background:#fff;box-sizing:border-box;"></textarea>',
+            confirmText: '发送旁白',
+            onConfirm: function(){
+                var el = document.getElementById('narrText');
+                var text = el ? String(el.value || '').trim() : '';
+                if (!text) { showAlert('提示', '请输入旁白内容'); return; }
+                pushMsg({ type:'left', isTip:true, isNarration:true, text:text });
+                if (!groupReplying) setTimeout(function(){ try { requestGroupReply(); } catch (e) {} }, 380);
+            }
+        });
+    }
+
     // ========== 更多菜单 ==========
     var moreOverlay = $('moreOverlay');
     $('moreBtn').addEventListener('click', function(e){
@@ -3015,6 +3182,7 @@
             else if (act === 'image') openImagePopup();
             else if (act === 'chain') openChainPopup();
             else if (act === 'notice') openNoticePopup();
+            else if (act === 'narration') openNarrationPopup();
             else if (act === 'nickname') openNicknamePopup();
             else if (act === 'offline') openOffline();
             else if (act === 'memory') openMemory();
@@ -3531,7 +3699,7 @@ messageContainer.addEventListener('click', function(e){
         if (keyIs(MSG_KEY)) { messages = loadMsgs(); renderMessages(); }
         if (keyIs(SETTINGS_KEY)) {
             settings = loadSettings();
-            currentUser.title = settings.myTitle || '群主';
+            currentUser.title = currentSelfTitle();
             renderMessages();
         }
         if (keyIs(BG_KEY)) applyBackground();
@@ -3541,7 +3709,7 @@ messageContainer.addEventListener('click', function(e){
             // 不要用 loadGroup() 重读 localStorage（可能还是旧资料）；
             // 保持内存里的群对象，再从 IndexedDB 拉一次权威值。
             settings = loadSettings();
-            currentUser.title = settings.myTitle || '群主';
+            currentUser.title = currentSelfTitle();
             renderHeader(); applyBackground();
             readGroupStored();
             resolveIdentities().then(function(){ renderHeader(); renderMessages(); });
@@ -3555,7 +3723,7 @@ messageContainer.addEventListener('click', function(e){
         pageLeaving = false;
         settings = loadSettings();
         messages = loadMsgs();
-        currentUser.title = settings.myTitle || '群主';
+        currentUser.title = currentSelfTitle();
         try { if (window.NanoBadge) window.NanoBadge.setContext(chatId); } catch (err) {}
         renderHeader(); applyBackground();
         readGroupStored();
