@@ -191,11 +191,13 @@
   var DEFAULT_BASE = 'https://nanopush.nano315.online';
   function baseURL() {
     var v = '';
-    try { v = (localStorage.getItem('nano_push_endpoint') || '').trim(); } catch (e) {}
+    // 自带共享服务器：默认直接用内置地址，不再让用户填写。
+    // 只有开发者显式写过 nano_market_endpoint 时才覆盖（保留自建后端能力）。
+    try { v = (localStorage.getItem('nano_market_endpoint') || '').trim(); } catch (e) {}
     v = v.replace(/\/+$/, '');
     return v || DEFAULT_BASE;
   }
-  function api(path, opts) {
+  function api(path, opts, retryBuiltin) {
     var base = baseURL();
     opts = opts || {};
     opts.headers = Object.assign({ 'Content-Type': 'application/json' }, opts.headers || {});
@@ -208,6 +210,10 @@
     return fetch(base + path, opts).then(function (r) {
       if (!r.ok) throw new Error('http ' + r.status);
       return r.json();
+    }).catch(function (err) {
+      // 旧版本可能把不可用的自定义地址留在本机：自动回退到内置服务器，不用用户再手动连接。
+      if (!retryBuiltin && base !== DEFAULT_BASE && (!opts.method || /^get$/i.test(opts.method))) return api(path, opts, true);
+      throw err;
     });
   }
   var MODE = { server: 'server', local: 'local' };
@@ -276,6 +282,28 @@
       promptPart: it.promptPart || '', otherType: it.otherType || '',
       likes: it.likes || 0, downloads: it.downloads || 0, imports: it.imports || 0
     };
+  }
+
+  // 共享集市上一次成功拉到的列表：先秒开显示，再后台刷新。
+  // 这样每次进来不会先空着等网络，也不会反复显示「正在连接」。
+  var FEED_CACHE_KEY = 'nano_market_feed_cache_v1';
+  function readFeedCache() {
+    try {
+      var arr = JSON.parse(localStorage.getItem(FEED_CACHE_KEY) || '[]');
+      if (!Array.isArray(arr)) return [];
+      return arr.filter(function (x) { return x && x.id; });
+    } catch (e) { return []; }
+  }
+  function writeFeedCache() {
+    try {
+      var slim = feed.filter(function (x) { return x && x.id; }).slice(0, 100).map(function (x) {
+        var c = x.cover ? String(x.cover) : '';
+        // data: 封面会把 localStorage 撑爆，缓存列表只保留普通 URL。
+        if (!c || /^data:/i.test(c) || c.length > 200000) x = Object.assign({}, x, { cover: '' });
+        return x;
+      });
+      localStorage.setItem(FEED_CACHE_KEY, JSON.stringify(slim));
+    } catch (e) {}
   }
 
   function filtered(cat, q) {
@@ -628,6 +656,10 @@
       });
       await putBeautifySetting('applied_' + target, css);
     } catch (e) { console.warn('[market] save beautify preset failed', e); }
+    // 同步美化页草稿：否则重新进入美化 App 会优先恢复旧草稿，看起来像「又跳回别的美化」。
+    try {
+      localStorage.setItem('beautify_draft_' + target, JSON.stringify({ code: css, name: name || '集市美化', presetId: 0 }));
+    } catch (e) {}
     postToShell({ type: 'beautify:apply', target: target, css: css });
   }
   async function applyHeart(css, name) {
@@ -1534,24 +1566,13 @@
      ============================================================ */
   function updateModeBanner() {
     var b = $('modeBanner'), t = $('modeText'), set = $('modeSet');
-    if (mode === MODE.server) {
-      b.classList.remove('warn');
-      t.innerHTML = '已连接共享服务器 · 你上传的资源 <b>所有人都能看到</b>（当前 ' + feed.length + ' 份资源）';
-      set.hidden = true;
-    } else {
-      b.classList.add('warn');
-      t.innerHTML = '仅本机模式 · 现在只有你自己能看到资源。<b>配置共享服务器后</b>即可让所有用户互相看到';
-      set.hidden = false;
-    }
+    // 共享集市自带服务器：不再显示连接状态和「去设置」，进来直接用。
+    if (b) b.style.display = 'none';
+    if (set) set.hidden = true;
   }
   $('modeSet').onclick = function () {
-    var cur = baseURL();
-    var v = prompt('填写共享服务器地址（Nano 推送 Worker 地址，留空则仅本机）：', cur);
-    if (v === null) return;
-    v = v.trim().replace(/\/+$/, '');
-    try { localStorage.setItem('nano_push_endpoint', v); } catch (e) {}
-    toast(v ? '已保存，正在连接…' : '已切换为仅本机模式');
-    boot();
+    // 共享服务器地址已内置，不再提供手动配置入口。
+    toast('共享集市已自动连接，无需配置');
   };
 
   /* ============================================================
@@ -1708,27 +1729,35 @@
 
     renderImagePreviews(); renderFilePreviews();
 
-    if (baseURL()) {
-      try {
-        var r = await api('/market/list');
-        if (r && r.ok && Array.isArray(r.items)) {
-          mode = MODE.server;
-          feed = r.items.filter(function (s) { return s && !hidden[s.id]; });
-          // 合并本机自己的资源（保证自己发的即时可见）
-          var localOwn = [];
-          try { localOwn = (await idbAll('posts')).filter(function (it) { return isOwner(it.id) && !hidden[it.id]; }); } catch (e) {}
-          localOwn.forEach(function (it) {
-            fullCache[it.id] = it;
-            if (!feed.some(function (s) { return s.id === it.id; })) feed.unshift(toSummary(it));
-          });
-        } else { throw new Error('bad'); }
-      } catch (e) {
+    // 先用上次成功拉取的列表秒开，避免每次进集市都空白等连接。
+    var cachedFeed = readFeedCache().filter(function (s) { return s && !hidden[s.id]; });
+    if (cachedFeed.length) {
+      feed = cachedFeed;
+      mode = MODE.server;
+      updateModeBanner();
+      try { renderHome(); } catch (e) {}
+    }
+
+    try {
+      var r = await api('/market/list');
+      if (r && r.ok && Array.isArray(r.items)) {
+        mode = MODE.server;
+        feed = r.items.filter(function (s) { return s && !hidden[s.id]; });
+        // 合并本机自己的资源（保证自己发的即时可见）
+        var localOwn = [];
+        try { localOwn = (await idbAll('posts')).filter(function (it) { return isOwner(it.id) && !hidden[it.id]; }); } catch (e) {}
+        localOwn.forEach(function (it) {
+          fullCache[it.id] = it;
+          if (!feed.some(function (s) { return s.id === it.id; })) feed.unshift(toSummary(it));
+        });
+        writeFeedCache();
+      } else { throw new Error('bad'); }
+    } catch (e) {
+      // 服务器暂时不可用：有缓存就继续用缓存（对外仍是共享集市），没有才退回本机。
+      if (!feed.length) {
         mode = MODE.local;
         await loadLocalFeed();
       }
-    } else {
-      mode = MODE.local;
-      await loadLocalFeed();
     }
     updateModeBanner();
     renderHome();

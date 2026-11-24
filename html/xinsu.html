@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<title>心愫</title>
+<script>window.__NANO_FONT_ONLY = true;</script>
+<script src="../js/appearance.js?v=20261122a"></script>
+<link rel="stylesheet" href="../css/xinsu.css?v=20261124a">
+</head>
+<body class="xs-page">
+<div class="xs-app">
+  <header class="xs-top">
+    <button class="xs-icon-btn" id="xsBack" type="button" aria-label="返回">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <div class="xs-top-title">心愫</div>
+    <button class="xs-icon-btn" id="xsHistoryBtn" type="button" aria-label="历史">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 2.6-6.4"/><path d="M3 4v5h5"/><path d="M12 7.5v5l3.2 1.9"/></svg>
+    </button>
+  </header>
+
+  <main class="xs-main" id="xsMain"></main>
+
+  <section class="xs-history" id="xsHistory" hidden>
+    <header class="xs-top">
+      <button class="xs-icon-btn" id="xsHistoryBack" type="button" aria-label="返回">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
+      <div class="xs-top-title">历史</div>
+      <div class="xs-top-spacer"></div>
+    </header>
+    <div class="xs-history-list" id="xsHistoryList"></div>
+  </section>
+</div>
+<script defer src="../js/xinsu.js?v=20261124e"></script>
+</body>
+</html>

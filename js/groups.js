@@ -577,6 +577,15 @@
         var nameEl = document.createElement('span');
         nameEl.className = 'n-name';
         nameEl.textContent = who.nick || who.name || '';
+        // 灰粉模板会隐藏消息头像，头像点不了；这里让昵称本身也能打开成员资料
+        // （加好友 / 进入私聊），避免群成员没有入口。
+        if (m.type === 'left' && who.id && who.id !== 'me') {
+            nameEl.classList.add('name-clickable');
+            nameEl.addEventListener('click', function(e){
+                e.stopPropagation();
+                openMemberProfile(who);
+            });
+        }
         nameLine.appendChild(nameEl);
         content.appendChild(nameLine);
 
@@ -1313,6 +1322,9 @@
     // 群聊主 API：一次扮演多个 {{char}} 互动
     // ============================================================
     var groupReplying = false;
+    var groupGenId = 0;
+    var currentGroupToken = null;
+    var currentGroupAbort = null;
     var pageLeaving = false;
     try {
         window.addEventListener('pagehide', function(){ pageLeaving = true; });
@@ -1382,7 +1394,11 @@
         } catch(e){ return rawUrl; }
     }
     function toV1Base(u){
-        var s = String(u || '').trim().replace(/\/+$/, '');
+        // 与私聊 chat-core 保持一致：去掉结尾斜杠、重复斜杠，
+        // 并兼容把完整 /chat/completions 或 /images/generations 地址填进主 API 的情况。
+        var s = String(u || '').trim().replace(/\/+$/, '').replace(/([^:])\/{2,}/g, '$1/');
+        s = s.replace(/\/chat\/completions$/i, '');
+        s = s.replace(/\/images\/(generations|edits)$/i, '/v1');
         if (!/\/v1$/i.test(s)) s = s + '/v1';
         return s;
     }
@@ -2552,16 +2568,25 @@
     function loadStoredGroupRequest(){ try { var raw = localStorage.getItem('group_req_' + chatId); return raw ? JSON.parse(raw) : null; } catch(e){ return null; } }
     function clearGroupRequest(){ try { localStorage.removeItem('group_req_' + chatId); } catch(e){} }
 
-    function sendGroupRequest(payload){
+    function sendGroupRequest(payload, opts){
+        opts = opts || {};
         return new Promise(function(resolve){
             var resultKey = 'group_api_result_' + payload.token;
             var settled = false;
             var poll = null;
+            var ackTimer = null;
+            var started = false;
+            var ctrl = null;
+            function cleanup(){
+                if (poll) { clearInterval(poll); poll = null; }
+                if (ackTimer) { clearTimeout(ackTimer); ackTimer = null; }
+                window.removeEventListener('message', onMsg);
+            }
             function finish(res){
                 if (settled) return;
                 settled = true;
-                if (poll) clearInterval(poll);
-                window.removeEventListener('message', onMsg);
+                cleanup();
+                if (currentGroupAbort && currentGroupAbort === ctrl) currentGroupAbort = null;
                 resolve(res);
             }
             function takeResult(){
@@ -2571,8 +2596,32 @@
                 } catch(e){}
                 return false;
             }
+            function directSend(){
+                if (settled) return;
+                try { ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null; } catch(e){ ctrl = null; }
+                currentGroupAbort = ctrl;
+                fetch(payload.url, { method: payload.method, headers: payload.headers, body: payload.body, signal: ctrl ? ctrl.signal : undefined })
+                    .then(function(r){ return r.text().then(function(t){ return { ok:r.ok, status:r.status, text:t }; }); })
+                    .catch(function(err){
+                        var aborted = !!(ctrl && ctrl.signal && ctrl.signal.aborted);
+                        return { ok:false, status:0, error: aborted ? '已停止生成' : String(err && err.message || err), aborted: aborted };
+                    })
+                    .then(finish);
+            }
             function onMsg(e){
-                if (e && e.data && e.data.type === 'groupApiDone' && e.data.token === payload.token) {
+                var d = e && e.data;
+                if (!d || d.token !== payload.token) return;
+                if (d.type === 'chatApiStart' || d.type === 'groupApiStart') {
+                    started = true;
+                    if (ackTimer) { clearTimeout(ackTimer); ackTimer = null; }
+                    return;
+                }
+                if (d.type === 'groupApiDone' || d.type === 'chatApiDone') {
+                    if (d.result && typeof d.result === 'object') {
+                        try { localStorage.removeItem(resultKey); } catch (err) {}
+                        finish(d.result);
+                        return;
+                    }
                     if (!takeResult()) finish({ ok:false, status:0, error:'未取到结果' });
                 }
             }
@@ -2580,20 +2629,25 @@
             window.addEventListener('message', onMsg);
             if (window.parent !== window) {
                 try {
-                    window.parent.postMessage({ type:'groupApiFetch', token:payload.token, groupId:chatId, groupName:group.name || '群聊', url:payload.url, method:payload.method, headers:payload.headers, body:payload.body }, '*');
+                    window.parent.postMessage({ type:'groupApiFetch', token:payload.token, groupId:chatId, groupName:group.name || '群聊', resultKey:resultKey, url:payload.url, method:payload.method, headers:payload.headers, body:payload.body }, '*');
                 } catch(e){ finish({ ok:false, status:0, error:'无法请求' }); return; }
+                // 外壳没有接管（4 秒内没回执）时改为本页直连，避免群聊一直报网络错误。
+                // 已经有回执则只等外壳结果，绝不重复请求，防止一次对话扣两次 API。
+                if (opts.allowDirectFallback) {
+                    ackTimer = setTimeout(function(){
+                        ackTimer = null;
+                        if (!started && !settled) directSend();
+                    }, 4000);
+                }
                 // 兜底轮询：父页面刷新丢消息时，结果仍会写到 localStorage
                 var tries = 0;
                 poll = setInterval(function(){
                     tries++;
                     if (takeResult()) return;
-                    if (tries > 900) finish({ ok:false, status:0, error:'请求超时' });
+                    if (tries > 300) finish({ ok:false, status:0, error: started ? '生成超时，请稍后重试' : '请求超时' });
                 }, 1000);
             } else {
-                fetch(payload.url, { method: payload.method, headers: payload.headers, body: payload.body })
-                    .then(function(r){ return r.text().then(function(t){ return { ok:r.ok, status:r.status, text:t }; }); })
-                    .catch(function(err){ return { ok:false, status:0, error:String(err && err.message || err) }; })
-                    .then(finish);
+                directSend();
             }
         });
     }
@@ -2605,6 +2659,7 @@
         return apiMsg ? (base + '\n服务端信息：' + apiMsg) : base;
     }
     function finishGroupReply(){
+        currentGroupToken = null;
         groupReplying = false;
         groupPendingSet(false);
         hideGroupTyping();
@@ -2612,8 +2667,35 @@
         // 兜底：异常/中断时也别把红包领取提示丢掉
         try { flushPendingClaimTips(); } catch (e) {}
     }
+    // 停止生成：中止本次群聊 API 请求，清掉“输入中”和断点续跑标记。
+    function stopGroupGeneration(silent){
+        groupGenId++;
+        var token = currentGroupToken;
+        currentGroupToken = null;
+        if (token) {
+            try {
+                if (window.parent !== window) window.parent.postMessage({ type:'groupApiAbort', token: token }, '*');
+            } catch (e) {}
+        }
+        try { if (currentGroupAbort) currentGroupAbort.abort(); } catch (e) {}
+        currentGroupAbort = null;
+        try { clearGroupRequest(); } catch (e) {}
+        groupPendingSet(false);
+        groupReplying = false;
+        hideGroupTyping();
+        updateSendState();
+        if (!silent) { try { showRpToast('已停止生成'); } catch (e) {} }
+    }
+    var groupTypingStop = $('groupTypingStop');
+    if (groupTypingStop) {
+        groupTypingStop.addEventListener('click', function(e){
+            try { e.stopPropagation(); e.preventDefault(); } catch (err) {}
+            stopGroupGeneration();
+        });
+    }
     function handleGroupResult(result){
         if (!result) return;
+        if (result.aborted) { finishGroupReply(); return; }
         if (!result.ok) {
             clearGroupRequest();
             flushPendingClaimTips();
@@ -2644,6 +2726,7 @@
         if (groupReplying) return;
         if (group.members.length === 0) { showAlert('提示', '群里还没有成员，请先创建/邀请成员'); return; }
         groupReplying = true;
+        var myGen = ++groupGenId;
         // 先把红包/接龙/公告的成员反应落库，保证 AI 和用户都先看到“抢到红包”的提示
         runPendingFeatureReactions();
         groupPendingSet(true);
@@ -2653,8 +2736,12 @@
         // 续跑：之前已发起、尚未取到结果的请求复用同一 token（父页面可能已完成后台生成）
         var stored = loadStoredGroupRequest();
         if (stored && stored.token) {
-            sendGroupRequest(stored).then(handleGroupResult).catch(function(err){
-                if (pageLeaving) return;
+            currentGroupToken = stored.token;
+            sendGroupRequest(stored, { allowDirectFallback: true }).then(function(result){
+                if (myGen !== groupGenId) return;
+                handleGroupResult(result);
+            }).catch(function(err){
+                if (myGen !== groupGenId || pageLeaving) return;
                 showAlert('网络错误', String((err && err.message) || err));
                 finishGroupReply();
             });
@@ -2679,12 +2766,14 @@
                 groupCharMap = map;
                 var payload = buildGroupRequestPayload(config);
                 storeGroupRequest(payload);
-                return sendGroupRequest(payload);
+                currentGroupToken = payload.token;
+                return sendGroupRequest(payload, { allowDirectFallback: true });
             });
         }).then(function(result){
+            if (myGen !== groupGenId) return;
             if (result) handleGroupResult(result);
         }).catch(function(err){
-            if (pageLeaving) return;
+            if (myGen !== groupGenId || pageLeaving) return;
             console.error('[Group API] 异常', err);
             showAlert('网络错误', String((err && err.message) || err));
             finishGroupReply();
@@ -3159,7 +3248,12 @@
                 var text = el ? String(el.value || '').trim() : '';
                 if (!text) { showAlert('提示', '请输入旁白内容'); return; }
                 pushMsg({ type:'left', isTip:true, isNarration:true, text:text });
-                if (!groupReplying) setTimeout(function(){ try { requestGroupReply(); } catch (e) {} }, 380);
+                // 旁白只负责把场景写进上下文，不自动请求模型。
+                // 群友什么时候接话由用户点击发送键决定，避免一条旁白立刻触发一大段回复。
+                if (!groupReplying) {
+                    isWaitingForReply = true;
+                    updateSendState();
+                }
             }
         });
     }

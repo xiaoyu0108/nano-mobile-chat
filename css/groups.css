@@ -180,6 +180,11 @@ html.keyboard-open .chat-container {
 .msg-name-line .n-name {
     color: #8e8e93; font-weight: 400; font-size: 11px;
 }
+.msg-name-line .n-name.name-clickable {
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+.msg-name-line .n-name.name-clickable:active { opacity: 0.55; }
 
 /* ========== 气泡 ========== */
 .bubble {
@@ -1136,6 +1141,21 @@ html.keyboard-open body.nano-groups .bottom-bar {
 }
 .group-typing .gt-bubble span:nth-child(2) { animation-delay: 0.2s; }
 .group-typing .gt-bubble span:nth-child(3) { animation-delay: 0.4s; }
+/* 「停止生成」按钮：三个点旁边的红色圆点 */
+.group-typing .gt-stop {
+    align-self: center; flex-shrink: 0; cursor: pointer; position: relative;
+    appearance: none; -webkit-appearance: none; border: 0;
+    width: 24px; height: 24px; border-radius: 50%; padding: 0;
+    background: #ff3b30; color: transparent; font-size: 0; line-height: 0;
+    box-shadow: 0 2px 6px rgba(255, 59, 48, 0.35);
+    -webkit-tap-highlight-color: transparent;
+}
+.group-typing .gt-stop::after {
+    content: ''; position: absolute; top: 50%; left: 50%;
+    width: 8px; height: 8px; border-radius: 2px; background: #fff;
+    transform: translate(-50%, -50%);
+}
+.group-typing .gt-stop:active { transform: scale(0.88); }
 @keyframes gtBlink {
     0%, 60%, 100% { opacity: 0.35; transform: translateY(0); }
     30% { opacity: 1; transform: translateY(-3px); }

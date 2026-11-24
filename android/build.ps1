@@ -168,7 +168,7 @@ foreach ($f in $rootFiles) {
     if (!(Test-Path $src)) { throw "缺少网页文件：$src" }
     Copy-Item $src (Join-Path $www $f) -Force
 }
-foreach ($dir in @("js", "css", "html", "icons", "images", "docs")) {
+foreach ($dir in @("js", "css", "html", "icons", "images", "docs", "fonts")) {
     $src = Join-Path $ProjectRoot $dir
     if (Test-Path $src) {
         Copy-Item $src (Join-Path $www $dir) -Recurse -Force

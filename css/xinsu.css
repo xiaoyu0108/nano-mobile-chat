@@ -1,0 +1,108 @@
+/* ============================================================
+   css/xinsu.css
+   「心愫」页面：X / Twitter 日间风格
+   纯白底 + 黑色正文 + 蓝色重点；所有图标用裸 SVG，不加圆形底。
+   ============================================================ */
+:root {
+  --xs-ink: #0f1419;
+  --xs-blue: #1d9bf0;
+  --xs-gray: #536471;
+  --xs-line: #eff3f4;
+  --xs-soft: #f7f9f9;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body {
+  margin: 0; padding: 0; min-height: 100%;
+  background: #fff; color: var(--xs-ink);
+}
+body.xs-page {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+.xs-app { min-height: 100vh; background: #fff; }
+
+/* 顶栏：两边是裸 SVG 图标，没有透明圆圈/边框外壳 */
+.xs-top {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; justify-content: space-between;
+  height: calc(54px + env(safe-area-inset-top, 0px)); padding: env(safe-area-inset-top, 0px) 10px 0;
+  background: rgba(255,255,255,0.94);
+  -webkit-backdrop-filter: saturate(180%) blur(14px);
+  backdrop-filter: saturate(180%) blur(14px);
+  border-bottom: 1px solid var(--xs-line);
+}
+.xs-icon-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px; padding: 0; margin: 0;
+  border: 0; outline: 0; background: transparent; color: var(--xs-ink);
+  cursor: pointer; appearance: none; -webkit-appearance: none;
+}
+.xs-icon-btn svg { width: 22px; height: 22px; display: block; }
+.xs-icon-btn:active { opacity: 0.5; }
+.xs-top-title { font-size: 17px; font-weight: 800; letter-spacing: .2px; }
+.xs-top-spacer { width: 36px; height: 36px; }
+
+.xs-main { max-width: 640px; margin: 0 auto; padding: 22px 20px calc(70px + env(safe-area-inset-bottom, 0px)); }
+.xs-article { animation: xsIn .22s ease-out; }
+@keyframes xsIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+.xs-author { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+.xs-avatar {
+  width: 46px; height: 46px; border-radius: 50%;
+  object-fit: cover; background: #e7e9ea; flex: 0 0 auto; display: block;
+}
+.xs-avatar-fallback {
+  width: 46px; height: 46px; border-radius: 50%;
+  background: #e7e9ea; color: #536471;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; font-weight: 700; flex: 0 0 auto;
+}
+.xs-author-meta { min-width: 0; }
+.xs-name-row { display: flex; align-items: center; gap: 5px; font-size: 15.5px; font-weight: 800; line-height: 1.2; }
+.xs-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.xs-badge { width: 17px; height: 17px; flex: 0 0 auto; display: block; }
+.xs-date { font-size: 12.5px; color: var(--xs-gray); margin-top: 3px; font-weight: 400; }
+
+/* 小作文标题：蓝色、单独一行、很短 */
+.xs-essay-title {
+  margin: 0 0 16px; color: var(--xs-blue);
+  font-size: 22px; line-height: 1.35; font-weight: 800; letter-spacing: .1px;
+  word-break: break-word;
+}
+/* 正文：黑色 */
+.xs-essay-body { font-size: 17px; line-height: 1.95; color: var(--xs-ink); letter-spacing: .15px; }
+.xs-essay-body p { margin: 0 0 16px; white-space: pre-wrap; word-break: break-word; }
+.xs-essay-body p:last-child { margin-bottom: 0; }
+
+.xs-empty {
+  min-height: 62vh; padding: 30px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center; color: var(--xs-gray);
+}
+.xs-empty-title { font-size: 17px; font-weight: 800; color: var(--xs-ink); margin-bottom: 8px; }
+.xs-empty-sub { font-size: 13.5px; line-height: 1.7; }
+
+/* 历史：整页覆盖，同样是白底 X 风格 */
+.xs-history {
+  position: fixed; inset: 0; z-index: 40; background: #fff;
+  display: flex; flex-direction: column;
+}
+.xs-history[hidden] { display: none; }
+.xs-history-list { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 4px 0 50px; }
+.xs-hitem {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 15px 20px; border-bottom: 1px solid var(--xs-line);
+  cursor: pointer; background: #fff;
+}
+.xs-hitem:active { background: var(--xs-soft); }
+.xs-hitem-main { flex: 1; min-width: 0; }
+.xs-hitem-date { font-size: 12px; color: var(--xs-gray); margin-bottom: 4px; }
+.xs-hitem-title { font-size: 15.5px; font-weight: 800; color: var(--xs-blue); line-height: 1.35; }
+.xs-hitem-excerpt {
+  font-size: 13px; color: var(--xs-gray); line-height: 1.6; margin-top: 5px;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.xs-hitem-arrow { width: 16px; height: 16px; flex: 0 0 auto; color: #8b98a5; margin-top: 4px; }
+
+body.xs-history-open { overflow: hidden; }

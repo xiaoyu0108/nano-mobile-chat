@@ -2031,6 +2031,11 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
     font-size: 10.5px; color: #444; margin-top: 3px;
     white-space: pre-wrap; word-break: break-word;
 }
+.msg-tool-pics { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; white-space: normal; }
+.msg-tool-pics img {
+    width: 88px; height: 88px; object-fit: cover; border-radius: 8px;
+    background: #eee; display: block;
+}
 /* MCP 工具调用：长条悬浮框，单独占一行并居中（在消息气泡上方） */
 .message-row.has-tools .message-content {
     width: 92%;
@@ -2371,3 +2376,30 @@ body.nano-groups .voice-bubble {
     max-width: 100% !important;
     box-sizing: border-box;
 }
+
+/* ===== 心愫卡片：X / Twitter 日间风格 ===== */
+.bubble-card.xinsu { background: transparent; border: 0; box-shadow: none; padding: 0; max-width: 82%; }
+.xs-card {
+    background: #fff; color: #0f1419; border: 1px solid #eff3f4; border-radius: 16px;
+    padding: 14px 15px; cursor: pointer; text-align: left;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    -webkit-tap-highlight-color: transparent;
+}
+.xs-card:active { background: #f7f9f9; }
+.xs-card-head { display: flex; align-items: center; gap: 8px; min-width: 0; margin-bottom: 10px; }
+.xs-card .xs-avatar, .xs-card .xs-avatar-fallback {
+    width: 30px; height: 30px; font-size: 13px; border-radius: 50%;
+    object-fit: cover; background: #e7e9ea; flex: 0 0 auto;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; color: #536471;
+}
+.xs-card-name { display: flex; align-items: center; gap: 4px; min-width: 0; font-size: 14px; font-weight: 800; }
+.xs-card-name .xs-badge { width: 15px; height: 15px; flex: 0 0 auto; display: block; }
+.xs-card-label { margin-left: auto; font-size: 10.5px; color: #536471; background: #f7f9f9; border-radius: 999px; padding: 3px 8px; flex: 0 0 auto; }
+.xs-card-title { font-size: 16px; font-weight: 800; color: #1d9bf0; line-height: 1.35; margin-bottom: 7px; word-break: break-word; }
+.xs-card-excerpt {
+    font-size: 13px; color: #536471; line-height: 1.6; white-space: normal;
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word;
+}
+.xs-card-foot { display: flex; align-items: center; gap: 4px; margin-top: 10px; font-size: 12px; color: #536471; white-space: normal; }
+.xs-card-foot svg { width: 14px; height: 14px; display: block; }

@@ -270,7 +270,26 @@
         if (!cd.time) cd.time = time;
         var html = '';
 
-        if (type === 'transfer') {
+        if (type === 'xinsu') {
+            var xsAv = String(cd.avatar || opts.avatar || '');
+            var xsName = String(cd.charName || other || 'TA');
+            var xsInitial = (xsName.trim().charAt(0) || '?');
+            var xsAvHtml = xsAv
+                ? '<img class="xs-avatar" src="' + esc(xsAv) + '" alt="" referrerpolicy="no-referrer">'
+                : '<div class="xs-avatar xs-avatar-fallback">' + esc(xsInitial) + '</div>';
+            var xsBadge = '<svg class="xs-badge" viewBox="0 0 24 24" aria-label="认证"><circle cx="12" cy="12" r="11" fill="#1d9bf0"/><path d="m7 12.4 3.1 3.1L17.4 8" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+            html = '<div class="xs-card" data-xs-id="' + esc(cd.essayId || '') + '" data-xs-char="' + esc(cd.charId || '') + '">' +
+                '<div class="xs-card-head">' + xsAvHtml +
+                    '<div class="xs-card-name">' + esc(xsName) + xsBadge + '</div>' +
+                    '<div class="xs-card-label">心愫</div>' +
+                '</div>' +
+                '<div class="xs-card-title">' + esc(cd.title || '心愫') + '</div>' +
+                (cd.excerpt ? '<div class="xs-card-excerpt">' + esc(cd.excerpt) + '</div>' : '') +
+                '<div class="xs-card-foot">点击展开' +
+                    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>' +
+                '</div>' +
+            '</div>';
+        } else if (type === 'transfer') {
             var amount = cd.amount || '¥0.00';
             var isResponse = !!cd.response;
             var headText = '转账待领取';

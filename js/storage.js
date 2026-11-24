@@ -22,7 +22,8 @@ function utf16Bytes(str) { return str ? str.length * 2 : 0; }
 const APP_CATEGORIES = [
     {
         id: 'chat', label: '单聊', color: '#007aff',
-        ls: ['chat_messages_', 'chat_hot_', 'chat_setting_', 'chat_reply_pending_', 'chat_req_', 'chat_api_result_', 'chat_cleared_', 'nano_pinned_data', 'nano_cot_presets', 'nano_moment_img_round_', 'nano_auto_pending_msgs'],
+        ls: ['chat_messages_', 'chat_hot_', 'chat_setting_', 'chat_reply_pending_', 'chat_req_', 'chat_api_result_', 'chat_cleared_', 'nano_pinned_data', 'nano_cot_presets', 'nano_moment_img_round_', 'nano_auto_pending_msgs',
+            'nano_chat_sessions_', 'nano_chat_mode_', 'nano_chat_prefill_', 'nano_current_session', 'nano_last_chat', 'nano_last_ai_', 'nano_last_preview_', 'nano_last_chat_photo_', 'nano_recent_text_', 'nano_char_sharing', 'nano_heart_', 'nano_trans_'],
         idb: [
             { db: 'localforage', store: 'keyvaluepairs', key: ['chat_messages_', 'chat_hot_', 'chat_setting_'] },
             { db: 'nano_vector_memory_db', store: 'chat_messages' },
@@ -36,17 +37,32 @@ const APP_CATEGORIES = [
     },
     {
         id: 'offline', label: '线下', color: '#ff9500',
-        ls: ['offline_', 'offline-'],
+        ls: ['offline_', 'offline-', 'nano_offline_', 'nano_recent_offline_'],
         idb: [{ db: 'MeetSettingsDB' }]
     },
     {
         id: 'moments', label: '朋友圈', color: '#5856d6',
-        ls: ['nano_moments_data', 'nanoMomentsCover', 'nano_moments_npcs_'],
+        ls: ['nano_moments_data', 'nanoMomentsCover', 'nano_moments_npcs_', 'nano_last_auto_moment', 'nano_moments_inter_try_'],
         idb: [{ db: 'NanoMomentsDB' }, { db: 'NanoMomentsCoverDB' }]
     },
     {
+        id: 'xinsu', label: '心愫', color: '#1d9bf0',
+        ls: ['nano_xinsu_'],
+        idb: []
+    },
+    {
+        id: 'secret', label: '悄悄话', color: '#af52de',
+        ls: ['nano_char_secret_chats'],
+        idb: [{ db: 'nano_whisper_db' }]
+    },
+    {
+        id: 'schedule', label: '日程', color: '#ff9500',
+        ls: ['nano_schedule_'],
+        idb: []
+    },
+    {
         id: 'worldbook', label: '世界书', color: '#af52de',
-        ls: ['nano_worldbook_data', 'peach_worldbook_data'],
+        ls: ['nano_worldbook_data', 'peach_worldbook_data', 'nano_builtin_wb_off'],
         idb: [{ db: 'nano_worldbook_db' }]
     },
     {
@@ -67,12 +83,12 @@ const APP_CATEGORIES = [
     },
     {
         id: 'emoji', label: '表情包', color: '#ffcc00',
-        ls: ['nano_emoji_data', 'peach_home_data'],
+        ls: ['nano_emoji_data', 'peach_home_data', 'nano_emoji_names'],
         idb: [{ db: 'nano_api_db', store: 'emoji_data' }]
     },
     {
         id: 'character', label: '角色与头像', color: '#00c7be',
-        ls: ['nano_mask_data', 'nano_home_data'],
+        ls: ['nano_mask_data', 'nano_home_data', 'nano_char_rel_'],
         idb: [{ db: 'nano_characters_db' }, { db: 'MaskAvatarDB' }, { db: 'nano_mask_db' }]
     },
     {
@@ -90,7 +106,7 @@ const APP_CATEGORIES = [
     },
     {
         id: 'call', label: '通话', color: '#5ac8fa',
-        ls: ['voice_call_seconds_', 'nano_call_active_'],
+        ls: ['voice_call_seconds_', 'nano_call_'],
         idb: [{ db: 'voice_call_records_db' }, { dbPrefix: 'voice_call_', store: 'messages' }]
     },
     {
@@ -105,17 +121,17 @@ const APP_CATEGORIES = [
     },
     {
         id: 'api', label: 'API 设置', color: '#64d2ff',
-        ls: ['nano_api_'],
+        ls: ['nano_api_', 'nano_builtin_prompt', 'nano_heart_builtin_prompt', 'nano_max_tokens_upgraded_v2'],
         idb: [{ db: 'nano_api_db', store: 'api_data' }]
     },
     {
         id: 'beautify', label: '美化', color: '#bf5af2',
-        ls: ['beautify_'],
+        ls: ['beautify_', 'nano_beautify_', 'nano_beauty_', 'nano_builtin_chat_theme', 'nano_avatar_frame'],
         idb: [{ db: 'BeautifyAppDB' }]
     },
     {
         id: 'market', label: '共享集市', color: '#ff9f0a',
-        ls: ['market_owned', 'market_liked', 'market_user', 'nano_market_'],
+        ls: ['market_owned', 'market_liked', 'market_user', 'market_hidden', 'nano_market_'],
         idb: [{ db: 'NanoMarketDB' }]
     },
     {
@@ -145,7 +161,7 @@ const APP_CATEGORIES = [
     },
     {
         id: 'family', label: '亲属卡', color: '#f08a3c',
-        ls: ['nano_family_cards_', 'nano_char_wallet_'],
+        ls: ['nano_family_cards_', 'nano_char_wallet_', 'nano_char_wealth_'],
         idb: [{ db: 'nano_app_storage', store: 'kv', key: ['nano_family_cards__', 'nano_char_wallet_'] }]
     },
     {
@@ -155,7 +171,7 @@ const APP_CATEGORIES = [
     },
     {
         id: 'mall', label: '商城', color: '#111111',
-        ls: ['nano_mall_data_'],
+        ls: ['nano_mall_data_', 'nano_mall_event'],
         idb: [{ db: 'nano_app_storage', store: 'kv', key: ['nano_mall_store__'] }]
     },
     {
@@ -165,17 +181,17 @@ const APP_CATEGORIES = [
     },
     {
         id: 'couple', label: '情侣空间', color: '#ff375f',
-        ls: ['cs_api_'],
+        ls: ['cs_api_', 'nano_couple_'],
         idb: [{ db: 'NanoCoupleSpaceV10' }]
     },
     {
         id: 'phone', label: '手机', color: '#a2845e',
-        ls: ['glass_phone_', 'mpLayout4', 'mpImgs3'],
+        ls: ['glass_phone_', 'glass-phone-', 'mpLayout4', 'mpImgs3'],
         idb: [{ db: 'check_phone_db' }, { db: 'nano_app_storage', store: 'kv', key: ['nano_widget_layout_v1', 'nano_widget_images_v1', 'nano_desktop_bg', 'nano_app_custom'] }]
     },
     {
         id: 'user', label: '用户资料', color: '#8e8e93',
-        ls: ['user_name_data', 'user_avatar_data', 'nano_contacts_data', 'nano_settings_data'],
+        ls: ['user_name_data', 'user_avatar_data', 'nano_contacts_data', 'nano_settings_data', 'nano_account_', 'nano_user_info', 'nano_user_avatar'],
         idb: [{ db: 'nano_user_db' }]
     },
     {
@@ -195,7 +211,8 @@ const APP_CATEGORIES = [
     },
     {
         id: 'system', label: '系统与通知', color: '#aeaeb2',
-        ls: ['nano_notify_', 'nano_keep_alive', 'nano_chat_activity', 'nano_unread_counts', 'nano_chat_menu', 'nano_pending_', 'nanoApiBall'],
+        ls: ['nano_notify_', 'nano_keep_alive', 'nano_chat_activity', 'nano_unread_counts', 'nano_chat_menu', 'nano_pending_', 'nanoApiBall',
+            'nano_auto_', 'nano_device_id', 'nano_top_inset', 'nano_storage_swept', 'nano_quota_probe', 'nano_online_catchup', 'nano_server_auto_push', 'nano_last_version_target', 'nano_voice_applied_css', 'nano_backup_include_binary'],
         idb: [{ db: 'nano_chat_menu_db' }, { db: 'NanoVoiceDB' }]
     }
 ];

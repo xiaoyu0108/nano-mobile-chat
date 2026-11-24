@@ -577,8 +577,8 @@
     try { expireCharInvitesIfDisabled(); } catch (e) {}
     // 刚点开、还没真正聊过的角色不投递任何旅途卡片，避免一进来就被卡片打扰。
     if (!isFamiliar()) return Promise.resolve(0);
-    // 很久没聊天的角色也不补发报备卡；必须近 12 小时有真实聊天。
-    if (!recentlyChatting(12)) return Promise.resolve(0);
+    // 很久没聊天的角色也不补发报备卡；必须近 24 小时有真实聊天。
+    if (!recentlyChatting(24)) return Promise.resolve(0);
     // 角色在线下：旅途卡片先留在待投递队列，退出线下后再补进线上聊天。
     if (isChatOffline()) return Promise.resolve(0);
     try {
@@ -633,19 +633,19 @@
     var m = store() && store().getMask ? store().getMask() : {};
     return 'nano_travel_report_global_' + ((m && m.id) || 'default');
   }
-  // 与「旅途」App 的随机拍立得共用同一把锁：两条路径合计约 7 天只分享一次。
+  // 与「旅途」App 的随机拍立得共用同一把锁：两条路径合计约 4~5 天只分享一次。
   function sharedShareKey() {
     var m = store() && store().getMask ? store().getMask() : {};
     return 'nano_travel_share_at_' + ((m && m.id) || 'default');
   }
   function reportFailKey() { return 'nano_travel_report_fail_' + chatId; }
-  var REPORT_EVERY = 7 * 86400000;   // 一个 char 约 7 天主动报备一次
+  var REPORT_EVERY = 4.5 * 86400000;   // 一个 char 约 4~5 天主动报备一次
   function canReport() {
     var s = store();
     if (!s) return false;
     if (isChatOffline()) return false;
-    // 只对近 12 小时还在聊天的角色触发；很久没聊天的角色不再主动分享。
-    if (!recentlyChatting(12)) return false;
+    // 只对近 24 小时还在聊天的角色触发；很久没聊天的角色不再主动分享。
+    if (!recentlyChatting(24)) return false;
     // 必须是已经聊得很熟的角色；刚点开、没聊过或只有系统提示时不报备。
     if (!isFamiliar()) return false;
     // 断聊超过 7 天后，必须连续聊 3 天才恢复。

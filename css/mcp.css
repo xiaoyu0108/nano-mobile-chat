@@ -264,3 +264,6 @@ body,.app,main{background:#fff!important;color:#111}
 .result{background:#111!important}
 .empty{background:#fff!important;border-color:#e5e5e5!important;color:#8a8a8a!important}
 .toast{background:#0a0a0a!important;color:#fff!important}
+/* MCP 工具结果里的封面缩略图 */
+.tool-result-pics{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.tool-result-pics img{width:96px;height:96px;object-fit:cover;border-radius:10px;background:#222;display:block}

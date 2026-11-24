@@ -3574,11 +3574,12 @@
             '<div class="mm-viewer-bar">' +
                 '<button class="mm-vbtn" data-mm="cancel" title="取消"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg><span>取消</span></button>' +
                 '<button class="mm-vbtn" data-mm="regen" title="重新生成（可改提示词）"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg><span>重roll</span></button>' +
+                '<button class="mm-vbtn" data-mm="view" title="查看生图提示词"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><span>查看</span></button>' +
                 '<button class="mm-vbtn" data-mm="download" title="保存到相册"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg><span>保存</span></button>' +
             '</div>' +
             '<div class="mm-sheet" id="mmRerollSheet"><div class="mm-sheet-card">' +
-                '<div class="mm-sheet-head"><div class="mm-sheet-title">重新生成图片</div><button class="mm-sheet-x" data-mmx="reroll-close" aria-label="关闭"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>' +
-                '<div class="mm-sheet-desc">可以修改提示词后再重roll，也可以不改直接重roll。</div>' +
+                '<div class="mm-sheet-head"><div class="mm-sheet-title" id="mmSheetTitle">重新生成图片</div><button class="mm-sheet-x" data-mmx="reroll-close" aria-label="关闭"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>' +
+                '<div class="mm-sheet-desc" id="mmSheetDesc">可以修改提示词后再重roll，也可以不改直接重roll。</div>' +
                 '<textarea class="mm-sheet-input" id="mmRerollInput" spellcheck="false" placeholder="描述这张图……"></textarea>' +
                 '<div class="mm-sheet-actions"><button class="mm-sheet-btn" data-mmx="reroll-cancel">取消</button><button class="mm-sheet-btn primary" data-mmx="reroll-go">重roll</button></div>' +
             '</div></div>' +
@@ -3602,7 +3603,8 @@
             if (btn) {
                 var act = btn.dataset.mm;
                 if (act === 'cancel') closeImageViewer();
-                else if (act === 'regen') showRerollSheet();
+                else if (act === 'regen') showRerollSheet('reroll');
+                else if (act === 'view') showRerollSheet('view');
                 else if (act === 'download') downloadViewerImage();
                 return;
             }
@@ -3615,11 +3617,21 @@
         return v;
     }
     function hideMmSheet(id) { var s = document.getElementById(id); if (s) s.classList.remove('show'); }
-    function showRerollSheet() {
+    function showRerollSheet(mode) {
         var item = momentsData.find(function(m) { return m.id === mmViewerState.postId; });
         if (!item) return;
         var inp = document.getElementById('mmRerollInput');
         if (inp) inp.value = item.genPrompt || item.imageText || item.text || '';
+        // 「查看」与「重roll」共用同一个底部半屏：查看时只展示并可修改提示词，
+        // 需要重新生成再点里面的重roll，和私聊/群聊大图的操作一致。
+        var title = document.getElementById('mmSheetTitle');
+        var desc = document.getElementById('mmSheetDesc');
+        if (title) title.textContent = mode === 'view' ? '查看提示词' : '重新生成图片';
+        if (desc) {
+            desc.textContent = mode === 'view'
+                ? '可以查看并修改提示词；点「重roll」按新提示词重新生成，点「取消」退出编辑。'
+                : '可以修改提示词后再重roll，也可以不改直接重roll。';
+        }
         var s = document.getElementById('mmRerollSheet');
         if (s) s.classList.add('show');
     }

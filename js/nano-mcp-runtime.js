@@ -168,6 +168,76 @@
     }
     return '';
   }
+  // 抖音分享页会把完整视频信息塞进 _ROUTER_DATA / RENDER_DATA。公开的 iteminfo 接口
+  // 经常被限流或返回空，直接解析分享页更稳，也能拿到封面、作者、数据和热评。
+  function dyFindAweme(obj, depth) {
+    if (!obj || typeof obj !== 'object' || (depth || 0) > 9) return null;
+    if (obj.desc && (obj.author || obj.video || obj.images) && (obj.aweme_id || obj.awemeId || obj.statistics)) return obj;
+    if (obj.aweme_detail && obj.aweme_detail.desc) return obj.aweme_detail;
+    var keys = Object.keys(obj);
+    for (var i = 0; i < keys.length; i++) {
+      try {
+        var hit = dyFindAweme(obj[keys[i]], (depth || 0) + 1);
+        if (hit) return hit;
+      } catch (e) {}
+    }
+    return null;
+  }
+  function dyParseShareHtml(text) {
+    var s = String(text || '');
+    function tryJson(raw) {
+      if (!raw) return null;
+      var t = raw.trim().replace(/;$/, '');
+      try { return dyFindAweme(JSON.parse(t), 0); } catch (e) {}
+      try { return dyFindAweme(JSON.parse(decodeURIComponent(t)), 0); } catch (e) {}
+      return null;
+    }
+    var m = s.match(/<script[^>]+id=["']RENDER_DATA["'][^>]*>([\s\S]*?)<\/script>/i);
+    var hit = m ? tryJson(m[1]) : null;
+    if (hit) return hit;
+    m = s.match(/window\._ROUTER_DATA\s*=\s*(\{[\s\S]*?\})\s*;?\s*<\/script>/i) ||
+        s.match(/window\.__INITIAL_STATE__\s*=\s*(\{[\s\S]*?\})\s*;?\s*<\/script>/i);
+    hit = m ? tryJson(m[1]) : null;
+    if (hit) return hit;
+    m = s.match(/"aweme_id"\s*:\s*"(\d{8,})"[\s\S]{0,200000}?"desc"\s*:\s*"((?:\\.|[^"\\])*)"/);
+    if (m) return { aweme_id: m[1], desc: m[2].replace(/\\n/g, ' ').replace(/\\"/g, '"') };
+    return null;
+  }
+  function dyPickCover(item) {
+    item = item || {};
+    var out = '';
+    function fromObj(cov) {
+      if (!cov) return '';
+      if (typeof cov === 'string') return cov;
+      if (Array.isArray(cov.url_list) && cov.url_list[0]) return cov.url_list[0];
+      if (Array.isArray(cov.uri) && cov.uri[0]) return cov.uri[0];
+      if (typeof cov.url === 'string') return cov.url;
+      return '';
+    }
+    out = fromObj(item.video && (item.video.cover || item.video.dynamic_cover || item.video.origin_cover));
+    if (!out && Array.isArray(item.images) && item.images.length) out = fromObj(item.images[0]);
+    if (!out && item.video && item.video.play_addr) out = fromObj(item.video.play_addr);
+    if (!out && item.share_info) out = String(item.share_info.share_image_url || '');
+    return out;
+  }
+  // 抖音给搜索引擎蜘蛛的分享页里，封面和文案都在 meta 标签里，不触发反爬。
+  function dyParseSeoMeta(text) {
+    var s = String(text || '');
+    function meta(name) {
+      var esc = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      var m = s.match(new RegExp('<meta[^>]+name=["\']' + esc + '["\'][^>]*content=["\']([^"\']*)["\']', 'i')) ||
+        s.match(new RegExp('<meta[^>]+content=["\']([^"\']*)["\'][^>]*name=["\']' + esc + '["\']', 'i'));
+      return m ? String(m[1]).replace(/&amp;/g, '&') : '';
+    }
+    var desc = meta('description');
+    var am = desc.match(/ - (.+?)于\s*\d{8}\s*发布在抖音/);
+    return {
+      title: meta('lark:url:video_title') || meta('lark:url:note_title') || meta('og:title'),
+      desc: desc,
+      cover: meta('lark:url:video_cover_image_url') || meta('lark:url:note_cover_image_url') || meta('og:image'),
+      author: am ? am[1] : ''
+    };
+  }
   async function nativeParseDouyin(args) {
     var url = dyExtractUrl((args && (args.url || args.text)) || '');
     if (!url) throw new Error('请提供抖音分享链接');
@@ -185,7 +255,7 @@
           out.desc = String(wj.desc || '');
           out.content = String(wj.content || '');
           out.author = String(wj.author || '');
-          out.cover = (wj.images && wj.images[0]) || '';
+          out.cover = (wj.images && wj.images[0]) || wj.cover || '';
           out.stats = wj.stats || {};
           out.comments = Array.isArray(wj.comments) ? wj.comments : [];
           out.music = String(wj.music || '');
@@ -195,7 +265,7 @@
       }
     } catch (e) {}
     // 2) Worker 未部署新字段 / 短链无法解析时，客户端再走公开接口补一次
-    if (!out.awemeId || !out.desc || !out.comments.length) {
+    if (!out.awemeId || !out.desc || !out.comments.length || !out.cover) {
       var html = '';
       if (!out.awemeId) {
         try { html = await dyHtml(url, 9000); } catch (e) {}
@@ -206,11 +276,26 @@
         if (tm) out.awemeId = tm[1];
       }
       if (out.awemeId) {
+        var dyKind = ((String(url).match(/\/(video|note|slides)\//i) || [])[1] || 'video').toLowerCase();
         var info = await dyFetchJson('https://www.iesdouyin.com/web/api/v2/aweme/iteminfo/?item_ids=' + encodeURIComponent(out.awemeId), 9000);
         var item = info && info.item_list && info.item_list[0];
         if (!item) {
           var dj = await dyFetchJson('https://www.douyin.com/aweme/v1/web/aweme/detail/?aweme_id=' + encodeURIComponent(out.awemeId) + '&aid=6383', 9000);
           item = (dj && (dj.aweme_detail || (dj.aweme_details && dj.aweme_details[0]))) || null;
+        }
+        // 公开接口失效时，直接抓 iesdouyin 分享页里的 _ROUTER_DATA / SEO meta（封面通常只在这里）。
+        if (!item || !item.desc || !dyPickCover(item)) {
+          var shareHtml = '';
+          try { shareHtml = await dyHtml('https://www.iesdouyin.com/share/' + dyKind + '/' + out.awemeId + '/', 9000); } catch (e) {}
+          var seo = dyParseSeoMeta(shareHtml);
+          var parsed = dyParseShareHtml(shareHtml);
+          if (parsed) item = parsed;
+          if (seo.cover || seo.desc) {
+            out.cover = out.cover || seo.cover;
+            out.desc = out.desc || seo.desc;
+            out.title = out.title || seo.title;
+            out.author = out.author || seo.author;
+          }
         }
         if (item) {
           out.desc = out.desc || String(item.desc || '').replace(/\s+/g, ' ').trim();
@@ -219,25 +304,44 @@
           out.stats = (out.stats && Object.keys(out.stats).length) ? out.stats : (item.statistics || {});
           out.music = out.music || String((item.music && (item.music.title || item.music.author)) || '');
           out.tags = (out.tags && out.tags.length) ? out.tags : (Array.isArray(item.text_extra) ? item.text_extra.map(function (t) { return t && t.hashtag_name ? '#' + t.hashtag_name : ''; }).filter(Boolean) : []);
-          if (!out.cover) {
-            var cov = item.video && (item.video.cover || item.video.dynamic_cover || item.video.origin_cover);
-            out.cover = (typeof cov === 'string' && cov) ||
-              (cov && Array.isArray(cov.url_list) && cov.url_list[0]) ||
-              (cov && Array.isArray(cov.uri) && cov.uri[0]) || '';
+          if (!out.cover) out.cover = dyPickCover(item);
+          if (!out.content) {
+            var cp = [out.desc, out.author ? ('作者：' + out.author) : '', (out.tags || []).join(' '), out.music ? ('音乐：' + out.music) : ''].filter(Boolean);
+            out.content = cp.join('\n');
           }
         }
         if (!out.comments.length) {
           var cj = await dyFetchJson('https://www.iesdouyin.com/web/api/v2/comment/list/?aweme_id=' + encodeURIComponent(out.awemeId) + '&cursor=0&count=12&item_type=0', 9000);
-          var list = (cj && (cj.comments || (cj.data && cj.data.comments))) || [];
+          var list = (cj && (cj.comments || (cj.data && cj.data.comments))) || (item && item.comments) || [];
           out.comments = list.map(function (c) {
             return {
-              author: String((c.user && (c.user.nickname || c.user.unique_id)) || ''),
+              author: String((c.user && (c.user.nickname || c.user.unique_id)) || (c.author && (c.author.nickname || c.author.unique_id)) || ''),
               text: String(c.text || c.content || '').replace(/\s+/g, ' ').trim().slice(0, 300),
               likes: Number(c.digg_count || c.like_count || 0) || 0
             };
           }).filter(function (c) { return c.text; }).slice(0, 12);
         }
       }
+    }
+    // 通用 Logo 不算封面，清掉避免卡片显示成抖音启动图。
+    if (out.cover && /logo_launcher|douyinstatic\.com\/obj\/eden-cn/i.test(String(out.cover))) out.cover = '';
+    // 3) 最后兜底：用无头浏览器服务渲染分享页，读取真实 og:image 封面。
+    //    抖音的公开接口经常限流，但分享页的 OG 标签通常还在。
+    if (!out.cover || !out.desc) {
+      try {
+        var mu = 'https://api.microlink.io/?url=' + encodeURIComponent(url) + '&meta=true';
+        var mr = await dyTimeout(fetch(mu, { cache: 'no-store' }), 20000);
+        var mj = mr && mr.ok ? await mr.json() : null;
+        if (mj && mj.status === 'success' && mj.data) {
+          var md = mj.data;
+          if (!out.desc && md.description) out.desc = String(md.description).replace(/\s+/g, ' ').trim();
+          if (!out.title && md.title) out.title = String(md.title).trim();
+          var mi = md.image && (md.image.url || md.image);
+          if (!out.cover && mi && !/logo_launcher|douyinstatic\.com\/obj\/eden-cn/i.test(String(mi))) {
+            out.cover = String(mi);
+          }
+        }
+      } catch (e) {}
     }
     var lines = [];
     if (out.desc) lines.push('文案：' + out.desc);

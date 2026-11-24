@@ -6,8 +6,8 @@
   var GROUPS_KEY = 'nano_groups_data';
   var PENDING_CARDS = 'nano_pending_store_cards';
   var PENDING_GROUP = 'nano_pending_group_cards';
-  var MAX_ITEMS = 80;
-  var MAX_TEXT = 400;
+  var MAX_ITEMS = 50;
+  var MAX_TEXT = 300;
 
   function esc(v) {
     return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) {
@@ -137,12 +137,53 @@
     };
   }
 
+  // 转发队列写在 localStorage：太多条 / 语音表情包 / 本机存储快满时，
+  // 一次性写 JSON 会直接抛 QuotaExceededError，用户看到的就是「转发失败」。
+  // 这里按「正常 → 每目标只留最新 1 条且缩短正文 → 只留当前这一条」逐级压缩重试。
+  function shrinkEntry(entry) {
+    var e = {};
+    try { e = JSON.parse(JSON.stringify(entry || {})); } catch (err) { e = entry || {}; }
+    if (e && e.card && Array.isArray(e.card.items)) {
+      e.card.items = e.card.items.slice(0, 20).map(function (it) {
+        return { who: String((it && it.who) || ''), text: String((it && it.text) || '').slice(0, 160), time: String((it && it.time) || '') };
+      });
+      e.card.count = e.card.items.length;
+    }
+    return e;
+  }
+  function persistQueue(key, q, targetId) {
+    // 顺手清掉 3 天前的旧队列 / 每个目标最多留 3 条，避免越积越大。
+    var cutoff = Date.now() - 3 * 24 * 3600 * 1000;
+    Object.keys(q).forEach(function (tid) {
+      var arr = Array.isArray(q[tid]) ? q[tid] : [];
+      arr = arr.filter(function (x) { return !x || !x.at || x.at >= cutoff; }).slice(-3);
+      if (arr.length) q[tid] = arr;
+      else delete q[tid];
+    });
+    function tryWrite(obj) {
+      try { localStorage.setItem(key, JSON.stringify(obj)); return true; } catch (err) { return false; }
+    }
+    if (tryWrite(q)) return true;
+    var slim = {};
+    Object.keys(q).forEach(function (tid) {
+      var arr = q[tid];
+      if (Array.isArray(arr) && arr.length) slim[tid] = [shrinkEntry(arr[arr.length - 1])];
+    });
+    if (tryWrite(slim)) return true;
+    if (targetId && Array.isArray(q[targetId]) && q[targetId].length) {
+      var only = {};
+      only[targetId] = [shrinkEntry(q[targetId][q[targetId].length - 1])];
+      if (tryWrite(only)) return true;
+    }
+    return false;
+  }
+
   function enqueuePrivate(targetId, entry) {
     var q = {};
     try { q = JSON.parse(localStorage.getItem(PENDING_CARDS) || '{}') || {}; } catch (e) { q = {}; }
     if (!Array.isArray(q[targetId])) q[targetId] = [];
     q[targetId].push(entry);
-    localStorage.setItem(PENDING_CARDS, JSON.stringify(q));
+    if (!persistQueue(PENDING_CARDS, q, targetId)) throw new Error('本地存储空间不足，请清理后重试');
   }
 
   function enqueueGroup(targetId, entry) {
@@ -150,7 +191,7 @@
     try { q = JSON.parse(localStorage.getItem(PENDING_GROUP) || '{}') || {}; } catch (e) { q = {}; }
     if (!Array.isArray(q[targetId])) q[targetId] = [];
     q[targetId].push(entry);
-    localStorage.setItem(PENDING_GROUP, JSON.stringify(q));
+    if (!persistQueue(PENDING_GROUP, q, targetId)) throw new Error('本地存储空间不足，请清理后重试');
   }
 
   function close() {
@@ -241,7 +282,7 @@
       btn.appendChild(tag);
       btn.addEventListener('click', function () {
         var card = buildCard(opts);
-        var entry = { card: card, side: 'right' };
+        var entry = { card: card, side: 'right', at: Date.now() };
         if (opts.mode === 'split') entry.mode = 'split';
         try {
           if (isGroup) enqueueGroup(target.id, entry);
@@ -249,7 +290,7 @@
           close();
           toast((opts.mode === 'split' ? '已分条转发到「' : '已合并转发到「') + (target.name || target.id) + '」');
         } catch (e) {
-          toast('转发失败，请重试');
+          toast((e && e.message) ? ('转发失败：' + e.message) : '转发失败，请重试');
         }
       });
       sheet.appendChild(btn);

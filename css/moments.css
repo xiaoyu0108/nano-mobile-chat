@@ -953,7 +953,7 @@ input[type="file"] { display: none; }
     white-space: pre-wrap; word-break: break-word;
 }
 .mm-viewer-bar {
-    display: flex; justify-content: center; gap: 26px;
+    display: flex; justify-content: center; gap: 18px;
     padding: 14px 16px calc(18px + 0px);
     background: rgba(0, 0, 0, 0.55);
 }

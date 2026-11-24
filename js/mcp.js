@@ -158,6 +158,43 @@
     $('toolModal').classList.add('show');
   }
   function closeToolModal() { $('toolModal').classList.remove('show'); curTool = null; }
+  function toolResultImages(text) {
+    var urls = (String(text || '').match(/https?:\/\/[^\s"'<>]+/g) || []).map(function (u) {
+      return u.replace(/[),，。；;]+$/, '');
+    }).filter(function (u) {
+      return /(\.(?:jpe?g|png|webp|gif|avif)(?:[?#]|$))|douyinpic|byteimg|xhscdn|hdslb|sinaimg|alicdn/i.test(u);
+    });
+    return urls.slice(0, 4);
+  }
+  function showToolResult(text) {
+    $('toolResultWrap').style.display = 'block';
+    $('toolResult').textContent = text;
+    var old = document.getElementById('toolResultPics');
+    if (old) old.remove();
+    var urls = toolResultImages(text);
+    if (!urls.length) return;
+    var box = document.createElement('div');
+    box.id = 'toolResultPics';
+    box.className = 'tool-result-pics';
+    urls.forEach(function (u) {
+      var src = u;
+      try {
+        var base = M.baseURL();
+        var tok = '';
+        try { tok = localStorage.getItem('nano_peek_token') || localStorage.getItem('nano_push_token') || ''; } catch (e) {}
+        if (base && /douyinpic|byteimg|xhscdn|hdslb|sinaimg|alicdn/i.test(u)) {
+          src = base + '/image?url=' + encodeURIComponent(u) + (tok ? ('&token=' + encodeURIComponent(tok)) : '');
+        }
+      } catch (e) {}
+      var im = document.createElement('img');
+      im.loading = 'lazy';
+      im.referrerPolicy = 'no-referrer';
+      im.alt = '封面';
+      im.src = src;
+      box.appendChild(im);
+    });
+    $('toolResultWrap').appendChild(box);
+  }
   async function runTool() {
     if (!curTool) return;
     var args;
@@ -166,12 +203,10 @@
     btn.disabled = true; btn.textContent = '运行中…';
     try {
       var text = await M.execTool(curTool.serverId, curTool.tool.name, args);
-      $('toolResultWrap').style.display = 'block';
-      $('toolResult').textContent = text;
+      showToolResult(text);
     } catch (e) {
       var msg = '调用失败：' + (e && e.message ? e.message : e);
-      $('toolResultWrap').style.display = 'block';
-      $('toolResult').textContent = msg;
+      showToolResult(msg);
     } finally {
       btn.disabled = false; btn.textContent = '运行';
     }

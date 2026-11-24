@@ -187,22 +187,73 @@
         }
     }
 
+    function formatRecentLines(arr, rounds) {
+        if (!Array.isArray(arr) || !arr.length) return '';
+        var mask = homeMask();
+        var uname = (mask && mask.name) || '用户';
+        return arr.filter(function (m) {
+            return m && !m.recalled && !m.isCard && !m.isImage && !m.isVoice &&
+                (m.type === 'left' || m.type === 'right') && String(m.text || '').trim();
+        }).slice(-(Math.max(1, rounds) * 2 + 2)).map(function (m) {
+            return (m.type === 'right' ? uname : '对方') + '：' + String(m.text || '').replace(/\s+/g, ' ').slice(0, 260);
+        }).join('\n');
+    }
+
     function recentLines(id, rounds) {
         try {
             var arr = parseJson(localStorage.getItem('chat_messages_' + id), []);
-            if (!Array.isArray(arr)) return '';
-            var mask = homeMask();
-            var uname = (mask && mask.name) || '用户';
-            var ch = null;
-            // 名称由调用方补，这里先放占位
-            return arr.filter(function (m) {
-                return m && !m.recalled && !m.isCard && !m.isImage && !m.isVoice &&
-                    (m.type === 'left' || m.type === 'right') && String(m.text || '').trim();
-            }).slice(-(Math.max(1, rounds) * 2 + 2)).map(function (m) {
-                return (m.type === 'right' ? uname : '对方') + '：' + String(m.text || '').replace(/\s+/g, ' ').slice(0, 260);
-            }).join('\n');
+            return formatRecentLines(arr, rounds);
         } catch (e) { return ''; }
     }
+
+    // 私聊的消息现在主要存在 IndexedDB（localforage）里，localStorage 只剩旧的兜底副本。
+    // 悄悄话必须读到用户和双方「刚刚」聊过的内容，所以这里优先读 IndexedDB 的完整记录，
+    // 再用热缓存（chat_hot_*，最多 80 条、写入更及时）补齐最新几条。
+    function lfGetValue(key) {
+        return new Promise(function (resolve) {
+            try {
+                if (!window.indexedDB) { resolve(null); return; }
+                // 不指定版本：localforage 的默认库要是不存在就慢慢创建，存在则直接读当前版本。
+                var req = indexedDB.open('localforage');
+                req.onupgradeneeded = function (e) {
+                    try {
+                        var d = e.target.result;
+                        if (!d.objectStoreNames.contains('keyvaluepairs')) d.createObjectStore('keyvaluepairs');
+                    } catch (err) {}
+                };
+                req.onsuccess = function (e) {
+                    var db = e.target.result;
+                    try {
+                        if (!db.objectStoreNames.contains('keyvaluepairs')) { resolve(null); try { db.close(); } catch (err) {} return; }
+                        var r = db.transaction('keyvaluepairs', 'readonly').objectStore('keyvaluepairs').get(key);
+                        r.onsuccess = function () { resolve(r.result == null ? null : r.result); try { db.close(); } catch (err) {} };
+                        r.onerror = function () { resolve(null); try { db.close(); } catch (err) {} };
+                    } catch (err) { resolve(null); try { db.close(); } catch (e2) {} }
+                };
+                req.onerror = function () { resolve(null); };
+            } catch (e) { resolve(null); }
+        });
+    }
+
+    async function recentLinesAsync(id, rounds) {
+        var full = null, hot = null;
+        try { full = await lfGetValue('chat_messages_' + id); } catch (e) {}
+        try { hot = await lfGetValue('chat_hot_' + id); } catch (e) {}
+        var fullArr = Array.isArray(full) ? full : null;
+        var hotArr = (hot && Array.isArray(hot.items)) ? hot.items : null;
+        if (fullArr && hotArr) {
+            // 热缓存写入更频繁：它最后一条比完整记录更新时，就用热缓存。
+            var fullLast = Number((fullArr[fullArr.length - 1] || {}).ts) || 0;
+            var hotLast = Number((hotArr[hotArr.length - 1] || {}).ts) || Number(hot.updatedAt) || 0;
+            if (hotLast > fullLast) return formatRecentLines(hotArr, rounds);
+            return formatRecentLines(fullArr, rounds);
+        }
+        if (fullArr && fullArr.length) return formatRecentLines(fullArr, rounds);
+        if (hotArr && hotArr.length) return formatRecentLines(hotArr, rounds);
+        // 最后才回退到旧版 localStorage 副本。
+        return recentLines(id, rounds);
+    }
+
 
     // ===== 世界书 / 长期记忆（私聊也给角色读，避免 OOC）=====
     var __wbFilesCache = null;
@@ -445,10 +496,11 @@
             + (extra.wbB ? '【' + (b.name || 'B') + ' 的世界书 · 必须遵守】\n' + extra.wbB + '\n\n' : '')
             + (extra.memA ? '【' + (a.name || 'A') + ' 的长期记忆】\n' + extra.memA + '\n\n' : '')
             + (extra.memB ? '【' + (b.name || 'B') + ' 的长期记忆】\n' + extra.memB + '\n\n' : '')
-            + (bRecent ? '【用户和' + (b.name || 'B') + '最近的聊天】\n' + bRecent.replace(/对方：/g, (b.name || 'B') + '：') + '\n\n' : '')
-            + (aRecent ? '【用户和你最近的聊天】\n' + aRecent.replace(/对方：/g, (a.name || 'A') + '：') + '\n\n' : '')
+            + (bRecent ? '【用户和' + (b.name || 'B') + '最近的真实聊天（刚刚发生，必须作为当下语境）】\n' + bRecent.replace(/对方：/g, (b.name || 'B') + '：') + '\n\n' : '')
+            + (aRecent ? '【用户和你最近的真实聊天（刚刚发生，必须作为当下语境）】\n' + aRecent.replace(/对方：/g, (a.name || 'A') + '：') + '\n\n' : '')
             + (prevChat ? '【你们上次私下聊到】\n' + prevChat + '\n（这次可以接着上次的情绪/话题，但不要原样重复。）\n\n' : '')
             + '现在你们两人私下聊起来。可以谈用户、试探对方、吃醋、交换信息、撒谎或挑拨。\n'
+            + '如果上面有最近聊天：要顺着里面最新的具体话题、约定、语气和情绪往下说，提到其中真实出现的人和事，不要当成没发生过、也不要另外编一个无关话题。\n'
             + '请一次写完 2~3 轮、总共 6~8 个气泡（同一角色可以连续发多条），每个气泡 1~2 句，要具体、有情绪和细节，不要只回一句短话。\n'
             + '每行一个气泡，严格用「' + (a.name || 'A') + '：内容」或「' + (b.name || 'B') + '：内容」的格式；不要旁白、不要动作描写、不要解释、不要省略号。\n'
             + '严格遵循双方人设、世界书和长期记忆，不要 OOC，不要编造与设定冲突的内容。\n'
@@ -619,8 +671,10 @@
         if (!acquireLock()) throw new Error('正在生成另一段悄悄话，请稍后再试');
         try {
             var mask = homeMask();
-            var aRecent = recentLines(a.id, 3);
-            var bRecent = recentLines(b.id, 3);
+            // 读取双方各自和用户最近几轮聊天（优先 IndexedDB 的实时记录），
+            // 悄悄话要接着最近的话题/情绪往下说，而不是凭空生成。
+            var aRecent = await recentLinesAsync(a.id, 4);
+            var bRecent = await recentLinesAsync(b.id, 4);
             var prevChat = '';
             try {
                 var lastPair = loadRecords().filter(function (r) {

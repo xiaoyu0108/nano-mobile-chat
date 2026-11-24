@@ -8,7 +8,7 @@
     // 全站构建号：只作为版本标记记录，不再据此清空缓存或强制整页 reload。
     // 更新走增量：SW 保留旧缓存，页面先用缓存秒开、后台静默换成新文件；
     // 只有真正改过的 JS/CSS 在改版本号（?v=）后才会重新下载。
-    window.__NANO_BUILD__ = 'nano-2026-11-21-7';
+    window.__NANO_BUILD__ = 'nano-2026-11-24-4';
     (function () {
         try {
             var KEY = 'nano_build';
@@ -2724,7 +2724,7 @@ setTimeout(function () {
                 showOverlayFrame();
                 // 同一个页面且已加载过 → 直接复用（切换更快）；正在后台生成 → 也必须复用（否则中断生成）
                 reuseOrLoadOverlayFrame(url);
-                const ownNavPages = ['chat.html', 'api.html', 'settings.html', 'settings-logs.html', 'gallery.html', 'settings-desktop.html', 'settings-notifications.html', 'settings-prompts.html', 'settings-other.html', 'settings-account.html', 'beautify.html', 'schedule.html', 'travel.html', 'travel-chat.html', 'worldbook.html', 'emoji.html', 'favorite.html', 'offline.html', 'offline-setting.html', 'moments.html', 'groups.html', 'group-setting.html', 'other.html', 'storage.html', 'backup.html', 'cloud-backup.html', 'char-relations.html', 'char-chats.html', 'phone.html', 'ins.html', 'couple-spaces.html', 'halo.html', 'books.html', 'mask.html', 'character.html', 'inner-setting.html', 'nano-setting.html', 'nano-files.html', 'ios-setting.html', 'assistant.html', 'family-card.html', 'wallet.html', 'appstore.html', 'cycle.html', 'fanfic.html', 'fanfic-create.html', 'fanfic-read.html', 'market.html', 'mcp.html', 'heart-setting.html', 'imessage.html', 'memory palace.html', 'app-host.html', 'meet.html', 'mall.html', 'qa.html', 'pomodoro.html', 'nano.html', 'nano-image.html', 'nano-image-settings.html', 'nano-card-template.html'];
+                const ownNavPages = ['chat.html', 'api.html', 'settings.html', 'settings-logs.html', 'gallery.html', 'settings-desktop.html', 'settings-notifications.html', 'settings-prompts.html', 'settings-other.html', 'settings-account.html', 'beautify.html', 'schedule.html', 'travel.html', 'travel-chat.html', 'worldbook.html', 'emoji.html', 'favorite.html', 'offline.html', 'offline-setting.html', 'moments.html', 'groups.html', 'group-setting.html', 'other.html', 'storage.html', 'backup.html', 'cloud-backup.html', 'char-relations.html', 'char-chats.html', 'phone.html', 'ins.html', 'couple-spaces.html', 'halo.html', 'books.html', 'mask.html', 'character.html', 'inner-setting.html', 'nano-setting.html', 'nano-files.html', 'ios-setting.html', 'assistant.html', 'family-card.html', 'wallet.html', 'appstore.html', 'cycle.html', 'fanfic.html', 'fanfic-create.html', 'fanfic-read.html', 'market.html', 'mcp.html', 'heart-setting.html', 'imessage.html', 'memory palace.html', 'app-host.html', 'meet.html', 'mall.html', 'qa.html', 'pomodoro.html', 'nano.html', 'nano-image.html', 'nano-image-settings.html', 'nano-card-template.html', 'xinsu.html'];
                 const hasOwnNav = ownNavPages.indexOf(pageName) !== -1;
                 const noOuterHeader = hasOwnNav || pageName === 'mall.html' || (showBack === false && !(title || ''));
                 if (noOuterHeader) {
@@ -5449,30 +5449,47 @@ setTimeout(function () {
     })();
 
 
-    // ===== 后台预热：等界面空闲后，把常用页面逐个拉进 SW 缓存 =====
+    // ===== 开屏预热：利用开屏动画等待的时间，把最常用的页面/脚本先拉进缓存 =====
     // 目的：第一次打开这些页也不用等整页网络往返，切换几乎没有加载感。
     (function warmPages() {
         try {
-            if (!navigator.serviceWorker) return;
             if (navigator.connection && (navigator.connection.saveData || /(^|-)2g$|slow-2g|(^|-)3g$/.test(navigator.connection.effectiveType || ''))) return;
+            // 常用 App 放最前面：开屏期间优先下载真正会被点开的页面和它依赖的 chat-core 等大脚本。
             var pages = [
-                'phone.html', 'chat.html', 'chat_inner.html', 'settings.html', 'character.html', 'moments.html', 'ins.html', 'music.html',
+                'chat_inner.html', 'chat.html', 'moments.html', 'ins.html', 'phone.html', 'xinsu.html',
+                'groups.html', 'character.html', 'settings.html', 'api.html', 'beautify.html', 'music.html',
                 'worldbook.html', 'emoji.html', 'nano.html', 'nano-files.html', 'nano-setting.html', 'nano-image.html', 'nano-image-settings.html',
-                'storage.html', 'backup.html', 'cloud-backup.html', 'char-relations.html', 'char-chats.html', 'other.html', 'beautify.html',
-                'inner-setting.html', 'groups.html', 'group-setting.html', 'halo.html', 'books.html', 'mask.html', 'favorite.html',
+                'storage.html', 'backup.html', 'cloud-backup.html', 'char-relations.html', 'char-chats.html', 'other.html',
+                'inner-setting.html', 'group-setting.html', 'halo.html', 'books.html', 'mask.html', 'favorite.html',
                 'memory.html', 'memory palace.html', 'offline.html', 'offline-setting.html', 'couple-spaces.html', 'voice-call.html', 'video-call.html',
-                'api.html', 'cycle.html', 'fanfic.html', 'fanfic-create.html', 'fanfic-read.html', 'discover.html', 'qa.html', 'pomodoro.html',
+                'cycle.html', 'fanfic.html', 'fanfic-create.html', 'fanfic-read.html', 'discover.html', 'qa.html', 'pomodoro.html',
                 'travel.html', 'travel-chat.html', 'nano-card-template.html', 'appstore.html', 'market.html', 'mall.html', 'wallet.html',
                 'phone-wallet.html', 'family-card.html', 'ios-setting.html', 'heart-setting.html', 'gallery.html', 'mcp.html', 'meet.html',
                 'schedule.html', 'settings-desktop.html', 'settings-notifications.html', 'settings-prompts.html', 'settings-other.html',
                 'settings-account.html', 'settings-android.html', 'settings-logs.html', 'imessage.html', 'doubao.html', 'mapcal.html',
                 'taobao.html', 'assistant.html', 'app-host.html', 'nano-app-template.html', '灰樱.html'
             ];
+            var CRITICAL = 6;
+            var hasSW = !!navigator.serviceWorker;
+            var warmLimit = hasSW ? pages.length : CRITICAL;
             var i = 0, seen = {};
             function fetchAsset(href) {
                 if (!href || seen[href]) return Promise.resolve();
                 seen[href] = 1;
                 return fetch(href, { credentials: 'same-origin' }).catch(function () {});
+            }
+            // 小并发下载：以前一条一条 35ms 排队，chat_inner 有几十个脚本要等好几秒；
+            // 现在同时抓 6 个，只占开屏的空闲带宽。
+            function fetchAssets(list, limit) {
+                var idx = 0;
+                function worker() {
+                    if (idx >= list.length) return Promise.resolve();
+                    var href = list[idx++];
+                    return fetchAsset(href).then(worker, worker);
+                }
+                var jobs = [];
+                for (var k = 0; k < Math.min(limit, list.length); k++) jobs.push(worker());
+                return Promise.all(jobs);
             }
             // 预热页面时顺便把它引用的 JS / CSS 一起拉进 SW / HTTP 缓存。
             // 只拉 HTML 是不够的：第一次打开仍然要解析一堆脚本，看起来就像“正在打开”。
@@ -5491,33 +5508,28 @@ setTimeout(function () {
                             assets.push(abs.href);
                         } catch (e) {}
                     }
-                    return assets.reduce(function (p, href) {
-                        return p.then(function () { return fetchAsset(href); }).then(function () {
-                            return new Promise(function (res) { setTimeout(res, 35); });
-                        });
-                    }, Promise.resolve());
+                    return fetchAssets(assets, 6);
                 }).catch(function () {});
             }
             function next() {
-                if (i >= pages.length) return;
+                if (i >= warmLimit) return;
                 var u = pages[i++];
-                warmPage(u).then(function () { setTimeout(next, 160); }, function () { setTimeout(next, 160); });
+                var wait = (i <= CRITICAL) ? 0 : 120;
+                warmPage(u).then(function () { setTimeout(next, wait); }, function () { setTimeout(next, wait); });
             }
-            // SW 已停用：直接顺序 fetch，浏览器 HTTP 缓存同样能命中
-            // 改为空闲时才预热，避免和首页/首屏资源抢带宽
             var warmStarted = false;
             var startWarm = function () {
                 if (warmStarted) return;
                 warmStarted = true;
-                setTimeout(next, 150);
+                setTimeout(next, 0);
             };
-            // 开屏骨架一出来就开始预热：利用开屏等待数据的时间，把常用 App 的 JS/CSS 拉进缓存。
-            try { if (window.__nanoHomeSkeletonReady) setTimeout(startWarm, 80); } catch (e) {}
-            try { window.addEventListener('message', function (e) { if (e && e.data && e.data.type === 'nanoHomeSkeletonReady') setTimeout(startWarm, 80); }); } catch (e) {}
+            // 开屏骨架一出来就开始预热（此刻首页已经能显示，预热不会拖慢首屏）。
+            try { if (window.__nanoHomeSkeletonReady) startWarm(); } catch (e) {}
+            try { window.addEventListener('message', function (e) { if (e && e.data && e.data.type === 'nanoHomeSkeletonReady') startWarm(); }); } catch (e) {}
             // 开屏一结束也开始预热（如果骨架信号没收到）。
-            try { document.addEventListener('nano-splash-done', function () { setTimeout(startWarm, 160); }, { once: true }); } catch (e) {}
-            if (window.requestIdleCallback) requestIdleCallback(startWarm, { timeout: 6000 });
-            else setTimeout(startWarm, 6000);
+            try { document.addEventListener('nano-splash-done', function () { startWarm(); }, { once: true }); } catch (e) {}
+            if (window.requestIdleCallback) requestIdleCallback(startWarm, { timeout: 4000 });
+            else setTimeout(startWarm, 4000);
         } catch (e) {}
     })();
 
@@ -5536,10 +5548,18 @@ setTimeout(function () {
                 } catch (e) {}
                 setTimeout(next, 1600);
             }
-            // 首页稳定后、设备空闲时再逐个预热，别和首屏抢带宽
-            var startTabWarm = function () { setTimeout(next, 200); };
-            if (window.requestIdleCallback) requestIdleCallback(startTabWarm, { timeout: 7000 });
-            else setTimeout(startTabWarm, 5000);
+            // 开屏骨架出来后就按顺序建好底部 tab，别等到 7 秒空闲之后。
+            var tabWarmStarted = false;
+            var startTabWarm = function () {
+                if (tabWarmStarted) return;
+                tabWarmStarted = true;
+                setTimeout(next, 400);
+            };
+            try { if (window.__nanoHomeSkeletonReady) startTabWarm(); } catch (e) {}
+            try { window.addEventListener('message', function (e) { if (e && e.data && e.data.type === 'nanoHomeSkeletonReady') startTabWarm(); }); } catch (e) {}
+            try { document.addEventListener('nano-splash-done', function () { startTabWarm(); }, { once: true }); } catch (e) {}
+            if (window.requestIdleCallback) requestIdleCallback(startTabWarm, { timeout: 2500 });
+            else setTimeout(startTabWarm, 2500);
         } catch (e) {}
     })();
 
@@ -5582,7 +5602,7 @@ setTimeout(function () {
         'js/float-chat.js?v=20261118a',
         'js/online-catchup.js?v=20261115a',
         'js/whisper-store.js?v=20261026a',
-        'js/char-secret-chat.js?v=20261119a'
+        'js/char-secret-chat.js?v=20261124a'
     ];
     function load() {
         files.forEach(function (src) {

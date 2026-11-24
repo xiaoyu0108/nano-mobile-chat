@@ -2079,6 +2079,28 @@ function parseDouyinHtml(text) {
   if (m) return { aweme_id: m[1], desc: m[2].replace(/\\n/g, ' ').replace(/\\"/g, '"') };
   return null;
 }
+// 抖音给搜索引擎蜘蛛（Baiduspider 等）输出的分享页不带反爬，里面有真实的
+// video_cover_image_url / description / video_title，正好可以补封面。
+function parseDouyinSeoMeta(html) {
+  const s = String(html || '');
+  function meta(name) {
+    const esc = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    let m = s.match(new RegExp('<meta[^>]+name=["\']' + esc + '["\'][^>]*content=["\']([^"\']*)["\']', 'i'));
+    if (!m) m = s.match(new RegExp('<meta[^>]+content=["\']([^"\']*)["\'][^>]*name=["\']' + esc + '["\']', 'i'));
+    return m ? linkDecodeHtml(m[1].replace(/&amp;/g, '&')) : '';
+  }
+  const desc = meta('description');
+  const am = desc.match(/ - (.+?)于\s*\d{8}\s*发布在抖音/);
+  const lm = desc.match(/收获了([\d.]+万?)个喜欢/);
+  return {
+    title: meta('lark:url:video_title') || meta('lark:url:note_title') || meta('og:title'),
+    desc: desc,
+    cover: meta('lark:url:video_cover_image_url') || meta('lark:url:note_cover_image_url') || meta('og:image'),
+    iframe: meta('lark:url:video_iframe_url') || meta('lark:url:note_iframe_url'),
+    author: am ? am[1] : '',
+    likes: lm ? lm[1] : ''
+  };
+}
 async function fetchLinkPreview(url, env) {
   let u;
   try { u = new URL(String(url || '')); } catch (e) { return null; }
@@ -2164,6 +2186,17 @@ async function fetchLinkPreview(url, env) {
     const vm = finalUrl.match(/\/(?:video|note|slides)\/(\d{8,})/) ||
       (first && first.text ? first.text.match(/"aweme_id"\s*:\s*"(\d{8,})"/) : null);
     if (vm && vm[1]) {
+      const dyKind = ((finalUrl.match(/\/(video|note|slides)\//i) || [])[1] || 'video').toLowerCase();
+      // 先用蜘蛛 UA 抓 SEO 分享页：这个页面不触发反爬，封面/文案都在 meta 里。
+      let seo = null;
+      try {
+        const sr = await fetchTextWithTimeout('https://www.iesdouyin.com/share/' + dyKind + '/' + vm[1] + '/', {
+          'User-Agent': 'Mozilla/5.0 (compatible; Baiduspider/2.0; +http://www.baidu.com/search/spider.html)',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'zh-CN,zh;q=0.9'
+        }, 10000);
+        if (sr && sr.text) seo = parseDouyinSeoMeta(sr.text);
+      } catch (e) {}
       const a = await fetchTextWithTimeout('https://www.iesdouyin.com/web/api/v2/aweme/iteminfo/?item_ids=' + vm[1], {
         'User-Agent': mobileUA,
         'Accept': 'application/json, text/plain, */*',
@@ -2191,14 +2224,29 @@ async function fetchLinkPreview(url, env) {
             }
           }
           if (!item && first && first.text) item = parseDouyinHtml(first.text);
+          // iteminfo/detail 都可能被抖音限流，分享页的 _ROUTER_DATA 通常仍带封面和文案。
+          if (!item || !(item.desc || (item.video && (item.video.cover || item.video.dynamic_cover)) || (item.images && item.images.length))) {
+            const sh = await fetchTextWithTimeout('https://www.iesdouyin.com/share/' + dyKind + '/' + vm[1] + '/', {
+              'User-Agent': mobileUA,
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+              'Referer': 'https://www.iesdouyin.com/'
+            }, 10000);
+            if (sh && sh.text) {
+              const si = parseDouyinHtml(sh.text);
+              if (si) item = si;
+            }
+          }
           if (item) {
-            const desc = String(item.desc || '').replace(/\s+/g, ' ').trim();
-            const author = String((item.author && (item.author.nickname || item.author.unique_id)) || '');
+            const desc = String(item.desc || (seo && seo.desc) || '').replace(/\s+/g, ' ').trim();
+            const author = String((item.author && (item.author.nickname || item.author.unique_id)) || (seo && seo.author) || '');
             const coverObj = item.video && (item.video.cover || item.video.dynamic_cover || item.video.origin_cover);
             const cover = (typeof coverObj === 'string' && coverObj) ||
               (coverObj && Array.isArray(coverObj.url_list) && coverObj.url_list[0]) ||
               (coverObj && Array.isArray(coverObj.uri) && coverObj.uri[0]) ||
-              (item.video && item.video.play_addr && item.video.play_addr.url_list && item.video.play_addr.url_list[0]) || '';
+              (item.video && item.video.play_addr && item.video.play_addr.url_list && item.video.play_addr.url_list[0]) ||
+              (item.images && item.images[0] && ((item.images[0].url_list && item.images[0].url_list[0]) || item.images[0].url || item.images[0].uri)) ||
+              (item.share_info && item.share_info.share_image_url) ||
+              (seo && seo.cover) || '';
             const stats = item.statistics || {};
             const music = (item.music && (item.music.title || item.music.author)) ? String(item.music.title || item.music.author) : '';
             const tags = (Array.isArray(item.text_extra) ? item.text_extra : []).map(function (t) {
@@ -2243,6 +2291,27 @@ async function fetchLinkPreview(url, env) {
             }
           }
         } catch (e) {}
+      }
+      // iteminfo/detail 都拿不到时，SEO 蜘蛛页仍能给出真实封面和完整文案。
+      if (seo && (seo.desc || seo.cover)) {
+        const sdesc = String(seo.desc || '').replace(/\s+/g, ' ').trim();
+        const stitle = String(seo.title || sdesc || '抖音视频').replace(/\s*-\s*抖音$/, '').slice(0, 120);
+        return {
+          url: finalUrl,
+          via: 'douyin-seo',
+          platform: 'douyin',
+          title: stitle,
+          desc: sdesc.slice(0, 180),
+          content: [stitle, sdesc, seo.author ? ('作者：' + seo.author) : ''].filter(Boolean).join('\n').slice(0, 7000),
+          author: seo.author || '',
+          stats: seo.likes ? { digg_count_text: seo.likes } : {},
+          comments: [],
+          music: '',
+          tags: [],
+          awemeId: vm[1],
+          images: seo.cover ? [linkAbsImg(seo.cover)] : [],
+          price: ''
+        };
       }
     }
   }
@@ -2302,6 +2371,39 @@ async function fetchLinkPreview(url, env) {
     const cover5 = linkCoverOnly(data, u.href);
     if (cover5) return cover5;
   }
+  // 最后兜底：无头浏览器服务读取分享页 OG 标签。抖音/小红书的公开接口被限流时，
+  // 这一步常能拿到真实封面，避免卡片只剩站点名和红底白字。
+  try {
+    const ml = await fetchTextWithTimeout('https://api.microlink.io/?url=' + encodeURIComponent(u.href) + '&meta=true', {
+      'Accept': 'application/json'
+    }, 20000);
+    if (ml && ml.text) {
+      const mj = JSON.parse(ml.text);
+      const md = mj && mj.status === 'success' ? mj.data : null;
+      let img = md && md.image && (md.image.url || md.image) || '';
+      if (/logo_launcher|douyinstatic\.com\/obj\/eden-cn/i.test(String(img))) img = '';
+      const title = md && md.title ? String(md.title).trim() : '';
+      const desc = md && md.description ? String(md.description).replace(/\s+/g, ' ').trim() : '';
+      if (img || (title && !/记录美好生活|帮助用户表达自我/i.test(title))) {
+        return {
+          url: u.href,
+          via: 'microlink',
+          platform: /douyin|iesdouyin/i.test(u.hostname) ? 'douyin' : (/xiaohongshu|xhslink/i.test(u.hostname) ? 'xiaohongshu' : ''),
+          title: title.slice(0, 120),
+          desc: desc.slice(0, 180),
+          content: [title, desc].filter(Boolean).join('\n').slice(0, 7000),
+          author: '',
+          stats: {},
+          comments: [],
+          music: '',
+          tags: [],
+          awemeId: '',
+          images: img ? [linkAbsImg(img)] : [],
+          price: ''
+        };
+      }
+    }
+  } catch (e) {}
   return null;
 }
 

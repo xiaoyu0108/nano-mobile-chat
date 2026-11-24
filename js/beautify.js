@@ -1976,9 +1976,18 @@ async function initTemplates() {
   } else {
     const gCode = await storeGet("settings", "applied_global");
     const cCode = await storeGet("settings", "applied_chat");
-    if (gCode) setCode("global", gCode.value);
+    // 以「真正应用到聊天页的 CSS」（localStorage 的 v2 键）为准：
+    // 小窗/集市切换预设时不一定会写 IndexedDB 的 applied_*，
+    // 用旧的 applied_* 回填会让编辑器跳回上一套美化。
+    let localGlobal = "";
+    let localChat = "";
+    try { localGlobal = localStorage.getItem("beautify_global_v2") || ""; } catch (e) {}
+    try { localChat = localStorage.getItem("beautify_chat_v2") || ""; } catch (e) {}
+    if (localGlobal) setCode("global", localGlobal);
+    else if (gCode) setCode("global", gCode.value);
     else setCode("global", GLOBAL_TEMPLATE);
-    if (cCode) setCode("chat", cCode.value);
+    if (localChat) setCode("chat", localChat);
+    else if (cCode) setCode("chat", cCode.value);
     else setCode("chat", CHAT_TEMPLATE);
   }
 }
@@ -3324,16 +3333,12 @@ async function restoreFontToBeautifyPage() {
    ============================================================ */
 (async () => {
   try {
-    // 迁移：旧版聊天模板默认把头像换成 "☰"、并去掉了顶栏玻璃包裹（会出现乱码/双图标），
-    // 若是未改动的旧模板，直接换成新版默认模板并重新应用。
+    // 旧版这里会在每次打开美化页时检查「☰ + 聊天美化模板」，命中就强制写回默认模板。
+    // 很多用户/集市美化都是在旧模板基础上改的，也包含这两个标记，结果一进美化页
+    // 就会把刚设置好的美化重置成默认（看起来像美化在乱跳）。迁移早该结束，这里不再执行。
     try {
-      var storedChat = localStorage.getItem('beautify_chat_v2') || '';
-      if (storedChat.indexOf('☰') !== -1 && storedChat.indexOf('聊天美化模板') !== -1) {
-        localStorage.setItem('beautify_chat_v2', CHAT_TEMPLATE);
-        localStorage.setItem('beautify_chat', CHAT_TEMPLATE);
-        setCode('chat', CHAT_TEMPLATE);
-        applyCSSToParent('chat', CHAT_TEMPLATE);
-        try { storePut('settings', { key: 'applied_chat', value: CHAT_TEMPLATE }).catch(function() {}); } catch (e2) {}
+      if (!localStorage.getItem('nano_beautify_tail_fix_v3')) {
+        localStorage.setItem('nano_beautify_tail_fix_v3', '1');
       }
     } catch (e) {}
 
@@ -3430,9 +3435,26 @@ async function restoreFontToBeautifyPage() {
         await renderFontQuickBar();
       } catch (e) {}
     }
+    // 从集市 / 小窗 / 其它页面应用后，让美化页的编辑器与预设选择立刻跟着变，
+    // 不要停留在上一套美化上（否则下次进入或点应用又会被旧代码覆盖）。
+    function syncAppliedCssIntoEditor(type, css) {
+      if (type !== 'chat' && type !== 'global') return;
+      try {
+        setCode(type, String(css || ''));
+        if (type === 'chat') {
+          const detected = detectBuiltinChatTheme(getCode('chat'));
+          if (detected) { activeBuiltinChatTheme = detected; markBuiltinChatTheme(detected); }
+          else markBuiltinChatTheme('');
+        }
+        persistDraft(type);
+      } catch (e) {}
+    }
     window.addEventListener('message', function (e) {
       var t = e && e.data && e.data.type;
       if (!t) return;
+      if (t === 'beautify:apply') {
+        try { syncAppliedCssIntoEditor(e.data.target, e.data.css || ''); } catch (err) {}
+      }
       if (['nanoOverlayReopen', 'nano:pageShown', 'beautify:apply', 'beautify:font',
            'marketResourceImported', 'contactsDataUpdated'].indexOf(t) !== -1) {
         refreshBeautifyListsFromStore();

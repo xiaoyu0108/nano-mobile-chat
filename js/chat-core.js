@@ -2269,6 +2269,9 @@
                             secretRecordId: msg.cardData.secretRecordId, secretAt: msg.cardData.secretAt, secretLines: (Array.isArray(msg.cardData.secretLines) ? msg.cardData.secretLines.slice(0, 20).map(function(l){return {who:l.who,name:String(l.name||'').slice(0,40),text:String(l.text||'').slice(0,800),translation:String(l.translation||'').slice(0,800)};}) : null),
                             footer: msg.cardData.footer,
                             storyId: msg.cardData.storyId,
+                            essayId: msg.cardData.essayId,
+                            charId: msg.cardData.charId,
+                            charName: msg.cardData.charName,
                             excerpt: msg.cardData.excerpt,
                             content: msg.cardData.content,
                             genres: msg.cardData.genres,
@@ -3910,6 +3913,20 @@
 
     // ===== 构建卡片 HTML =====
     function buildCardHTMLLegacy(cardData) {
+        if (cardData.cardType === 'xinsu') {
+            const clean = function (v) { return String(v == null ? '' : v).replace(/[<>&"]/g, ''); };
+            const nm = clean(cardData.charName || displayName || 'TA');
+            const initial = (nm.trim().charAt(0) || '?');
+            return '<div class="xs-card" data-xs-id="' + clean(cardData.essayId || '') + '" data-xs-char="' + clean(cardData.charId || chatId || '') + '">' +
+                '<div class="xs-card-head"><div class="xs-avatar xs-avatar-fallback">' + initial + '</div>' +
+                '<div class="xs-card-name">' + nm +
+                '<svg class="xs-badge" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#1d9bf0"/><path d="m7 12.4 3.1 3.1L17.4 8" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>' +
+                '<div class="xs-card-label">心愫</div></div>' +
+                '<div class="xs-card-title">' + clean(cardData.title || '心愫') + '</div>' +
+                (cardData.excerpt ? '<div class="xs-card-excerpt">' + clean(cardData.excerpt) + '</div>' : '') +
+                '<div class="xs-card-foot">点击展开<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg></div>' +
+                '</div>';
+        }
         if (cardData.cardType === 'study') {
             const clean = function (v) { return String(v == null ? '' : v).replace(/[<>&"]/g, ''); };
             const mins = Number(cardData.minutes || 0);
@@ -4254,7 +4271,8 @@
                     side: type === 'right' ? 'right' : 'left',
                     time: time || (cardData && cardData.time) || '刚刚',
                     meName: currentUserName || '我',
-                    otherName: displayName || 'TA'
+                    otherName: displayName || 'TA',
+                    avatar: (characterData && characterData.avatar) || ''
                 });
             }
         } catch (err) {
@@ -4271,6 +4289,7 @@
             return desc || '一张照片';
         }
         if (isCard && cardData) {
+            if (cardData.cardType === 'xinsu') return '一张心愫卡片 · ' + (cardData.title || '');
             if (cardData.cardType === 'study') return cardData.title || '一次学习陪伴';
             if (cardData.cardType === 'transfer') return '一笔转账';
             if (cardData.cardType === 'gift') return cardData.title || '一个礼物';
@@ -4350,6 +4369,7 @@
             + '</svg><span>工具调用 · ' + tools.length + '</span>';
         const body = document.createElement('div');
         body.className = 'msg-think-body';
+        let hasToolPics = false;
         tools.forEach(function (t) {
             const item = document.createElement('div');
             item.className = 'msg-tool' + (t.ok ? '' : ' fail');
@@ -4366,12 +4386,44 @@
             if (t.result) {
                 const r = document.createElement('div');
                 r.className = 'msg-tool-res';
-                r.textContent = String(t.result).slice(0, 1500);
+                const resultText = String(t.result);
+                r.textContent = resultText.slice(0, 1500);
+                // 抖音/小红书工具结果里会带封面 URL：直接渲染成缩略图，避免只能看到一串链接。
+                try {
+                    const urls = (resultText.match(/https?:\/\/[^\s"'<>]+/g) || []).map(function (u) {
+                        return u.replace(/[),，。；;]+$/, '');
+                    }).filter(function (u) {
+                        return /(\.(?:jpe?g|png|webp|gif|avif)(?:[?#]|$))|douyinpic|byteimg|xhscdn|hdslb|sinaimg|alicdn/i.test(u);
+                    }).slice(0, 3);
+                    if (urls.length) {
+                        hasToolPics = true;
+                        const pics = document.createElement('div');
+                        pics.className = 'msg-tool-pics';
+                        urls.forEach(function (u) {
+                            let src = u;
+                            try {
+                                const base = autoPushBase();
+                                const tok = autoPushToken() || '';
+                                if (base && /douyinpic|byteimg|xhscdn|hdslb|sinaimg|alicdn/i.test(u)) {
+                                    src = base + '/image?url=' + encodeURIComponent(u) + (tok ? ('&token=' + encodeURIComponent(tok)) : '');
+                                }
+                            } catch (e) {}
+                            const im = document.createElement('img');
+                            im.loading = 'lazy';
+                            im.referrerPolicy = 'no-referrer';
+                            im.alt = '封面';
+                            im.src = src;
+                            pics.appendChild(im);
+                        });
+                        r.appendChild(pics);
+                    }
+                } catch (e) {}
                 item.appendChild(r);
             }
             body.appendChild(item);
         });
         btn.addEventListener('click', function (e) { e.stopPropagation(); wrap.classList.toggle('open'); });
+        if (hasToolPics) wrap.classList.add('open');
         wrap.appendChild(btn);
         wrap.appendChild(body);
         return wrap;
@@ -9602,6 +9654,10 @@
             const who = m.type === 'right' ? '用户' : '角色';
             const status = cd.status || 'pending';
             const isResp = cd.response;
+            if (cd.cardType === 'xinsu') {
+                return who + '给' + (m.type === 'left' ? '用户' : '你') + '写了一张「心愫」卡片《' + (cd.title || '心愫') + '》：' +
+                    String(cd.excerpt || '').slice(0, 120) + '（这是角色私下写下的心里话，完整内容可点开卡片查看）';
+            }
             if (cd.cardType === 'file') {
                 return who + '发送了文件「' + (cd.name || '文件') + '」（' + (cd.size || '') + '），文件内容如下：\n' + String(cd.content || '');
             }
@@ -10700,6 +10756,23 @@
                 })
                 .catch(function () { return fromProxy(i + 1); });
         }
+        // 公共代理也抓不到时（抖音对机房 IP 很严格），用无头浏览器服务读一次分享页 OG 标签。
+        function fromMicrolink() {
+            return linkFetch('https://api.microlink.io/?url=' + encodeURIComponent(url) + '&meta=true', { cache: 'no-store' }, 20000)
+                .then(function (r) { if (!r.ok) throw new Error('http'); return r.json(); })
+                .then(function (j) {
+                    if (!j || j.status !== 'success' || !j.data) throw new Error('empty');
+                    var d = j.data;
+                    var title = String(d.title || '').trim();
+                    var desc = String(d.description || '').replace(/\s+/g, ' ').trim();
+                    var img = d.image && (d.image.url || d.image) || '';
+                    if (/logo_launcher|douyinstatic\.com\/obj\/eden-cn/i.test(String(img))) img = '';
+                    // 抖音首页/登录页的通用文案不能当成这条视频的内容。
+                    if (/记录美好生活|帮助用户表达自我|抖音-记录美好生活/i.test(title + ' ' + desc) && !img) throw new Error('generic');
+                    if (!title && !desc && !img) throw new Error('empty');
+                    return { title: title, desc: desc, content: [title, desc].filter(Boolean).join('\n'), images: img ? [img] : [], price: '' };
+                });
+        }
         return fromCustom()
             // 自定义解析服务没配置 / 失败时，继续走 Worker、Jina、公共代理。
             .catch(function () { return fromWorker(); })
@@ -10707,6 +10780,7 @@
             // 它们有时能拿到正文和封面，不能因为 Worker 一次失败就放弃整张卡片。
             .catch(function () { return fromJina(); })
             .catch(function () { return fromProxy(0); })
+            .catch(function () { return fromMicrolink(); })
             .catch(function () { return null; });
     }
     // 防盗链 CDN 的图片先经 Worker 代理下载成 dataURL；代理不可用时宁可不发图，
@@ -11160,6 +11234,17 @@
                         : ('\n\n【本次重roll必须修正】' + __rr);
                 }
             } catch (e) {}
+            // 心愫：约 5 天一次，只对近 24h 聊过天的角色；跟着本轮气泡一起输出，不额外调用 API。
+            let __xinsuAsked = false;
+            try {
+                const __XS = window.NanoXinSu;
+                if (!isNanoChat && !getChatSetting('blocked', false) && !getChatSetting('charBlocked', false) &&
+                    __XS && __XS.shouldWrite(chatId, messages)) {
+                    __sys += '\n\n' + __XS.promptBlock(displayName || chatName || '角色');
+                    __XS.markAsked(chatId);
+                    __xinsuAsked = true;
+                }
+            } catch (e) {}
             // 用户刚换了头像：把新头像本身作为图片发给模型，让角色真正「看清」对方的新头像
             let avatarImageMsg = null;
             try {
@@ -11296,7 +11381,7 @@
                 const m = messages[i];
                 if (m && m.type === 'right' && !m.recalled) { __lastUserId = m.id || ''; break; }
             }
-            const __maxTokens = isNanoChat ? (function () {
+            let __maxTokens = isNanoChat ? (function () {
                 const v = parseInt(getChatSetting('nanoMaxTokens', 0), 10);
                 return Math.min(v > 0 ? v : 32768, 131072);
             })() : (function () {
@@ -11304,6 +11389,8 @@
                 if (v > 0) return Math.min(v, 32768);
                 return 8192;
             })();
+            // 心愫正文约 500 字，别被用户的低字数上限截断。
+            if (__xinsuAsked) __maxTokens = Math.max(__maxTokens, 3200);
             const __temp = (typeof config.mainTemp === 'number' ? config.mainTemp : parseFloat(config.mainTemp)) || 0.7;
             const __isAnthropic = String(config.mainApiType || '').toLowerCase() === 'anthropic';
             const __token = 'creq_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
@@ -12196,6 +12283,30 @@
             status: 'pending'
         });
     }
+    // 心愫卡片：正文存在该 char 自己的历史里，聊天里只放卡片入口。
+    function addXinSuCard(payload, timeStr) {
+        if (!payload || !payload.body) return;
+        const XS = window.NanoXinSu;
+        if (!XS) return;
+        try {
+            const rec = XS.add(chatId, {
+                title: payload.title,
+                body: payload.body,
+                charName: displayName || chatName || 'TA',
+                charAvatar: (characterData && characterData.avatar) || ''
+            });
+            if (!rec) return;
+            const excerpt = String(rec.body || '').replace(/\s+/g, ' ').slice(0, 72);
+            addMessage('left', '', timeStr || nowHHMM(), null, false, true, {
+                cardType: 'xinsu',
+                essayId: rec.id,
+                title: rec.title,
+                excerpt: excerpt,
+                charId: chatId,
+                charName: displayName || chatName || 'TA'
+            });
+        } catch (e) {}
+    }
 
     async function processReply(reply, quoteTarget) {
         if (!reply) return;
@@ -12323,6 +12434,26 @@
         const secRound = extractHeartSections(replyBody);
         replyBody = secRound.text.trim();
         if (roundHeart && secRound.sections.length) roundHeart.sections = secRound.sections;
+
+        // 心愫：和气泡同一次 API 输出。必须在按行拆分气泡之前从整段正文里抽走，
+        // 否则 500 字的正文会被拆成很多行，标签永远解析不到。
+        let roundXinsu = null;
+        try {
+            let xsm = replyBody.match(/[\[【]\s*(?:xinsu|心愫)\s*[:：]\s*([\s\S]*?)[\]】]/i);
+            if (!xsm) {
+                // 兼容模型写成 <心愫>标题|正文</心愫> 的 XML 风格
+                xsm = replyBody.match(/[\[【]\s*(?:xinsu|心愫)\s*[\]】]\s*([\s\S]*?)\s*[\[【]\s*\/\s*(?:xinsu|心愫)\s*[\]】]/i);
+            }
+            if (xsm) {
+                const parsedXs = (window.NanoXinSu && window.NanoXinSu.parseEssayPayload)
+                    ? window.NanoXinSu.parseEssayPayload(xsm[1])
+                    : null;
+                if (parsedXs) roundXinsu = parsedXs;
+                replyBody = replyBody.replace(xsm[0], ' ')
+                    .replace(/\[\/?\s*xinsu[^\]]*\]/gi, ' ')
+                    .trim();
+            }
+        } catch (e) {}
 
         // 思维链：**全局**提取并移除所有 [think]...[/think]（兼容 <think>、【思考】、全角括号等写法），
         // 第一段非空内容挂到本轮第一条角色气泡上方的可折叠区
@@ -12562,6 +12693,7 @@
                     }
                 }
             }
+            if (roundXinsu) addXinSuCard(roundXinsu, timeStr);
             addScheduleChangeCard(__schedChanges, timeStr);
             saveMessages();
             return;
@@ -12713,6 +12845,7 @@
                     }
                 }
             }
+            if (roundXinsu) addXinSuCard(roundXinsu, timeStr);
             addScheduleChangeCard(__schedChanges, timeStr);
             console.log('[Chat] 回复完成，共 ' + sentCount + ' 条消息');
             saveMessages();
