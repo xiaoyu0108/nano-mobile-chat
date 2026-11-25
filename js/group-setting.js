@@ -73,17 +73,35 @@
         return g;
     }
 
+    // 和群聊页共用一份不带作用域的成员身份状态，避免两边 uid 不一致时读到旧值。
+    function syncExternalMemberState(g){
+        if (!g) return g;
+        try {
+            var raw = localStorage.getItem('nano_group_member_state_' + chatId);
+            if (!raw) return g;
+            var st = JSON.parse(raw);
+            var stTs = st ? (Number(st.ts) || 0) : 0;
+            var gTs = Number(g.memberStateTs) || 0;
+            if (st && stTs > gTs) {
+                g.userLeft = !!st.userLeft;
+                g.observer = !!st.observer;
+                g.memberStateTs = stTs;
+            }
+        } catch (e) {}
+        return g;
+    }
+
     function loadGroup(){
         try {
             var raw = localStorage.getItem(GROUP_KEY);
             if (raw) {
                 var g = JSON.parse(raw);
-                if (g && g.members) return mergeRegistryMemberSettings(g, loadRegistryGroup());
+                if (g && g.members) return syncExternalMemberState(mergeRegistryMemberSettings(g, loadRegistryGroup()));
             }
         } catch(e){}
         var rg = loadRegistryGroup();
-        if (rg) return buildFromRegistry(rg);
-        return JSON.parse(JSON.stringify(defaultGroup));
+        if (rg) return syncExternalMemberState(buildFromRegistry(rg));
+        return syncExternalMemberState(JSON.parse(JSON.stringify(defaultGroup)));
     }
     function syncToRegistry(){
         try {
@@ -140,6 +158,13 @@
                         g.notice = cur.notice;
                         g.profileTs = cur.profileTs;
                     }
+                    var curStateTs = Number(cur.memberStateTs) || 0;
+                    var ownStateTs = Number(g.memberStateTs) || 0;
+                    if (curStateTs > ownStateTs) {
+                        g.userLeft = !!cur.userLeft;
+                        g.observer = !!cur.observer;
+                        g.memberStateTs = cur.memberStateTs;
+                    }
                 }
             }
         } catch (e) {}
@@ -161,12 +186,35 @@
             var key = 'group_pending_changes_' + chatId;
             var arr = [];
             try { arr = JSON.parse(localStorage.getItem(key) || '[]') || []; } catch(e){ arr = []; }
-            arr.push(text);
+            if (arr.indexOf(text) === -1) arr.push(text);
             localStorage.setItem(key, JSON.stringify(arr));
         } catch(e){}
     }
     function loadMsgs(){
         try { var raw = localStorage.getItem(MSG_KEY); return raw ? JSON.parse(raw) : []; } catch(e){ return []; }
+    }
+    // 往群消息流里广播一条系统通知（居中灰条）。用稳定 id 去重：同一次事件只允许出现一次。
+    function broadcastSystemMessage(text, id){
+        try {
+            var mid = String(id || ('sys_' + Date.now()));
+            var arr = loadMsgs();
+            if (!Array.isArray(arr)) arr = [];
+            if (arr.some(function(m){ return m && String(m.id) === mid; })) return false;
+            var now = new Date();
+            arr.push({
+                id: mid,
+                type: 'left',
+                isTip: true,
+                isSystem: true,
+                text: String(text || ''),
+                time: String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0'),
+                ts: Date.now(),
+                recalled: false
+            });
+            try { localStorage.setItem(MSG_KEY, JSON.stringify(arr.slice(-400))); } catch (e) {}
+            messages = arr;
+            return true;
+        } catch (e) { return false; }
     }
 
     var group = loadGroup();
@@ -277,11 +325,11 @@
         if (group.avatar) gp.innerHTML = '<img src="' + group.avatar + '">';
         else gp.textContent = '群';
         $('gpName').textContent = group.name || '群聊';
-        $('gpMeta').textContent = (group.members.length + 1) + ' 人';
+        $('gpMeta').textContent = (group.members.length + (group.userLeft ? 0 : 1)) + ' 人';
         $('editNamePreview').textContent = group.name || '未设置';
         $('editNoticePreview').textContent = group.notice ? (group.notice.length > 12 ? group.notice.slice(0,12) + '…' : group.notice) : '未设置';
         $('editAvatarPreview').textContent = group.avatar ? '已设置' : '未设置';
-        $('memberCount').textContent = group.members.length + 1;
+        $('memberCount').textContent = group.members.length + (group.userLeft ? 0 : 1);
         $('bgStatus').textContent = localStorage.getItem(BG_KEY) ? '已设置' : '默认';
         $('timeSwitch').checked = !!settings.timeAware;
         $('imageSwitch').checked = !!settings.allowImage;
@@ -300,26 +348,28 @@
         var el = $('memberList');
         el.innerHTML = '';
 
-        // 我自己
-        var isOwner = isUserOwner();
-        var selfTitle = currentSelfTitle();
-        var selfLevel = settings.myLevel || 1;
-        var selfAvatar = currentUser.avatar ? '<img src="' + currentUser.avatar + '">' : (currentUser.initial || '你');
-        var selfRow = document.createElement('div');
-        selfRow.className = 'member-row';
-        selfRow.innerHTML =
-            '<div class="m-avatar" style="background:#34c759;">' + selfAvatar + '</div>' +
-            '<div class="m-info">' +
-                '<div class="m-name">' +
-                    '<span class="m-nick">' + (currentUser.nick || '你') + '</span>' +
-                    '<span class="m-title" style="background:' + levelColor(selfLevel) + ';">' + selfTitle + '</span>' +
+        // 我自己：退出后转为旁观，成员列表里不再出现「我」。
+        if (!group.userLeft) {
+            var isOwner = isUserOwner();
+            var selfTitle = currentSelfTitle();
+            var selfLevel = settings.myLevel || 1;
+            var selfAvatar = currentUser.avatar ? '<img src="' + currentUser.avatar + '">' : (currentUser.initial || '你');
+            var selfRow = document.createElement('div');
+            selfRow.className = 'member-row';
+            selfRow.innerHTML =
+                '<div class="m-avatar" style="background:#34c759;">' + selfAvatar + '</div>' +
+                '<div class="m-info">' +
+                    '<div class="m-name">' +
+                        '<span class="m-nick">' + (currentUser.nick || '你') + '</span>' +
+                        '<span class="m-title" style="background:' + levelColor(selfLevel) + ';">' + selfTitle + '</span>' +
+                    '</div>' +
+                    '<div class="m-role">' + (isOwner ? '群主' : '成员') + '</div>' +
                 '</div>' +
-                '<div class="m-role">' + (isOwner ? '群主' : '成员') + '</div>' +
-            '</div>' +
-            '<div class="m-actions">' +
-                '<button class="m-icon-btn title-btn" data-me="1"><i class="fas fa-pen"></i></button>' +
-            '</div>';
-        el.appendChild(selfRow);
+                '<div class="m-actions">' +
+                    '<button class="m-icon-btn title-btn" data-me="1"><i class="fas fa-pen"></i></button>' +
+                '</div>';
+            el.appendChild(selfRow);
+        }
 
         group.members.forEach(function(m, i){
             var lv = m.level || 1;
@@ -941,14 +991,40 @@
     $('quitCancel').addEventListener('click', function(){ $('quitModal').classList.remove('active'); });
     $('quitConfirm').addEventListener('click', function(){
         $('quitModal').classList.remove('active');
+        if (group.userLeft) {
+            showAlert('提示', '你已经退出群聊，正在以第三方视角旁观');
+            return;
+        }
+        // 退出 = 转为第三方旁观：群里不再有用户的成员身份，用户发的消息会变成旁白。
+        var quitStamp = Date.now();
         group.userLeft = true;
-        saveGroup(group);
-        pushPendingChange('用户退出了群聊，之后只能围观大家聊天');
-        showAlert('提示', '已退出群聊');
+        group.observer = true;
+        group.memberStateTs = quitStamp;
+        // 这里不能依赖 saveGroup 的「已读权威副本」闸门：设置页刚打开时它可能还没就绪，
+        // 会导致点退出后什么都没写进去（表现出来就是还在群里、消息还是气泡）。
+        try { writeGroupNow(group); } catch (e) {}
+        try {
+            if (window.GroupStore && GroupStore.set) {
+                GroupStore.set(GROUP_KEY, JSON.stringify(group)).catch(function(){});
+            }
+        } catch (e) {}
+        // 不带 user 作用域的成员身份状态：私聊/群聊页任何一边都能直接读到。
+        try {
+            localStorage.setItem('nano_group_member_state_' + chatId, JSON.stringify({
+                userLeft: true, observer: true, ts: group.memberStateTs
+            }));
+        } catch (e) {}
+        try { syncToRegistry(); } catch (e) {}
+        // 群内广播一条系统通知，只广播一次；不再走 pending（pending 会被多次读取/重放）。
+        var leaveName = (settings && settings.myNick) ||
+            ((currentUser && currentUser.name && currentUser.name !== '你') ? (currentUser.nick || currentUser.name) : '') ||
+            '用户';
+        broadcastSystemMessage('「' + leaveName + '」退出了群聊，转为第三方旁观', 'sys_leave_' + quitStamp);
+        showAlert('已转为旁观', '你已退出群聊。之后你发的消息都会以旁白出现，不再是群成员发言；也可以在私聊里让角色把你重新拉回群聊。');
         setTimeout(function(){
             if (window.parent !== window) window.parent.postMessage({ type:'closeFullscreen' }, '*');
             else history.back();
-        }, 1200);
+        }, 1400);
     });
 
     // ========== 解散群聊 ==========
@@ -967,7 +1043,9 @@
         [GROUP_KEY, MSG_KEY, SETTINGS_KEY, BG_KEY,
          'group_pending_changes_' + chatId, 'group_req_' + chatId,
          'group_reply_pending_' + chatId, 'group_api_result_' + chatId,
-         'group_mem_tick_' + chatId, 'group_summary_state_' + chatId].forEach(removeGroupKey);
+         'group_mem_tick_' + chatId, 'group_summary_state_' + chatId,
+         'group_pending_seen_' + chatId].forEach(removeGroupKey);
+        try { localStorage.removeItem('nano_group_member_state_' + chatId); } catch (e) {}
         // 清掉这个群的群邀请，避免解散后还留下可点的旧邀请卡
         try {
             if (window.GroupInvites) {

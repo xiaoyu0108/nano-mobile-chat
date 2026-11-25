@@ -100,17 +100,42 @@
         return g;
     }
 
+    // 群成员身份（是否退出旁观）额外存一份不带 user 作用域的轻量状态。
+    // 群资料本身是按 uid 分作用域的；私聊页和群聊页万一没切到同一个 uid，
+    // 只写 group_data 会出现「私聊说拉回了、进群还在旁观」。这份状态用群 id 就能读到。
+    function readExternalMemberState(){
+        try {
+            var raw = localStorage.getItem('nano_group_member_state_' + chatId);
+            if (!raw) return null;
+            var st = JSON.parse(raw);
+            return (st && typeof st.userLeft !== 'undefined') ? st : null;
+        } catch (e) { return null; }
+    }
+    function syncExternalMemberState(g){
+        if (!g) return g;
+        var st = readExternalMemberState();
+        if (!st) return g;
+        var stTs = Number(st.ts) || 0;
+        var gTs = Number(g.memberStateTs) || 0;
+        if (stTs > gTs) {
+            g.userLeft = !!st.userLeft;
+            g.observer = !!st.observer;
+            g.memberStateTs = stTs;
+        }
+        return g;
+    }
+
     function loadGroup(){
         try {
             var raw = localStorage.getItem(GROUP_KEY);
             if (raw) {
                 var g = JSON.parse(raw);
-                if (g && g.members) return mergeRegistryMemberSettings(g, loadRegistryGroup());
+                if (g && g.members) return syncExternalMemberState(mergeRegistryMemberSettings(g, loadRegistryGroup()));
             }
         } catch(e){}
         var rg = loadRegistryGroup();
-        if (rg) return buildFromRegistry(rg);
-        return JSON.parse(JSON.stringify(defaultGroup));
+        if (rg) return syncExternalMemberState(buildFromRegistry(rg));
+        return syncExternalMemberState(JSON.parse(JSON.stringify(defaultGroup)));
     }
     // 群资料以 IndexedDB 为准：页面刚打开时 localStorage 可能是旧的（写满配额时新群名/头像
     // 只会落进 IndexedDB）。在读到权威资料之前，任何 saveGroup（等级、成员名回填等）都可能
@@ -133,6 +158,15 @@
                         g.avatar = cur.avatar;
                         g.notice = cur.notice;
                         g.profileTs = cur.profileTs;
+                    }
+                    // 退出/被拉回群聊是在设置页或私聊里改的：成员身份状态以更晚的 memberStateTs 为准，
+                    // 不让本页内存里的旧副本（或较晚的等级刷新）把「已退出旁观」覆盖回去。
+                    var curStateTs = Number(cur.memberStateTs) || 0;
+                    var ownStateTs = Number(g.memberStateTs) || 0;
+                    if (curStateTs > ownStateTs) {
+                        g.userLeft = !!cur.userLeft;
+                        g.observer = !!cur.observer;
+                        g.memberStateTs = cur.memberStateTs;
                     }
                 }
             }
@@ -162,7 +196,38 @@
             }, 250);
         } catch(e) {}
     }
-    function saveMsgs(){ try { localStorage.setItem(MSG_KEY, JSON.stringify(messages.slice(-400))); } catch(e){} notifyGroupListPreview(); }
+    function saveMsgs(){
+        try { localStorage.setItem(MSG_KEY, JSON.stringify(messages.slice(-400))); } catch(e){}
+        // 私聊页面读不到完整群消息时，用这份轻量「最近群聊」兜底；
+        // 群聊 ↔ 私聊互通靠它保证进入私聊后还记得群里刚发生的事。
+        try {
+            var uname = (settings && settings.myNick) || '用户';
+            var recent = [];
+            for (var i = messages.length - 1; i >= 0 && recent.length < 24; i--) {
+                var m = messages[i];
+                if (!m || m.recalled) continue;
+                var who = '', txt = '';
+                if (m.isTip) {
+                    if (!m.isNarration) continue;
+                    who = '旁白';
+                    txt = String(m.text || '');
+                } else if (m.type === 'right') {
+                    who = uname;
+                    txt = String(m.text || (m.isImage ? '[图片]' : (m.isVoice ? '[语音]' : '')));
+                } else {
+                    var mem = getMember(m.senderId);
+                    who = (mem && (mem.nick || mem.name)) || '群友';
+                    txt = String(m.text || (m.isImage ? '[图片]' : (m.isVoice ? (m.transcript || '[语音]') : '')));
+                }
+                txt = txt.replace(/\[[^\]]*\]/g, ' ').replace(/\s+/g, ' ').trim();
+                if (!txt) continue;
+                recent.push({ name: who, text: txt.slice(0, 260), translation: m.translation || '' });
+            }
+            recent.reverse();
+            if (recent.length) localStorage.setItem('nano_recent_group_' + chatId, JSON.stringify(recent));
+        } catch(e){}
+        notifyGroupListPreview();
+    }
     function consumePendingGroupCards(){
         if (typeof messages === 'undefined' || !Array.isArray(messages)) return;
         var q = null;
@@ -381,7 +446,7 @@
 
     function renderHeader(){
         $('chatTitle').childNodes[0].nodeValue = (group.name || '群聊') + ' ';
-        $('groupMeta').textContent = (group.members.length + 1) + ' 人';
+        $('groupMeta').textContent = (group.members.length + (userLeft ? 0 : 1)) + ' 人' + (userLeft ? ' · 你已退出，正在旁观' : '');
         var noticeValue = String(group.notice || '').trim();
         if (noticeValue === '暂无群公告') noticeValue = '';
         var hasNotice = !!noticeValue;
@@ -1148,26 +1213,52 @@
         var uName = (currentMaskData && currentMaskData.name) || settings.myNick || '用户';
         var list = (ids || []).filter(function(id){ return id && id !== 'me' && String(id).indexOf('npc_') !== 0; });
         return Promise.all(list.map(function(id){
-            // 先读轻量 hot 快照（只有最近若干条），没有再退回完整历史，避免每次建 prompt 都读几十 MB
-            return lfGetItem('chat_hot_' + id).then(function(hot){
-                if (hot && Array.isArray(hot.items) && hot.items.length) return hot.items;
-                if (Array.isArray(hot) && hot.length) return hot;
-                return lfGetItem('chat_messages_' + id).then(function(full){
-                    return Array.isArray(full) ? full : [];
+            // 群成员在旧数据里可能用名字 / m0 这种占位 id，先解析成真正的角色 id，
+            // 否则读到的私聊 key 对不上，群聊就会像「没读过私聊」一样失忆。
+            var mem = null;
+            group.members.forEach(function(x){ if (!mem && x && (String(x.id) === String(id) || String(x.name) === String(id))) mem = x; });
+            var charRec = groupCharMap[String(id)] || (mem && (groupCharMap[String(mem.id)] || groupCharMap[String(mem.name)])) || null;
+            var realId = String((charRec && charRec.id) || id);
+            var cName = (mem && (mem.nick || mem.name)) || (charRec && charRec.name) || '角色';
+            // 1) 轻量 hot 快照；2) 没有时读完整历史；3) 再补一份 chat-core 写下的最近原文。
+            return lfGetItem('chat_hot_' + realId).then(function(hot){
+                var hotItems = (hot && Array.isArray(hot.items)) ? hot.items : (Array.isArray(hot) ? hot : []);
+                if (hotItems.length >= 3) return hotItems;
+                return lfGetItem('chat_messages_' + realId).then(function(full){
+                    var arr = Array.isArray(full) ? full : [];
+                    return arr.length ? arr : hotItems;
                 });
             }).then(function(arr){
-                var mem = null;
-                group.members.forEach(function(x){ if (!mem && x && String(x.id) === String(id)) mem = x; });
-                var cName = (mem && (mem.nick || mem.name)) || '角色';
-                var lines = (arr || []).filter(function(mm){
-                    return mm && !mm.recalled && !mm.isCard && !mm.isImage && !mm.isVoice && !mm.isTip &&
-                        (mm.type === 'left' || mm.type === 'right') && String(mm.text || '').trim();
-                }).slice(-14).map(function(mm){
-                    var who = mm.type === 'right' ? uName : cName;
-                    var txt = String(mm.text || '').replace(/\[[^\]]*\]/g, ' ').replace(/\s+/g, ' ').trim();
-                    return txt ? (who + '：' + txt.slice(0, 220)) : '';
-                }).filter(Boolean);
-                if (lines.length) groupPrivateChatMap[String(id)] = { name: cName, lines: lines };
+                var lines = [];
+                var seen = {};
+                var pushLine = function(who, txt, tr){
+                    txt = String(txt || '').replace(/\[[^\]]*\]/g, ' ').replace(/\s+/g, ' ').trim();
+                    if (!txt) return;
+                    tr = String(tr || '').replace(/\s+/g, ' ').trim();
+                    var full = who + '：' + txt.slice(0, 260) + (tr ? ('（中文：' + tr.slice(0, 260) + '）') : '');
+                    var key = full.replace(/\s+/g, '');
+                    if (seen[key]) return;
+                    seen[key] = 1;
+                    lines.push(full);
+                };
+                (arr || []).forEach(function(mm){
+                    if (!mm || mm.recalled || mm.isCard || mm.isImage || mm.isVoice || mm.isTip) return;
+                    if (mm.type !== 'left' && mm.type !== 'right') return;
+                    pushLine(mm.type === 'right' ? uName : cName, mm.text, mm.translation);
+                });
+                // chat-core 每轮都会写一份轻量的最近 24 句，和完整历史合并能拿到刚刚说过的最后一句。
+                try {
+                    var recent = JSON.parse(localStorage.getItem('nano_recent_text_' + realId) || '[]');
+                    (Array.isArray(recent) ? recent : []).forEach(function(x){
+                        if (!x || !x.text) return;
+                        pushLine(x.who === 'user' ? uName : cName, x.text, x.translation);
+                    });
+                } catch (e) {}
+                lines = lines.slice(-22);
+                if (lines.length) {
+                    groupPrivateChatMap[String(id)] = { name: cName, lines: lines };
+                    groupPrivateChatMap[realId] = { name: cName, lines: lines };
+                }
             }).catch(function(){});
         })).then(function(){ return groupPrivateChatMap; }).catch(function(){ groupPrivateChatMap = {}; return groupPrivateChatMap; });
     }
@@ -1207,18 +1298,79 @@
         });
     }
 
-    // 读取群设置里产生的变动（改名/头像/转让/退出等），以提示条展示并让 AI 知晓
+    // 清理旧版本重复写入的相邻系统提示（同一个 key 被多帧读到时会出现多条一模一样的灰条）。
+    function dedupeAdjacentTips(){
+        try {
+            var out = [], prevTip = null, changed = false;
+            // 长系统提示（退出旁观/拉回群等）只保留最后一次，清掉旧版本重复写入的历史。
+            var lastLong = {};
+            (messages || []).forEach(function(m, i){
+                if (m && m.isTip && m.text && String(m.text).length >= 20) lastLong[String(m.text)] = i;
+            });
+            (messages || []).forEach(function(m, i){
+                if (m && m.isTip && m.text) {
+                    var txt = String(m.text);
+                    // 旧版本退群时写入的长篇 meta 提示，统一清掉，改用新的群内系统广播。
+                    if (/^用户退出了群聊，转为第三方旁观/.test(txt)) { changed = true; return; }
+                    if (txt.length >= 20 && lastLong[txt] !== i) { changed = true; return; }
+                    if (txt === prevTip) { changed = true; return; }
+                    prevTip = txt;
+                    out.push(m);
+                } else {
+                    prevTip = null;
+                    out.push(m);
+                }
+            });
+            if (changed) { messages = out; saveMsgs(); try { renderMessages(); } catch (e) {} }
+        } catch (e) {}
+    }
+
+    // 读取群设置里产生的变动（改名/头像/转让/退出等），以提示条展示并让 AI 知晓。
+    // 注意：广播/多帧初始化时同一个 key 可能被读到多次，必须按文本去重，避免同一条
+    // 「用户退出了群聊…」在消息流里重复出现。
     function consumePendingChanges(){
         var key = 'group_pending_changes_' + chatId;
         var arr = null;
         try { var raw = localStorage.getItem(key); if (raw) arr = JSON.parse(raw); } catch(e){ arr = null; }
         try { localStorage.removeItem(key); } catch(e){}
         if (!arr || !arr.length) return;
+        var seen = {};
+        // 历史里已有的提示条
+        try {
+            (messages || []).slice(-120).forEach(function(mm){
+                if (mm && mm.isTip && mm.text) seen[String(mm.text)] = 1;
+            });
+        } catch (e) {}
+        // 持久化去重：即使 pending 队列被重复写入、或多个帧同时初始化，
+        // 同一条系统变动也只在消息流里出现一次。
+        var seenKey = 'group_pending_seen_' + chatId;
+        try {
+            var oldSeen = JSON.parse(localStorage.getItem(seenKey) || '{}') || {};
+            Object.keys(oldSeen).forEach(function(k){ seen[k] = oldSeen[k]; });
+        } catch (e) {}
+        var changed = false;
         arr.forEach(function(t){
             if (!t) return;
-            pushMsg({ type:'left', isTip:true, text:t });
-            pendingNotes.push(t);
+            var txt = String(t);
+            // 旧版本退群 pending 文案不再重放（新版本已直接写群内系统广播）。
+            if (/^用户退出了群聊，转为第三方旁观/.test(txt)) return;
+            if (seen[txt]) return;
+            seen[txt] = Date.now();
+            changed = true;
+            pushMsg({ type:'left', isTip:true, text:txt });
+            pendingNotes.push(txt);
         });
+        if (changed) {
+            try {
+                var now = Date.now();
+                var keep = {};
+                Object.keys(seen).forEach(function(k){
+                    var ts = Number(seen[k]) || now;
+                    if (now - ts < 10 * 60 * 1000) keep[k] = ts;
+                });
+                localStorage.setItem(seenKey, JSON.stringify(keep));
+            } catch (e) {}
+        }
     }
 
     // ========== 红包 toast ==========
@@ -1235,6 +1387,16 @@
     function sendText(){
         var text = messageInput.value.trim();
         if (!text) return;
+        if (userLeft) {
+            // 已退出群聊：没有成员身份，发出的内容只作为旁白写入场景，不算用户发言。
+            pushMsg({ type:'left', isTip:true, isNarration:true, text:text });
+            messageInput.value = '';
+            if (currentQuote) clearQuote();
+            hideGroupEmojiRecommend();
+            isWaitingForReply = true;
+            updateSendState();
+            return;
+        }
         var msg = { type:'right', senderId:'me', text: text };
         if (currentQuote) { msg.quote = currentQuote; clearQuote(); }
         pushMsg(msg);
@@ -1299,7 +1461,6 @@
         setTimeout(syncGrayPinkComposer, 80);
     });
     sendBtn.addEventListener('click', function(){
-        if (userLeft) { triggerReply(); return; }
         var text = messageInput.value.trim();
         if (text) sendText();
         else triggerReply();
@@ -1311,7 +1472,6 @@
     messageInput.addEventListener('keydown', function(e){
         if (e.key === 'Enter') {
             e.preventDefault();
-            if (userLeft) { triggerReply(); return; }
             var text = this.value.trim();
             if (text) sendText();
             else triggerReply();
@@ -1799,6 +1959,13 @@
         }
         prompt += '称呼用户时用名字或符合关系的自然称呼，不要用泛称。\n';
 
+        if (userLeft) {
+            prompt += '\n【旁观模式 · 用户已退出本群】\n';
+            prompt += '用户已经退出了这个群，群里不再有 TA 的成员身份。你们现在只是以第三方视角看着 TA。\n';
+            prompt += '用户发来的「旁白」不是群成员发言：那是场景、环境、气氛或心理的客观说明，不要当成用户本人在说话，也不要直接 @ 用户回复旁白；可以像对眼前的场景作出自然反应一样讨论、吐槽或继续你们自己的话题。\n';
+            prompt += '如果之后系统提示「某位成员把用户拉回了群聊」，那用户才重新成为群成员，可以正常 @ 和对话。\n';
+        }
+
         // 各角色在私聊中积累的长期记忆（互通）
         var memLines = [];
         Object.keys(groupMemoryMap).forEach(function(mid){
@@ -1838,7 +2005,8 @@
         prompt += '5. 群昵称/头衔/群名变化、红包、接龙、公告等，角色要有符合性格的反应。\n';
         prompt += '6. 用户用 @某人 时，被 @ 到的角色要优先回应；用户 @全体成员 时大家都要出来说话。角色之间也可以 @ 人。\n';
         prompt += '7. 红包领取情况只以系统提示为准：绝对不要替用户（' + ((currentUser && (currentUser.nick || currentUser.name)) || '用户') + '）编造“已领取红包/抢到多少”，用户没领就别说用户领了；用户是否领取、领多少由用户自己决定。\n';
-        prompt += '8. 角色之间才是群聊的主体：大部分消息应该是群友彼此在聊（互相接话、吐槽、抬杠、八卦、聊各自的生活和近况），不要每句都围着用户转、更不要每句都 @ 用户。用户经常只是旁观或偶尔插一句，群聊照常热闹进行；角色之间可以有自己的小话题、内部梗和日常，不必事事以用户为中心。\n';
+        prompt += '8. 角色之间才是群聊的主体：大部分消息应该是群友彼此在聊（互相接话、吐槽、抬杠、八卦、聊各自的生活和近况），不要每句都围着用户转、更不要每句都 @ 用户。' +
+            (userLeft ? '用户现在已经退出、只是第三方旁观，不要 @ 用户或等用户接话；旁白出现时像对眼前场景作反应一样自然继续即可。' : '用户经常只是旁观或偶尔插一句，群聊照常热闹进行；角色之间可以有自己的小话题、内部梗和日常，不必事事以用户为中心。') + '\n';
 
         prompt += '\n【可选功能标签 · 需要时才用，一条消息里最多一个，可偶尔自然触发】\n';
         prompt += '- 发群红包：[redpacket:金额|祝福语|个数]  例：[redpacket:66|恭喜发财]、[redpacket:20|手气最佳|3]（个数可省略；省略时按群人数发，不会自动减少）。要发红包时把它放在你这轮的最后一行，方便对方决定要不要抢。\n';
@@ -1854,6 +2022,7 @@
         prompt += '- 想给用户打电话 / 视频：[call:来电] 或 [call:视频]。群聊里不能打电话，系统会自动切到你和用户的私聊并拨过去；只有在非常着急、明确要打电话时再用。\n';
         prompt += '（标签必须单独放在该角色这一行；请自然、偶尔使用，不要每条都发功能。）\n';
         prompt += '- 想加用户好友/微信：[加好友]  例：某成员愿意和用户私聊时，在 TA 这一行的末尾加 [加好友]（系统会向用户发起好友申请，用户在 Meet 同意后即可私聊）。只在自然需要时偶尔使用。\n';
+        prompt += '- 想跳过群聊、直接私聊用户说一句不方便在群里说的话：[私聊:内容]  例：[私聊:刚才那句话我是不想让他们听见才那么说的]。系统会切到你和用户的私聊，把这句话作为你的私聊消息发过去；只有在确实想单独说、且不只是在群里接话时才用。\n';
 
         prompt += '\n【输出格式示例】\n';
         prompt += 'Lambert：这个方案我觉得可以\n';
@@ -2076,6 +2245,7 @@
         s = s.replace(/\[voice\s*:\s*([^\]]*)\]/gi, function(_, v){ tags.push({ kind:'voice', payload:(v||'').trim() }); return ''; });
         s = s.replace(/\[call\s*:\s*([^\]]*)\]/gi, function(_, v){ tags.push({ kind:'call', payload:(v||'').trim() }); return ''; });
         s = s.replace(/\[(?:加好友|加微信|加我|申请加好友|addfriend)\]/gi, function(){ tags.push({ kind:'friendreq', payload:'' }); return ''; });
+        s = s.replace(/\[(?:私聊|私信|dm|pm)\s*:\s*([^\]]*)\]/gi, function(_, v){ tags.push({ kind:'dm', payload:(v||'').trim() }); return ''; });
         s = s.replace(/\[image\s*:\s*([^\]]*)\]/gi, function(_, v){ tags.push({ kind:'image', payload:(v||'').trim() }); return ''; });
         s = s.replace(/【(红包|接龙|公告|昵称|头衔|群名)\s*[:：]\s*([^】]*?)】/g, function(_, k, v){
             var map = { '红包':'redpacket', '接龙':'chain', '公告':'notice', '昵称':'nickname', '头衔':'title', '群名':'groupname' };
@@ -2184,6 +2354,99 @@
         try {
             location.href = 'chat_inner.html?chat=' + encodeURIComponent(cid) + '&name=' + encodeURIComponent(name);
         } catch (e) {}
+    }
+
+    // 群成员在群里直接转入私聊：把消息写进 TA 与用户的私聊记录，并切到私聊。
+    // 只对真实角色生效（NPC 没有自己的私聊页，不能凭空建一个）。
+    function startGroupPrivateDM(member, payload){
+        if (!member) return;
+        var rawText = String(payload || '').trim();
+        if (!rawText) return;
+        var c = groupCharMap[member.id] || groupCharMap[member.name] || null;
+        var cid = String((c && c.id) || member.id || '');
+        if (!cid || /^npc_/i.test(cid) || cid === 'me' || String(member.isNpc) === 'true') {
+            pushTip((member.nick || member.name || '群友') + ' 想私聊你，但 TA 还没有可用的私聊入口');
+            return;
+        }
+        var name = (member.nick || member.name || '角色');
+        var avatar = member.avatar || (c && c.avatar) || '';
+        var now = new Date();
+        var hhmm = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+        // 一行一条气泡；外文格式「原文||中文翻译」保留为独立译文。
+        var lines = rawText.split(/\n+/).map(function (s) { return s.trim(); }).filter(Boolean);
+        var bubbles = lines.map(function (line) {
+            var text = line;
+            var translation = null;
+            var sep = text.indexOf('||');
+            if (sep > -1) { translation = text.slice(sep + 2).trim() || null; text = text.slice(0, sep).trim(); }
+            text = text.replace(/\[[^\]]*\]/g, '').replace(/\s+/g, ' ').trim();
+            if (!text && !translation) return null;
+            return {
+                id: 'msg_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+                type: 'left',
+                text: text,
+                translation: translation,
+                time: hhmm,
+                ts: Date.now(),
+                recalled: false,
+                isCard: false,
+                isVoice: false,
+                isImage: false
+            };
+        }).filter(Boolean);
+        if (!bubbles.length) return;
+
+        function lfSet(key, value){
+            try {
+                if (typeof localforage !== 'undefined') return localforage.setItem(key, value).catch(function(){});
+            } catch (e) {}
+            try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) {}
+            return Promise.resolve();
+        }
+        // 先写私聊主历史；再补热缓存和列表预览，打开私聊时立刻能看到。
+        lfGetItem('chat_messages_' + cid).then(function (full) {
+            var arr = Array.isArray(full) ? full.slice() : [];
+            bubbles.forEach(function (b) { arr.push(b); });
+            if (arr.length > 1200) arr = arr.slice(-1200);
+            return lfSet('chat_messages_' + cid, arr);
+        }).then(function () {
+            return lfGetItem('chat_hot_' + cid);
+        }).then(function (hot) {
+            var h = (hot && Array.isArray(hot.items)) ? hot : { items: Array.isArray(hot) ? hot.slice() : [] };
+            h.items = (h.items || []).concat(bubbles).slice(-80);
+            h.updatedAt = Date.now();
+            return lfSet('chat_hot_' + cid, h);
+        }).then(function () {
+            try {
+                var recent = [];
+                try { recent = JSON.parse(localStorage.getItem('nano_recent_text_' + cid) || '[]') || []; } catch (e) { recent = []; }
+                bubbles.forEach(function (b) {
+                    recent.push({ who: 'char', text: String(b.text || '').slice(0, 240) });
+                });
+                localStorage.setItem('nano_recent_text_' + cid, JSON.stringify(recent.slice(-24)));
+            } catch (e) {}
+            try {
+                var last = bubbles[bubbles.length - 1];
+                localStorage.setItem('nano_last_preview_' + cid, JSON.stringify({
+                    type: 'left', time: last.time, text: String(last.text || '').slice(0, 300),
+                    isCard: false, isImage: false
+                }));
+            } catch (e) {}
+        }).then(function () {
+            // 切到 TA 的私聊；parent 是主 shell 时直接打开 chat_inner。
+            if (window.parent !== window) {
+                try { window.parent.postMessage({ type: 'contactsDataUpdated' }, '*'); } catch (e) {}
+                try {
+                    window.parent.postMessage({
+                        type: 'openChat', chatId: cid, chatName: name, chatAvatar: avatar, reload: true
+                    }, '*');
+                } catch (e) {}
+                return;
+            }
+            try {
+                location.href = 'chat_inner.html?chat=' + encodeURIComponent(cid) + '&name=' + encodeURIComponent(name);
+            } catch (e) {}
+        }).catch(function(){});
     }
 
     // 群成员申请加好友 → 写进 Meet 好友申请（绑定当前人设，同意后进入好友/角色库）
@@ -2515,6 +2778,7 @@
                 // 红包卡片放到本轮最后再出现，方便用户先看完互动再决定要不要抢
                 if (tag.kind === 'redpacket') { deferredRedPackets.push({ member: member, tag: tag, timeStr: timeStr }); return; }
                 if (tag.kind === 'call') { setTimeout(function(){ startGroupPrivateCall(member, tag.payload); }, i * 450 + ti * 180); return; }
+                if (tag.kind === 'dm') { setTimeout(function(){ startGroupPrivateDM(member, tag.payload); }, i * 450 + ti * 180); return; }
                 if (tag.kind === 'friendreq') { setTimeout(function(){ requestFriendFromGroup(member); }, i * 450 + ti * 180); return; }
                 setTimeout(function(){ handleGroupTag(member, tag, timeStr); }, i * 450 + ti * 180);
             });
@@ -2754,16 +3018,18 @@
                 showAlert('配置错误', 'API 未配置，请先在「API」页面配置主 API（地址 / Key / 模型）。');
                 return null;
             }
-            return Promise.all([
-                getCharactersFromDB(),
-                loadGroupWorldbooks(),
-                loadGroupMemories(group.members.map(function(m){ return m.id; })),
-                loadRecentPrivateChats(group.members.map(function(m){ return m.id; }))
-            ]).then(function(res){
-                var chars = res[0] || [];
+            // 先刷新角色映射，再读各成员的私聊：否则旧群里的占位 id 解析不到真实角色，
+            // 群聊就会像「没读过私聊」一样失忆。
+            return getCharactersFromDB().then(function(chars){
                 var map = {};
-                chars.forEach(function(c){ map[c.id] = c; if (c.name) map[c.name] = c; });
+                (chars || []).forEach(function(c){ map[c.id] = c; if (c.name) map[c.name] = c; });
                 groupCharMap = map;
+                return Promise.all([
+                    loadGroupWorldbooks(),
+                    loadGroupMemories(group.members.map(function(m){ return m.id; })),
+                    loadRecentPrivateChats(group.members.map(function(m){ return m.id; }))
+                ]);
+            }).then(function(){
                 var payload = buildGroupRequestPayload(config);
                 storeGroupRequest(payload);
                 currentGroupToken = payload.token;
@@ -2805,7 +3071,7 @@
     var mentionDropdown = $('mentionDropdown');
     function showMentionDropdown(filter){
         var everyone = { id:'__all__', name:'全体成员', nick:'全体成员', initial:'全', bg:'#ff9500', isAll:true };
-        var all = [everyone, currentUser].concat(group.members);
+        var all = [everyone].concat(userLeft ? [] : [currentUser]).concat(group.members);
         var list = all.filter(function(m){ return !filter || (m.nick||m.name).indexOf(filter) > -1; });
         mentionDropdown.innerHTML = '';
         list.forEach(function(m){
@@ -3271,6 +3537,10 @@
         item.addEventListener('click', function(){
             var act = item.dataset.action;
             moreOverlay.classList.remove('active');
+            if (userLeft && ['redpacket','image','chain','notice','nickname','invitechar'].indexOf(act) > -1) {
+                showAlert('提示', '你已退出群聊，只能以第三方视角旁观');
+                return;
+            }
             if (act === 'reroll') doReroll();
             else if (act === 'redpacket') openRedPacketSheet();
             else if (act === 'image') openImagePopup();
@@ -3287,6 +3557,7 @@
     // ========== 发红包（只普通） ==========
     var rpOverlay = $('rpOverlay');
     function openRedPacketSheet(){
+        if (userLeft) { showAlert('提示', '你已退出群聊，只能以第三方视角旁观，不能发红包'); return; }
         $('rpAmount').value = '0';
         $('rpWish').value = '恭喜发财';
         $('rpDisplay').textContent = '0.00';
@@ -3359,6 +3630,7 @@
     }
     $('openRpClose').addEventListener('click', function(){ openRpOverlay.classList.remove('active'); });
     $('openRpBtn').addEventListener('click', function(){
+        if (userLeft) { openRpOverlay.classList.remove('active'); showAlert('提示', '你已退出群聊，只能旁观大家抢红包'); return; }
         var btn = this;
         if (btn.classList.contains('opened')) {
             openRpOverlay.classList.remove('active');
@@ -3732,6 +4004,7 @@ messageContainer.addEventListener('click', function(e){
         }
         var chainBtn = e.target.closest('[data-chain]');
         if (chainBtn) {
+            if (userLeft) { showAlert('提示', '你已退出群聊，只能旁观'); return; }
             var cid = chainBtn.dataset.chain;
             var cmsg = messages.find(function(m){ return m.cardData && m.cardData.chainId === cid; });
             if (cmsg) {
@@ -3783,11 +4056,18 @@ messageContainer.addEventListener('click', function(e){
     window.addEventListener('storage', function(e){
         // group-store 会把群聊键按 user 加后缀；这里同时接受旧键和当前 user 的作用域键
         function keyIs(base){ try { return e.key === base || (window.GroupStore && e.key === window.GroupStore.scopeKey(base)); } catch (err) { return e.key === base; } }
+        if (e && e.key === 'nano_group_member_state_' + chatId) {
+            applyObserverMode();
+            renderHeader();
+        }
         if (keyIs(GROUP_KEY)) {
             __lastGroupRaw = e.newValue || '';
             if (e.newValue) {
                 try { var sg = JSON.parse(e.newValue); if (sg && sg.members) group = sg; } catch (err) {}
             }
+            // 退出/拉回群聊是在另一个页面改的：storage 事件已经更新 group，
+            // 这里必须同步旁观状态，否则轮询会因为 __lastGroupRaw 相同而跳过。
+            applyObserverMode();
             renderHeader(); renderMessages();
         }
         if (keyIs(MSG_KEY)) { messages = loadMsgs(); renderMessages(); }
@@ -3828,13 +4108,18 @@ messageContainer.addEventListener('click', function(e){
     var __lastGroupRaw = localStorage.getItem(GROUP_KEY) || '';
     var __groupRawApplying = false;
     function applyGroupRaw(raw){
-        if(!raw || raw === __lastGroupRaw || __groupRawApplying) return;
+        if(!raw || raw === __lastGroupRaw || __groupRawApplying) {
+            // 数据没变也要刷新旁观状态：退出群聊的标记可能已经通过 storage 事件写进 group。
+            try { applyObserverMode(); renderHeader(); } catch (e) {}
+            return;
+        }
         var g = null;
         try { g = JSON.parse(raw); } catch (e) { return; }
         if(!g || !g.members) return;
         __groupRawApplying = true;
         __lastGroupRaw = raw;
-        group = g;
+        group = syncExternalMemberState(g);
+        applyObserverMode();
         renderHeader();
         resolveIdentities().then(function(){ renderHeader(); renderMessages(); }).then(function(){ __groupRawApplying = false; }, function(){ __groupRawApplying = false; });
     }
@@ -3862,6 +4147,8 @@ messageContainer.addEventListener('click', function(e){
         readGroupStored();
         setTimeout(readGroupStored, 260);
         setTimeout(readGroupStored, 900);
+        // 私聊里「把你拉回群」等变动会写 pending，群里正在打开时也要即时出现（去重后只出现一次）。
+        setTimeout(function(){ try { consumePendingChanges(); } catch (e) {} }, 320);
     });
 
     // ========== 初始化 ==========
@@ -3871,18 +4158,34 @@ messageContainer.addEventListener('click', function(e){
     renderMessages();
     updateSendState();
     syncGrayPinkComposer();
+    dedupeAdjacentTips();
     consumePendingChanges();
     // 首屏也从 IndexedDB 补一次：localStorage 写满时群名 / 头像可能停在旧值。
     try { readGroupStored(); } catch (e) {}
 
-    // 已退出群聊：只能围观，点击发送按钮让 AI 自己互动
-    if (userLeft) {
-        messageInput.disabled = true;
-        messageInput.placeholder = '你已退出群聊，点击右侧按钮看大家聊天';
+    // 已退出群聊：转为第三方旁观。输入框仍可用，但发出的内容会作为旁白出现，
+    // 不再有「用户成员发言」；点击空的发送键则让群友继续自己聊。
+    function applyObserverMode(){
+        var st = readExternalMemberState();
+        if (st) {
+            var stTs = Number(st.ts) || 0;
+            var gTs = Number(group.memberStateTs) || 0;
+            if (stTs > gTs) {
+                group.userLeft = !!st.userLeft;
+                group.observer = !!st.observer;
+                group.memberStateTs = stTs;
+            }
+        }
+        userLeft = !!group.userLeft;
+        if (!messageInput || !sendBtn) return;
+        messageInput.disabled = false;
+        messageInput.placeholder = userLeft ? '你正在旁观，发送的内容会以旁白出现' : '发送到群聊';
         var emojiBtnEl = $('emojiBtn'), voiceBtnEl = $('voiceBtn');
-        if (emojiBtnEl) emojiBtnEl.style.display = 'none';
-        if (voiceBtnEl) voiceBtnEl.style.display = 'none';
+        if (emojiBtnEl) emojiBtnEl.style.display = userLeft ? 'none' : '';
+        if (voiceBtnEl) voiceBtnEl.style.display = userLeft ? 'none' : '';
+        updateSendState();
     }
+    applyObserverMode();
 
     // 从“查找聊天记录”跳转过来：定位到指定消息
     if (jumpMsgId) {

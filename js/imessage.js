@@ -1065,7 +1065,7 @@ function maybePushMeetReadd(charId, charName, chat, greeting) {
 // 模型输出 [强制线下:一句理由] 时，打开线下页并让角色先开口。
 let __lastIMOfflineOpenAt = 0;
 function openOfflineFromIMessage(charId, charName, raw) {
-  const m = String(raw || '').match(/\[(?:强制线下|强制见面|强拉线下|拉进线下)\s*[:：]?\s*([^\]]*)\]/i);
+  const m = String(raw || '').match(/(?:\[|【)(?:强制线下|强制见面|强拉线下|拉进线下)\s*[:：]?\s*([^\]】]*)(?:\]|】)/i);
   if (!m) return false;
   if (Date.now() - __lastIMOfflineOpenAt < 8000) return true;
   __lastIMOfflineOpenAt = Date.now();
@@ -1083,7 +1083,7 @@ function openOfflineFromIMessage(charId, charName, raw) {
   return true;
 }
 function stripIMOfflineTags(s) {
-  return String(s || '').replace(/\[(?:强制线下|强制见面|强拉线下|拉进线下|邀请线下|线下邀请|邀请见面|见面邀请)\s*[:：]?\s*[^\]]*\]/gi, '').trim();
+  return String(s || '').replace(/(?:\[|【)(?:强制线下|强制见面|强拉线下|拉进线下|邀请线下|线下邀请|邀请见面|见面邀请)\s*[:：]?\s*[^\]】]*(?:\]|】)/gi, '').trim();
 }
 
 async function doReply() {

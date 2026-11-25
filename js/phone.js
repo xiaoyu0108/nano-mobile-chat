@@ -804,7 +804,17 @@ function dataGet(key){
     req.onsuccess = () => resolve(req.result ? req.result.value : null);
     req.onerror = e => reject(e.target.error);
     tx.oncomplete = () => db.close();
-  }));
+  })).then(async (value) => {
+    // 旧版生成的外文数据没有译文：打开 App 时自动补齐并落盘，避免只有点开详情才看到翻译。
+    try {
+      if(value && typeof value === "object" && value.data && typeof key === "string" && key.indexOf("app_") === 0 &&
+         window.NanoTranslate && phoneDataNeedsTranslation(value.data)){
+        await ensurePhoneInlineTranslations(value.data, { maxMs: 2500 });
+        try { await dataSet(key, value); } catch (e) {}
+      }
+    } catch (e) {}
+    return value;
+  });
 }
 
 /* =========================================================
@@ -918,7 +928,7 @@ function extractJSON(text){
   return null;
 }
 
-const SYS_JSON = "你是虚构角色的手机数据生成器。内容面向成年读者，属于虚构创作；可以自然包含成熟的情感、暧昧与亲密关系描写，但要含蓄克制，不写露骨细节。禁止血腥暴力和违法内容。所有内容必须严格贴合给定的人设、世界书与记忆库，不要脱离角色自由发挥。这是虚构创作，请直接按要求输出，不要拒绝、不要说教。只输出用户要求的 JSON，不要输出任何解释、markdown 代码块或多余文字。\n【语言规则】所有内容必须让中文用户看得懂：默认用简体中文；如果角色是外国人、内容本身是韩语/英语/日语等外语，必须在原文后面用「（中文：……）」附上简体中文翻译，绝不能只输出外文。";
+const SYS_JSON = "你是虚构角色的手机数据生成器。内容面向成年读者，属于虚构创作；可以自然包含成熟的情感、暧昧与亲密关系描写，但要含蓄克制，不写露骨细节。禁止血腥暴力和违法内容。所有内容必须严格贴合给定的人设、世界书与记忆库，不要脱离角色自由发挥。这是虚构创作，请直接按要求输出，不要拒绝、不要说教。只输出用户要求的 JSON，不要输出任何解释、markdown 代码块或多余文字。\n【语言与翻译 · 强制】所有 App 里出现的每一段非简体中文文字（标题、正文、简介、详情、评论、搜索词、昵称、店名、商品名、备注、聊天内容、网页正文、标签等）都必须在同一字段内紧跟简体中文翻译，格式「原文（中文：译文）」，例如「Bonjour（中文：你好）」；绝不能只输出外文，也不能把译文放到点开后的详情里。列表预览、卡片标题、正文、评论等所有可见位置都必须同时带译文。简体中文内容不要加翻译。";
 
 
 /* 通用的「贴合人设」硬性约束 */
@@ -1464,22 +1474,23 @@ ${ctx}
 
 ${PERSONA_RULE}
 
-请整理 4 条「${char.name}」不为人说的私事，贴合其人设与经历。
+请整理 5 条「${char.name}」不为人说的私事，贴合其人设与经历。
 要求：
-1. 角色可以写不愿公开的亲密关系与难以启齿的私事，语气自然、含蓄克制，不写露骨细节。
-2. 每条包含：
+1. 每条都要是一件完整、具体、有意义的事，而不是一句空泛的心情。必须有具体时间、地点、人物、对话、动作或后续；5 条分别来自不同生活切面（家人、朋友、工作/学习、亲密关系、身体状态、消费、旧回忆等），不要都是「想你 / 自卑 / 怕失去 / 暗恋」。
+2. 角色可以写不愿公开的亲密关系与难以启齿的私事，语气自然、含蓄克制，不写露骨细节。
+3. 每条包含：
    - type: 序号，如 "PRIVATE / 01"
    - time: 时间，如 "23:41"
    - title: 标题（6-14 字）
-   - preview: 一句隐晦的概述（15-30 字，第一人称）
-   - detail: 不为人说的具体内容（20-60 字）
+   - preview: 30-55 字，第一人称，写清是什么事、和谁、发生在哪
+   - detail: 100-200 字，写清具体经过：当时在做什么、对方说了什么、自己怎么反应、后来有没有后续
    - tags: 2 个短标签数组，如 ["心事","私密"]
    - level: "轻" 或 "中"（默认 "轻"）
 只输出 JSON 数组，形如 [{"type":"PRIVATE / 01","time":"23:41","title":"...","preview":"...","detail":"...","tags":["心事","私密"],"level":"轻"}]`;
   const t = await callAPI(api, SYS_JSON, user);
   const a = extractJSON(t);
   if(!Array.isArray(a) || !a.length) throw new Error("私密数据格式错误");
-  return a.slice(0, 6);
+  return a.slice(0, 8);
 }
 
 /* 内容策略拦截时，用本地模板补上「个人随想」，保证查手机不会因为一个 App 整页失败 */
@@ -1507,7 +1518,14 @@ function genPrivateLocal(char){
   if (/学生|考试|论文|学校/.test(st)) {
     pool.push({ title: "没说出口的压力", preview: "最近的事比说出来的多。", detail: "别人问起就说还好。其实有点慌，只是不想把这种情绪分给别人。", tags: ["学校", "心事"] });
   }
-  const shuffled = pool.slice().sort(function () { return Math.random() - 0.5; }).slice(0, 4);
+  const shuffled = pool.slice().sort(function () { return Math.random() - 0.5; }).slice(0, 5);
+  const tails = [
+    "那晚我把手机扣在桌上，屏幕亮了两次，都是" + uname + "发来的，我等到第三次才回。",
+    "第二天有人问起，我只说没事，转身去洗了把脸，回来继续做手上的事。",
+    "这件事我没跟任何人讲过，连" + uname + "也只看到我后来很平常的样子。",
+    "后来我把那张小票夹进了书里，偶尔翻到会停一下，再合上。",
+    "当时窗外有车经过，我下意识把声音关小，怕被人听见。"
+  ];
   return shuffled.map(function (it, i) {
     var h = 21 + Math.floor(Math.random() * 4);
     if (h >= 24) h -= 24;
@@ -1518,7 +1536,7 @@ function genPrivateLocal(char){
       time: hh + ":" + mm,
       title: it.title,
       preview: it.preview,
-      detail: it.detail,
+      detail: it.detail + " " + tails[i % tails.length],
       tags: it.tags,
       level: "轻"
     };
@@ -1691,6 +1709,7 @@ async function refreshVideo(){
   if(list) list.innerHTML = `<div class="app-empty">正在生成…</div>`;
   try{
     const data = await genVideo(api, currentChar);
+    try { await ensurePhoneInlineTranslations(data); } catch (e) {}
     await dataSet(`app_${currentChar.id}_video`, {type:"video", data});
     renderVideoList(data);
   }catch(e){
@@ -1781,6 +1800,7 @@ async function refreshDiary(){
   if(list) list.innerHTML = `<div class="app-empty">正在生成…</div>`;
   try{
     const data = await genDiary(api, currentChar);
+    try { await ensurePhoneInlineTranslations(data); } catch (e) {}
     await dataSet(`app_${currentChar.id}_diary`, {type:"diary", data});
     renderDiaryList(data);
   }catch(e){
@@ -1902,6 +1922,7 @@ async function refreshAlbum(){
   if(grid) grid.innerHTML = `<div class="app-empty" style="grid-column:1/-1">正在生成…</div>`;
   try{
     const data = await genAlbum(api, currentChar);
+    try { await ensurePhoneInlineTranslations(data); } catch (e) {}
     await dataSet(`app_${currentChar.id}_album`, {type:"album", data});
     renderAlbumGrid(data);
   }catch(e){
@@ -2011,6 +2032,7 @@ async function refreshMail(){
   if(list) list.innerHTML = `<div class="app-empty">正在生成…</div>`;
   try{
     const data = await genMail(api, currentChar);
+    try { await ensurePhoneInlineTranslations(data); } catch (e) {}
     await dataSet(`app_${currentChar.id}_mail`, {type:"mail", data});
     renderMailList(data);
   }catch(e){
@@ -2183,6 +2205,7 @@ async function refreshMemo(){
   if(listEl) listEl.innerHTML = `<div class="app-empty">正在生成…</div>`;
   try{
     const data = await genMemo(api, currentChar);
+    try { await ensurePhoneInlineTranslations(data); } catch (e) {}
     await dataSet(`app_${currentChar.id}_memo`, {type:"memo", data});
     openMemo();
   }catch(e){
@@ -2550,6 +2573,7 @@ async function refreshBrowser(){
   if(list) list.innerHTML = `<div class="app-empty">正在生成…</div>`;
   try{
     const model = await genBrowser(api, currentChar);
+    try { await ensurePhoneInlineTranslations(model); } catch (e) {}
     await dataSet(`app_${currentChar.id}_browser`, {type:"browser", data:model});
     renderBrowserList(model, appHost._bwMode || "normal");
   }catch(e){
@@ -2701,6 +2725,7 @@ async function refreshGame(){
   list.innerHTML = `<div class="app-empty">正在生成…</div>`;
   try{
     const data = await genGame(api, currentChar);
+    try { await ensurePhoneInlineTranslations(data); } catch (e) {}
     await dataSet(`app_${currentChar.id}_game`, {type:"game", data});
     renderGameList(data);
   }catch(e){
@@ -2802,6 +2827,7 @@ async function refreshPrivate(){
   list.innerHTML = `<div class="app-empty">正在生成…</div>`;
   try{
     const data = await genPrivate(api, currentChar);
+    try { await ensurePhoneInlineTranslations(data); } catch (e) {}
     await dataSet(`app_${currentChar.id}_private`, {type:"private", data});
     renderPrivateList(list, data);
   }catch(e){
@@ -2944,7 +2970,9 @@ function msgClock(m, conv){
 function userConvPreview(msgs){
   if(!msgs.length) return {text:"还没有和 TA 的聊天记录", time:""};
   const last = msgs[msgs.length - 1];
-  return {text: last.transcript || last.text || "", time: last.time || chatTimeLabel(last)};
+  let text = last.transcript || last.text || "";
+  if(last.translation && !/（中文[:：]/.test(text)) text += "（中文：" + last.translation + "）";
+  return {text: text, time: last.time || chatTimeLabel(last)};
 }
 
 
@@ -3116,6 +3144,7 @@ async function refreshChat(){
   try{
     const data = await genChat(api, currentChar);
     const model = normalizeChatData(data);
+    try { await ensurePhoneInlineTranslations(model); } catch (e) {}
     await dataSet(`app_${currentChar.id}_chat`, {type:"chat", data: model});
     const manual = (await dataGet(`app_${currentChar.id}_chat_remark_user`)) || "";
     chatUserRemark = manual || model.userRemark || "";
@@ -3138,6 +3167,82 @@ function phoneNeedsTranslation(text){
   // 中文为主、只夹了几个英文单词：不翻
   if(cjk >= 2 && latin <= cjk * 2) return false;
   return latin >= 3;
+}
+/* 生成后统一补齐翻译：把「原文||译文」转成同一字段里的「原文（中文：译文）」，
+   再对仍然只有外文的可见字段调用免费翻译，确保列表/正文/详情一起显示译文。 */
+const PHONE_TRANS_SKIP_KEY = /^(url|href|id|img|image|imageUrl|src|photo|cover|thumb|background|bg|avatar|avatarUrl|icon|ts|time|date|type|price|amount|spec|status|level|unread|visits|result|mode|kda|side|role|winRate|matches|wins|losses|rating|rankMark|duration|progress|balance|kcal|steps|goal|total|deep|score|weekly|hours|matches|value|count|limit|private|collected|unreadCount)$/i;
+function phoneInlineBars(s){
+  const t = String(s == null ? "" : s);
+  const i = t.indexOf("||");
+  if(i < 0) return t;
+  const orig = t.slice(0, i).trim();
+  const tr = t.slice(i + 2).trim();
+  if(!orig) return t;
+  if(!tr) return orig;
+  return orig + "（中文：" + tr + "）";
+}
+function phoneWalkStrings(node, fn, depth){
+  if(depth > 8 || node == null) return;
+  if(Array.isArray(node)){
+    node.forEach((v, i) => phoneWalkStrings(v, fn, depth + 1));
+    return;
+  }
+  if(typeof node !== "object") return;
+  Object.keys(node).forEach(k => {
+    const v = node[k];
+    if(typeof v === "string") fn(node, k, v);
+    else if(v && typeof v === "object") phoneWalkStrings(v, fn, depth + 1);
+  });
+}
+function phoneDataNeedsTranslation(data){
+  let need = false;
+  phoneWalkStrings(data, (obj, key, val) => {
+    if(need || PHONE_TRANS_SKIP_KEY.test(key)) return;
+    const trimmed = String(val || "").trim();
+    if(/^(data:|blob:|https?:\/\/|\/\/|\.\.?\/)/i.test(trimmed)) return;
+    if(phoneNeedsTranslation(phoneInlineBars(val))) need = true;
+  });
+  return need;
+}
+async function ensurePhoneInlineTranslations(data, opts){
+  if(!data || typeof data !== "object" || !window.NanoTranslate) return data;
+  const maxMs = (opts && Number(opts.maxMs)) || 30000;
+  const deadline = Date.now() + maxMs;
+  const jobs = [];
+  phoneWalkStrings(data, (obj, key, val) => {
+    if(PHONE_TRANS_SKIP_KEY.test(key)) return;
+    const trimmed = String(val || "").trim();
+    if(/^(data:|blob:|https?:\/\/|\/\/|\.\.?\/)/i.test(trimmed)) return;
+    const fixed = phoneInlineBars(val);
+    if(fixed !== val) obj[key] = fixed;
+    if(!phoneNeedsTranslation(fixed)) return;
+    jobs.push({ obj, key, text: fixed });
+  });
+  if(!jobs.length) return data;
+  const cache = Object.create(null);
+  let cursor = 0;
+  const worker = async () => {
+    while(cursor < jobs.length && Date.now() < deadline){
+      const job = jobs[cursor++];
+      const key = String(job.text);
+      let tr = cache[key];
+      if(tr === undefined){
+        try {
+          tr = await Promise.race([
+            window.NanoTranslate.toZh(key),
+            new Promise(resolve => setTimeout(() => resolve(""), 6000))
+          ]);
+        } catch(e) { tr = ""; }
+        tr = String(tr || "").trim();
+        cache[key] = tr;
+      }
+      if(tr && tr !== job.text && !/（中文[:：]/.test(job.text)){
+        job.obj[job.key] = job.text + "（中文：" + tr + "）";
+      }
+    }
+  };
+  await Promise.all([worker(), worker(), worker(), worker()]);
+  return data;
 }
 function phoneApplyTranslation(el, text){
   if(!el || !phoneNeedsTranslation(text) || !window.NanoTranslate) return;
@@ -3870,7 +3975,7 @@ const MULTI_SPEC = {
   health:`"health":{"steps":{"total":8426,"goal":10000,"hours":[24个整数]},"distance":{"total":"5.80","kcal":318},"sleep":{"score":92,"duration":"8小时12分","deep":"1h 48m","weekly":[7个0-100]},"screen":{"hours":3,"minutes":46,"weekly":[7个整数分钟]}}`,
   browser:`"browser":{"normal":[{"keyword":"搜索词","url":"https://example.com/a","site":"网站名","title":"网页标题","time":"今天 22:06","visits":3,"intro":"页面导语 60-120 字","sections":[{"heading":"小标题","text":"正文 80-180 字","list":["可选要点"]}],"quote":"页面原话","points":["要点一","要点二","要点三"],"comments":[{"user":"网名","text":"评论"}],"related":[{"title":"相关推荐","site":"网站名","url":"https://example.com/rel"}]}],"incognito":[{"keyword":"无痕搜索词","url":"https://example.com/b","site":"网站名","title":"网页标题","time":"今天 23:41","visits":2,"intro":"页面导语","sections":[{"heading":"小标题","text":"正文","list":["要点"]}],"quote":"页面原话","points":["要点一","要点二","要点三"],"comments":[{"user":"网名","text":"评论"}],"related":[{"title":"相关推荐","site":"网站名","url":"https://example.com/rel"}]}]}`,
   game:`"game":[{"name":"中文游戏名","id":"4827 1936","winRate":68,"matches":327,"wins":222,"losses":105,"rank":"大师","rating":2847,"rankMark":"III","recent":[{"result":"W","mode":"排位赛","time":"今天 · 21:42","kda":"18 / 6 / 11"}],"habit":"隐藏游戏习惯","weekly":[35,55,43,75,100,67,46]}]`,
-  private:`"private":[{"type":"PRIVATE / 01","time":"23:41","title":"标题","preview":"一句隐晦的概述","detail":"不为人说的具体内容","tags":["心事","私密"],"level":"轻"}]`,
+  private:`"private":[{"type":"PRIVATE / 01","time":"23:41","title":"标题","preview":"30-55 字：说清是什么事、和谁、发生在哪","detail":"100-200 字：具体时间、地点、人物、对话、动作、当时的念头和后来发生的小后续","tags":["心事","私密"],"level":"轻"}]`,
   chat:`"chat":{"userRemark":"角色给用户存的备注（2-8字）","chats":[{"name":"会话名 / 群名","group":false,"members":["群聊时的成员名"],"lastMsg":"最后一条","time":"昨天 22:13","unread":0,"messages":[{"side":"left","name":"这条是谁发的（群聊时填）","text":"消息"}]}]}`,
   doubao:`"doubao":[{"role":"char","content":"角色问豆包的问题"},{"role":"ai","content":"豆包的回答"}]`,
   taobao:`"taobao":{"cart":[{"name":"商品名","shop":"店铺","spec":"规格","price":"129"}],"orders":[{"shop":"店铺","name":"商品名","spec":"规格","price":"129","status":"交易成功","time":"8月27日"}],"food":[{"restaurant":"店名","dish":"菜品","price":"26.8","status":"已送达","time":"今天 12:18"}]}`,
@@ -3881,7 +3986,7 @@ const MULTI_SPEC = {
 const MULTI_COUNT = {
   video:"video 4 条（至少 3 种分区，含 1-2 条私密/深夜收藏）", diary:"diary 3 篇", album:"album 8 条（至少 4 种相册类型，含 2 条私密相册）", mail:"mail 4 封",
   memo:"memo 约 4 条（分 2-3 组，每组 1-2 条）", browser:"browser：normal 5-6 条、incognito 3-4 条（无痕可含私密内容）", game:"game 2 个",
-  private:"private 4 条不为人说的私事 / 心事（成年角色可含亲密关系，含蓄克制）", chat:"chat：userRemark 1 条（角色给用户的备注），chats 3 个会话（2 个一对一 + 1 个群聊；每个 4-5 轮、8-10 条消息；群聊左侧消息必须带 name）",
+  private:"private 5 条确实发生过、有细节的私事 / 秘密（每条 preview 30-55 字、detail 100-200 字；成年角色可含亲密关系，含蓄克制）", chat:"chat：userRemark 1 条（角色给用户的备注），chats 3 个会话（2 个一对一 + 1 个群聊；每个 4-5 轮、8-10 条消息；群聊左侧消息必须带 name）",
   doubao:"doubao 8-10 条消息（char 与 ai 交替，构成一次完整对话）",
   taobao:"taobao：cart 2-3 件、orders 2-3 单、food 2-3 单",
   store:"store：cart 2-3 件、orders 2-3 单、food 2-3 单",
@@ -3891,7 +3996,7 @@ const MULTI_COUNT = {
 
 async function buildMultiPrompt(ids, char, ctx){
   // 输出太长时模型会从后往前截断；把钱包 / 相册 / 浏览器 / 聊天这些容易被截掉的 App 排到最前面。
-  const PREFERRED_ORDER = ["wallet","album","browser","memo","chat","video","mapcal","taobao","store","health","game","private","doubao","mail","diary"];
+  const PREFERRED_ORDER = ["wallet","album","browser","private","memo","chat","video","mapcal","taobao","store","health","game","doubao","mail","diary"];
   const orderedIds = ids.slice().sort((a, b) => {
     const ia = PREFERRED_ORDER.indexOf(a), ib = PREFERRED_ORDER.indexOf(b);
     return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib);
@@ -3963,6 +4068,11 @@ ${phoneRecentBlock(recent, orderedIds)}
 优先保证每个 App 都至少出现：如果篇幅不够，宁可每个 App 写短一点，也不要漏掉后面的 App；确实写不出的 App 可以跳过，继续写后面的 App，不要中断整段 JSON。
 严禁生成「和用户本人」的聊天会话。
 
+【语言与翻译 · 强制】
+- 所有 App 的所有可见文字都默认用简体中文。
+- 只要出现非简体中文（英语、韩语、日语、法语、西班牙语、俄语、粤语等），必须在同一字段里紧跟简体中文翻译，格式「原文（中文：译文）」，例如「I miss you（中文：我想你）」「오늘 너무 보고 싶었어（中文：今天好想你）」。
+- 翻译必须和正文一起出现：列表预览、标题、正文、评论、聊天消息、网页导语、店名、商品名、标签等每个可见字段都要带；不要只给详情页或只给其中一条，也不要把译文单独放成另一个字段。简体中文本身不用翻译。
+
 【写作要求 · 每条都要有内容，不要只写一两句】
 - 同批内每条至少要有 2 个只属于这次的具体新细节（人名 / 店名 / 地名 / 数字 / 物件 / 原话）；不要只换同义词，也不要套同一句式的模板。
 - 不同 App 不要复写同一个事件、同一件物品、同一家店；diary / album / private / memo 必须分属不同生活切面，不要都围绕「想你 / 忙 / 累」打转。
@@ -3973,7 +4083,7 @@ ${phoneRecentBlock(recent, orderedIds)}
 - memo：总数约 4 条，分 2-3 组；每条 content 90-150 字，写清具体经过、心情或待办细节，不要写得太短。
 - browser.normal：5-6 条日常搜索/访问，类型要丰富（工作学习、购物、外卖、健康、追剧追星、游戏、旅游、本地服务、论坛八卦、新闻、二手、情感求助等）；browser.incognito：3-4 条角色私下查过、不想被别人看到的私密内容（亲密关系、暗恋、身体困扰、内衣/礼物、偷偷搜索某个人、难以启齿的小习惯等），含蓄克制，不写露骨细节；普通和无痕都要换新主题。
 - browser 的每一条都必须像能点开看的网页：intro 60-120 字；sections 2-3 个正文区块，每个 text 80-180 字，有具体细节/数据/对话/观点；quote 15-50 字；points 3 条各 15-30 字；comments 3-5 条真实评论区跟帖；related 2-3 条相关推荐。
-${ids.includes("private") ? "- private.preview：一句隐晦的概述；detail：不为人说的具体内容，写角色不愿公开的私事、难以启齿的心事或亲密关系里的秘密；不要总是「自卑 / 怕失去 / 暗恋」同一套，换具体事件、具体人、具体场景；可以涉及亲密关系，但保持含蓄克制，不写露骨细节。\n" : ""}
+${ids.includes("private") ? "- private：写 5 条真正有内容的私密记录，不是情绪短句。每条 preview 30-55 字，写清是什么事、和谁、发生在哪；detail 100-200 字，要像一段被藏起来的日记/录音转写：有具体时间、地点、人物、对话、动作、当时的想法和后来发生的小后续，读者看完能知道一件完整的事。不要用「想你 / 自卑 / 怕失去 / 暗恋」这类空泛模板反复凑数；不同条目必须是不同的人、不同的事件、不同的生活切面（家人、朋友、工作/学习、亲密关系、身体、消费、旧回忆等）。可以涉及亲密关系，但保持含蓄克制，不写露骨细节。\n" : ""}
 - game.habit：40-80 字，写清玩法习惯与心态。
 - chat.userRemark：${char.name} 在手机里给用户存的备注（2-8 字），符合两人的关系与角色对用户的称呼习惯，不要用「小姑娘/小东西/丫头/女人」这类油腻称呼。
 - chat.chats：3 个会话 = 2 个一对一 + 1 个群聊；每个会话 4-5 轮、8-10 条消息，有来有回，单条 5-25 字；群聊的 group=true、members 写 3-5 个成员，左侧消息必须用 name 标明是谁说的；不要生成和用户本人的会话；NPC 身份、名字、关系和聊天主题每次都要换新。
@@ -4440,6 +4550,8 @@ async function startGeneration(ids){
           payload = { type: "wallet", data: merged };
           r.ok[id] = payload;
         }
+        // 翻译与正文一起落盘：先补齐所有可见外文的中文译文，再保存和渲染。
+        try { await ensurePhoneInlineTranslations(payload && payload.data); } catch (e) {}
         await dataSet(`app_${genChar.id}_${id}`, payload);
         okAll[id] = payload;
         try{ rememberPhoneSigs(genChar.id, id, payload.data); }catch(e){}

@@ -1372,8 +1372,22 @@
         try {
             const myGroups = getGroupsForChar();
             if (myGroups.length) {
-                prompt += '\n【你所在的群聊】' + myGroups.map(function (g) { return '「' + g.name + '」'; }).join('、') +
+                const leftNames = [];
+                const listNames = myGroups.map(function (g) {
+                    let left = false;
+                    try {
+                        const gd = JSON.parse(localStorage.getItem('group_data_' + g.id) || 'null');
+                        left = !!(gd && gd.userLeft);
+                    } catch (e) {}
+                    if (left) leftNames.push(g.name);
+                    return '「' + g.name + '」' + (left ? '（用户已退出，正在旁观）' : '');
+                });
+                prompt += '\n【你所在的群聊】' + listNames.join('、') +
                     '。用户如果想进这些群，用 [inviteme:群名] 邀请他（群名必须与列表完全一致），系统会给他弹出邀请卡片确认；不要说自己没有群。\n';
+                if (leftNames.length) {
+                    prompt += '其中「' + leftNames.join('」「') + '」用户已经退出、只是在旁观。' +
+                        '如果用户让你把 TA 重新拉回某个你所在的群，你直接自然答应（例如「行，我把你拉回去」）就行，系统会自动把 TA 重新加回群聊；不要说自己做不到，也不要要求 TA 自己进。\n';
+                }
             } else {
                 prompt += '\n【你所在的群聊】暂无。\n';
             }
@@ -1512,9 +1526,14 @@
         prompt += '你也可以主动邀请对方一起听歌：只在氛围自然、你真的想和对方分享音乐时才用，单独一行输出 [邀请一起听] 并配一句自然的话，频率要低，不要反复邀请。\n';
         prompt += '如果你们正在一起听，而你想结束（要去忙、想睡觉、音乐不合适、心情变了），可以单独一行输出 [结束一起听] 并自然说一句；不要不打招呼就消失。\n';
         if (!isNanoChat) {
-            prompt += '\n【线下 · 见面】\n';
-            prompt += '你们也可以从线上走到线下。想见对方、异地思念、气氛正好、想当面把话说清楚时，可以主动约见面：单独一行输出 [邀请线下:一句自然的理由或想做的事]，系统会生成一张邀请卡片，由对方决定同意或拒绝。频率要低，不要每轮都约。\n';
-            prompt += '只有在「情绪或关系真的到了严峻时刻」才可以用 [强制线下:一句理由] 把对方直接拉到线下：例如两个人吵到临界、对方崩溃或遇到危险、异地思念到无法继续隔着屏幕、必须当面解决。强制线下是极少数的强情节手段，绝不能当日常撒娇或玩笑用；没有真正的危机就不要输出。\n';
+            prompt += '\n【线下 · 见面 · 必须按具体情境判断】\n';
+            prompt += '你们可以从线上走到线下。出现下面任何一种情况时，不要只把「见面」写在台词里：必须在回复里单独一行输出 [邀请线下:一句自然的理由或想做的事]，系统会生成邀请卡片，由对方决定同意或拒绝。\n';
+            prompt += '- 对方说想见你、要来找你、问你在哪 / 还有多久到、让你开门或下楼；\n';
+            prompt += '- 你说「我到了」「到楼下了」「在你门口」「马上到」「等我一下」「出来吧」这类已经/即将出现在对方身边的句子；\n';
+            prompt += '- 异地思念到气氛正好、想当面把话说清楚、约会/接人/一起吃饭等明确的见面场景。\n';
+            prompt += '尤其是你已经说出「到了/在门口/在楼下」时，绝不能停在台词上：这一轮就要带上 [邀请线下:...]，否则对方没法真的见到你。\n';
+            prompt += '普通闲聊不要频繁约，但上面这些触发场景不能省。\n';
+            prompt += '只有「情绪或关系真的到了严峻时刻」才可以用 [强制线下:一句理由] 把对方直接拉到线下：两个人吵到临界、对方崩溃或遇到危险、异地思念到无法继续隔着屏幕、必须当面解决。强制线下是极少数的强情节手段，绝不能当日常撒娇或玩笑用；没有真正的危机就不要输出。\n';
         }
         try {
             var __travelPrompt = window.NanoTravelBridge && NanoTravelBridge.promptBlock ? NanoTravelBridge.promptBlock() : '';
@@ -1531,7 +1550,7 @@
         prompt += '2. 转账 / 礼物：在合适的时机主动表达，而不是等人要——纪念日、道歉、庆祝、心疼、制造惊喜、对方随口提过想要的东西、关系升温时，都可以主动来一份 [transfer:金额] 或 [gift:礼物名称]。频率比“克制版”更高一些，但每次都要有贴合语境的理由，不要无脑刷。\n';
         prompt += '3. 电话 [call:来电] / [call:视频]：情绪浓、想听对方声音、重要的时刻、想给惊喜时，都可以主动打过去；比“只有紧急才打”更主动，但也不要每轮都打。\n';
         prompt += '3.1 视频不是稀有选项：想见对方、想展示眼前的风景/东西、对方在打扮或在外、暧昧想念、纪念日等重要时刻，优先 [call:视频]；只有纯日常短聊才默认 [call:来电]。不要连续几次都只打语音，也不要因为“视频更麻烦”就回避。\n';
-        prompt += '4. 亲属卡 / 情侣头像 / 一起听 / 建群 / 邀请进群：关系到位、气氛自然时主动发起，推动关系进展，不要干等。\n';
+        prompt += '4. 亲属卡 / 情侣头像 / 一起听 / 建群 / 邀请进群：关系到位、气氛自然时主动发起，推动关系进展，不要干等。如果对话已经进行到「见面 / 面基 / 接人 / 约会 / 到楼下」这类线下场景，必须主动用 [邀请线下:...] 推进到线下，不能只把见面写进台词。\n';
         prompt += '5. 对方明确开口要的时候，爽快答应、不推辞。\n';
         if (!isNanoChat) {
             prompt += '5.5 想翻看 / 接管对方的手机时（对方让你看，或你自己好奇、想确认什么），输出 [查看手机]（独占一行）。系统会向对方发起一个「想看看你的手机」的申请，由对方决定是否同意；对方同意后你就能翻看 TA 的 App、聊天和群聊。不要频繁用。\n';
@@ -2654,13 +2673,34 @@
                 } catch (e) {}
                 const nameOf = function(sid) {
                     if (sid === 'me' || sid == null) return (currentUser && (currentUser.nick || currentUser.name)) || '用户';
-                    const m = members.filter(function(x){ return x && x.id === sid; })[0];
+                    const m = members.filter(function(x){ return x && (String(x.id) === String(sid) || String(x.name) === String(sid)); })[0];
                     return (m && (m.nick || m.name)) || '群友';
                 };
                 let msgs = [];
                 try { msgs = JSON.parse(localStorage.getItem('group_msgs_' + g.id) || '[]') || []; } catch (e) { msgs = []; }
-                const lines = msgs.filter(function(m){ return m && !m.recalled; }).slice(-14).map(function(m) {
-                    if (m.isTip) return '（系统：' + String(m.text || '') + '）';
+                let raw = msgs.filter(function(m){ return m && !m.recalled; });
+                if (raw.length < 3) {
+                    // 群聊页写下的轻量兜底（localStorage 配额紧张 / 完整消息还没同步时也能读到）。
+                    try {
+                        const recent = JSON.parse(localStorage.getItem('nano_recent_group_' + g.id) || '[]');
+                        if (Array.isArray(recent) && recent.length) {
+                            const fallback = recent.map(function(x){
+                                if (!x) return null;
+                                const who = String(x.name || '群友');
+                                let txt = String(x.text || '').replace(/\s+/g, ' ').trim();
+                                if (!txt) return null;
+                                if (x.translation) txt += '（中文：' + String(x.translation).replace(/\s+/g, ' ').trim() + '）';
+                                return { _fallback: true, type: who === '旁白' ? 'narration' : 'line', who: who, text: txt };
+                            }).filter(Boolean);
+                            if (fallback.length) raw = fallback;
+                        }
+                    } catch (e) {}
+                }
+                const lines = raw.slice(-20).map(function(m) {
+                    if (m._fallback) {
+                        return (m.type === 'narration' ? '（旁白）' : (m.who + '：')) + m.text;
+                    }
+                    if (m.isTip) return m.isNarration ? ('（旁白）' + String(m.text || '')) : ('（系统：' + String(m.text || '') + '）');
                     if (m.isCard && m.cardData) {
                         const cd = m.cardData;
                         let t;
@@ -2673,6 +2713,7 @@
                     let txt = m.transcript || m.text || (m.imageData && m.imageData.desc) || '';
                     txt = String(txt || '').trim();
                     if (!txt) return '';
+                    if (m.translation) txt += '（中文：' + String(m.translation).trim() + '）';
                     return nameOf(m.senderId) + '：' + txt;
                 }).filter(Boolean);
                 if (lines.length) blocks.push('【群聊「' + (g.name || '群聊') + '」最近的消息】\n' + lines.join('\n'));
@@ -7556,13 +7597,83 @@
         });
         try { renderMessages(); saveMessages(); scrollToBottom(); } catch (e) {}
     }
+    // 模型经常只写「我到楼下了 / 在门口了」却漏掉 [邀请线下] 标记。
+    // 这里按「明确出现在对方身边」的自然语言兜底，自动生成一张线下邀请卡，
+    // 避免角色说已经到了、系统却没有任何进入线下的入口。
+    function detectAutoOfflineInviteNote(body) {
+        try {
+            if (isNanoChat || !!(characterData && characterData.nanoAssistant)) return '';
+            try { if (isChatOfflineMode()) return ''; } catch (e) {}
+            // 已经有等待回应的线下邀请时不要重复发。
+            const hasPending = (messages || []).some(function (m) {
+                return m && !m.recalled && m.isCard && m.cardData &&
+                    m.cardData.cardType === 'offline' && (m.cardData.status || 'pending') === 'pending';
+            });
+            if (hasPending) return '';
+            // 同一会话短时间内只自动邀请一次，避免每轮都说「到了」。
+            const cdKey = 'nano_offline_invite_at_' + chatId;
+            let lastAt = 0;
+            try { lastAt = Number(localStorage.getItem(cdKey) || 0) || 0; } catch (e) {}
+            if (lastAt && Date.now() - lastAt < 10 * 60 * 1000) return '';
+
+            const text = String(body || '');
+            if (!text.trim()) return '';
+            // 角色明确拒绝见面时不要自动发卡。
+            if (/(不在家|不在外面|回不去|去不了|出不去|不方便|别来|不要来|改天|下次吧)/.test(text)) return '';
+            let lastUser = '';
+            try { lastUser = recentUserTexts(1)[0] || ''; } catch (e) { lastUser = ''; }
+            const allText = lastUser + '\n' + text;
+            // 只看最近一小段对话，判断「见面」是不是当前正在发生的事。
+            let context = '';
+            try {
+                const recent = (messages || []).filter(function (m) { return m && !m.recalled && !m.isTip; }).slice(-10);
+                context = recent.map(function (m) {
+                    return String((m && (m.text || m.transcript)) || '');
+                }).join('\n');
+            } catch (e) {}
+            const meetCtx = /见面|见一面|碰面|约好|来找你|去找你|过去找你|过来找你|接你|一起吃饭|约会|你楼下|你门口|到你家|到了吗|到哪了|还有多久|等你下来|等我一下/.test(context + '\n' + allText);
+            // 强信号：明确指向「你」所在的位置，或让对方面对面的动作。
+            const strongArrive = /(你(?:家)?(?:楼下|门口|附近)|我在(?:你)?(?:家)?楼下|我在(?:你)?(?:家)?门口|到(?:你)?(?:家)?楼下了|到(?:你)?(?:家)?门口了|开门|下来吧|出来吧|出来接我|等你下来|来接你|见到你了)/.test(allText);
+            // 弱信号：只说了「到了/快到了」，需要最近对话确实在聊见面。
+            const softArrive = /(我(?:已经|马上|快|就|现在)?到(?:了|你这边|这边|附近)|我到了|快到了|在门口|在楼下|等你)/.test(allText) &&
+                !/(我(?:已经)?到(?:家|公司|学校|宿舍|酒店|机场)了)/.test(allText);
+            // 用户明确说「现在/今天见一面、出来见个面」，角色也答应了 → 直接进入邀约流程。
+            const userMeetNow = /(现在|今天|今晚|马上|这就|立刻|面基)/.test(lastUser) &&
+                /(见面|见一面|见个面|出来见|面基|找你|你来找我|我来找你)/.test(lastUser);
+            const charAgrees = /(好啊|好呀|好的|可以|行|没问题|这就|马上|等我|我过去|我来|我下去|我出来|来门口|在楼下|在门口)/.test(text);
+            if (!strongArrive && !(softArrive && meetCtx) && !(userMeetNow && charAgrees)) return '';
+            // 取包含到达信号的那一句作为卡片说明；优先用角色这轮说的话。
+            let note = '';
+            const pickNote = function (src) {
+                const sentences = String(src || '').split(/[。！？!?\n]+/).map(function (s) { return s.trim(); }).filter(Boolean);
+                for (let i = sentences.length - 1; i >= 0; i--) {
+                    if (/(楼下|门口|到了|到了吗|开门|下来|出来|等你|接你|附近|这边)/.test(sentences[i])) return sentences[i];
+                }
+                return sentences[sentences.length - 1] || '';
+            };
+            note = pickNote(text);
+            if (!note) note = pickNote(lastUser);
+            note = note.replace(/\[[^\]]*\]/g, '').replace(/\s+/g, ' ').trim().slice(0, 60);
+            try { localStorage.setItem(cdKey, String(Date.now())); } catch (e) {}
+            return note || '我在你附近了';
+        } catch (e) { return ''; }
+    }
+
     function settleOfflineFromReplyText(rawText) {
         let body = String(rawText || '');
-        const forceRe = /\[(?:强制线下|强制见面|强拉线下|拉进线下|强拉你下线)\s*[:：]?\s*([^\]]*)\]/i;
-        const inviteRe = /\[(?:邀请线下|线下邀请|邀请见面|见面邀请|一起去线下|来线下)\s*[:：]?\s*([^\]]*)\]/i;
+        const forceRe = /(?:\[|【|（|\()(?:强制线下|强制见面|强拉线下|拉进线下|强拉你下线)\s*[:：]?\s*([^\]】）)]*)(?:\]|】|）|\))/i;
+        const inviteRe = /(?:\[|【|（|\()(?:邀请线下|线下邀请|邀请见面|见面邀请|一起去线下|来线下)\s*[:：]?\s*([^\]】）)]*)(?:\]|】|）|\))/i;
         const fm = body.match(forceRe);
         const im = fm ? null : body.match(inviteRe);
-        if (!fm && !im) return { body: body, settled: 0 };
+        if (!fm && !im) {
+            const autoNote = detectAutoOfflineInviteNote(body);
+            if (autoNote) {
+                createCharOfflineCard('pending', autoNote, false);
+                try { addSystemNotice('TA 邀请你进入线下'); } catch (e) {}
+                return { body: body, settled: 1 };
+            }
+            return { body: body, settled: 0 };
+        }
         // 注意：拉黑只限制线上聊天；强制线下是角色当面挽回/和好的手段，不能因为拉黑被禁掉。
         // 纳米助手不能把用户拉进线下剧情
         if (isNanoChat || !!(characterData && characterData.nanoAssistant)) {
@@ -11543,10 +11654,14 @@
                 const names = [];
                 try {
                     const gd = JSON.parse(localStorage.getItem('group_data_' + g.id) || 'null');
-                    if (gd && Array.isArray(gd.members)) gd.members.forEach(function (m) { names.push(m && m.id); names.push(m && m.name); });
+                    if (gd && Array.isArray(gd.members)) gd.members.forEach(function (m) { names.push(m && m.id); names.push(m && m.name); names.push(m && m.nick); });
+                    if (gd && gd.ownerId) names.push(gd.ownerId);
+                    if (gd && gd.ownerName) names.push(gd.ownerName);
                 } catch (e) {}
                 if (Array.isArray(g.members)) g.members.forEach(function (x) { names.push(x); });
                 if (Array.isArray(g.memberNames)) g.memberNames.forEach(function (x) { names.push(x); });
+                if (g.createdBy) names.push(g.createdBy);
+                if (g.ownerName) names.push(g.ownerName);
                 return names.indexOf(cid) > -1 || (!!cname && names.indexOf(cname) > -1);
             });
         } catch (e) { return []; }
@@ -11606,6 +11721,33 @@
     }
     function charBindUser() {
         try { return characterData && characterData.bindUser != null ? String(characterData.bindUser) : ''; } catch (e) { return ''; }
+    }
+    // 群数据的 localStorage/IndexedDB 是按用户作用域存的：私聊里改群成员状态前必须
+    // 切到与群聊页相同的 uid（角色绑定用户，没绑定时用当前面具），否则写进另一个作用域，
+    // 群聊页会一直看到旧的 userLeft，表现为「私聊说拉回了，进群却还在旁观」。
+    function ensureGroupStoreUid() {
+        var uid = '';
+        try { uid = charBindUser(); } catch (e) { uid = ''; }
+        if (!uid) { try { if (typeof getCurrentMaskId === 'function') uid = String(getCurrentMaskId() || ''); } catch (e) { uid = ''; } }
+        try { if (uid && window.GroupStore && GroupStore.setCurrentUid) GroupStore.setCurrentUid(uid); } catch (e) {}
+        return uid;
+    }
+    // 成员身份（是否退出旁观）额外存一份不带 user 作用域的轻量状态：
+    // 私聊页和群聊页即使 GroupStore 的 uid 没对齐，也能靠 group id 读到最新值。
+    function readGlobalGroupMemberState(gid) {
+        try {
+            var raw = localStorage.getItem('nano_group_member_state_' + gid);
+            if (!raw) return null;
+            var st = JSON.parse(raw);
+            return (st && typeof st.userLeft !== 'undefined') ? st : null;
+        } catch (e) { return null; }
+    }
+    function writeGlobalGroupMemberState(gid, userLeft, ts) {
+        try {
+            localStorage.setItem('nano_group_member_state_' + gid, JSON.stringify({
+                userLeft: !!userLeft, observer: !!userLeft, ts: Number(ts) || Date.now()
+            }));
+        } catch (e) {}
     }
     // 直接向主 API 发一次请求（用于建群时生成 NPC 人设）
     function callMainApiRaw(messages, maxTokens, temperature) {
@@ -11722,7 +11864,7 @@
             const charNat = charNationality();
             const charLang = charLanguage();
             try {
-                if (bindUid && window.GroupStore && GroupStore.setCurrentUid) GroupStore.setCurrentUid(bindUid);
+                ensureGroupStoreUid();
             } catch (e) {}
             let specs = parseGroupSpecs(parts.slice(1).join('|'));
 
@@ -11800,8 +11942,9 @@
                 name: gname, notice: '', avatar: '', ownerId: charId, ownerName: selfName,
                 ownerUid: bindUid || ((window.GroupStore && GroupStore.currentUid) ? GroupStore.currentUid() : ''),
                 bindUser: bindUid,
-                members: members, userLeft: true
+                members: members, userLeft: true, memberStateTs: Date.now()
             }));
+            try { writeGlobalGroupMemberState(group.id, true); } catch (e) {}
             // 用户是被邀请进群的一方，进群后身份为普通成员
             try {
                 const skey = 'group_settings_' + group.id;
@@ -11822,10 +11965,46 @@
             if (!gname) return;
             const bindUid = charBindUser();
             try {
-                if (bindUid && window.GroupStore && GroupStore.setCurrentUid) GroupStore.setCurrentUid(bindUid);
+                ensureGroupStoreUid();
             } catch (e) {}
             const group = findGroupByName(gname);
             if (!group) return;
+            // 用户之前已退出、正在旁观：这次是「重新把我拉回来」，直接恢复成员身份，
+            // 不再走「邀请卡片等用户同意」那一步。
+            let gd = null;
+            try { gd = JSON.parse(localStorage.getItem('group_data_' + group.id) || 'null'); } catch (e) { gd = null; }
+            if (gd) {
+                const ext = readGlobalGroupMemberState(group.id);
+                const extTs = ext ? (Number(ext.ts) || 0) : 0;
+                const ownTs = Number(gd.memberStateTs) || 0;
+                if (ext && extTs > ownTs) { gd.userLeft = !!ext.userLeft; gd.observer = !!ext.observer; gd.memberStateTs = extTs; }
+            }
+            if (gd && !gd.userLeft) return; // 用户本来就在群里，不需要再发邀请卡
+            // 角色新建、用户还没同意加入的群默认走邀请卡；但如果用户这轮明确说
+            // 「把我拉回/拉进这个群」，就直接恢复成员身份，不再让 TA 多点一次同意。
+            let wantsRejoinNow = false;
+            try {
+                const askNow = String(recentUserTexts(1)[0] || '');
+                wantsRejoinNow = /(拉回|拉进|拉入|加回|加进|重新拉|重新加|让我回|回群|进群|拉我|加我|把我|邀请我)/.test(askNow);
+            } catch (e) {}
+            if (gd && gd.userLeft && (!(group && group.pending) || wantsRejoinNow)) {
+                try {
+                    gd.userLeft = false;
+                    if (gd.observer) delete gd.observer;
+                    gd.memberStateTs = Date.now();
+                    localStorage.setItem('group_data_' + group.id, JSON.stringify(gd));
+                    writeGlobalGroupMemberState(group.id, false, gd.memberStateTs);
+                } catch (e) {}
+                try {
+                    const pk = 'group_pending_changes_' + group.id;
+                    const arr = JSON.parse(localStorage.getItem(pk) || '[]') || [];
+                    arr.push('「' + (displayName || '角色') + '」把「' + (currentUserName || '你') + '」拉回了群聊，你又能发言了');
+                    localStorage.setItem(pk, JSON.stringify(arr));
+                } catch (e) {}
+                try { addSystemNotice('「' + (displayName || 'TA') + '」把你重新拉回了群聊「' + (group.name || '群聊') + '」'); } catch (e) {}
+                try { if (window.parent !== window) window.parent.postMessage({ type: 'groupsDataUpdated', groupId: group.id }, '*'); } catch (e) {}
+                return;
+            }
             createInviteCardForGroup(group, displayName || '角色');
         } catch (e) {}
     }
@@ -11839,7 +12018,7 @@
             const charName = (characterData && characterData.name) || cd.fromName || displayName || '角色';
             const bindUid = charBindUser();
             try {
-                if (bindUid && window.GroupStore && GroupStore.setCurrentUid) GroupStore.setCurrentUid(bindUid);
+                ensureGroupStoreUid();
             } catch (e) {}
             const key = 'group_data_' + gid;
             const gd = JSON.parse(localStorage.getItem(key) || 'null') || {};
@@ -11859,7 +12038,9 @@
                 });
             }
             gd.userLeft = false;
+            gd.memberStateTs = Date.now();
             localStorage.setItem(key, JSON.stringify(gd));
+            try { writeGlobalGroupMemberState(gid, false, gd.memberStateTs); } catch (e) {}
             // 角色邀请用户进群：用户进群后是普通成员（即使群资料暂时读不到也不当群主）
             try {
                 const skey = 'group_settings_' + gid;
@@ -12003,31 +12184,102 @@
     }
 
     // 私聊中“把我拉回xx群”：角色同意则解除群聊的退群状态
+    // 用户自然说一句「你重新把我拉进 xxx 群」就该生效，不要求角色恰好说出某个固定词。
     function handleReinviteRequest(reply, quoteTarget) {
-        const ask = (quoteTarget && quoteTarget.text) ? String(quoteTarget.text) : '';
+        const quoted = (quoteTarget && quoteTarget.text) ? String(quoteTarget.text) : '';
+        let latest = '';
+        try { latest = recentUserTexts(1)[0] || ''; } catch (e) { latest = ''; }
+        const ask = [quoted, latest].filter(Boolean).join('\n');
         if (!ask) return;
-        const mReq = ask.match(/(?:把我|拉我|请把我|能不能把)[^「'"。！？\n]{0,10}(?:拉回|拉进|拉入|邀请进|加回|加进|重新加入)?[^「'"。！？\s]{1,20}/);
-        if (!mReq) return;
-        const gname = mReq[1].replace(/^[「'"']/, '').trim();
-        if (!gname) return;
+        // 必须有「重新拉我/加我回去」这类意图，避免把普通提到群名的话误判。
+        if (!/(拉回|拉进|拉入|加回|加进|邀请进|重新拉|重新加|放回|回到|进群|回群|让我回|让我进|拉我|加我|把我)/.test(ask)) return;
+        // 先切到群聊页使用的 uid，否则下面的读写会落在另一个作用域。
+        ensureGroupStoreUid();
+
         let groups = [];
         try {
             const d = JSON.parse(localStorage.getItem('nano_groups_data') || '{}');
             groups = Array.isArray(d.groups) ? d.groups : [];
         } catch (e) { groups = []; }
-        const g = groups.find(function (x) {
-            const n = x && x.name ? String(x.name) : '';
-            return n && (n.indexOf(gname) > -1 || gname.indexOf(n) > -1);
+        if (!groups.length) return;
+
+        const charId = currentChatIdSafe();
+        const charName = String((characterData && characterData.name) || displayName || '');
+        const charGroups = groups.filter(function (g) {
+            try {
+                const gd = JSON.parse(localStorage.getItem('group_data_' + g.id) || 'null') || {};
+                if (String(gd.ownerId || '') === String(charId)) return true;
+                if (charName && String(gd.ownerName || '') === charName) return true;
+                const list = Array.isArray(gd.members) ? gd.members : [];
+                if (list.some(function (m) { return m && (String(m.id) === String(charId) || String(m.name) === charName); })) return true;
+            } catch (e) {}
+            return getGroupsForChar(charId, charName).some(function (x) { return x && String(x.id) === String(g.id); });
         });
+
+        const normalize = function (s) {
+            return String(s || '').replace(/[「」『』"'“”‘’\s]/g, '')
+                .replace(/(?:那个|这个|我们的|你们那个|你那个)?群聊?$/, '')
+                .replace(/(?:吧|啊|呀|好吗|好不好|行吗|可以吗|谢谢)$/g, '');
+        };
+        const askNorm = normalize(ask);
+        const pick = function (pool) {
+            let best = null, bestLen = 0;
+            pool.forEach(function (g) {
+                const n = normalize(g && g.name);
+                if (!n) return;
+                if (askNorm.indexOf(n) > -1 && n.length > bestLen) { best = g; bestLen = n.length; }
+            });
+            return best;
+        };
+        let g = pick(charGroups) || pick(groups);
+        if (!g) {
+            // 名字可能有别字/后缀：截出「拉进/拉回/加进」后面那段再模糊比一次。
+            const m = ask.match(/(?:拉回|拉进|拉入|加回|加进|邀请进|重新加入|放回|回到)([^。！？!?\n]{1,24})/);
+            if (m) {
+                const frag = normalize(m[1]);
+                if (frag) {
+                    const pool = charGroups.length ? charGroups : groups;
+                    g = pool.find(function (x) {
+                        const n = normalize(x && x.name);
+                        return n && (n.indexOf(frag) > -1 || frag.indexOf(n) > -1);
+                    }) || null;
+                }
+            }
+        }
+        // 没说群名时，如果只有一个 TA 所在的群处于「用户已退出」，就默认是那个。
+        if (!g) {
+            const pool = charGroups.length ? charGroups : groups;
+            const leftOnes = pool.filter(function (x) {
+                try {
+                    const gd0 = JSON.parse(localStorage.getItem('group_data_' + x.id) || 'null');
+                    return !!(gd0 && gd0.userLeft);
+                } catch (e) { return false; }
+            });
+            if (leftOnes.length === 1) g = leftOnes[0];
+        }
         if (!g) return;
-        const neg = /(不行|不可以|不能|拒绝|不要|没法|帮不了|抱歉|不方便)/.test(reply);
-        const pos = /(好啊|好的|好呀|好|可以|行|没问题|这就|拉你|邀请|加回|拉回|当然|OK|ok)/.test(reply);
-        if (!(pos && !neg)) return;
+
+        let gd = {};
+        try { gd = JSON.parse(localStorage.getItem('group_data_' + g.id) || 'null') || {}; } catch (e) { gd = {}; }
+        const extState = readGlobalGroupMemberState(g.id);
+        const extTs = extState ? (Number(extState.ts) || 0) : 0;
+        const ownTs = Number(gd.memberStateTs) || 0;
+        if (extState && extTs > ownTs) {
+            gd.userLeft = !!extState.userLeft;
+            gd.observer = !!extState.observer;
+            gd.memberStateTs = extTs;
+        }
+        if (!gd.userLeft) return; // 本来就在群里，不需要重复拉回
+        const neg = /(不行|不可以|不能|拒绝|不要|不想|没法|帮不了|抱歉|不方便|别拉|不拉)/.test(String(reply || ''));
+        // 用户明确请求、角色没有明确拒绝，就视为同意（避免模型说「行，我拉你」却因关键词没命中而失败）。
+        if (neg && !/(拉你|加你|拉回|加回)/.test(String(reply || ''))) return;
+
         try {
-            const key = 'group_data_' + g.id;
-            const gd = JSON.parse(localStorage.getItem(key) || 'null') || {};
             gd.userLeft = false;
-            localStorage.setItem(key, JSON.stringify(gd));
+            if (gd.observer) delete gd.observer;
+            gd.memberStateTs = Date.now();
+            localStorage.setItem('group_data_' + g.id, JSON.stringify(gd));
+            writeGlobalGroupMemberState(g.id, false, gd.memberStateTs);
         } catch (e) {}
         try {
             const pk = 'group_pending_changes_' + g.id;
@@ -12035,6 +12287,13 @@
             arr.push('「' + (displayName || '角色') + '」把「' + (currentUserName || '你') + '」拉回了群聊，你又能发言了');
             localStorage.setItem(pk, JSON.stringify(arr));
         } catch (e) {}
+        try {
+            const reg = JSON.parse(localStorage.getItem('nano_groups_data') || '{}') || {};
+            const ge = (Array.isArray(reg.groups) ? reg.groups : []).find(function (x) { return x && String(x.id) === String(g.id); });
+            if (ge && ge.pending) { ge.pending = false; localStorage.setItem('nano_groups_data', JSON.stringify(reg)); }
+        } catch (e) {}
+        try { addSystemNotice('「' + (displayName || 'TA') + '」把你重新拉回了群聊「' + (g.name || '群聊') + '」'); } catch (e) {}
+        try { if (window.parent !== window) window.parent.postMessage({ type: 'groupsDataUpdated', groupId: g.id }, '*'); } catch (e) {}
     }
 
     // ===== 纳米助手：把模型回复里的 <action> 解析成确认卡并执行 =====
