@@ -608,7 +608,16 @@
             return row;
         }
 
-        var who = getMember(m.senderId) || { name:'?', nick:'?', initial:'?', bg:'#8e8e93', title:'', level:1 };
+        var who = getMember(m.senderId);
+        if (!who) {
+            // 已被移出群的成员：历史消息仍要显示原来的昵称/头像，不能变成「?」。
+            var __archived = Array.isArray(group.kickedMembers) ? group.kickedMembers : [];
+            for (var __ai = 0; __ai < __archived.length; __ai++) {
+                var __am = __archived[__ai];
+                if (__am && String(__am.id) === String(m.senderId)) { who = __am; break; }
+            }
+        }
+        if (!who) who = { name:'?', nick:'?', initial:'?', bg:'#8e8e93', title:'', level:1 };
 
         var avatar = document.createElement('div');
         avatar.className = 'message-avatar';
@@ -2009,6 +2018,13 @@
             (userLeft ? '用户现在已经退出、只是第三方旁观，不要 @ 用户或等用户接话；旁白出现时像对眼前场景作反应一样自然继续即可。' : '用户经常只是旁观或偶尔插一句，群聊照常热闹进行；角色之间可以有自己的小话题、内部梗和日常，不必事事以用户为中心。') + '\n';
 
         prompt += '\n【可选功能标签 · 需要时才用，一条消息里最多一个，可偶尔自然触发】\n';
+        try {
+            if (group.ownerId && String(group.ownerId) !== 'me') {
+                var __ownerM = null;
+                (group.members || []).forEach(function (m) { if (m && String(m.id) === String(group.ownerId)) __ownerM = m; });
+                if (__ownerM) prompt += '（本群群主是「' + (__ownerM.nick || __ownerM.name || '群主') + '」，只有群主/管理员能改群名、踢人、拉人；普通成员不要用这些标签。）\n';
+            }
+        } catch (e) {}
         prompt += '- 发群红包：[redpacket:金额|祝福语|个数]  例：[redpacket:66|恭喜发财]、[redpacket:20|手气最佳|3]（个数可省略；省略时按群人数发，不会自动减少）。要发红包时把它放在你这轮的最后一行，方便对方决定要不要抢。\n';
         prompt += '- 发起群接龙：[chain:标题|补充说明]  例：[chain:周六聚餐|老地方]\n';
         prompt += '- 发群公告：[notice:公告内容]  例：[notice:本周五晚八点开会]\n';
@@ -2023,6 +2039,10 @@
         prompt += '（标签必须单独放在该角色这一行；请自然、偶尔使用，不要每条都发功能。）\n';
         prompt += '- 想加用户好友/微信：[加好友]  例：某成员愿意和用户私聊时，在 TA 这一行的末尾加 [加好友]（系统会向用户发起好友申请，用户在 Meet 同意后即可私聊）。只在自然需要时偶尔使用。\n';
         prompt += '- 想跳过群聊、直接私聊用户说一句不方便在群里说的话：[私聊:内容]  例：[私聊:刚才那句话我是不想让他们听见才那么说的]。系统会切到你和用户的私聊，把这句话作为你的私聊消息发过去；只有在确实想单独说、且不只是在群里接话时才用。\n';
+        prompt += '- 群主/管理员把成员移出群聊：[kick:成员名]；要把用户本人移出群聊写 [kick:用户]（用户会转为旁观，只能看不能发言）。\n';
+        prompt += '- 群主/管理员把被移出的人邀请回来：[invite:成员名]；把用户本人拉回群写 [invite:用户]。\n';
+        prompt += '  踢人/拉人都必须符合人设和当下情绪（例如吃醋、生气、护短、维护群秩序），不要无缘无故频繁踢人；被踢的人之后可以被重新拉回来。普通成员用这两个标签无效。\n';
+        prompt += '  如果群主真的不想让某人继续待在群里（比如吃醋、发火、护短），就直接用 [kick:...]，不要只反复口头说“你退群吧”却没有动作；同样，想让人回来就用 [invite:...]。\n';
 
         prompt += '\n【输出格式示例】\n';
         prompt += 'Lambert：这个方案我觉得可以\n';
@@ -2246,6 +2266,8 @@
         s = s.replace(/\[call\s*:\s*([^\]]*)\]/gi, function(_, v){ tags.push({ kind:'call', payload:(v||'').trim() }); return ''; });
         s = s.replace(/\[(?:加好友|加微信|加我|申请加好友|addfriend)\]/gi, function(){ tags.push({ kind:'friendreq', payload:'' }); return ''; });
         s = s.replace(/\[(?:私聊|私信|dm|pm)\s*:\s*([^\]]*)\]/gi, function(_, v){ tags.push({ kind:'dm', payload:(v||'').trim() }); return ''; });
+        s = s.replace(/\[(?:kick|踢|踢出|踢掉|移出|移出群聊)\s*[:：]\s*([^\]]*)\]/gi, function(_, v){ tags.push({ kind:'kick', payload:(v||'').trim() }); return ''; });
+        s = s.replace(/\[(?:invite|拉回|拉进|邀请|邀请回来|拉回群)\s*[:：]\s*([^\]]*)\]/gi, function(_, v){ tags.push({ kind:'invite', payload:(v||'').trim() }); return ''; });
         s = s.replace(/\[image\s*:\s*([^\]]*)\]/gi, function(_, v){ tags.push({ kind:'image', payload:(v||'').trim() }); return ''; });
         s = s.replace(/【(红包|接龙|公告|昵称|头衔|群名)\s*[:：]\s*([^】]*?)】/g, function(_, k, v){
             var map = { '红包':'redpacket', '接龙':'chain', '公告':'notice', '昵称':'nickname', '头衔':'title', '群名':'groupname' };
@@ -2610,6 +2632,145 @@
         notifyGroupChange((member.nick||member.name) + ' 把群名从「' + old + '」改成了「' + name + '」');
     }
 
+    // ===== 群主/管理员：踢人 / 重新邀请 =====
+    var KICKED_KEY = 'nano_group_kicked_' + chatId;
+    function canModerateGroup(member){
+        if (!member) return false;
+        if (String(member.id) === 'me') return isUserOwner();
+        if (group && group.ownerId && String(member.id) === String(group.ownerId)) return true;
+        if (group && group.createdBy && String(member.id) === String(group.createdBy)) return true;
+        if (/群主|管理员|admin|owner/i.test(String(member.role || ''))) return true;
+        return false;
+    }
+    function isUserAlias(name){
+        var n = String(name || '').trim();
+        if (!n) return false;
+        if (/^(我|本人|用户|群友的我|me|user|the user)$/i.test(n)) return true;
+        try {
+            if (settings && (n === String(settings.myNick || ''))) return true;
+            if (currentUser && (n === String(currentUser.nick || '') || n === String(currentUser.name || ''))) return true;
+        } catch (e) {}
+        return false;
+    }
+    function writeMemberState(left, ts){
+        var stamp = Number(ts) || Date.now();
+        try {
+            localStorage.setItem('nano_group_member_state_' + chatId, JSON.stringify({
+                userLeft: !!left, observer: !!left, ts: stamp
+            }));
+        } catch (e) {}
+    }
+    function readKickedMembers(){
+        var arr = [];
+        try { arr = JSON.parse(localStorage.getItem(KICKED_KEY) || '[]') || []; } catch (e) { arr = []; }
+        var inGroup = Array.isArray(group.kickedMembers) ? group.kickedMembers : [];
+        var map = {};
+        inGroup.concat(arr).forEach(function (m) {
+            if (!m) return;
+            map[String(m.id != null ? m.id : (m.name || ''))] = m;
+        });
+        return Object.keys(map).map(function (k) { return map[k]; });
+    }
+    function saveKickedMembers(list){
+        var safe = (Array.isArray(list) ? list : []).slice(-60);
+        group.kickedMembers = safe;
+        try { localStorage.setItem(KICKED_KEY, JSON.stringify(safe)); } catch (e) {}
+    }
+    function syncRegistryMembers(){
+        try {
+            var raw = localStorage.getItem(GROUPS_KEY);
+            if (!raw) return;
+            var data = JSON.parse(raw);
+            if (!data || !Array.isArray(data.groups)) return;
+            for (var i = 0; i < data.groups.length; i++) {
+                var g = data.groups[i];
+                if (!g || String(g.id) !== String(chatId)) continue;
+                g.members = group.members.map(function (m) { return m.id; });
+                g.memberNames = group.members.map(function (m) { return m.nick || m.name || m.id; });
+                g.memberSettings = group.members.map(function (m) { return m.setting || ''; });
+                break;
+            }
+            localStorage.setItem(GROUPS_KEY, JSON.stringify(data));
+        } catch (e) {}
+    }
+    function applyKickMember(actor, payload){
+        if (!actor || !canModerateGroup(actor)) return;
+        var name = String(payload || '').trim();
+        if (!name) return;
+        var actorName = actor.nick || actor.name || '群主';
+        if (isUserAlias(name)) {
+            if (userLeft) return;
+            group.userLeft = true;
+            group.observer = true;
+            group.memberStateTs = Date.now();
+            userLeft = true;
+            saveGroup(group);
+            writeMemberState(true, group.memberStateTs);
+            notifyGroupChange('「' + actorName + '」把用户移出了群聊，用户转为了旁观');
+            try { applyObserverMode(); renderHeader(); renderMessages(); } catch (e) {}
+            return;
+        }
+        var idx = -1;
+        for (var i = 0; i < group.members.length; i++) {
+            var m = group.members[i];
+            if (!m) continue;
+            if (String(m.id) === name || String(m.name) === name || String(m.nick) === name) { idx = i; break; }
+        }
+        if (idx < 0) {
+            notifyGroupChange('「' + actorName + '」想让「' + name + '」退群，但群里没有这个人');
+            return;
+        }
+        var target = group.members[idx];
+        if (String(target.id) === String(actor.id)) return;
+        var kicked = readKickedMembers();
+        kicked.push(Object.assign({}, target, { kickedAt: Date.now(), kickedBy: actor.id }));
+        saveKickedMembers(kicked);
+        group.members.splice(idx, 1);
+        saveGroup(group);
+        syncRegistryMembers();
+        notifyGroupChange('「' + actorName + '」把「' + (target.nick || target.name || '成员') + '」移出了群聊');
+        try { renderHeader(); renderMessages(); } catch (e) {}
+    }
+    function applyInviteMember(actor, payload){
+        if (!actor || !canModerateGroup(actor)) return;
+        var name = String(payload || '').trim();
+        if (!name) return;
+        var actorName = actor.nick || actor.name || '群主';
+        if (isUserAlias(name)) {
+            if (!userLeft) return;
+            group.userLeft = false;
+            delete group.observer;
+            group.memberStateTs = Date.now();
+            userLeft = false;
+            saveGroup(group);
+            writeMemberState(false, group.memberStateTs);
+            notifyGroupChange('「' + actorName + '」把用户重新拉回了群聊');
+            try { applyObserverMode(); renderHeader(); renderMessages(); } catch (e) {}
+            return;
+        }
+        var kicked = readKickedMembers();
+        var found = null;
+        for (var i = 0; i < kicked.length; i++) {
+            var k = kicked[i];
+            if (!k) continue;
+            if (String(k.id) === name || String(k.name) === name || String(k.nick) === name) { found = k; break; }
+        }
+        if (!found) {
+            notifyGroupChange('「' + actorName + '」想把「' + name + '」拉回群，但找不到被移出的记录');
+            return;
+        }
+        var restored = Object.assign({}, found);
+        try { delete restored.kickedAt; delete restored.kickedBy; } catch (e) {}
+        var exists = group.members.some(function (m) { return m && String(m.id) === String(restored.id); });
+        if (!exists) group.members.push(restored);
+        var remain = kicked.filter(function (k) { return !(k && String(k.id) === String(restored.id)); });
+        saveKickedMembers(remain);
+        saveGroup(group);
+        syncRegistryMembers();
+        notifyGroupChange('「' + actorName + '」把「' + (restored.nick || restored.name || '成员') + '」邀请回了群聊');
+        try { renderHeader(); renderMessages(); } catch (e) {}
+    }
+
     function handleGroupTag(member, tag, timeStr){
         if (!tag || !member) return;
         if (tag.kind === 'redpacket') {
@@ -2644,6 +2805,10 @@
             applyTitleChange(member, tag.payload);
         } else if (tag.kind === 'groupname') {
             applyGroupNameChange(member, tag.payload);
+        } else if (tag.kind === 'kick') {
+            applyKickMember(member, tag.payload);
+        } else if (tag.kind === 'invite') {
+            applyInviteMember(member, tag.payload);
         } else if (tag.kind === 'voice') {
             var vp = String(tag.payload||'').split('|');
             var vtext = (vp.length >= 2 ? vp[1] : vp[0]) || '';
@@ -2770,6 +2935,13 @@
             }
             if (name && currentUser && (name === currentUser.nick || name === currentUser.name)) return;
             var member = name ? matchGroupMember(name) : null;
+            if (!member && name && Array.isArray(group.kickedMembers)) {
+                // 已被移出群的人不能在群里继续发言：直接丢弃这一行，避免把台词安到别人身上。
+                var __isKicked = group.kickedMembers.some(function (k) {
+                    return k && (String(k.id) === name || String(k.name) === name || String(k.nick) === name);
+                });
+                if (__isKicked) return;
+            }
             if (!member) member = lastMember || group.members[0];
             if (!member) return;
             lastMember = member;

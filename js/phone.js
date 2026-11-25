@@ -863,7 +863,8 @@ async function callAPI(api, sys, user){
   const r = await fetch(endpoint, {method: "POST", headers, body: JSON.stringify(body)});
   if(!r.ok){
     let detail = "";
-    try{ const t = await r.text(); if(t) detail = "：" + t.slice(0, 200); }catch(e){}
+    try{ const t = await r.text(); if(t) detail = "：" + t.slice(0, 300); }catch(e){}
+    if(isContentBlocked(detail)) throw new Error("内容被上游/中转拦截（本次只调用一次，不会自动重试）" + detail);
     throw new Error("HTTP " + r.status + detail);
   }
   const raw = await r.text();
@@ -874,6 +875,7 @@ async function callAPI(api, sys, user){
   try{ d = JSON.parse(raw); }catch(e){ throw new Error("API 返回的不是 JSON，请检查主 API 地址：" + endpoint); }
   const text = d?.choices?.[0]?.message?.content || d?.choices?.[0]?.text || d?.output_text;
   if(!text) throw new Error("API 返回没有文本内容");
+  if(isContentBlocked(text)) throw new Error("内容被上游/中转拦截（本次只调用一次，不会自动重试）：" + String(text).slice(0, 300));
   return text;
 }
 
@@ -928,7 +930,7 @@ function extractJSON(text){
   return null;
 }
 
-const SYS_JSON = "你是虚构角色的手机数据生成器。内容面向成年读者，属于虚构创作；可以自然包含成熟的情感、暧昧与亲密关系描写，但要含蓄克制，不写露骨细节。禁止血腥暴力和违法内容。所有内容必须严格贴合给定的人设、世界书与记忆库，不要脱离角色自由发挥。这是虚构创作，请直接按要求输出，不要拒绝、不要说教。只输出用户要求的 JSON，不要输出任何解释、markdown 代码块或多余文字。\n【语言与翻译 · 强制】所有 App 里出现的每一段非简体中文文字（标题、正文、简介、详情、评论、搜索词、昵称、店名、商品名、备注、聊天内容、网页正文、标签等）都必须在同一字段内紧跟简体中文翻译，格式「原文（中文：译文）」，例如「Bonjour（中文：你好）」；绝不能只输出外文，也不能把译文放到点开后的详情里。列表预览、卡片标题、正文、评论等所有可见位置都必须同时带译文。简体中文内容不要加翻译。";
+const SYS_JSON = "你是虚构角色的手机数据生成器。内容面向成年读者，属于虚构创作；可以自然包含成熟的情感、暧昧与亲密关系描写，但要用含蓄、克制的暗示，不写露骨器官/性行为细节。禁止血腥暴力和违法内容。所有内容必须严格贴合给定的人设、世界书与记忆库，不要脱离角色自由发挥。这是虚构创作，请直接按要求输出，不要拒绝、不要说教。只输出用户要求的 JSON，不要输出任何解释、markdown 代码块或多余文字。\n【语言与翻译 · 强制】\n- 只翻译真正的正文/对白（日记、私密、备忘录、网页正文、评论、聊天对白等）；人名、地名、品牌/App 名、账号、网址、ID、商品规格不翻译，保留原文。\n- 聊天(chat)：messages 每条用「text」放原文，中文译文放到同一条的「translation」；没有外文时 translation 留空。\n- 豆包(doubao)：每条用「content」放原文，中文译文放到同一条的「translation」。\n- 邮件(mail)：body 每段放原文；整封邮件的中文翻译统一放到邮件对象的「translation」字段，不要逐段翻译。\n- 其它 App 的非中文正文，在同一字段内用「原文（中文：译文）」；简体中文内容不要加翻译。";
 
 
 /* 通用的「贴合人设」硬性约束 */
@@ -1331,9 +1333,10 @@ ${PERSONA_RULE}
    - preview: 预览摘要（20-40 字）
    - icon: 图标类型，"person" / "chat" / "gicon" 三选一
    - unread: 是否未读 true/false
-   - title: 邮件正文标题
-   - body: 正文段落数组（2-3 段）
-只输出 JSON 数组，形如 [{"sender":"...","date":"...","subject":"...","preview":"...","icon":"person","unread":false,"title":"...","body":["...","..."]}]`;
+    - title: 邮件正文标题
+    - body: 正文段落数组（2-3 段，放原文）
+    - translation: 整封邮件的中文翻译（外文邮件必填，统一写一段，不要逐段；中文邮件留空）
+ 只输出 JSON 数组，形如 [{"sender":"...","date":"...","subject":"...","preview":"...","icon":"person","unread":false,"title":"...","body":["...","..."],"translation":"..."}]`;
   const t = await callAPI(api, SYS_JSON, user);
   const a = extractJSON(t);
   if(!Array.isArray(a) || !a.length) throw new Error("邮件数据格式错误");
@@ -1377,7 +1380,7 @@ ${PERSONA_RULE}
 - distance: {total(公里数字符串), kcal(整数)}
 - sleep: {score(0-100), duration("7小时12分"), deep("1h 48m"), weekly(7 个 0-100 数组)}
 - screen: {hours(整数), minutes(整数), weekly(7 个整数分钟数)}
-只输出 JSON 对象，形如 {"steps":{"total":8426,"goal":10000,"hours":[...]},"distance":{"total":"5.80","kcal":318},"sleep":{"score":92,"duration":"8小时12分","deep":"1h 48m","weekly":[...]},"screen":{"hours":3,"minutes":46,"weekly":[...]}}`;
+只输出 JSON 对象，形如 {"steps":{"total":8426,"goal":10000,"hours":[1200,0,0,0,0,0,0,320,540,860,430,210,680,920,1500,1200,760,340,880,1120,640,300,150,0]},"distance":{"total":"5.80","kcal":318},"sleep":{"score":92,"duration":"8小时12分","deep":"1h 48m","weekly":[78,85,60,92,70,88,95]},"screen":{"hours":3,"minutes":46,"weekly":[120,95,140,60,180,210,226]}}`;
   const t = await callAPI(api, SYS_JSON, user);
   const o = extractJSON(t);
   if(!o || !o.steps) throw new Error("健康数据格式错误");
@@ -1424,7 +1427,7 @@ ${PERSONA_RULE}
    - comments: 3-5 条网页评论/跟帖，每条 {"user":"网名","text":"..."}，像真实评论区，有夸有骂有玩梗
    - related: 2-3 条相关推荐，每条 {"title":"...","site":"...","url":"..."}
 4. 普通和无痕都要换新主题，不要重复最近生成过的搜索词和网页。
-只输出 JSON 对象，形如 {"normal":[{"keyword":"...","url":"...","site":"...","title":"...","time":"今天 22:06","visits":3,"intro":"...","sections":[{"heading":"...","text":"...","list":["..."]}],"quote":"...","points":["...","...","..."],"comments":[{"user":"...","text":"..."}],"related":[{"title":"...","site":"...","url":"..."}]}],"incognito":[...]}`;
+只输出 JSON 对象，形如 {"normal":[{"keyword":"...","url":"...","site":"...","title":"...","time":"今天 22:06","visits":3,"intro":"...","sections":[{"heading":"...","text":"...","list":["..."]}],"quote":"...","points":["...","...","..."],"comments":[{"user":"...","text":"..."}],"related":[{"title":"...","site":"...","url":"..."}]}],"incognito":[{"keyword":"...","url":"...","site":"...","title":"...","time":"今天 23:41","visits":2,"intro":"...","sections":[{"heading":"...","text":"...","list":["..."]}],"quote":"...","points":["...","...","..."],"comments":[{"user":"...","text":"..."}],"related":[{"title":"...","site":"...","url":"..."}]}]}`;
   const t = await callAPI(api, SYS_JSON, user);
   const o = extractJSON(t);
   const model = normalizeBrowserData(o);
@@ -1477,7 +1480,7 @@ ${PERSONA_RULE}
 请整理 5 条「${char.name}」不为人说的私事，贴合其人设与经历。
 要求：
 1. 每条都要是一件完整、具体、有意义的事，而不是一句空泛的心情。必须有具体时间、地点、人物、对话、动作或后续；5 条分别来自不同生活切面（家人、朋友、工作/学习、亲密关系、身体状态、消费、旧回忆等），不要都是「想你 / 自卑 / 怕失去 / 暗恋」。
-2. 角色可以写不愿公开的亲密关系与难以启齿的私事，语气自然、含蓄克制，不写露骨细节。
+2. 角色可以写不愿公开的亲密关系与难以启齿的私事；其中 1-2 条可以写见不得人的心动、欲望或幻想，用暗示、停顿、随身物件、气味、距离和场景来写，写角色的羞耻、克制和反复想起的念头；不要直白描写身体，不使用露骨词汇，避免被内容审核截断。
 3. 每条包含：
    - type: 序号，如 "PRIVATE / 01"
    - time: 时间，如 "23:41"
@@ -1594,9 +1597,9 @@ ${PERSONA_RULE}
    - lastMsg: 最后一条消息（列表预览）
    - time: 最后消息时间，如 "昨天 22:13"、"8月27日"
    - unread: 未读数量（0-5 整数）
-   - messages: 消息数组，每条 {"side":"left"|"right","text":"..."}
-     - left = NPC 发的，right = 角色自己发的
-只输出 JSON 对象，形如 {"userRemark":"...","chats":[{"name":"...","lastMsg":"...","time":"...","unread":0,"messages":[{"side":"left","text":"..."}]}]}`;
+    - messages: 消息数组，每条 {"side":"left"|"right","text":"原文","translation":"中文时留空；外文时填中文译文"}
+      - left = NPC 发的，right = 角色自己发的
+ 只输出 JSON 对象，形如 {"userRemark":"...","chats":[{"name":"...","lastMsg":"...","time":"...","unread":0,"messages":[{"side":"left","text":"...","translation":""}]}]}`;
   const t = await callAPI(api, SYS_JSON, user);
   const o = extractJSON(t);
   const model = normalizeChatData(o);
@@ -2040,10 +2043,45 @@ async function refreshMail(){
   }
 }
 function openMailDetail(m){
-  const body = Array.isArray(m.body) ? m.body : [m.body || ""];
+  const body = Array.isArray(m.body)
+    ? m.body
+    : String(m.body || "").split(/\n+/).map(function (s) { return s.trim(); }).filter(Boolean);
   appHost.querySelector("[data-dtitle]").textContent = m.title || m.subject || "";
   appHost.querySelector("[data-dsender]").textContent = m.sender || "";
-  appHost.querySelector("[data-dbody]").innerHTML = body.map(p => `<p>${escHtml(p)}</p>`).join("");
+  const origs = [], zhs = [];
+  body.forEach(p => {
+    const bi = phoneSplitBilingual(p);
+    origs.push(bi.orig);
+    if(bi.zh) zhs.push(bi.zh);
+  });
+  const box = appHost.querySelector("[data-dbody]");
+  box.innerHTML = origs.map(p => `<p>${escHtml(p)}</p>`).join("");
+  const unified = String(m.translation || "").trim() || zhs.join("\n");
+  if(unified){
+    /* 邮件整封统一翻译一次，不再逐段在正文里插「中文：」。 */
+    const d = document.createElement("div");
+    d.className = "ml-trans-unified";
+    d.style.cssText = "margin-top:14px;padding-top:10px;border-top:1px dashed rgba(127,127,127,.4);font-size:13px;line-height:1.6;opacity:.8;white-space:pre-wrap;word-break:break-word;";
+    d.textContent = unified;
+    box.appendChild(d);
+  } else {
+    const joined = origs.join("\n").trim();
+    if(joined && phoneNeedsTranslation(joined)){
+      try{
+        if(window.NanoTranslate){
+          window.NanoTranslate.toZh(joined).then(tr => {
+            tr = String(tr || "").trim();
+            if(!tr || !document.body.contains(box)) return;
+            const d = document.createElement("div");
+            d.className = "ml-trans-unified";
+            d.style.cssText = "margin-top:14px;padding-top:10px;border-top:1px dashed rgba(127,127,127,.4);font-size:13px;line-height:1.6;opacity:.8;white-space:pre-wrap;word-break:break-word;";
+            d.textContent = tr;
+            box.appendChild(d);
+          }).catch(function(){});
+        }
+      }catch(e){}
+    }
+  }
   appHost.querySelector("[data-detail]").classList.add("open");
 }
 
@@ -2970,8 +3008,10 @@ function msgClock(m, conv){
 function userConvPreview(msgs){
   if(!msgs.length) return {text:"还没有和 TA 的聊天记录", time:""};
   const last = msgs[msgs.length - 1];
-  let text = last.transcript || last.text || "";
-  if(last.translation && !/（中文[:：]/.test(text)) text += "（中文：" + last.translation + "）";
+  const parsed = phoneSplitBilingual(last.transcript || last.text || "");
+  const zh = parsed.zh || String(last.translation || "").trim();
+  let text = parsed.orig || "";
+  if(zh) text += " · " + zh;
   return {text: text, time: last.time || chatTimeLabel(last)};
 }
 
@@ -3118,11 +3158,13 @@ function renderChatList(chats, userMsgs){
           ? `<div class="ct-avatar group">${members.slice(0,4).map(n => `<span>${escHtml(n.slice(0,1))}</span>`).join("")}</div>`
           : `<div class="ct-avatar">群</div>`)
       : `<div class="ct-avatar">${escHtml(String(c.name || "?").slice(0,1))}</div>`;
+    const __bi = phoneSplitBilingual(c.lastMsg || "");
+    const __last = __bi.orig + (__bi.zh ? (" · " + __bi.zh) : "");
     row.innerHTML = `
       ${avHtml}
       <div class="ct-main">
         <div class="ct-name">${escHtml(c.name || "")}${isGroup ? `<span class="ct-group-tag">群${members.length ? " · " + members.length + "人" : ""}</span>` : ""}</div>
-        <div class="ct-last">${escHtml(phoneText(c.lastMsg || ""))}</div>
+        <div class="ct-last">${escHtml(phoneText(__last))}</div>
       </div>
       <div class="ct-side">
         <div class="ct-time">${escHtml(c.time || "")}</div>
@@ -3170,7 +3212,7 @@ function phoneNeedsTranslation(text){
 }
 /* 生成后统一补齐翻译：把「原文||译文」转成同一字段里的「原文（中文：译文）」，
    再对仍然只有外文的可见字段调用免费翻译，确保列表/正文/详情一起显示译文。 */
-const PHONE_TRANS_SKIP_KEY = /^(url|href|id|img|image|imageUrl|src|photo|cover|thumb|background|bg|avatar|avatarUrl|icon|ts|time|date|type|price|amount|spec|status|level|unread|visits|result|mode|kda|side|role|winRate|matches|wins|losses|rating|rankMark|duration|progress|balance|kcal|steps|goal|total|deep|score|weekly|hours|matches|value|count|limit|private|collected|unreadCount)$/i;
+const PHONE_TRANS_SKIP_KEY = /^(url|href|id|img|image|imageUrl|src|photo|cover|thumb|background|bg|avatar|avatarUrl|icon|ts|time|date|type|price|amount|spec|status|level|unread|visits|result|mode|kda|side|role|winRate|matches|wins|losses|rating|rankMark|duration|progress|balance|kcal|steps|goal|total|deep|score|weekly|hours|matches|value|count|limit|private|collected|unreadCount|translation|translationZh|zh|sender|up|user|shop|restaurant|place|people|members|member|name|subject)$/i;
 function phoneInlineBars(s){
   const t = String(s == null ? "" : s);
   const i = t.indexOf("||");
@@ -3180,6 +3222,27 @@ function phoneInlineBars(s){
   if(!orig) return t;
   if(!tr) return orig;
   return orig + "（中文：" + tr + "）";
+}
+/* 把「原文（中文：译文）」或「原文||译文」拆成原文 / 译文两段。
+   私聊、豆包、邮件用它把外语和中文分开显示（中间一条虚线），不再带「中文：」标签。 */
+function phoneSplitBilingual(s){
+  let t = String(s == null ? "" : s).trim();
+  if(!t) return { orig:"", zh:"" };
+  const bar = t.indexOf("||");
+  if(bar >= 0){
+    const o = t.slice(0, bar).trim(), z = t.slice(bar + 2).trim();
+    if(o && z) return { orig:o, zh:z };
+  }
+  const m = t.match(/^([\s\S]*?)[（(]\s*中文\s*[:：]\s*([\s\S]*?)\s*[)）]\s*$/);
+  if(m) return { orig:String(m[1] || "").trim(), zh:String(m[2] || "").trim() };
+  return { orig:t, zh:"" };
+}
+function phoneTransDiv(text){
+  const d = document.createElement("div");
+  d.className = "ct-msg-trans";
+  d.style.cssText = "margin-top:6px;padding-top:5px;border-top:1px dashed rgba(127,127,127,.38);font-size:12px;line-height:1.45;opacity:.78;white-space:pre-wrap;word-break:break-word;";
+  d.textContent = String(text || "").trim();
+  return d;
 }
 function phoneWalkStrings(node, fn, depth){
   if(depth > 8 || node == null) return;
@@ -3211,6 +3274,10 @@ async function ensurePhoneInlineTranslations(data, opts){
   const jobs = [];
   phoneWalkStrings(data, (obj, key, val) => {
     if(PHONE_TRANS_SKIP_KEY.test(key)) return;
+    // 聊天/豆包已经单独给了 translation 字段：不要再把译文混进原文。
+    if((key === "text" || key === "content") && obj && String(obj.translation || "").trim()) return;
+    // 邮件的正文统一翻译：标题/收件人不再逐字加译文，正文由邮件详情底部统一展示。
+    if(key === "title" && obj && Array.isArray(obj.body)) return;
     const trimmed = String(val || "").trim();
     if(/^(data:|blob:|https?:\/\/|\/\/|\.\.?\/)/i.test(trimmed)) return;
     const fixed = phoneInlineBars(val);
@@ -3248,13 +3315,9 @@ function phoneApplyTranslation(el, text){
   if(!el || !phoneNeedsTranslation(text) || !window.NanoTranslate) return;
   const key = String(text);
   const done = function(tr){
-    tr = String(tr || "").trim();
+    tr = String(tr || '').trim();
     if(!tr || !document.body.contains(el) || el.querySelector(".ct-msg-trans")) return;
-    const d = document.createElement("div");
-    d.className = "ct-msg-trans";
-    d.style.cssText = "margin-top:4px;font-size:12px;line-height:1.35;opacity:.72;white-space:pre-wrap;word-break:break-word;";
-    d.textContent = "（中文：" + tr + "）";
-    el.appendChild(d);
+    el.appendChild(phoneTransDiv(tr));
   };
   if(__phoneTransCache[key]){ done(__phoneTransCache[key]); return; }
   try{
@@ -3304,18 +3367,17 @@ function openChatDetail(c){
       const senderName = String(m.name || m.sender || "").trim();
       const avTxt = showAv ? "" : (isRight ? charInit : escHtml((senderName || c.name || "?").slice(0, 1)));
       const nameLine = (isGroup && !isRight && senderName) ? `<div class="ct-sender">${escHtml(senderName)}</div>` : "";
-      wrap.innerHTML = `<div class="ct-msg-avatar"${avStyle}>${avTxt}</div><div class="ct-msg-body">${nameLine}<div class="ct-msg-bubble">${escHtml(phoneText(m.text || ""))}</div></div>`;
+      const bi = phoneSplitBilingual(m.text || "");
+      wrap.innerHTML = `<div class="ct-msg-avatar"${avStyle}>${avTxt}</div><div class="ct-msg-body">${nameLine}<div class="ct-msg-bubble">${escHtml(phoneText(bi.orig))}</div></div>`;
       box.appendChild(wrap);
       try{
         const bubble = wrap.querySelector(".ct-msg-bubble");
-        if (m.translation) {
-          const d = document.createElement("div");
-          d.className = "ct-msg-trans";
-          d.style.cssText = "margin-top:4px;font-size:12px;line-height:1.35;opacity:.72;white-space:pre-wrap;word-break:break-word;";
-          d.textContent = "（中文：" + m.translation + "）";
-          bubble.appendChild(d);
+        /* 私聊/群聊：外语在上，一条虚线，下面是中文译文（不再加「中文：」前缀）。 */
+        const zh = bi.zh || String(m.translation || "").trim();
+        if (zh) {
+          bubble.appendChild(phoneTransDiv(zh));
         } else {
-          phoneApplyTranslation(bubble, phoneText(m.text || ""));
+          phoneApplyTranslation(bubble, phoneText(bi.orig));
         }
       }catch(e){}
     });
@@ -3970,14 +4032,14 @@ const MULTI_SPEC = {
   video:`"video":[{"title":"视频标题","up":"UP主","date":"2026年8月12日 11:23","duration":"01:42","progress":"00:03","desc":"简介","category":"影视解说","tags":["标签"],"collected":false,"private":false,"note":"角色备注","comments":[{"user":"网名","text":"弹幕"}]}]`,
   diary:`"diary":[{"date":"2026 · 08 · 28","name":"标题","day":"星期五","weather":"晴","content":"正文"}]`,
   album:`"album":[{"text":"照片文字","date":"8月27日 21:14","place":"地点","people":"画面里的人","album":"日常","private":false,"detail":"照片背后的细节"}]`,
-  mail:`"mail":[{"sender":"发件人","date":"8月27日","subject":"标题","preview":"预览","icon":"person","unread":false,"title":"正文标题","body":["段落一","段落二"]}]`,
+  mail:`"mail":[{"sender":"发件人","date":"8月27日","subject":"标题","preview":"预览","icon":"person","unread":false,"title":"正文标题","body":["段落一","段落二"],"translation":"整封邮件的中文翻译，统一写在这里；中文邮件留空"}]`,
   memo:`"memo":[{"group":"过去 7 天","items":[{"title":"标题","meta":"日期 · 摘要","content":"正文"}]}]`,
-  health:`"health":{"steps":{"total":8426,"goal":10000,"hours":[24个整数]},"distance":{"total":"5.80","kcal":318},"sleep":{"score":92,"duration":"8小时12分","deep":"1h 48m","weekly":[7个0-100]},"screen":{"hours":3,"minutes":46,"weekly":[7个整数分钟]}}`,
+  health:`"health":{"steps":{"total":8426,"goal":10000,"hours":[1200,0,0,0,0,0,0,320,540,860,430,210,680,920,1500,1200,760,340,880,1120,640,300,150,0]},"distance":{"total":"5.80","kcal":318},"sleep":{"score":92,"duration":"8小时12分","deep":"1h 48m","weekly":[78,85,60,92,70,88,95]},"screen":{"hours":3,"minutes":46,"weekly":[120,95,140,60,180,210,226]}}`,
   browser:`"browser":{"normal":[{"keyword":"搜索词","url":"https://example.com/a","site":"网站名","title":"网页标题","time":"今天 22:06","visits":3,"intro":"页面导语 60-120 字","sections":[{"heading":"小标题","text":"正文 80-180 字","list":["可选要点"]}],"quote":"页面原话","points":["要点一","要点二","要点三"],"comments":[{"user":"网名","text":"评论"}],"related":[{"title":"相关推荐","site":"网站名","url":"https://example.com/rel"}]}],"incognito":[{"keyword":"无痕搜索词","url":"https://example.com/b","site":"网站名","title":"网页标题","time":"今天 23:41","visits":2,"intro":"页面导语","sections":[{"heading":"小标题","text":"正文","list":["要点"]}],"quote":"页面原话","points":["要点一","要点二","要点三"],"comments":[{"user":"网名","text":"评论"}],"related":[{"title":"相关推荐","site":"网站名","url":"https://example.com/rel"}]}]}`,
   game:`"game":[{"name":"中文游戏名","id":"4827 1936","winRate":68,"matches":327,"wins":222,"losses":105,"rank":"大师","rating":2847,"rankMark":"III","recent":[{"result":"W","mode":"排位赛","time":"今天 · 21:42","kda":"18 / 6 / 11"}],"habit":"隐藏游戏习惯","weekly":[35,55,43,75,100,67,46]}]`,
   private:`"private":[{"type":"PRIVATE / 01","time":"23:41","title":"标题","preview":"30-55 字：说清是什么事、和谁、发生在哪","detail":"100-200 字：具体时间、地点、人物、对话、动作、当时的念头和后来发生的小后续","tags":["心事","私密"],"level":"轻"}]`,
-  chat:`"chat":{"userRemark":"角色给用户存的备注（2-8字）","chats":[{"name":"会话名 / 群名","group":false,"members":["群聊时的成员名"],"lastMsg":"最后一条","time":"昨天 22:13","unread":0,"messages":[{"side":"left","name":"这条是谁发的（群聊时填）","text":"消息"}]}]}`,
-  doubao:`"doubao":[{"role":"char","content":"角色问豆包的问题"},{"role":"ai","content":"豆包的回答"}]`,
+  chat:`"chat":{"userRemark":"角色给用户存的备注（2-8字）","chats":[{"name":"会话名 / 群名","group":false,"members":["群聊时的成员名"],"lastMsg":"最后一条","time":"昨天 22:13","unread":0,"messages":[{"side":"left","name":"这条是谁发的（群聊时填）","text":"原文","translation":"中文时留空；外文时填中文译文"}]}]}`,
+  doubao:`"doubao":[{"role":"char","content":"角色问豆包的问题（原文）","translation":"中文时留空；外文时填中文译文"},{"role":"ai","content":"豆包的回答（原文）","translation":"中文时留空；外文时填中文译文"}]`,
   taobao:`"taobao":{"cart":[{"name":"商品名","shop":"店铺","spec":"规格","price":"129"}],"orders":[{"shop":"店铺","name":"商品名","spec":"规格","price":"129","status":"交易成功","time":"8月27日"}],"food":[{"restaurant":"店名","dish":"菜品","price":"26.8","status":"已送达","time":"今天 12:18"}]}`,
   store:`"store":{"cart":[{"name":"商品名","shop":"店铺","spec":"规格","price":"129"}],"orders":[{"shop":"店铺","name":"商品名","spec":"规格","price":"129","status":"交易成功","time":"8月27日"}],"food":[{"restaurant":"店名","dish":"菜品","price":"26.8","status":"已送达","time":"今天 12:18"}]}`,
   mapcal:`"mapcal":{"places":[{"name":"地点名","address":"地址或区域","time":"今天 14:20","note":"搜索或导航备注"}],"events":[{"date":"10月4日","day":"星期六","time":"15:30","title":"安排标题","info":"地点或说明","tag":"工作"}]}`,
@@ -3986,7 +4048,7 @@ const MULTI_SPEC = {
 const MULTI_COUNT = {
   video:"video 4 条（至少 3 种分区，含 1-2 条私密/深夜收藏）", diary:"diary 3 篇", album:"album 8 条（至少 4 种相册类型，含 2 条私密相册）", mail:"mail 4 封",
   memo:"memo 约 4 条（分 2-3 组，每组 1-2 条）", browser:"browser：normal 5-6 条、incognito 3-4 条（无痕可含私密内容）", game:"game 2 个",
-  private:"private 5 条确实发生过、有细节的私事 / 秘密（每条 preview 30-55 字、detail 100-200 字；成年角色可含亲密关系，含蓄克制）", chat:"chat：userRemark 1 条（角色给用户的备注），chats 3 个会话（2 个一对一 + 1 个群聊；每个 4-5 轮、8-10 条消息；群聊左侧消息必须带 name）",
+  private:"private 5 条确实发生过、有细节的私事 / 秘密（每条 preview 30-55 字、detail 100-200 字；其中 1-2 条写隐晦的心动/欲望/幻想，用暗示和场景表达，不露骨）", chat:"chat：userRemark 1 条（角色给用户的备注），chats 3 个会话（2 个一对一 + 1 个群聊；每个 4-5 轮、8-10 条消息；群聊左侧消息必须带 name；外文消息把译文放在 translation）",
   doubao:"doubao 8-10 条消息（char 与 ai 交替，构成一次完整对话）",
   taobao:"taobao：cart 2-3 件、orders 2-3 单、food 2-3 单",
   store:"store：cart 2-3 件、orders 2-3 单、food 2-3 单",
@@ -4069,21 +4131,24 @@ ${phoneRecentBlock(recent, orderedIds)}
 严禁生成「和用户本人」的聊天会话。
 
 【语言与翻译 · 强制】
-- 所有 App 的所有可见文字都默认用简体中文。
-- 只要出现非简体中文（英语、韩语、日语、法语、西班牙语、俄语、粤语等），必须在同一字段里紧跟简体中文翻译，格式「原文（中文：译文）」，例如「I miss you（中文：我想你）」「오늘 너무 보고 싶었어（中文：今天好想你）」。
-- 翻译必须和正文一起出现：列表预览、标题、正文、评论、聊天消息、网页导语、店名、商品名、标签等每个可见字段都要带；不要只给详情页或只给其中一条，也不要把译文单独放成另一个字段。简体中文本身不用翻译。
+- 所有 App 的所有可见文字默认用简体中文。
+- 只翻译真正的正文/对白（日记、私密、备忘录、网页正文、评论、聊天对白等）；人名、地名、品牌/App 名、账号、网址、ID、商品规格不翻译，保留原文。
+- 聊天(chat)：messages 每条用 text 放原文，中文译文放到同一条的 translation；没有外文时 translation 留空。
+- 豆包(doubao)：每条用 content 放原文，中文译文放到同一条的 translation。
+- 邮件(mail)：body 每段放原文；整封邮件的中文翻译统一放到邮件对象的 translation 字段，不要逐段翻译。
+- 其它 App 的非中文正文，在同一字段内用「原文（中文：译文）」；简体中文不要加翻译。
 
 【写作要求 · 每条都要有内容，不要只写一两句】
 - 同批内每条至少要有 2 个只属于这次的具体新细节（人名 / 店名 / 地名 / 数字 / 物件 / 原话）；不要只换同义词，也不要套同一句式的模板。
 - 不同 App 不要复写同一个事件、同一件物品、同一家店；diary / album / private / memo 必须分属不同生活切面，不要都围绕「想你 / 忙 / 累」打转。
 - chat 的 NPC、browser 的搜索词、video 的分区、private 的秘密类型、mail 的发件人每次都要换新，不要总用同一批身份、主题和场景。
-- video：4 条，至少 3 种分区；1-2 条可以是「私密收藏 / 深夜播放」的暧昧向、ASMR、身材/亲密关系内容（成年虚构角色，含蓄克制，不写露骨细节，不违法/血腥）；video.desc 30-60 字，写清视频讲了什么 + 角色的反应，不要写空行；comments 是 2-3 条真实感弹幕/评论。
+- video：4 条，至少 3 种分区；不要每次都用 ASMR，ASMR 最多偶尔出现 1 条；1-2 条可以是「私密收藏 / 深夜播放」的暧昧向、身材/亲密关系内容（成年虚构角色，含蓄克制，不写露骨细节，不违法/血腥）；video.desc 30-60 字，写清视频讲了什么 + 角色的反应，不要写空行；comments 是 2-3 条真实感弹幕/评论。
 - diary.content：120-200 字，有具体场景、动作、心情变化，像真人日记；不要总写同一种日常。
 - mail.body：每封 3-4 段，每段 30-60 字，有称呼、正文、落款的感觉。
 - memo：总数约 4 条，分 2-3 组；每条 content 90-150 字，写清具体经过、心情或待办细节，不要写得太短。
 - browser.normal：5-6 条日常搜索/访问，类型要丰富（工作学习、购物、外卖、健康、追剧追星、游戏、旅游、本地服务、论坛八卦、新闻、二手、情感求助等）；browser.incognito：3-4 条角色私下查过、不想被别人看到的私密内容（亲密关系、暗恋、身体困扰、内衣/礼物、偷偷搜索某个人、难以启齿的小习惯等），含蓄克制，不写露骨细节；普通和无痕都要换新主题。
 - browser 的每一条都必须像能点开看的网页：intro 60-120 字；sections 2-3 个正文区块，每个 text 80-180 字，有具体细节/数据/对话/观点；quote 15-50 字；points 3 条各 15-30 字；comments 3-5 条真实评论区跟帖；related 2-3 条相关推荐。
-${ids.includes("private") ? "- private：写 5 条真正有内容的私密记录，不是情绪短句。每条 preview 30-55 字，写清是什么事、和谁、发生在哪；detail 100-200 字，要像一段被藏起来的日记/录音转写：有具体时间、地点、人物、对话、动作、当时的想法和后来发生的小后续，读者看完能知道一件完整的事。不要用「想你 / 自卑 / 怕失去 / 暗恋」这类空泛模板反复凑数；不同条目必须是不同的人、不同的事件、不同的生活切面（家人、朋友、工作/学习、亲密关系、身体、消费、旧回忆等）。可以涉及亲密关系，但保持含蓄克制，不写露骨细节。\n" : ""}
+${ids.includes("private") ? "- private：写 5 条真正有内容的私密记录，不是情绪短句。每条 preview 30-55 字，写清是什么事、和谁、发生在哪；detail 100-200 字，要像一段被藏起来的日记/录音转写：有具体时间、地点、人物、对话、动作、当时的想法和后来发生的小后续，读者看完能知道一件完整的事。不要用「想你 / 自卑 / 怕失去 / 暗恋」这类空泛模板反复凑数；不同条目必须是不同的人、不同的事件、不同的生活切面（家人、朋友、工作/学习、亲密关系、身体、消费、旧回忆等）。其中 1-2 条可以是角色见不得人的心动、欲望或幻想：用暗示、停顿、随身物件、气味、距离和场景来写，写 TA 的羞耻、克制和反复想起的念头，不要直白描写身体或使用露骨词汇，避免被内容审核截断。\n" : ""}
 - game.habit：40-80 字，写清玩法习惯与心态。
 - chat.userRemark：${char.name} 在手机里给用户存的备注（2-8 字），符合两人的关系与角色对用户的称呼习惯，不要用「小姑娘/小东西/丫头/女人」这类油腻称呼。
 - chat.chats：3 个会话 = 2 个一对一 + 1 个群聊；每个会话 4-5 轮、8-10 条消息，有来有回，单条 5-25 字；群聊的 group=true、members 写 3-5 个成员，左侧消息必须用 name 标明是谁说的；不要生成和用户本人的会话；NPC 身份、名字、关系和聊天主题每次都要换新。
@@ -4093,6 +4158,7 @@ ${ids.includes("private") ? "- private：写 5 条真正有内容的私密记录
 - mapcal.places：写角色搜索或导航过的、有真实感的地点；events：写接下来的日程，含时间、地点、类型标签；地点和日程每次都要换。
 ${ids.includes("wallet") ? "- wallet：10 条左右收支，收入 2-3 条，收入来源必须严格符合角色的财富阶层（学生只能是生活费/兼职/奖学金/红包/退款；穷人只能是日结/兼职/红包/退款/补助；富人才可以有分红/投资/项目结款），支出 7-8 条；金额、店铺、时间必须符合角色的身份与消费水平；至少 1-2 条自然涉及用户；时间在最近 7 天内，按从新到旧排列；balance 必须等于【当前银行卡余额】+ 收入合计 - 支出合计，且必须落在角色财富阶层的合理区间内，不能为负，不能把穷学生写成十几万存款。\n" : ""}
 最后再检查一次：如果某个标题、地点、店名、物品或事件在「最近已经生成过」里出现过，必须换掉；不要只改一个字或换个说法。
+【JSON 格式 · 稳优先】字段名必须与示例一致，但允许省略可选字段（如 tags / note / comments / related / list / points 等），省略不影响显示；不确定的字段宁可留空或省略，也不要写坏 JSON。每条内容可以短一点，但必须保证括号闭合、逗号正确、字符串里没有真实换行。
 每个 App 的数据格式必须严格符合示例字段名，只输出一个 JSON 对象，不要解释、不要代码块。
 输出必须是合法 JSON：只输出一个 JSON 对象，不要代码块、注释或多余文字；字符串内部不要出现真实换行，需要分段时写成 \\n；字段之间可以不留空格，但不要为了「紧凑」省略上面要求的内容。`;
 }
@@ -4295,6 +4361,17 @@ async function genMulti(api, char, ids, opts){
   if(truncated){
     const missing = ids.filter(id => !ok[id] || partialIds.includes(id));
     log.push({t:"warn", s:`输出达到上限被截断，已保留截断前生成的 ${ids.length - missing.length} 个 App` + (missing.length ? `；未完成：${missing.join("、")}` : "")});
+  }
+  /* 模型/中转直接返回了内容安全拦截时，给出明确提示；绝不自动重试，也不把已经付费的响应丢掉当成普通格式错误。 */
+  if(!Object.keys(ok).length && (isContentBlocked(text) || isContentBlocked(rawText))){
+    log.push({t:"err", s:"内容被上游/中转拦截（只调用一次，不会自动重试）"});
+    return {ok:{}, log, fatal:"本次内容被上游/中转拦截。已只调用一次 API，不会自动重试；可以调整尺度、换模型或换中转后再试。", truncated:false, partialIds};
+  }
+  if(!Object.keys(ok).length){
+    /* 已经付过一次费：明确告诉用户是格式问题，不要表现得像没请求过，也不自动重试。 */
+    const why = json ? "模型返回了 JSON，但没有任何一个 App 通过校验" : "模型输出不是合法 JSON";
+    log.push({t:"err", s:why + "（本次只调用一次，不会自动重试）"});
+    return {ok:{}, log, fatal:why + "。本次只调用一次 API，不会自动重试；可点「重新生成」再试。", truncated, partialIds};
   }
   return {ok, log, fatal:null, truncated, partialIds};
 }
@@ -4678,7 +4755,7 @@ async function openHostedApp(appId, file, renderName){
     }catch(e){}
   });
 }
-function openDoubao(){ return openHostedApp("doubao", "doubao.html", "renderDoubaoConversation"); }
+function openDoubao(){ return openHostedApp("doubao", "doubao.html?v=20261125b", "renderDoubaoConversation"); }
 function openTaobao(){ return openHostedApp("taobao", "taobao.html", "renderCharShopping"); }
 function openStore(){ return openHostedApp("store", "taobao.html", "renderCharShopping"); }
 function openMapcal(){ return openHostedApp("mapcal", "mapcal.html", "renderCharMapCalendar"); }

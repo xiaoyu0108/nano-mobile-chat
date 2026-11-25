@@ -4268,16 +4268,28 @@ async function generateChatReply(id, info) {
   if (refused) throw new Error(refused);
   await deliverIncoming(id, (reply || '').trim() || '……');
   // 写回共享长期记忆：Instagram 私信也会被线上私聊 / Halo / iMessage 记住
+  // 外语先翻译成简体中文，再提炼成 1~3 条记忆，不照抄原文。
   try {
     const cid = u.contactId || u.charId || u.id;
-    if (cid && window.NanoMemLink && window.NanoMemLink.append) {
+    if (cid && window.NanoMemLink) {
       const mine = (chatHistories[id] || []).filter(m => m.from === 'out' && m.text).slice(-1)[0] || {};
       const said = String(mine.text || '').trim();
-      await window.NanoMemLink.append(cid, [{
-        id: 'ins_' + Date.now().toString(36), type: 'Instagram私信', chatId: String(cid),
-        content: (said ? ('在 Instagram 私信里，' + userProfile.name + '说：' + said + '；') : '在 Instagram 私信里，') + '你回复：' + String(reply || '').slice(0, 180),
-        ts: Date.now()
-      }]);
+      const rawText = (said ? ('在 Instagram 私信里，' + userProfile.name + '说：' + said + '；') : '在 Instagram 私信里，') + '你回复：' + String(reply || '').slice(0, 1200);
+      let lines = [];
+      if (window.NanoMemLink.distill) {
+        try { lines = await window.NanoMemLink.distill(rawText, { charName: u.name || '', kind: 'Instagram 私信' }); } catch (e) {}
+      }
+      if (!lines.length && !(window.NanoMemLink.looksForeign && window.NanoMemLink.looksForeign(rawText))) {
+        lines = [rawText.slice(0, 300)];
+      }
+      if (lines.length && window.NanoMemLink.append) {
+        await window.NanoMemLink.append(cid, lines.slice(0, 3).map(function (line, i) {
+          return {
+            id: 'ins_' + Date.now().toString(36) + '_' + i, type: 'Instagram私信', chatId: String(cid),
+            content: String(line).slice(0, 300), ts: Date.now()
+          };
+        }));
+      }
     }
   } catch (e) {}
 }

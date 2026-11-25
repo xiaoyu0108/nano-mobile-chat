@@ -359,6 +359,22 @@ function scrollBottom(){
 
 /* ---------- 外文自动补中文译文 ---------- */
 var __dbTransCache=Object.create(null);
+function dbSplitBilingual(s){
+  var t=String(s==null?'':s).trim();
+  if(!t) return {orig:'',zh:''};
+  var bar=t.indexOf('||');
+  if(bar>=0){ var o=t.slice(0,bar).trim(), z=t.slice(bar+2).trim(); if(o&&z) return {orig:o,zh:z}; }
+  var m=t.match(/^([\s\S]*?)[（(]\s*中文\s*[:：]\s*([\s\S]*?)\s*[)）]\s*$/);
+  if(m) return {orig:String(m[1]||'').trim(),zh:String(m[2]||'').trim()};
+  return {orig:t,zh:''};
+}
+function dbTransDiv(text){
+  var d=document.createElement('div');
+  d.className='db-trans';
+  d.style.cssText='margin-top:6px;padding-top:5px;border-top:1px dashed rgba(127,127,127,.38);font-size:12px;line-height:1.45;opacity:.78;white-space:pre-wrap;word-break:break-word;';
+  d.textContent=String(text||'').trim();
+  return d;
+}
 function dbNeedsTranslation(text){
   var s=String(text||'').trim();
   if(!s) return false;
@@ -375,11 +391,7 @@ function dbApplyTranslation(el,text){
   var done=function(tr){
     tr=String(tr||'').trim();
     if(!tr||!document.body.contains(el)||el.querySelector('.db-trans')) return;
-    var d=document.createElement('div');
-    d.className='db-trans';
-    d.style.cssText='margin-top:6px;font-size:12px;line-height:1.4;opacity:.68;white-space:pre-wrap;word-break:break-word;';
-    d.textContent='（中文：'+tr+'）';
-    el.appendChild(d);
+    el.appendChild(dbTransDiv(tr));
   };
   if(__dbTransCache[key]){ done(__dbTransCache[key]); return; }
   try{
@@ -389,23 +401,27 @@ function dbApplyTranslation(el,text){
     }).catch(function(){});
   }catch(e){}
 }
-function makeMessage(role,text){
+function makeMessage(role,text,translation){
   const wrap=document.createElement('div');
   wrap.className='message '+role;
+  const bi=dbSplitBilingual(text);
+  const zh=String(translation||'').trim()||bi.zh;
   if(role==='char'){
     const b=document.createElement('div');
     b.className='bubble';
-    b.textContent=text;
+    b.textContent=bi.orig;
     wrap.appendChild(b);
-    dbApplyTranslation(b,text);
+    if(zh) b.appendChild(dbTransDiv(zh));
+    else dbApplyTranslation(b,bi.orig);
   }else{
     const card=document.createElement('div');
     card.className='ai-card';
     const p=document.createElement('p');
-    p.textContent=text;
+    p.textContent=bi.orig;
     card.appendChild(p);
     wrap.appendChild(card);
-    dbApplyTranslation(card,text);
+    if(zh) card.appendChild(dbTransDiv(zh));
+    else dbApplyTranslation(card,bi.orig);
   }
   return wrap;
 }
@@ -434,7 +450,7 @@ window.renderDoubaoConversation=function(messages){
   }
   valid.forEach(function(item){
     const role=(item.role==='char'||item.role==='user')?'char':'ai';
-    chat.appendChild(makeMessage(role,String(item.content||item.text||'')));
+    chat.appendChild(makeMessage(role,String(item.content||item.text||''),String(item.translation||'')));
   });
   syncChatPadding();
   scrollBottom();

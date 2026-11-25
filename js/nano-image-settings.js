@@ -152,7 +152,9 @@
   }
   function writeLocal(src) {
     try { localStorage.setItem(KEY, JSON.stringify(lightState(src))); }
-    catch (e) { try { localStorage.removeItem(KEY); } catch (e2) {} }
+    catch (e) {
+      // 写满时保留旧镜像，不要把生图室的精简记录整份删掉（会导致下次进入空白）。
+    }
   }
   function fillHeavyMedia(targetSession, heavySession) {
     var byId = {};

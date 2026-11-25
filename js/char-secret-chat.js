@@ -498,6 +498,7 @@
             + (extra.memB ? '【' + (b.name || 'B') + ' 的长期记忆】\n' + extra.memB + '\n\n' : '')
             + (bRecent ? '【用户和' + (b.name || 'B') + '最近的真实聊天（刚刚发生，必须作为当下语境）】\n' + bRecent.replace(/对方：/g, (b.name || 'B') + '：') + '\n\n' : '')
             + (aRecent ? '【用户和你最近的真实聊天（刚刚发生，必须作为当下语境）】\n' + aRecent.replace(/对方：/g, (a.name || 'A') + '：') + '\n\n' : '')
+            + '【最近真实发生的事 · 唯一事实来源】\n上面的「最近真实聊天」和双方长期记忆，是你们此刻唯一可靠的事实。只能引用其中真实出现过的人、地点、约定、话题和情绪；不要发明新的约会、朋友、工作、行程，不要替用户补台词，也不要把别的角色的事安到用户身上。信息不足时只谈情绪和已知细节，宁可含糊，也不要编造。\n\n'
             + (prevChat ? '【你们上次私下聊到】\n' + prevChat + '\n（这次可以接着上次的情绪/话题，但不要原样重复。）\n\n' : '')
             + '现在你们两人私下聊起来。可以谈用户、试探对方、吃醋、交换信息、撒谎或挑拨。\n'
             + '如果上面有最近聊天：要顺着里面最新的具体话题、约定、语气和情绪往下说，提到其中真实出现的人和事，不要当成没发生过、也不要另外编一个无关话题。\n'
@@ -515,7 +516,10 @@
             + (extra.wbB ? '【' + (b.name || 'B') + ' 的世界书 · 仍须遵守】\n' + extra.wbB.slice(0, 1600) + '\n\n' : '')
             + (extra.memA ? '【' + (a.name || 'A') + ' 的长期记忆】\n' + extra.memA.slice(0, 900) + '\n\n' : '')
             + (extra.memB ? '【' + (b.name || 'B') + ' 的长期记忆】\n' + extra.memB.slice(0, 900) + '\n\n' : '')
+            + (extra.bRecent ? '【用户和' + (b.name || 'B') + '最近的真实聊天】\n' + extra.bRecent.replace(/对方：/g, (b.name || 'B') + '：') + '\n\n' : '')
+            + (extra.aRecent ? '【用户和你最近的真实聊天】\n' + extra.aRecent.replace(/对方：/g, (a.name || 'A') + '：') + '\n\n' : '')
             + transcript + '\n\n'
+            + '只能引用最近聊天、长期记忆和世界书里真实出现过的人和事，不要凭空编造新的约会、朋友、工作或行程；信息不足时宁可含糊。\n'
             + '再写 1~2 轮，保持人设、情绪和刚才的话题，不要重复已经说过的话。每一轮 2~4 个气泡，每个气泡 1~2 句，内容具体，不要只回一句短话。\n'
             + '每行一个气泡，严格用「' + (a.name || 'A') + '：内容」或「' + (b.name || 'B') + '：内容」的格式；不要旁白、不要动作描写、不要解释。\n'
             + '【语言与翻译】继续按角色自然的语言；非简体中文的句子必须在句末用「（中文：简体中文翻译）」附上翻译。';
@@ -637,9 +641,15 @@
             return String(out || '').trim().replace(/^【[^】]*】\s*/gm, '');
         } catch (e) {
             // 摘要失败时至少写成中文概述，绝不把外语原文整段塞进记忆。
-            var brief = (lines || []).slice(0, 4).map(function (l) {
-                return (l.name || '') + '：' + String(l.translation || '').trim();
-            }).filter(function (x) { return !/[：:]\s*$/.test(x); }).join('；');
+            var briefParts = [];
+            (lines || []).slice(0, 4).forEach(function (l) {
+                var tr = String(l.translation || '').trim();
+                var tx = String(l.text || '').trim();
+                var foreign = !!(window.NanoMemLink && NanoMemLink.looksForeign && NanoMemLink.looksForeign(tx));
+                var pick = tr || (foreign ? '' : tx);
+                if (pick) briefParts.push((l.name || '') + '：' + pick);
+            });
+            var brief = briefParts.join('；');
             return brief ? ('我和' + (b.name || 'B') + '私下聊过：' + brief.slice(0, 300)) : '';
         }
     }
@@ -673,8 +683,8 @@
             var mask = homeMask();
             // 读取双方各自和用户最近几轮聊天（优先 IndexedDB 的实时记录），
             // 悄悄话要接着最近的话题/情绪往下说，而不是凭空生成。
-            var aRecent = await recentLinesAsync(a.id, 4);
-            var bRecent = await recentLinesAsync(b.id, 4);
+            var aRecent = await recentLinesAsync(a.id, 6);
+            var bRecent = await recentLinesAsync(b.id, 6);
             var prevChat = '';
             try {
                 var lastPair = loadRecords().filter(function (r) {
@@ -696,7 +706,9 @@
                 wbA: wbA,
                 wbB: wbB,
                 memA: await getMemoryTextFor(a.id),
-                memB: await getMemoryTextFor(b.id)
+                memB: await getMemoryTextFor(b.id),
+                aRecent: aRecent,
+                bRecent: bRecent
             };
             var out = await callApi([
                 { role: 'system', content: buildFirstPrompt(a, b, mask, aRecent, bRecent, prevChat, extraCtx) },
@@ -720,13 +732,13 @@
             all.push(rec);
             var saved = saveRecords(all);
 
-            // 记忆不额外调用 API：直接把这次悄悄话的关键行写进双方记忆库。
+            // 写入记忆前先提炼成简体中文：外语原文先翻译，再概括，不照抄整段对话。
             try {
-                var briefLines = lines.slice(0, 8).map(function (l) {
-                    return (l.name || '') + '：' + String(l.text || '').slice(0, 120);
-                }).join('\n');
-                await appendMemory(a.id, '和' + (b.name || 'B') + '私下聊过：\n' + briefLines);
-                await appendMemory(b.id, '和' + (a.name || 'A') + '私下聊过：\n' + briefLines);
+                var memText = await summarizeForMemory(a, b, lines);
+                if (memText) {
+                    await appendMemory(a.id, memText);
+                    await appendMemory(b.id, memText);
+                }
             } catch (e) {}
             notifyMemory(a.id); notifyMemory(b.id);
 

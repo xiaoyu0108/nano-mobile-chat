@@ -48,7 +48,7 @@ const APP_CATEGORIES = [
     {
         id: 'xinsu', label: '心愫', color: '#1d9bf0',
         ls: ['nano_xinsu_'],
-        idb: []
+        idb: [{ db: 'nano_xinsu_db' }]
     },
     {
         id: 'secret', label: '悄悄话', color: '#af52de',

@@ -312,7 +312,127 @@
     return best;
   }
 
+  // ============================================================
+  // 记忆提炼：原始聊天/私信/问答 → 1~3 条简体中文记忆
+  // 外语内容先翻译成中文再概括，不照抄原文。
+  // ============================================================
+  function readApiConfig() {
+    function fromLocal() {
+      try {
+        var raw = localStorage.getItem('nano_api_config');
+        return raw ? JSON.parse(raw) : null;
+      } catch (e) { return null; }
+    }
+    return openDB('nano_api_db', function (db) {
+      if (!db.objectStoreNames.contains('api_data')) db.createObjectStore('api_data', { keyPath: 'key' });
+    }).then(function (db) {
+      if (!db) return fromLocal();
+      return new Promise(function (resolve) {
+        try {
+          var r = db.transaction('api_data', 'readonly').objectStore('api_data').get('nano_api_config');
+          r.onsuccess = function () {
+            var v = (r.result && r.result.value) || fromLocal();
+            try { db.close(); } catch (e) {}
+            resolve(v);
+          };
+          r.onerror = function () { try { db.close(); } catch (e) {} resolve(fromLocal()); };
+        } catch (e) { try { db.close(); } catch (e2) {} resolve(fromLocal()); }
+      });
+    }).catch(fromLocal);
+  }
+
+  function apiBase(u) {
+    var s = String(u || '').trim().replace(/\/+$/, '');
+    if (s && !/\/v1$/i.test(s)) s += '/v1';
+    return s;
+  }
+
+  function parseApiContent(text) {
+    var d = null;
+    try { d = JSON.parse(text); } catch (e) { return ''; }
+    var ch = d && d.choices && d.choices[0];
+    var msg = (ch && ch.message) || {};
+    var c = msg.content;
+    if (!c && ch) c = ch.text;
+    if (!c) c = msg.reasoning_content;
+    if (Array.isArray(c)) c = c.map(function (x) { return (x && (x.text || x.content)) || ''; }).join('');
+    return String(c || '').trim();
+  }
+
+  function callMainApi(sys, userText, maxTokens) {
+    return readApiConfig().then(function (cfg) {
+      if (!cfg || !cfg.mainUrl || !cfg.mainKey) return '';
+      var opts = {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + String(cfg.mainKey).trim(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: cfg.mainModel || '',
+          messages: [{ role: 'system', content: sys }, { role: 'user', content: userText }],
+          stream: false,
+          temperature: 0.4,
+          max_tokens: maxTokens || 900
+        })
+      };
+      var timer = null;
+      var controller = null;
+      if (typeof AbortController !== 'undefined') {
+        controller = new AbortController();
+        opts.signal = controller.signal;
+        timer = setTimeout(function () { try { controller.abort(); } catch (e) {} }, 30000);
+      }
+      return fetch(apiBase(cfg.mainUrl) + '/chat/completions', opts).then(function (res) {
+        return res.text().then(function (text) { return res.ok ? parseApiContent(text) : ''; });
+      }).catch(function () { return ''; }).then(function (out) {
+        if (timer) clearTimeout(timer);
+        return out || '';
+      });
+    });
+  }
+
+  // 是否明显是外语：提炼失败时用它判断能不能退回原文，避免把外语原文写进记忆。
+  function looksForeign(text) {
+    var s = String(text || '');
+    if (!s.trim()) return false;
+    if (/[\u3040-\u30ff\uac00-\ud7af\u0400-\u04ff\u0600-\u06ff\u0e00-\u0e7f\u0900-\u097f]/.test(s)) return true;
+    var cjk = (s.match(/[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/g) || []).length;
+    var latin = (s.match(/[A-Za-z]/g) || []).length;
+    return latin >= 12 && latin > cjk;
+  }
+
+  function cleanLines(out) {
+    return String(out || '').replace(/\r/g, '').split(/\n+/).map(function (line) {
+      return String(line || '')
+        .replace(/^\s*(?:[-*•]|\d+[.、)])\s*/, '')
+        .replace(/^【[^】]*】\s*/, '')
+        .trim();
+    }).filter(Boolean).slice(0, 3);
+  }
+
+  // 把一段原始记录提炼成 1~3 条简体中文记忆；外语先翻译再概括，不照抄原文。
+  // opts: { charName, kind }；失败返回 []。
+  function distill(text, opts) {
+    opts = opts || {};
+    var src = String(text || '').trim();
+    if (!src) return Promise.resolve([]);
+    var charName = String(opts.charName || '').trim();
+    var kind = String(opts.kind || '聊天').trim();
+    var who = charName ? ('「' + charName + '」') : '我';
+    var sys = '你是记忆整理助手。下面是一段' + kind + '记录。请以' + who + '的第一人称「我」，提炼出 1~3 条真正值得长期记住的事，用于我的长期记忆库。\n'
+      + '要求：\n'
+      + '1. 全部用简体中文书写。原文是外语或夹杂外语时，先翻译、再用简体中文概括；绝不能保留外语原文，也不能逐句照抄。\n'
+      + '2. 只保留关键事件、对方的偏好/习惯/雷区、承诺约定、关系与情绪变化、重要细节。\n'
+      + '3. 不要复述整段对话；每条独立一行，直接写内容（不要类型/重要度前缀），每条 50~140 字，最多 3 条。\n'
+      + '4. 只输出记忆条目，不要解释、不要分点标题。';
+    // 允许调用方传入自己的请求函数（例如 Q&A 在 iframe 内需要用父页面代理请求）。
+    var caller = (typeof opts.request === 'function') ? opts.request : callMainApi;
+    return caller(sys, src.slice(0, 6000), 900).then(function (out) {
+      return cleanLines(out);
+    });
+  }
+
   window.NanoMemLink = {
+    distill: distill,
+    looksForeign: looksForeign,
     memTs: memTs,
     textOf: textOf,
     isSpecial: isSpecial,

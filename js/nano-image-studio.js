@@ -200,7 +200,8 @@
   function writeLocal(src) {
     try { localStorage.setItem(KEY, JSON.stringify(lightState(src))); }
     catch (e) {
-      try { localStorage.removeItem(KEY); } catch (e2) {}
+      // 写不下时不要把旧镜像删掉：删掉会让下次进入完全空白。
+      // 完整记录在 IndexedDB 里，localStorage 保留上一次能写下的版本即可。
     }
   }
   function fillHeavyMedia(targetSession, heavySession) {
@@ -312,6 +313,7 @@
     return !!(window.NanoIDB && window.NanoIDB.get && window.NanoIDB.set);
   }
   var hydrated = false;
+  var pendingSave = false;
   var saveChain = Promise.resolve();
   function mergeIdbTombstones(tomb) {
     if (!tomb || typeof tomb !== 'object') return;
@@ -474,6 +476,10 @@
     state = applyTombstones(state);
     state.savedAt = Math.max(Date.now(), (Number(state.savedAt) || 0) + 1);
     writeLocal(state);
+    if (idbReady() && !hydrated) {
+      // hydrate 还没完成：先记下来，等完整记录合并完后立即补写一次。
+      pendingSave = true;
+    }
     if (idbReady() && hydrated) {
       saveChain = saveChain.then(function () {
         return window.NanoIDB.set(TOMB_KEY, state.deleted || {});
@@ -2099,14 +2105,93 @@
     });
   }
 
+  function totalStudioItems() {
+    var n = 0;
+    (state.sessions || []).forEach(function (s) { n += ((s && s.items) || []).length; });
+    return n;
+  }
+  // 当前窗口是空的、但别的窗口有图时，进入生图室默认显示最近有内容的窗口。
+  function ensureVisibleSession() {
+    try {
+      var cur = currentSession();
+      if (!cur || (cur.items || []).length) return;
+      var best = null;
+      (state.sessions || []).forEach(function (s) {
+        if (!s || s === cur || !(s.items || []).length) return;
+        if (!best || (Number(s.updatedAt) || 0) > (Number(best.updatedAt) || 0)) best = s;
+      });
+      if (best) { state.currentId = best.id; save(); }
+    } catch (e) {}
+  }
+  // 极端情况下（localStorage 满 + IndexedDB 没写成功）生图室状态会丢。
+  // 图库里的「Nano 生图室」记录还在，就从图库把照片恢复回来，避免整页空白。
+  function maybeRecoverFromGallery(allow) {
+    if (!allow) return;
+    if (totalStudioItems() > 0) return;
+    if (!window.NanoGallery || typeof window.NanoGallery.allAsync !== 'function') return;
+    window.NanoGallery.allAsync().then(function (list) {
+      var rows = (list || []).filter(function (x) {
+        return x && x.url && String(x.source || '') === 'Nano 生图室';
+      }).sort(function (a, b) { return (Number(a.createdAt) || 0) - (Number(b.createdAt) || 0); }).slice(-60);
+      if (!rows.length) return;
+      var sess = currentSession();
+      var seen = {};
+      (sess.items || []).forEach(function (it) { if (it && it.url) seen[String(it.url)] = 1; });
+      var added = 0;
+      rows.forEach(function (g) {
+        var u = String(g.url || '');
+        if (!u || seen[u]) return;
+        seen[u] = 1;
+        sess.items.push({
+          id: uid('it'), role: 'ai', kind: 'image', status: 'done',
+          url: u, prompt: String(g.prompt || ''), fullPrompt: String(g.prompt || ''),
+          at: Number(g.createdAt) || Date.now(), saved: true
+        });
+        added++;
+      });
+      if (added) {
+        sess.updatedAt = Date.now();
+        save();
+        render();
+        toast('已从图库恢复 ' + added + ' 张照片');
+      }
+    }).catch(function () {});
+  }
+  // 生图接口有时返回会过期的临时 URL；本地能转成 data URL 就转，避免下次进来图片变空。
+  function cacheRemoteStudioImages() {
+    if (!window.NanoImageCache || typeof window.NanoImageCache.toDataUrl !== 'function') return;
+    var jobs = [], changed = false, count = 0;
+    (state.sessions || []).forEach(function (sess) {
+      (sess.items || []).forEach(function (it) {
+        if (!it || count >= 16) return;
+        var u = String(it.url || '');
+        if (!/^https?:\/\//i.test(u)) return;
+        count++;
+        jobs.push(window.NanoImageCache.toDataUrl(u).then(function (d) {
+          if (d && /^data:image\//i.test(String(d))) { it.url = d; changed = true; }
+        }).catch(function () {}));
+      });
+    });
+    if (!jobs.length) return;
+    Promise.all(jobs).then(function () {
+      if (changed) { save(); render(); }
+    }).catch(function () {});
+  }
+
   function init() {
     // 先等 IndexedDB 里的完整记录（含图片）加载完，再绑定和渲染，避免用精简镜像覆盖它。
     hydrate().then(function () {
+      // 在 bind / 任何 save 之前判断是不是全新状态，避免误把已删除过的记录从图库复活。
+      var freshForRecovery = !(Number(state.savedAt) || 0);
       bind();
       renderBasePrompt();
       var size = $('niSize'); if (size) size.value = state.size || '768x1344';
       renderMode();
+      maybeRecoverFromGallery(freshForRecovery);
+      ensureVisibleSession();
       render();
+      cacheRemoteStudioImages();
+      if (pendingSave) { pendingSave = false; save(); }
       loadApiPresets().then(function () {
         try { renderBasePresetOptions(); renderChips(); } catch (e) {}
       });

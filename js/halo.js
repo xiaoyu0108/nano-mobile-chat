@@ -2654,12 +2654,25 @@ async function charDmReply(name,target){
   if(!raw) throw new Error('AI 未返回内容');
   pushSplitChat(name,'member',raw,name);
   // 私信内容写回共享长期记忆，线上私聊 / 朋友圈 / 其他 App 都能读到
+  // 外语先翻译成简体中文，再提炼成 1~3 条记忆，不照抄原文。
   try{
     const cid=(char&&char.id)||target.charId;
-    if(cid&&window.NanoMemLink&&window.NanoMemLink.append){
+    if(cid&&window.NanoMemLink){
       const lastUser=(S.chatLog[name]||[]).filter(m=>m.who==='user').slice(-1)[0]||{};
       const said=(lastUser.text||lastUser.foreign||'').trim();
-      await window.NanoMemLink.append(cid,[{id:'halo_'+Date.now().toString(36),type:'Halo私信',chatId:String(cid),content:(said?('在 Halo 私信里，'+ctx.userName+'说：'+said+'；'):'在 Halo 私信里，')+'你回复：'+String(raw).slice(0,180),ts:Date.now()}]);
+      const rawText=(said?('在 Halo 私信里，'+ctx.userName+'说：'+said+'；'):'在 Halo 私信里，')+'你回复：'+String(raw).slice(0,1200);
+      let lines=[];
+      if(window.NanoMemLink.distill){
+        try{ lines=await window.NanoMemLink.distill(rawText,{charName:name||'',kind:'Halo 私信'}); }catch(e){}
+      }
+      if(!lines.length&&!(window.NanoMemLink.looksForeign&&window.NanoMemLink.looksForeign(rawText))){
+        lines=[rawText.slice(0,300)];
+      }
+      if(lines.length&&window.NanoMemLink.append){
+        await window.NanoMemLink.append(cid,lines.slice(0,3).map(function(line,i){
+          return {id:'halo_'+Date.now().toString(36)+'_'+i,type:'Halo私信',chatId:String(cid),content:String(line).slice(0,300),ts:Date.now()};
+        }));
+      }
     }
   }catch(e){}
   touchDm(name);S.dmFriends=sortByPin(S.dmFriends||[]);S.dmStrangers=sortByPin(S.dmStrangers||[]);renderDM();

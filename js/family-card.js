@@ -417,10 +417,12 @@
         if (!resp.ok) {
             var msg = 'HTTP ' + resp.status;
             try { var d = await resp.json(); msg = (d.error && d.error.message) || d.message || msg; } catch (e) {}
+            if (isBlocked(msg)) throw new Error('内容被上游/中转拦截（本次只调用一次，不会自动重试）：' + msg);
             throw new Error(msg);
         }
         var data = await resp.json();
         var content = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+        if (isBlocked(content)) throw new Error('内容被上游/中转拦截（本次只调用一次，不会自动重试）：' + String(content).slice(0, 300));
         return String(content || '');
     }
 

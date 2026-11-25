@@ -3956,10 +3956,15 @@
     function buildCardHTMLLegacy(cardData) {
         if (cardData.cardType === 'xinsu') {
             const clean = function (v) { return String(v == null ? '' : v).replace(/[<>&"]/g, ''); };
-            const nm = clean(cardData.charName || displayName || 'TA');
+            // 昵称/头像跟随当前角色设置（备注 > 网名 > 角色名），不在生成那一刻定死。
+            const nm = clean(displayName || cardData.charName || 'TA');
             const initial = (nm.trim().charAt(0) || '?');
+            const avSrc = /^(data:image\/|https?:\/\/|blob:|\/|\.\.?\/)/i.test(String(avatarSrc || '')) ? String(avatarSrc) : '';
+            const avatarHtml = avSrc
+                ? '<img class="xs-avatar" src="' + String(avSrc).replace(/[<>"']/g, '') + '" alt="">'
+                : '<div class="xs-avatar xs-avatar-fallback">' + initial + '</div>';
             return '<div class="xs-card" data-xs-id="' + clean(cardData.essayId || '') + '" data-xs-char="' + clean(cardData.charId || chatId || '') + '">' +
-                '<div class="xs-card-head"><div class="xs-avatar xs-avatar-fallback">' + initial + '</div>' +
+                '<div class="xs-card-head">' + avatarHtml +
                 '<div class="xs-card-name">' + nm +
                 '<svg class="xs-badge" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#1d9bf0"/><path d="m7 12.4 3.1 3.1L17.4 8" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>' +
                 '<div class="xs-card-label">心愫</div></div>' +
@@ -11356,6 +11361,9 @@
                     __xinsuAsked = true;
                 }
             } catch (e) {}
+            // 空回兜底：有些模型（尤其推理模型）会把额度全用在 [think]/[heart]/状态栏上，
+            // 结果没有一个正文气泡。把「正文优先」钉在系统提示最后，降低空回概率。
+            __sys += '\n\n【本轮硬性要求 · 正文优先】无论你是否输出 [think]、[heart]、[xinsu] 或状态栏，都必须先用 1~3 条真正的对话气泡回应用户。只输出标签、思考、心声而没有正文，视为本轮失败。如果长度快用完，优先保证正文气泡完整，再省略其它可选内容。\n';
             // 用户刚换了头像：把新头像本身作为图片发给模型，让角色真正「看清」对方的新头像
             let avatarImageMsg = null;
             try {
@@ -11500,8 +11508,8 @@
                 if (v > 0) return Math.min(v, 32768);
                 return 8192;
             })();
-            // 心愫正文约 500 字，别被用户的低字数上限截断。
-            if (__xinsuAsked) __maxTokens = Math.max(__maxTokens, 3200);
+            // 心愫正文约 500~1000 字，别被用户的低字数上限截断。
+            if (__xinsuAsked) __maxTokens = Math.max(__maxTokens, 4096);
             const __temp = (typeof config.mainTemp === 'number' ? config.mainTemp : parseFloat(config.mainTemp)) || 0.7;
             const __isAnthropic = String(config.mainApiType || '').toLowerCase() === 'anthropic';
             const __token = 'creq_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
@@ -12953,6 +12961,10 @@
                 }
             }
             if (roundXinsu) addXinSuCard(roundXinsu, timeStr);
+            // 已经付过费的响应不能静默消失：这一轮一个正文气泡都没生成时给用户一个可见提示。
+            if (!roundXinsu && !messages.some(function (m) { return m && m.turn === currentTurn && m.type === 'left'; })) {
+                try { addSystemNotice('（这一轮没有生成正文，可以点重roll重试）'); } catch (e) {}
+            }
             addScheduleChangeCard(__schedChanges, timeStr);
             saveMessages();
             return;
@@ -13105,6 +13117,9 @@
                 }
             }
             if (roundXinsu) addXinSuCard(roundXinsu, timeStr);
+            if (!roundXinsu && !messages.some(function (m) { return m && m.turn === currentTurn && m.type === 'left'; })) {
+                try { addSystemNotice('（这一轮没有生成正文，可以点重roll重试）'); } catch (e) {}
+            }
             addScheduleChangeCard(__schedChanges, timeStr);
             console.log('[Chat] 回复完成，共 ' + sentCount + ' 条消息');
             saveMessages();

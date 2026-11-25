@@ -317,16 +317,31 @@
   async function remember(charId, text, type) {
     var t = String(text || '').trim();
     if (!charId || !t) return false;
-    var item = {
-      id: 'qa_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6),
-      type: type || 'Q&A', chatId: String(charId), content: t.slice(0, 280), ts: Date.now()
-    };
+    var charName = '';
+    try { var c = await getChar(charId); if (c && c.name) charName = c.name; } catch (e) {}
+    // Q&A / 私信里可能是外语：先翻译成简体中文，再提炼成 1~3 条记忆，不照抄原文。
+    var lines = [];
+    if (window.NanoMemLink && window.NanoMemLink.distill) {
+      try { lines = await window.NanoMemLink.distill(t, { charName: charName, kind: type || 'Q&A', request: callPlainAI }); } catch (e) {}
+    }
+    if (!lines.length) {
+      // 提炼不可用时：中文内容可以退回原文；明显外语则不写入，避免把外语原文塞进记忆。
+      var foreign = !!(window.NanoMemLink && window.NanoMemLink.looksForeign && window.NanoMemLink.looksForeign(t));
+      if (!foreign) lines = [t.slice(0, 280)];
+    }
+    if (!lines.length) return false;
+    var items = lines.slice(0, 3).map(function (line, i) {
+      return {
+        id: 'qa_' + Date.now().toString(36) + '_' + i + '_' + Math.random().toString(36).slice(2, 6),
+        type: type || 'Q&A', chatId: String(charId), content: String(line).slice(0, 280), ts: Date.now()
+      };
+    });
     if (window.NanoMemLink && window.NanoMemLink.append) {
-      try { return await window.NanoMemLink.append(charId, [item]); } catch (e) {}
+      try { return await window.NanoMemLink.append(charId, items); } catch (e) {}
     }
     var rec = await dbGet(MEM_DB, 'config', 'memlist_' + charId, 5, ensureMemStore);
     var list = (rec && Array.isArray(rec.value)) ? rec.value.slice() : [];
-    list.push(item);
+    items.forEach(function (it) { list.push(it); });
     return dbPut(MEM_DB, 'config', { key: 'memlist_' + charId, value: list }, 5, ensureMemStore);
   }
 
@@ -604,6 +619,31 @@
       return content;
     }
     return lastContent;
+  }
+
+  // 记忆提炼用的纯请求：不带角色上下文，也不要求 JSON 输出。
+  async function callPlainAI(sys, userText, maxTokens) {
+    var cfg = await readApiConfig();
+    if (!cfg || !cfg.mainUrl || !cfg.mainKey) return '';
+    var base = toV1(resolveHost(cfg.mainUrl));
+    var headers = {
+      'Authorization': 'Bearer ' + String(cfg.mainKey || '').trim(),
+      'Content-Type': 'application/json',
+      'X-Nano-App': 'qa',
+      'X-Nano-Kind': 'memory'
+    };
+    var body = JSON.stringify({
+      model: cfg.mainModel || '',
+      messages: [{ role: 'system', content: sys }, { role: 'user', content: userText }],
+      stream: false,
+      temperature: 0.4,
+      max_tokens: maxTokens || 900
+    });
+    var resp = await requestAI(base + '/chat/completions', headers, body);
+    if (!resp || !resp.ok) return '';
+    var data = null;
+    try { data = JSON.parse(resp.text || '{}'); } catch (e) { return ''; }
+    return extractAIContent(data) || '';
   }
 
   function notifyParent() {

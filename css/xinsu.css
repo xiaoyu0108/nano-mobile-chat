@@ -26,7 +26,9 @@ body.xs-page {
 .xs-top {
   position: sticky; top: 0; z-index: 20;
   display: flex; align-items: center; justify-content: space-between;
-  height: calc(54px + env(safe-area-inset-top, 0px)); padding: env(safe-area-inset-top, 0px) 10px 0;
+  /* iframe 里 env() 通常是 0：优先用外壳注入的 --safe-top，背景一直铺到刘海。 */
+  height: calc(54px + var(--safe-top, env(safe-area-inset-top, 0px)));
+  padding: var(--safe-top, env(safe-area-inset-top, 0px)) 10px 0;
   background: rgba(255,255,255,0.94);
   -webkit-backdrop-filter: saturate(180%) blur(14px);
   backdrop-filter: saturate(180%) blur(14px);
