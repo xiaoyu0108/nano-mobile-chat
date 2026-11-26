@@ -271,8 +271,8 @@
         var html = '';
 
         if (type === 'xinsu') {
-            var xsAv = String(cd.avatar || opts.avatar || '');
-            var xsName = String(cd.charName || other || 'TA');
+            var xsAv = String(opts.avatar || cd.avatar || '');
+            var xsName = String(other || cd.charName || 'TA');
             var xsInitial = (xsName.trim().charAt(0) || '?');
             var xsAvHtml = xsAv
                 ? '<img class="xs-avatar" src="' + esc(xsAv) + '" alt="" referrerpolicy="no-referrer">'

@@ -24,11 +24,13 @@ body.xs-page {
 
 /* 顶栏：两边是裸 SVG 图标，没有透明圆圈/边框外壳 */
 .xs-top {
+  /* 外壳会注入 --safe-top；个别内置浏览器会把它报成 100+，这里封顶 54，
+     顶栏始终贴着刘海下沿，不会多出一大块空白。 */
+  --xs-safe-top: min(var(--safe-top, env(safe-area-inset-top, 0px)), 54px);
   position: sticky; top: 0; z-index: 20;
   display: flex; align-items: center; justify-content: space-between;
-  /* iframe 里 env() 通常是 0：优先用外壳注入的 --safe-top，背景一直铺到刘海。 */
-  height: calc(54px + var(--safe-top, env(safe-area-inset-top, 0px)));
-  padding: var(--safe-top, env(safe-area-inset-top, 0px)) 10px 0;
+  height: calc(46px + var(--xs-safe-top));
+  padding: var(--xs-safe-top) 10px 0;
   background: rgba(255,255,255,0.94);
   -webkit-backdrop-filter: saturate(180%) blur(14px);
   backdrop-filter: saturate(180%) blur(14px);

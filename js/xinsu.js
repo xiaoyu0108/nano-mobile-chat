@@ -2,7 +2,7 @@
    js/xinsu.js
    「心愫」：角色写给用户的交心小作文
    - 私聊里和气泡同一次 API 输出，用 [xinsu:标题|正文] 标记
-   - 时间触发（约 4.5~5.5 天一次）之外，交心/deeptalk/用户情绪波动时也可触发
+   - 不做定时任务：只在交心/deeptalk/用户情绪波动时，由角色自己决定要不要写
    - 正文同时写入 IndexedDB（主存储）与 localStorage（同步缓存），避免 localStorage 满导致点开空白
    - 聊天里显示 X 风格卡片，点击进入 html/xinsu.html
    - 历史只读当前 char 自己的心愫
@@ -14,7 +14,7 @@
   var LIST_P = 'nano_xinsu_list_';
   var META_P = 'nano_xinsu_meta_';
   var STATE_P = 'nano_xinsu_state_';
-  var ASK_COOLDOWN = 6 * 3600000;
+  var OPEN_META_P = 'nano_xinsu_open_meta_';
   var DEEP_COOLDOWN = 12 * 3600000;
   var DEEP_ASK_GAP = 45 * 60000;
 
@@ -53,10 +53,54 @@
     return String(s || '')
       .replace(/^[\s《「『"“'‘【\[]+/, '')
       .replace(/[》」』"”'’】\]]+$/, '')
-      .replace(/[。．.!！?？~～]+$/g, '')
+      .replace(/[。．.!！?？~～，,、；;：:]+$/g, '')
       .replace(/\s+/g, ' ')
       .trim()
       .slice(0, 10);
+  }
+  // 模型偶尔会把标题写成「我有点怕了」「我很想你」这种大白话。
+  // 命中时从正文里挑一个带画面的短句当标题，仍然是正文总结，不是内置文案。
+  function isFlatTitle(t) {
+    var s = String(t || '').trim();
+    if (!s) return true;
+    if (/^(我|俺)?(真的|有点|好|很|突然|其实|只是|还是)?(怕|害怕|想|喜欢|爱|难过|伤心|开心|累|烦|睡不着|舍不得|担心|想你|爱你|喜欢你|不想睡|心情)/.test(s)) return true;
+    return /^(心里话|心事|独白|深夜|碎碎念|无题)$/.test(s);
+  }
+  function titleFromBody(body) {
+    var clauses = String(body || '').replace(/\n+/g, '。').split(/[。！？!?；;，,、：:]+/)
+      .map(function (x) {
+        return String(x).replace(/^[\s"“'‘「『]+|[\s"”'’」』]+$/g, '')
+          .replace(/^(其实|只是|但是|然后|所以|因为|如果|好像|大概|也许|不过|而且|还是)/, '')
+          .trim();
+      })
+      .filter(function (x) { return x.length >= 4 && x.length <= 12; });
+    if (!clauses.length) return '';
+    var IMG = /(风|雨|雪|云|雾|夜|海|天|街|灯|花|月|路|车|窗|光|树|酒|咖啡|歌|河|桥|山|星|阳|晨|暮|春|夏|秋|冬|潮|浪|雪)/;
+    var pick = clauses.filter(function (x) {
+      return IMG.test(x) && !/^(我|你|他|她)/.test(x);
+    }).sort(function (a, b) {
+      return Math.abs(a.length - 7) - Math.abs(b.length - 7);
+    })[0];
+    if (!pick) pick = clauses.filter(function (x) { return !/^(我|你|他|她)/.test(x); })[0];
+    if (!pick) pick = clauses[0];
+    return cleanTitle(pick);
+  }
+  function readOpenMeta(charId) {
+    try {
+      var raw = sessionStorage.getItem(OPEN_META_P + String(charId));
+      if (!raw) return null;
+      var v = JSON.parse(raw);
+      return (v && typeof v === 'object') ? v : null;
+    } catch (e) { return null; }
+  }
+  function writeOpenMeta(charId, meta) {
+    try {
+      if (!charId || !meta) return;
+      var rec = {};
+      if (meta.name) rec.name = String(meta.name).slice(0, 40);
+      if (meta.avatar) rec.avatar = String(meta.avatar);
+      if (rec.name || rec.avatar) sessionStorage.setItem(OPEN_META_P + String(charId), JSON.stringify(rec));
+    } catch (e) {}
   }
   function cleanBody(s) {
     var t = String(s || '').replace(/\r\n/g, '\n');
@@ -77,6 +121,10 @@
     body = cleanBody(body);
     if (!body) return null;
     if (body.length < 120) return null;
+    if (isFlatTitle(title)) {
+      var better = titleFromBody(body);
+      if (better) title = better;
+    }
     return { title: title || '心愫', body: body };
   }
 
@@ -165,11 +213,12 @@
   }
 
   // 直接读角色库，拿当前最新的昵称 / 头像（用户改了人设后，心愫页也要同步）。
-  function idbGetCharacter(charId) {
+  // 不写死版本号：别人的角色库可能升级过，用 1 会直接 VersionError。
+  function idbGetCharacter(charId, anyName) {
     return new Promise(function (resolve) {
       try {
         if (typeof indexedDB === 'undefined') { resolve(null); return; }
-        var req = indexedDB.open('nano_characters_db', 1);
+        var req = indexedDB.open('nano_characters_db');
         req.onupgradeneeded = function (e) {
           try {
             var db = e.target.result;
@@ -185,6 +234,17 @@
               var hit = null;
               for (var i = 0; i < rows.length; i++) {
                 if (rows[i] && String(rows[i].id) === String(charId)) { hit = rows[i]; break; }
+              }
+              // 老卡片/分享链接里的 id 对不上时，按昵称再找一次。
+              if (!hit && anyName) {
+                var want = String(anyName).trim();
+                if (want) {
+                  for (var j = 0; j < rows.length; j++) {
+                    var c = rows[j];
+                    if (!c) continue;
+                    if (String(c.nickname || '').trim() === want || String(c.name || '').trim() === want) { hit = c; break; }
+                  }
+                }
               }
               resolve(hit);
             };
@@ -272,7 +332,10 @@
     }).catch(function () { return cacheRows; });
   }
   function metaAsync(charId) {
-    return Promise.all([idbGetMeta(charId), idbGetCharacter(charId)]).then(function (res) {
+    var opened = readOpenMeta(charId) || {};
+    var paramName = '';
+    try { paramName = new URLSearchParams(location.search).get('name') || ''; } catch (e) {}
+    return Promise.all([idbGetMeta(charId), idbGetCharacter(charId, opened.name || paramName)]).then(function (res) {
       var m = res[0];
       var c = res[1];
       var local = meta(charId);
@@ -286,12 +349,14 @@
         (remark && String(remark)) ||
         (online && String(online)) ||
         (c && (c.nickname || c.name)) ||
+        (opened && opened.name) ||
         (lastChat && lastChat.name) ||
         (m && m.name) ||
         local.name || ''
       ).trim();
       var av = String(
         (c && c.avatar) ||
+        (opened && opened.avatar) ||
         (lastChat && lastChat.avatar) ||
         (m && m.avatar) ||
         local.avatar || ''
@@ -329,8 +394,7 @@
     var st = state(charId);
     st.lastAt = now;
     st.lastAskAt = now;
-    // 时间触发：4.5~5.5 天一次
-    st.nextAt = now + (4.5 + Math.random()) * DAY;
+    delete st.nextAt;
     st.count = (Number(st.count) || 0) + 1;
     saveState(charId, st);
 
@@ -378,9 +442,8 @@
   }
 
   // 本轮是否该让角色写心愫：
-  // 1) 状态触发：最近在交心 / deeptalk / 用户情绪明显波动 → 至少间隔 12h；
-  // 2) 时间触发：约 4.5~5.5 天一次。
-  // 共同前提：近 24h 有真实聊天、由用户这轮发起、至少聊过一小段、认识至少一天。
+  // 只由「交心 / deeptalk / 用户情绪明显波动」触发，不再按天数定时打卡。
+  // 前提：近 24h 有真实聊天、由用户这轮发起、至少聊过一小段、认识至少一天。
   function shouldWrite(charId, messages) {
     if (!charId) return false;
     var id = String(charId);
@@ -408,20 +471,12 @@
     if (lastReal.type !== 'right') return false;          // 必须由用户这一轮发起
     if (total < 12) return false;                         // 至少有过一小段真实对话
     if (firstTs && now - firstTs < DAY) return false;     // 认识/聊天至少一天
+    if (!detectDeepTalk(arr)) return false;               // 只有真的聊到心里时才给机会
 
     var sinceLast = st.lastAt ? now - Number(st.lastAt) : Infinity;
     var sinceAsk = st.lastAskAt ? now - Number(st.lastAskAt) : Infinity;
-    var deep = detectDeepTalk(arr);
-
-    if (deep) {
-      // 状态触发：不按 5 天时间表，但至少 12h 才写一次、45 分钟才问一次模型。
-      if (sinceLast < DEEP_COOLDOWN) return false;
-      if (sinceAsk < DEEP_ASK_GAP) return false;
-      return true;
-    }
-
-    if (st.nextAt && now < Number(st.nextAt)) return false;
-    if (sinceAsk < ASK_COOLDOWN) return false;
+    if (sinceLast < DEEP_COOLDOWN) return false;
+    if (sinceAsk < DEEP_ASK_GAP) return false;
     return true;
   }
 
@@ -438,20 +493,20 @@
   }
 
   function promptBlock(charName) {
-    return '【心愫 · 本轮额外输出（只此一次）】\n' +
-      '此刻有些话你不便直接说出口，想单独写给对方——这就是「心愫」。\n' +
-      '在正常聊天气泡写完之后，另起一行输出（这一行不会作为气泡发送，会变成一张卡片）：\n' +
-      '[xinsu:短标题|正文]\n' +
-      '硬性要求：\n' +
-      '- 短标题不超过 10 个字，是一句有文艺气质的总结；不加书名号、引号、句号。\n' +
-      '- 正文 500~1000 个汉字，第一人称，分 2~4 段，段落之间用真实换行。\n' +
-      '- 它是你对人生、感情、关系的思考，是平时不敢、不好意思直接说的话；有哲理但不端着，易懂但有深度，不是日常大白话。\n' +
-      '- 情绪和爱意是暗流涌动的：克制、含蓄、耐人回味，像一壶越品越有味道的茶；不要浓烈表白、不要油腻/霸总、不要说教、不要排比堆砌。\n' +
-      '- 必须贴合你的人设、你们共同的记忆和世界书来写，具体、真诚，可以有一点脆弱；不要写成日记或抒情散文。\n' +
-      '- 不要以“亲爱的xx”之类的称呼开头，不要落款；不要提 AI、模型、用户、提示词、设定。\n' +
-      '- 正文里不要出现方括号标签、Markdown、标题或小标题。\n' +
+    return '【心愫 · 可选的一次深夜心里话】\n' +
+      '不是任务，也不是打卡。只有当你此刻真的有一句想对对方说、却不适合直接发在聊天框里的话，才在气泡写完之后另起一行输出：\n' +
+      '[xinsu:标题|正文]\n' +
+      '如果这一刻你并没有特别想说的，就正常聊天，不要输出这个标签。\n' +
+      '写作要求：\n' +
+      '- 像深夜真的在打字，不是在交作文：第一人称，可以有短句、停顿、重复、突然想起的一件小事，允许一点笨拙。\n' +
+      '- 一定要落到具体：你们聊过的某句话、一个称呼、一件外套、一段路、那天的天气、一个约定、一次吵架或和好。不要空泛地谈人生、意义、永远。\n' +
+      '- 可以直接说喜欢、想念、害怕、感谢，但要让情绪长在具体的事上，不要喊口号，不要每段都升华。\n' +
+      '- 可以有口语的重复、停顿、突然又补一句，但不要工整排比、不要金句总结、不要每句都比喻；不要 AI 腔、不要范文感、不要油腻/霸总/说教。\n' +
+      '- 正文 500~700 个汉字，分 2~4 段，段落之间用真实换行；不要开头称呼、不要落款、不要小标题。\n' +
+      '- 不要提 AI、模型、用户、提示词、设定；正文里不要出现方括号标签或 Markdown。\n' +
+      '- 标题 2~10 个字，必须从正文里提炼一个最有画面的意象或短句，像随手写在扉页上的一句；不要照抄正文第一句，也不要“我有点怕了”“我很想你”这种情绪大白话。可参考（不要照抄）：悠悠我心/ 晴天 / 同淋雪 / 我喻我以长青 / 世界被一首赞歌填满。\n' +
       '- 普通聊天气泡照常写 1~3 条，不要因为写心愫就省略聊天。\n' +
-      '- 本轮只输出一个 [xinsu:...]，不要重复，不要输出 [/xinsu]。';
+      '- 本轮最多输出一个 [xinsu:...]，不要重复，不要输出 [/xinsu]。';
   }
 
   function esc(s) {
@@ -508,8 +563,20 @@
       if (!charId) return;
       e.preventDefault();
       e.stopPropagation();
+      // 把卡片上当前的昵称/头像带给页面，角色库读取失败时也不会退回 “TA”。
+      var cardName = '';
+      var cardAvatar = '';
+      try {
+        var nameEl = inner.querySelector ? inner.querySelector('.xs-card-name') : null;
+        if (nameEl) cardName = String(nameEl.textContent || '').replace(/\s+/g, ' ').trim();
+        var avEl = inner.querySelector ? inner.querySelector('img.xs-avatar') : null;
+        if (avEl && avEl.src) cardAvatar = String(avEl.src);
+      } catch (err) {}
+      try { writeOpenMeta(charId, { name: cardName, avatar: cardAvatar }); } catch (err) {}
       var pageUrl = 'xinsu.html?char=' + encodeURIComponent(charId) +
-        (essayId ? ('&id=' + encodeURIComponent(essayId)) : '');
+        (essayId ? ('&id=' + encodeURIComponent(essayId)) : '') +
+        (cardName ? ('&name=' + encodeURIComponent(cardName)) : '') +
+        '&v=20261126a';
       try {
         if (window.parent && window.parent !== window) {
           window.parent.postMessage({
@@ -559,7 +626,8 @@
     var m = metaEl || {};
     var name = m.name || 'TA';
     var av = avatarHtml(m.avatar, name, 'xs-avatar');
-    var key = rec.id + '|' + (rec.at || 0) + '|' + String(rec.body || '').length + '|' + name + '|' + String(m.avatar || '').length;
+    var avKey = String(m.avatar || '');
+    var key = rec.id + '|' + (rec.at || 0) + '|' + String(rec.body || '').length + '|' + name + '|' + avKey.length + '|' + avKey.slice(0, 24) + '|' + avKey.slice(-24);
     if (key === renderedKey && mainEl.children.length) return;
     renderedKey = key;
     var paras = String(rec.body || '').split(/\n+/).map(function (p) { return p.trim(); }).filter(Boolean)
@@ -660,11 +728,28 @@
     histListEl = listEl;
     mainEl = document.getElementById('xsMain');
     metaEl = meta(charId);
-    // 页面地址里带 name 时兜底（旧卡片/分享链接）
-    if (!metaEl.name && param('name')) metaEl.name = param('name');
+    // 先用手上的昵称/头像兜底：卡片 DOM、sessionStorage、分享链接里的 name。
+    var opened = readOpenMeta(charId) || {};
+    metaEl.avatar = opened.avatar || metaEl.avatar;
+    metaEl.name = opened.name || param('name') || metaEl.name;
     listAsyncCached = list(charId);
     renderEssay(get(charId, essayId));
     refreshEssay(true);
+    // 角色库/头像可能在页面打开后才写完，再补一次同步。
+    setTimeout(function () { try { refreshEssay(true); } catch (e) {} }, 900);
+    // 角色改名 / 换头像后实时刷新（外壳会广播 nanoCharUpdated）。
+    window.addEventListener('message', function (e) {
+      var d = e && e.data;
+      if (!d || (d.type !== 'nanoCharUpdated' && d.type !== 'remarkChanged')) return;
+      if (d.chatId && String(d.chatId) !== String(charId)) return;
+      setTimeout(function () { try { refreshEssay(true); } catch (err) {} }, 120);
+    });
+    window.addEventListener('storage', function (e) {
+      var k = e && e.key ? String(e.key) : '';
+      if (k && (k === 'chat_setting_remark_' + charId || k === 'chat_setting_online_name_' + charId)) {
+        setTimeout(function () { try { refreshEssay(true); } catch (err) {} }, 120);
+      }
+    });
     var back = document.getElementById('xsBack');
     if (back) back.addEventListener('click', function () {
       try { if (window.parent && window.parent !== window) { window.parent.postMessage({ type: 'closeFullscreen' }, '*'); return; } } catch (e) {}

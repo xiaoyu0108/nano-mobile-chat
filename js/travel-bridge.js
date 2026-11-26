@@ -601,7 +601,12 @@
           // 气泡和卡片来自同一次报备 API 的结果，不额外再调用一次。
           var bubble = String(r.bubble || '').trim() ||
             ('刚从' + (r.place || r.title || '外面') + '回来，' + (caption || '路上一切都好。'));
-          chat().addMessage('left', bubble, nowTime());
+          var bubbles = [];
+          try {
+            bubbles = (window.__nanoSplitReportBubbles ? window.__nanoSplitReportBubbles(bubble, 4) : [bubble]);
+          } catch (e) { bubbles = [bubble]; }
+          if (!bubbles || !bubbles.length) bubbles = [bubble];
+          bubbles.forEach(function (line) { chat().addMessage('left', line, nowTime()); });
           chat().addMessage('left', '', nowTime(), null, false, true, {
             cardType: 'travelReport',
             travelKind: 'report',
@@ -677,15 +682,16 @@
       foreign = !!(window.__chat && window.__chat.isForeignChar && window.__chat.isForeignChar());
       lang = (window.__chat && window.__chat.charLanguageName) ? window.__chat.charLanguageName() : '';
     } catch (e) {}
-    var sys = '你是角色「' + name + '」。请以第一人称，生成一段你最近真实的出行记录，用作给「' + (mask.name || '用户') + '」的旅途报备。'
+    var sys = '你是角色「' + name + '」。你刚一个人出门，路上有些想给对方看的瞬间，随手发消息分享，不是写旅途报告。'
       + '必须严格保持人设，严禁 OOC、霸总腔、油腻情话、爹味说教；不要命令、强迫或贬低用户。'
       + (persona ? ('角色设定：' + String(persona).slice(0, 1400) + '。') : '')
       + (foreign ? ('你的母语是' + (lang || '外语') + '：thought 必须用母语写，thoughtZh 给对应的中文翻译；' ) : 'thoughtZh 留空字符串；')
       + '只输出合法 JSON，不要解释。格式：'
-      + '{"bubble":"发给用户的 1-2 句聊天气泡，和这次出行有关，自然口语","place":"目的地/地点","from":"出发地","to":"到达地","type":"hsr|train|plane|taxi|bike|bus","date":"YYYY-MM-DD","time":"HH:MM","no":"车次/航班/车牌","seat":"座位/里程","price":数字,"thought":"一句真实心得","thoughtZh":"中文翻译或空","caption":"对拍立得画面的一句客观说明，不要写心得/感悟，24字以内","photoPrompt":"用于生图的画面描述"}'
-      + '。要求：像真实日常出行，不要夸张；地点符合角色所在城市/世界观；thought 不超过 40 字；photoPrompt 描述光线、地点、氛围，可以是人像，也可以只是风景、街角、食物、车票、窗边、影子或手部，不要出现文字。'
+      + '{"bubble":"发给用户的 2~4 条很短的口语气泡，用单个全角竖线 ｜ 分隔","place":"目的地/地点","from":"出发地","to":"到达地","type":"hsr|train|plane|taxi|bike|bus","date":"YYYY-MM-DD","time":"HH:MM","no":"车次/航班/车牌","seat":"座位/里程","price":数字,"thought":"一句真实心得","thoughtZh":"中文翻译或空","caption":"对拍立得画面的一句客观说明，不要写心得/感悟，24字以内","photoPrompt":"用于生图的画面描述"}'
+      + '。bubble 要像随手分享日常：先发一两句现场的短话，再补一句自己的感受，不要用「给你报备」「别担心」「我没乱跑」这种汇报腔；示例：宝宝给你看｜今天去江边吹风了｜风有点冷，但江面很好看。'
+      + '像真实日常出行，不要夸张；地点符合角色所在城市/世界观；thought 不超过 40 字；photoPrompt 描述光线、地点、氛围，可以是人像，也可以只是风景、街角、食物、车票、窗边、影子或手部，不要出现文字。'
       + 'photoPrompt 开头必须写 `人物：...`；这是你一个人的出行记录，通常写「人物：我一人」或「人物：无人（只拍场景）」，不要出现用户。';
-    var usr = '今天是 ' + today() + '。请生成一段你一个人出门的记录，或者你为了散心临时去的地方。';
+    var usr = '今天是 ' + today() + '。你刚一个人出门，或者为了散心临时去了个地方。想发消息的话，就按你平时说话的样子随手发几条，别像在写行程记录。';
     return { system: sys, user: usr };
   }
   function normalizeRecord(j, charData) {
@@ -708,7 +714,7 @@
       thought: String(j.thought || j.note || '').trim(),
       thoughtZh: String(j.thoughtZh || '').trim(),
       caption: String(j.caption || '').trim(),
-      bubble: String(j.bubble || '').trim().slice(0, 200),
+      bubble: String(j.bubble || '').replace(/[ \t]*｜[ \t]*/g, '\n').trim().slice(0, 300),
       photoPrompt: String(j.photoPrompt || '').trim(),
       owner: 'char',
       source: 'report',

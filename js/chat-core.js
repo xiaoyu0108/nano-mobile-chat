@@ -4318,7 +4318,7 @@
                     time: time || (cardData && cardData.time) || '刚刚',
                     meName: currentUserName || '我',
                     otherName: displayName || 'TA',
-                    avatar: (characterData && characterData.avatar) || ''
+                    avatar: avatarSrc || (characterData && characterData.avatar) || ''
                 });
             }
         } catch (err) {
@@ -14140,6 +14140,52 @@
         }
         return [s];
     }
+    // 报备气泡：模型可能用「｜」或换行写了几条短句，落地时拆成多个气泡；
+    // 老的单句报备也按句号/逗号拆一下，避免一整段汇报腔。
+    function splitReportBubbles(text, max) {
+        max = max || 5;
+        var s = String(text || '').replace(/\\u000a/gi, '\n').replace(/\\n/g, '\n').replace(/\r/g, '').trim();
+        if (!s) return [];
+        // 含「原文||翻译」的外语气泡不再按句号拆，避免把译文和原文拆散。
+        var hasPair = s.indexOf('||') >= 0;
+        var parts = [];
+        s.split(/\n+/).forEach(function (line) {
+            line = String(line || '').trim();
+            if (!line) return;
+            // 外语气泡里的「||」是原文/翻译分隔，不能被当成气泡分隔符。
+            var guard = line.replace(/\|\|/g, '\u0001');
+            guard.split('｜').forEach(function (p) {
+                p = p.replace(/\u0001/g, '||').replace(/^[\s|｜]+|[\s|｜]+$/g, '').trim();
+                if (p) parts.push(p);
+            });
+        });
+        // 只有一条但很长：先按句末标点拆。
+        if (!hasPair && parts.length === 1 && parts[0].length > 24) {
+            var ss = (parts[0].match(/[^。！？!?…]+[。！？!?…]*/g) || [parts[0]])
+                .map(function (x) { return String(x).trim(); }).filter(Boolean);
+            if (ss.length > 1) parts = ss;
+        }
+        // 还是一整句：按逗号分成两三段，每段尽量短一点。
+        if (!hasPair && parts.length === 1 && parts[0].length > 28) {
+            var chunks = (parts[0].match(/[^，,；;]+[，,；;]?/g) || [parts[0]])
+                .map(function (x) { return String(x).trim(); }).filter(Boolean);
+            if (chunks.length > 1) {
+                var grouped = [], cur = '';
+                chunks.forEach(function (c) {
+                    if (!cur) { cur = c; return; }
+                    if ((cur + c).length <= 20) { cur += c; return; }
+                    grouped.push(cur); cur = c;
+                });
+                if (cur) grouped.push(cur);
+                if (grouped.length > 1) parts = grouped;
+            }
+        }
+        return parts.map(function (p) {
+            return p.replace(/[。．.]+$/g, '').trim();
+        }).filter(Boolean).slice(0, max);
+    }
+    try { window.__nanoSplitReportBubbles = splitReportBubbles; } catch (e) {}
+
     function consumePendingPeekTurns() {
         var key = peekStashKey(chatId);
         var arr = [];
@@ -14907,13 +14953,14 @@
             if (!cfg || !cfg.mainUrl || !cfg.mainKey || !cfg.mainModel) return null;
             const url = toV1Base(resolveApiHost(cfg.mainUrl)) + '/chat/completions';
             const persona = (characterData && (characterData.setting || characterData.desc || characterData.persona)) || '';
-            const sys = '你是角色「' + displayName() + '」。这是后台日程报备任务，不是普通聊天。'
+            const sys = '你是角色「' + displayName() + '」。你刚结束一段日程，想随手和对方分享，不是汇报工作，也不是写总结。'
                 + '严格保持人设，不要 OOC、不要油腻情话。只输出合法 JSON，不要解释、不要 markdown。'
-                + '格式：{"bubble":"给 user 发的 1-2 句聊天气泡，和这次日程有关，自然口语","title":"报备卡片标题，不超过12字","note":"卡片正文，40-100字，写你刚做了什么、现场细节和感受"}';
+                + '格式：{"bubble":"给 user 发的 2~4 条很短的口语气泡，用单个全角竖线 ｜ 分隔","title":"报备卡片标题，不超过12字","note":"卡片正文，40-100字，写你刚做了什么、现场细节和感受"}'
+                + '。bubble 要像随手分享日常，不要用「给你报备」「别担心」「我没乱跑」这种汇报腔；示例：宝宝给你看｜今天去江边吹风了｜风有点冷，但江面很好看';
             const usr = '角色设定：' + String(persona).slice(0, 1500)
                 + '\n日程：' + String(r.title || '') + '；地点：' + String(r.place || '') + '；时间：' + String(r.start || '') + '-' + String(r.end || '')
                 + '；原备注：' + String(r.note || '') + '；日期：' + String(r.date || '')
-                + '\n请像刚结束这件事一样，生成一条气泡和卡片内容。';
+                + '\n请像刚结束这件事一样，用 2~4 条短气泡自然分享，并生成卡片内容。';
             const payload = {
                 token: 'sched_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
                 url: url,
@@ -14988,7 +15035,12 @@
             if (r) {
                 const txt = await generateReportText(r);
                 const bubble = (txt && txt.bubble) || ('刚从' + (r.place || r.title || '外面') + '回来，' + (r.note || '今天也发生了些小事'));
-                if (bubble) addMessage('left', bubble, timeStr);
+                if (bubble) {
+                    let parts = [];
+                    try { parts = splitReportBubbles(bubble, 4); } catch (e) { parts = []; }
+                    if (!parts.length) parts = [bubble];
+                    parts.forEach(function (line) { addMessage('left', line, timeStr); });
+                }
                 addMessage('left', '', timeStr, null, false, true, {
                     cardType: 'scheduleReport',
                     eventId: r.eventId || '',
