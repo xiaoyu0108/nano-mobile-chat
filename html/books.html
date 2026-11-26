@@ -6,8 +6,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <title>Books</title>
 <script defer src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-<link rel="stylesheet" href="../css/books.css?v=20261020j">
-<script defer src="../js/appearance.js?v=20261110c"></script>
+<link rel="stylesheet" href="../css/books.css?v=20261126e">
+<script defer src="../js/appearance.js?v=20261126e"></script>
 </head>
 <body>
 <div class="app" id="app">
@@ -50,10 +50,15 @@
       <svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>
     </button>
     <h1 id="readerTitle">图书</h1>
-    <button class="iconbtn" id="togetherBtn" onclick="toggleTogether()" aria-label="Books">
-      <svg id="iconTogether" viewBox="0 0 24 24"><circle cx="9" cy="9" r="3"/><circle cx="17" cy="11" r="2.5"/><path d="M3 19c.7-3 2.7-4.5 6-4.5S14.3 16 15 19M14 17c.6-1.7 1.8-2.5 3.5-2.5 1.7 0 2.8.8 3.5 2.5"/></svg>
-      <svg id="iconSolo" viewBox="0 0 24 24" style="display:none"><circle cx="12" cy="8" r="4"/><path d="M5 20c1-3.5 3.5-5 7-5s6 1.5 7 5"/></svg>
-    </button>
+    <div class="reader-topbar-actions">
+      <button class="iconbtn" id="markBtn" onclick="toggleMarkMode()" aria-label="选段">
+        <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h6"/><path d="M14 15l2 2 4-4"/></svg>
+      </button>
+      <button class="iconbtn" id="togetherBtn" onclick="toggleTogether()" aria-label="Books">
+        <svg id="iconTogether" viewBox="0 0 24 24"><circle cx="9" cy="9" r="3"/><circle cx="17" cy="11" r="2.5"/><path d="M3 19c.7-3 2.7-4.5 6-4.5S14.3 16 15 19M14 17c.6-1.7 1.8-2.5 3.5-2.5 1.7 0 2.8.8 3.5 2.5"/></svg>
+        <svg id="iconSolo" viewBox="0 0 24 24" style="display:none"><circle cx="12" cy="8" r="4"/><path d="M5 20c1-3.5 3.5-5 7-5s6 1.5 7 5"/></svg>
+      </button>
+    </div>
   </header>
 
   <div class="reader-time-bar" id="readerTimeBar">
@@ -192,6 +197,9 @@
       <div class="cw-name" id="cwName">Books</div>
       <div class="cw-sub" id="cwSub">正在阅读</div>
     </div>
+    <button class="cw-switch" onclick="openCharSwitcher()" aria-label="切换角色">
+      <svg viewBox="0 0 24 24"><path d="M7 7h10l-3-3M17 17H7l3 3"/></svg>
+    </button>
     <button class="cw-close" onclick="closeChatWindow()" data-close>
       <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
     </button>
@@ -254,10 +262,9 @@
 
 <script defer src="../js/mem-link.js?v=20261111a"></script>
 <script defer src="../js/aux-memory.js?v=20261029d"></script>
-<script defer src="../js/reroll-reason.js?v=20261108a"></script>
-<script defer src="../js/nano-prompts.js?v=20261123a"></script>
-<script defer src="../js/books.js?v=20261102a"></script>
+<script defer src="../js/reroll-reason.js?v=20261126e"></script>
+<script defer src="../js/nano-prompts.js?v=20261126e"></script>
+<script defer src="../js/books.js?v=20261126e"></script>
 <script defer src="../js/nano-notify.js?v=20261112a"></script>
-<script defer src="../swipe-back.js"></script>
 </body>
 </html>

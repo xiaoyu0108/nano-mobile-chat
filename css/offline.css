@@ -489,7 +489,7 @@ html, body, .app{background:var(--page,#f5f0f0)}
 
 /* ===== 小剧场 · 番外选择弹层 ===== */
 .tp-mask{position:fixed;inset:0;z-index:120;background:rgba(40,30,32,.34);display:flex;align-items:flex-end;justify-content:center;backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px)}
-.tp-sheet{width:100%;max-width:430px;background:var(--card,#fffdfe);border-radius:24px 24px 0 0;padding:20px 18px calc(20px + env(safe-area-inset-bottom,0px));box-shadow:0 -10px 40px rgba(90,60,65,.18);animation:tpUp .22s ease}
+.tp-sheet{width:100%;max-width:430px;background:var(--card,#fffdfe);border-radius:24px 24px 0 0;padding:20px 18px calc(20px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom,0px)));box-shadow:0 -10px 40px rgba(90,60,65,.18);animation:tpUp .22s ease}
 @keyframes tpUp{from{transform:translateY(18px);opacity:.6}to{transform:none;opacity:1}}
 .tp-head{font-size:16px;font-weight:700;color:var(--ink,#3d3536);letter-spacing:.02em}
 .tp-sub{font-size:11.5px;color:#a99b9c;margin-top:5px;line-height:1.5}
@@ -651,7 +651,7 @@ html, body, .app{background:var(--page,#f5f0f0)}
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 20px 16px calc(18px + env(safe-area-inset-bottom, 0px));
+  padding: 20px 16px calc(18px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)));
   background: rgba(14, 10, 12, .95);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
@@ -701,7 +701,7 @@ html, body, .app{background:var(--page,#f5f0f0)}
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  padding: 18px 14px calc(18px + env(safe-area-inset-bottom, 0px));
+  padding: 18px 14px calc(18px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)));
   background: rgba(0, 0, 0, .5);
   backdrop-filter: blur(3px);
   -webkit-backdrop-filter: blur(3px);

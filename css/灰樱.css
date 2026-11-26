@@ -454,7 +454,7 @@ button:active{opacity:.55}
 
 /* ================= 小剧场 · 番外选择弹层 ================= */
 .tp-mask{position:fixed;inset:0;z-index:120;background:rgba(60,56,66,.34);display:flex;align-items:flex-end;justify-content:center;-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px)}
-.tp-sheet{width:100%;max-width:430px;background:var(--card);border-radius:16px 16px 0 0;border-top:1.5px solid var(--gray-line);padding:20px 18px calc(20px + env(safe-area-inset-bottom,0px));box-shadow:0 -10px 40px rgba(80,70,90,.18);animation:tpUp .22s ease}
+.tp-sheet{width:100%;max-width:430px;background:var(--card);border-radius:16px 16px 0 0;border-top:1.5px solid var(--gray-line);padding:20px 18px calc(20px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom,0px)));box-shadow:0 -10px 40px rgba(80,70,90,.18);animation:tpUp .22s ease}
 @keyframes tpUp{from{transform:translateY(18px);opacity:.6}to{transform:none;opacity:1}}
 .tp-head{font-size:16px;font-weight:700;color:var(--ink);letter-spacing:.02em}
 .tp-sub{font-size:11.5px;color:#a9a6ae;margin-top:5px;line-height:1.5}

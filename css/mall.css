@@ -95,7 +95,7 @@ button { border: 0; background: none; cursor: pointer; }
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-    padding: 18px 18px calc(92px + env(safe-area-inset-bottom, 0px));
+    padding: 18px 18px calc(92px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)));
     -webkit-overflow-scrolling: touch;
 }
 .page { display: none; }
@@ -364,7 +364,7 @@ button { border: 0; background: none; cursor: pointer; }
 .checkout-bar {
     position: fixed;
     left: 0; right: 0;
-    bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(64px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)));
     z-index: 15;
     display: flex;
     align-items: center;
@@ -497,7 +497,7 @@ button { border: 0; background: none; cursor: pointer; }
     z-index: 30;
     display: grid;
     grid-template-columns: repeat(5, 1fr);
-    padding: 7px 8px calc(7px + env(safe-area-inset-bottom, 0px));
+    padding: 7px 8px calc(7px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)));
     background: rgba(255,255,255,.97);
     backdrop-filter: blur(18px);
     -webkit-backdrop-filter: blur(18px);
@@ -576,7 +576,7 @@ button { border: 0; background: none; cursor: pointer; }
     flex: none;
     display: flex;
     gap: 8px;
-    padding: 12px 20px calc(16px + env(safe-area-inset-bottom, 0px));
+    padding: 12px 20px calc(16px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)));
     border-top: 1px solid var(--line-soft);
 }
 .sheet-foot .btn { flex: 1; }
@@ -710,7 +710,7 @@ textarea.input { height: 74px; padding: 10px 12px; resize: none; line-height: 1.
 .toast {
     position: fixed;
     left: 50%;
-    bottom: calc(86px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(86px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)));
     transform: translate(-50%, 10px);
     background: rgba(10,10,11,.92);
     color: #fff;

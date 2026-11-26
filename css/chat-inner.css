@@ -194,6 +194,9 @@ html.nano-android.keyboard-open body.nano-chat-inner .bottom-bar {
     display: flex; align-items: flex-start; margin-bottom: 6px;
     width: 100%; position: relative; padding: 2px 0;
     -webkit-user-select: none; user-select: none; cursor: default;
+    /* 长聊天优化：屏幕外的消息跳过布局/绘制，滚动时只处理可见行 */
+    content-visibility: auto;
+    contain-intrinsic-size: auto 80px;
 }
 .message-row.left { justify-content: flex-start; }
 .message-row.right { justify-content: flex-end; }
@@ -1034,7 +1037,7 @@ body.popup-open .bottom-bar { display: none !important; }
     overflow-y: auto;
     max-height: 90vh;
     -webkit-overflow-scrolling: touch;
-    padding: 16px 18px calc(22px + env(safe-area-inset-bottom, 0px));
+    padding: 16px 18px calc(22px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)));
     animation: popupSlideUp 0.24s ease;
 }
 @keyframes popupSlideUp {
@@ -1288,7 +1291,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
     border-radius: 20px 20px 0 0;
     box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.18);
     z-index: 50;
-    padding: 16px 12px calc(16px + env(safe-area-inset-bottom, 0px));
+    padding: 16px 12px calc(16px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)));
     flex-wrap: wrap;
     gap: 4px;
     animation: slideUp 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
@@ -2195,7 +2198,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .tkv-act{font-size:11.5px;color:#8a6d5a;font-weight:700;text-align:center;line-height:1.7;max-width:20em;margin:2px auto 6px;word-break:break-word}
 .tkv-bub{background:#fff3cf;color:#7a5c12;font-size:14px;line-height:1.6;padding:9px 13px;border-radius:14px 14px 14px 5px;margin:6px 0;max-width:92%;white-space:pre-wrap}
 .tkv-empty{color:#a99;font-size:13px;text-align:center;padding:30px 0;white-space:pre-line}
-.tkv-foot{padding:10px 18px calc(12px + env(safe-area-inset-bottom));font-size:11px;color:#bba;text-align:center;border-top:1px solid rgba(0,0,0,.05)}
+.tkv-foot{padding:10px 18px calc(12px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom)));font-size:11px;color:#bba;text-align:center;border-top:1px solid rgba(0,0,0,.05)}
 .tkv-bub .zh{font-size:11.5px;color:#b09a55;margin-top:2px}
 .tkv-bub{display:flex;flex-direction:column;gap:2px}
 

@@ -305,7 +305,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .sheet{
   width:min(520px,100%);max-height:86vh;overflow:auto;
   background:#fffbfc;border-radius:28px 28px 0 0;
-  padding:14px 20px calc(24px + env(safe-area-inset-bottom));
+  padding:14px 20px calc(24px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom)));
   box-shadow:0 -20px 60px rgba(100,60,74,.18);
   animation:up .28s cubic-bezier(.32,.72,0,1);
 }
@@ -355,7 +355,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 
 /* Toast */
 .toast{
-  position:fixed;left:50%;bottom:calc(80px + env(safe-area-inset-bottom));
+  position:fixed;left:50%;bottom:calc(80px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom)));
   transform:translate(-50%,10px);background:#5e3a45;color:#fff;
   border-radius:999px;padding:9px 20px;font-size:13px;
   opacity:0;pointer-events:none;transition:.25s;z-index:40;

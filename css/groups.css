@@ -118,6 +118,8 @@ html.keyboard-open .chat-container {
 .message-row {
     display: flex; align-items: flex-start; margin-bottom: 14px;
     width: 100%; position: relative;
+    content-visibility: auto;
+    contain-intrinsic-size: auto 80px;
 }
 .message-row.left { justify-content: flex-start; }
 .message-row.right { justify-content: flex-end; }

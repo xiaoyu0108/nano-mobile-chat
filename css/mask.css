@@ -58,7 +58,7 @@ svg {
     height: 100%;
     max-width: 480px;
     margin: 0 auto;
-    padding: 0 14px calc(18px + env(safe-area-inset-bottom, 0px)) 14px;
+    padding: 0 14px calc(18px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom, 0px))) 14px;
     background: var(--bg);
     display: flex;
     flex-direction: column;
@@ -1123,7 +1123,7 @@ svg {
     flex: 1 1 auto;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
-    padding: 18px 18px calc(28px + env(safe-area-inset-bottom, 0px));
+    padding: 18px 18px calc(28px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)));
 }
 .edit-body::-webkit-scrollbar {
     width: 0;

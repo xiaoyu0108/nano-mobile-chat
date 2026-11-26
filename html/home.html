@@ -5,7 +5,7 @@
 <meta charset="UTF-8">
 <script src="../js/nano-idb.js"></script>
 <script>window.__NANO_FONT_ONLY = true;</script>
-<script defer src="../js/appearance.js?v=20261112a"></script>
+<script defer src="../js/appearance.js?v=20261126e"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#ffffff">
 <link rel="icon" href="../icons/icon-192.png">
@@ -13,7 +13,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <title>纳米桌面</title>
 <style>
-:root{--ink:#141414;--ic:60px;--dock-h:86px;--safe-b:env(safe-area-inset-bottom);--safe-t:env(safe-area-inset-top)}
+:root{--ink:#141414;--ic:60px;--dock-h:86px;--safe-b:max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom));--safe-t:env(safe-area-inset-top)}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#fff;color:var(--ink);overscroll-behavior:none;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","PingFang SC","Helvetica Neue",sans-serif}
 body{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
@@ -851,7 +851,8 @@ function loadBuiltinTemplates(){
    状态
 ===================================================== */
 const COLS=4, KEY='mpLayout4', IKEY='mpImgs3', IDB_LAYOUT='nano_widget_layout_v1', IDB_IMGS='nano_widget_images_v1', IDB_BG='nano_desktop_bg', IDB_CUSTOM='nano_app_custom', LS_BG='nano_desktop_bg_ls', LS_CUSTOM='nano_app_custom_ls';
-const LAYOUT_REV='2026-11-12-home-3page';
+const LAYOUT_REV='2026-11-26-home-desktop2';
+const INITIAL_DESKTOP_URL='../js/nano-desktop-initial.json?v=20261126e';
 let DESKTOP_BG=null, APP_CUSTOM={};
 const DOCK_DEFAULT=['chat','api','phone','settings'];
 const APPITEM={}; APPS.forEach(a=>APPITEM[a.id]={id:a.id,c:0,r:0});
@@ -948,6 +949,14 @@ function isOldInitialLayout(){
     && has(2,'bt0') && has(2,'send')
     && has(3,'online') && has(3,'photo')
     && has(4,'bubbles');
+}
+// 上一版内置初始桌面（灰粉布局但已去照片）：只迁移这种“没有自定义图标/图片”的默认桌面，
+// 用户自己保存的灰粉预设（有照片）不会被覆盖。
+function isPreviousPhotoInitialLayout(){
+  if(!S.pages||S.pages.length!==3) return false;
+  if(Object.keys(IMG||{}).length || Object.keys(APP_CUSTOM||{}).length) return false;
+  const ids=new Set(S.pages.flat().map(it=>it.id));
+  return ids.has('wmvs788yna3m') && ids.has('wmvsgft1byqa') && ids.has('wmvsgdbtvdh3');
 }
 function compactPages(list){
   (list||S.pages).forEach(items=>{
@@ -1150,13 +1159,49 @@ function applyDesktopBg(){
     phone.style.background='#fff';
   }
 }
+// 首次使用 / 重置桌面时读取内置的 9:16 初始桌面（含背景、图片槽、图标覆盖）。
+// 只在「没有已保存布局」或「仍是旧版默认布局」时调用，不覆盖用户自定义桌面。
+async function loadInitialDesktop(){
+  try{
+    const res=await fetch(INITIAL_DESKTOP_URL,{cache:'force-cache'});
+    if(!res.ok) throw new Error('initial desktop 404');
+    const d=await res.json();
+    if(!d||!d.layout||!Array.isArray(d.layout.pages)) throw new Error('bad initial desktop');
+    DESKTOP_BG=d.bg||null;
+    APP_CUSTOM=d.apps||{};
+    for(const k in IMG) delete IMG[k];
+    Object.assign(IMG,d.imgs||{});
+    if(window.NanoIDB){
+      try{
+        await Promise.all([
+          NanoIDB.set(IDB_LAYOUT,d.layout),
+          NanoIDB.set(IDB_IMGS,IMG),
+          NanoIDB.set(IDB_BG,DESKTOP_BG),
+          NanoIDB.set(IDB_CUSTOM,APP_CUSTOM)
+        ]);
+      }catch(e){}
+    }
+    try{ localStorage.setItem(KEY,JSON.stringify(d.layout)); }catch(e){}
+    try{ localStorage.setItem(IKEY,JSON.stringify(IMG)); }catch(e){}
+    try{ localStorage.setItem(LS_BG,JSON.stringify(DESKTOP_BG)); }catch(e){}
+    try{ localStorage.setItem(LS_CUSTOM,JSON.stringify(APP_CUSTOM)); }catch(e){}
+    const ok=await loadState();
+    return !!ok;
+  }catch(e){
+    console.warn('[home] 初始桌面读取失败',e);
+    return false;
+  }
+}
 async function reloadDesktop(includeLayout){
   await loadDesktopCustom();
   if(includeLayout){
     for(const k in IMG) delete IMG[k];
     let ok=false;
     try{ ok=await loadState(); }catch(e){}
-    if(!ok) defaultState();
+    if(!ok){
+      const applied=await loadInitialDesktop();
+      if(!applied) defaultState();
+    }
   }
   applyDesktopBg();
   render();
@@ -1730,19 +1775,30 @@ function init(){
       const got=await Promise.all([loadState().catch(function(){return false}),loadDesktopCustom()]);
       let rev='';
       try{ rev=localStorage.getItem('nanoHomeLayoutRev')||''; }catch(e){}
-      if(rev!==LAYOUT_REV){
-        defaultState();
+      const ok=!!got[0];
+      if(!ok){
+        // 第一次使用 / 重置后：使用内置 9:16 初始桌面
+        const applied=await loadInitialDesktop();
+        if(!applied) defaultState();
         save();
         try{ localStorage.setItem('nanoHomeLayoutRev',LAYOUT_REV); }catch(e){}
-      }else{
-        const ok=!!got[0];
-        if(!ok){ defaultState(); save(); }
-        else if(isOldInitialLayout()){
-          // 老用户的「初始布局」还是旧版 5 页结构：只迁移完全没有改动过的默认布局。
-          defaultState();
-          try{ localStorage.setItem('nanoHomeLayoutV2','1'); }catch(e) {}
-          save();
-        }
+        try{ localStorage.setItem('nanoHomeLayoutV2','1'); }catch(e) {}
+      }else if(isOldInitialLayout()){
+        // 老用户的「初始布局」还是旧版 5 页结构：只迁移完全没有改动过的默认布局。
+        const applied=await loadInitialDesktop();
+        if(!applied) defaultState();
+        try{ localStorage.setItem('nanoHomeLayoutV2','1'); }catch(e) {}
+        try{ localStorage.setItem('nanoHomeLayoutRev',LAYOUT_REV); }catch(e){}
+        save();
+      }else if(isPreviousPhotoInitialLayout()){
+        // 上一版内置的「去照片灰粉」初始桌面 → 迁移到这次的「桌面 2」
+        const applied=await loadInitialDesktop();
+        if(!applied) defaultState();
+        try{ localStorage.setItem('nanoHomeLayoutRev',LAYOUT_REV); }catch(e){}
+        save();
+      }else if(rev!==LAYOUT_REV){
+        // 已有自定义桌面：只更新版本，不覆盖
+        try{ localStorage.setItem('nanoHomeLayoutRev',LAYOUT_REV); }catch(e){}
       }
       applyDesktopBg();
       render();

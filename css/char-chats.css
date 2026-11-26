@@ -64,7 +64,7 @@ html, body {
 .cc-main {
     max-width: 640px;
     margin: 0 auto;
-    padding: 14px 16px calc(40px + env(safe-area-inset-bottom, 0px));
+    padding: 14px 16px calc(40px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)));
     background: #ffffff;
 }
 
@@ -253,7 +253,7 @@ html, body {
 .cc-toast {
     position: fixed;
     left: 50%;
-    bottom: calc(26px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(26px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)));
     transform: translate(-50%, 12px);
     max-width: 82vw;
     padding: 10px 16px;

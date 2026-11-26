@@ -653,7 +653,7 @@
         var ov = document.createElement('div');
         ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center';
         ov.innerHTML =
-            '<div style="width:100%;max-width:520px;background:#fff;border-radius:20px 20px 0 0;padding:20px 18px calc(20px + env(safe-area-inset-bottom));box-sizing:border-box;max-height:82vh;overflow:auto">' +
+            '<div style="width:100%;max-width:520px;background:#fff;border-radius:20px 20px 0 0;padding:20px 18px calc(20px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom)));box-sizing:border-box;max-height:82vh;overflow:auto">' +
             '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><b style="font-size:16px">更换银行卡</b><button id="bkX" style="border:0;background:none;font-size:22px;line-height:1;color:#999;cursor:pointer">&times;</button></div>' +
             '<div style="font-size:12px;color:#8a8f98;margin-bottom:8px">选择银行（决定卡面颜色）</div>' +
             '<div id="bkGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">' +

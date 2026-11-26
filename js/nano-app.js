@@ -139,7 +139,7 @@
       post({ type: 'openChat', chatId: sessionId, chatName: name || '纳米', chatAvatar: avatar || '' });
       return;
     }
-    location.href = 'chat_inner.html?chat=' + encodeURIComponent(sessionId) + '&name=' + encodeURIComponent(name || '纳米');
+    location.href = 'chat_inner.html?v=20261126f&chat=' + encodeURIComponent(sessionId) + '&name=' + encodeURIComponent(name || '纳米');
   }
 
   function getChar() {

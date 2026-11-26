@@ -47,7 +47,7 @@ body.xs-page {
 .xs-top-title { font-size: 17px; font-weight: 800; letter-spacing: .2px; }
 .xs-top-spacer { width: 36px; height: 36px; }
 
-.xs-main { max-width: 640px; margin: 0 auto; padding: 22px 20px calc(70px + env(safe-area-inset-bottom, 0px)); }
+.xs-main { max-width: 640px; margin: 0 auto; padding: 22px 20px calc(70px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom, 0px))); }
 .xs-article { animation: xsIn .22s ease-out; }
 @keyframes xsIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 

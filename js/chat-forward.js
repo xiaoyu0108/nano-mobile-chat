@@ -207,7 +207,7 @@
       'align-items:flex-end;justify-content:center;opacity:0;transition:opacity .18s ease;';
     var sheet = document.createElement('div');
     sheet.style.cssText = 'width:100%;max-width:520px;max-height:78vh;overflow:auto;background:#fff;' +
-      'border-radius:18px 18px 0 0;padding:14px 14px calc(18px + env(safe-area-inset-bottom));' +
+      'border-radius:18px 18px 0 0;padding:14px 14px calc(18px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom)));' +
       'box-sizing:border-box;font-family:inherit;';
     var title = document.createElement('div');
     title.innerHTML = '<div style="font-size:17px;font-weight:600;color:#1c1c1e;margin:2px 4px 4px;">转发到</div>' +

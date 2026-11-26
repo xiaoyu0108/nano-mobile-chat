@@ -6,15 +6,13 @@
 //       未配置服务器时自动降级为「仅本机」模式，并提示去配置。
 //
 // 导入目标（写入对应功能的真实存储，导入即在对应功能区生效）：
-//   线上美化  -> 聊天美化      beautify_chat_v2
-//   全局美化  -> 全局美化      beautify_global_v2
+//   线上美化  -> 线上美化      beautify_chat_v2
+//   全局美化  -> 聊天美化      beautify_global_v2
 //   线下美化  -> 线下美化      MeetSettingsDB / main_settings.customCSS
 //   心声美化  -> 心声弹窗      nano_voice_applied_css
 //   世界书    -> nano_worldbook_db / worldbook_data
 //   表情包    -> nano_api_db / emoji_data (nano_emoji_data)
 //   角色卡    -> nano_characters_db / characters
-//   字体      -> BeautifyAppDB / appliedFont  + postMessage beautify:font
-//   音乐      -> nano_music_db / audio_files + localStorage nano_music_songs
 // ============================================================
 (function () {
   'use strict';
@@ -24,14 +22,12 @@
      ============================================================ */
   var CATEGORIES = [
     { name: '线上美化', desc: '聊天界面视觉方案', key: 'online' },
-    { name: '全局美化', desc: '全站通用样式布局', key: 'global' },
+    { name: '聊天美化', desc: '聊天列表 / 全站通用样式', key: 'global' },
     { name: '线下美化', desc: '离线页面本地样式', key: 'offline' },
     { name: '心声美化', desc: '心声弹窗展示样式', key: 'thought' },
     { name: '世界书',   desc: '设定规则扩展条目', key: 'lore' },
     { name: '表情包',   desc: '聊天图片表情素材', key: 'sticker' },
     { name: '角色卡',   desc: '角色卡设定文件', key: 'character' },
-    { name: '字体',     desc: '美化页全局字体', key: 'font' },
-    { name: '音乐',     desc: '音乐App音频文件', key: 'music' },
     { name: '小组件',   desc: '桌面小组件与代码', key: 'widget' },
     { name: '提示词',   desc: '线下 / 线上 / 群聊 / 社交', key: 'prompt' },
     { name: '其他',     desc: '线下文件与 APP HTML', key: 'other' }
@@ -45,8 +41,6 @@
     lore: '<svg viewBox="0 0 24 24"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v17H6.5A2.5 2.5 0 0 0 4 22z"/><path d="M4 5.5v14A2.5 2.5 0 0 1 6.5 17H20"/><path d="M8 7h8M8 11h6"/></svg>',
     sticker: '<svg viewBox="0 0 24 24"><path d="M4 4h16v11l-5 5H4z"/><path d="M15 20v-5h5"/><circle cx="8.5" cy="9.5" r=".8" fill="currentColor" stroke="none"/><circle cx="12" cy="9.5" r=".8" fill="currentColor" stroke="none"/><circle cx="15.5" cy="9.5" r=".8" fill="currentColor" stroke="none"/><path d="M8 13c2 1.5 6 1.5 8 0"/></svg>',
     character: '<svg viewBox="0 0 24 24"><circle cx="12" cy="7.5" r="3.5"/><path d="M5 21v-2a7 7 0 0 1 14 0v2"/><path d="M3 4v4M1 6h4M21 4v4M19 6h4"/></svg>',
-    font: '<svg viewBox="0 0 24 24"><path d="M5 19 12 4l7 15"/><path d="M8 13h8"/></svg>',
-    music: '<svg viewBox="0 0 24 24"><path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/></svg>',
     widget: '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="5" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="10" width="8" height="11" rx="2"/></svg>',
     prompt: '<svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z"/><path d="M8 8h8M8 12h5"/></svg>',
     other: '<svg viewBox="0 0 24 24"><path d="M3 7.5 12 3l9 4.5v9L12 21l-9-4.5v-9Z"/><path d="M3 7.5 12 12l9-4.5M12 12v9"/><path d="M7.5 5.2 16.5 9.7"/></svg>'
@@ -309,6 +303,8 @@
   function filtered(cat, q) {
     q = (q || '').trim().toLowerCase();
     return feed.filter(function (p) {
+      // 字体 / 音乐板块已下线：旧资源也不再出现在列表和分类里
+      if (p.category === 'font' || p.category === 'music') return false;
       if (cat && cat !== 'all' && p.category !== cat) return false;
       if (!q) return true;
       var hay = [p.title, p.desc, p.author, (p.tags || []).join(' ')].join(' ').toLowerCase();
@@ -395,7 +391,7 @@
     $('profileBio').textContent = user.bio || '还没有填写个人简介';
     var av = $('profileAvatar');
     av.innerHTML = user.avatar ? '<img src="' + esc(user.avatar) + '" alt="">' : esc((user.name || 'U').slice(0, 1) || 'U');
-    var mine = feed.filter(function (p) { return isOwner(p.id); });
+    var mine = feed.filter(function (p) { return isOwner(p.id) && p.category !== 'font' && p.category !== 'music'; });
     $('myPostCount').textContent = mine.length;
     $('myLikeCount').textContent = mine.reduce(function (s, p) { return s + (p.likes || 0); }, 0);
     $('myImportCount').textContent = totalImports;
@@ -423,8 +419,8 @@
   }
 
   var OPEN_IMPORT = {
-    online: '聊天美化', global: '全局美化', offline: '线下美化', thought: '心声美化',
-    lore: '世界书', sticker: '表情包', character: '角色卡', font: '字体', music: '音乐',
+    online: '线上美化', global: '聊天美化', offline: '线下美化', thought: '心声美化',
+    lore: '世界书', sticker: '表情包', character: '角色卡',
     widget: '桌面小组件', prompt: '提示词'
   };
 
@@ -689,7 +685,7 @@
     });
   }
   // 把导入的样式同时写进对应 App 的「预设库」，
-  // 这样在「聊天美化 / 全局美化 / 心声美化」里能直接看到并使用，
+  // 这样在「线上美化 / 聊天美化 / 心声美化」里能直接看到并使用，
   // 而不是只改了已应用样式、预设列表里什么都没有。
   function openBeautifyDb() {
     return new Promise(function (res, rej) {
@@ -842,7 +838,7 @@
     });
     return out;
   }
-  function importEmoji(file) {
+  function addEmojiGroup(group) {
     return new Promise(function (res, rej) {
       var req = indexedDB.open('nano_api_db', 2);
       req.onupgradeneeded = function (e) {
@@ -854,21 +850,9 @@
         var d = req.result;
         var tx = d.transaction('emoji_data', 'readwrite'), st = tx.objectStore('emoji_data');
         var g = st.get('nano_emoji_data');
-        g.onsuccess = async function () {
+        g.onsuccess = function () {
           var data = (g.result && g.result.value) || { emojiGroups: [], balance: 0, favorites: [] };
           if (!Array.isArray(data.emojiGroups)) data.emojiGroups = [];
-          var group = { id: 'g' + Date.now(), name: (file.name || '集市表情').replace(/\.[^.]+$/, '').slice(0, 16), emojis: [] };
-          var isImage = /^image\//i.test(file.mime || '') || /^data:image\//i.test(file.data);
-          if (isImage) {
-            group.emojis.push({ id: 'e' + Date.now() + '_' + rand(4), name: group.name, url: file.data });
-          } else {
-            var text = await dataURLToText(file.data);
-            parseEmojiText(text).forEach(function (x, i) {
-              if (!/^(https?:\/\/|data:image\/)/i.test(x.url)) return;
-              group.emojis.push({ id: 'e' + Date.now() + '_' + i + rand(3), name: x.name, url: x.url });
-            });
-          }
-          if (!group.emojis.length) { rej(new Error('empty')); return; }
           data.emojiGroups.push(group);
           st.put({ key: 'nano_emoji_data', value: data });
           try { localStorage.setItem('nano_emoji_data', JSON.stringify(data)); } catch (e) {}
@@ -878,6 +862,51 @@
       };
       req.onerror = function () { rej(req.error); };
     });
+  }
+
+  async function importEmoji(file) {
+    var isPng = /^image\/png/i.test(file.mime || '') || /\.png$/i.test(file.name || '') || /^data:image\/png/i.test(file.data || '');
+    // Nano 表情包票根 PNG：导入整组表情，而不是把票根图片本身当成一个表情
+    if (isPng && window.NanoPngJson && NanoPngJson.extractEmojiPack) {
+      try {
+        var buf = await dataURLToArrayBuffer(file.data);
+        var pack = await NanoPngJson.extractEmojiPack(buf);
+        if (pack && Array.isArray(pack.emojis) && pack.emojis.length) {
+          var packEmojis = pack.emojis.map(function (e, i) {
+            return {
+              id: 'e' + Date.now() + '_' + i + rand(3),
+              name: String(e.name || '表情包'),
+              url: String(e.url || ''),
+              addedAt: Number(e.addedAt) || Date.now()
+            };
+          }).filter(function (e) { return /^(https?:\/\/|data:image\/)/i.test(e.url); });
+          if (packEmojis.length) {
+            await addEmojiGroup({
+              id: 'g' + Date.now(),
+              name: String(pack.name || file.name || '集市表情').replace(/\.[^.]+$/, '').slice(0, 16),
+              emojis: packEmojis
+            });
+            return;
+          }
+        }
+      } catch (e) {
+        console.warn('[market] emoji pack parse failed', e);
+      }
+    }
+
+    var group = { id: 'g' + Date.now(), name: (file.name || '集市表情').replace(/\.[^.]+$/, '').slice(0, 16), emojis: [] };
+    var isImage = /^image\//i.test(file.mime || '') || /^data:image\//i.test(file.data);
+    if (isImage) {
+      group.emojis.push({ id: 'e' + Date.now() + '_' + rand(4), name: group.name, url: file.data });
+    } else {
+      var text = await dataURLToText(file.data);
+      parseEmojiText(text).forEach(function (x, i) {
+        if (!/^(https?:\/\/|data:image\/)/i.test(x.url)) return;
+        group.emojis.push({ id: 'e' + Date.now() + '_' + i + rand(3), name: x.name, url: x.url });
+      });
+    }
+    if (!group.emojis.length) throw new Error('empty');
+    await addEmojiGroup(group);
   }
 
   // ---- 角色卡 ----
@@ -942,9 +971,11 @@
   function parseCardData(json) {
     if (!json || typeof json !== 'object') return null;
     var d = json.data && typeof json.data === 'object' ? json.data : json;
-    var name = d.name || d.nickname || d.char_name || json.name || '未命名';
-    var gender = d.gender || d.sex || '男';
-    var nationality = d.nationality || d.country || '中国';
+    // Nano 票根把完整字段放在 data.nano / data.extensions.nano
+    var nano = d.nano || (d.extensions && d.extensions.nano) || json.nano || {};
+    var name = nano.name || d.name || d.nickname || d.char_name || json.name || '未命名';
+    var gender = nano.gender || d.gender || d.sex || '男';
+    var nationality = nano.nationality || d.nationality || d.country || '中国';
     var desc = d.description || d.desc || d.persona || '';
     var personality = d.personality || '';
     var scenario = d.scenario || d.world || '';
@@ -952,16 +983,29 @@
     var alt = d.alternate_greetings || d.alternateGreetings || [];
     var example = d.mes_example || d.mesExample || d.example_dialogue || '';
     var setting = '';
-    if (desc) setting += '【外貌与基本设定】\n' + desc + '\n\n';
-    if (personality) setting += '【性格特征】\n' + personality + '\n\n';
-    if (scenario) setting += '【开场背景】\n' + scenario + '\n\n';
-    if (example) setting += '【对话示例】\n' + example + '\n\n';
-    if (first) setting += '【首条消息】\n' + first;
+    if (nano.setting) {
+      setting = String(nano.setting);
+    } else {
+      if (desc) setting += '【外貌与基本设定】\n' + desc + '\n\n';
+      if (personality) setting += '【性格特征】\n' + personality + '\n\n';
+      if (scenario) setting += '【开场背景】\n' + scenario + '\n\n';
+      if (example) setting += '【对话示例】\n' + example + '\n\n';
+      if (first) setting += '【首条消息】\n' + first;
+    }
     var greetings = [];
-    if (Array.isArray(alt)) greetings = alt.slice();
-    if (first) greetings.unshift(first);
+    if (Array.isArray(nano.greetings) && nano.greetings.length) greetings = nano.greetings.slice();
+    else {
+      if (Array.isArray(alt)) greetings = alt.slice();
+      if (first) greetings.unshift(first);
+    }
     var embedded = d.character_book || (d.extensions && d.extensions.world) || null;
-    return { name: String(name), gender: String(gender), nationality: String(nationality), setting: setting.trim(), greetings: greetings, embeddedWorldbook: embedded };
+    var embeddedWorldbooks = Array.isArray(nano.worldbooks) ? nano.worldbooks.filter(function (b) { return b && Array.isArray(b.entries) && b.entries.length; }) : [];
+    return {
+      name: String(name), gender: String(gender), nationality: String(nationality),
+      setting: setting.trim(), greetings: greetings,
+      embeddedWorldbook: embedded, embeddedWorldbooks: embeddedWorldbooks,
+      nano: nano, isNanoTicket: !!(nano && (nano.format === 'nano_card_v1' || nano.setting))
+    };
   }
   function currentMaskId() {
     var keys = ['nano_mask_data', 'nano_home_data', 'peach_home_data'];
@@ -980,12 +1024,19 @@
   }
   async function importCharacter(file) {
     var cardObj = null;
-    if (/^image\/png/i.test(file.mime || '') || /\.png$/i.test(file.name || '')) {
+    var isPngCard = /^image\/png/i.test(file.mime || '') || /\.png$/i.test(file.name || '');
+    if (isPngCard) {
       var buf = await dataURLToArrayBuffer(file.data);
-      var chunks = await readPNGChunks(buf);
-      var keys = ['ccv3', 'character_card_v3', 'chara', 'character', 'card', 'data', 'json', 'chub', 'character_card'];
-      for (var i = 0; i < keys.length && !cardObj; i++) {
-        if (chunks[keys[i]]) { var parsed = parseLooseJson(chunks[keys[i]]); if (parsed) cardObj = parsed; }
+      // 先按 Nano 票根解析（nano_card / nano_character 文本块）
+      if (window.NanoPngJson && NanoPngJson.extractNanoCard) {
+        try { cardObj = await NanoPngJson.extractNanoCard(buf); } catch (e) {}
+      }
+      if (!cardObj) {
+        var chunks = await readPNGChunks(buf);
+        var keys = ['nano_card', 'nano_character', 'nano_user', 'ccv3', 'character_card_v3', 'chara', 'character', 'card', 'data', 'json', 'chub', 'character_card'];
+        for (var i = 0; i < keys.length && !cardObj; i++) {
+          if (chunks[keys[i]]) { var parsed = parseLooseJson(chunks[keys[i]]); if (parsed) cardObj = parsed; }
+        }
       }
       if (!cardObj) throw new Error('无法解析 PNG 角色卡数据');
     } else {
@@ -995,10 +1046,9 @@
     }
     var card = parseCardData(cardObj);
     if (!card) throw new Error('角色卡字段缺失');
-    var isPngCard = /^image\/png/i.test(file.mime || '') || /\.png$/i.test(file.name || '');
     var rec = {
-      // 只有 PNG 角色卡的文件本体才是头像；JSON 卡不能把 JSON 文本当头像。
-      id: 'c' + Date.now(), name: card.name, avatar: isPngCard ? file.data : '', gender: card.gender,
+      // Nano 票根用票根里记录的 avatar；普通 PNG 角色卡才用文件本体当头像。
+      id: 'c' + Date.now(), name: card.name, avatar: card.isNanoTicket ? (card.nano.avatar || '') : (isPngCard ? file.data : ''), gender: card.gender,
       nationality: card.nationality, setting: card.setting, bindUser: currentMaskId(),
       isNpc: false, nanoAssistant: false, greetings: card.greetings, worldbookBindings: []
     };
@@ -1014,102 +1064,26 @@
       };
       req.onerror = function () { rej(req.error); };
     });
-    // 角色卡内嵌世界书
-    if (card.embeddedWorldbook) {
+    // 角色卡内嵌世界书：Nano 票根可能打包了多本，普通卡只有一本 character_book
+    if (Array.isArray(card.embeddedWorldbooks) && card.embeddedWorldbooks.length) {
+      for (var bi = 0; bi < card.embeddedWorldbooks.length; bi++) {
+        try {
+          var book = card.embeddedWorldbooks[bi];
+          var wbText = JSON.stringify(book);
+          await importWorldbook({
+            name: (book.name || ((card.name || '角色') + ' 的世界书')) + '.json',
+            data: 'data:application/json;base64,' + btoa(unescape(encodeURIComponent(wbText)))
+          });
+        } catch (e) {}
+      }
+    } else if (card.embeddedWorldbook) {
       try {
-        var wbText = JSON.stringify(card.embeddedWorldbook);
-        await importWorldbook({ name: (card.name || '角色') + '-世界书.json', data: 'data:application/json;base64,' + btoa(unescape(encodeURIComponent(wbText))) });
+        var wbText2 = JSON.stringify(card.embeddedWorldbook);
+        await importWorldbook({ name: (card.name || '角色') + '-世界书.json', data: 'data:application/json;base64,' + btoa(unescape(encodeURIComponent(wbText2))) });
       } catch (e) {}
     }
     postToShell({ type: 'contactsDataUpdated' });
     postToShell({ type: 'nanoCharUpdated', chatId: rec.id, name: rec.name, avatar: rec.avatar });
-  }
-
-  // ---- 字体 ----
-  function fontFormat(name) {
-    var s = String(name || '').toLowerCase().split(/[?#]/)[0];
-    if (/\.woff2$/.test(s)) return 'woff2';
-    if (/\.woff$/.test(s)) return 'woff';
-    if (/\.(otf|tof)$/.test(s)) return 'opentype';
-    if (/\.ttf$/.test(s)) return 'truetype';
-    if (/\.(ttc|otc)$/.test(s)) return '';
-    if (/\.eot$/.test(s)) return 'embedded-opentype';
-    if (/\.svg$/.test(s)) return 'svg';
-    return '';
-  }
-  async function importFont(file) {
-    var isFont = /font|woff|ttf|otf|truetype|opentype/i.test(file.mime || '') || /\.(ttf|otf|tof|woff2?|ttc|otc|eot|svg)$/i.test(file.name || '');
-    if (isFont) {
-      var ab = await dataURLToArrayBuffer(file.data);
-      var state = { name: file.name, source: file.name, type: 'file', data: ab, size: 16, cssFamily: '', cssText: '' };
-      await new Promise(function (res, rej) {
-        var req = indexedDB.open('BeautifyAppDB', 1);
-        req.onupgradeneeded = function (e) {
-          var d = e.target.result;
-          if (!d.objectStoreNames.contains('presets')) d.createObjectStore('presets', { keyPath: 'id', autoIncrement: true });
-          if (!d.objectStoreNames.contains('settings')) d.createObjectStore('settings', { keyPath: 'key' });
-        };
-        req.onsuccess = function () {
-          var d = req.result;
-          var tx = d.transaction('settings', 'readwrite');
-          tx.objectStore('settings').put({ key: 'appliedFont', value: state });
-          tx.oncomplete = function () { d.close(); res(); };
-          tx.onerror = function () { d.close(); rej(tx.error); };
-        };
-        req.onerror = function () { rej(req.error); };
-      });
-      try { localStorage.removeItem('beautify_font'); } catch (e) {}
-      try {
-        await putBeautifyPreset({ category: 'font', name: file.name, font: state, createdAt: Date.now(), source: 'market' });
-      } catch (e) { console.warn('[market] save font preset failed', e); }
-      postToShell({ type: 'beautify:font', cfg: { family: 'NanoBeautifyFont', name: file.name, source: file.name, type: 'file', size: 16, format: fontFormat(file.name), data: ab } });
-      return;
-    }
-    // 文本/JSON：视为字体链接
-    var text = (await dataURLToText(file.data)).trim();
-    var url = '';
-    try { var o = JSON.parse(text); url = o.url || o.source || ''; } catch (e) { url = text; }
-    if (!/^https?:\/\/|^data:/i.test(url)) throw new Error('不是有效的字体文件或字体链接');
-    var cfg = { family: 'NanoBeautifyFont', name: file.name, source: url, type: 'url', size: 16, format: fontFormat(url) };
-    try { localStorage.setItem('beautify_font', JSON.stringify(cfg)); } catch (e) {}
-    try { await putBeautifySetting('appliedFont', cfg); } catch (e) {}
-    try {
-      await putBeautifyPreset({ category: 'font', name: file.name, font: cfg, createdAt: Date.now(), source: 'market' });
-    } catch (e) { console.warn('[market] save font preset failed', e); }
-    postToShell({ type: 'beautify:font', cfg: cfg });
-  }
-
-  // ---- 音乐 ----
-  async function importMusic(file) {
-    var ab = await dataURLToArrayBuffer(file.data);
-    if (!ab || !ab.byteLength) throw new Error('音频为空');
-    if (ab.byteLength > 50 * 1024 * 1024) throw new Error('音频超过 50MB');
-    var songId = 'song_' + Date.now() + '_' + rand(6);
-    await new Promise(function (res, rej) {
-      var req = indexedDB.open('nano_music_db', 3);
-      req.onupgradeneeded = function (e) {
-        var d = e.target.result;
-        if (!d.objectStoreNames.contains('music_data')) d.createObjectStore('music_data', { keyPath: 'key' });
-        if (!d.objectStoreNames.contains('audio_files')) d.createObjectStore('audio_files', { keyPath: 'id' });
-        if (!d.objectStoreNames.contains('lyrics_data')) d.createObjectStore('lyrics_data', { keyPath: 'id' });
-      };
-      req.onsuccess = function () {
-        var d = req.result;
-        var tx = d.transaction('audio_files', 'readwrite');
-        tx.objectStore('audio_files').put({ id: songId, data: ab, type: file.mime || 'audio/mpeg' });
-        tx.oncomplete = function () { d.close(); res(); };
-        tx.onerror = function () { d.close(); rej(tx.error); };
-      };
-      req.onerror = function () { rej(req.error); };
-    });
-    var songs = [];
-    try { songs = JSON.parse(localStorage.getItem('nano_music_songs') || '[]') || []; } catch (e) { songs = []; }
-    songs.push({
-      id: songId, source: 'local', name: (file.name || '音乐').replace(/\.[^.]+$/, ''),
-      artist: '未知歌手', cover: '', fileType: file.mime || 'audio/mpeg', lyrics: ''
-    });
-    try { localStorage.setItem('nano_music_songs', JSON.stringify(songs)); } catch (e) {}
-    postToShell({ type: 'nanoMusicUpdated' });
   }
 
   // ---- 桌面小组件 ----
@@ -1401,8 +1375,6 @@
     lore: importWorldbook,
     sticker: importEmoji,
     character: importCharacter,
-    font: importFont,
-    music: importMusic,
     widget: importWidget,
     prompt: importPrompt
   };
@@ -1475,12 +1447,26 @@
       images.push(await compressImage(draftImages[i].blob, 2048, 0.9));
     }
     var cover = draftImages.length ? await compressImage(draftImages[0].blob, 520, 0.72) : '';
+    var category = $('resourceCategory').value;
     var files = [];
     for (var j = 0; j < draftFiles.length; j++) {
       var f = draftFiles[j];
       files.push({ name: f.name, size: f.size, mime: f.type || 'application/octet-stream', data: await blobToDataURL(f) });
     }
-    var category = $('resourceCategory').value;
+    // 表情包 / 角色卡：图片区选的 PNG 也能直接导入。
+    // 用原始 blob（不压缩）写进 files，角色卡 PNG 里的 ccv3/chara 元数据才不会被压掉。
+    if (!files.length && (category === 'sticker' || category === 'character') && draftImages.length) {
+      var picked = category === 'character' ? draftImages.slice(0, 1) : draftImages;
+      for (var k = 0; k < picked.length; k++) {
+        var imgFile = picked[k].blob;
+        files.push({
+          name: picked[k].name || (category + '-' + (k + 1) + '.png'),
+          size: imgFile.size,
+          mime: imgFile.type || 'image/png',
+          data: await blobToDataURL(imgFile)
+        });
+      }
+    }
     return {
       id: 'p' + Date.now() + rand(4),
       title: $('resourceTitle').value.trim(),

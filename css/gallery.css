@@ -1,6 +1,6 @@
 :root{
   --safe-top:env(safe-area-inset-top,0px);
-  --safe-bottom:env(safe-area-inset-bottom,0px);
+  --safe-bottom:max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom,0px));
   --bg:#fff;
   --text:#111;
   --sub:#8e8e93;

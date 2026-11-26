@@ -62,7 +62,7 @@
     --ok:#333333;
     --font:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",Arial,sans-serif;
     --safe-top:env(safe-area-inset-top,0px);
-    --safe-bottom:env(safe-area-inset-bottom,0px);
+    --safe-bottom:max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom,0px));
     --shadow:0 14px 38px rgba(0,0,0,.09);
   }
   html,body{width:100%;height:100%;overflow:hidden;position:fixed;inset:0;

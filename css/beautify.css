@@ -23,7 +23,7 @@ button svg{pointer-events:none;vertical-align:middle;flex-shrink:0}
 .content::-webkit-scrollbar{display:none;width:0;height:0}
 
 /* ===== Tabs（胶囊分段样式） ===== */
-.tabs{height:44px;padding:4px;background:#f2f2f7;border:none;border-radius:13px;display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin:2px 0 14px}
+.tabs{height:54px;padding:6px;background:#f2f2f7;border:none;border-radius:13px;display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin:2px 0 16px}
 .tabs button{border-radius:10px;background:transparent;color:#8e8e93;font-size:13.5px;font-weight:600;cursor:pointer;transition:background .18s,color .18s,box-shadow .18s;position:relative}
 .tabs button.active{background:#ffffff;color:#007aff;box-shadow:0 1px 5px rgba(0,0,0,.10);font-weight:700}
 .tabs button.active::after{display:none}
@@ -166,4 +166,4 @@ select:focus,.name:focus{border-color:rgba(0,122,255,.4);box-shadow:0 0 0 2px rg
 .toast.show{opacity:1;transform:translate(-50%,0)}
 
 /* ===== Responsive ===== */
-@media(max-width:390px){.content{padding:8px 10px 16px}.editor-wrap textarea{height:140px}.tabs{height:30px;font-size:12px}}
+@media(max-width:390px){.content{padding:8px 10px 16px}.editor-wrap textarea{height:140px}.tabs{height:42px;font-size:12px}}

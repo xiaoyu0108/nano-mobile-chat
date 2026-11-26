@@ -100,7 +100,7 @@
         try {
             if (sh.say) { sh.say(info.id, info.name, text); return true; }
             if (sh.postToChat) {
-                sh.open('chat_inner.html?chat=' + enc(info.id) + '&name=' + enc(info.name), '', 'main');
+                sh.open('chat_inner.html?v=20261126f&chat=' + enc(info.id) + '&name=' + enc(info.name), '', 'main');
                 setTimeout(function () { try { sh.postToChat({ type: 'NANO_CHAR_SAY', chatId: String(info.id), text: text }); } catch (e) {} }, 900);
                 return true;
             }

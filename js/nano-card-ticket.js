@@ -711,7 +711,7 @@
     var url = URL.createObjectURL(blob);
     var ov = document.createElement('div');
     ov.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(8,8,9,.45);display:flex;align-items:flex-end;justify-content:center;';
-    ov.innerHTML = '<div style="width:100%;max-width:520px;max-height:64vh;background:#111;border-radius:18px 18px 0 0;padding:16px 18px calc(16px + env(safe-area-inset-bottom,0px));box-sizing:border-box;display:flex;flex-direction:column;align-items:center;gap:12px;overflow:auto;">'
+    ov.innerHTML = '<div style="width:100%;max-width:520px;max-height:64vh;background:#111;border-radius:18px 18px 0 0;padding:16px 18px calc(16px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom,0px)));box-sizing:border-box;display:flex;flex-direction:column;align-items:center;gap:12px;overflow:auto;">'
       + '<div style="color:#e8e8ee;font:600 13px/1.4 ' + FONT + ';">长按图片保存到相册</div>'
       + '<img alt="Nano 票根" style="max-width:100%;max-height:42vh;object-fit:contain;border-radius:10px;box-shadow:0 12px 36px rgba(0,0,0,.45);" src="' + url + '">'
       + '<button type="button" style="width:100%;height:42px;border-radius:12px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.08);color:#fff;font:600 14px ' + FONT + ';">关闭</button>'
@@ -784,7 +784,7 @@
       '.nct-paper.nct-done{animation:none;transform:translateY(0);}',
       '.nct-status{margin-top:16px;min-height:20px;color:#d8d8de;font:500 12px/1.4 ' + FONT + ';letter-spacing:.04em;text-align:center;}',
       '.nct-status .nct-dots{display:inline-block;width:20px;text-align:left;animation:nctDots 1.2s steps(4) infinite;}',
-      '.nct-actions{position:fixed;left:0;right:0;bottom:0;padding:14px 18px calc(14px + env(safe-area-inset-bottom,0px));display:flex;gap:10px;justify-content:center;background:linear-gradient(180deg,rgba(8,8,9,0),rgba(8,8,9,.94) 38%);}',
+      '.nct-actions{position:fixed;left:0;right:0;bottom:0;padding:14px 18px calc(14px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom,0px)));display:flex;gap:10px;justify-content:center;background:linear-gradient(180deg,rgba(8,8,9,0),rgba(8,8,9,.94) 38%);}',
       '.nct-btn{height:44px;padding:0 22px;border-radius:12px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:#f4f4f7;font:600 14px ' + FONT + ';backdrop-filter:blur(8px);}',
       '.nct-btn.primary{background:#f3f1ea;color:#141416;border-color:#f3f1ea;box-shadow:0 10px 26px rgba(0,0,0,.35);}',
       '.nct-btn:active{transform:scale(.97);}',

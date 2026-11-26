@@ -1070,7 +1070,7 @@ function openOfflineFromIMessage(charId, charName, raw) {
   if (Date.now() - __lastIMOfflineOpenAt < 8000) return true;
   __lastIMOfflineOpenAt = Date.now();
   const name = String(charName || '').trim();
-  let url = 'offline.html?chat=' + encodeURIComponent(charId || 'default');
+  let url = 'offline.html?chat=' + encodeURIComponent(charId || 'default') + '&v=20261126e';
   if (name) url += '&name=' + encodeURIComponent(name);
   url += '&first=1&force=1&at=' + Date.now();
   try {

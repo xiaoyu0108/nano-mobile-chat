@@ -634,7 +634,7 @@
         }
         if (b) { try { b.click(); return; } catch (e) {} }
         try {
-            if (window.parent && window.parent !== window) window.parent.postMessage({ type: 'swipeBack' }, '*');
+            if (window.parent && window.parent !== window) window.parent.postMessage({ type: 'nanoBack' }, '*');
             else history.back();
         } catch (e) {}
     }
@@ -928,8 +928,8 @@
                 (document.head || document.documentElement).appendChild(s);
             }
             var _r = window.NANO_ROOT || '';
-            if (!window.NANO_GLOBAL_TEMPLATE) load(_r + 'js/nano-global-template.js?v=20261021a');
-            if (!window.NANO_CHAT_TEMPLATE) load(_r + 'js/nano-chat-template.js?v=20261115a');
+            if (!window.NANO_GLOBAL_TEMPLATE) load(_r + 'js/nano-global-template.js?v=20261126e');
+            if (!window.NANO_CHAT_TEMPLATE) load(_r + 'js/nano-chat-template.js?v=20261126e');
             if (!window.NANO_CHAT_TEMPLATE_GRAY_PINK) load(_r + 'js/nano-chat-theme-gray-pink.js?v=20261115a');
             finish();
         });

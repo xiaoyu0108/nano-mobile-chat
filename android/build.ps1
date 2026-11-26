@@ -159,9 +159,22 @@ $assetsRoot = Join-Path $BuildDir "assets"
 $www = Join-Path $assetsRoot "www"
 New-Item -ItemType Directory -Force -Path $www | Out-Null
 
+Write-Host "生成页面清单…"
+$pageManifest = @{}
+Get-ChildItem (Join-Path $ProjectRoot "html") -File -Filter *.html | ForEach-Object {
+    $hash = (Get-FileHash $_.FullName -Algorithm SHA1).Hash.Substring(0, 12).ToLower()
+    $pageManifest[$_.Name] = $hash
+}
+$pageManifestJson = $pageManifest | ConvertTo-Json -Depth 2
+[System.IO.File]::WriteAllText(
+    (Join-Path $ProjectRoot "js\nano-page-manifest.json"),
+    $pageManifestJson,
+    (New-Object System.Text.UTF8Encoding($false))
+)
+
 Write-Host "复制网页资源…"
 $rootFiles = @(
-    "index.html", "common.css", "bg.js", "swipe-back.js", "manifest.json", "sw.js"
+    "index.html", "common.css", "bg.js", "manifest.json", "sw.js"
 )
 foreach ($f in $rootFiles) {
     $src = Join-Path $ProjectRoot $f

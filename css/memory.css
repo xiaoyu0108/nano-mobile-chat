@@ -468,7 +468,7 @@ input:checked + .slider:before { transform: translateX(20px); }
     display: none;
     justify-content: center;
     align-items: flex-end;
-    padding: 0 16px calc(24px + env(safe-area-inset-bottom, 0px));
+    padding: 0 16px calc(24px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)));
     z-index: 2000;
     pointer-events: none;
 }

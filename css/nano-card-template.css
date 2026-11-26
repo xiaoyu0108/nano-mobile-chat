@@ -34,7 +34,7 @@ body { overflow: hidden; }
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: calc(10px + env(safe-area-inset-top, 0px)) 16px 10px;
+    padding: calc(10px + max(var(--safe-top, 0px), env(safe-area-inset-top, 0px))) 16px 10px;
     background: rgba(255, 255, 255, 0.92);
     backdrop-filter: blur(18px);
     -webkit-backdrop-filter: blur(18px);
@@ -77,7 +77,7 @@ body { overflow: hidden; }
     flex: 1 1 auto;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
-    padding: 14px 16px calc(30px + env(safe-area-inset-bottom, 0px));
+    padding: 14px 16px calc(30px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)));
 }
 
 .nct-tabs {
@@ -434,7 +434,7 @@ body { overflow: hidden; }
 .nct-toast {
     position: fixed;
     left: 50%;
-    bottom: calc(34px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(34px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)));
     transform: translateX(-50%);
     z-index: 2147483647;
     max-width: 82vw;

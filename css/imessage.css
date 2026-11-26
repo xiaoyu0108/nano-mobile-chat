@@ -30,8 +30,8 @@ button,input,textarea{font:inherit}button{border:0;background:none;color:inherit
  font-size:34px;line-height:1.1;font-weight:700;letter-spacing:-.6px;cursor:pointer}
 /* 列表一直铺到底：滑动卡片从悬浮的搜索栏/马甲按钮下面穿过，不再被白色挡住 */
 .list-scroll{position:absolute;inset:max(150px, calc(var(--safe-top, env(safe-area-inset-top, 0px)) + 96px)) 0 0;overflow:auto;
- padding:0 16px calc(76px + env(safe-area-inset-bottom));-webkit-overflow-scrolling:touch;background:#fff}
-.list-screen.editing .list-scroll{padding-bottom:calc(84px + env(safe-area-inset-bottom))}
+ padding:0 16px calc(76px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom)));-webkit-overflow-scrolling:touch;background:#fff}
+.list-screen.editing .list-scroll{padding-bottom:calc(84px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom)))}
 .thread-wrap{position:relative;overflow:hidden;background:#fff;
  border-bottom:0.5px solid rgba(60,60,67,.05)}
 .thread-wrap:last-child{border-bottom:0}
@@ -85,7 +85,7 @@ button,input,textarea{font:inherit}button{border:0;background:none;color:inherit
  transform:rotate(45deg);justify-self:end}
 .edit-toolbar{
  position:absolute;z-index:999;left:0;right:0;bottom:0;height:64px;
- padding:0 20px calc(env(safe-area-inset-bottom));
+ padding:0 20px calc(max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom)));
  background:rgba(255,255,255,.92);
  backdrop-filter:blur(40px) saturate(200%);
  -webkit-backdrop-filter:blur(40px) saturate(200%);
@@ -101,7 +101,7 @@ button,input,textarea{font:inherit}button{border:0;background:none;color:inherit
 
 /* 首页底栝：完全逝明 */
 .search-dock{
- position:absolute;left:16px;bottom:calc(12px + env(safe-area-inset-bottom));
+ position:absolute;left:16px;bottom:calc(12px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom)));
  height:40px;border-radius:20px;z-index:60;right:74px;
  display:flex;align-items:center;padding:0 8px;gap:8px;
  background:transparent;border:none;box-shadow:none;cursor:pointer
@@ -109,7 +109,7 @@ button,input,textarea{font:inherit}button{border:0;background:none;color:inherit
 .search-dock svg{width:18px;height:18px;flex:none}
 .search-text{font-size:17px;color:var(--muted)}
 .compose{
- position:absolute;z-index:60;right:16px;bottom:calc(12px + env(safe-area-inset-bottom));
+ position:absolute;z-index:60;right:16px;bottom:calc(12px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom)));
  width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;
  background:transparent;border:none;box-shadow:none;cursor:pointer
 }
@@ -223,7 +223,7 @@ button,input,textarea{font:inherit}button{border:0;background:none;color:inherit
 
 .composer{
  position:absolute;z-index:30;left:16px;right:16px;
- bottom:calc(16px + env(safe-area-inset-bottom));
+ bottom:calc(16px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom)));
  display:flex;flex-direction:column;gap:8px;
  pointer-events:none
 }
@@ -312,7 +312,7 @@ button,input,textarea{font:inherit}button{border:0;background:none;color:inherit
 /* ================= 更多：去掉外层玻璃，坪留坡片悬浮 ================= */
 .plus-cards{
  position:absolute;z-index:410;left:0;right:0;
- bottom:calc(80px + env(safe-area-inset-bottom));
+ bottom:calc(80px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom)));
  display:none;justify-content:center;gap:12px;padding:0 20px
 }
 .plus-cards.show{display:flex}
@@ -430,7 +430,7 @@ button,input,textarea{font:inherit}button{border:0;background:none;color:inherit
 .nm-field-chev{width:8px;height:8px;border-top:2px solid #c7c7cc;border-right:2px solid #c7c7cc;
  transform:rotate(45deg);flex:none;margin-right:14px}
 .nm-blank{flex:1}
-.nm-composer{padding:8px 12px calc(12px + env(safe-area-inset-bottom));
+.nm-composer{padding:8px 12px calc(12px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom)));
  display:flex;align-items:center;gap:10px;flex:none}
 .nm-plus{width:40px;height:40px;border-radius:50%;flex:none;
  background:#fff;border:1px solid rgba(60,60,67,.18);
@@ -590,7 +590,7 @@ button,input,textarea{font:inherit}button{border:0;background:none;color:inherit
 .im-emoji-overlay.show{display:flex}
 .im-emoji-panel{width:100%;max-width:520px;margin:0 auto;background:rgba(255,255,255,.97);
  border-radius:20px 20px 0 0;box-shadow:0 -6px 30px rgba(0,0,0,.14);
- padding:14px 14px calc(16px + env(safe-area-inset-bottom));
+ padding:14px 14px calc(16px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom)));
  display:flex;flex-direction:column;max-height:66vh;overflow:hidden;animation:imEmojiUp .22s ease}
 @keyframes imEmojiUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
 .im-ep-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex:none}

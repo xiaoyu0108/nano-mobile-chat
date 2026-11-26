@@ -7,8 +7,8 @@
   <meta name="theme-color" content="#f5f0f0">
   <title>设置</title>
   <link rel="stylesheet" href="../css/offline-setting.css?v=20261006a">
-    <link rel="stylesheet" href="../css/account.css?v=20261025a">
-    <script defer src="../js/appearance.js?v=20261110c"></script>
+    <link rel="stylesheet" href="../css/account.css?v=20261126e">
+    <script defer src="../js/appearance.js?v=20261126e"></script>
 </head>
 <body>
 <div class="app">
@@ -98,6 +98,16 @@
 </div>
 </section>
 
+<!-- 记忆 -->
+<section class="section">
+<div class="group">
+<button class="row" id="memorySummaryOpen">
+<div class="row-label">记忆<span class="row-desc">线下剧情自动总结进长期记忆（与线上互通）</span></div>
+<div class="row-value" id="memoryValue">自动 · 5 条</div><span class="chevron">›</span>
+</button>
+</div>
+</section>
+
 <!-- 记录 -->
 <section class="section">
 <div class="group">
@@ -109,7 +119,7 @@
 </div>
 <div class="search-results" id="recordResults"></div>
 <button class="row danger" id="clearRecords">
-<div class="row-label">清空记录<span class="row-desc">删除当前全部聊天内容</span></div><span class="chevron">›</span>
+<div class="row-label">聊天记录<span class="row-desc">压缩 / 部分清除 / 全部删除，记忆保留</span></div><span class="chevron">›</span>
 </button>
 </div>
 </section>
@@ -285,23 +295,41 @@
 </div>
 </div>
 
-<!-- 删除确认 -->
-<div class="modal-bg" id="modalBg">
-<div class="modal"><div class="modal-body"><div class="modal-title">清空全部记录？</div><div class="modal-text">当前 offline 的所有聊天卡片都会被删除，此操作无法恢复。</div></div>
-<div class="modal-buttons"><button id="modalCancel" data-close>取消</button><button id="modalConfirm" class="modal-delete">清空</button></div></div>
+<!-- ===== 记忆 Sheet ===== -->
+<div class="sheet-backdrop" id="memorySheet">
+<div class="sheet">
+<div class="sheet-head"><div class="sheet-title">记忆</div><button class="sheet-close" data-close="memorySheet">完成</button></div>
+<div class="sheet-body">
+<div class="sheet-section">
+<div class="row">
+<div class="row-label">自动总结<span class="row-desc">线下聊天达到阈值后，自动把剧情写进长期记忆（与线上互通）</span></div>
+<div class="switch" id="autoSummarySwitch"><i></i></div>
 </div>
+<div class="row">
+<div class="row-label">总结阈值<span class="row-desc">未总结的楼层达到这个数量时自动总结</span></div>
+<input class="search-input" id="memThresholdInput" type="number" min="1" max="50" style="width:72px;text-align:center">
+<button class="sheet-btn" id="memThresholdSave">保存</button>
+</div>
+</div>
+<div class="sheet-section">
+<div style="font-size:11px;color:var(--sub);line-height:1.6">「返回线上」时是否额外整理，由退出弹窗里的勾选项决定。想完全不自动总结，请关闭上面的「自动总结」。</div>
+</div>
+</div>
+</div>
+</div>
+
 <div class="toast" id="toast"></div>
 
-    <script defer src="../js/offline-themes.js?v=20261022f"></script>
+    <script defer src="../js/offline-themes.js?v=20261126e"></script>
     <script defer src="../js/nano-export.js?v=20261015a"></script>
     <script defer src="../js/nano-status-bar.js?v=20261015a"></script>
     <script defer src="../js/nano-png-json.js?v=20261025a"></script>
-<script defer src="../js/nano-prompts.js?v=20261123a"></script>
+<script defer src="../js/nano-prompts.js?v=20261126e"></script>
 <script defer src="../js/offline-styles.js?v=20261118a"></script>
-<script defer src="../js/offline-setting.js?v=20261118a"></script>
+<script defer src="../js/chat-clear.js?v=20261126e"></script>
+<script defer src="../js/offline-setting.js?v=20261126e"></script>
 <script defer src="../js/avatar-frame.js?v=20261111b"></script>
 <script defer src="../js/api-float.js"></script>
-<script defer src="../swipe-back.js"></script>
-<script defer src="../js/account.js?v=20261119a"></script>
+<script defer src="../js/account.js?v=20261126g"></script>
 </body>
 </html>

@@ -5,7 +5,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: calc(18px + env(safe-area-inset-top, 0px)) 16px calc(18px + env(safe-area-inset-bottom, 0px));
+  padding: calc(18px + max(var(--safe-top, 0px), env(safe-area-inset-top, 0px))) 16px calc(18px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)));
   background: rgba(32, 24, 28, .58);
   -webkit-backdrop-filter: blur(14px) saturate(120%);
   backdrop-filter: blur(14px) saturate(120%);
@@ -139,7 +139,7 @@
 
 #nanoAdultGate .nag-foot {
   flex: none;
-  padding: 13px 20px calc(16px + env(safe-area-inset-bottom, 0px));
+  padding: 13px 20px calc(16px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)));
   border-top: 1px solid rgba(120, 90, 100, .09);
   background: rgba(255, 253, 252, .96);
 }

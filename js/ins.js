@@ -3651,7 +3651,7 @@ function openDMRefreshPicker() {
   const ov = document.createElement('div');
   ov.id = 'insDmRefreshPicker';
   ov.style.cssText = 'position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.4);display:flex;align-items:flex-end';
-  ov.innerHTML = `<div style="width:100%;max-width:430px;margin:0 auto;background:#fff;border-radius:22px 22px 0 0;padding:18px 18px calc(18px + env(safe-area-inset-bottom,0px));max-height:80vh;display:flex;flex-direction:column">
+  ov.innerHTML = `<div style="width:100%;max-width:430px;margin:0 auto;background:#fff;border-radius:22px 22px 0 0;padding:18px 18px calc(18px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom,0px)));max-height:80vh;display:flex;flex-direction:column">
     <div style="font-size:16px;font-weight:700;margin-bottom:4px">刷新私信</div>
     <div style="font-size:12px;color:#8e8e93;margin-bottom:10px">勾选要刷新消息的角色；<b>不选则只生成 6 个陌生人</b>。</div>
     <div style="overflow:auto;flex:1">${rows}</div>

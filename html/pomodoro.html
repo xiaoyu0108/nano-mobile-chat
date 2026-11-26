@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#FFFFFF">
 <title>番茄钟 · 陪学</title>
 <script>window.__NANO_FONT_ONLY = true;</script>
-<script src="../js/appearance.js?v=20261122a"></script>
+<script src="../js/appearance.js?v=20261126e"></script>
 <style>
 :root{
   --bg:#FFFFFF; --ink:#2E2E32; --ink2:#5A5A60; --sub:#A0A0A6; --line:#EFEFF1; --soft:#F6F6F7;
@@ -20,7 +20,7 @@ button{font-family:inherit;color:inherit;border:0;background:none;cursor:pointer
 input,textarea{font-family:inherit;color:inherit}
 svg{display:block}
 .app{position:relative;width:100%;max-width:480px;height:100vh;height:100dvh;margin:0 auto;overflow:hidden;background:#fff}
-.page{position:absolute;inset:0;overflow-y:auto;padding:calc(var(--safe-top, env(safe-area-inset-top)) + 22px) 22px calc(var(--safe-bottom, env(safe-area-inset-bottom)) + 100px);display:none;-webkit-overflow-scrolling:touch}
+.page{position:absolute;inset:0;overflow-y:auto;padding:calc(var(--safe-top, env(safe-area-inset-top)) + 22px) 22px calc(var(--safe-bottom, max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom))) + 100px);display:none;-webkit-overflow-scrolling:touch}
 .page.active{display:block}
 .av{flex:none;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:500;overflow:hidden}
 .av img{width:100%;height:100%;object-fit:cover}
@@ -129,7 +129,7 @@ th,td{padding:11px 4px;text-align:left;border-bottom:1px solid var(--line)}
 th{font-weight:400;color:var(--sub);font-size:12px}
 
 /* 底栏 */
-.nav{position:absolute;left:0;right:0;bottom:0;z-index:30;display:flex;padding:8px 14px calc(var(--safe-bottom, env(safe-area-inset-bottom)) + 8px);background:rgba(255,255,255,.94);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-top:1px solid var(--line)}
+.nav{position:absolute;left:0;right:0;bottom:0;z-index:30;display:flex;padding:8px 14px calc(var(--safe-bottom, max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom))) + 8px);background:rgba(255,255,255,.94);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-top:1px solid var(--line)}
 .nav button{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--sub);font-size:10.5px}
 .nav .ic{width:50px;height:30px;border-radius:15px;display:flex;align-items:center;justify-content:center;transition:.25s}
 .nav .ic svg{width:22px;height:22px}
@@ -137,7 +137,7 @@ th{font-weight:400;color:var(--sub);font-size:12px}
 .nav button.on .ic{background:var(--pink)}
 
 /* 选人 */
-.overlay{position:absolute;inset:0;z-index:60;background:#fff;overflow-y:auto;padding:calc(var(--safe-top, env(safe-area-inset-top)) + 26px) 22px calc(var(--safe-bottom, env(safe-area-inset-bottom)) + 110px);display:none}
+.overlay{position:absolute;inset:0;z-index:60;background:#fff;overflow-y:auto;padding:calc(var(--safe-top, env(safe-area-inset-top)) + 26px) 22px calc(var(--safe-bottom, max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom))) + 110px);display:none}
 .overlay.show{display:block}
 .ov-h{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:22px}
 .ov-h h2{font-size:24px;font-weight:500;line-height:1.3}
@@ -160,7 +160,7 @@ th{font-weight:400;color:var(--sub);font-size:12px}
 .cc .del svg{width:16px;height:16px}
 .addcc{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:56px;border:1px dashed var(--grey);border-radius:24px;color:var(--ink2);font-size:14px}
 .addcc svg{width:18px;height:18px}
-.ov-foot{position:fixed;left:50%;transform:translateX(-50%);width:100%;max-width:480px;bottom:0;padding:16px 22px calc(var(--safe-bottom, env(safe-area-inset-bottom)) + 16px);background:linear-gradient(to top,#fff 72%,rgba(255,255,255,0))}
+.ov-foot{position:fixed;left:50%;transform:translateX(-50%);width:100%;max-width:480px;bottom:0;padding:16px 22px calc(var(--safe-bottom, max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom))) + 16px);background:linear-gradient(to top,#fff 72%,rgba(255,255,255,0))}
 .btn{width:100%;height:50px;border-radius:25px;background:var(--dark);color:#fff;font-size:15px;font-weight:500}
 .btn.ghost{background:var(--soft);color:var(--ink)}
 .btn:disabled{opacity:.35}
@@ -168,7 +168,7 @@ th{font-weight:400;color:var(--sub);font-size:12px}
 /* 抽屉 */
 .mask{position:absolute;inset:0;background:rgba(46,46,50,.3);z-index:70;display:none}
 .mask.show{display:block}
-.sheet{position:absolute;left:0;right:0;bottom:0;z-index:71;background:#fff;border-radius:30px 30px 0 0;padding:10px 22px calc(var(--safe-bottom, env(safe-area-inset-bottom)) + 20px);max-height:90dvh;overflow-y:auto;transform:translateY(105%);transition:transform .3s cubic-bezier(.2,.8,.2,1)}
+.sheet{position:absolute;left:0;right:0;bottom:0;z-index:71;background:#fff;border-radius:30px 30px 0 0;padding:10px 22px calc(var(--safe-bottom, max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom))) + 20px);max-height:90dvh;overflow-y:auto;transform:translateY(105%);transition:transform .3s cubic-bezier(.2,.8,.2,1)}
 .sheet.show{transform:none}
 .sheet .grab{width:38px;height:4px;border-radius:2px;background:#E4E4E7;margin:0 auto 16px}
 .sheet h3{font-size:19px;font-weight:600;margin-bottom:4px}

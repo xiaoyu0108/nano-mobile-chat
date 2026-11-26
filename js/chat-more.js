@@ -526,6 +526,7 @@
                         if (cid) qs2 += 'chat=' + encodeURIComponent(cid);
                         if (nm) qs2 += (qs2 ? '&' : '') + 'name=' + encodeURIComponent(nm);
                     } catch (e) {}
+                    qs2 += (qs2 ? '&' : '') + 'v=20261126e';
                     window.parent.postMessage({
                         type: 'openFullscreen',
                         url: 'offline.html' + (qs2 ? '?' + qs2 : ''),
@@ -533,7 +534,7 @@
                         source: 'chat_inner'
                     }, '*');
                 } else {
-                    window.location.href = 'offline.html';
+                    window.location.href = 'offline.html?v=20261126e';
                 }
                 break;
             case 'familycard':

@@ -977,7 +977,7 @@ input[type="file"] { display: none; }
 .mm-sheet-card {
     width: 100%; max-width: 460px; margin: 0 auto;
     background: #fff; border-radius: 20px 20px 0 0;
-    padding: 16px 16px calc(18px + env(safe-area-inset-bottom, 0px));
+    padding: 16px 16px calc(18px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)));
     box-shadow: 0 -8px 30px rgba(0,0,0,0.2);
     max-height: 70vh; display: flex; flex-direction: column;
     animation: mmSheetUp 0.22s ease;

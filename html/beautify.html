@@ -5,7 +5,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>美化</title>
-<link rel="stylesheet" href="../css/beautify.css?v=20261021a">
+<link rel="stylesheet" href="../css/beautify.css?v=20261126f">
 </head>
 <body>
 <div id="app">
@@ -19,12 +19,12 @@
 
 <main class="content">
 <nav class="tabs">
-<button class="active" data-page="global">全局</button>
-<button data-page="chat">聊天</button>
+<button class="active" data-page="global">聊天</button>
+<button data-page="chat">线上</button>
 <button data-page="font">字体</button>
 </nav>
 
-<!-- ===== 全局页面 ===== -->
+<!-- ===== 聊天页面（global） ===== -->
 <section class="page active" id="global">
 <div class="group">
 <div class="labelrow"><span class="label">CSS代码</span><span class="import-actions"><button class="import" id="globalExport" aria-label="导出预设">
@@ -32,12 +32,12 @@
 </button><button class="import" id="globalImport" aria-label="导入">
 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11"/><path d="m8 10 4 4 4-4"/><path d="M5 20h14"/><path d="M5 16v4"/><path d="M19 16v4"/></svg>
 </button></span><input class="hidden" id="globalFile" type="file" accept=".txt,.json,.css"></div>
-<div class="editor-wrap"><textarea id="globalCode" spellcheck="false" placeholder="全局 CSS 代码…"></textarea></div>
+<div class="editor-wrap"><textarea id="globalCode" spellcheck="false" placeholder="聊天 CSS 代码…"></textarea></div>
 </div>
 <div class="tools"><button class="tool" data-clear="global">清空</button><button class="tool" data-restore="global">还原</button><button class="tool" data-copy="global">复制初始</button><button class="tool apply" data-apply="global">应用</button></div>
 <div class="live-preview" id="globalPreviewCard">
 <div class="lp-head" data-lp="global" role="button" tabindex="0" aria-expanded="false">
-<span class="lp-title">聊天页预览</span><span class="lp-sub">chat.html · 点开查看</span><span class="lp-caret">▾</span>
+<span class="lp-title">聊天列表预览</span><span class="lp-sub">chat.html · 点开查看</span><span class="lp-caret">▾</span>
 </div>
 <div class="lp-body"><iframe class="lp-frame" id="globalPreviewFrame" data-target="global" data-src="chat.html" loading="lazy" title="聊天页预览"></iframe></div>
 <span id="globalPreview" style="display:none"></span>
@@ -48,7 +48,7 @@
 <div class="namerow"><input class="name" id="globalName" placeholder="预设名称"><div class="actions"><button class="action save" data-save="global">保存</button><button class="action edit" data-edit="global">修改</button></div></div>
 </section>
 
-<!-- ===== 聊天页面 ===== -->
+<!-- ===== 线上页面（chat） ===== -->
 <section class="page" id="chat">
 <div class="group">
 <div class="labelrow"><span class="label">内置风格</span><span class="lp-sub">点一下直接套用</span></div>
@@ -67,7 +67,7 @@
 </button><button class="import" id="chatImport" aria-label="导入">
 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11"/><path d="m8 10 4 4 4-4"/><path d="M5 20h14"/><path d="M5 16v4"/><path d="M19 16v4"/></svg>
 </button></span><input class="hidden" id="chatFile" type="file" accept=".txt,.json,.css"></div>
-<div class="editor-wrap"><textarea id="chatCode" spellcheck="false" placeholder="聊天 CSS 代码…"></textarea></div>
+<div class="editor-wrap"><textarea id="chatCode" spellcheck="false" placeholder="线上 CSS 代码…"></textarea></div>
 </div>
 <div class="tools"><button class="tool" data-clear="chat">清空</button><button class="tool" data-restore="chat">还原</button><button class="tool" data-copy="chat">复制初始</button><button class="tool apply" data-apply="chat">应用</button></div>
 <div class="tune-card">
@@ -81,9 +81,9 @@
 </div>
 <div class="live-preview" id="chatPreviewCard">
 <div class="lp-head" data-lp="chat" role="button" tabindex="0" aria-expanded="false">
-<span class="lp-title">聊天预览</span><span class="lp-sub">真实页面 · 点开查看</span><span class="lp-caret">▾</span>
+<span class="lp-title">线上聊天预览</span><span class="lp-sub">真实页面 · 点开查看</span><span class="lp-caret">▾</span>
 </div>
-<div class="lp-body"><iframe class="lp-frame" id="chatPreviewFrame" data-target="chat" data-src="chat_inner.html" loading="lazy" title="聊天预览"></iframe></div>
+<div class="lp-body"><iframe class="lp-frame" id="chatPreviewFrame" data-target="chat" data-src="chat_inner.html?v=20261126f" loading="lazy" title="线上聊天预览"></iframe></div>
 <span id="chatPreview" style="display:none"></span>
 </div>
 <div class="group"><div class="labelrow"><span class="label">预设</span></div><div class="presetrow"><select id="chatPreset"></select><button class="delete" data-delete="chat" aria-label="删除">
@@ -144,14 +144,13 @@
 </div>
 <div class="toast" id="toast"></div>
 
-<script src="../js/nano-global-template.js?v=20261021a"></script>
-<script src="../js/nano-chat-template.js?v=20261115a"></script>
+<script src="../js/nano-global-template.js?v=20261126e"></script>
+<script src="../js/nano-chat-template.js?v=20261126e"></script>
         <script src="../js/nano-chat-theme-gray-pink.js?v=20261120a"></script>
 <script src="../js/avatar-frame.js?v=20261010a"></script>
 <script src="../js/nano-export.js?v=20261015a"></script>
-<script src="../js/beautify.js?v=20261124a"></script>
+<script src="../js/beautify.js?v=20261126f"></script>
         <script src="../js/api-float.js?v=20261025b"></script>
-<script src="../swipe-back.js"></script>
 <script>
 (function () {
   function fill() {

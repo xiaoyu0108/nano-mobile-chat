@@ -193,7 +193,7 @@
         return;
       }
     } catch (e) {}
-    location.href = 'chat_inner.html?chat=' + encodeURIComponent(chatId) + '&name=' + encodeURIComponent(currentCharName);
+    location.href = 'chat_inner.html?v=20261126f&chat=' + encodeURIComponent(chatId) + '&name=' + encodeURIComponent(currentCharName);
   }
   var nsOpenFiles = $('nsOpenFiles'), nsOpenFiles2 = $('nsOpenFiles2'), nsOpenChat = $('nsOpenChat');
   if (nsOpenFiles) nsOpenFiles.addEventListener('click', function () { openPage('nano-files.html', 'Nano 文件'); });

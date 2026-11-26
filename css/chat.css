@@ -437,8 +437,10 @@ html, body {
     background: rgba(0,0,0,0.03);
     border-radius: 20px;
 }
-
 .chat-item {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 72px;
+
     display: flex;
     align-items: center;
     gap: 14px;

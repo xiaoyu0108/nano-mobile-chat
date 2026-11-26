@@ -737,8 +737,20 @@
   }
 
   function confirmImportPolicy() {
-    var KEY = 'nano_import_policy_ack_v1';
-    try { if (sessionStorage.getItem(KEY) === '1') return Promise.resolve(true); } catch (e) {}
+    // 按账号记住「导入须知」：同一个账号确认过一次后，后续导入不再弹。
+    var auth = null;
+    try { auth = currentAuth(); } catch (e) {}
+    var who = (auth && auth.username) ? String(auth.username) : 'local';
+    var KEY = 'nano_import_policy_ack_v2_' + who;
+    var LEGACY_KEY = 'nano_import_policy_ack_v1';
+    try {
+      if (localStorage.getItem(KEY) === '1') return Promise.resolve(true);
+      // 兼容上一个版本：本会话已经确认过的，直接迁移到账号级持久记录。
+      if (sessionStorage.getItem(LEGACY_KEY) === '1') {
+        try { localStorage.setItem(KEY, '1'); } catch (e) {}
+        return Promise.resolve(true);
+      }
+    } catch (e) {}
     return new Promise(function (resolve) {
       var html = '' +
         '<div class="nacc-card" role="dialog" aria-modal="true">' +
@@ -763,7 +775,8 @@
         resolve(false);
       });
       ui.el.querySelector('#naccPolicyOk').addEventListener('click', function () {
-        try { sessionStorage.setItem(KEY, '1'); } catch (e) {}
+        try { localStorage.setItem(KEY, '1'); } catch (e) {}
+        try { sessionStorage.removeItem('nano_import_policy_ack_v1'); } catch (e) {}
         ui.close();
         resolve(true);
       });

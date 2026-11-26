@@ -38,8 +38,8 @@
     <!-- 底部脚本按正常顺序加载即可；提前 preload 会和首页 iframe 抢带宽，反而拖慢首屏。 -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" media="print" onload="this.media='all'">
     <link rel="stylesheet" href="common.css">
-    <link rel="stylesheet" href="css/adult-gate.css?v=20261025a">
-    <link rel="stylesheet" href="css/account.css?v=20261025a">
+    <link rel="stylesheet" href="css/adult-gate.css?v=20261126e">
+    <link rel="stylesheet" href="css/account.css?v=20261126e">
     <style>
         /* ===== 登录弹窗 · 黑白灰 ===== */
         .nacc-overlay {
@@ -392,7 +392,7 @@
         }
         .overlay-loading {
             position: absolute;
-            top: calc(env(safe-area-inset-top, 0px) + 14px);
+            top: calc(var(--safe-inset-top, 0px) + 14px);
             left: 50%;
             transform: translateX(-50%) translateY(-6px);
             z-index: 40;
@@ -1050,7 +1050,7 @@
 
         /* ===== 底部细线进度 ===== */
         #nano-splash .ns-meter {
-            position: absolute; left: 50%; bottom: calc(38px + env(safe-area-inset-bottom, 0px));
+            position: absolute; left: 50%; bottom: calc(38px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)));
             width: min(62%, 250px); transform: translateX(-50%);
             z-index: 8; pointer-events: none;
         }
@@ -1082,7 +1082,7 @@
         @media (max-height: 700px) {
             #nano-splash .ns-brand { top: 34%; }
             #nano-splash .ns-word { font-size: clamp(68px, 26vw, 132px); }
-            #nano-splash .ns-meter { bottom: calc(28px + env(safe-area-inset-bottom, 0px)); }
+            #nano-splash .ns-meter { bottom: calc(28px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom, 0px))); }
         }
         @media (max-height: 560px) {
             #nano-splash .ns-brand { top: 32%; }
@@ -1107,7 +1107,7 @@
     </style>
 
 
-    <script defer src="js/appearance.js?v=20261119a"></script>
+    <script defer src="js/appearance.js?v=20261126e"></script>
 </head>
 <body class="nano-index">
 <!-- 旧的“每次访问清缓存 + reload”已移除：它会造成进入页面时反复整页刷新。
@@ -1117,19 +1117,19 @@
 
 <div class="home-shell pre-splash" id="homeShell">
     <!-- 首页地址保持固定，SW 直接缓存秒开、后台静默更新；不再因构建号变化而整页重新下载。 -->
-    <iframe id="homeFrame" data-src="html/home.html" title="Nano桌面" loading="eager" fetchpriority="high"></iframe>
+    <iframe id="homeFrame" data-src="html/home.html?v=20261126e" title="Nano桌面" loading="eager" fetchpriority="high"></iframe>
 </div>
 <script>
 (function () {
     var f = document.getElementById('homeFrame');
     if (!f) return;
-    f.src = 'html/home.html';
+    f.src = 'html/home.html?v=20261126e';
 })();
 </script>
 <div class="app hidden-shell" id="legacyShell" aria-hidden="true">
   <div class="app-container">
     <div class="app-content" id="appContent">
-      <div class="iframe-container" id="iframeChat"><iframe data-src="html/chat.html"></iframe></div>
+      <div class="iframe-container" id="iframeChat"><iframe data-src="html/chat.html?v=20261126f"></iframe></div>
       <div class="iframe-container" id="iframeApi"><iframe data-src="html/api.html"></iframe></div>
       <div class="iframe-container" id="iframeDiscover"><iframe data-src="html/discover.html"></iframe></div>
     </div>
@@ -2214,7 +2214,7 @@ setTimeout(function () {
             try { f.contentWindow.postMessage({ type: 'nanoRequestBack' }, '*'); } catch (e) { cleanup(); return false; }
             return true;
         }
-        function nanoSwipeBackAction() {
+        function nanoBackAction() {
             try {
                 const ob = document.getElementById('overlayBack');
                 if (ob && overlay.classList.contains('active') && ob.getBoundingClientRect().height > 0) {
@@ -2232,16 +2232,10 @@ setTimeout(function () {
             } catch (e) {}
             return false;
         }
-        // 悬浮球环形菜单的「返回」直接复用这套逻辑（关浮层 / 回聊天页）
+        // 悬浮球环形菜单 / 独立页面的“返回”按钮复用这套逻辑。
         window.__nanoGoBack = function () {
-            try { return nanoSwipeBackAction(); } catch (e) { return false; }
+            try { return nanoBackAction(); } catch (e) { return false; }
         };
-        // 边缘手势落在父文档（浮层左右 16px 留白）时，swipe-back.js 会派发此事件
-        document.addEventListener('nano:swipe-back-fallback', function (e) {
-            if (nanoSwipeBackAction()) {
-                try { e.preventDefault(); } catch (err) {}
-            }
-        });
 
         function showChatInnerFrame() {
             activateChatFrame(chatInnerFrame);
@@ -2600,6 +2594,11 @@ setTimeout(function () {
         }
         function withBuild(u) {
             try {
+                // chat.html / chat_inner.html 这次有结构性改动：强制带上版本，
+                // 避免旧 Service Worker 缓存继续返回旧聊天页。
+                if (/^(?:html\/)?(?:chat(?:\.html|_inner\.html)|groups\.html|settings(?:-desktop)?\.html)(?:\?|$)/.test(u) && !/[?&]v=/.test(u)) {
+                    u += (u.indexOf('?') > -1 ? '&' : '?') + 'v=20261126f';
+                }
                 return pageUrl(u);
             } catch (e) { return u; }
         }
@@ -2909,7 +2908,7 @@ setTimeout(function () {
                     if (!chatInfo) { try { chatInfo = JSON.parse(sessionStorage.getItem('last_chat_info') || 'null'); } catch(e){} }
                     const chatId = chatInfo && chatInfo.chatId ? chatInfo.chatId : 'default';
                     const chatName = chatInfo && chatInfo.chatName ? chatInfo.chatName : '聊天';
-                    let url = 'chat_inner.html?chat=' + encodeURIComponent(chatId) + '&name=' + encodeURIComponent(chatName);
+                    let url = 'chat_inner.html?v=20261126f&chat=' + encodeURIComponent(chatId) + '&name=' + encodeURIComponent(chatName);
                     url += '&jump=' + encodeURIComponent(pendingJumpMsgId);
                     url = withBuild(url);
                     pendingJumpMsgId = null;
@@ -3605,7 +3604,7 @@ setTimeout(function () {
         }
         function __tkSay(chatId, name, text) {
             try {
-                var url = 'chat_inner.html?chat=' + encodeURIComponent(chatId) + '&name=' + encodeURIComponent(name || '');
+                var url = 'chat_inner.html?v=20261126f&chat=' + encodeURIComponent(chatId) + '&name=' + encodeURIComponent(name || '');
                 openFullscreen(url, '', false, 'main');
                 setTimeout(function () {
                     try { postToChatFrame(String(chatId), { type: 'NANO_CHAR_SAY', chatId: String(chatId), text: String(text || '') }); } catch (e) {}
@@ -3807,10 +3806,10 @@ setTimeout(function () {
             if (target === 'ins') { openFullscreen('ins.html?v=14', 'Instagram', false, 'discover'); return; }
             if (target === 'halo') { openFullscreen('halo.html', 'Halo', false, 'discover'); return; }
             if (target === 'music') { openMusicFromBall(); return; }
-            if (target === 'books') { openFullscreen('books.html', 'Books', false, 'discover'); return; }
+            if (target === 'books') { openFullscreen('books.html?v=20261126e', 'Books', false, 'discover'); return; }
             if (target === 'imessage') { openFullscreen('imessage.html', 'iMessage', false, 'more'); return; }
             if (target === 'meet') { openFullscreen('meet.html', 'Meet', false, 'more'); return; }
-            if (target === 'offline') { openFullscreen('offline.html', '线下', false, 'more'); return; }
+            if (target === 'offline') { openFullscreen('offline.html?v=20261126e', '线下', false, 'more'); return; }
             if (target === 'wallet' || target === 'money') { openFullscreen('wallet.html', '钱包', false, 'more'); return; }
             // 查手机：支持 phone 以及 phone:<角色id>，进入后自动打开该角色的手机
             if (target === 'phone' || target.indexOf('phone:') === 0) {
@@ -3842,7 +3841,7 @@ setTimeout(function () {
                         chatAvatar: same ? (info.chatAvatar || '') : ''
                     }));
                 } catch (e) {}
-                openFullscreen('chat_inner.html?chat=' + encodeURIComponent(chatId) + '&name=' + encodeURIComponent(name || '聊天'), '', false, 'main');
+                openFullscreen('chat_inner.html?v=20261126f&chat=' + encodeURIComponent(chatId) + '&name=' + encodeURIComponent(name || '聊天'), '', false, 'main');
             }
             if (target.indexOf('group:') === 0) {
                 const gid = target.slice(6);
@@ -3852,7 +3851,7 @@ setTimeout(function () {
             if (target.indexOf('offline:') === 0) {
                 const oid = target.slice(8);
                 // 进入线下：offline.html 加载后会标记状态并通知线上聊天补「已进入线下」。
-                openFullscreen('offline.html?chat=' + encodeURIComponent(oid), '线下聊天', false, 'main');
+                openFullscreen('offline.html?chat=' + encodeURIComponent(oid) + '&v=20261126e', '线下聊天', false, 'main');
                 return;
             }
             // 页面路径 / 链接兜底：刷新通知等直接打开对应页面
@@ -3882,7 +3881,7 @@ setTimeout(function () {
             } catch (e) {}
             try {
                 if (window.__nanoShell && __nanoShell.open) {
-                    window.__nanoShell.open('chat_inner.html?chat=' + encodeURIComponent(chatId) + '&name=' + encodeURIComponent('聊天'), '', 'main');
+                    window.__nanoShell.open('chat_inner.html?v=20261126f&chat=' + encodeURIComponent(chatId) + '&name=' + encodeURIComponent('聊天'), '', 'main');
                     setTimeout(function () { try { window.__nanoShell.postToChat({ type: 'NANO_USER_SAY', chatId: String(chatId), text: text }); } catch (e) {} }, 1100);
                 }
             } catch (e) {}
@@ -3935,7 +3934,7 @@ setTimeout(function () {
             if (!name) name = 'TA';
             var el = document.createElement('div');
             el.id = 'ssReplyOverlay';
-            el.style.cssText = 'position:fixed;inset:0;z-index:100600;background:rgba(40,25,32,.38);display:flex;align-items:flex-end;justify-content:center;padding:18px;padding-bottom:calc(18px + env(safe-area-inset-bottom))';
+            el.style.cssText = 'position:fixed;inset:0;z-index:100600;background:rgba(40,25,32,.38);display:flex;align-items:flex-end;justify-content:center;padding:18px;padding-bottom:calc(18px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom)))';
             el.innerHTML =
                 '<div style="width:min(94vw,440px);background:linear-gradient(180deg,#fff7fb,#fffdf4);border-radius:20px;box-shadow:0 20px 60px rgba(120,70,90,.32);padding:16px 16px 14px">' +
                     '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">' +
@@ -4311,7 +4310,7 @@ setTimeout(function () {
             } catch(e) {}
             const chatId = chatInfo && chatInfo.chatId ? chatInfo.chatId : 'default';
             const chatName = chatInfo && chatInfo.chatName ? chatInfo.chatName : '聊天';
-            const url = 'chat_inner.html?chat=' + encodeURIComponent(chatId) +
+            const url = 'chat_inner.html?v=20261126f&chat=' + encodeURIComponent(chatId) +
                         '&name=' + encodeURIComponent(chatName);
             isChatInnerActive = true;
             currentOverlaySource = 'main';
@@ -4321,10 +4320,10 @@ setTimeout(function () {
 
         const APP_ROUTES = {
             chat: 'chat.html', api: 'api.html', couple: 'couple-spaces.html', halo: 'halo.html',
-            instagram: 'ins.html', together: 'books.html', music: 'music.html', memory: 'memory palace.html',
-            imessage: 'imessage.html', peek: 'ios-setting.html', market: 'market.html', shop: 'mall.html',
-            schedule: 'schedule.html', travel: 'travel.html', mcp: 'mcp.html', tide: 'cycle.html', fanfic: 'fanfic.html',
-            store: 'appstore.html', book: 'worldbook.html', beauty: 'beautify.html', phone: 'phone.html',
+            instagram: 'ins.html', together: 'books.html?v=20261126e', music: 'music.html', memory: 'memory palace.html',
+            imessage: 'imessage.html', peek: 'ios-setting.html', market: 'market.html?v=20261126i', shop: 'mall.html',
+            schedule: 'schedule.html', travel: 'travel.html?v=20261126e', mcp: 'mcp.html', tide: 'cycle.html', fanfic: 'fanfic.html',
+            store: 'appstore.html', book: 'worldbook.html', beauty: 'beautify.html?v=20261126f', phone: 'phone.html',
             settings: 'settings.html', friend: 'character.html', album: 'moments.html',
             editprofile: 'mask.html', send: 'chat.html', qa: 'qa.html', pomodoro: 'pomodoro.html', nano: 'nano.html',
         };
@@ -4439,8 +4438,8 @@ setTimeout(function () {
                 return;
             }
 
-            if (data.type === 'swipeBack') {
-                try { nanoSwipeBackAction(); } catch (e) {}
+            if (data.type === 'nanoBack') {
+                try { nanoBackAction(); } catch (e) {}
                 return;
             }
 
@@ -4494,11 +4493,15 @@ setTimeout(function () {
 
             // 注意：nanoBlockChanged / nanoCharBlocked / nanoCharUnblocked 不放在这里，
             // 下面会统一广播给所有 iframe。否则 chat_inner 会收到两次，重复写入系统提示。
-            const innerSettingTypes = ['autoMsgChanged', 'autoMsgIntervalChanged', 'autoMomentChanged', 'autoMomentIntervalChanged', 'autoSocialChanged', 'timeAwareChanged', 'allowImageChanged', 'allowMomentImageChanged', 'remarkChanged', 'cotChanged', 'messagesCleared', 'nanoTransMode', 'nanoForceTranslate'];
+            const innerSettingTypes = ['autoMsgChanged', 'autoMsgIntervalChanged', 'autoMomentChanged', 'autoMomentIntervalChanged', 'autoSocialChanged', 'timeAwareChanged', 'allowImageChanged', 'allowMomentImageChanged', 'remarkChanged', 'cotChanged', 'messagesCleared', 'messagesReload', 'nanoTransMode', 'nanoForceTranslate'];
             if (innerSettingTypes.indexOf(data.type) !== -1) {
-                const c = chatInnerFrame;
-                if (c && frameBase(c) === 'chat_inner.html') {
-                    try { c.contentWindow.postMessage(data, '*'); } catch(e) {}
+                // 按 chatId 找对应的聊天帧；楼层删除/压缩后要立刻刷新的就是这一帧，
+                // 不能只看当前显示的 chatInnerFrame（设置页打开时可能已经切走）。
+                if (!postToChatFrame(data.chatId, data)) {
+                    const c = chatInnerFrame;
+                    if (c && frameBase(c) === 'chat_inner.html') {
+                        try { c.contentWindow.postMessage(data, '*'); } catch(e) {}
+                    }
                 }
             }
 
@@ -4610,7 +4613,7 @@ setTimeout(function () {
                             ts: Date.now()
                         }));
                     } catch (e) {}
-                    const url = 'chat_inner.html?chat=' + encodeURIComponent(cid) + '&name=' + encodeURIComponent(cname);
+                    const url = 'chat_inner.html?v=20261126f&chat=' + encodeURIComponent(cid) + '&name=' + encodeURIComponent(cname);
                     openFullscreen(url, cname, false, 'main');
                     setTimeout(function () {
                         try {
@@ -4885,6 +4888,15 @@ setTimeout(function () {
                 const lu = String(data.lastUser || '').trim();
                 const lc = String(data.lastChar || '').trim();
                 const rounds = Array.isArray(data.rounds) ? data.rounds : null;
+                // 先把「已结束线下」和线下最近几轮落盘：新开的聊天帧还没挂好 message 监听时，
+                // 直接 postMessage 会丢，导致 char 不知道已经回到线上。chat_inner 启动时会补消费。
+                if (!data.isGroup) {
+                    try {
+                        localStorage.setItem('nano_pending_offline_return_' + (chatId || 'default'), JSON.stringify({
+                            text: '已结束线下', lastUser: lu, lastChar: lc, rounds: rounds, at: Date.now()
+                        }));
+                    } catch (e) {}
+                }
                 if (data.isGroup) {
                     // 群聊返回线上：直接回到这个群的线上聊天，下次点开也走线上。
                     lastGroupUrl = 'groups.html?group=' + encodeURIComponent(chatId || '');
@@ -4897,9 +4909,9 @@ setTimeout(function () {
                 const deliver = function (win) {
                     if (!win) return;
                     try {
-                        win.postMessage({ type: 'NANO_SYS_NOTICE', text: '已结束线下' }, '*');
+                        win.postMessage({ type: 'NANO_SYS_NOTICE', text: '已结束线下', offlineReturn: true }, '*');
                         win.postMessage({ type: 'NANO_OFFLINE_STATE', chatId: chatId, offline: false }, '*');
-                        if (chatId && (lu || lc || (rounds && rounds.length))) win.postMessage({ type: 'NANO_OFFLINE_ROUND', chatId: chatId, lastUser: lu, lastChar: lc, rounds: rounds }, '*');
+                        if (chatId && (lu || lc || (rounds && rounds.length))) win.postMessage({ type: 'NANO_OFFLINE_ROUND', chatId: chatId, lastUser: lu, lastChar: lc, rounds: rounds, offlineReturn: true }, '*');
                     } catch (e) {}
                 };
                 const cf2 = findChatFrame(chatId) || chatInnerFrame;
@@ -4915,17 +4927,10 @@ setTimeout(function () {
                     let chatInfo = null;
                     try { chatInfo = JSON.parse(sessionStorage.getItem('last_chat_info') || 'null'); } catch (e) {}
                     const name = (chatInfo && chatInfo.chatId === chatId && chatInfo.chatName) || data.name || '聊天';
-                    const url = 'chat_inner.html?chat=' + encodeURIComponent(chatId || 'default') + '&name=' + encodeURIComponent(name);
+                    const url = 'chat_inner.html?v=20261126f&chat=' + encodeURIComponent(chatId || 'default') + '&name=' + encodeURIComponent(name);
+                    // 新聊天帧由 chat_inner 启动时消费 nano_pending_offline_return_<chatId>，
+                    // 不再用 readyState 猜时机（会投递到 about:blank 丢掉）。
                     openFullscreen(url, '', false, 'main');
-                    let tries = 0;
-                    (function waitReady() {
-                        tries++;
-                        const f = chatInnerFrame;
-                        let ready = false;
-                        try { ready = !!(f && f.contentWindow && f.contentWindow.document && f.contentWindow.document.readyState === 'complete'); } catch (e) {}
-                        if (ready || tries > 12) { deliver(f && f.contentWindow); return; }
-                        setTimeout(waitReady, 250);
-                    })();
                 }
                 return;
             }
@@ -5090,10 +5095,10 @@ setTimeout(function () {
                 if (chatMode === 'offline') {
                     isChatInnerActive = false;
                     currentOverlaySource = 'main';
-                    openFullscreen('offline.html?chat=' + encodeURIComponent(chatId) + '&name=' + encodeURIComponent(chatName), '线下聊天', false, 'main');
+                    openFullscreen('offline.html?chat=' + encodeURIComponent(chatId) + '&name=' + encodeURIComponent(chatName) + '&v=20261126e', '线下聊天', false, 'main');
                     return;
                 }
-                const url = 'chat_inner.html?chat=' + encodeURIComponent(chatId) + '&name=' + encodeURIComponent(chatName);
+                const url = 'chat_inner.html?v=20261126f&chat=' + encodeURIComponent(chatId) + '&name=' + encodeURIComponent(chatName);
                 isChatInnerActive = true;
                 currentOverlaySource = 'main';
                 openFullscreen(url, '', false, 'main');
@@ -5121,7 +5126,7 @@ setTimeout(function () {
                 if (groupMode === 'offline') {
                     isChatInnerActive = false;
                     currentOverlaySource = 'main';
-                    openFullscreen('offline.html?chat=' + encodeURIComponent(groupId) + '&name=' + encodeURIComponent(data.groupName || '群聊'), '线下聊天', false, 'main');
+                    openFullscreen('offline.html?chat=' + encodeURIComponent(groupId) + '&name=' + encodeURIComponent(data.groupName || '群聊') + '&v=20261126e', '线下聊天', false, 'main');
                     return;
                 }
                 lastGroupUrl = 'groups.html?group=' + encodeURIComponent(groupId);
@@ -5230,7 +5235,7 @@ setTimeout(function () {
                 const name = data.name || '对方';
                 const isVideo = !!data.video;
                 console.log('[Index] 群聊转私聊来电:', chatId, name);
-                openFullscreen('chat_inner.html?chat=' + encodeURIComponent(chatId) +
+                openFullscreen('chat_inner.html?v=20261126f&chat=' + encodeURIComponent(chatId) +
                                '&name=' + encodeURIComponent(name), '', false, 'main');
                 const callPage = isVideo ? 'video-call.html' : 'voice-call.html';
                 const callUrl = callPage + '?chat=' + encodeURIComponent(chatId) +
@@ -5283,7 +5288,7 @@ setTimeout(function () {
                 if (_callFrame && frameBase(_callFrame) === 'chat_inner.html') {
                     activateChatFrame(_callFrame);
                 } else {
-                    openChatFrame(withBuild('chat_inner.html?chat=' + encodeURIComponent(_callCid) + '&name=' + encodeURIComponent(_callName)));
+                    openChatFrame(withBuild('chat_inner.html?v=20261126f&chat=' + encodeURIComponent(_callCid) + '&name=' + encodeURIComponent(_callName)));
                 }
                 showChatInnerFrame();
                 overlay.classList.add('no-header');
@@ -5470,20 +5475,42 @@ setTimeout(function () {
                 'taobao.html', 'assistant.html', 'app-host.html', 'nano-app-template.html', '灰樱.html'
             ];
             var CRITICAL = 6;
-            var hasSW = !!navigator.serviceWorker;
-            var warmLimit = hasSW ? pages.length : CRITICAL;
+            var PREWARM_BUILD = '20261126i';
+            var PREWARM_KEY = 'nano_prewarm_pages_v1';
+            var prewarmState = { build: '', pages: {} };
+            try {
+                prewarmState = JSON.parse(localStorage.getItem(PREWARM_KEY) || '{}') || { build: '', pages: {} };
+            } catch (e) { prewarmState = { build: '', pages: {} }; }
+            if (!prewarmState.pages) prewarmState.pages = {};
+            prewarmState.build = PREWARM_BUILD;
+            // 所有 App 都准备：每个页面记录它上一次预热时的 HTML 哈希。
+            // 只有“没预热过”或“HTML/资源版本变了”的页面才重新拉；没更新的页面后续启动直接跳过。
+            var warmTodo = [];
+            var manifest = null;
             var i = 0, seen = {};
+            var warmStopped = false;
+            function savePrewarm() {
+                try { localStorage.setItem(PREWARM_KEY, JSON.stringify(prewarmState)); } catch (e) {}
+            }
+            function stopWarm() { warmStopped = true; savePrewarm(); }
+            try {
+                ['pointerdown', 'touchstart', 'keydown', 'wheel'].forEach(function (ev) {
+                    window.addEventListener(ev, stopWarm, { passive: true, once: true });
+                });
+                document.addEventListener('visibilitychange', function () {
+                    if (document.hidden) stopWarm();
+                });
+            } catch (e) {}
             function fetchAsset(href) {
-                if (!href || seen[href]) return Promise.resolve();
+                if (!href || seen[href] || warmStopped) return Promise.resolve();
                 seen[href] = 1;
                 return fetch(href, { credentials: 'same-origin' }).catch(function () {});
             }
-            // 小并发下载：以前一条一条 35ms 排队，chat_inner 有几十个脚本要等好几秒；
-            // 现在同时抓 6 个，只占开屏的空闲带宽。
+            // 小并发下载：同时抓 2 个，只占开屏的空闲带宽；用户一操作就停，下次启动继续。
             function fetchAssets(list, limit) {
                 var idx = 0;
                 function worker() {
-                    if (idx >= list.length) return Promise.resolve();
+                    if (idx >= list.length || warmStopped) return Promise.resolve();
                     var href = list[idx++];
                     return fetchAsset(href).then(worker, worker);
                 }
@@ -5508,21 +5535,40 @@ setTimeout(function () {
                             assets.push(abs.href);
                         } catch (e) {}
                     }
-                    return fetchAssets(assets, 6);
+                    return fetchAssets(assets, 2);
                 }).catch(function () {});
             }
             function next() {
-                if (i >= warmLimit) return;
-                var u = pages[i++];
-                var wait = (i <= CRITICAL) ? 0 : 120;
-                warmPage(u).then(function () { setTimeout(next, wait); }, function () { setTimeout(next, wait); });
+                if (i >= warmTodo.length || warmStopped) { savePrewarm(); return; }
+                var u = warmTodo[i++];
+                var wait = (i <= CRITICAL) ? 0 : 200;
+                warmPage(u).then(function () {
+                    prewarmState.pages[u] = (manifest && manifest[u]) ? manifest[u] : PREWARM_BUILD;
+                    savePrewarm();
+                    setTimeout(next, wait);
+                }, function () {
+                    // 失败不标记，下次启动会重试这一页
+                    setTimeout(next, wait);
+                });
+            }
+            function begin(manifestData) {
+                manifest = manifestData || null;
+                warmTodo = pages.filter(function (p) {
+                    var h = manifest && manifest[p];
+                    if (!prewarmState.pages[p]) return true;
+                    if (h && prewarmState.pages[p] !== h) return true;
+                    return false;
+                });
+                if (!warmTodo.length) return;
+                startWarm();
             }
             var warmStarted = false;
-            var startWarm = function () {
-                if (warmStarted) return;
+            function startWarm() {
+                if (warmStarted || !warmTodo.length) return;
                 warmStarted = true;
-                setTimeout(next, 0);
-            };
+                // 给首页/桌面留出稳定时间，别让后台预热和首次点击抢资源
+                setTimeout(next, 1000);
+            }
             // 开屏骨架一出来就开始预热（此刻首页已经能显示，预热不会拖慢首屏）。
             try { if (window.__nanoHomeSkeletonReady) startWarm(); } catch (e) {}
             try { window.addEventListener('message', function (e) { if (e && e.data && e.data.type === 'nanoHomeSkeletonReady') startWarm(); }); } catch (e) {}
@@ -5530,6 +5576,13 @@ setTimeout(function () {
             try { document.addEventListener('nano-splash-done', function () { startWarm(); }, { once: true }); } catch (e) {}
             if (window.requestIdleCallback) requestIdleCallback(startWarm, { timeout: 4000 });
             else setTimeout(startWarm, 4000);
+            // 页面清单很小，每次都取最新的；离线时回退到本地记录。
+            try {
+                fetch('js/nano-page-manifest.json?v=' + PREWARM_BUILD, { cache: 'no-cache', credentials: 'same-origin' })
+                    .then(function (r) { return r.ok ? r.json() : null; })
+                    .then(function (m) { begin(m); })
+                    .catch(function () { begin(null); });
+            } catch (e) { begin(null); }
         } catch (e) {}
     })();
 
@@ -5539,9 +5592,19 @@ setTimeout(function () {
             var frames = Array.prototype.slice.call(
                 document.querySelectorAll('.iframe-container iframe[data-src]')
             );
+            // 只预热默认的聊天 tab；API / 发现页等真正点开时再建，避免开屏后同时解析三份页面。
+            frames = frames.filter(function (fr) {
+                try { return !!fr.closest('#iframeChat'); } catch (e) { return false; }
+            });
             var i = 0;
+            var tabStopped = false;
+            try {
+                ['pointerdown', 'touchstart', 'keydown'].forEach(function (ev) {
+                    window.addEventListener(ev, function () { tabStopped = true; }, { passive: true, once: true });
+                });
+            } catch (e) {}
             function next() {
-                if (i >= frames.length) return;
+                if (i >= frames.length || tabStopped) return;
                 var fr = frames[i++];
                 try {
                     if (!fr.getAttribute('src')) fr.setAttribute('src', withBuild(fr.getAttribute('data-src')));
@@ -5553,7 +5616,7 @@ setTimeout(function () {
             var startTabWarm = function () {
                 if (tabWarmStarted) return;
                 tabWarmStarted = true;
-                setTimeout(next, 400);
+                setTimeout(next, 1200);
             };
             try { if (window.__nanoHomeSkeletonReady) startTabWarm(); } catch (e) {}
             try { window.addEventListener('message', function (e) { if (e && e.data && e.data.type === 'nanoHomeSkeletonReady') startTabWarm(); }); } catch (e) {}
@@ -5587,8 +5650,7 @@ setTimeout(function () {
 <script src="js/user-scope.js?v=20261020j"></script>
 <script src="js/nano-notify.js?v=20261112a"></script>
 <script src="js/nano-push.js?v=20261117a"></script>
-<script src="swipe-back.js"></script>
-<script src="js/nano-prompts.js?v=20261123a"></script>
+<script src="js/nano-prompts.js?v=20261126e"></script>
 <script src="js/ios-bridge.js?v=20261027k"></script>
 <script src="js/auto-push-bridge.js?v=20261117a"></script>
 <script>
@@ -5597,8 +5659,8 @@ setTimeout(function () {
 (function () {
     var files = [
         'js/keep-alive.js?v=20261112a',
-        'js/char-takeover.js?v=20261117a',
-        'js/screen-share.js?v=20261121a',
+        'js/char-takeover.js?v=20261126e',
+        'js/screen-share.js?v=20261126e',
         'js/float-chat.js?v=20261118a',
         'js/online-catchup.js?v=20261115a',
         'js/whisper-store.js?v=20261026a',
@@ -5752,7 +5814,7 @@ setTimeout(function () {
     })();
     </script>
 <script src="js/adult-gate.js?v=20261025g"></script>
-<script src="js/account.js?v=20261119a"></script>
+<script src="js/account.js?v=20261126g"></script>
 <script>
 // 自动备份调度：只有开启后才加载一个隐藏的备份页，在 App 打开期间按间隔上传。
 // 完全退出 App 后网页无法后台运行，下次打开会补一次。

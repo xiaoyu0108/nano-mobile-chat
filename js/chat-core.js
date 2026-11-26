@@ -240,6 +240,7 @@
         };
     }
 
+    let worldbookReady = null;
     function loadWorldbooksFromDB() {
         // 同步读取本地缓存（优先新键，兼容旧键）
         const keys = [WB_LOCAL_KEY].concat(WB_LEGACY_KEYS);
@@ -255,34 +256,38 @@
                 }
             } catch (e) {}
         }
-        // 优先从 IndexedDB 读取（与 worldbook.js 一致）
-        try {
-            if (typeof indexedDB === 'undefined') return;
-            const req = indexedDB.open('nano_worldbook_db', 1);
-            req.onupgradeneeded = function(e) {
-                try {
-                    const db = e.target.result;
-                    if (!db.objectStoreNames.contains('worldbook_data')) db.createObjectStore('worldbook_data', { keyPath: 'key' });
-                } catch (e) {}
-            };
-            req.onsuccess = function(e) {
-                try {
-                    const db = e.target.result;
-                    const r = db.transaction('worldbook_data', 'readonly').objectStore('worldbook_data').get('data');
-                    r.onsuccess = function() {
-                        const d = r.result ? r.result.value : null;
-                        if (d && Array.isArray(d.files)) {
-                            allWorldbooks = d.files.map(normalizeChatWorldbook).filter(Boolean);
-                            try { localStorage.setItem(WB_LOCAL_KEY, JSON.stringify(d)); } catch (e) {}
-                        }
-                    };
-                    r.onerror = function() {};
-                } catch (e) {}
-            };
-            req.onerror = function() {};
-        } catch (e) {}
+        // 再从 IndexedDB 读一次（与 worldbook.js 一致）；返回 Promise，
+        // 每次回复前 await 一下，避免刚改完世界书/刚启动时读到空列表。
+        return new Promise(function(resolve) {
+            try {
+                if (typeof indexedDB === 'undefined') { resolve(); return; }
+                const req = indexedDB.open('nano_worldbook_db', 1);
+                req.onupgradeneeded = function(e) {
+                    try {
+                        const db = e.target.result;
+                        if (!db.objectStoreNames.contains('worldbook_data')) db.createObjectStore('worldbook_data', { keyPath: 'key' });
+                    } catch (e) {}
+                };
+                req.onsuccess = function(e) {
+                    try {
+                        const db = e.target.result;
+                        const r = db.transaction('worldbook_data', 'readonly').objectStore('worldbook_data').get('data');
+                        r.onsuccess = function() {
+                            const d = r.result ? r.result.value : null;
+                            if (d && Array.isArray(d.files)) {
+                                allWorldbooks = d.files.map(normalizeChatWorldbook).filter(Boolean);
+                                try { localStorage.setItem(WB_LOCAL_KEY, JSON.stringify(d)); } catch (e) {}
+                            }
+                            resolve();
+                        };
+                        r.onerror = function() { resolve(); };
+                    } catch (e) { resolve(); }
+                };
+                req.onerror = function() { resolve(); };
+            } catch (e) { resolve(); }
+        });
     }
-    loadWorldbooksFromDB();
+    worldbookReady = loadWorldbooksFromDB();
 
     // 小号（isAltProbe）对应的「大号」角色记录：用于读取大号的世界书绑定
     var __originCharData = null;
@@ -368,31 +373,59 @@
             if (allWorldbooks.some(function (w) { return w && String(w.id) === String(norm.id); })) return allWorldbooks;
             return [norm].concat(allWorldbooks);
         })();
-        wbList.forEach(function(w) {
-            if (!w) return;
+        function wbEligible(w) {
+            if (!w) return false;
             const scope = w.scope || 'global';
             const boundList = Array.isArray(w.boundCharacters) ? w.boundCharacters : [];
             const boundHit = bindIds[String(w.id)] ||
                 boundList.some(function(b) { return idCandidates.indexOf(String(b)) !== -1; });
-            if (scope === 'local') {
-                if (!boundHit) return;                       // 单人：必须命中绑定角色
-            } else if (scope === 'online') {
-                if (boundList.length && !boundHit) return;   // 线上：选了角色就按角色过滤，未选＝全部
-            }
+            if (scope === 'local') return !!boundHit;                       // 单人：必须命中绑定角色
+            if (scope === 'online') return !boundList.length || !!boundHit; // 线上：选了角色就按角色过滤，未选＝全部
+            return true;
+        }
+        function wbText(en) {
+            const content = String((en && en.content) || '').trim();
+            if (!content) return '';
+            return (en.title ? '【' + en.title + '】\n' : '') + content;
+        }
+        function wbPush(en, text) {
+            const pos = (en && en.position) || 'after_char';
+            if (pos === 'before_char') front.push(text);
+            else if (pos === 'after_chat') back.push(text);
+            else middle.push(text);
+        }
+        const used = {};
+        wbList.forEach(function(w) {
+            if (!wbEligible(w)) return;
             w.entries.forEach(function(en) {
                 if (!shouldIncludeEntry(en, recentText)) return;
-                const pos = en.position || 'after_char';
-                const content = String(en.content || '').trim();
-                const text = (en.title ? '【' + en.title + '】\n' : '') + content;
-                if (pos === 'before_char') front.push(text);
-                else if (pos === 'after_chat') back.push(text);
-                else middle.push(text);
+                const text = wbText(en);
+                if (!text || used[text]) return;
+                used[text] = true;
+                wbPush(en, text);
+            });
+        });
+        // 关键词没命中的条目：只要还有预算也注入，保证角色至少真的读过整本世界书，
+        // 而不是只读到命中关键词的零星几条。预算按字符算，避免把超长世界书全塞进去。
+        const WB_BUDGET = 7000;
+        const wbLen = function() {
+            return front.join('\n\n').length + middle.join('\n\n').length + back.join('\n\n').length;
+        };
+        wbList.forEach(function(w) {
+            if (!wbEligible(w)) return;
+            w.entries.forEach(function(en) {
+                if (en.enabled === false) return;
+                const text = wbText(en);
+                if (!text || used[text]) return;
+                if (wbLen() + text.length + 2 > WB_BUDGET) return;
+                used[text] = true;
+                wbPush(en, text);
             });
         });
         return {
-            front: front.length ? '\n\n【世界书 · 关键设定】\n' + front.join('\n\n') : '',
-            middle: middle.length ? '\n\n【世界书】\n' + middle.join('\n\n') : '',
-            back: back.length ? '\n\n【世界书 · 补充】\n' + back.join('\n\n') : ''
+            front: front.length ? '\n\n【世界书 · 关键设定（必须逐条读取，不许跳过）】\n' + front.join('\n\n') : '',
+            middle: middle.length ? '\n\n【世界书（必须逐条读取，不许跳过）】\n' + middle.join('\n\n') : '',
+            back: back.length ? '\n\n【世界书 · 补充（必须逐条读取，不许跳过）】\n' + back.join('\n\n') : ''
         };
     }
 
@@ -1127,7 +1160,7 @@
         prompt += '- 对方表达欲望或亲密意愿时，尊重对方，也表达你真实的态度（愿意、害羞、犹豫、想缓一缓都可以，但要是真实的人之常情，而不是用冰冷的回避去推脱）。\n';
         prompt += '- 不要谈「色」色变、不要过度敏感、不要一边拒绝一边说教；性不脏，不必因此尴尬、脸红到跳戏或强行打岔。\n';
         prompt += '- 分寸：仍需遵守上面的底线——不油腻、不土味、不强迫、不越界；亲密按剧情自然推进，进入亲密场景后如实、具体地写，不回避、不跳切，但也不为露骨而露骨。\n\n';
-        prompt += '【最高优先级 · 硬设定】下面会依次给出你的【角色人设】【世界书】【对方设定】和【长期记忆】，它们是你这个人的真实设定，优先级高于任何通用聊天风格。每轮回复前先在【世界书】里找与当前话题相关的条目，再结合你的人设、记忆和对方刚说的话来回应；不要忽略、不要和设定冲突，也不要用通用模板盖过设定。\n';
+        prompt += '【最高优先级 · 硬设定】下面会依次给出你的【角色人设】【世界书】【对方设定】和【长期记忆】，它们是你这个人的真实设定，优先级高于任何通用聊天风格。每轮回复前先把【世界书】里已经注入的条目逐条读完（包括关键词没命中的保底条目），再结合你的人设、记忆和对方刚说的话来回应；不许只看标题、不许跳过、不许和设定冲突，也不要用通用模板盖过设定。\n';
         prompt += '【语气总原则】你的语气、态度、亲疏完全照抄【角色人设】：人设温柔就温柔、人设开朗就开朗、人设腼腆就腼腆。除非人设本身就是毒舌、傲娇或腹黑，否则不要把每句话都说得很冲，不要冷嘲热讽、阴阳怪气、爱答不理，也不要动不动就怼用户——不要拿“高冷”“酷”当借口伤害对话关系。\n\n';
         prompt += '【识图 · 认真读全图（对方发图片/截图时）】\n';
         prompt += '先完整读一遍画面里所有能读到的信息再开口：时间、日期、星期、电量、信号/WiFi/5G、灵动岛或刘海的实时状态、状态栏图标、页面标题与按钮、聊天记录、数字和时间间隔、对方此刻在做什么，以及任何能推断 TA 状态的小细节。\n';
@@ -1157,6 +1190,15 @@
             prompt += '\n\n【人物设定 · 必须严格遵守】\n';
             prompt += '以下是你唯一的完整人物设定。你的性格、说话方式、语气、身份背景、人生经历、三观都必须严格以此为准，任何时候都不能脱离设定：\n';
             prompt += setting + '\n';
+            prompt += '\n【人设读取清单 · 每轮先过一遍】\n';
+            prompt += '1. 身份：姓名 / 年龄 / 职业 / 国籍 / 所在城市 / 当前身份关系。\n';
+            prompt += '2. 性格底色：外冷内热、毒舌心软、慢热、强势、敏感等，以及此刻的情绪基线。\n';
+            prompt += '3. 成长经历与背景：家庭、过去的关键事件、现在的生活状态。\n';
+            prompt += '4. 与用户的关系：认识多久、关系阶段、称呼、边界、有没有没说破的事。\n';
+            prompt += '5. 说话习惯：句子长短、用词、口癖、幽默/冷淡/黏人的程度、会回避什么。\n';
+            prompt += '6. 喜好与雷区：喜欢 / 讨厌 / 禁忌 / 不能碰的话题。\n';
+            prompt += '7. 本轮场景：时间、地点、在场的人、刚才发生了什么。\n';
+            prompt += '以上信息以【人物设定】原文为准；原文没写的不要自行编造固定设定，但可以按人设合理延伸。回复必须从这 7 项里长出来，不要用通用模板覆盖。\n';
         }
 
         // 中间：人设之后、对话前读取
@@ -1178,7 +1220,7 @@
             }
         } catch (e) {}
         prompt += '\n【记忆要求】\n';
-        prompt += '【必读·每一轮都执行】回复前先通读上面的【角色人设】【世界书】【对方设定】【长期记忆】：世界书是最高硬设定，必须逐条认真读取并严格遵守（世界观、身份关系、称呼、禁忌、尺度、专有名词），绝对不许忽略或读一半；人设决定你的性格、语气与说话方式；长期记忆里你应当知道的事必须记得，并在相关话题里自然提起。\n';
+        prompt += '【必读·每一轮都执行】回复前先通读上面的【角色人设】【世界书】【对方设定】【长期记忆】：世界书是最高硬设定，必须逐条认真读取并严格遵守（世界观、身份关系、称呼、禁忌、尺度、专有名词），绝对不许忽略、不许跳条、不许读一半；人设决定你的性格、语气与说话方式；长期记忆里你应当知道的事必须记得，并在相关话题里自然提起。\n';
         prompt += '以上给出的【角色人设】【世界书】【对方设定】都是硬设定，任何时候都要严格遵守、代入；此前聊过的话题、对方说过的话、发生过的事都要记住并自然承接，不许重复提问已知内容，也不许装作不认识。\n';
         prompt += '【设定优先级】世界书 > 角色人设 > 对方设定 > 长期记忆 > 通用聊天习惯；相互冲突时，以优先级更高的为准，世界书里的世界观、关系、称呼、尺度必须照做。\n';
         prompt += '【记忆完整性 · 重中之重】记忆必须完善、完整，绝不能随时失忆；线上、线下以及各类 App（朋友圈、短信、电话、群聊等）的记忆大多互通，聊过的事、说过的话、发生过的关系都要记得并自然承接。记忆宫殿是调节记忆的地方，要主动读取其中较重要的、分门别类的记忆线索，让它们真正影响你的回应。\n';
@@ -3453,7 +3495,7 @@
                     avatar: avatarSrc || ''
                 }));
             } catch(e) {}
-            window.parent.postMessage({ type: 'openFullscreen', url: (isNanoChat ? 'nano-setting.html' : 'inner-setting.html') + '?chat=' + encodeURIComponent(chatId), title: '设置', source: 'chat_inner' }, '*');
+            window.parent.postMessage({ type: 'openFullscreen', url: (isNanoChat ? 'nano-setting.html' : 'inner-setting.html') + '?chat=' + encodeURIComponent(chatId) + '&v=20261126e', title: '设置', source: 'chat_inner' }, '*');
         }
     });
 
@@ -4455,7 +4497,7 @@
                                 }
                             } catch (e) {}
                             const im = document.createElement('img');
-                            im.loading = 'lazy';
+                            im.loading = 'lazy'; im.decoding = 'async';
                             im.referrerPolicy = 'no-referrer';
                             im.alt = '封面';
                             im.src = src;
@@ -4701,7 +4743,7 @@
                     const cardCount = Math.min(3, urls.length);
                     for (let k = 0; k < cardCount; k++) {
                         const c = document.createElement('img');
-                        c.loading = 'lazy';
+                        c.loading = 'lazy'; c.decoding = 'async';
                         stack.appendChild(c);
                         cards.push(c);
                     }
@@ -4745,7 +4787,7 @@
                     img.alt = imageData.desc || '图片';
                     // 部分生图 CDN 做了防盗链：带上站点 referer 会直接 403，去掉后反而能显示。
                     try { img.referrerPolicy = 'no-referrer'; } catch (e) {}
-                    try { img.loading = 'lazy'; } catch (e) {}
+                    try { img.loading = 'lazy'; img.decoding = 'async'; } catch (e) {}
                     // 旧消息里可能只存了会过期的临时 URL：加载失败时尝试转成本地 dataURL 并回写。
                     img.onerror = async function () {
                         if (img.dataset.retried) return;
@@ -4844,7 +4886,7 @@
                     const thumb = document.createElement('div');
                     thumb.className = 'link-preview-thumb';
                     const im = document.createElement('img');
-                    im.loading = 'lazy';
+                    im.loading = 'lazy'; im.decoding = 'async';
                     im.referrerPolicy = 'no-referrer';
                     im.src = linkCoverUrl(previewImage);
                     im.alt = '';
@@ -7536,6 +7578,34 @@
         } catch (e) { return false; }
     }
 
+    // 线下 → 线上：外壳先落盘「已结束线下 + 最近几轮」，聊天帧加载后在这里补消费。
+    // 这样即使外壳 postMessage 打在新帧还没挂监听的时机，角色也不会漏掉「已回到线上」。
+    function clearPendingOfflineReturn() {
+        try { localStorage.removeItem('nano_pending_offline_return_' + (chatId || 'default')); } catch (e) {}
+    }
+    function consumePendingOfflineReturn() {
+        try {
+            const key = 'nano_pending_offline_return_' + (chatId || 'default');
+            const raw = localStorage.getItem(key);
+            if (!raw) return false;
+            localStorage.removeItem(key);
+            let d = null;
+            try { d = JSON.parse(raw); } catch (e) {}
+            if (!d) return false;
+            if (d.at && Date.now() - Number(d.at) > 10 * 60 * 1000) return false;
+            if (d.text) { try { addSystemNotice(String(d.text)); } catch (e) {} }
+            if (d.lastUser || d.lastChar || (Array.isArray(d.rounds) && d.rounds.length)) {
+                offlineRoundHint = {
+                    user: String(d.lastUser || ''),
+                    char: String(d.lastChar || ''),
+                    rounds: Array.isArray(d.rounds) ? d.rounds : null
+                };
+                try { if (typeof renderMessages === 'function') renderMessages(); } catch (e) {}
+            }
+            return true;
+        } catch (e) { return false; }
+    }
+
     function acceptPendingListenInvite() {
         for (let i = messages.length - 1; i >= 0; i--) {
             const m = messages[i];
@@ -7567,7 +7637,7 @@
     // ===== 线下邀请 / 强制线下 =====
     // 角色主动约用户见面，或在线下危机/异地思念到临界时把用户直接拉进线下。
     function openOfflineFromChat(first, force) {
-        let url = 'offline.html?chat=' + encodeURIComponent(chatId || 'default');
+        let url = 'offline.html?chat=' + encodeURIComponent(chatId || 'default') + '&v=20261126e';
         // 线下是现实见面，用角色真名，不用网名
         const realName = chatName || displayName;
         if (realName) url += '&name=' + encodeURIComponent(realName);
@@ -7745,6 +7815,27 @@
         try { localStorage.removeItem('nano_last_ai_' + chatId); } catch (e) {}
         renderMessages();
         saveMessages();
+    }
+
+    // 设置页做了「压缩 / 部分清除」后，聊天气泡要按存储里的最新内容重新加载；
+    // 不清记忆，也不重置会话设置。
+    function applyStoredMessages(data) {
+        const arr = Array.isArray(data) ? data : [];
+        messages.length = 0;
+        messages.push(...arr);
+        try { restoreMessageState(); } catch (e) {}
+        renderMessages();
+        saveMessages();
+        try { scrollToBottom(); } catch (e) {}
+    }
+    function reloadStoredMessages() {
+        if (typeof localforage === 'undefined') {
+            try { applyStoredMessages(JSON.parse(localStorage.getItem(getStorageKey()) || '[]')); } catch (e) {}
+            return;
+        }
+        try {
+            localforage.getItem(getStorageKey()).then(applyStoredMessages).catch(function () {});
+        } catch (e) {}
     }
 
     // ===== 主动发消息：按设定间隔由角色定时发一句（内容仅来自 API） =====
@@ -9374,7 +9465,7 @@
             const img = document.createElement('img');
             img.src = e.url;
             img.alt = e.name || '';
-            img.loading = 'lazy';
+            img.loading = 'lazy'; img.decoding = 'async';
             wrap.appendChild(img);
             const name = document.createElement('div');
             name.className = 'ep-item-name';
@@ -9445,7 +9536,7 @@
             const img = document.createElement('img');
             img.src = e.url;
             img.alt = e.name || '';
-            img.loading = 'lazy';
+            img.loading = 'lazy'; img.decoding = 'async';
             item.appendChild(img);
             item.addEventListener('click', function() { sendEmojiImage(e); });
             emojiRecommendEl.appendChild(item);
@@ -11265,6 +11356,8 @@
             try { await __refreshMomentsMemoryCache(); } catch (e) {}
             // Ins/私聊互通：让角色也能读到用户/自己刚发的 Ins。
             try { await __refreshInsMemoryCache(); } catch (e) {}
+            // 每轮都重读世界书：刚编辑完/首次启动时也不允许拿到空列表
+            try { await loadWorldbooksFromDB(); } catch (e) {}
             let __sys = buildSystemPrompt();
             if (__taOn) {
                 __sys += '\n\n【聊天记录时间标注】对话记录里每条消息前括号中的日期和时间，是系统标注的真实发送时间（按你的当地时间）。它只用来判断隔了多久、是早上还是深夜；你自己回复时不要输出这种时间标注。';
@@ -13656,7 +13749,7 @@
         if (window.parent && window.parent !== window) {
             window.parent.postMessage({ type: 'openChat', chatId: id, chatName: nm, chatAvatar: avatarSrc || '' }, '*');
         } else {
-            location.href = 'chat_inner.html?chat=' + encodeURIComponent(id) + '&name=' + encodeURIComponent(nm);
+            location.href = 'chat_inner.html?v=20261126f&chat=' + encodeURIComponent(id) + '&name=' + encodeURIComponent(nm);
         }
     }
 
@@ -13803,7 +13896,7 @@
         if (window.parent && window.parent !== window) {
             window.parent.postMessage({ type: 'openChat', chatId: id, chatName: name, chatAvatar: avatar }, '*');
         } else {
-            location.href = 'chat_inner.html?chat=' + encodeURIComponent(id) + '&name=' + encodeURIComponent(name);
+            location.href = 'chat_inner.html?v=20261126f&chat=' + encodeURIComponent(id) + '&name=' + encodeURIComponent(name);
         }
     }
 
@@ -15727,6 +15820,13 @@ if (callCard) {
             bottom = parseFloat(cs.paddingBottom) || 0;
             probe.remove();
         } catch (e) {}
+        try {
+            const rootCss = getComputedStyle(document.documentElement);
+            const cTop = parseFloat(rootCss.getPropertyValue('--safe-top'));
+            const cBottom = parseFloat(rootCss.getPropertyValue('--nano-safe-bottom'));
+            if (isFinite(cTop) && cTop > top) top = cTop;
+            if (isFinite(cBottom) && cBottom > bottom) bottom = cBottom;
+        } catch (e) {}
         _safeTop = top; _safeBottom = bottom;
         return { top: top, bottom: bottom };
     }
@@ -16747,6 +16847,7 @@ if (callCard) {
 
         // 线下返回线上：系统提示「已退出线下」+ 带回线下最新一轮作为衔接上下文
         if (data.type === 'NANO_SYS_NOTICE') {
+            if (data.offlineReturn) { try { clearPendingOfflineReturn(); } catch (e) {} }
             try { addSystemNotice(String(data.text || '')); } catch (e) {}
             return;
         }
@@ -16760,6 +16861,7 @@ if (callCard) {
             return;
         }
         if (data.type === 'NANO_OFFLINE_ROUND') {
+            if (data.offlineReturn) { try { clearPendingOfflineReturn(); } catch (e) {} }
             try {
                 offlineRoundHint = {
                     user: String(data.lastUser || ''),
@@ -16979,6 +17081,12 @@ if (callCard) {
             jumpToMessage(data.msgId);
         } else if (data.type === 'messagesCleared') {
             clearAllMessages();
+        } else if (data.type === 'messagesReload') {
+            if (!data.chatId || String(data.chatId) === String(chatId)) {
+                // 设置页直接带数组过来：立刻替换，避免旧内存自动保存覆盖删除结果
+                if (Array.isArray(data.messages)) applyStoredMessages(data.messages);
+                else reloadStoredMessages();
+            }
         } else if (data.type === 'autoMsgChanged') {
             setAutoMsgState(!!data.enabled, data.interval, { first: true, reset: true });
         } else if (data.type === 'autoMsgIntervalChanged') {
@@ -17190,6 +17298,7 @@ if (data.type === 'NANO_VOICE_CALL_CARD' || data.type === 'NANO_VIDEO_CALL_CARD'
                 saveMessages();
             }
             isStorageReady = true;
+            try { consumePendingOfflineReturn(); } catch (e) {}
             if (isNanoChat && messages.length === 0) ensureNanoWelcome();
             try { consumeNanoPrefill(); } catch (e) {}
             window.__nanoChatReady = true;

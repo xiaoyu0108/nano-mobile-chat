@@ -348,7 +348,7 @@
                         '<span style="display:block;font-size:11px;color:#8a8f98">' + (last ? ('尾号 ' + esc(last)) : '未填写卡号') + '</span></span>' +
                         '<span style="font-size:13px;color:#333">¥' + Number(c.balance || 0).toFixed(2) + '</span></label>';
                 }).join('');
-                ov.innerHTML = '<div style="width:100%;max-width:520px;background:#fff;border-radius:22px 22px 0 0;padding:18px 18px calc(18px + env(safe-area-inset-bottom));box-sizing:border-box;max-height:86vh;overflow:auto">' +
+                ov.innerHTML = '<div style="width:100%;max-width:520px;background:#fff;border-radius:22px 22px 0 0;padding:18px 18px calc(18px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom)));box-sizing:border-box;max-height:86vh;overflow:auto">' +
                     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><b style="font-size:17px">' + esc(opts.title || '确认支付') + '</b>' +
                     '<button id="npCancelX" style="border:0;background:none;font-size:24px;line-height:1;color:#999;cursor:pointer">&times;</button></div>' +
                     '<div style="font-size:13px;color:#8a8f98;margin-bottom:10px">' + esc(desc || '') + ' · ¥' + amt.toFixed(2) + '</div>' +

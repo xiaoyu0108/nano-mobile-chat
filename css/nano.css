@@ -166,7 +166,7 @@ html::-webkit-scrollbar, body::-webkit-scrollbar, .nc-scroll::-webkit-scrollbar 
   flex: 1;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  padding: calc(76px + max(var(--safe-top, 0px), env(safe-area-inset-top, 0px))) 18px calc(28px + var(--safe-bottom, env(safe-area-inset-bottom, 0px)));
+  padding: calc(76px + max(var(--safe-top, 0px), env(safe-area-inset-top, 0px))) 18px calc(28px + var(--safe-bottom, max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom, 0px))));
   scrollbar-width: none;
 }
 
@@ -660,7 +660,7 @@ html::-webkit-scrollbar, body::-webkit-scrollbar, .nc-scroll::-webkit-scrollbar 
 .nc-toast {
   position: fixed;
   left: 50%;
-  bottom: calc(28px + var(--safe-bottom, env(safe-area-inset-bottom, 0px)));
+  bottom: calc(28px + var(--safe-bottom, max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom, 0px))));
   transform: translate(-50%, 10px);
   background: rgba(24, 20, 24, .88);
   color: #fff;

@@ -128,7 +128,7 @@
             };
             window.addEventListener('message', onMsg);
             var s = shell();
-            if (s && s.open) s.open('chat_inner.html?chat=' + enc(info.id) + '&name=' + enc(info.name), '', 'main');
+            if (s && s.open) s.open('chat_inner.html?v=20261126f&chat=' + enc(info.id) + '&name=' + enc(info.name), '', 'main');
             var tries = 0;
             var ask = function () {
                 if (done) return;
@@ -163,7 +163,7 @@
         if (document.getElementById('ssCss')) return;
         var st = document.createElement('style'); st.id = 'ssCss';
         st.textContent = [
-            '.ss-panel{position:fixed;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));z-index:100400;width:min(80vw,300px);',
+            '.ss-panel{position:fixed;right:12px;bottom:calc(12px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom)));z-index:100400;width:min(80vw,300px);',
             'background:linear-gradient(180deg,#fff7fb,#fffdf4);border-radius:18px;box-shadow:0 14px 44px rgba(150,90,110,.32);overflow:hidden;',
             'font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",Arial,sans-serif}',
             '.ss-head{display:flex;align-items:center;gap:8px;padding:10px 12px}',

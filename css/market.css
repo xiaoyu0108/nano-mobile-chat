@@ -232,7 +232,7 @@ main{padding:24px 20px 32px}
 /* ========== 底栏 ========== */
 .bottombar{
   position:fixed;bottom:0;left:50%;transform:translateX(-50%);
-  width:min(720px,100%);height:72px;padding:0 12px calc(0px + env(safe-area-inset-bottom));
+  width:min(720px,100%);height:72px;padding:0 12px calc(0px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom)));
   background:rgba(255,255,255,.92);backdrop-filter:blur(24px);
   -webkit-backdrop-filter:blur(24px);border-top:1px solid var(--line);
   display:grid;grid-template-columns:repeat(4,1fr);z-index:60;
@@ -738,7 +738,7 @@ main{padding:18px 20px 116px}
 .detail-back svg{width:18px;height:18px;stroke-width:2.2}
 .detail-header-title{text-align:center;font-size:13.5px;font-weight:650;letter-spacing:-.2px;color:var(--ink)}
 .detail-header-spacer{width:40px}
-.detail-content{padding:28px 22px calc(64px + env(safe-area-inset-bottom,0px))}
+.detail-content{padding:28px 22px calc(64px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom,0px)))}
 .detail-title{font-size:29px;font-weight:680;letter-spacing:-1.3px}
 .detail-desc{font-size:13px;color:#55554f;line-height:1.9}
 .detail-tag{background:#f4f3ed;color:#86867e}

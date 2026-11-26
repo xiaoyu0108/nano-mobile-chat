@@ -15,7 +15,11 @@ let markedForNextReply='';   // 标记段落只在下一轮 API 里引用一次�
 let currentBubble=null;
 let folded=false;
 let pagerMode='page';
+let markMode=false;
+let markedMap=new Map();
 let togetherMode=false;
+let replyInFlight=false;
+let unreadCharReply=false;
 let currentChar=null;            // 当前选择的 char 对象（{id,name,avatar,...}）
 let currentCharName='', currentCharCls='c1';
 let editingBookId=null;
@@ -147,32 +151,35 @@ async function loadRuntimeData(){
   }
 
   // ---- 4. API 配置 ----
-  const cfg = await nanoGet('nano_api_db','api_data','nano_api_config');
-  if(cfg){
-    // api.js 存的是 {key, value}，value 里才是配置；兼容直接存配置的旧结构
-    const v = (cfg.value && typeof cfg.value === 'object') ? cfg.value : cfg;
+  await refreshApiConfig();
+}
+
+/* 每次调用前都重新读 API 配置，保证在 API 页切换后 Books 立刻跟随，
+   不会继续用打开 Books 时缓存的旧地址 / 旧 Key / 旧模型。 */
+async function refreshApiConfig(){
+  let v = null;
+  try{
+    const cfg = await nanoGet('nano_api_db','api_data','nano_api_config');
+    if(cfg) v = (cfg.value && typeof cfg.value === 'object') ? cfg.value : cfg;
+  }catch(e){}
+  if(!v){
+    try{
+      const raw = localStorage.getItem('nano_api_config');
+      if(raw) v = JSON.parse(raw);
+    }catch(e){}
+  }
+  if(v && v.mainUrl){
     runtime.api = {
       mainUrl: v.mainUrl || '',
       mainKey: v.mainKey || '',
       mainModel: v.mainModel || '',
+      mainApiType: v.mainApiType || '',
       mainTemp: v.mainTemp != null ? v.mainTemp : 0.8
     };
+  }else{
+    runtime.api = null;
   }
-  // 兜底：IDB 读不到时用 localStorage（api.js 失败降级时写在这里）
-  if(!runtime.api){
-    try{
-      const raw=localStorage.getItem('nano_api_config');
-      if(raw){
-        const v=JSON.parse(raw);
-        runtime.api={
-          mainUrl: v.mainUrl || '',
-          mainKey: v.mainKey || '',
-          mainModel: v.mainModel || '',
-          mainTemp: v.mainTemp != null ? v.mainTemp : 0.8
-        };
-      }
-    }catch(e){}
-  }
+  return runtime.api;
 }
 
 /* ==================== 长期记忆（nano_vector_memory_db） ==================== */
@@ -530,6 +537,7 @@ function openBook(id){
   currentPage=Math.max(0,Number(saved.page)||0);
   pendingModeRatio=null;
   markedText='';
+  setMarkMode(false);
   document.getElementById('readerTitle').textContent=currentBook.title;
   showPage('readerPage');
   requestAnimationFrame(()=>{
@@ -781,6 +789,11 @@ function onReaderTap(e){
   if(e.target.closest('.reader-topbar')) return;
   if(e.target.closest('.chat-window')||e.target.closest('.float-ball')) return;
   if(e.target.closest('.mark-toolbar')) return;
+  if(markMode){
+    const para=e.target.closest('.page-panel.current p, .scroll-reader p');
+    if(para){ e.preventDefault(); markParagraph(para); }
+    return;
+  }
   const rect=document.getElementById('readerBody').getBoundingClientRect();
   const w=rect.width, x=e.clientX-rect.left;
   if(pagerMode==='page'){
@@ -848,14 +861,48 @@ function showMarkToolbar(range){
   // 之前把工具栏放在选区上方会被系统菜单盖住，「分享给 Char」点不到。
   tb.style.left='50%';
   tb.style.top='auto';
-  tb.style.bottom='calc(22px + env(safe-area-inset-bottom, 0px))';
+  tb.style.bottom='calc(22px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)))';
   tb.classList.add('show');
 }
 function hideMarkToolbar(){ document.getElementById('markToolbar').classList.remove('show'); }
+function setMarkMode(on){
+  markMode=!!on;
+  const btn=document.getElementById('markBtn');
+  if(btn) btn.classList.toggle('on',markMode);
+  const reader=document.getElementById('readerPage');
+  if(reader) reader.classList.toggle('mark-mode',markMode);
+}
+function toggleMarkMode(){
+  setMarkMode(!markMode);
+  toast(markMode?'选段模式：点一段文字即可标记':'已退出选段模式');
+}
+function markParagraph(el){
+  if(!el) return;
+  const text=String(el.innerText||'').replace(/\s+/g,' ').trim();
+  if(!text){ toast('这一段没有可分享的文字'); return; }
+  if(markedMap.has(text)){
+    markedMap.delete(text);
+    el.classList.remove('marked');
+  }else{
+    markedMap.set(text,text);
+    el.classList.add('marked');
+  }
+  markedText=Array.from(markedMap.values()).join('\n\n');
+  if(!markedMap.size){
+    hideMarkToolbar();
+    toast('已取消全部标记');
+    return;
+  }
+  showMarkToolbar(null);
+  toast('已标记 '+markedMap.size+' 段，可继续点选；点「分享给 Char」发送');
+}
 function clearMark(){
   window.getSelection()?.removeAllRanges();
+  markedMap.clear();
   document.querySelectorAll('.marked').forEach(el=>{
+    if(el.tagName==='P'){ el.classList.remove('marked'); return; }
     const p=el.parentNode;
+    if(!p) return;
     while(el.firstChild) p.insertBefore(el.firstChild,el);
     p.removeChild(el); p.normalize();
   });
@@ -863,7 +910,8 @@ function clearMark(){
 }
 document.addEventListener('selectionchange',()=>{
   const sel=window.getSelection();
-  if(!sel||!sel.rangeCount||sel.isCollapsed){ hideMarkToolbar(); return; }
+  // 点选段落后没有文本选区，但 markedText 仍在；这时不要把「分享给 Char」工具栏收掉
+  if(!sel||!sel.rangeCount||sel.isCollapsed){ if(!markedText) hideMarkToolbar(); return; }
   const text=sel.toString().trim();
   if(!text) return;
   const active=document.querySelector('.page.active');
@@ -875,24 +923,29 @@ document.addEventListener('selectionchange',()=>{
 });
 function shareMark(){
   const sel=window.getSelection();
-  if(!sel||sel.isCollapsed||!sel.toString().trim()){ toast('请先选中要分享的文字'); return; }
-  markedText=sel.toString().trim();
-  try{
-    const range=sel.getRangeAt(0);
-    const span=document.createElement('span');
-    span.className='marked';
-    range.surroundContents(span);
-  }catch(e){
+  const hasSel=!!(sel&&!sel.isCollapsed&&sel.toString().trim());
+  const text=hasSel?sel.toString().trim():String(markedText||'').trim();
+  if(!text){ toast('请先选中或点选要分享的文字'); return; }
+  markedText=text;
+  if(hasSel){
     try{
       const range=sel.getRangeAt(0);
       const span=document.createElement('span');
       span.className='marked';
-      span.appendChild(range.extractContents());
-      range.insertNode(span);
-    }catch(e2){ console.warn(e2); }
+      range.surroundContents(span);
+    }catch(e){
+      try{
+        const range=sel.getRangeAt(0);
+        const span=document.createElement('span');
+        span.className='marked';
+        span.appendChild(range.extractContents());
+        range.insertNode(span);
+      }catch(e2){ console.warn(e2); }
+    }
+    sel.removeAllRanges();
   }
-  sel.removeAllRanges();
   hideMarkToolbar();
+  setMarkMode(false);
   if(!togetherMode) toggleTogether();
   openChatWindow();
   toast('已标记，选择角色开始讨论');
@@ -902,8 +955,9 @@ function shareMark(){
 function updateBallVisibility(){
   const ball=document.getElementById('floatBall');
   const chat=document.getElementById('chatWindow');
-  const inReader=document.getElementById('readerPage').classList.contains('active');
-  const show=togetherMode && (!inReader || !folded);
+  // 只要还在 Books 模式就保留悬浮球：折叠/键盘都不再把它藏掉，
+  // 这样收起小窗后还能点同一颗球继续聊。
+  const show=!!togetherMode;
   ball.classList.toggle('show',show);
   if(!show && chat) chat.classList.remove('show');
 }
@@ -1004,12 +1058,47 @@ function openChatWindow(){
   if(top+wH>ar.height-8) top=ar.height-wH-8;
   w.style.left=left+'px'; w.style.top=top+'px';
   w.style.right='auto'; w.style.bottom='auto';
+  placeBallUnderWindow(w);
+  setBallHasNew(false);
   if(!currentChar) showCharPicker();
+  requestAnimationFrame(function(){ placeBallUnderWindow(w); });
 }
 function closeChatWindow(){
+  if(window.__booksCharPrevBody!=null){ try{ closeCharSwitcher(); }catch(e){} }
   document.getElementById('chatWindow').classList.remove('show');
+  // 收起小窗时一并收起键盘，悬浮球才会回到窗下而不是被键盘顶在半空
+  try{ const inp=document.getElementById('chatInput'); if(inp) inp.blur(); }catch(e){}
+  // 收起小窗不打断正在生成的回复；等回复完成后再在通知栏提醒。
+  if(replyInFlight) return;
   // 聊完收起小窗：把本次对话收尾总结进长期记忆
   try{ flushAux(); }catch(e){}
+}
+function setBallHasNew(on){
+  unreadCharReply=!!on;
+  const b=document.getElementById('floatBall');
+  if(b) b.classList.toggle('has-new',!!on);
+}
+function placeBallUnderWindow(win){
+  if(!win) return;
+  const ball=document.getElementById('floatBall');
+  const app=document.getElementById('app');
+  if(!ball||!app) return;
+  const aw=app.clientWidth, ah=app.clientHeight;
+  const size=44, gap=8, pad=8;
+  let wt=win.offsetTop||0;
+  const wh=win.offsetHeight||0;
+  // 小窗太高、下方放不下球时，把小窗往上推一点，保证球始终在窗下。
+  const maxTop=ah-pad-size-gap-wh;
+  if(wt>maxTop){
+    wt=Math.max(pad,maxTop);
+    win.style.top=wt+'px';
+    win.style.bottom='auto';
+  }
+  const top=Math.min(ah-pad-size, wt+wh+gap);
+  let left=(win.offsetLeft||0)+(win.offsetWidth||0)-size;
+  left=Math.max(pad,Math.min(aw-pad-size,left));
+  ball.style.left=left+'px'; ball.style.top=top+'px';
+  ball.style.right='auto'; ball.style.bottom='auto';
 }
 /* 点击悬浮球：已在显示则收起，否则展开 */
 function toggleChatWindow(){
@@ -1047,6 +1136,7 @@ function onWinDrag(e){
   let ny=Math.max(0,Math.min(appRect.height-win.offsetHeight, winDrag.origY+dy));
   win.style.left=nx+'px'; win.style.top=ny+'px';
   win.style.right='auto'; win.style.bottom='auto';
+  placeBallUnderWindow(win);
 }
 function endWinDrag(){
   if(!winDrag.dragging) return;
@@ -1055,6 +1145,8 @@ function endWinDrag(){
   document.removeEventListener('touchmove',onWinDrag);
   document.removeEventListener('mouseup',endWinDrag);
   document.removeEventListener('touchend',endWinDrag);
+  const win=document.getElementById('chatWindow');
+  if(win&&win.classList.contains('show')) placeBallUnderWindow(win);
 }
 (function bindChatWindowDrag(){
   const win=document.getElementById('chatWindow');
@@ -1130,12 +1222,61 @@ function showCharPicker(){
     }).join('')}
   </div>`;
 }
+function openCharSwitcher(){
+  const body=document.getElementById('chatWindowBody');
+  const chars=runtime.characters||[];
+  window.__booksCharPrevBody=body.innerHTML;
+  document.getElementById('cwName').textContent='选择角色';
+  document.getElementById('cwSub').textContent='切换后小窗会从新角色重新开始';
+  document.getElementById('cwAvatar').textContent='选';
+  if(!chars.length){
+    body.innerHTML='<div style="color:#9a9ca0;font-size:13px;padding:20px;text-align:center">没有可用的角色，请先在角色库中添加或绑定当前人设</div><div style="text-align:center;padding:10px"><button class="cw-picker-cancel" onclick="closeCharSwitcher()">取消</button></div>';
+    return;
+  }
+  body.innerHTML=`<div style="padding:8px;display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+    ${chars.map((c,idx)=>{
+      const avatarHtml = c.avatar
+        ? `<img src="${escapeHtml(c.avatar)}" alt="">`
+        : escapeHtml((c.name||'?')[0]);
+      return `
+        <div style="background:#fff;border-radius:14px;padding:12px 6px;text-align:center;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.04)" onclick="pickCharByIndex(${idx})">
+          <div style="width:40px;height:40px;margin:0 auto;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;font-weight:650;background:linear-gradient(145deg,#b8b8c8,#9a9aae)">${avatarHtml}</div>
+          <div style="font-size:11.5px;margin-top:7px;font-weight:550">${escapeHtml(c.name||'无名')}</div>
+        </div>`;
+    }).join('')}
+  </div><div style="text-align:center;padding:10px 8px 4px"><button class="cw-picker-cancel" onclick="closeCharSwitcher()">取消</button></div>`;
+}
+function restoreChatHeader(){
+  const name=document.getElementById('cwName');
+  const sub=document.getElementById('cwSub');
+  const av=document.getElementById('cwAvatar');
+  if(currentChar){
+    name.textContent=currentCharName||currentChar.name||'Char';
+    sub.textContent='正在一起阅读';
+    av.innerHTML=currentChar.avatar
+      ? `<img src="${escapeHtml(currentChar.avatar)}" alt="">`
+      : escapeHtml(((currentChar.name||'?')[0]||'?'));
+  }else{
+    name.textContent='Books';
+    sub.textContent='正在阅读';
+    av.textContent='阅';
+  }
+}
+function closeCharSwitcher(){
+  const body=document.getElementById('chatWindowBody');
+  if(window.__booksCharPrevBody!=null){
+    body.innerHTML=window.__booksCharPrevBody;
+    window.__booksCharPrevBody=null;
+  }
+  restoreChatHeader();
+}
 function pickCharByIndex(idx){
   const c = runtime.characters[idx];
   if(!c) return;
   pickChar(c);
 }
 async function pickChar(c){
+  window.__booksCharPrevBody=null;
   currentChar = c;
   currentCharName = c.name || 'Char';
   document.getElementById('cwAvatar').innerHTML = c.avatar
@@ -1376,13 +1517,18 @@ function buildHistoryMessages(){
 
 /* ==================== 调用主 API ==================== */
 async function callMainAPI(){
+  // 不缓存旧 API：每次回复前从 IDB / localStorage 重新读一次
+  await refreshApiConfig();
   if(!runtime.api || !runtime.api.mainUrl){
     toast('未配置主 API，请先在设置中配置');
     return null;
   }
   let base=String(runtime.api.mainUrl).trim().replace(/\/+$/,'');
-  if(base && !/\/v1$/i.test(base)) base+='/v1';
-  const url = base + '/chat/completions';
+  const isAnthropic=/anthropic/i.test(String(runtime.api.mainApiType||''));
+  if(base && !/\/v1$/i.test(base) && !/\/messages$/i.test(base)) base+='/v1';
+  const url = isAnthropic
+    ? (base + (/\/messages$/i.test(base) ? '' : '/messages'))
+    : (base + '/chat/completions');
   let sys = buildSystemPrompt();
   try {
     const rr = String(window.__booksRerollReason || '').trim();
@@ -1398,27 +1544,51 @@ async function callMainAPI(){
   } catch (e) {}
   markedForNextReply='';   // 标记段落只让角色读一次，后续消息正常聊天
 
-  const res = await fetch(url,{
-    method:'POST',
-    headers:{
-      'Content-Type':'application/json',
-      'Authorization':'Bearer ' + (runtime.api.mainKey||'')
-    },
-    body:JSON.stringify({
-      model: runtime.api.mainModel || '',
-      temperature: runtime.api.mainTemp != null ? runtime.api.mainTemp : 0.8,
-      messages
-    })
-  });
+  let res;
+  if(isAnthropic){
+    const sysText=messages.filter(function(m){return m.role==='system';}).map(function(m){return String(m.content||'');}).join('\n\n');
+    const anthMessages=messages.filter(function(m){return m.role!=='system';}).map(function(m){
+      return { role: m.role==='assistant'?'assistant':'user', content:String(m.content||'') };
+    });
+    while(anthMessages.length && anthMessages[0].role!=='user') anthMessages.shift();
+    res = await fetch(url,{
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'x-api-key': runtime.api.mainKey||'',
+        'anthropic-version':'2023-06-01',
+        'anthropic-dangerous-direct-browser-access':'true'
+      },
+      body:JSON.stringify({
+        model: runtime.api.mainModel || '',
+        max_tokens: 4096,
+        temperature: runtime.api.mainTemp != null ? runtime.api.mainTemp : 0.8,
+        system: sysText,
+        messages: anthMessages
+      })
+    });
+  }else{
+    res = await fetch(url,{
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'Authorization':'Bearer ' + (runtime.api.mainKey||'')
+      },
+      body:JSON.stringify({
+        model: runtime.api.mainModel || '',
+        temperature: runtime.api.mainTemp != null ? runtime.api.mainTemp : 0.8,
+        messages
+      })
+    });
+  }
   if(!res.ok){
     const t=await res.text();
     throw new Error('API '+res.status+': '+t);
   }
   const data=await res.json();
-  const reply = data.choices?.[0]?.message?.content
-    || data.choices?.[0]?.text
-    || data.reply
-    || '';
+  const reply = isAnthropic
+    ? ((Array.isArray(data.content) ? data.content.map(function(p){return (p&&p.text)||'';}).join('') : '') || data.completion || '')
+    : (data.choices?.[0]?.message?.content || data.choices?.[0]?.text || data.reply || '');
   return reply.trim();
 }
 
@@ -1500,6 +1670,7 @@ async function replyFromChar(){
   // 移除已有的打字气泡
   removeTyping();
   addTyping();
+  replyInFlight=true;
   try{
     const reply = await callMainAPI();
     removeTyping();
@@ -1514,7 +1685,12 @@ async function replyFromChar(){
         pushAux('char', segs[si]);
         if(si<segs.length-1) await new Promise(r=>setTimeout(r,380));
       }
-      try{ if(window.NanoNotify) window.NanoNotify.notify(currentCharName||'一起看', String(reply).slice(0,60), { target:'books', channel:'books', avatar:(currentChar&&currentChar.avatar)||'', name:currentCharName||'一起看' }); }catch(e){}
+      // 小窗已收起：不要在后台默默说完，用通知栏提醒再点悬浮球回来。
+      const visible=document.getElementById('chatWindow').classList.contains('show');
+      if(!visible){
+        setBallHasNew(true);
+        try{ if(window.NanoNotify) window.NanoNotify.notify(currentCharName||'一起看', String(reply).slice(0,60), { target:'books', channel:'books', avatar:(currentChar&&currentChar.avatar)||'', name:currentCharName||'一起看' }); }catch(e){}
+      }
     }else{
       addMsg('char', currentCharName, currentChar.avatar, null, '（没有生成内容）', '');
     }
@@ -1523,6 +1699,8 @@ async function replyFromChar(){
     console.error(e);
     addMsg('char', currentCharName, currentChar.avatar, null, '（回复失败：'+e.message+'）', '');
     toast('回复失败：'+e.message);
+  }finally{
+    replyInFlight=false;
   }
 }
 
@@ -1824,6 +2002,7 @@ function showPage(id){
   if(id!=='readerPage'){
     if(currentBook) saveReadingPosition();
     stopReadingTimer();
+    setMarkMode(false);
     document.getElementById('chatWindow').classList.remove('show');
   }else startReadingTimer();
   updateBallVisibility();
@@ -1917,5 +2096,7 @@ window.editMessage=editMessage;
 window.deleteMessage=deleteMessage;
 window.clearMark=clearMark;
 window.shareMark=shareMark;
+window.toggleMarkMode=toggleMarkMode;
+window.markParagraph=markParagraph;
 window.onReaderTap=onReaderTap;
 window.pickCharByIndex=pickCharByIndex;

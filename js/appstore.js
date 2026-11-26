@@ -408,7 +408,7 @@
 
   function openNanoChatWith(text) {
     try { localStorage.setItem('nano_chat_prefill_nano_ai', JSON.stringify({ text: String(text || ''), auto: false, at: Date.now() })); } catch (e) {}
-    var url = 'chat_inner.html?chat=nano_ai&name=' + encodeURIComponent('纳米') + '&from=appstore&t=' + Date.now();
+    var url = 'chat_inner.html?v=20261126f&chat=nano_ai&name=' + encodeURIComponent('纳米') + '&from=appstore&t=' + Date.now();
     if (window.parent && window.parent !== window) {
       try {
         window.parent.postMessage({ type: 'openFullscreen', url: url, title: '纳米', showBack: false, source: 'appstore' }, '*');

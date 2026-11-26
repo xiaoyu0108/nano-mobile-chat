@@ -6,7 +6,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: calc(16px + env(safe-area-inset-top, 0px)) 16px calc(16px + env(safe-area-inset-bottom, 0px));
+  padding: calc(16px + max(var(--safe-top, 0px), env(safe-area-inset-top, 0px))) 16px calc(16px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)));
   background: rgba(30, 24, 27, .52);
   -webkit-backdrop-filter: blur(12px) saturate(120%);
   backdrop-filter: blur(12px) saturate(120%);
@@ -273,7 +273,7 @@
 .nacc-toast {
   position: fixed;
   left: 50%;
-  bottom: calc(30px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(30px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)));
   transform: translateX(-50%) translateY(10px);
   z-index: 2147483550;
   max-width: min(360px, calc(100vw - 40px));

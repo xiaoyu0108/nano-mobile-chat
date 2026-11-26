@@ -866,26 +866,63 @@ const APP_ICONS = {
     toast('预设已删除');
   }
 
-  function exportDesktop() {
+  function openExportSheet() {
+    var html = '<button class="sheet-btn" id="exportCurrent">导出当前桌面</button>';
+    if (presets.length) {
+      html += '<div class="note">或者只导出某一个预设（不会再打包全部预设）：</div>';
+      html += presets.map(function (p) {
+        return '<div class="list-row" data-export-preset="' + esc(p.id) + '">' +
+          '<span class="list-main"><span class="list-name">' + esc(p.name || '未命名预设') + '</span>' +
+          '<span class="list-sub">' + new Date(p.at || Date.now()).toLocaleString() + '</span></span>' +
+          '<span class="mini-btn dark">导出这个</span></div>';
+      }).join('');
+    } else {
+      html += '<div class="note">还没有预设。可以先在「桌面装饰预设」里保存一个。</div>';
+    }
+    openSheet('导出桌面装饰', html);
+    var cur = $('exportCurrent');
+    if (cur) cur.addEventListener('click', function () { exportDesktop(null); });
+    var body = $('sheetBody');
+    if (body) body.querySelectorAll('[data-export-preset]').forEach(function (row) {
+      row.addEventListener('click', function () { exportDesktop(row.dataset.exportPreset); });
+    });
+  }
+
+  function exportDesktop(presetId) {
+    var selected = null;
+    if (presetId) selected = presets.find(function (x) { return String(x.id) === String(presetId); }) || null;
     Promise.all([NanoIDB.get(IDB_LAYOUT), NanoIDB.get(IDB_IMGS)]).then(function (r) {
-      var data = {
+      var data = selected ? {
         version: 1,
         kind: 'nano-desktop-decoration',
+        name: selected.name || '未命名预设',
+        exportedAt: new Date().toISOString(),
+        bg: selected.bg || null,
+        apps: selected.apps && typeof selected.apps === 'object' ? selected.apps : {},
+        layout: selected.layout || null,
+        imgs: selected.imgs || null,
+        presets: [selected]
+      } : {
+        version: 1,
+        kind: 'nano-desktop-decoration',
+        name: '当前桌面',
         exportedAt: new Date().toISOString(),
         bg: bg,
         apps: custom,
         layout: r[0] || null,
         imgs: r[1] || null,
-        presets: presets
+        presets: []
       };
       var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
       var a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = '纳米桌面装饰-' + new Date().toISOString().slice(0, 10) + '.json';
+      var label = String(data.name || '桌面').replace(/[\\/:*?"<>|]/g, '_').slice(0, 40);
+      a.download = '纳米桌面装饰-' + label + '-' + new Date().toISOString().slice(0, 10) + '.json';
       document.body.appendChild(a);
       a.click();
       setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
-      toast('已导出桌面装饰');
+      try { closeSheet(); } catch (e) {}
+      toast(selected ? ('已导出预设「' + (selected.name || '未命名预设') + '」') : '已导出当前桌面');
     });
   }
 
@@ -1212,7 +1249,7 @@ const APP_ICONS = {
     on('rowApps', 'click', openAppsSheet);
     on('rowPresets', 'click', openPresetsSheet);
     on('rowImport', 'click', function () { var f = $('importFile'); if (f) f.click(); });
-    on('rowExport', 'click', exportDesktop);
+    on('rowExport', 'click', openExportSheet);
     on('rowReset', 'click', resetDesktop);
 
     on('bgFile', 'change', function (e) {

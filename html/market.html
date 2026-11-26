@@ -5,8 +5,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>共享集市</title>
-<link rel="stylesheet" href="../css/market.css?v=20261119a">
-<link rel="stylesheet" href="../css/account.css?v=20261025a">
+<link rel="stylesheet" href="../css/market.css?v=20261126e">
+<link rel="stylesheet" href="../css/account.css?v=20261126e">
 </head>
 <body>
 
@@ -84,7 +84,7 @@
       <form id="uploadForm">
         <div class="form-group">
           <label class="form-label">资源名称</label>
-          <input class="form-input" id="resourceTitle" maxlength="80" required placeholder="例如：极简灰白全局美化">
+          <input class="form-input" id="resourceTitle" maxlength="80" required placeholder="例如：极简灰白聊天美化">
         </div>
         <div class="form-group">
           <label class="form-label">资源分类</label>
@@ -117,7 +117,7 @@
           <label class="upload-zone" for="resourceFile">
             <svg viewBox="0 0 24 24"><path d="M12 16V4m-5 5 5-5 5 5"/><path d="M4 16v4h16v-4"/></svg>
             <strong id="fileLabel">点击选择文件</strong>
-            <span>美化 / 世界书 / 角色卡 / 音乐 / 小组件 / 提示词 / 线下文件 / APP HTML</span>
+            <span>角色卡 PNG / JSON · 表情 PNG（支持 Nano 票根，导入还原整组） / 美化 / 世界书 / 小组件 / 提示词 / 线下文件 / APP HTML</span>
             <input id="resourceFile" type="file" multiple>
           </label>
           <div class="upload-file-list" id="uploadFileList"></div>
@@ -228,10 +228,14 @@
 
 <div class="toast" id="toast"></div>
 
-  <script defer src="../js/appearance.js?v=20261113a"></script>
+  <script defer src="../js/appearance.js?v=20261126e"></script>
 <script defer src="../js/nano-idb.js?v=20261020b"></script>
-<script defer src="../js/nano-prompts.js?v=20261123a"></script>
-  <script defer src="../js/market.js?v=20261124a"></script>
-<script defer src="../js/account.js?v=20261119a"></script>
+<script defer src="../js/nano-prompts.js?v=20261126e"></script>
+  <script defer src="../js/pako.min.js"></script>
+<script defer src="../js/nano-png-json.js?v=20261116a"></script>
+<script defer src="../js/market.js?v=20261126i"></script>
+<script defer src="../js/account.js?v=20261126g"></script>
 </body>
+</html>
+
 </html>

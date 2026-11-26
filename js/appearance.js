@@ -208,6 +208,17 @@
                 try { window.NanoBeautifyRT.clear(area); } catch (e) {}
                 return;
             }
+            // CSS 已经按页面限定了，@js 也必须一起限定：
+            // 否则线上美化的脚本（比如给顶栏加「关注」）会在 offline.html 等页面执行，
+            // 造成「线上美化晕染到线下」。offline 只跑 offline 频道自己的脚本。
+            if (area === 'chat' && !isChatInterior) {
+                try { window.NanoBeautifyRT.clear('chat'); } catch (e) {}
+                return;
+            }
+            if (area === 'global' && !isGlobalTargetPage()) {
+                try { window.NanoBeautifyRT.clear('global'); } catch (e) {}
+                return;
+            }
             var parsed = window.NanoBeautifyRT.parse(raw || '');
             window.NanoBeautifyRT.run(area, parsed.js, { mountParent: document.body });
         } catch (e) {}

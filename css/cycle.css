@@ -50,7 +50,7 @@ input { border: 0; outline: none; background: none; }
   margin: 0 auto;
   min-height: 100dvh;
   min-height: 100vh;
-  padding-bottom: calc(36px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(36px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)));
 }
 
 /* ---------------- 顶部 ---------------- */
@@ -570,7 +570,7 @@ input { border: 0; outline: none; background: none; }
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px 20px calc(24px + env(safe-area-inset-bottom, 0px));
+  padding: 24px 20px calc(24px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)));
   opacity: 0;
   pointer-events: none;
   transition: opacity .3s;
@@ -677,7 +677,7 @@ input { border: 0; outline: none; background: none; }
   max-width: 520px;
   background: linear-gradient(180deg, #ffffff, #fffafb);
   border-radius: 26px 26px 0 0;
-  padding: 9px 22px calc(20px + env(safe-area-inset-bottom, 0px));
+  padding: 9px 22px calc(20px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)));
   box-shadow: 0 -18px 60px rgba(80, 40, 55, .17);
   transform: translateY(30px);
   transition: transform .25s cubic-bezier(.2, .8, .2, 1);
@@ -777,7 +777,7 @@ input { border: 0; outline: none; background: none; }
 .cy-toast {
   position: fixed;
   left: 50%;
-  bottom: calc(28px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(28px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)));
   z-index: 3000;
   transform: translate(-50%, 12px);
   background: rgba(64, 48, 55, .9);

@@ -287,9 +287,6 @@
     var faceCancel = document.getElementById('faceCancel');
     var faceConfirm = document.getElementById('faceConfirm');
 
-    var clearModal = document.getElementById('clearModal');
-    var clearCancel = document.getElementById('clearCancel');
-    var clearConfirm = document.getElementById('clearConfirm');
 
     // ===== 主动功能 =====
     var autoMsgToggle = document.getElementById('autoMsgToggle');
@@ -890,51 +887,141 @@
         });
     }
 
-    // ===== 清空 =====
-    function openClearModal() {
-        clearModal.classList.add('active');
-    }
+    // ===== 清空 / 压缩 / 部分清除 =====
+    var CHAT_MSG_KEY = 'chat_messages_' + chatId;
+    var CHAT_HOT_KEY = 'chat_hot_' + chatId;
 
-    // 清空记录时，连同该聊天的记忆一起清掉，避免“记录没了记忆还在”
-    function clearChatMemories(cid) {
-        try {
-            if (!('indexedDB' in window)) return;
-            var req = indexedDB.open('nano_vector_memory_db', 5);
-            req.onupgradeneeded = function(e) {
-                try { var d = e.target.result; if (!d.objectStoreNames.contains('config')) d.createObjectStore('config', { keyPath: 'key' }); } catch(err) {}
-            };
-            req.onsuccess = function(e) {
-                try {
-                    var db = e.target.result;
-                    db.transaction('config', 'readwrite').objectStore('config').put({ key: 'memlist_' + cid, value: [] });
-                } catch(err) {}
-            };
-        } catch(e) {}
-    }
-
-    function confirmClear() {
-        var key = 'chat_messages_' + chatId;
-        try { localStorage.setItem('chat_cleared_' + chatId, '1'); } catch(e) {}
-        clearChatMemories(chatId);
+    async function readAllChatMessages() {
         if (typeof localforage !== 'undefined') {
-            localforage.setItem(key, []).then(function() {
-                if (window.parent !== window) {
-                    window.parent.postMessage({
-                        type: 'messagesCleared',
-                        chatId: chatId
-                    }, '*');
+            try {
+                var v = await localforage.getItem(CHAT_MSG_KEY);
+                if (Array.isArray(v)) return v;
+            } catch (e) {}
+        }
+        try {
+            var arr = JSON.parse(localStorage.getItem(CHAT_MSG_KEY) || '[]');
+            return Array.isArray(arr) ? arr : [];
+        } catch (e) { return []; }
+    }
+
+    async function writeAllChatMessages(arr) {
+        arr = Array.isArray(arr) ? arr : [];
+        let saved = false;
+        if (typeof localforage !== 'undefined') {
+            // localforage 是完整消息的主存储；localStorage 只做轻量兜底，
+            // 不写完整 base64，避免设置页把配额撑爆。
+            try { await localforage.setItem(CHAT_MSG_KEY, arr); saved = true; } catch (e) {}
+            try { await localforage.removeItem(CHAT_HOT_KEY); } catch (e) {}
+            try { localStorage.removeItem(CHAT_HOT_KEY); } catch (e) {}
+        }
+        if (!saved) {
+            try { localStorage.setItem(CHAT_MSG_KEY, JSON.stringify(arr)); } catch (e) {}
+            try { localStorage.removeItem(CHAT_HOT_KEY); } catch (e) {}
+        }
+    }
+
+    function notifyMessagesChanged(cleared, messages) {
+        if (window.parent !== window) {
+            var msg = {
+                type: cleared ? 'messagesCleared' : 'messagesReload',
+                chatId: chatId
+            };
+            // 直接把删除/压缩后的数组交给聊天帧，避免它读存储时又把内存里的旧消息写回去，
+            // 这样楼层删除才能真正“点了就变”。
+            if (!cleared && Array.isArray(messages)) msg.messages = messages;
+            window.parent.postMessage(msg, '*');
+        }
+    }
+
+    function collectPrivateImageTasks(arr) {
+        var tasks = [];
+        function add(container, key) {
+            if (!container) return;
+            var v = container[key];
+            if (typeof v !== 'string' || v.indexOf('data:image') !== 0) return;
+            tasks.push({
+                get: function () { return container[key]; },
+                set: function (d) { container[key] = d; }
+            });
+        }
+        arr.forEach(function (m) {
+            if (!m) return;
+            if (m.imageData) {
+                add(m.imageData, 'url');
+                add(m.imageData, 'poster');
+                if (Array.isArray(m.imageData.urls)) {
+                    m.imageData.urls.forEach(function (u, i) {
+                        if (typeof u === 'string' && u.indexOf('data:image') === 0) {
+                            tasks.push({
+                                get: function () { return m.imageData.urls[i]; },
+                                set: function (d) { m.imageData.urls[i] = d; }
+                            });
+                        }
+                    });
                 }
-            }).catch(function() {});
-        } else {
-            localStorage.setItem(key, JSON.stringify([]));
-            if (window.parent !== window) {
-                window.parent.postMessage({
-                    type: 'messagesCleared',
-                    chatId: chatId
-                }, '*');
+            }
+            if (m.cardData) add(m.cardData, 'img');
+            if (m.linkPreview) add(m.linkPreview, 'image');
+        });
+        return tasks;
+    }
+
+    async function compressPrivateMessages() {
+        if (!window.NanoImageCache || !NanoImageCache.shrinkDataUrl) throw new Error('图片压缩模块未加载');
+        var arr = await readAllChatMessages();
+        var beforeSize = JSON.stringify(arr).length;
+        var tasks = collectPrivateImageTasks(arr);
+        var images = 0;
+        for (var i = 0; i < tasks.length; i++) {
+            var t = tasks[i];
+            var v = t.get();
+            if (typeof v !== 'string' || v.indexOf('data:image') !== 0) continue;
+            var d = v;
+            try { d = await NanoImageCache.shrinkDataUrl(v, 1024, 0.6); } catch (e) { d = v; }
+            if (d && d !== v) {
+                t.set(d);
+                images++;
             }
         }
-        clearModal.classList.remove('active');
+        var messages = (window.NanoClearChat && NanoClearChat.compactMessages) ? NanoClearChat.compactMessages(arr, 20) : 0;
+        var afterSize = JSON.stringify(arr).length;
+        if (images || messages) {
+            await writeAllChatMessages(arr);
+            // 让后台开着的聊天也换成压缩后的数据，避免它下次保存时把旧内容又写回来
+            notifyMessagesChanged(false, arr);
+        }
+        return { images: images, messages: messages, before: beforeSize, after: afterSize };
+    }
+
+    async function partialPrivateMessages(start, end) {
+        var arr = await readAllChatMessages();
+        var removed = arr.splice(start - 1, end - start + 1);
+        await writeAllChatMessages(arr);
+        try {
+            if (arr.length) localStorage.removeItem('chat_cleared_' + chatId);
+            else localStorage.setItem('chat_cleared_' + chatId, '1');
+        } catch (e) {}
+        notifyMessagesChanged(arr.length === 0, arr);
+        return { deleted: removed.length, remaining: arr.length };
+    }
+
+    async function deleteAllPrivateMessages() {
+        await writeAllChatMessages([]);
+        try { localStorage.setItem('chat_cleared_' + chatId, '1'); } catch (e) {}
+        notifyMessagesChanged(true);
+        return { ok: true };
+    }
+
+    async function openClearOptions() {
+        if (!window.NanoClearChat) { alert('清理模块未加载'); return; }
+        var arr = await readAllChatMessages();
+        NanoClearChat.open({
+            scope: '私聊',
+            total: arr.length,
+            compress: compressPrivateMessages,
+            partial: partialPrivateMessages,
+            deleteAll: deleteAllPrivateMessages
+        });
     }
 
     // ===== 生图提示词 =====
@@ -1660,9 +1747,7 @@
     });
     searchClose.addEventListener('click', function() { searchModal.classList.remove('active'); });
 
-    document.getElementById('clearItem').addEventListener('click', openClearModal);
-    clearCancel.addEventListener('click', function() { clearModal.classList.remove('active'); });
-    clearConfirm.addEventListener('click', confirmClear);
+    document.getElementById('clearItem').addEventListener('click', openClearOptions);
 
     document.getElementById('promptItem').addEventListener('click', openPromptModal);
     promptCancel.addEventListener('click', function() { promptModal.classList.remove('active'); });

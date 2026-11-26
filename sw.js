@@ -14,7 +14,7 @@
 
 // 缓存代号固定不变：发版不要改这里。改了会触发一次整站缓存清理，所有页面又要重新下载。
 var CACHE = 'nano-static-v417';
-var STATIC_RE = /\.(css|js|png|jpg|jpeg|webp|svg|gif|ico|woff2?|ttf|mp3)$/i;
+var STATIC_RE = /\.(css|js|json|png|jpg|jpeg|webp|svg|gif|ico|woff2?|ttf|mp3)$/i;
 var HTML_NET_TIMEOUT_MS = 250;        // 首屏 HTML 有缓存时最多等 0.25 秒，超时立刻上缓存
 
 // 与客户端 NanoScope.appId 使用同一套算法：用「站点根目录」区分不同部署。

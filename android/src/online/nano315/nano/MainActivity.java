@@ -110,6 +110,7 @@ public class MainActivity extends Activity {
     private volatile String pendingFloatPayload = "";
     private String pendingNotificationJson;
     private int lastTopInset;
+    private int lastBottomCss;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -138,13 +139,18 @@ public class MainActivity extends Activity {
             int top = toCssPixels(statusBarInset(insets));
             lastTopInset = top;
             if (Build.VERSION.SDK_INT >= 30) {
-                // Edge-to-edge：底部导航栏和输入法由我们自己留白，避免内容被挡住。
-                int bottom = bottomBarInset(insets);
-                if (v.getPaddingBottom() != bottom) {
-                    v.setPadding(v.getPaddingLeft(), v.getPaddingTop(), v.getPaddingRight(), bottom);
+                // 键盘弹起时仍然给原生留白，避免输入框被盖住；
+                // 键盘收起时不再给导航栏留白，让网页背景/底栏一直铺到屏幕底部，
+                // 页面自己的底栏用 --nano-safe-bottom 把内容抬到手势条上方。
+                int ime = imeInset(insets);
+                if (v.getPaddingBottom() != ime) {
+                    v.setPadding(v.getPaddingLeft(), v.getPaddingTop(), v.getPaddingRight(), ime);
                 }
+                lastBottomCss = ime > 0 ? 0 : toCssPixels(navigationBarInset(insets));
+            } else {
+                lastBottomCss = 0;
             }
-            applyNativeInsets(top);
+            applyNativeInsets(top, lastBottomCss);
             return insets;
         });
         try { root.requestApplyInsets(); } catch (Exception ignored) {}
@@ -192,7 +198,7 @@ public class MainActivity extends Activity {
             public void onPageFinished(WebView view, String url) {
                 currentPageUrl = url == null ? "" : url;
                 pageReady = true;
-                applyNativeInsets(lastTopInset);
+                applyNativeInsets(lastTopInset, lastBottomCss);
                 final String target = pendingNotifyTarget;
                 if (target != null && !target.isEmpty()) {
                     view.postDelayed(() -> dispatchNotifyTarget(target), 650);
@@ -569,12 +575,21 @@ public class MainActivity extends Activity {
         return Math.max(0, top);
     }
 
-    private int bottomBarInset(WindowInsets insets) {
+    private int imeInset(WindowInsets insets) {
+        if (Build.VERSION.SDK_INT < 30) return 0;
+        try {
+            Insets ime = insets.getInsets(WindowInsets.Type.ime());
+            return Math.max(0, ime.bottom);
+        } catch (Exception ignored) {
+            return 0;
+        }
+    }
+
+    private int navigationBarInset(WindowInsets insets) {
         if (Build.VERSION.SDK_INT < 30) return 0;
         try {
             Insets nav = insets.getInsets(WindowInsets.Type.navigationBars());
-            Insets ime = insets.getInsets(WindowInsets.Type.ime());
-            return Math.max(0, Math.max(nav.bottom, ime.bottom));
+            return Math.max(0, nav.bottom);
         } catch (Exception ignored) {
             return 0;
         }
@@ -587,12 +602,20 @@ public class MainActivity extends Activity {
         return Math.max(0, Math.round(px / density));
     }
 
-    // 把真实状态栏高度告诉网页：页面整体铺到状态栏下面，但顶栏按钮再往下让出这段时间。
-    private void applyNativeInsets(int top) {
+    // 把真实状态栏/底部手势区高度告诉网页：页面整体铺到状态栏和导航栏下面，
+    // 顶栏、底栏再通过 --safe-top / --nano-safe-bottom 自己让出安全区。
+    private void applyNativeInsets(int top, int bottom) {
         if (webView == null) return;
         final int t = Math.max(0, top);
+        final int b = Math.max(0, bottom);
         String js = "try{window.__NANO_NATIVE_TOP_INSET__=" + t +
+                ";window.__NANO_NATIVE_BOTTOM_INSET__=" + b +
                 ";document.documentElement.style.setProperty('--safe-inset-top','" + t + "px');" +
+                "document.documentElement.style.setProperty('--safe-top','" + t + "px');" +
+                "document.documentElement.style.setProperty('--safe-t','" + t + "px');" +
+                "document.documentElement.style.setProperty('--safe-bottom','" + b + "px');" +
+                "document.documentElement.style.setProperty('--safe-b','" + b + "px');" +
+                "document.documentElement.style.setProperty('--nano-safe-bottom','" + b + "px');" +
                 "window.dispatchEvent(new Event('resize'));}catch(e){}";
         try {
             webView.post(() -> {
@@ -615,7 +638,12 @@ public class MainActivity extends Activity {
             window.setAttributes(lp);
         }
         window.setStatusBarColor(Color.TRANSPARENT);
-        window.setNavigationBarColor(Color.WHITE);
+        // 键盘收起时网页会铺到手势条下面，导航栏透明才能让页面背景透上来；
+        // 3 键导航由系统自己加对比度遮罩，不会再出现一条独立的白条。
+        window.setNavigationBarColor(Build.VERSION.SDK_INT >= 30 ? Color.TRANSPARENT : Color.WHITE);
+        if (Build.VERSION.SDK_INT >= 28) {
+            try { window.setNavigationBarDividerColor(Color.TRANSPARENT); } catch (Exception ignored) {}
+        }
         if (Build.VERSION.SDK_INT >= 30) {
             try {
                 window.setDecorFitsSystemWindows(false);
@@ -981,7 +1009,7 @@ public class MainActivity extends Activity {
                 if (ins != null) top = toCssPixels(statusBarInset(ins));
             } catch (Exception ignored) {
             }
-            return "{\"top\":" + Math.max(0, top) + ",\"bottom\":0}";
+            return "{\"top\":" + Math.max(0, top) + ",\"bottom\":" + Math.max(0, lastBottomCss) + "}";
         }
 
         @JavascriptInterface

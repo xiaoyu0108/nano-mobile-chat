@@ -883,8 +883,9 @@
         return m ? (m.nick || m.name) : '未知';
     }
 
-    // ========== 清空聊天记录 ==========
-    // 清空群聊记录时，连同本群产生的记忆一起清掉
+    // ========== 清空 / 压缩 / 部分清除 ==========
+    // 只在「解散群聊」时使用：群没了，本群产生的记忆一起清掉。
+    // 「清空聊天记录」不会调用它，记忆始终保留。
     function clearGroupMemories(gid){
         try {
             if (!('indexedDB' in window)) return;
@@ -912,17 +913,86 @@
         } catch(e){}
     }
 
-    $('clearItem').addEventListener('click', function(){ $('clearModal').classList.add('active'); });
-    $('clearCancel').addEventListener('click', function(){ $('clearModal').classList.remove('active'); });
-    $('clearConfirm').addEventListener('click', function(){
+    function readGroupMsgs(){
+        try { var raw = localStorage.getItem(MSG_KEY); var arr = raw ? JSON.parse(raw) : []; return Array.isArray(arr) ? arr : []; }
+        catch(e){ return []; }
+    }
+    function writeGroupMsgs(arr){
+        arr = Array.isArray(arr) ? arr : [];
+        try { localStorage.setItem(MSG_KEY, JSON.stringify(arr)); } catch(e){}
+        try { messages = arr; } catch(e){}
+    }
+    function collectGroupImageTasks(arr){
+        var tasks = [];
+        function add(container, key){
+            if (!container) return;
+            var v = container[key];
+            if (typeof v !== 'string' || v.indexOf('data:image') !== 0) return;
+            tasks.push({ get: function(){ return container[key]; }, set: function(d){ container[key] = d; } });
+        }
+        arr.forEach(function(m){
+            if (!m) return;
+            if (m.imageData) {
+                add(m.imageData, 'url');
+                add(m.imageData, 'poster');
+                if (Array.isArray(m.imageData.urls)) {
+                    m.imageData.urls.forEach(function(u, i){
+                        if (typeof u === 'string' && u.indexOf('data:image') === 0) {
+                            tasks.push({ get: function(){ return m.imageData.urls[i]; }, set: function(d){ m.imageData.urls[i] = d; } });
+                        }
+                    });
+                }
+            }
+            if (m.cardData) add(m.cardData, 'img');
+            if (m.linkPreview) add(m.linkPreview, 'image');
+        });
+        return tasks;
+    }
+    async function compressGroupMsgs(){
+        if (!window.NanoImageCache || !NanoImageCache.shrinkDataUrl) throw new Error('图片压缩模块未加载');
+        var arr = readGroupMsgs();
+        var beforeSize = JSON.stringify(arr).length;
+        var tasks = collectGroupImageTasks(arr);
+        var images = 0;
+        for (var i = 0; i < tasks.length; i++) {
+            var t = tasks[i];
+            var v = t.get();
+            if (typeof v !== 'string' || v.indexOf('data:image') !== 0) continue;
+            var d = v;
+            try { d = await NanoImageCache.shrinkDataUrl(v, 1024, 0.6); } catch(e) { d = v; }
+            if (d && d !== v) { t.set(d); images++; }
+        }
+        var messages = (window.NanoClearChat && NanoClearChat.compactMessages) ? NanoClearChat.compactMessages(arr, 20) : 0;
+        var afterSize = JSON.stringify(arr).length;
+        if (images || messages) writeGroupMsgs(arr);
+        return { images: images, messages: messages, before: beforeSize, after: afterSize };
+    }
+    async function partialGroupMsgs(start, end){
+        var arr = readGroupMsgs();
+        var removed = arr.splice(start - 1, end - start + 1);
+        writeGroupMsgs(arr);
+        return { deleted: removed.length, remaining: arr.length };
+    }
+    async function deleteAllGroupMsgs(){
         localStorage.removeItem(MSG_KEY);
-        clearGroupMemories(chatId);
-        $('clearModal').classList.remove('active');
-        showAlert('提示', '聊天记录与相关记忆已清空');
+        try { messages = []; } catch(e){}
         if (window.parent !== window) {
             window.parent.postMessage({ type:'messagesCleared', chatId: chatId }, '*');
         }
-    });
+        return { ok: true };
+    }
+    async function openClearOptions(){
+        if (!window.NanoClearChat) { showAlert('提示', '清理模块未加载'); return; }
+        var arr = readGroupMsgs();
+        NanoClearChat.open({
+            scope: '群聊',
+            total: arr.length,
+            compress: compressGroupMsgs,
+            partial: partialGroupMsgs,
+            deleteAll: deleteAllGroupMsgs
+        });
+    }
+    $('clearItem').addEventListener('click', openClearOptions);
 
     // ========== 转让群主 ==========
     var transferTargetIdx = -1;

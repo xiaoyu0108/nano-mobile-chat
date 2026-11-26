@@ -43,6 +43,8 @@ img{display:block;max-width:100%}
 .reader-topbar h1{font-size:15px;margin:0;font-weight:650;letter-spacing:-.2px}
 .reader-topbar .iconbtn{background:transparent;box-shadow:none}
 .reader-topbar .iconbtn:active{background:rgba(120,120,128,.12)}
+.reader-topbar .iconbtn.on{background:#18191b;color:#fff}
+.reader-topbar-actions{display:flex;align-items:center;gap:4px}
 
 /* 内容 */
 .content{flex:1;overflow:auto;-webkit-overflow-scrolling:touch}
@@ -248,6 +250,9 @@ img{display:block;max-width:100%}
 .mark-toolbar button.primary{background:#fff;color:#18191b;font-weight:600}
 
 .marked{background:rgba(255,214,10,.42);border-radius:3px;padding:1px 2px;margin:0 -1px;border-bottom:1px solid rgba(230,180,0,.6)}
+p.marked{display:block;padding:1px 3px;margin:0 -3px;border-radius:4px}
+.mark-mode .page-panel.current p,.mark-mode .scroll-reader p{cursor:pointer}
+.mark-mode .page-panel.current p:active,.mark-mode .scroll-reader p:active{background:rgba(255,214,10,.28)}
 
 /* 设置面板 */
 .reader-modal{position:absolute;inset:0;background:rgba(0,0,0,.32);z-index:20;display:none;align-items:flex-end}
@@ -311,9 +316,14 @@ img{display:block;max-width:100%}
   overflow:hidden;
 }
 .float-ball.show{display:flex}
-body.keyboard-open .float-ball{display:none !important}
-/* iOS 键盘：把聊天小窗抬到键盘上方 */
+/* iOS 键盘：小窗和悬浮球一起抬起，球始终留在小窗下方，不会被键盘吞掉 */
 html.keyboard-open .chat-window{ transform: translateY(calc(-1 * var(--nano-kb, 0px))); }
+html.keyboard-open .float-ball.show{ transform: translateY(calc(-1 * var(--nano-kb, 0px))); }
+.float-ball.has-new::after{
+  content:"";position:absolute;top:1px;right:1px;width:10px;height:10px;
+  border-radius:50%;background:#ff3b30;border:2px solid #fff;
+  box-shadow:0 1px 4px rgba(0,0,0,.22);
+}
 .float-ball:active{transform:scale(1.06)}
 .float-ball.dragging{cursor:grabbing;transform:scale(1.10)}
 .float-ball img{width:100%;height:100%;object-fit:cover;border-radius:50%}
@@ -350,6 +360,14 @@ html.keyboard-open .chat-window{ transform: translateY(calc(-1 * var(--nano-kb, 
 .chat-window-head .cw-info{flex:1;min-width:0}
 .chat-window-head .cw-name{font-size:13.5px;font-weight:650;letter-spacing:-.2px}
 .chat-window-head .cw-sub{font-size:10.5px;color:#8a8c90;margin-top:2px}
+.chat-window-head .cw-switch{
+  width:28px;height:28px;border-radius:9px;border:0;background:#f2f2f4;color:#4a4a4f;
+  display:flex;align-items:center;justify-content:center;flex:none;margin-right:4px;padding:0;
+}
+.chat-window-head .cw-switch:active{background:#e8e8ea}
+.chat-window-head .cw-switch svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.cw-picker-cancel{border:0;background:#f2f2f4;color:#3a3a3f;font:inherit;font-size:12.5px;font-weight:600;padding:8px 20px;border-radius:10px}
+.cw-picker-cancel:active{background:#e6e6e9}
 .chat-window-head .cw-close{
   width:28px;height:28px;border-radius:50%;
   display:flex;align-items:center;justify-content:center;color:#8a8c90;

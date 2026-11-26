@@ -80,7 +80,7 @@
             };
             window.addEventListener('message', onMsg);
             var sh = window.__nanoShell;
-            if (sh && sh.open) sh.open('chat_inner.html?chat=' + enc(info.id) + '&name=' + enc(info.name), '', 'main');
+            if (sh && sh.open) sh.open('chat_inner.html?v=20261126f&chat=' + enc(info.id) + '&name=' + enc(info.name), '', 'main');
             var n = 0;
             var ask = function () {
                 if (done) return;

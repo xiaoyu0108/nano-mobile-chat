@@ -73,7 +73,7 @@
         { id: 'moments',   name: '朋友圈',     w: 4, url: 'moments.html' },
         { id: 'ins',       name: 'Instagram',  w: 4, url: 'ins.html' },
         { id: 'halo',      name: 'Halo 社交',  w: 3, url: 'halo.html' },
-        { id: 'books',     name: 'Books',      w: 2, url: 'books.html' },
+        { id: 'books',     name: 'Books',      w: 2, url: 'books.html?v=20261126e' },
         { id: 'imessage',  name: 'iMessage',   w: 4, url: 'imessage.html' },
         { id: 'favorite',  name: '收藏',       w: 1, url: 'favorite.html' },
         { id: 'discover',  name: '发现',       w: 2, url: 'discover.html' },
@@ -90,12 +90,12 @@
         { id: 'appstore',  name: '应用商店',   w: 2, url: 'appstore.html' },
         { id: 'worldbook', name: '世界书',     w: 2, url: 'worldbook.html' },
         { id: 'fanfic',    name: '同人文',     w: 2, url: 'fanfic.html' },
-        { id: 'beautify',  name: '美化 / 字体', w: 2, url: 'beautify.html' },
+        { id: 'beautify',  name: '美化 / 字体', w: 2, url: 'beautify.html?v=20261126f' },
         { id: 'schedule',  name: '日程',       w: 2, url: 'schedule.html' },
-        { id: 'travel',    name: '旅途',       w: 2, url: 'travel.html', withChar: true },
+        { id: 'travel',    name: '旅途',       w: 2, url: 'travel.html?v=20261126e', withChar: true },
         { id: 'memory',    name: '记忆宫殿',   w: 2, url: 'memory.html' },
         { id: 'tide',      name: '月潮',       w: 2, url: 'cycle.html' },
-        { id: 'market',    name: '共享集市',   w: 2, url: 'market.html' },
+        { id: 'market',    name: '共享集市',   w: 2, url: 'market.html?v=20261126i' },
         { id: 'storage',   name: '储存记录',   w: 2, url: 'storage.html' },
         { id: 'logs',      name: '后台日志',   w: 2, url: 'settings-logs.html' }
     ];
@@ -235,7 +235,7 @@
     }
     function openTarget(t) {
         var s = shell(); if (!s) return;
-        if (t.kind === 'chat') { s.open('chat_inner.html?chat=' + enc(t.cid) + '&name=' + enc(t.cname), '', 'main'); return; }
+        if (t.kind === 'chat') { s.open('chat_inner.html?v=20261126f&chat=' + enc(t.cid) + '&name=' + enc(t.cname), '', 'main'); return; }
         if (t.kind === 'group') { s.open('groups.html?group=' + enc(t.gid), '', 'main'); return; }
         if (t.url) {
             var u = t.url;
@@ -406,7 +406,7 @@
             '.tk-lock{position:fixed;inset:0;z-index:100500;background:rgba(255,214,230,.10)}',
             '.tk-bar{position:fixed;left:0;right:0;bottom:0;z-index:100520;color:#5a4a52;',
             'background:linear-gradient(180deg,#fff7fb,#fffdf4);border-radius:22px 22px 0 0;',
-            'box-shadow:0 -10px 34px rgba(190,140,160,.28);padding:12px 14px calc(14px + env(safe-area-inset-bottom));',
+            'box-shadow:0 -10px 34px rgba(190,140,160,.28);padding:12px 14px calc(14px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom)));',
             'font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",Arial,sans-serif}',
             '.tk-head{display:flex;align-items:center;gap:10px}',
             '.tk-ava{width:34px;height:34px;border-radius:50%;flex:none;display:grid;place-items:center;font-size:15px;background:#ffe1ea;color:#b23a5b;background-size:cover;background-position:center}',
@@ -487,7 +487,7 @@
         var s = shell();
         if (!s) return;
         // 打开对应聊天，确保角色能在聊天里给出反应（如果已经打开则复用）。
-        try { if (s.open) s.open('chat_inner.html?chat=' + enc(id) + '&name=' + enc(info.name || 'TA'), '', 'main'); } catch (e) {}
+        try { if (s.open) s.open('chat_inner.html?v=20261126f&chat=' + enc(id) + '&name=' + enc(info.name || 'TA'), '', 'main'); } catch (e) {}
         var payload = { type: 'NANO_TAKEOVER_DENIED', chatId: id, count: n, at: at };
         var tries = 0;
         var send = function () {
@@ -624,7 +624,7 @@
             };
             window.addEventListener('message', onMsg);
             var s = shell();
-            if (s && s.open) s.open('chat_inner.html?chat=' + enc(info.id) + '&name=' + enc(info.name), '', 'main');
+            if (s && s.open) s.open('chat_inner.html?v=20261126f&chat=' + enc(info.id) + '&name=' + enc(info.name), '', 'main');
             var tries = 0;
             var ask = function () {
                 if (done) return;
@@ -815,7 +815,7 @@
         if (!TK.log.length && !opts.notice) return;
         setStatus('正在把这次的查看放进你们的聊天…');
         var s = shell(); if (!s || !s.postToChat) return;
-        s.open('chat_inner.html?chat=' + enc(info.id) + '&name=' + enc(info.name), '', 'main');
+        s.open('chat_inner.html?v=20261126f&chat=' + enc(info.id) + '&name=' + enc(info.name), '', 'main');
         await sleep(900);
         if (opts.charSay) {
             try { s.postToChat({ type: 'NANO_CHAR_SAY', chatId: String(info.id), text: String(opts.charSay) }); } catch (e) {}

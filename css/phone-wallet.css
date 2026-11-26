@@ -81,7 +81,7 @@ svg { display: block; }
     min-height: 0;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
-    padding: 6px 16px calc(36px + env(safe-area-inset-bottom, 0px));
+    padding: 6px 16px calc(36px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)));
 }
 .w-scroll::-webkit-scrollbar { width: 0; }
 
@@ -265,7 +265,7 @@ svg { display: block; }
 .w-toast {
     position: fixed;
     left: 50%;
-    bottom: calc(28px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(28px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)));
     transform: translate(-50%, 8px);
     max-width: 80%;
     padding: 9px 16px;

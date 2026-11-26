@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <script src="../js/nano-runtime.js?v=20261118j"></script>
   <script src="../js/group-store.js?v=20261123a"></script>
-  <script src="../js/appearance.js?v=20261122a"></script>
+  <script src="../js/appearance.js?v=20261126e"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <link rel="icon" href="../icons/icon-192.png" />
   <title>纳米 · 聊天</title>
@@ -20,7 +20,7 @@
       --accent: #111111;
       --danger: #e54d42;
       --radius: 16px;
-      --safe-bottom: env(safe-area-inset-bottom, 0px);
+      --safe-bottom: max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom, 0px));
       --gray-avatar: #d1d1d1;
     }
 
@@ -314,6 +314,8 @@
       height: 72px;
       overflow: hidden;
       background: var(--bg);
+      content-visibility: auto;
+      contain-intrinsic-size: auto 72px;
     }
 
     .chat-item-inner {
@@ -2022,7 +2024,7 @@
           }
         } else {
           if (!post({ type: 'openChat', chatId: id, chatName: name, chatAvatar: avatar })) {
-            location.href = 'chat_inner.html?chat=' + encodeURIComponent(id) + '&name=' + encodeURIComponent(name);
+            location.href = 'chat_inner.html?v=20261126f&chat=' + encodeURIComponent(id) + '&name=' + encodeURIComponent(name);
           }
         }
       });

@@ -3075,7 +3075,7 @@
     var wrap = document.createElement('div');
     wrap.id = 'listenHeartModal';
     wrap.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.36);display:flex;align-items:flex-end;justify-content:center;';
-    var html = '<div style="width:100%;max-width:430px;margin:0 auto;background:#fff;border-radius:22px 22px 0 0;padding:20px 20px calc(22px + env(safe-area-inset-bottom,0px));box-sizing:border-box;max-height:72vh;overflow:auto;">'
+    var html = '<div style="width:100%;max-width:430px;margin:0 auto;background:#fff;border-radius:22px 22px 0 0;padding:20px 20px calc(22px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom,0px)));box-sizing:border-box;max-height:72vh;overflow:auto;">'
       + '<div style="width:38px;height:4px;border-radius:4px;background:#e4e4e7;margin:0 auto 16px;"></div>'
       + '<div style="font-size:12px;color:#8e8e93;letter-spacing:.4px;margin-bottom:8px;">'
       + escHtml(partnerInfo && partnerInfo.name ? partnerInfo.name : 'TA') + ' 的心声</div>'

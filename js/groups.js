@@ -1012,7 +1012,7 @@
                 return;
             }
         } catch (e) {}
-        location.href = 'chat_inner.html?chat=' + encodeURIComponent(cid) + '&name=' + encodeURIComponent(nm);
+        location.href = 'chat_inner.html?v=20261126f&chat=' + encodeURIComponent(cid) + '&name=' + encodeURIComponent(nm);
     }
     function openMemberProfile(who){
         if (!who) return;
@@ -1655,19 +1655,32 @@
                 ((c && c.worldbookBindings) || []).forEach(function(b){ if (b && b.id) bindIds[String(b.id)] = true; });
             });
         } catch (e) {}
-        groupWorldbooks.forEach(function(w){
-            if (!w) return;
+        function gWbEligible(w){
+            if (!w) return false;
             var scope = w.scope || 'global';
             var boundHit = !!bindIds[String(w.id)] ||
                 (w.boundCharacters || []).some(function(bid){ return memberIds.indexOf(bid) > -1; });
-            if (scope === 'local') {
-                if (!boundHit) return;
-            } else if (scope === 'online' && w.onlineTarget === 'pick') {
-                if ((w.boundCharacters || []).length && !boundHit) return;
-            }
+            if (scope === 'local') return !!boundHit;
+            if (scope === 'online' && w.onlineTarget === 'pick') return !(w.boundCharacters || []).length || !!boundHit;
+            return true;
+        }
+        function gWbText(en){
+            if (!en || !en.content || !String(en.content).trim()) return '';
+            return (en.title ? '【' + en.title + '】\n' : '') + String(en.content).trim();
+        }
+        function gWbPush(en, text){
+            var pos = (en && en.position) || 'after_char';
+            if (pos === 'before_char') front.push(text);
+            else if (pos === 'after_chat') back.push(text);
+            else middle.push(text);
+        }
+        var used = {};
+        groupWorldbooks.forEach(function(w){
+            if (!gWbEligible(w)) return;
             w.entries.forEach(function(en){
                 if (en.enabled === false) return;
-                if (!en.content || !String(en.content).trim()) return;
+                var text = gWbText(en);
+                if (!text || used[text]) return;
                 if (en.permanent !== true) {
                     var kw = (en.keywords || '').trim();
                     if (en.keywordEnabled !== false && kw) {
@@ -1675,17 +1688,28 @@
                         if (!hit) return;
                     }
                 }
-                var text = (en.title ? '【' + en.title + '】\n' : '') + String(en.content).trim();
-                var pos = en.position || 'after_char';
-                if (pos === 'before_char') front.push(text);
-                else if (pos === 'after_chat') back.push(text);
-                else middle.push(text);
+                used[text] = true;
+                gWbPush(en, text);
+            });
+        });
+        // 关键词没命中的条目在预算内也注入，避免群聊只看得到零星几条世界书。
+        var G_WB_BUDGET = 6000;
+        var gWbLen = function(){ return front.join('\n\n').length + middle.join('\n\n').length + back.join('\n\n').length; };
+        groupWorldbooks.forEach(function(w){
+            if (!gWbEligible(w)) return;
+            w.entries.forEach(function(en){
+                if (en.enabled === false) return;
+                var text = gWbText(en);
+                if (!text || used[text]) return;
+                if (gWbLen() + text.length + 2 > G_WB_BUDGET) return;
+                used[text] = true;
+                gWbPush(en, text);
             });
         });
         return {
-            front: front.length ? '【世界书 · 关键设定】\n' + front.join('\n\n') : '',
-            middle: middle.length ? '【世界书】\n' + middle.join('\n\n') : '',
-            back: back.length ? '【世界书 · 补充】\n' + back.join('\n\n') : ''
+            front: front.length ? '【世界书 · 关键设定（必须逐条读取，不许跳过）】\n' + front.join('\n\n') : '',
+            middle: middle.length ? '【世界书（必须逐条读取，不许跳过）】\n' + middle.join('\n\n') : '',
+            back: back.length ? '【世界书 · 补充（必须逐条读取，不许跳过）】\n' + back.join('\n\n') : ''
         };
     }
 
@@ -1875,7 +1899,7 @@
 
         prompt += '【最重要的三条铁律】\n';
         prompt += '1. 你是一个人，同时扮演多个 {{char}}，每个角色都是独立、有自己脾气和说话习惯的活人，不是 AI、不是助手。\n';
-        prompt += '2. 回复前必须先读，缺一不可：①下面每个角色自己的人设（性格、年龄、职业、说话习惯、与用户的关系）②用户的人设（姓名、性别、性格、与各角色的关系）③【世界书】设定。必须完全贴合人设，绝不允许 OOC（脱离人设）、串角、张冠李戴；不同角色绝不能共用同一套语气。\n';
+        prompt += '2. 回复前必须先读，缺一不可：①下面每个角色自己的人设（性格、年龄、职业、说话习惯、与用户的关系）②用户的人设（姓名、性别、性格、与各角色的关系）③【世界书】设定。世界书已注入的条目必须逐条读完、不许跳条、不许只看标题，世界观/身份关系/称呼/禁忌/专有名词必须一致。必须完全贴合人设，绝不允许 OOC（脱离人设）、串角、张冠李戴；不同角色绝不能共用同一套语气。\n';
         prompt += '3. 绝对不许掉格式：每条消息必须独占一行，以“角色名：内容”开头，角色名只能是上面列出的成员名字。\n\n';
 
         prompt += '【写作要求 · 活人感】\n';
@@ -1910,6 +1934,7 @@
         if (wb.front) prompt += wb.front + '\n\n';
 
         prompt += '【群成员人设 · 必须逐条精读并严格代入（含本群昵称/头衔）】\n';
+        prompt += '每个人设先抓：身份（年龄/职业/国籍）、性格底色与情绪基线、成长经历、与用户及其他成员的关系、说话习惯/口癖、喜欢与雷区。原文没写的不要硬编；每个角色的语气必须从这些具体设定里长出来。\n';
         prompt += '每个角色的说话方式、用词、态度都必须从他/她自己的设定出发，绝不能把 A 的性格安到 B 身上。\n';
         if (group.members.length === 0) prompt += '（当前群里没有其他角色）\n';
         // 群主（角色）的国籍/语言：旧群的 NPC 成员可能没有记录国籍，
@@ -2374,7 +2399,7 @@
             } catch (e) {}
         }
         try {
-            location.href = 'chat_inner.html?chat=' + encodeURIComponent(cid) + '&name=' + encodeURIComponent(name);
+            location.href = 'chat_inner.html?v=20261126f&chat=' + encodeURIComponent(cid) + '&name=' + encodeURIComponent(name);
         } catch (e) {}
     }
 
@@ -2466,7 +2491,7 @@
                 return;
             }
             try {
-                location.href = 'chat_inner.html?chat=' + encodeURIComponent(cid) + '&name=' + encodeURIComponent(name);
+                location.href = 'chat_inner.html?v=20261126f&chat=' + encodeURIComponent(cid) + '&name=' + encodeURIComponent(name);
             } catch (e) {}
         }).catch(function(){});
     }
@@ -3905,7 +3930,7 @@
 
     // ========== 线下 / 记忆 ==========
     function openOffline(){
-        var url = 'offline.html?chat=' + encodeURIComponent(chatId) + '&name=' + encodeURIComponent(group.name || '群聊');
+        var url = 'offline.html?chat=' + encodeURIComponent(chatId) + '&name=' + encodeURIComponent(group.name || '群聊') + '&v=20261126e';
         if (window.parent !== window) window.parent.postMessage({ type:'openFullscreen', url:url, title:'线下' }, '*');
         else location.href = url;
     }
@@ -4209,7 +4234,7 @@ messageContainer.addEventListener('click', function(e){
         }, 450);
     });
     function openGroupSetting(){
-        var url = 'group-setting.html?chat=' + encodeURIComponent(chatId);
+        var url = 'group-setting.html?chat=' + encodeURIComponent(chatId) + '&v=20261126e';
         if (window.parent !== window) window.parent.postMessage({ type:'openFullscreen', url:url, title:'群设置', source:'groups' }, '*');
         else location.href = url;
     }

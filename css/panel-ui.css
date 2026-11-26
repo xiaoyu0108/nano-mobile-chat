@@ -60,7 +60,7 @@ body.panel-favorite .main-content {
     color: var(--m-ink) !important;
 }
 .panel-favorite .main-content {
-    padding: 6px 20px calc(28px + env(safe-area-inset-bottom, 0px)) !important;
+    padding: 6px 20px calc(28px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom, 0px))) !important;
 }
 
 .panel-favorite .favorites-list {
@@ -256,7 +256,7 @@ body.panel-other {
 
 .panel-other .container {
     background: #fff !important;
-    padding: 16px 20px calc(40px + env(safe-area-inset-bottom, 0px)) !important;
+    padding: 16px 20px calc(40px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom, 0px))) !important;
     height: calc(100vh - 76px - max(var(--safe-top, 0px), env(safe-area-inset-top, 0px))) !important;
 }
 

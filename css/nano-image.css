@@ -108,7 +108,7 @@
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 10px 14px calc(170px + var(--safe-bottom, env(safe-area-inset-bottom, 0px)));
+  padding: 10px 14px calc(170px + var(--safe-bottom, max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom, 0px))));
   scrollbar-width: none;
   overscroll-behavior: contain;
 }
@@ -406,7 +406,7 @@
   right: 0;
   bottom: 0;
   z-index: 20;
-  padding: 10px 12px calc(10px + var(--safe-bottom, env(safe-area-inset-bottom, 0px)));
+  padding: 10px 12px calc(10px + var(--safe-bottom, max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom, 0px))));
   background: var(--n-bg);
   background: linear-gradient(to top, var(--n-bg) 55%, color-mix(in srgb, var(--n-bg) 0%, transparent));
 }
@@ -660,7 +660,7 @@
   border-radius: 0;
   background: var(--n-surface);
   box-shadow: 0 28px 80px rgba(0,0,0,.32);
-  padding: 18px 16px calc(16px + var(--safe-bottom, env(safe-area-inset-bottom, 0px)));
+  padding: 18px 16px calc(16px + var(--safe-bottom, max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom, 0px))));
   animation: niSheetIn .22s cubic-bezier(.3,.8,.35,1);
 }
 @keyframes niSheetIn { from { opacity: .4; transform: translateY(14px); } to { opacity: 1; transform: none; } }
@@ -882,7 +882,7 @@
   border-radius: 20px 20px 0 0;
   background: var(--n-surface);
   box-shadow: 0 -10px 40px rgba(0,0,0,.18);
-  padding: 16px 12px calc(16px + var(--safe-bottom, env(safe-area-inset-bottom, 0px)));
+  padding: 16px 12px calc(16px + var(--safe-bottom, max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom, 0px))));
   animation: niSheetIn .22s cubic-bezier(.3,.8,.35,1);
 }
 

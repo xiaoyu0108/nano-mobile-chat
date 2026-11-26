@@ -488,7 +488,7 @@ body.dark-bg .name-display, body.dark-bg .status-display { color: #ffffff; }
 .hangup-wrapper {
     display: flex;
     justify-content: center;
-    padding: 12px 0 calc(14px + var(--safe-bottom, env(safe-area-inset-bottom, 0px)));
+    padding: 12px 0 calc(14px + var(--safe-bottom, max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom, 0px))));
     flex-shrink: 0;
 }
 .call-actions {

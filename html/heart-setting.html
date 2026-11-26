@@ -5,7 +5,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>心声美化</title>
-<link rel="stylesheet" href="../css/heart.css?v=20261110b">
+<link rel="stylesheet" href="../css/heart.css?v=20261126e">
 <style>
   :root{
     --hs-pink:#c5879c;        /* 重点色：淡粉 */
@@ -25,7 +25,7 @@
 
   /* ===== 唯一顶栏 ===== */
   .hs-nav{position:sticky;top:0;z-index:60;display:flex;align-items:center;
-    padding:calc(12px + env(safe-area-inset-top,0px)) 16px 12px;background:rgba(255,255,255,.95);
+    padding:calc(12px + max(var(--safe-top, 0px), env(safe-area-inset-top,0px))) 16px 12px;background:rgba(255,255,255,.95);
     backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border-bottom:1px solid var(--hs-line);}
   .hs-nav .hs-title{flex:1;text-align:center;font-size:16px;font-weight:600;color:var(--hs-ink);}
   .hs-nav .hs-back{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;
@@ -36,7 +36,7 @@
   .hs-nav .hs-keep:active,.hs-nav .hs-back:active{opacity:.45}
 
   .hs-main{width:100%;max-width:720px;margin:0 auto;min-width:0;overflow-x:hidden;
-    padding:16px 16px calc(40px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:20px;background:#fff;}
+    padding:16px 16px calc(40px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom,0px)));display:flex;flex-direction:column;gap:20px;background:#fff;}
   .hs-main > *{min-width:0;max-width:100%;box-sizing:border-box}
 
   .hs-cap{font-size:12px;color:var(--hs-sub);letter-spacing:.4px}
@@ -196,7 +196,7 @@
   <style id="nanoVoiceCustomCSS"></style>
   <script defer src="../js/nano-beautify-runtime.js"></script>
   <script defer src="../js/avatar-frame.js?v=20261111b"></script>
-  <script defer src="../js/appearance.js?v=20261110c"></script>
+  <script defer src="../js/appearance.js?v=20261126e"></script>
   <script defer src="../js/nano-heart-builtin.js?v=20261110l"></script>
   <script defer src="../js/heart-setting.js?v=20261111a"></script>
   <script async src="../js/localforage.min.js?v=20261027a"></script>

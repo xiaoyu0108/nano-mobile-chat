@@ -4,7 +4,7 @@
 /* ============================================================
    内置模板 - 全局CSS
    ============================================================ */
-const GLOBAL_TEMPLATE_OLD = `/* ===== 全局美化模板 ===== 
+const GLOBAL_TEMPLATE_OLD = `/* ===== 聊天美化模板 ===== 
    内置 index 框架 + chat 列表页 CSS，可直接修改覆盖所有页面的配色/按钮/底栏/API/More 等 UI。
    注意：全局样式在聊天内页也会生效，且优先生效。
 */
@@ -1264,7 +1264,7 @@ const GLOBAL_TEMPLATE_OLD = `/* ===== 全局美化模板 =====
 .container { max-width:430px; margin:0 auto; padding:0 16px 40px; overflow-y:auto; background:#ffffff; }`;
 
 /* ============================================================
-   新版「全局美化」初始模板
+   新版「聊天美化」初始模板
    ------------------------------------------------------------
    实际内容见 js/nano-global-template.js（挂载到 window.NANO_GLOBAL_TEMPLATE）。
    现在全局美化只作用于聊天页 chat.html（body.nano-chat）：
@@ -1278,7 +1278,7 @@ const GLOBAL_TEMPLATE = (typeof window !== 'undefined' && window.NANO_GLOBAL_TEM
 /* ============================================================
    内置模板 - 聊天CSS
    ============================================================ */
-const CHAT_TEMPLATE_OLD = `/* ===== 聊天美化模板 ===== */
+const CHAT_TEMPLATE_OLD = `/* ===== 线上美化模板 ===== */
 .chat-container {
   width: 100%;
   height: 100%;
@@ -1711,7 +1711,7 @@ const CHAT_TEMPLATE_OLD = `/* ===== 聊天美化模板 ===== */
 .message-row.recalled .bubble::after { display:none !important; }`;
 
 /* ============================================================
-   新版「聊天美化」初始模板
+   新版「线上美化」初始模板
    ------------------------------------------------------------
    实际内容见 js/nano-chat-template.js（挂载到 window.NANO_CHAT_TEMPLATE）。
    该文件按分区（顶栏 / 消息区 / 头像 / 气泡 / 语音 / 翻译 / 引用 /
@@ -1723,7 +1723,7 @@ const CHAT_TEMPLATE = (typeof window !== 'undefined' && window.NANO_CHAT_TEMPLAT
   : CHAT_TEMPLATE_OLD;
 
 /* ============================================================
-   内置聊天美化风格（可一键切换）
+   内置线上美化风格（可一键切换）
    - classic  : 初见（初始 UI）
    - gray-pink: 灰粉对话（第二套内置气泡，来自内置小组件）
    ============================================================ */
@@ -2215,7 +2215,7 @@ function previewChatUrl() {
   try { info = JSON.parse(sessionStorage.getItem('last_chat_info') || 'null'); } catch (e) {}
   const id = (info && info.chatId) ? info.chatId : 'default';
   const name = (info && info.chatName) ? info.chatName : '预览';
-  return 'chat_inner.html?chat=' + encodeURIComponent(id) + '&name=' + encodeURIComponent(name);
+  return 'chat_inner.html?v=20261126f&chat=' + encodeURIComponent(id) + '&name=' + encodeURIComponent(name);
 }
 
 function previewCssFor(target) {
@@ -2492,7 +2492,7 @@ function downloadTextFile(filename, text) {
 async function exportBeautifyPreset(type) {
   const sel = document.getElementById(type + "Preset");
   const id = sel ? Number(sel.value) || 0 : 0;
-  let name = getName(type) || (type === "global" ? "全局美化" : "聊天美化");
+  let name = getName(type) || (type === "global" ? "聊天美化" : "线上美化");
   let css = getCode(type);
   if (id) {
     try {
@@ -2652,7 +2652,7 @@ function showFontLoading(text) {
     if (!el) {
       el = document.createElement("div");
       el.id = "fontLoadingPill";
-      el.style.cssText = "position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 62px);transform:translateX(-50%);z-index:2147482900;pointer-events:none;display:flex;align-items:center;gap:8px;background:rgba(28,28,30,.86);color:#fff;font-size:13px;line-height:1;padding:9px 15px;border-radius:999px;box-shadow:0 8px 24px rgba(0,0,0,.22);font-family:-apple-system,BlinkMacSystemFont,'PingFang SC',sans-serif;max-width:64vw;";
+      el.style.cssText = "position:fixed;left:50%;top:calc(max(var(--safe-top, 0px), env(safe-area-inset-top,0px)) + 62px);transform:translateX(-50%);z-index:2147482900;pointer-events:none;display:flex;align-items:center;gap:8px;background:rgba(28,28,30,.86);color:#fff;font-size:13px;line-height:1;padding:9px 15px;border-radius:999px;box-shadow:0 8px 24px rgba(0,0,0,.22);font-family:-apple-system,BlinkMacSystemFont,'PingFang SC',sans-serif;max-width:64vw;";
       el.innerHTML = '<span style="width:13px;height:13px;flex:none;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;display:inline-block;animation:nanoFontSpin .8s linear infinite;"></span><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></span>';
       document.body.appendChild(el);
       if (!document.getElementById("fontSpinKeyframes")) {

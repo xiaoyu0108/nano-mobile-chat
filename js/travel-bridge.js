@@ -976,12 +976,13 @@
       params.set('date', String(cd.date || ''));
       if (cd.title) params.set('title', String(cd.title).slice(0, 120));
       if (cd.thought) params.set('thought', String(cd.thought).slice(0, 600));
-      params.set('v', '20261119a');
+      params.set('v', '20261126e');
       openFull('travel-chat.html?' + params.toString(), '旅途回顾');
       return;
     }
     // 主动报备 / 分享的旅程卡片：打开「旅途」App 里的这段记录。
     if (tripId) params.set('trip', tripId);
+    params.set('v', '20261126e');
     openFull('travel.html?' + params.toString(), '旅途');
   }
   async function openTripChat(cardData) {
@@ -1046,7 +1047,7 @@
     wrap.id = 'nanoTravelInviteComposer';
     wrap.style.cssText = 'position:fixed;inset:0;z-index:2147483000;display:flex;align-items:flex-end;justify-content:center;background:rgba(0,0,0,.35);backdrop-filter:blur(3px);';
     wrap.innerHTML =
-      '<div style="width:100%;max-width:520px;background:#fff;border-radius:22px 22px 0 0;padding:18px 20px calc(22px + env(safe-area-inset-bottom,0px));box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,\'PingFang SC\',sans-serif;">' +
+      '<div style="width:100%;max-width:520px;background:#fff;border-radius:22px 22px 0 0;padding:18px 20px calc(22px + max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom,0px)));box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,\'PingFang SC\',sans-serif;">' +
         '<div style="width:38px;height:4px;border-radius:4px;background:#e4e4e7;margin:0 auto 16px;"></div>' +
         '<div style="font-size:17px;font-weight:700;color:#111;margin-bottom:4px;">邀请 TA 一起去</div>' +
         '<div style="font-size:12px;color:#8c8c8c;margin-bottom:14px;">发送一张「一起去」卡片。对方回应前不会调用 API。</div>' +

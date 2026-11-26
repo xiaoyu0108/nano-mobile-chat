@@ -1018,27 +1018,58 @@ function offGetWorldbookText(extraIds) {
   try { (rec.worldbookBindings || []).forEach(function (b) { if (b && b.id) bindIds[String(b.id)] = true; }); } catch (e) {}
   const recentText = offRecentChatText();
   const front = [], middle = [], back = [];
-  offWorldbooks.forEach(function (w) {
-    if (!w) return;
+  function offWbEligible(w) {
+    if (!w) return false;
     const scope = w.scope || 'global';
-    if (scope === 'online') return;   // 线上专用，线下不读
+    if (scope === 'online') return false;   // 线上专用，线下不读
     if (scope === 'local') {
       const hit = bindIds[String(w.id)] || (w.boundCharacters || []).some(function (b) { return idCandidates.indexOf(String(b)) > -1; });
-      if (!hit) return;
+      return !!hit;
     }
+    return true;
+  }
+  function offWbText(en) {
+    const content = String((en && en.content) || '').trim();
+    if (!content) return '';
+    return (en.title ? '【' + en.title + '】\n' : '') + content;
+  }
+  function offWbPush(en, text) {
+    const pos = (en && en.position) || 'after_char';
+    if (pos === 'before_char') front.push(text);
+    else if (pos === 'after_chat') back.push(text);
+    else middle.push(text);
+  }
+  const used = {};
+  offWorldbooks.forEach(function (w) {
+    if (!offWbEligible(w)) return;
     w.entries.forEach(function (en) {
       if (!offShouldIncludeEntry(en, recentText)) return;
-      const pos = en.position || 'after_char';
-      const text = (en.title ? '【' + en.title + '】\n' : '') + String(en.content || '').trim();
-      if (pos === 'before_char') front.push(text);
-      else if (pos === 'after_chat') back.push(text);
-      else middle.push(text);
+      const text = offWbText(en);
+      if (!text || used[text]) return;
+      used[text] = true;
+      offWbPush(en, text);
+    });
+  });
+  // 与线上一致：关键词没命中的条目在预算内也注入，保证角色真的读过世界书。
+  const OFF_WB_BUDGET = 7000;
+  const offWbLen = function () {
+    return front.join('\n\n').length + middle.join('\n\n').length + back.join('\n\n').length;
+  };
+  offWorldbooks.forEach(function (w) {
+    if (!offWbEligible(w)) return;
+    w.entries.forEach(function (en) {
+      if (en.enabled === false) return;
+      const text = offWbText(en);
+      if (!text || used[text]) return;
+      if (offWbLen() + text.length + 2 > OFF_WB_BUDGET) return;
+      used[text] = true;
+      offWbPush(en, text);
     });
   });
   return {
-    front: front.length ? '\n\n【世界书 · 关键设定】\n' + front.join('\n\n') : '',
-    middle: middle.length ? '\n\n【世界书】\n' + middle.join('\n\n') : '',
-    back: back.length ? '\n\n【世界书 · 补充】\n' + back.join('\n\n') : ''
+    front: front.length ? '\n\n【世界书 · 关键设定（必须逐条读取，不许跳过）】\n' + front.join('\n\n') : '',
+    middle: middle.length ? '\n\n【世界书（必须逐条读取，不许跳过）】\n' + middle.join('\n\n') : '',
+    back: back.length ? '\n\n【世界书 · 补充（必须逐条读取，不许跳过）】\n' + back.join('\n\n') : ''
   };
 }
 
@@ -1075,7 +1106,7 @@ function offlineStyleLibrary() {
 }
 
 function settingsComplianceInstruction() {
-  return '【设置必读 · 强制生效】动笔前，必须逐条读取并严格遵守下面给出的全部设置：【额外规则】【思维链预设】【字数要求】【人称要求】【用户行动预测】。这些是硬性要求，优先级高于任何通用写作习惯与默认风格；不得忽略、不得打折、不得只当参考，也不得以“自行发挥”为由跳过。输出前先自查一遍：是否满足了每一条设置？';
+  return '【设置必读 · 强制生效】动笔前，必须先读【线下设置】里的【字数要求】【人称要求】【额外规则】【思维链预设】【用户行动预测】，再读【世界书】。世界书是最高硬设定（世界观、身份关系、称呼、禁忌、尺度、专有名词），必须逐条读完且不许跳过；字数、人称、额外规则也是硬性要求，优先级高于任何通用写作习惯与默认风格，不得忽略、不得打折、不得只当参考，也不得以“自行发挥”为由跳过。输出前先自查一遍：字数和人称是否完全满足？每条额外规则是否执行？世界书相关条目是否全部读到？';
 }
 
 // 用户行动预测：禁止 / 中度 / 高度，控制 AI 是否可描写 user 的行动与回复
@@ -2015,7 +2046,7 @@ document.getElementById('deleteSelected').onclick = () => {
 // ============================================================
 document.getElementById('settingsBtn').onclick = (e) => {
   try { e.preventDefault(); e.stopPropagation(); } catch (_) {}
-  const q = offlineChatId ? ('?chat=' + encodeURIComponent(offlineChatId) + '&name=' + encodeURIComponent(settings.charName || '')) : '';
+  const q = offlineChatId ? ('?chat=' + encodeURIComponent(offlineChatId) + '&scene=' + encodeURIComponent(offlineScene) + '&name=' + encodeURIComponent(settings.charName || '') + '&v=20261126e') : '?v=20261126e';
   location.href = 'offline-setting.html' + q;
 };
 // 灰樱：卡片 @ 展开/收起玻璃胶囊；char 卡点韩文展开剧情推荐
@@ -2086,11 +2117,26 @@ function offHasPendingMem() {
   var toOnline = document.getElementById('exitToOnline');
   var memToggle = document.getElementById('exitSummarizeMem');
   var leaving = false;
+  if (memToggle) {
+    // 退出弹窗默认不勾选：系统返回/划走等 pagehide 兜底也不要偷偷总结
+    window.__offSkipMemFlush = !memToggle.checked;
+    memToggle.addEventListener('change', function () {
+      window.__offSkipMemFlush = !memToggle.checked;
+      window.__offSkipAutoSummary = !memToggle.checked;
+      if (memToggle.checked) return;
+      try { clearTimeout(scheduleOfflineMem.t); } catch (e) {}
+    });
+  }
   // 后台整理：先补总结「进线下之前的线上消息」，再总结线下，保证记忆时间线正确。
   // 不阻塞退出；线下 iframe 会被外壳保活到总结结束。
   function backgroundSummarize() {
     try {
-      if (memToggle && !memToggle.checked) return;
+      if (memToggle && !memToggle.checked) {
+        window.__offSkipAutoSummary = true;
+        try { clearTimeout(scheduleOfflineMem.t); } catch (e) {}
+        return;
+      }
+      window.__offSkipAutoSummary = false;
       setOfflineBusy(true, 'summary');
       var p = (async function () {
         try { await summarizeOnlinePendingBeforeOffline(); } catch (e) {}
@@ -3694,12 +3740,13 @@ ${offlineStyleLibrary()}
     return '◇ ' + (m.nick || m.name || '角色') + (st ? ('\n' + String(st).trim()) : '');
   }).filter(Boolean).join('\n\n') : '';
   const personaBlock = (groupPersonaText || charSetting || userPersona)
-    ? '\n\n【读取顺序 2 · 人设（优先级高于文风与写作习惯）】\n'
+    ? '\n\n【读取顺序 3 · 人设（优先级高于文风与写作习惯）】\n'
       + (groupPersonaText ? groupPersonaText + '\n\n' : '')
       + (charSetting ? '【' + (settings.charName || '角色') + ' 的人物设定】\n' + charSetting + '\n' : '')
+      + '【人设读取清单 · 每轮先过一遍】身份（姓名/年龄/职业/国籍/城市）、性格底色与情绪基线、成长经历与背景、与用户的关系阶段/称呼/边界、说话习惯与口癖、喜欢与雷区、本轮场景。以原文为准，原文没写的不要硬编；回复必须从这些具体设定里长出来。\n'
       + (userPersona ? '【用户 ' + (settings.userName || '用户') + ' 的设定】\n' + userPersona + '\n' : '')
     : '';
-  const settingsPriorityBlock = '\n\n【读取顺序 3 · 线下设置（本次生成实时读取，开启的规则才生效）】\n'
+  const settingsPriorityBlock = '\n\n【读取顺序 1 · 线下设置（最高优先级，本次生成实时读取，开启的规则才生效）】\n'
     + [wordInstruction, personInstruction, predictInstruction,
        rulesInstruction, styleInstruction
       ].filter(Boolean).join('\n');
@@ -3837,7 +3884,9 @@ ${offlineStyleLibrary()}
     let wb = { front: '', middle: '', back: '' };
     // 线下单聊/群聊都读取世界书：全局世界书永远生效；单人世界书按当前角色或群成员的绑定命中。
     try { wb = offGetWorldbookText(offlineIsGroup ? offGroupWorldbookIds() : null); } catch (e) {}
-    const worldbookFirstBlock = wb.front + wb.middle + wb.back;
+    const worldbookFirstBlock = (wb.front || wb.middle || wb.back)
+      ? ('\n\n【读取顺序 2 · 世界书 · 必读（先逐条读完再动笔；世界观、关系、称呼、禁忌、专有名词必须一致）】' + wb.front + wb.middle + wb.back)
+      : '';
     let scheduleBlock = '';
     try {
       if (!offlineIsGroup && window.NanoScheduleBridge && window.NanoScheduleBridge.refreshContext) {
@@ -3856,7 +3905,7 @@ ${offlineStyleLibrary()}
               .replace(/{{user}}/g, settings.userName || '对方'));
     const systemPromptStr = (plotOnly || sectionsOnly)
       ? systemPrompt
-      : (worldbookFirstBlock + personaBlock + settingsPriorityBlock + timeBlock + scheduleBlock + anchorBlock + memBlock + onlineBlock + openingBlock + scenePrompt + offlineExitedBlock());
+      : (settingsPriorityBlock + worldbookFirstBlock + personaBlock + timeBlock + scheduleBlock + anchorBlock + memBlock + onlineBlock + openingBlock + scenePrompt + offlineExitedBlock());
     // 可编辑的角色扮演 Prompt 模板（js/roleplay-prompt.js），用户可自行修改
     let finalSystemPrompt = systemPromptStr;
     if (!plotOnly && !sectionsOnly) try {
@@ -4518,8 +4567,16 @@ function omClearFrame() {
 function runOfflineJs(css) {
   try {
     if (!window.NanoBeautifyRT) return;
-    var parsed = window.NanoBeautifyRT.parse(css || '');
-    window.NanoBeautifyRT.run('offline', parsed.js, { mountParent: document.body });
+    var text = String(css || '');
+    var parsed = window.NanoBeautifyRT.parse(text);
+    var js = String(parsed.js || '');
+    // 「心声 · X 帖子风」模板的脚本是为聊天内页的 .nano-voice-modal 写的，
+    // 误把整份模板贴进线下美化时，它会在顶栏生成「关注」。线下没有心声弹窗，直接不执行。
+    if (/nano-heart-x-post|\.nano-voice-modal\s+\.x-follow/i.test(text) ||
+        /\.nano-voice-modal/.test(js) || /x-follow/.test(js)) {
+      js = '';
+    }
+    window.NanoBeautifyRT.run('offline', js, { mountParent: document.body });
   } catch (e) {}
 }
 function offlineCssOnly(css) {
@@ -5430,6 +5487,8 @@ async function summarizeOfflineMemories(force) {
   if (!isStoryScene(offlineScene)) return;
   // 自动总结开关关闭时，自动触发跳过；force（退出线下时）不受开关和条数阈值限制
   if (!force && settings.autoSummary === false) return;
+  // 本次退出已经明确选择「不整理」：连已经排队的自动总结也一起取消
+  if (!force && window.__offSkipAutoSummary) return;
   OFF_MEM_BUSY.v = true;
   try {
     var targets = [{ id: offlineChatId, name: settings.charName || '角色', isMain: true }];
@@ -5485,6 +5544,17 @@ function applyBackgroundImage(src) {
     'background-position:center!important;background-repeat:no-repeat!important}' +
     '.app,.chat{background:transparent!important}';
 }
+
+async function reloadOfflineMessagesFromDb() {
+  try {
+    messages = await getMessages();
+    render();
+    try { chat.scrollTop = chat.scrollHeight; } catch (e) {}
+  } catch (e) {}
+}
+window.addEventListener('storage', function (e) {
+  if (e && e.key === 'nano_offline_msgs_rev') reloadOfflineMessagesFromDb();
+});
 
 async function init() {
   await syncGlobalIdentity();

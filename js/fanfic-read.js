@@ -827,7 +827,7 @@
     try {
       localStorage.setItem('nano_pending_fanfic_card', JSON.stringify({ chatId: String(story.charId), card: card }));
     } catch (e) {}
-    var url = 'chat_inner.html?chat=' + encodeURIComponent(story.charId) + '&name=' + encodeURIComponent(story.charName || '');
+    var url = 'chat_inner.html?v=20261126f&chat=' + encodeURIComponent(story.charId) + '&name=' + encodeURIComponent(story.charName || '');
     if (window.parent !== window) {
       try { window.parent.postMessage({ type: 'openFullscreen', url: url, title: '', showBack: false, source: 'fanfic' }, '*'); return; } catch (e) {}
     }

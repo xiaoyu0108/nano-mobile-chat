@@ -29,7 +29,7 @@
       'opacity:0;transition:opacity .2s ease;}',
       '.nrr-overlay.show{opacity:1;}',
       '.nrr-sheet{width:100%;max-width:480px;background:linear-gradient(180deg,#fffdfb,#fff7f2);',
-      'border-radius:26px 26px 0 0;padding:10px 20px calc(20px + max(env(safe-area-inset-bottom,0px),8px));',
+      'border-radius:26px 26px 0 0;padding:10px 20px calc(20px + max(max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom,0px)),8px));',
       'box-shadow:0 -18px 60px rgba(80,40,55,.18);transform:translateY(24px);transition:transform .24s cubic-bezier(.2,.8,.2,1);',
       'box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",Arial,sans-serif;}',
       '.nrr-overlay.show .nrr-sheet{transform:translateY(0);}',

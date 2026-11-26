@@ -7,6 +7,9 @@ const DB_VERSION = 2;
 const CURRENT_CHAT = (function () {
   try { return new URLSearchParams(location.search).get('chat') || ''; } catch (e) { return ''; }
 })();
+const CURRENT_SCENE = (function () {
+  try { return new URLSearchParams(location.search).get('scene') || ''; } catch (e) { return ''; }
+})();
 
 function openDB() {
   return new Promise((resolve, reject) => {
@@ -552,7 +555,7 @@ const INITIAL_CSS = `/* ========================================================
    //      （想放屏幕任意位置：改 left/right/top/bottom；用 .bottom 作参照就给 .bottom{position:relative}）
    //   ⑤ 若输入框文字被裁：别把 .input 写死成更小的 height；要改就同时改 line-height 与 padding，
    //      并保持 box-sizing:border-box（本页已全局设置）。例如 .input{height:46px;padding:12px 14px;line-height:22px}
-   //   ⑥ 键盘弹起时轻微跳动属移动端行为；给 .bottom 加 padding-bottom:env(safe-area-inset-bottom) 兜底即可。
+   //   ⑥ 键盘弹起时轻微跳动属移动端行为；给 .bottom 加 padding-bottom:max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom)) 兜底即可。
    // 纯装饰占位（不可点）：给稳定父元素加 ::before/::after
    .bottom::before{content:"";position:absolute;left:56px;bottom:16px;width:20px;height:20px;pointer-events:none;background:url("https://装饰.png") center/20px no-repeat}
    // 底栏左侧现在是「圆形头像按钮」#composerAvatarBtn，点击弹出竖向菜单(.om-menu)。
@@ -1876,7 +1879,7 @@ function renderSearch() {
       el.onclick = function() {
         const idx = this.dataset.msgidx;
         localStorage.setItem('offline-scroll-to', idx);
-        location.href = 'offline.html';
+        location.href = 'offline.html?v=20261126e';
       };
     });
   });
@@ -1900,84 +1903,109 @@ document.getElementById('findRecords').onclick = function() {
 document.getElementById('recordSearch').addEventListener('input', renderSearch);
 
 // ============================================================
-//  12. 清空记录
+//  12. 清空 / 压缩 / 部分清除（记忆永远保留）
 // ============================================================
-const modal = document.getElementById('modalBg');
-document.getElementById('clearRecords').onclick = function() { modal.classList.add('open'); };
-document.getElementById('modalCancel').onclick = function() { modal.classList.remove('open'); };
-
-async function collectOfflineMessageCids() {
-  try {
-    const db = await memOpenDb('MeetSettingsDB', 1, ['messages']);
-    const all = await new Promise(function(resolve) {
-      const r = db.transaction('messages', 'readonly').objectStore('messages').getAll();
-      r.onsuccess = function() { resolve(r.result || []); };
-      r.onerror = function() { resolve([]); };
-    });
-    const set = {};
-    all.forEach(function(m) { if (m && (m.role === 'user' || m.role === 'assistant') && (m.scene || 'story') === 'story') set[m.chatId || 'general'] = true; });
-    return Object.keys(set);
-  } catch (e) { return []; }
+function inCurrentOfflineScope(m) {
+  if (!m) return false;
+  if ((m.chatId || '') !== CURRENT_CHAT) return false;
+  if (CURRENT_SCENE && (m.scene || 'story') !== CURRENT_SCENE) return false;
+  return true;
 }
 
-async function clearOfflineMemoriesForCids(cids) {
-  if (!cids || !cids.length) return;
-  try {
-    const vdb = await memOpenDb('nano_vector_memory_db', 5, ['config']);
-    for (const cid of cids) {
-      const rec = await new Promise(function(resolve) {
-        const g = vdb.transaction('config', 'readonly').objectStore('config').get('memlist_' + cid);
-        g.onsuccess = function() { resolve(g.result ? g.result.value : null); };
-        g.onerror = function() { resolve(null); };
-      });
-      const list = (rec && Array.isArray(rec)) ? rec : [];
-      const filtered = list.filter(function(it) { return !(it && it.chatId === cid && it.type === '长期记忆'); });
-      await new Promise(function(resolve) {
-        vdb.transaction('config', 'readwrite').objectStore('config').put({ key: 'memlist_' + cid, value: filtered });
-        resolve();
-      });
-    }
-  } catch (e) { console.warn('清理线下记忆失败', e); }
+async function offlineScopedMessages() {
+  const all = await getStoreData(MESSAGES_STORE);
+  if (!CURRENT_CHAT) return all;
+  return all.filter(inCurrentOfflineScope);
 }
 
-async function deleteMessagesForChat(cid) {
-  if (!cid) { await clearStore('messages'); return; }
+// 只重写当前作用域内的消息：传进来的 arr 是「要保留的当前会话消息」，
+// 其它会话的消息原样留在库里。
+async function writeOfflineScopedMessages(arr) {
+  const all = await getStoreData(MESSAGES_STORE);
+  const keep = CURRENT_CHAT
+    ? all.filter(function(m) { return !inCurrentOfflineScope(m); })
+    : [];
   const db = await openDB();
-  return new Promise((resolve) => {
-    const tx = db.transaction('messages', 'readwrite');
-    const store = tx.objectStore('messages');
-    const cur = store.openCursor();
-    cur.onsuccess = (e) => {
-      const c = e.target.result;
-      if (c) {
-        const v = c.value;
-        if (v && (v.chatId || '') === cid) c.delete();
-        c.continue();
-      } else {
-        resolve();
-      }
-    };
-    cur.onerror = () => resolve();
+  await new Promise(function(resolve) {
+    const tx = db.transaction(MESSAGES_STORE, 'readwrite');
+    const store = tx.objectStore(MESSAGES_STORE);
+    store.clear();
+    keep.concat(Array.isArray(arr) ? arr : []).forEach(function(m) { try { store.put(m); } catch (e) {} });
+    tx.oncomplete = function() { resolve(); };
+    tx.onerror = function() { resolve(); };
   });
+  try { localStorage.setItem('nano_offline_msgs_rev', String(Date.now())); } catch (e) {}
 }
 
-document.getElementById('modalConfirm').onclick = async function() {
-  let cids;
-  if (CURRENT_CHAT) {
-    cids = [CURRENT_CHAT];
-    await deleteMessagesForChat(CURRENT_CHAT);
-  } else {
-    cids = await collectOfflineMessageCids();
-    await clearStore('messages');
+function collectOfflineImageTasks(arr) {
+  const tasks = [];
+  function add(container, key) {
+    if (!container) return;
+    const v = container[key];
+    if (typeof v !== 'string' || v.indexOf('data:image') !== 0) return;
+    tasks.push({ get: function() { return container[key]; }, set: function(d) { container[key] = d; } });
   }
-  await clearOfflineMemoriesForCids(cids);
-  modal.classList.remove('open');
+  arr.forEach(function(m) {
+    if (!m) return;
+    add(m, 'image');
+    if (m.imageData) add(m.imageData, 'url');
+    if (m.cardData) add(m.cardData, 'img');
+    if (m.linkPreview) add(m.linkPreview, 'image');
+  });
+  return tasks;
+}
+
+async function compressOfflineMessages() {
+  if (!window.NanoImageCache || !NanoImageCache.shrinkDataUrl) throw new Error('图片压缩模块未加载');
+  const arr = await offlineScopedMessages();
+  const beforeSize = JSON.stringify(arr).length;
+  const tasks = collectOfflineImageTasks(arr);
+  let images = 0;
+  for (let i = 0; i < tasks.length; i++) {
+    const t = tasks[i];
+    const v = t.get();
+    if (typeof v !== 'string' || v.indexOf('data:image') !== 0) continue;
+    let d = v;
+    try { d = await NanoImageCache.shrinkDataUrl(v, 1024, 0.6); } catch (e) { d = v; }
+    if (d && d !== v) { t.set(d); images++; }
+  }
+  const messages = (window.NanoClearChat && NanoClearChat.compactMessages) ? NanoClearChat.compactMessages(arr, 20) : 0;
+  const afterSize = JSON.stringify(arr).length;
+  if (images || messages) await writeOfflineScopedMessages(arr);
+  return { images: images, messages: messages, before: beforeSize, after: afterSize };
+}
+
+async function partialOfflineMessages(start, end) {
+  const arr = await offlineScopedMessages();
+  const removed = arr.splice(start - 1, end - start + 1);
+  await writeOfflineScopedMessages(arr);
+  return { deleted: removed.length, remaining: arr.length };
+}
+
+async function deleteAllOfflineMessages() {
+  if (CURRENT_CHAT) {
+    await writeOfflineScopedMessages([]);
+  } else {
+    await clearStore(MESSAGES_STORE);
+    try { localStorage.setItem('nano_offline_msgs_rev', String(Date.now())); } catch (e) {}
+  }
   document.getElementById('recordResults').classList.remove('open');
   document.getElementById('recordSearchBox').classList.remove('open');
   searchExpanded = false;
-  showToast('记录与相关记忆已清空');
+  return { ok: true };
+}
+
+document.getElementById('clearRecords').onclick = async function() {
+  if (!window.NanoClearChat) { showToast('清理模块未加载'); return; }
+  const arr = await offlineScopedMessages();
+  NanoClearChat.open({
+    scope: CURRENT_CHAT ? (CURRENT_SCENE === 'theater' ? '线下小剧场' : '线下') : '全部线下',
+    total: arr.length,
+    compress: compressOfflineMessages,
+    partial: partialOfflineMessages,
+    deleteAll: deleteAllOfflineMessages
+  });
 };
-modal.onclick = function(e) { if (e.target === modal) modal.classList.remove('open'); };
 
 // ============================================================
 //  13. 更新摘要 & 填充设置
@@ -2004,6 +2032,8 @@ function updateSummary() {
     const n = Array.isArray(settings.statusBars) ? settings.statusBars.length : 0;
     sbVal.textContent = (settings.builtinBody ? '身体状态 · ' : '') + (n ? (n + ' 个') : (settings.builtinBody ? '已开启' : '未设置'));
   }
+  const memVal = document.getElementById('memoryValue');
+  if (memVal) memVal.textContent = (settings.autoSummary !== false ? '自动' : '手动') + ' · ' + (settings.memThreshold || 5) + ' 条';
 }
 
 function fillSettings() {
@@ -2016,6 +2046,7 @@ function fillSettings() {
   document.getElementById('person').value = settings.person || 'auto';
   const mt = document.getElementById('memThresholdInput');
   if (mt) mt.value = settings.memThreshold || localStorage.getItem('offline_mem_threshold') || '5';
+  setAutoSwitchUI();
   updateSummary();
   populateStylePresets();
   populateCotPresets();
@@ -2059,7 +2090,7 @@ function renderCssPreview(css) {
   if (!f.getAttribute('src')) {
     let chat = '';
     try { chat = new URLSearchParams(location.search).get('chat') || ''; } catch (e) {}
-    f.setAttribute('src', 'offline.html?preview=1' + (chat ? ('&chat=' + encodeURIComponent(chat)) : ''));
+    f.setAttribute('src', 'offline.html?preview=1&v=20261126e' + (chat ? ('&chat=' + encodeURIComponent(chat)) : ''));
   }
   // iframe 就绪后立即套用最新 CSS；未就绪则等 load 事件补发
   if (f.dataset.ready === '1') sendPreviewCss(f);
@@ -2346,8 +2377,11 @@ function setAutoSwitchUI() {
 }
 if (autoSummarySwitch) autoSummarySwitch.addEventListener('click', function() {
   settings.autoSummary = !autoSummarySwitch.classList.contains('on');
-  saveSettings();
   setAutoSwitchUI();
+  updateSummary();
+  Promise.resolve(saveSettings()).catch(function () {}).then(function () {
+    try { notifyOfflineChanged(); } catch (e) {}
+  });
   showToast(settings.autoSummary ? '自动总结已开启' : '自动总结已关闭');
 });
 
@@ -2386,7 +2420,10 @@ if (memThresholdSaveEl) memThresholdSaveEl.onclick = function() {
   const v = parseInt(document.getElementById('memThresholdInput').value, 10) || 5;
   settings.memThreshold = v;
   try { localStorage.setItem('offline_mem_threshold', String(v)); } catch (e) {}
-  saveSettings();
+  updateSummary();
+  Promise.resolve(saveSettings()).catch(function () {}).then(function () {
+    try { notifyOfflineChanged(); } catch (e) {}
+  });
   showToast('总结阈值已设为 ' + v + ' 条');
 };
 
@@ -2506,7 +2543,7 @@ document.getElementById('saveBtn').onclick = function() {
   settings.wordCount = document.getElementById('wordCount').value;
   settings.person = document.getElementById('person').value;
   { const pu = document.getElementById('predictUser'); if (pu) settings.predictUser = pu.value; }
-  settings.memThreshold = parseInt(document.getElementById('memThresholdInput').value, 10) || 5;
+  { const mt = document.getElementById('memThresholdInput'); if (mt) settings.memThreshold = parseInt(mt.value, 10) || 5; }
   saveSettings();
   updateSummary();
   showToast('设置已保存');
@@ -2522,6 +2559,7 @@ document.getElementById('backBtn').onclick = function() {
     if (cid) q += 'chat=' + encodeURIComponent(cid);
     if (nm) q += (q ? '&' : '') + 'name=' + encodeURIComponent(nm);
   } catch (e) {}
+  q += (q ? '&' : '') + 'v=20261126e';
   location.href = 'offline.html' + (q ? '?' + q : '');
 };
 

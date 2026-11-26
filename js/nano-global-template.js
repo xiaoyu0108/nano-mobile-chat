@@ -1,13 +1,13 @@
 /* ============================================================
    js/nano-global-template.js
-   纳米「全局美化」初始模板 —— 聊天页（chat.html）完整版
+   纳米「聊天美化」初始模板 —— 聊天列表（chat.html）完整版
    ------------------------------------------------------------
    作用页面：chat.html（body.nano-chat）
-   * 全局美化 CSS 会注入到 index / chat / chat_inner / groups /
+   * 聊天美化 CSS 会注入到 index / chat / chat_inner / groups /
      discover / more / api 等页面，但本模板全部用 .nano-chat 限定，
      所以只会改「聊天列表页」，不会误伤其它页面。
    * 聊天内页（私聊 chat_inner.html / 群聊 groups.html）请用
-     「聊天美化」模板（js/nano-chat-template.js）。
+     「线上美化」模板（js/nano-chat-template.js）。
    * 这里的代码 = chat.html 当前完整 UI 的逐条 CSS，可直接任意 DIY。
 
    ★ 还能写脚本：用英文注释包住 JS（开头 / * @js，结尾 * /），
@@ -113,7 +113,7 @@
    ============================================================ */
 
 window.NANO_GLOBAL_TEMPLATE = `/* ============================================================
-   Nano 全局美化 · 聊天页完整模板
+   Nano 聊天美化 · 聊天列表完整模板
    仅为 chat.html / body.nano-chat 编写，可整段替换、任意 DIY。
    ============================================================ */
 
@@ -128,7 +128,7 @@ window.NANO_GLOBAL_TEMPLATE = `/* ==============================================
   --accent: #111111;
   --danger: #e54d42;
   --radius: 16px;
-  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-bottom: max(var(--nano-safe-bottom, 0px), env(safe-area-inset-bottom, 0px));
   --gray-avatar: #d1d1d1;
 }
 

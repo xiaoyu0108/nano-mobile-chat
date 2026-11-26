@@ -388,7 +388,7 @@
     function openChat(id, name, avatar) {
         try {
             if (window.parent !== window) window.parent.postMessage({ type: 'openChat', chatId: id, chatName: name || '', chatAvatar: avatar || '' }, '*');
-            else location.href = 'chat_inner.html?chat=' + encodeURIComponent(id) + '&name=' + encodeURIComponent(name || '');
+            else location.href = 'chat_inner.html?v=20261126f&chat=' + encodeURIComponent(id) + '&name=' + encodeURIComponent(name || '');
         } catch (e) {}
     }
 
