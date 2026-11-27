@@ -213,23 +213,38 @@
     return Promise.all([loadWorldbookFiles(), charMapPromise]).then(function (res) {
       var files = res[0] || [], charMap = res[1] || {};
       var bindIds = {};
+      var charIdStrs = (charIds || []).map(String);
       (charIds || []).forEach(function (id) {
         var c = charMap[id];
-        ((c && c.worldbookBindings) || []).forEach(function (b) { if (b && b.id) bindIds[String(b.id)] = true; });
+        ((c && c.worldbookBindings) || []).forEach(function (b) {
+          var bid = (b && typeof b === 'object') ? b.id : b;
+          if (bid != null) bindIds[String(bid)] = true;
+        });
       });
       var out = [];
       files.forEach(function (f) {
         if (!f) return;
-        var scope = f.scope || 'global';
-        var bound = Array.isArray(f.boundCharacters) ? f.boundCharacters : [];
+        var entries = Array.isArray(f.entries) ? f.entries : [];
+        // 兼容旧数据：整本 scope/boundCharacters 缺失时，从条目还原绑定关系
+        var scope = f.scope || '';
+        if (scope === 'offline') scope = 'global';
+        var rawBound = (Array.isArray(f.boundCharacters) && f.boundCharacters.length) ? f.boundCharacters : [];
+        if (!rawBound.length) {
+          entries.forEach(function (e) {
+            if (e && Array.isArray(e.boundCharacters)) rawBound = rawBound.concat(e.boundCharacters);
+          });
+        }
+        if (!scope) scope = entries.some(function (e) { return e && e.scope === 'local'; }) ? 'local' : 'global';
+        var bound = rawBound.map(function (b) {
+          return String((b && typeof b === 'object') ? b.id : b);
+        });
         var boundHit = !!bindIds[String(f.id)] ||
-          (charIds || []).some(function (id) { return bound.indexOf(id) > -1; });
+          charIdStrs.some(function (id) { return bound.indexOf(id) > -1; });
         var applies = false;
         if (scope === 'global') applies = true;
         else if (scope === 'online') applies = !bound.length || boundHit;
         else applies = boundHit;
         if (!applies) return;
-        var entries = Array.isArray(f.entries) ? f.entries : [];
         var lines = [];
         entries.forEach(function (e) {
           if (!e || !e.content) return;

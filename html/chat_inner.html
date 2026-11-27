@@ -6,13 +6,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>聊天</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" media="print" onload="this.media='all'">
-    <link rel="stylesheet" href="../css/chat-inner.css?v=20261126f">
+    <link rel="stylesheet" href="../css/chat-inner.css?v=20261127a">
     <link rel="stylesheet" href="../css/heart.css?v=20261126e">
 
     <link rel="dns-prefetch" href="https://unpkg.com">
     <!-- 聊天页最重的两个脚本提前下载，减少第一次进入时的“正在加载”。 -->
     <link rel="preload" href="../js/localforage.min.js?v=20261027a" as="script">
-    <link rel="preload" href="../js/chat-core.js?v=20261126f" as="script">
+    <link rel="preload" href="../js/chat-core.js?v=20261127a" as="script">
     <script defer src="../js/localforage.min.js?v=20261027a"></script>
     <script defer src="../js/appearance.js?v=20261126e"></script>
 <script defer src="../js/nano-notify.js?v=20261112a"></script>
@@ -516,7 +516,7 @@
     <script defer src="../js/nano-prompts.js?v=20261126e"></script>
 <script defer src="../js/social-graph.js?v=20261123a"></script>
     <script defer src="../js/nano-translate.js?v=20261026d"></script>
-    <script defer fetchpriority="high" src="../js/chat-core.js?v=20261126f"></script>
+    <script defer fetchpriority="high" src="../js/chat-core.js?v=20261127a"></script>
     <script defer src="../js/travel-store.js?v=20261112b"></script>
     <script defer src="../js/travel-api.js?v=20261119c"></script>
     <script defer src="../js/travel-bridge.js?v=20261126e"></script>
@@ -825,6 +825,28 @@
   window.addEventListener('resize', measure);
   window.addEventListener('load', measure);
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(measure);
+})();
+</script>
+<script>
+// 滚动性能：滑动时给 body 加 .chat-scrolling，临时关掉顶/底栏 backdrop-filter（见 chat-inner.css）。
+// 停止滑动后 180ms 自动恢复，不影响静止时的毛玻璃外观。
+(function () {
+  var sc = document.getElementById('messageScroll');
+  if (!sc) return;
+  var on = false, timer = 0;
+  function onScroll() {
+    if (!on) {
+      on = true;
+      document.body.classList.add('chat-scrolling');
+    }
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(function () {
+      timer = 0;
+      on = false;
+      document.body.classList.remove('chat-scrolling');
+    }, 180);
+  }
+  sc.addEventListener('scroll', onScroll, { passive: true });
 })();
 </script>
 </body>

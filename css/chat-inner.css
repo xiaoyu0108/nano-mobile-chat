@@ -2406,3 +2406,16 @@ body.nano-groups .voice-bubble {
 }
 .xs-card-foot { display: flex; align-items: center; gap: 4px; margin-top: 10px; font-size: 12px; color: #536471; white-space: normal; }
 .xs-card-foot svg { width: 14px; height: 14px; display: block; }
+
+/* =====================================================================
+   滚动性能：滑动消息列表时临时关掉顶/底栏的实时模糊。
+   backdrop-filter 会随着下方滚动内容每帧重新计算，安卓 WebView 上很容易掉帧；
+   停止滑动 180ms 后由 chat_inner.html 移除 .chat-scrolling，恢复原来的毛玻璃效果。
+   ===================================================================== */
+body.chat-scrolling .topbar,
+body.chat-scrolling .topbar *,
+body.chat-scrolling .bottom-bar,
+body.chat-scrolling .bottom-bar * {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}

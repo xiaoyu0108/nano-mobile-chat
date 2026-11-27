@@ -52,28 +52,64 @@
         const wb = await readWorldbookRaw();
         if (!wb || !Array.isArray(wb.files)) return [];
         const charId = char && char.id;
-        const bindIds = new Set(((char && char.worldbookBindings) || []).map(w => w.id));
-        const out = [];
-        wb.files.forEach(f => {
-            const scope = f.scope || 'global';
-            const isGlobal = scope === 'global';
-            const isLocalBound = scope === 'local' && (
-                (Array.isArray(f.boundCharacters) && f.boundCharacters.includes(charId)) || bindIds.has(f.id)
-            );
-            const isOnline = scope === 'online' && (
-                !Array.isArray(f.boundCharacters) || !f.boundCharacters.length ||
-                f.boundCharacters.includes(charId) || bindIds.has(f.id)
-            );
-            if (!isGlobal && !isLocalBound && !isOnline) return;
-            (f.entries || []).forEach(en => {
-                if (!en || en.enabled === false) return;
-                if (!en.content || !String(en.content).trim()) return;
-                const kw = String(en.keywords || '').trim();
-                const always = en.permanent === true || en.keywordEnabled === false || !kw;
-                if (!always) return;
-                out.push({ book: f.name, title: en.title || '', content: en.content });
+        const idCandidates = [charId, char && char.id, char && char.name].filter(Boolean).map(String);
+        const bindIds = new Set(((char && char.worldbookBindings) || []).map(w => String((w && typeof w === 'object') ? w.id : w)));
+        // 兼容旧数据：整本 scope/boundCharacters 缺失时，从条目的 scope/boundCharacters 还原绑定关系。
+        function fileScope(f) {
+            let scope = f.scope || '';
+            if (scope === 'offline') scope = 'global';
+            if (!scope) scope = (f.entries || []).some(e => e && e.scope === 'local') ? 'local' : 'global';
+            return scope;
+        }
+        function fileBound(f) {
+            if (Array.isArray(f.boundCharacters) && f.boundCharacters.length) return f.boundCharacters;
+            const out = [];
+            (f.entries || []).forEach(e => {
+                if (!e || !Array.isArray(e.boundCharacters)) return;
+                e.boundCharacters.forEach(bid => { if (bid != null && out.indexOf(bid) === -1) out.push(bid); });
             });
+            return out;
+        }
+        function boundHit(f) {
+            if (bindIds.has(String(f.id))) return true;
+            return fileBound(f).some(b => {
+                const bid = (b && typeof b === 'object') ? b.id : b;
+                return bid != null && idCandidates.indexOf(String(bid)) > -1;
+            });
+        }
+        const eligible = [];
+        wb.files.forEach(f => {
+            if (!f) return;
+            const scope = fileScope(f);
+            if (scope === 'local') { if (boundHit(f)) eligible.push(f); return; }
+            if (scope === 'online') {
+                if (!fileBound(f).length || boundHit(f)) eligible.push(f);
+                return;
+            }
+            eligible.push(f);
         });
+        // 全局书优先，指定角色/单人绑定书其次
+        eligible.sort((a, b) => {
+            const pa = (fileScope(a) === 'global') ? 0 : 1;
+            const pb = (fileScope(b) === 'global') ? 0 : 1;
+            return pa - pb;
+        });
+        // 不再只挑「常驻/无关键词」的条目：整本世界书都读进来，按字符预算截断。
+        const BUDGET = 8000;
+        const out = [];
+        const used = {};  // 同文去重（与聊天页一致）
+        let usedLen = 0;
+        for (const f of eligible) {
+            for (const en of (f.entries || [])) {
+                if (!en || en.enabled === false) continue;
+                const content = String(en.content || '').trim();
+                if (!content || used[content]) continue;
+                if (usedLen + content.length + 2 > BUDGET) continue;
+                used[content] = true;
+                usedLen += content.length + 2;
+                out.push({ book: f.name, title: en.title || '', content });
+            }
+        }
         return out;
     }
 

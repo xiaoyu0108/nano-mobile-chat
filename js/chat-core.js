@@ -230,12 +230,28 @@
             }];
         }
         if (!list.length) return null;
+        // 兼容旧数据：整本 scope 没写时，沿用条目上的 local/boundCharacters；
+        // 否则「绑定到角色」的旧世界书会被当成全局/未绑定，看起来像完全没读。
+        let scope = f.scope || '';
+        if (scope === 'offline') scope = 'global';
+        let boundCharacters = Array.isArray(f.boundCharacters) ? f.boundCharacters.slice() : [];
+        if (!scope) {
+            scope = entries.some(function (e) { return (e && e.scope) === 'local'; }) ? 'local' : 'global';
+        }
+        if (scope === 'local' && !boundCharacters.length) {
+            entries.forEach(function (e) {
+                if (!e || !Array.isArray(e.boundCharacters)) return;
+                e.boundCharacters.forEach(function (bid) {
+                    if (bid != null && boundCharacters.indexOf(bid) === -1) boundCharacters.push(bid);
+                });
+            });
+        }
         return {
             id: f.id,
             name: f.name || '未命名',
             group: f.group || '',
-            scope: f.scope || 'global',
-            boundCharacters: Array.isArray(f.boundCharacters) ? f.boundCharacters : [],
+            scope: scope,
+            boundCharacters: boundCharacters,
             entries: list
         };
     }
@@ -337,13 +353,14 @@
         return true;
     }
 
-    // 组装世界书文本：关键词/位置 + 整本全局/局部绑定 + 条目触发规则
+    // 组装世界书文本：整本全局/局部绑定 + 关键词/位置 + 条目触发规则
     function getWorldbookText(charId) {
         const id = charId || chatId;
         const recentText = getRecentChatText();
-        // 局部世界书的绑定可能写在角色身上（worldbookBindings），也可能写在世界书本体的 boundCharacters
+        // 绑定可能写在角色身上（worldbookBindings），也可能写在世界书本体的 boundCharacters
         const idCandidates = [id, characterData && characterData.id, characterData && characterData.name, displayName, chatName]
-            .filter(Boolean).map(String);
+            .filter(function (v) { return v != null && String(v).trim() !== ''; })
+            .map(String);
         // 小号聊天：把大号的 id/名字也纳入候选，并读取大号身上的世界书绑定
         if (__originCharData) {
             try {
@@ -352,14 +369,15 @@
             } catch (e) {}
         }
         const bindIds = {};
+        function addBinding(b) {
+            if (b == null) return;
+            const bid = (typeof b === 'object') ? b.id : b;
+            if (bid != null && String(bid) !== '') bindIds[String(bid)] = true;
+        }
         try {
-            ((characterData && characterData.worldbookBindings) || []).forEach(function(b) {
-                if (b && b.id) bindIds[String(b.id)] = true;
-            });
+            ((characterData && characterData.worldbookBindings) || []).forEach(addBinding);
             if (__originCharData && Array.isArray(__originCharData.worldbookBindings)) {
-                __originCharData.worldbookBindings.forEach(function(b) {
-                    if (b && b.id) bindIds[String(b.id)] = true;
-                });
+                __originCharData.worldbookBindings.forEach(addBinding);
             }
         } catch (e) {}
         const front = [], middle = [], back = [];
@@ -373,15 +391,22 @@
             if (allWorldbooks.some(function (w) { return w && String(w.id) === String(norm.id); })) return allWorldbooks;
             return [norm].concat(allWorldbooks);
         })();
+        function wbBoundHit(w) {
+            if (!w) return false;
+            if (bindIds[String(w.id)]) return true;
+            const boundList = Array.isArray(w.boundCharacters) ? w.boundCharacters : [];
+            return boundList.some(function (b) {
+                const bid = (b && typeof b === 'object') ? b.id : b;
+                return bid != null && idCandidates.indexOf(String(bid)) !== -1;
+            });
+        }
         function wbEligible(w) {
             if (!w) return false;
             const scope = w.scope || 'global';
             const boundList = Array.isArray(w.boundCharacters) ? w.boundCharacters : [];
-            const boundHit = bindIds[String(w.id)] ||
-                boundList.some(function(b) { return idCandidates.indexOf(String(b)) !== -1; });
-            if (scope === 'local') return !!boundHit;                       // 单人：必须命中绑定角色
-            if (scope === 'online') return !boundList.length || !!boundHit; // 线上：选了角色就按角色过滤，未选＝全部
-            return true;
+            if (scope === 'local') return wbBoundHit(w);                       // 单人：必须命中绑定角色
+            if (scope === 'online') return !boundList.length || wbBoundHit(w); // 线上：选了角色就按角色过滤，未选＝全部
+            return true;                                                        // 全局：所有角色都读
         }
         function wbText(en) {
             const content = String((en && en.content) || '').trim();
@@ -394,34 +419,65 @@
             else if (pos === 'after_chat') back.push(text);
             else middle.push(text);
         }
+        // 读取顺序：全局世界书优先（它适用于所有角色），其次才是指定角色/单人绑定的世界书。
+        const eligible = wbList.filter(wbEligible);
+        const ordered = [];
+        eligible.forEach(function (w) {
+            if ((w.scope || 'global') === 'global') ordered.push(w);
+        });
+        eligible.forEach(function (w) { if (ordered.indexOf(w) === -1) ordered.push(w); });
+
         const used = {};
-        wbList.forEach(function(w) {
-            if (!wbEligible(w)) return;
-            w.entries.forEach(function(en) {
-                if (!shouldIncludeEntry(en, recentText)) return;
-                const text = wbText(en);
-                if (!text || used[text]) return;
-                used[text] = true;
-                wbPush(en, text);
+        let usedLen = 0;
+        // 默认预算比旧版（7000 字）翻倍，尽量把绑定的整本 + 全局都读进来；
+        // 可用 localStorage.nano_wb_budget_chars 调整（4000~40000）。
+        const WB_BUDGET = (function () {
+            let v = 0;
+            try { v = parseInt(localStorage.getItem('nano_wb_budget_chars') || '0', 10) || 0; } catch (e) {}
+            if (!v) v = 14000;
+            return Math.max(4000, Math.min(40000, v));
+        })();
+        function tryPush(en) {
+            if (!en || en.enabled === false) return false;
+            const text = wbText(en);
+            if (!text || used[text]) return false;
+            if (usedLen + text.length + 2 > WB_BUDGET) return false;
+            used[text] = true;
+            usedLen += text.length + 2;
+            wbPush(en, text);
+            return true;
+        }
+        // 1) 常驻条目：无条件读取（全局书在前，其次是指定角色/单人绑定书）
+        ordered.forEach(function (w) {
+            (w.entries || []).forEach(function (en) {
+                if (en && en.permanent === true) tryPush(en);
             });
         });
-        // 关键词没命中的条目：只要还有预算也注入，保证角色至少真的读过整本世界书，
-        // 而不是只读到命中关键词的零星几条。预算按字符算，避免把超长世界书全塞进去。
-        const WB_BUDGET = 7000;
-        const wbLen = function() {
-            return front.join('\n\n').length + middle.join('\n\n').length + back.join('\n\n').length;
-        };
-        wbList.forEach(function(w) {
-            if (!wbEligible(w)) return;
-            w.entries.forEach(function(en) {
-                if (en.enabled === false) return;
-                const text = wbText(en);
-                if (!text || used[text]) return;
-                if (wbLen() + text.length + 2 > WB_BUDGET) return;
-                used[text] = true;
-                wbPush(en, text);
+        // 2) 该读的条目：关键词命中 / 未开启关键词 / 没有关键词
+        ordered.forEach(function (w) {
+            (w.entries || []).forEach(function (en) {
+                if (!en || en.permanent === true) return;
+                if (shouldIncludeEntry(en, recentText)) tryPush(en);
             });
         });
+        // 3) 关键词没命中的条目：预算内补齐，保证整本世界书都被读过；
+        //    逐本轮询，避免一本超长全局书把绑定书全部吃光。
+        const remaining = ordered.map(function (w) {
+            return (w.entries || []).filter(function (en) {
+                return en && en.enabled !== false && en.permanent !== true &&
+                    String(en.content || '').trim() && !used[wbText(en)];
+            });
+        });
+        let progress = true;
+        while (progress && usedLen < WB_BUDGET) {
+            progress = false;
+            for (let bi = 0; bi < remaining.length && usedLen < WB_BUDGET; bi++) {
+                const list = remaining[bi];
+                while (list.length) {
+                    if (tryPush(list.shift())) { progress = true; break; }
+                }
+            }
+        }
         return {
             front: front.length ? '\n\n【世界书 · 关键设定（必须逐条读取，不许跳过）】\n' + front.join('\n\n') : '',
             middle: middle.length ? '\n\n【世界书（必须逐条读取，不许跳过）】\n' + middle.join('\n\n') : '',
@@ -1830,6 +1886,34 @@
             }
         });
     }
+    // 左滑引用也用事件委托：挂在容器上 1 组监听，而不是给每一行都加 3 个（历史多时滚动很卡）
+    (function () {
+        if (!messageContainer) return;
+        let sx = null, sy = null, sid = null;
+        function reset() { sx = null; sy = null; sid = null; }
+        messageContainer.addEventListener('touchstart', function (e) {
+            if (!e.touches || e.touches.length !== 1) { reset(); return; }
+            const row = e.target && e.target.closest ? e.target.closest('.message-row') : null;
+            if (!row || !messageContainer.contains(row)) { reset(); return; }
+            sid = row.dataset.id || null;
+            sx = e.touches[0].clientX;
+            sy = e.touches[0].clientY;
+        }, { passive: true });
+        messageContainer.addEventListener('touchmove', function (e) {
+            if (sx === null || !sid || !e.touches || e.touches.length !== 1) return;
+            const dx = e.touches[0].clientX - sx;
+            const dy = e.touches[0].clientY - sy;
+            if (dx < -60 && Math.abs(dy) < Math.abs(dx) * 0.6) {
+                const rowId = sid;
+                reset();
+                const m = findMessageById(rowId);
+                if (!m || m.recalled) return;
+                setQuote(m.id, msgSwipeQuoteText(m));
+            }
+        }, { passive: true });
+        messageContainer.addEventListener('touchend', reset, { passive: true });
+        messageContainer.addEventListener('touchcancel', reset, { passive: true });
+    })();
     // 纳米助手：输入框换成可自适应的 textarea（仍然复用同一个 id / 值读写逻辑）
     if (isNanoChat) {
         try {
@@ -1893,6 +1977,14 @@
     let autoMomentTimer = null;
     let suppressApiAlerts = false;
     let pendingJumpMsgId = null;
+    // 渲染窗口内的消息索引：避免 createMessageRow 每行都 messages.find（长聊天时是 O(n²)）
+    let renderMsgIndex = null;
+    function findMessageById(id) {
+        if (id == null) return null;
+        const key = String(id);
+        if (renderMsgIndex) return renderMsgIndex.get(key) || null;
+        return messages.find(function (m) { return m && String(m.id) === key; }) || null;
+    }
     // 主 API 最近一次的结束原因（'stop'/'length'/...），用于识别「输出被 max_tokens 截断」
     let lastFinishReason = '';
     // 当前生成请求的中止控制（用于「停止生成」按钮与超时兜底，避免永远卡在「输入中」）
@@ -4560,7 +4652,7 @@
         let __translationSeparate = translationSeparate();
         if (translation && id) {
             try {
-                const __tm = messages.find(function (m) { return m && m.id === id; });
+                const __tm = findMessageById(id);
                 if (__tm && __tm.translationSeparate) __translationSeparate = true;
             } catch (e) {}
         }
@@ -4586,19 +4678,23 @@
         avatar.className = 'message-avatar';
         avatar.dataset.msgId = rowId;
         avatar.dataset.side = type;
+        function appendAvatarImage(src) {
+            const img = document.createElement('img');
+            // 历史消息很多时，滚动中只解码进入视野的头像，减少掉帧
+            try { img.loading = 'lazy'; img.decoding = 'async'; } catch (e) {}
+            img.alt = '';
+            img.src = src;
+            avatar.appendChild(img);
+        }
         if (type === 'left') {
             if (avatarSrc && avatarSrc.trim() !== '') {
-                const img = document.createElement('img');
-                img.src = avatarSrc;
-                avatar.appendChild(img);
+                appendAvatarImage(avatarSrc);
             } else {
                 avatar.textContent = displayName.charAt(0).toUpperCase();
             }
         } else {
             if (currentUserAvatar && currentUserAvatar.trim() !== '') {
-                const img = document.createElement('img');
-                img.src = currentUserAvatar;
-                avatar.appendChild(img);
+                appendAvatarImage(currentUserAvatar);
             } else {
                 avatar.textContent = currentUserName.charAt(0).toUpperCase();
             }
@@ -4612,7 +4708,7 @@
         // 思维链：优先取消息自身保存的；只有「本轮新加进来的消息」才能消费 pendingTurnThink。
         // 旧消息在 renderMessages 重建时绝不能抢走本轮思维链，否则思维链会挂到上一轮的消息上，
         // 表现为「思维链不是每轮刷新 / 总是旧的」。
-        const existingThinkMsg = messages.find(m => m.id === rowId);
+        const existingThinkMsg = findMessageById(rowId);
         const isNewRow = !id;
         let thinkText = '';
         if (type === 'left') {
@@ -4798,7 +4894,7 @@
                             if (!local) return;
                             img.src = local;
                             imageData.url = local;
-                            const mm = messages.find(function (x) { return x && x.id === id; });
+                            const mm = findMessageById(id);
                             if (mm && mm.imageData) mm.imageData.url = local;
                             if (imageData.genPrompt && !imageData.isEmoji && !imageData.emojiName && type !== 'right' && window.NanoGallery) {
                                 try { NanoGallery.add({ url: local, source: '聊天', charName: (characterData && characterData.name) || chatName || '', prompt: imageData.genPrompt, generated: true }); } catch (e) {}
@@ -4869,7 +4965,7 @@
                 // 用户补发的截图：不复制 base64，只记住图片消息 id，渲染时再取。
                 let previewImage = linkPreview.image || '';
                 if (!previewImage && linkPreview.imageMsgId) {
-                    const imMsg = messages.find(function (m) { return m && m.id === linkPreview.imageMsgId; });
+                    const imMsg = findMessageById(linkPreview.imageMsgId);
                     if (imMsg && imMsg.imageData) previewImage = (imMsg.imageData.urls && imMsg.imageData.urls[0]) || imMsg.imageData.url || '';
                 }
                 function makeFallbackThumb() {
@@ -4985,7 +5081,7 @@
             content.appendChild(note);
         }
 
-        const existing = messages.find(m => m.id === rowId);
+        const existing = findMessageById(rowId);
         if (isNanoChat && existing && existing.nanoError) row.classList.add('nano-error');
         if (!existing) {
             messages.push({
@@ -5034,11 +5130,7 @@
             row.classList.add('nano-user-row');
         }
 
-        // 左滑直接引用（清理旧的 hide 逻辑）
-        if (!recalled && row.dataset.id) {
-            setupQuoteSwipeForRow(row, row.dataset.id);
-        }
-
+        // 左滑直接引用：由 messageContainer 上的事件委托统一处理（不再逐行绑定）
         return row;
     }
 
@@ -5057,28 +5149,6 @@
         }
         if (m.isVoice) return m.transcript || '语音';
         return m.text || '';
-    }
-
-    function setupQuoteSwipeForRow(row, rowId) {
-        let x0 = null, y0 = null;
-        row.addEventListener('touchstart', function(e) {
-            if (!e.touches || e.touches.length !== 1) return;
-            x0 = e.touches[0].clientX;
-            y0 = e.touches[0].clientY;
-        }, { passive: true });
-        row.addEventListener('touchmove', function(e) {
-            if (x0 === null || !e.touches || e.touches.length !== 1) return;
-            const dx = e.touches[0].clientX - x0;
-            const dy = e.touches[0].clientY - y0;
-            if (dx < -60 && Math.abs(dy) < Math.abs(dx) * 0.6) {
-                x0 = null;
-                const m = messages.find(function(mm) { return mm.id === rowId; });
-                if (!m || m.recalled) return;
-                // 左滑直接引用该消息（无需再点按钮）
-                setQuote(m.id, msgSwipeQuoteText(m));
-            }
-        }, { passive: true });
-        row.addEventListener('touchend', function() { x0 = null; }, { passive: true });
     }
 
     // ===== 标签解析 =====
@@ -5715,6 +5785,15 @@
 
         messageContainer.innerHTML = '';
 
+        // 一次建好 id→消息索引：下面每行都复用，避免大聊天里反复全量查找。
+        renderMsgIndex = new Map();
+        for (let mi = 0; mi < total; mi++) {
+            const mm = messages[mi];
+            if (mm && mm.id != null) renderMsgIndex.set(String(mm.id), mm);
+        }
+        // 先拼到 DocumentFragment 再一次性插入，减少 100 行逐个 append 的重复排版。
+        const frag = document.createDocumentFragment();
+
         if (hiddenAbove > 0) {
             const btn = document.createElement('div');
             const reveal = Math.min(CHUNK, hiddenAbove);
@@ -5745,7 +5824,7 @@
                 divider.textContent = (d.toDateString() === now.toDateString())
                     ? (hh + ':' + mm)
                     : ((d.getMonth() + 1) + '月' + d.getDate() + '日' + hh + ':' + mm);
-                messageContainer.appendChild(divider);
+                frag.appendChild(divider);
             }
             const grouped = i > startIdx && messages[i - 1].type === msg.type;
             const row = createMessageRow(
@@ -5759,8 +5838,10 @@
                 msg.isImage || false, msg.imageData || null,
                 grouped, msg.linkPreview || null
             );
-            messageContainer.appendChild(row);
+            frag.appendChild(row);
         }
+        messageContainer.appendChild(frag);
+        renderMsgIndex = null;
         // 同侧连发：最后一条带尾巴（tail-end），前面几条不带
         try {
             const rows = messageContainer.querySelectorAll('.message-row');
@@ -11523,13 +11604,13 @@
 
             // 世界书「深度再注入」：聊天越长，开头的系统提示越容易被模型忽略；
             // 把关键设定重新贴到「用户最新消息之前」，确保每一轮都重新读到（recency）。
+            // 现在改为每轮都贴（短对话贴 1800 字，长对话贴 3200 字），不再等到 18 条后才生效。
             try {
                 const __wbd = getWorldbookText(chatId);
                 const __wbr = ((__wbd.front || '') + (__wbd.middle || '') + (__wbd.back || '')).trim();
-                // 世界书已经在 system 开头完整注入；只有长对话/超长提示词时才再贴一次最近的强调块，
-                // 避免每轮都重复几千字，既拖慢请求也挤占模型上下文。
-                if (__wbr && (messages.length > 18 || __sys.length > 7000)) {
-                    history.push({ role: 'system', content: '【世界书 · 关键设定（再次强调 · 优先级最高 · 每一轮都要遵守）】\n' + __wbr.slice(0, 2600) });
+                if (__wbr) {
+                    const __wbrCap = (messages.length > 18 || __sys.length > 7000) ? 3200 : 1800;
+                    history.push({ role: 'system', content: '【世界书 · 关键设定（再次强调 · 优先级最高 · 每一轮都要遵守）】\n' + __wbr.slice(0, __wbrCap) });
                 }
             } catch (e) {}
 
@@ -11924,7 +12005,7 @@
         let wbText = '';
         try {
             const wb = getWorldbookText(currentChatIdSafe());
-            wbText = [wb.front, wb.middle].filter(Boolean).join('\n').slice(0, 1600);
+            wbText = [wb.front, wb.middle].filter(Boolean).join('\n').slice(0, 2600);
         } catch (e) { wbText = ''; }
         const wantNames = (names || []).filter(Boolean);
         const selfNat = charNationality();
@@ -14361,7 +14442,7 @@
             // 和私聊同一套世界书 / 长期记忆：只靠一句人设，快捷指令很容易 OOC。
             try {
                 var wb = getWorldbookText(chatId);
-                var wbText = [wb.front, wb.middle, wb.back].filter(Boolean).join('\n').slice(0, 2600);
+                var wbText = [wb.front, wb.middle, wb.back].filter(Boolean).join('\n').slice(0, 3600);
                 if (wbText) sys += '\n【世界书 · 必须遵守】\n' + wbText;
             } catch (e) {}
             try {
